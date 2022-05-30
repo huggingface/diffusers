@@ -1,0 +1,31 @@
+Metadata-Version: 2.1
+Name: diffusers
+Version: 0.0.1
+Summary: Diffusers
+Home-page: https://github.com/huggingface/diffusers
+Author: The HuggingFace team
+Author-email: patrick@huggingface.co
+License: Apache
+Keywords: deep learning
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Education
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: Apache Software License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Requires-Python: >=3.6.0
+Description-Content-Type: text/markdown
+Provides-Extra: quality
+Provides-Extra: docs
+Provides-Extra: test
+Provides-Extra: dev
+Provides-Extra: sagemaker
+License-File: LICENSE
+
+Super cool library about diffusion models
