@@ -4,4 +4,5 @@
 
 __version__ = "0.0.1"
 
-from .models import UNetModel
+from .models.unet import GaussianDiffusion  # TODO(PVP): move somewhere else
+from .models.unet import UNetConfig, UNetModel
