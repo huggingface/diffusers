@@ -12,8 +12,164 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from setuptools import setup
-from setuptools import find_packages
+"""
+Simple check list from AllenNLP repo: https://github.com/allenai/allennlp/blob/main/setup.py
+
+To create the package for pypi.
+
+1. Run `make pre-release` (or `make pre-patch` for a patch release) then run `make fix-copies` to fix the index of the
+   documentation.
+
+   If releasing on a special branch, copy the updated README.md on the main branch for your the commit you will make
+   for the post-release and run `make fix-copies` on the main branch as well.
+
+2. Run Tests for Amazon Sagemaker. The documentation is located in `./tests/sagemaker/README.md`, otherwise @philschmid.
+
+3. Unpin specific versions from setup.py that use a git install.
+
+4. Checkout the release branch (v<RELEASE>-release, for example v4.19-release), and commit these changes with the
+   message: "Release: <VERSION>" and push.
+
+5. Wait for the tests on main to be completed and be green (otherwise revert and fix bugs)
+
+6. Add a tag in git to mark the release: "git tag v<VERSION> -m 'Adds tag v<VERSION> for pypi' "
+   Push the tag to git: git push --tags origin v<RELEASE>-release
+
+7. Build both the sources and the wheel. Do not change anything in setup.py between
+   creating the wheel and the source distribution (obviously).
+
+   For the wheel, run: "python setup.py bdist_wheel" in the top level directory.
+   (this will build a wheel for the python version you use to build it).
+
+   For the sources, run: "python setup.py sdist"
+   You should now have a /dist directory with both .whl and .tar.gz source versions.
+
+8. Check that everything looks correct by uploading the package to the pypi test server:
+
+   twine upload dist/* -r pypitest
+   (pypi suggest using twine as other methods upload files via plaintext.)
+   You may have to specify the repository url, use the following command then:
+   twine upload dist/* -r pypitest --repository-url=https://test.pypi.org/legacy/
+
+   Check that you can install it in a virtualenv by running:
+   pip install -i https://testpypi.python.org/pypi transformers
+
+   Check you can run the following commands:
+   python -c "from transformers import pipeline; classifier = pipeline('text-classification'); print(classifier('What a nice release'))"
+   python -c "from transformers import *"
+
+9. Upload the final version to actual pypi:
+   twine upload dist/* -r pypi
+
+10. Copy the release notes from RELEASE.md to the tag in github once everything is looking hunky-dory.
+
+11. Run `make post-release` (or, for a patch release, `make post-patch`). If you were on a branch for the release,
+    you need to go back to main before executing this.
+"""
+
+import re
+from distutils.core import Command
+
+from setuptools import find_packages, setup
+
+# IMPORTANT:
+# 1. all dependencies should be listed here with their version requirements if any
+# 2. once modified, run: `make deps_table_update` to update src/diffusers/dependency_versions_table.py
+_deps = [
+    "Pillow",
+    "accelerate>=0.9.0",
+    "black~=22.0,>=22.3",
+    "codecarbon==1.2.0",
+    "dataclasses",
+    "datasets",
+    "GitPython<3.1.19",
+    "hf-doc-builder>=0.3.0",
+    "huggingface-hub>=0.1.0,<1.0",
+    "importlib_metadata",
+    "isort>=5.5.4",
+    "numpy>=1.17",
+    "pytest",
+    "pytest-timeout",
+    "pytest-xdist",
+    "python>=3.7.0",
+    "regex!=2019.12.17",
+    "requests",
+    "sagemaker>=2.31.0",
+    "tokenizers>=0.11.1,!=0.11.3,<0.13",
+    "torch>=1.4",
+    "torchaudio",
+    "tqdm>=4.27",
+    "unidic>=1.0.2",
+    "unidic_lite>=1.0.7",
+    "uvicorn",
+]
+
+# this is a lookup table with items like:
+#
+# tokenizers: "tokenizers==0.9.4"
+# packaging: "packaging"
+#
+# some of the values are versioned whereas others aren't.
+deps = {b: a for a, b in (re.findall(r"^(([^!=<>~]+)(?:[!=<>~].*)?$)", x)[0] for x in _deps)}
+
+# since we save this data in src/diffusers/dependency_versions_table.py it can be easily accessed from
+# anywhere. If you need to quickly access the data from this table in a shell, you can do so easily with:
+#
+# python -c 'import sys; from diffusers.dependency_versions_table import deps; \
+# print(" ".join([ deps[x] for x in sys.argv[1:]]))' tokenizers datasets
+#
+# Just pass the desired package names to that script as it's shown with 2 packages above.
+#
+# If diffusers is not yet installed and the work is done from the cloned repo remember to add `PYTHONPATH=src` to the script above
+#
+# You can then feed this for example to `pip`:
+#
+# pip install -U $(python -c 'import sys; from diffusers.dependency_versions_table import deps; \
+# print(" ".join([ deps[x] for x in sys.argv[1:]]))' tokenizers datasets)
+#
+
+
+def deps_list(*pkgs):
+    return [deps[pkg] for pkg in pkgs]
+
+
+class DepsTableUpdateCommand(Command):
+    """
+    A custom distutils command that updates the dependency table.
+    usage: python setup.py deps_table_update
+    """
+
+    description = "build runtime dependency table"
+    user_options = [
+        # format: (long option, short option, description).
+        ("dep-table-update", None, "updates src/diffusers/dependency_versions_table.py"),
+    ]
+
+    def initialize_options(self):
+        pass
+
+    def finalize_options(self):
+        pass
+
+    def run(self):
+        entries = "\n".join([f'    "{k}": "{v}",' for k, v in deps.items()])
+        content = [
+            "# THIS FILE HAS BEEN AUTOGENERATED. To update:",
+            "# 1. modify the `_deps` dict in setup.py",
+            "# 2. run `make deps_table_update``",
+            "deps = {",
+            entries,
+            "}",
+            "",
+        ]
+        target = "src/diffusers/dependency_versions_table.py"
+        print(f"updating {target}")
+        with open(target, "w", encoding="utf-8", newline="\n") as f:
+            f.write("\n".join(content))
+
+
+extras = {}
+
 
 extras = {}
 extras["quality"] = ["black ~= 22.0", "isort >= 5.5.4", "flake8 >= 3.8.3"]
@@ -61,6 +217,7 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
+    cmdclass={"deps_table_update": DepsTableUpdateCommand},
 )
 
 # Release checklist
