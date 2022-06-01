@@ -4,26 +4,33 @@
 
 ```
 ├── models
-│   ├── dalle2
-│   │   ├── modeling_dalle2.py
-│   │   ├── README.md
-│   │   └── run_dalle2.py
-│   ├── ddpm
-│   │   ├── modeling_ddpm.py
-│   │   ├── README.md
-│   │   └── run_ddpm.py
-│   ├── glide
-│   │   ├── modeling_glide.py
-│   │   ├── README.md
-│   │   └── run_dalle2.py
-│   ├── imagen
-│   │   ├── modeling_dalle2.py
-│   │   ├── README.md
-│   │   └── run_dalle2.py
-│   └── latent_diffusion
-│       ├── modeling_latent_diffusion.py
-│       ├── README.md
-│       └── run_latent_diffusion.py
+│   ├── audio
+│   │   └── fastdiff
+│   │       ├── modeling_fastdiff.py
+│   │       ├── README.md
+│   │       └── run_fastdiff.py
+│   └── vision
+│       ├── dalle2
+│       │   ├── modeling_dalle2.py
+│       │   ├── README.md
+│       │   └── run_dalle2.py
+│       ├── ddpm
+│       │   ├── modeling_ddpm.py
+│       │   ├── README.md
+│       │   └── run_ddpm.py
+│       ├── glide
+│       │   ├── modeling_glide.py
+│       │   ├── README.md
+│       │   └── run_dalle2.py
+│       ├── imagen
+│       │   ├── modeling_dalle2.py
+│       │   ├── README.md
+│       │   └── run_dalle2.py
+│       └── latent_diffusion
+│           ├── modeling_latent_diffusion.py
+│           ├── README.md
+│           └── run_latent_diffusion.py
+
 ├── src
 │   └── diffusers
 │       ├── configuration_utils.py
@@ -38,7 +45,14 @@
 │   └── test_modeling_utils.py
 ```
 
-## Dummy Example
+## 1. `diffusers` as a central modular diffusion and sampler library
+
+`diffusers` should be more modularized than `transformers` so that parts of it can be easily used in other libraries.
+It could become a central place for all kinds of models, samplers, training utils and processors required when using diffusion models in audio, vision, ... 
+One should be able to save both models and samplers as well as load them from the Hub.
+
+Example:
+
 ```python
 from diffusers import UNetModel, GaussianDiffusion
 import torch
