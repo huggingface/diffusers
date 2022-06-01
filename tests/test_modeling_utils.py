@@ -19,7 +19,7 @@ import unittest
 
 import torch
 
-from diffusers import UNetConfig, UNetModel
+from diffusers import GaussianDiffusion, UNetModel
 
 
 global_rng = random.Random()
@@ -42,7 +42,6 @@ def floats_tensor(shape, scale=1.0, rng=None, name=None):
 
 
 class ModelTesterMixin(unittest.TestCase):
-
     @property
     def dummy_input(self):
         batch_size = 1
@@ -55,8 +54,7 @@ class ModelTesterMixin(unittest.TestCase):
         return (noise, time_step)
 
     def test_from_pretrained_save_pretrained(self):
-        config = UNetConfig(dim=8, dim_mults=(1, 2), resnet_block_groups=2)
-        model = UNetModel(config)
+        model = UNetModel(dim=8, dim_mults=(1, 2), resnet_block_groups=2)
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_pretrained(tmpdirname)
@@ -75,3 +73,34 @@ class ModelTesterMixin(unittest.TestCase):
         image = model(*self.dummy_input)
 
         assert image is not None, "Make sure output is not None"
+
+
+class SamplerTesterMixin(unittest.TestCase):
+
+    @property
+    def dummy_model(self):
+        return UNetModel.from_pretrained("fusing/ddpm_dummy")
+
+    def test_from_pretrained_save_pretrained(self):
+        sampler = GaussianDiffusion(image_size=128, timesteps=3, loss_type="l1")
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            sampler.save_config(tmpdirname)
+            new_sampler = GaussianDiffusion.from_config(tmpdirname, return_unused=False)
+
+        model = self.dummy_model
+
+        torch.manual_seed(0)
+        sampled_out = sampler.sample(model, batch_size=1)
+        torch.manual_seed(0)
+        sampled_out_new = new_sampler.sample(model, batch_size=1)
+
+        assert (sampled_out - sampled_out_new).abs().sum() < 1e-5, "Samplers don't give the same output"
+
+    def test_from_pretrained_hub(self):
+        sampler = GaussianDiffusion.from_config("fusing/ddpm_dummy")
+        model = self.dummy_model
+
+        sampled_out = sampler.sample(model, batch_size=1)
+
+        assert sampled_out is not None, "Make sure output is not None"

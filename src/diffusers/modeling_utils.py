@@ -33,9 +33,8 @@ from transformers.utils import (
     is_offline_mode,
     is_remote_url,
     logging,
+    CONFIG_NAME,
 )
-
-from .configuration_utils import PretrainedConfig
 
 
 WEIGHTS_NAME = "diffusion_model.pt"
@@ -135,7 +134,7 @@ class PreTrainedModel(torch.nn.Module):
 
     Class attributes (overridden by derived classes):
 
-        - **config_class** ([`PretrainedConfig`]) -- A subclass of [`PretrainedConfig`] to use as configuration class
+        - **config_class** ([`Config`]) -- A subclass of [`Config`] to use as configuration class
           for this model architecture.
         - **load_tf_weights** (`Callable`) -- A python *method* for loading a TensorFlow checkpoint in a PyTorch model,
           taking as arguments:
@@ -150,35 +149,16 @@ class PreTrainedModel(torch.nn.Module):
         - **main_input_name** (`str`) -- The name of the principal input to the model (often `input_ids` for NLP
           models, `pixel_values` for vision models and `input_values` for speech models).
     """
-    config_class = None
+    config_name = CONFIG_NAME
 
-    def __init__(self, config: PretrainedConfig):
+    def __init__(self):
         super().__init__()
-        if not isinstance(config, PretrainedConfig):
-            raise ValueError(
-                f"Parameter config in `{self.__class__.__name__}(config)` should be an instance of class "
-                "`PretrainedConfig`. To create a model from a pretrained model use "
-                f"`model = {self.__class__.__name__}.from_pretrained(PRETRAINED_MODEL_NAME)`"
-            )
-        # Save config and origin of the pretrained weights if given in model
-        self.config = config
-        self.name_or_path = config.name_or_path
-
-    @classmethod
-    def _from_config(cls, config, **kwargs):
-        """
-        All context managers that the model should be initialized under go here.
-        """
-        model = cls(config, **kwargs)
-
-        return model
 
     def save_pretrained(
         self,
         save_directory: Union[str, os.PathLike],
         is_main_process: bool = True,
         save_function: Callable = torch.save,
-        push_to_hub: bool = False,
         **kwargs,
     ):
         """
@@ -195,16 +175,6 @@ class PreTrainedModel(torch.nn.Module):
             save_function (`Callable`):
                 The function to use to save the state dictionary. Useful on distributed training like TPUs when one
                 need to replace `torch.save` by another method.
-            push_to_hub (`bool`, *optional*, defaults to `False`):
-                Whether or not to push your model to the Hugging Face model hub after saving it.
-
-                <Tip warning={true}>
-
-                Using `push_to_hub=True` will synchronize the repository you are pushing to with `save_directory`,
-                which requires `save_directory` to be a local clone of the repo you are pushing to if it's an existing
-                folder. Pass along `temp_dir=True` to use a temporary directory instead.
-
-                </Tip>
 
             kwargs:
                 Additional key word arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
@@ -218,11 +188,9 @@ class PreTrainedModel(torch.nn.Module):
         model_to_save = self
 
         # Attach architecture to the config
-        model_to_save.config.architectures = [model_to_save.__class__.__name__]
-
         # Save the config
         if is_main_process:
-            model_to_save.config.save_pretrained(save_directory)
+            model_to_save.save_config(save_directory)
 
         # Save the model
         state_dict = model_to_save.state_dict()
@@ -241,7 +209,7 @@ class PreTrainedModel(torch.nn.Module):
         logger.info(f"Model weights saved in {os.path.join(save_directory, WEIGHTS_NAME)}")
 
     @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], *model_args, **kwargs):
+    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
         r"""
         Instantiate a pretrained pytorch model from a pre-trained model configuration.
 
@@ -265,11 +233,11 @@ class PreTrainedModel(torch.nn.Module):
                     - A path to a *directory* containing model weights saved using
                       [`~PreTrainedModel.save_pretrained`], e.g., `./my_model_directory/`.
 
-            config (`Union[PretrainedConfig, str, os.PathLike]`, *optional*):
+            config (`Union[Config, str, os.PathLike]`, *optional*):
                 Can be either:
 
-                    - an instance of a class derived from [`PretrainedConfig`],
-                    - a string or path valid as input to [`~PretrainedConfig.from_pretrained`].
+                    - an instance of a class derived from [`Config`],
+                    - a string or path valid as input to [`~Config.from_pretrained`].
 
                 Configuration for the model to use instead of an automatically loaded configuration. Configuration can
                 be automatically loaded when:
@@ -327,7 +295,7 @@ class PreTrainedModel(torch.nn.Module):
                       underlying model's `__init__` method (we assume all relevant updates to the configuration have
                       already been done)
                     - If a configuration is not provided, `kwargs` will be first passed to the configuration class
-                      initialization function ([`~PretrainedConfig.from_pretrained`]). Each key of `kwargs` that
+                      initialization function ([`~Config.from_pretrained`]). Each key of `kwargs` that
                       corresponds to a configuration attribute will be used to override said attribute with the
                       supplied `kwargs` value. Remaining keys that do not correspond to any configuration attribute
                       will be passed to the underlying model's `__init__` function.
@@ -356,7 +324,6 @@ class PreTrainedModel(torch.nn.Module):
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
         mirror = kwargs.pop("mirror", None)
-        from_pipeline = kwargs.pop("_from_pipeline", None)
         from_auto_class = kwargs.pop("_from_auto", False)
 
         user_agent = {"file_type": "model", "framework": "pytorch", "from_auto_class": from_auto_class}
@@ -367,7 +334,7 @@ class PreTrainedModel(torch.nn.Module):
 
         # Load config if we don't provide a configuration
         config_path = pretrained_model_name_or_path
-        config, model_kwargs = cls.config_class.from_pretrained(
+        model, unused_kwargs = cls.from_config(
             config_path,
             cache_dir=cache_dir,
             return_unused_kwargs=True,
@@ -377,12 +344,9 @@ class PreTrainedModel(torch.nn.Module):
             local_files_only=local_files_only,
             use_auth_token=use_auth_token,
             revision=revision,
-            _from_auto=from_auto_class,
-            _from_pipeline=from_pipeline,
             **kwargs,
         )
-        model_kwargs = kwargs
-
+        model.register(name_or_path=pretrained_model_name_or_path)
         # This variable will flag if we're loading a sharded checkpoint. In this case the archive file is just the
         # Load model
         pretrained_model_name_or_path = str(pretrained_model_name_or_path)
@@ -456,18 +420,8 @@ class PreTrainedModel(torch.nn.Module):
         else:
             logger.info(f"loading weights file {archive_file} from cache at {resolved_archive_file}")
 
-        state_dict = load_state_dict(resolved_archive_file)
-        # set dtype to instantiate the model under:
-        # 1. If torch_dtype is not None, we use that dtype
-        # 2. If torch_dtype is "auto", we auto-detect dtype from the loaded state_dict, by checking its first
-        #    weights entry - we assume all weights are of the same dtype
-        # we also may have config.torch_dtype available, but we won't rely on it till v5
-
-        config.name_or_path = pretrained_model_name_or_path
-
-        model = cls(config, *model_args, **model_kwargs)
-
         # restore default dtype
+        state_dict = load_state_dict(resolved_archive_file)
         model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
             model,
             state_dict,

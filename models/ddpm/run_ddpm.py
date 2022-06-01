@@ -1,19 +1,10 @@
 #!/usr/bin/env python3
 import torch
 
-from diffusers import GaussianDiffusion, UNetConfig, UNetModel
+from diffusers import GaussianDiffusion, UNetModel
 
 
-config = UNetConfig(dim=64, dim_mults=(1, 2, 4, 8))
-model = UNetModel(config)
-print(model.config)
-
-model.save_pretrained("/home/patrick/diffusion_example")
-
-import ipdb
-
-
-ipdb.set_trace()
+model = UNetModel(dim=64, dim_mults=(1, 2, 4, 8))
 
 diffusion = GaussianDiffusion(model, image_size=128, timesteps=1000, loss_type="l1")  # number of steps  # L1 or L2
 
