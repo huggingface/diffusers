@@ -1,8 +1,22 @@
 # Diffusers
 
-## Definitions for diffusion models
+## Definitions
 
-[diffusers.pdf](https://github.com/huggingface/diffusers/files/8822839/diffusers.pdf)
+**Models**: Single neural network that models p_θ(x_t-1|x_t) and is trained to “denoise” to image
+*Examples: UNet, Conditioned UNet, 3D UNet, Transformer UNet*
+
+![model_diff_1_50](https://user-images.githubusercontent.com/23423619/171610307-dab0cd8b-75da-4d4e-9f5a-5922072e2bb5.png)
+
+**Samplers**: Algorithm to *train* and *sample* from **Model**. Defines alpha and beta schedule, timesteps, etc..
+*Example: Vanilla DDPM, DDIM, PMLS, DEIN*
+
+![sampling](https://user-images.githubusercontent.com/23423619/171608981-3ad05953-a684-4c82-89f8-62a459147a07.png)
+![training](https://user-images.githubusercontent.com/23423619/171608964-b3260cce-e6b4-4841-959d-7d8ba4b8d1b2.png)
+
+**Diffusion Pipeline**: End-to-end pipeline that includes multiple diffusion models, possible text encoders, CLIP
+*Example: GLIDE,CompVis/Latent-Diffusion, Imagen, DALL-E*
+
+![imagen](https://user-images.githubusercontent.com/23423619/171609001-c3f2c1c9-f597-4a16-9843-749bf3f9431c.png)
 
 ## Library structure:
 
