@@ -1,5 +1,9 @@
 # Diffusers
 
+## Definitions for diffusion models
+
+[diffusers.pdf](https://github.com/huggingface/diffusers/files/8822839/diffusers.pdf)
+
 ## Library structure:
 
 ```
