@@ -26,3 +26,5 @@ Tips:
 - ...
 
 This model was contributed by [???](https://huggingface.co/???). The original code can be found [here](https://github.com/hojonathanho/diffusion).
+
+![ddpm](https://user-images.githubusercontent.com/23423619/171627620-e3406711-1e20-4a99-8e30-ec5a86a465be.png)
