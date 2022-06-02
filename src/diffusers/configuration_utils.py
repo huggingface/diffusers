@@ -91,8 +91,8 @@ class Config:
         logger.info(f"Configuration saved in {output_config_file}")
 
     @classmethod
-    def from_config(
-        cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs
+    def get_config_dict(
+        cls, pretrained_model_name_or_path: Union[str, os.PathLike], **kwargs
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
@@ -197,6 +197,14 @@ class Config:
                 f"{expected_keys - passed_keys} was not found in config. "
                 f"Values will be initialized to default values."
             )
+
+        return config_dict, unused_kwargs
+
+    @classmethod
+    def from_config(
+        cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs
+    ):
+        config_dict, unused_kwargs = cls.get_config_dict(pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs)
 
         model = cls(**config_dict)
 
