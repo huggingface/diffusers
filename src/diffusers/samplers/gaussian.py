@@ -219,10 +219,11 @@ class GaussianDiffusion(nn.Module, Config):
         return model_mean, posterior_variance, posterior_log_variance
 
     @torch.no_grad()
-    def p_sample(self, model, x, t, clip_denoised=True, repeat_noise=False):
+    def p_sample(self, model, x, t, noise=None, clip_denoised=True, repeat_noise=False):
         b, *_, device = *x.shape, x.device
         model_mean, _, model_log_variance = self.p_mean_variance(model=model, x=x, t=t, clip_denoised=clip_denoised)
-        noise = noise_like(x.shape, device, repeat_noise)
+        if noise is None:
+            noise = noise_like(x.shape, device, repeat_noise)
         # no noise when t == 0
         nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))
         result = model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
