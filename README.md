@@ -18,6 +18,66 @@
 
 ![imagen](https://user-images.githubusercontent.com/23423619/171609001-c3f2c1c9-f597-4a16-9843-749bf3f9431c.png)
 
+## 1. `diffusers` as a central modular diffusion and sampler library
+
+`diffusers` should be more modularized than `transformers` so that parts of it can be easily used in other libraries.
+It could become a central place for all kinds of models, samplers, training utils and processors required when using diffusion models in audio, vision, ... 
+One should be able to save both models and samplers as well as load them from the Hub.
+
+Example:
+
+```python
+from diffusers import UNetModel, GaussianDiffusion
+import torch
+
+# 1. Load model
+unet = UNetModel.from_pretrained("fusing/ddpm_dummy")
+
+# 2. Do one denoising step with model
+batch_size, num_channels, height, width = 1, 3, 32, 32
+dummy_noise = torch.ones((batch_size, num_channels, height, width))
+time_step = torch.tensor([10])
+image = unet(dummy_noise, time_step)
+
+# 3. Load sampler
+sampler = GaussianDiffusion.from_config("fusing/ddpm_dummy")
+
+# 4. Sample image from sampler passing the model
+image = sampler.sample(model, batch_size=1)
+
+print(image)
+```
+
+## 2. `diffusers` as a collection of most import Diffusion models (GLIDE, Dalle, ...)
+`models` directory in repository hosts complete diffusion training code & pipelines. Easily load & saveable from the Hub. Will be possible to use just from pip `diffusers` version:
+
+Example:
+
+```python
+from diffusers import UNetModel, GaussianDiffusion
+from modeling_ddpm import DDPM
+import tempfile
+
+unet = UNetModel.from_pretrained("fusing/ddpm_dummy")
+sampler = GaussianDiffusion.from_config("fusing/ddpm_dummy")
+
+# compose Diffusion Pipeline
+ddpm = DDPM(unet, sampler)
+# generate / sample
+image = ddpm()
+print(image)
+
+
+# save and load with 0 extra code (handled by general `DiffusionPipeline` class)
+# will also be possible to do so from the Hub
+with tempfile.TemporaryDirectory() as tmpdirname:
+    ddpm.save_pretrained(tmpdirname)
+    print("Model saved")
+    ddpm_new = DDPM.from_pretrained(tmpdirname)
+    print("Model loaded")
+    print(ddpm_new)
+```
+
 ## Library structure:
 
 ```
@@ -61,34 +121,4 @@
 │           ├── gaussian.py
 ├── tests
 │   └── test_modeling_utils.py
-```
-
-## 1. `diffusers` as a central modular diffusion and sampler library
-
-`diffusers` should be more modularized than `transformers` so that parts of it can be easily used in other libraries.
-It could become a central place for all kinds of models, samplers, training utils and processors required when using diffusion models in audio, vision, ... 
-One should be able to save both models and samplers as well as load them from the Hub.
-
-Example:
-
-```python
-from diffusers import UNetModel, GaussianDiffusion
-import torch
-
-# 1. Load model
-unet = UNetModel.from_pretrained("fusing/ddpm_dummy")
-
-# 2. Do one denoising step with model
-batch_size, num_channels, height, width = 1, 3, 32, 32
-dummy_noise = torch.ones((batch_size, num_channels, height, width))
-time_step = torch.tensor([10])
-image = unet(dummy_noise, time_step)
-
-# 3. Load sampler
-sampler = GaussianDiffusion.from_config("fusing/ddpm_dummy")
-
-# 4. Sample image from sampler passing the model
-image = sampler.sample(model, batch_size=1)
-
-print(image)
 ```
