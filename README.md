@@ -21,7 +21,7 @@
 ## 1. `diffusers` as a central modular diffusion and sampler library
 
 `diffusers` should be more modularized than `transformers` so that parts of it can be easily used in other libraries.
-It could become a central place for all kinds of models, samplers, training utils and processors required when using diffusion models in audio, vision, ... 
+It could become a central place for all kinds of models, schedulers, training utils and processors required when using diffusion models in audio, vision, ... 
 One should be able to save both models and samplers as well as load them from the Hub.
 
 Example:
