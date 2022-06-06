@@ -80,28 +80,18 @@ image_pil.save("test.png")
 Example:
 
 ```python
-from diffusers import UNetModel, GaussianDDPMScheduler
 from modeling_ddpm import DDPM
-import tempfile
 
-unet = UNetModel.from_pretrained("fusing/ddpm_dummy")
-sampler = GaussianDDPMScheduler.from_config("fusing/ddpm_dummy")
-
-# compose Diffusion Pipeline
-ddpm = DDPM(unet, sampler)
-# generate / sample
+ddpm = DDPM.from_pretrained("fusing/ddpm-lsun-bedroom-pipe")
 image = ddpm()
-print(image)
 
-
-# save and load with 0 extra code (handled by general `DiffusionPipeline` class)
-# will also be possible to do so from the Hub
-with tempfile.TemporaryDirectory() as tmpdirname:
-    ddpm.save_pretrained(tmpdirname)
-    print("Model saved")
-    ddpm_new = DDPM.from_pretrained(tmpdirname)
-    print("Model loaded")
-    print(ddpm_new)
+import PIL.Image
+import numpy as np
+image_processed = image.cpu().permute(0, 2, 3, 1)
+image_processed = (image_processed + 1.0) * 127.5
+image_processed = image_processed.numpy().astype(np.uint8)
+image_pil = PIL.Image.fromarray(image_processed[0])
+image_pil.save("test.png")
 ```
 
 ## Library structure:
