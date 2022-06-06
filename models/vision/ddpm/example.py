@@ -2,21 +2,11 @@
 import tempfile
 import sys
 
-from diffusers import GaussianDDPMScheduler, UNetModel
 from modeling_ddpm import DDPM
 
 model_id = sys.argv[1]
-folder = sys.argv[2]
-save = bool(int(sys.argv[3]))
 
-unet = UNetModel.from_pretrained(model_id)
-sampler = GaussianDDPMScheduler.from_config(model_id)
-
-# compose Diffusion Pipeline
-if save:
-    ddpm = DDPM(unet, sampler)
-    ddpm.save_pretrained(folder)
-
+ddpm = DDPM.from_pretrained(model_id)
 image = ddpm()
 
 import PIL.Image
