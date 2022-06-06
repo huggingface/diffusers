@@ -17,10 +17,10 @@
 
 
 import copy
+import inspect
 import json
 import os
 import re
-import inspect
 from typing import Any, Dict, Tuple, Union
 
 from requests import HTTPError
@@ -186,6 +186,11 @@ class Config:
         expected_keys = set(dict(inspect.signature(cls.__init__).parameters).keys())
         expected_keys.remove("self")
 
+        for key in expected_keys:
+            if key in kwargs:
+                # overwrite key
+                config_dict[key] = kwargs.pop(key)
+
         passed_keys = set(config_dict.keys())
 
         unused_kwargs = kwargs
@@ -194,17 +199,16 @@ class Config:
 
         if len(expected_keys - passed_keys) > 0:
             logger.warn(
-                f"{expected_keys - passed_keys} was not found in config. "
-                f"Values will be initialized to default values."
+                f"{expected_keys - passed_keys} was not found in config. Values will be initialized to default values."
             )
 
         return config_dict, unused_kwargs
 
     @classmethod
-    def from_config(
-        cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs
-    ):
-        config_dict, unused_kwargs = cls.get_config_dict(pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs)
+    def from_config(cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs):
+        config_dict, unused_kwargs = cls.get_config_dict(
+            pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs
+        )
 
         model = cls(**config_dict)
 

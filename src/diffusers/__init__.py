@@ -4,8 +4,7 @@
 
 __version__ = "0.0.1"
 
-from .models.unet import UNetModel
-from .samplers.gaussian import GaussianDiffusion
-
-from .pipeline_utils import DiffusionPipeline
 from .modeling_utils import PreTrainedModel
+from .models.unet import UNetModel
+from .pipeline_utils import DiffusionPipeline
+from .schedulers.gaussian_ddpm import GaussianDDPMScheduler

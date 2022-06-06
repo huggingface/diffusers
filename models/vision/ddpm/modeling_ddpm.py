@@ -18,7 +18,6 @@ from diffusers import DiffusionPipeline
 
 
 class DDPM(DiffusionPipeline):
-
     def __init__(self, unet, gaussian_sampler):
         super().__init__(unet=unet, gaussian_sampler=gaussian_sampler)
 

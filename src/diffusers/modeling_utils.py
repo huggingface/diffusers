@@ -24,6 +24,7 @@ from requests import HTTPError
 
 # CHANGE to diffusers.utils
 from transformers.utils import (
+    CONFIG_NAME,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     EntryNotFoundError,
     RepositoryNotFoundError,
@@ -33,7 +34,6 @@ from transformers.utils import (
     is_offline_mode,
     is_remote_url,
     logging,
-    CONFIG_NAME,
 )
 
 

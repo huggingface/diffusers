@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-from diffusers import UNetModel, GaussianDiffusion
-from modeling_ddpm import DDPM
 import tempfile
 
+from diffusers import GaussianDDPMScheduler, UNetModel
+from modeling_ddpm import DDPM
+
+
 unet = UNetModel.from_pretrained("fusing/ddpm_dummy")
-sampler = GaussianDiffusion.from_config("fusing/ddpm_dummy")
+sampler = GaussianDDPMScheduler.from_config("fusing/ddpm_dummy")
 
 # compose Diffusion Pipeline
 ddpm = DDPM(unet, sampler)

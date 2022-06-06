@@ -14,14 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import os
 from typing import Optional, Union
-import importlib
-
-from .configuration_utils import Config
 
 # CHANGE to diffusers.utils
 from transformers.utils import logging
+
+from .configuration_utils import Config
 
 
 INDEX_FILE = "diffusion_model.pt"
@@ -33,7 +33,7 @@ logger = logging.get_logger(__name__)
 LOADABLE_CLASSES = {
     "diffusers": {
         "PreTrainedModel": ["save_pretrained", "from_pretrained"],
-        "GaussianDiffusion": ["save_config", "from_config"],
+        "GaussianDDPMScheduler": ["save_config", "from_config"],
     },
     "transformers": {
         "PreTrainedModel": ["save_pretrained", "from_pretrained"],

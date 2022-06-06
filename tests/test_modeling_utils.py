@@ -16,13 +16,45 @@
 import random
 import tempfile
 import unittest
+import os
+from distutils.util import strtobool
 
 import torch
 
-from diffusers import GaussianDiffusion, UNetModel
+from diffusers import GaussianDDPMScheduler, UNetModel
 
 
 global_rng = random.Random()
+torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+
+
+def parse_flag_from_env(key, default=False):
+    try:
+        value = os.environ[key]
+    except KeyError:
+        # KEY isn't set, default to `default`.
+        _value = default
+    else:
+        # KEY is set, convert it to True or False.
+        try:
+            _value = strtobool(value)
+        except ValueError:
+            # More values are supported, but let's keep the message simple.
+            raise ValueError(f"If set, {key} must be yes or no.")
+    return _value
+
+
+_run_slow_tests = parse_flag_from_env("RUN_SLOW", default=False)
+
+
+def slow(test_case):
+    """
+    Decorator marking a test as slow.
+
+    Slow tests are skipped by default. Set the RUN_SLOW environment variable to a truthy value to run them.
+
+    """
+    return unittest.skipUnless(_run_slow_tests, "test is slow")(test_case)
 
 
 def floats_tensor(shape, scale=1.0, rng=None, name=None):
@@ -54,7 +86,7 @@ class ModelTesterMixin(unittest.TestCase):
         return (noise, time_step)
 
     def test_from_pretrained_save_pretrained(self):
-        model = UNetModel(dim=8, dim_mults=(1, 2), resnet_block_groups=2)
+        model = UNetModel(ch=32, ch_mult=(1, 2), num_res_blocks=2, attn_resolutions=(16,), resolution=32)
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_pretrained(tmpdirname)
@@ -77,30 +109,93 @@ class ModelTesterMixin(unittest.TestCase):
 
 class SamplerTesterMixin(unittest.TestCase):
 
-    @property
-    def dummy_model(self):
-        return UNetModel.from_pretrained("fusing/ddpm_dummy")
+    @slow
+    def test_sample(self):
+        generator = torch.Generator()
+        generator = generator.manual_seed(6694729458485568)
 
-    def test_from_pretrained_save_pretrained(self):
-        sampler = GaussianDiffusion(image_size=128, timesteps=3, loss_type="l1")
+        # 1. Load models
+        scheduler = GaussianDDPMScheduler.from_config("fusing/ddpm-lsun-church")
+        model = UNetModel.from_pretrained("fusing/ddpm-lsun-church").to(torch_device)
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            sampler.save_config(tmpdirname)
-            new_sampler = GaussianDiffusion.from_config(tmpdirname, return_unused=False)
+        # 2. Sample gaussian noise
+        image = scheduler.sample_noise((1, model.in_channels, model.resolution, model.resolution), device=torch_device, generator=generator)
 
-        model = self.dummy_model
+        # 3. Denoise
+        for t in reversed(range(len(scheduler))):
+            # i) define coefficients for time step t
+            clip_image_coeff = 1 / torch.sqrt(scheduler.get_alpha_prod(t))
+            clip_noise_coeff = torch.sqrt(1 / scheduler.get_alpha_prod(t) - 1)
+            image_coeff = (1 - scheduler.get_alpha_prod(t - 1)) * torch.sqrt(scheduler.get_alpha(t)) / (1 - scheduler.get_alpha_prod(t))
+            clip_coeff = torch.sqrt(scheduler.get_alpha_prod(t - 1)) * scheduler.get_beta(t) / (1 - scheduler.get_alpha_prod(t))
 
+            # ii) predict noise residual
+            with torch.no_grad():
+                noise_residual = model(image, t)
+
+            # iii) compute predicted image from residual
+            # See 2nd formula at https://github.com/hojonathanho/diffusion/issues/5#issue-896554416 for comparison
+            pred_mean = clip_image_coeff * image - clip_noise_coeff * noise_residual
+            pred_mean = torch.clamp(pred_mean, -1, 1)
+            prev_image = clip_coeff * pred_mean + image_coeff * image
+
+            # iv) sample variance
+            prev_variance = scheduler.sample_variance(t, prev_image.shape, device=torch_device, generator=generator)
+
+            # v) sample  x_{t-1} ~ N(prev_image, prev_variance)
+            sampled_prev_image = prev_image + prev_variance
+            image = sampled_prev_image
+
+        # Note: The better test is to simply check with the following lines of code that the image is sensible
+        # import PIL
+        # import numpy as np
+        # image_processed = image.cpu().permute(0, 2, 3, 1)
+        # image_processed = (image_processed + 1.0) * 127.5
+        # image_processed = image_processed.numpy().astype(np.uint8)
+        # image_pil = PIL.Image.fromarray(image_processed[0])
+        # image_pil.save("test.png")
+
+        assert image.shape == (1, 3, 256, 256)
+        image_slice = image[0, -1, -3:, -3:].cpu()
+        assert (image_slice - torch.tensor([[-0.0598, -0.0611, -0.0506], [-0.0726, 0.0220, 0.0103], [-0.0723, -0.1310, -0.2458]])).abs().sum() < 1e-3
+
+    def test_sample_fast(self):
+        # 1. Load models
+        generator = torch.Generator()
+        generator = generator.manual_seed(6694729458485568)
+
+        scheduler = GaussianDDPMScheduler.from_config("fusing/ddpm-lsun-church", timesteps=10)
+        model = UNetModel.from_pretrained("fusing/ddpm-lsun-church").to(torch_device)
+
+        # 2. Sample gaussian noise
         torch.manual_seed(0)
-        sampled_out = sampler.sample(model, batch_size=1)
-        torch.manual_seed(0)
-        sampled_out_new = new_sampler.sample(model, batch_size=1)
+        image = scheduler.sample_noise((1, model.in_channels, model.resolution, model.resolution), device=torch_device, generator=generator)
 
-        assert (sampled_out - sampled_out_new).abs().sum() < 1e-5, "Samplers don't give the same output"
+        # 3. Denoise
+        for t in reversed(range(len(scheduler))):
+            # i) define coefficients for time step t
+            clip_image_coeff = 1 / torch.sqrt(scheduler.get_alpha_prod(t))
+            clip_noise_coeff = torch.sqrt(1 / scheduler.get_alpha_prod(t) - 1)
+            image_coeff = (1 - scheduler.get_alpha_prod(t - 1)) * torch.sqrt(scheduler.get_alpha(t)) / (1 - scheduler.get_alpha_prod(t))
+            clip_coeff = torch.sqrt(scheduler.get_alpha_prod(t - 1)) * scheduler.get_beta(t) / (1 - scheduler.get_alpha_prod(t))
 
-    def test_from_pretrained_hub(self):
-        sampler = GaussianDiffusion.from_config("fusing/ddpm_dummy")
-        model = self.dummy_model
+            # ii) predict noise residual
+            with torch.no_grad():
+                noise_residual = model(image, t)
 
-        sampled_out = sampler.sample(model, batch_size=1)
+            # iii) compute predicted image from residual
+            # See 2nd formula at https://github.com/hojonathanho/diffusion/issues/5#issue-896554416 for comparison
+            pred_mean = clip_image_coeff * image - clip_noise_coeff * noise_residual
+            pred_mean = torch.clamp(pred_mean, -1, 1)
+            prev_image = clip_coeff * pred_mean + image_coeff * image
 
-        assert sampled_out is not None, "Make sure output is not None"
+            # iv) sample variance
+            prev_variance = scheduler.sample_variance(t, prev_image.shape, device=torch_device, generator=generator)
+
+            # v) sample  x_{t-1} ~ N(prev_image, prev_variance)
+            sampled_prev_image = prev_image + prev_variance
+            image = sampled_prev_image
+
+        assert image.shape == (1, 3, 256, 256)
+        image_slice = image[0, -1, -3:, -3:].cpu()
+        assert (image_slice - torch.tensor([[0.1746, 0.5125, -0.7920], [-0.5734, -0.2910, -0.1984], [0.4090, -0.7740, -0.3941]])).abs().sum() < 1e-3

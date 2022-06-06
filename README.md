@@ -27,7 +27,7 @@ One should be able to save both models and samplers as well as load them from th
 Example:
 
 ```python
-from diffusers import UNetModel, GaussianDiffusion
+from diffusers import UNetModel, GaussianDDPMScheduler
 import torch
 
 # 1. Load model
@@ -40,7 +40,7 @@ time_step = torch.tensor([10])
 image = unet(dummy_noise, time_step)
 
 # 3. Load sampler
-sampler = GaussianDiffusion.from_config("fusing/ddpm_dummy")
+sampler = GaussianDDPMScheduler.from_config("fusing/ddpm_dummy")
 
 # 4. Sample image from sampler passing the model
 image = sampler.sample(model, batch_size=1)
@@ -54,12 +54,12 @@ print(image)
 Example:
 
 ```python
-from diffusers import UNetModel, GaussianDiffusion
+from diffusers import UNetModel, GaussianDDPMScheduler
 from modeling_ddpm import DDPM
 import tempfile
 
 unet = UNetModel.from_pretrained("fusing/ddpm_dummy")
-sampler = GaussianDiffusion.from_config("fusing/ddpm_dummy")
+sampler = GaussianDDPMScheduler.from_config("fusing/ddpm_dummy")
 
 # compose Diffusion Pipeline
 ddpm = DDPM(unet, sampler)
