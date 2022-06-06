@@ -45,7 +45,7 @@ class DiffusionPipeline(Config):
 
     config_name = "model_index.json"
 
-    def __init__(self, **kwargs):
+    def register_modules(self, **kwargs):
         for name, module in kwargs.items():
             # retrive library
             library = module.__module__.split(".")[0]
