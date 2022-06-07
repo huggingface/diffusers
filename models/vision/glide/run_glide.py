@@ -6,6 +6,7 @@ generator = torch.Generator()
 generator = generator.manual_seed(0)
 
 # 1. Load models
+
 scheduler = GaussianDDPMScheduler.from_config("fusing/glide-base")
 model = UNetGLIDEModel.from_pretrained("fusing/glide-base")
 
