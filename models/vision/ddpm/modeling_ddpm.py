@@ -27,8 +27,9 @@ class DDPM(DiffusionPipeline):
         super().__init__()
         self.register_modules(unet=unet, noise_scheduler=noise_scheduler)
 
-    def __call__(self, generator=None, torch_device=None):
-        torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+    def __call__(self, batch_size=1, generator=None, torch_device=None):
+        if torch_device is None:
+            torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self.unet.to(torch_device)
         # 1. Sample gaussian noise
