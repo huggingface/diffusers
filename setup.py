@@ -28,11 +28,11 @@ To create the package for pypi.
 3. Unpin specific versions from setup.py that use a git install.
 
 4. Checkout the release branch (v<RELEASE>-release, for example v4.19-release), and commit these changes with the
-   message: "Release: <VERSION>" and push.
+   message: "Release: <RELEASE>" and push.
 
 5. Wait for the tests on main to be completed and be green (otherwise revert and fix bugs)
 
-6. Add a tag in git to mark the release: "git tag v<VERSION> -m 'Adds tag v<VERSION> for pypi' "
+6. Add a tag in git to mark the release: "git tag v<RELEASE> -m 'Adds tag v<RELEASE> for pypi' "
    Push the tag to git: git push --tags origin v<RELEASE>-release
 
 7. Build both the sources and the wheel. Do not change anything in setup.py between
@@ -189,7 +189,7 @@ extras["sagemaker"] = [
 
 setup(
     name="diffusers",
-    version="0.0.1",
+    version="0.0.2",
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
@@ -222,8 +222,8 @@ setup(
 
 # Release checklist
 # 1. Change the version in __init__.py and setup.py.
-# 2. Commit these changes with the message: "Release: VERSION"
-# 3. Add a tag in git to mark the release: "git tag VERSION -m 'Adds tag VERSION for pypi' "
+# 2. Commit these changes with the message: "Release: Release"
+# 3. Add a tag in git to mark the release: "git tag RELEASE -m 'Adds tag RELEASE for pypi' "
 #    Push the tag to git: git push --tags origin main
 # 4. Run the following commands in the top-level directory:
 #      python setup.py bdist_wheel
