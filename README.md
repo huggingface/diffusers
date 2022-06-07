@@ -84,12 +84,12 @@ image_pil.save("test.png")
 Example:
 
 ```python
-from modeling_ddpm import DDPM
+from diffusers import DiffusionPipeline
 import PIL.Image
 import numpy as np
 
 # load model and scheduler
-ddpm = DDPM.from_pretrained("fusing/ddpm-lsun-bedroom-pipe")
+ddpm = DiffusionPipeline.from_pretrained("fusing/ddpm-lsun-bedroom")
 
 # run pipeline in inference (sample random noise and denoise)
 image = ddpm()
