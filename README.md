@@ -34,6 +34,7 @@ import numpy as np
 
 generator = torch.Generator()
 generator = generator.manual_seed(6694729458485568)
+torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # 1. Load models
 scheduler = GaussianDDPMScheduler.from_config("fusing/ddpm-lsun-church")
