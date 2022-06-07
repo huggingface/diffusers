@@ -5,8 +5,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..configuration_utils import Config
-from ..modeling_utils import PreTrainedModel
+from ..configuration_utils import ConfigMixin
+from ..modeling_utils import ModelMixin
 
 
 def convert_module_to_f16(l):
@@ -388,7 +388,7 @@ class QKVAttention(nn.Module):
         return a.reshape(bs, -1, length)
 
 
-class UNetGLIDEModel(PreTrainedModel, Config):
+class UNetGLIDEModel(ModelMixin, ConfigMixin):
     """
     The full UNet model with attention and timestep embedding.
 
