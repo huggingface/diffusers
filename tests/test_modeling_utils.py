@@ -172,6 +172,7 @@ class SamplerTesterMixin(unittest.TestCase):
 
         # 2. Sample gaussian noise
         image = scheduler.sample_noise((1, model.in_channels, model.resolution, model.resolution), device=torch_device, generator=generator)
+        import ipdb; ipdb.set_trace()
 
         # 3. Denoise
         for t in reversed(range(len(scheduler))):
