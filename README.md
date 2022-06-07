@@ -21,7 +21,7 @@
 ## 1. `diffusers` as a central modular diffusion and sampler library
 
 `diffusers` should be more modularized than `transformers` so that parts of it can be easily used in other libraries.
-It could become a central place for all kinds of models, samplers, training utils and processors required when using diffusion models in audio, vision, ... 
+It could become a central place for all kinds of models, schedulers, training utils and processors required when using diffusion models in audio, vision, ... 
 One should be able to save both models and samplers as well as load them from the Hub.
 
 Example:
@@ -67,10 +67,13 @@ for t in reversed(range(len(scheduler))):
     sampled_prev_image = prev_image + prev_variance
     image = sampled_prev_image
 
+# process image to PIL
 image_processed = image.cpu().permute(0, 2, 3, 1)
 image_processed = (image_processed + 1.0) * 127.5
 image_processed = image_processed.numpy().astype(np.uint8)
 image_pil = PIL.Image.fromarray(image_processed[0])
+
+# save image
 image_pil.save("test.png")
 ```
 
@@ -80,28 +83,24 @@ image_pil.save("test.png")
 Example:
 
 ```python
-from diffusers import UNetModel, GaussianDDPMScheduler
 from modeling_ddpm import DDPM
-import tempfile
+import PIL.Image
+import numpy as np
 
-unet = UNetModel.from_pretrained("fusing/ddpm_dummy")
-sampler = GaussianDDPMScheduler.from_config("fusing/ddpm_dummy")
+# load model and scheduler
+ddpm = DDPM.from_pretrained("fusing/ddpm-lsun-bedroom-pipe")
 
-# compose Diffusion Pipeline
-ddpm = DDPM(unet, sampler)
-# generate / sample
+# run pipeline in inference (sample random noise and denoise)
 image = ddpm()
-print(image)
 
+# process image to PIL
+image_processed = image.cpu().permute(0, 2, 3, 1)
+image_processed = (image_processed + 1.0) * 127.5
+image_processed = image_processed.numpy().astype(np.uint8)
+image_pil = PIL.Image.fromarray(image_processed[0])
 
-# save and load with 0 extra code (handled by general `DiffusionPipeline` class)
-# will also be possible to do so from the Hub
-with tempfile.TemporaryDirectory() as tmpdirname:
-    ddpm.save_pretrained(tmpdirname)
-    print("Model saved")
-    ddpm_new = DDPM.from_pretrained(tmpdirname)
-    print("Model loaded")
-    print(ddpm_new)
+# save image
+image_pil.save("test.png")
 ```
 
 ## Library structure:
