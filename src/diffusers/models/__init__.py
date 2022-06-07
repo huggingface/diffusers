@@ -17,3 +17,4 @@
 # limitations under the License.
 
 from .unet import UNetModel
+from .unet_glide import UNetGLIDEModel
