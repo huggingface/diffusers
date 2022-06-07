@@ -29,8 +29,8 @@ from torchvision import transforms, utils
 from PIL import Image
 from tqdm import tqdm
 
-from ..configuration_utils import Config
-from ..modeling_utils import PreTrainedModel
+from ..configuration_utils import ConfigMixin
+from ..modeling_utils import ModelMixin
 
 
 def get_timestep_embedding(timesteps, embedding_dim):
@@ -175,7 +175,7 @@ class AttnBlock(nn.Module):
         return x + h_
 
 
-class UNetModel(PreTrainedModel, Config):
+class UNetModel(ModelMixin, ConfigMixin):
     def __init__(
         self,
         ch=128,

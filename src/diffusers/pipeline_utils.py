@@ -22,7 +22,7 @@ from huggingface_hub import snapshot_download
 # CHANGE to diffusers.utils
 from transformers.utils import logging
 
-from .configuration_utils import Config
+from .configuration_utils import ConfigMixin
 
 
 INDEX_FILE = "diffusion_model.pt"
@@ -33,16 +33,16 @@ logger = logging.get_logger(__name__)
 
 LOADABLE_CLASSES = {
     "diffusers": {
-        "PreTrainedModel": ["save_pretrained", "from_pretrained"],
+        "ModelMixin": ["save_pretrained", "from_pretrained"],
         "GaussianDDPMScheduler": ["save_config", "from_config"],
     },
     "transformers": {
-        "PreTrainedModel": ["save_pretrained", "from_pretrained"],
+        "ModelMixin": ["save_pretrained", "from_pretrained"],
     },
 }
 
 
-class DiffusionPipeline(Config):
+class DiffusionPipeline(ConfigMixin):
 
     config_name = "model_index.json"
 

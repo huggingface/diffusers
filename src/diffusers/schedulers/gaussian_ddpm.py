@@ -14,7 +14,7 @@
 import torch
 from torch import nn
 
-from ..configuration_utils import Config
+from ..configuration_utils import ConfigMixin
 
 
 SAMPLING_CONFIG_NAME = "scheduler_config.json"
@@ -24,7 +24,7 @@ def linear_beta_schedule(timesteps, beta_start, beta_end):
     return torch.linspace(beta_start, beta_end, timesteps, dtype=torch.float64)
 
 
-class GaussianDDPMScheduler(nn.Module, Config):
+class GaussianDDPMScheduler(nn.Module, ConfigMixin):
 
     config_name = SAMPLING_CONFIG_NAME
 

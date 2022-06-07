@@ -13,7 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Configuration base class and utilities."""
+""" ConfigMixinuration base class and utilities."""
 
 
 import copy
@@ -44,7 +44,7 @@ logger = logging.get_logger(__name__)
 _re_configuration_file = re.compile(r"config\.(.*)\.json")
 
 
-class Config:
+class ConfigMixin:
     r"""
     Base class for all configuration classes. Handles a few parameters common to all models' configurations as well as
     methods for loading/downloading/saving configurations.
@@ -71,7 +71,7 @@ class Config:
     def save_config(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
         """
         Save a configuration object to the directory `save_directory`, so that it can be re-loaded using the
-        [`~Config.from_config`] class method.
+        [`~ConfigMixin.from_config`] class method.
 
         Args:
             save_directory (`str` or `os.PathLike`):
@@ -88,7 +88,7 @@ class Config:
         output_config_file = os.path.join(save_directory, self.config_name)
 
         self.to_json_file(output_config_file)
-        logger.info(f"Configuration saved in {output_config_file}")
+        logger.info(f"ConfigMixinuration saved in {output_config_file}")
 
     @classmethod
     def get_config_dict(
