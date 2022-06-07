@@ -15,7 +15,7 @@ import torch
 import math
 from torch import nn
 
-from ..configuration_utils import Config
+from ..configuration_utils import ConfigMixin
 
 
 SAMPLING_CONFIG_NAME = "scheduler_config.json"
@@ -45,7 +45,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, alpha_bar, max_beta=0.999):
     return torch.tensor(betas, dtype=torch.float64)
 
 
-class GaussianDDPMScheduler(nn.Module, Config):
+class GaussianDDPMScheduler(nn.Module, ConfigMixin):
 
     config_name = SAMPLING_CONFIG_NAME
 

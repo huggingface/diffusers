@@ -122,11 +122,11 @@ def _load_state_dict_into_model(model_to_load, state_dict):
     return error_msgs
 
 
-class PreTrainedModel(torch.nn.Module):
+class ModelMixin(torch.nn.Module):
     r"""
     Base class for all models.
 
-    [`PreTrainedModel`] takes care of storing the configuration of the models and handles methods for loading,
+    [`ModelMixin`] takes care of storing the configuration of the models and handles methods for loading,
     downloading and saving models as well as a few methods common to all models to:
 
         - resize the input embeddings,
@@ -134,13 +134,13 @@ class PreTrainedModel(torch.nn.Module):
 
     Class attributes (overridden by derived classes):
 
-        - **config_class** ([`Config`]) -- A subclass of [`Config`] to use as configuration class
+        - **config_class** ([`ConfigMixin`]) -- A subclass of [`ConfigMixin`] to use as configuration class
           for this model architecture.
         - **load_tf_weights** (`Callable`) -- A python *method* for loading a TensorFlow checkpoint in a PyTorch model,
           taking as arguments:
 
-            - **model** ([`PreTrainedModel`]) -- An instance of the model on which to load the TensorFlow checkpoint.
-            - **config** ([`PreTrainedConfig`]) -- An instance of the configuration associated to the model.
+            - **model** ([`ModelMixin`]) -- An instance of the model on which to load the TensorFlow checkpoint.
+            - **config** ([`PreTrainedConfigMixin`]) -- An instance of the configuration associated to the model.
             - **path** (`str`) -- A path to the TensorFlow checkpoint.
 
         - **base_model_prefix** (`str`) -- A string indicating the attribute associated to the base model in derived
@@ -163,7 +163,7 @@ class PreTrainedModel(torch.nn.Module):
     ):
         """
         Save a model and its configuration file to a directory, so that it can be re-loaded using the
-        `[`~PreTrainedModel.from_pretrained`]` class method.
+        `[`~ModelMixin.from_pretrained`]` class method.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -231,20 +231,20 @@ class PreTrainedModel(torch.nn.Module):
                       Valid model ids can be located at the root-level, like `bert-base-uncased`, or namespaced under a
                       user or organization name, like `dbmdz/bert-base-german-cased`.
                     - A path to a *directory* containing model weights saved using
-                      [`~PreTrainedModel.save_pretrained`], e.g., `./my_model_directory/`.
+                      [`~ModelMixin.save_pretrained`], e.g., `./my_model_directory/`.
 
-            config (`Union[Config, str, os.PathLike]`, *optional*):
+            config (`Union[ConfigMixin, str, os.PathLike]`, *optional*):
                 Can be either:
 
-                    - an instance of a class derived from [`Config`],
-                    - a string or path valid as input to [`~Config.from_pretrained`].
+                    - an instance of a class derived from [`ConfigMixin`],
+                    - a string or path valid as input to [`~ConfigMixin.from_pretrained`].
 
-                Configuration for the model to use instead of an automatically loaded configuration. Configuration can
+                ConfigMixinuration for the model to use instead of an automatically loaded configuration. ConfigMixinuration can
                 be automatically loaded when:
 
                     - The model is a model provided by the library (loaded with the *model id* string of a pretrained
                       model).
-                    - The model was saved using [`~PreTrainedModel.save_pretrained`] and is reloaded by supplying the
+                    - The model was saved using [`~ModelMixin.save_pretrained`] and is reloaded by supplying the
                       save directory.
                     - The model is loaded by supplying a local directory as `pretrained_model_name_or_path` and a
                       configuration JSON file named *config.json* is found in the directory.
@@ -295,7 +295,7 @@ class PreTrainedModel(torch.nn.Module):
                       underlying model's `__init__` method (we assume all relevant updates to the configuration have
                       already been done)
                     - If a configuration is not provided, `kwargs` will be first passed to the configuration class
-                      initialization function ([`~Config.from_pretrained`]). Each key of `kwargs` that
+                      initialization function ([`~ConfigMixin.from_pretrained`]). Each key of `kwargs` that
                       corresponds to a configuration attribute will be used to override said attribute with the
                       supplied `kwargs` value. Remaining keys that do not correspond to any configuration attribute
                       will be passed to the underlying model's `__init__` function.

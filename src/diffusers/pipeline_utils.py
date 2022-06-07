@@ -22,7 +22,7 @@ from huggingface_hub import snapshot_download
 # CHANGE to diffusers.utils
 from transformers.utils import logging
 
-from .configuration_utils import Config
+from .configuration_utils import ConfigMixin
 
 
 INDEX_FILE = "diffusion_model.pt"
@@ -33,16 +33,16 @@ logger = logging.get_logger(__name__)
 
 LOADABLE_CLASSES = {
     "diffusers": {
-        "PreTrainedModel": ["save_pretrained", "from_pretrained"],
+        "ModelMixin": ["save_pretrained", "from_pretrained"],
         "GaussianDDPMScheduler": ["save_config", "from_config"],
     },
     "transformers": {
-        "PreTrainedModel": ["save_pretrained", "from_pretrained"],
+        "ModelMixin": ["save_pretrained", "from_pretrained"],
     },
 }
 
 
-class DiffusionPipeline(Config):
+class DiffusionPipeline(ConfigMixin):
 
     config_name = "model_index.json"
 
@@ -53,8 +53,11 @@ class DiffusionPipeline(Config):
             # retrive class_name
             class_name = module.__class__.__name__
 
+            register_dict = {name: (library, class_name)}
+            register_dict["_module"] = self.__module__
+
             # save model index config
-            self.register(**{name: (library, class_name)})
+            self.register(**register_dict)
 
             # set models
             setattr(self, name, module)
@@ -67,6 +70,10 @@ class DiffusionPipeline(Config):
 
         for name, (library_name, class_name) in self._dict_to_save.items():
             importable_classes = LOADABLE_CLASSES[library_name]
+
+            # TODO: Suraj
+            if library_name == self.__module__:
+                library_name = self
 
             library = importlib.import_module(library_name)
             class_obj = getattr(library, class_name)
@@ -84,12 +91,21 @@ class DiffusionPipeline(Config):
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
         # use snapshot download here to get it working from from_pretrained
         cached_folder = snapshot_download(pretrained_model_name_or_path)
-        config_dict, _ = cls.get_config_dict(cached_folder)
+        config_dict, pipeline_kwargs = cls.get_config_dict(cached_folder)
+
+        module = pipeline_kwargs["_module"]
+        # TODO(Suraj) - make from hub import work
+        # Make `ddpm = DiffusionPipeline.from_pretrained("fusing/ddpm-lsun-bedroom-pipe")` work
+        # Add Sylvains code from transformers
 
         init_kwargs = {}
 
         for name, (library_name, class_name) in config_dict.items():
             importable_classes = LOADABLE_CLASSES[library_name]
+
+            if library_name == module:
+                # TODO(Suraj)
+                pass
 
             library = importlib.import_module(library_name)
             class_obj = getattr(library, class_name)
@@ -104,7 +120,7 @@ class DiffusionPipeline(Config):
 
             loaded_sub_model = load_method(os.path.join(cached_folder, name))
 
-            init_kwargs[name] = loaded_sub_model
+            init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
         model = cls(**init_kwargs)
         return model

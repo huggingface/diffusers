@@ -87,7 +87,7 @@ IGNORE_NON_TESTED = PRIVATE_MODELS.copy() + [
     "ReformerForMaskedLM",  # Needs to be setup as decoder.
     "Speech2Text2DecoderWrapper",  # Building part of bigger (tested) model.
     "TFDPREncoder",  # Building part of bigger (tested) model.
-    "TFElectraMainLayer",  # Building part of bigger (tested) model (should it be a TFPreTrainedModel ?)
+    "TFElectraMainLayer",  # Building part of bigger (tested) model (should it be a TFModelMixin ?)
     "TFRobertaForMultipleChoice",  # TODO: fix
     "TrOCRDecoderWrapper",  # Building part of bigger (tested) model.
     "SeparableConv1D",  # Building part of bigger (tested) model.
@@ -271,7 +271,7 @@ def get_model_modules():
 def get_models(module, include_pretrained=False):
     """Get the objects in module that are models."""
     models = []
-    model_classes = (transformers.PreTrainedModel, transformers.TFPreTrainedModel, transformers.FlaxPreTrainedModel)
+    model_classes = (transformers.ModelMixin, transformers.TFModelMixin, transformers.FlaxModelMixin)
     for attr_name in dir(module):
         if not include_pretrained and ("Pretrained" in attr_name or "PreTrained" in attr_name):
             continue
@@ -372,7 +372,7 @@ def find_tested_models(test_file):
 
 def check_models_are_tested(module, test_file):
     """Check models defined in module are tested in test_file."""
-    # XxxPreTrainedModel are not tested
+    # XxxModelMixin are not tested
     defined_models = get_models(module)
     tested_models = find_tested_models(test_file)
     if tested_models is None:
@@ -625,9 +625,9 @@ def ignore_undocumented(name):
     # Constants uppercase are not documented.
     if name.isupper():
         return True
-    # PreTrainedModels / Encoders / Decoders / Layers / Embeddings / Attention are not documented.
+    # ModelMixins / Encoders / Decoders / Layers / Embeddings / Attention are not documented.
     if (
-        name.endswith("PreTrainedModel")
+        name.endswith("ModelMixin")
         or name.endswith("Decoder")
         or name.endswith("Encoder")
         or name.endswith("Layer")

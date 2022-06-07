@@ -94,7 +94,7 @@ def get_model_table_from_auto_modules():
         for code, name in transformers_module.MODEL_NAMES_MAPPING.items()
         if code in config_maping_names
     }
-    model_name_to_prefix = {name: config.replace("Config", "") for name, config in model_name_to_config.items()}
+    model_name_to_prefix = {name: config.replace("ConfigMixin", "") for name, config in model_name_to_config.items()}
 
     # Dictionaries flagging if each model prefix has a slow/fast tokenizer, backend in PT/TF/Flax.
     slow_tokenizers = collections.defaultdict(bool)
@@ -190,7 +190,7 @@ def has_onnx(model_type):
     for part in config_module.split(".")[1:]:
         module = getattr(module, part)
     config_name = config.__name__
-    onnx_config_name = config_name.replace("Config", "OnnxConfig")
+    onnx_config_name = config_name.replace("ConfigMixin", "OnnxConfigMixin")
     return hasattr(module, onnx_config_name)
 
 
