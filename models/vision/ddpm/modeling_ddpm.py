@@ -23,7 +23,7 @@ class DDPM(DiffusionPipeline):
 
     modeling_file = "modeling_ddpm.py"
 
-    def __init__(self, unet, noise_scheduler, vqvae):
+    def __init__(self, unet, noise_scheduler):
         super().__init__()
         self.register_modules(unet=unet, noise_scheduler=noise_scheduler)
 
