@@ -20,9 +20,9 @@
 
 ## 1. `diffusers` as a central modular diffusion and sampler library
 
-`diffusers` should be more modularized than `transformers` so that parts of it can be easily used in other libraries.
-It could become a central place for all kinds of models, schedulers, training utils and processors required when using diffusion models in audio, vision, ... 
-One should be able to save both models and samplers as well as load them from the Hub.
+`diffusers` is more modularized than `transformers`. The idea is that researchers and engineers can use only parts of the library easily for the own use cases.
+It could become a central place for all kinds of models, schedulers, training utils and processors that one can mix and match for one's own use case.
+Both models and scredulers should be load- and saveable from the Hub.
 
 Example:
 
@@ -78,8 +78,8 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 image_pil.save("test.png")
 ```
 
-## 2. `diffusers` as a collection of most import Diffusion models (GLIDE, Dalle, ...)
-`models` directory in repository hosts complete diffusion training code & pipelines. Easily load & saveable from the Hub. Will be possible to use just from pip `diffusers` version:
+## 2. `diffusers` as a collection of most important Diffusion systems (GLIDE, Dalle, ...)
+`models` directory in repository hosts the complete code necessary for running a diffusion system as well as to train it. A `DiffusionPipeline` class allows to easily run the diffusion model in inference:
 
 Example:
 
