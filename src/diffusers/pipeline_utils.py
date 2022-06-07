@@ -16,6 +16,7 @@
 
 import importlib
 import os
+from pathlib import Path
 from typing import Optional, Union
 from huggingface_hub import snapshot_download
 
@@ -23,6 +24,7 @@ from huggingface_hub import snapshot_download
 from transformers.utils import logging
 
 from .configuration_utils import ConfigMixin
+from .dynamic_modules_utils import get_class_from_dynamic_module
 
 
 INDEX_FILE = "diffusion_model.pt"
@@ -54,19 +56,23 @@ class DiffusionPipeline(ConfigMixin):
             class_name = module.__class__.__name__
 
             register_dict = {name: (library, class_name)}
-            register_dict["_module"] = self.__module__
+            
 
             # save model index config
             self.register(**register_dict)
 
             # set models
             setattr(self, name, module)
+        
+        register_dict = {"_module" : self.__module__.split(".")[-1] + ".py"}
+        self.register(**register_dict)
 
     def save_pretrained(self, save_directory: Union[str, os.PathLike]):
         self.save_config(save_directory)
 
         model_index_dict = self._dict_to_save
         model_index_dict.pop("_class_name")
+        model_index_dict.pop("_module")
 
         for name, (library_name, class_name) in self._dict_to_save.items():
             importable_classes = LOADABLE_CLASSES[library_name]
@@ -95,16 +101,22 @@ class DiffusionPipeline(ConfigMixin):
         else:
             cached_folder = pretrained_model_name_or_path
 
-        config_dict, pipeline_kwargs = cls.get_config_dict(cached_folder)
+        config_dict = cls.get_config_dict(cached_folder)
+        
+        module = config_dict["_module"]
+        class_name_ = config_dict["_class_name"]
+        
+        if class_name_ == cls.__name__:
+            pipeline_class = cls
+        else:
+            pipeline_class = get_class_from_dynamic_module(cached_folder, module, class_name_, cached_folder)
+        
 
-        module = pipeline_kwargs.pop("_module", None)
-        # TODO(Suraj) - make from hub import work
-        # Make `ddpm = DiffusionPipeline.from_pretrained("fusing/ddpm-lsun-bedroom-pipe")` work
-        # Add Sylvains code from transformers
+        init_dict, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
         init_kwargs = {}
 
-        for name, (library_name, class_name) in config_dict.items():
+        for name, (library_name, class_name) in init_dict.items():
             importable_classes = LOADABLE_CLASSES[library_name]
 
             if library_name == module:
@@ -129,5 +141,5 @@ class DiffusionPipeline(ConfigMixin):
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
-        model = cls(**init_kwargs)
+        model = pipeline_class(**init_kwargs)
         return model
