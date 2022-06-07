@@ -22,6 +22,8 @@ from distutils.util import strtobool
 import torch
 
 from diffusers import GaussianDDPMScheduler, UNetModel
+from diffusers.pipeline_utils import DiffusionPipeline
+from models.vision.ddpm.modeling_ddpm import DDPM
 
 
 global_rng = random.Random()
@@ -199,3 +201,46 @@ class SamplerTesterMixin(unittest.TestCase):
         assert image.shape == (1, 3, 256, 256)
         image_slice = image[0, -1, -3:, -3:].cpu()
         assert (image_slice - torch.tensor([[0.1746, 0.5125, -0.7920], [-0.5734, -0.2910, -0.1984], [0.4090, -0.7740, -0.3941]])).abs().sum() < 1e-3
+
+
+class PipelineTesterMixin(unittest.TestCase):
+    def test_from_pretrained_save_pretrained(self):
+        # 1. Load models
+        model = UNetModel(ch=32, ch_mult=(1, 2), num_res_blocks=2, attn_resolutions=(16,), resolution=32)
+        schedular = GaussianDDPMScheduler(timesteps=10)
+
+        ddpm = DDPM(model, schedular)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            ddpm.save_pretrained(tmpdirname)
+            new_ddpm = DDPM.from_pretrained(tmpdirname)
+        
+        generator = torch.Generator()
+        generator = generator.manual_seed(669472945848556)
+
+        image = ddpm(generator)
+        generator = generator.manual_seed(669472945848556)
+        new_image = new_ddpm(generator)
+
+        assert (image - new_image).abs().sum() < 1e-5, "Models don't give the same forward pass"
+    
+
+    @slow
+    def test_from_pretrained_hub(self):
+        model_path = "fusing/ddpm-cifar10"
+
+        ddpm = DDPM.from_pretrained(model_path)
+        ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path)
+
+        ddpm.noise_scheduler.num_timesteps = 10
+        ddpm_from_hub.noise_scheduler.num_timesteps = 10
+
+
+        generator = torch.Generator(device=torch_device)
+        generator = generator.manual_seed(669472945848556)
+
+        image = ddpm(generator)
+        generator = generator.manual_seed(669472945848556)
+        new_image = ddpm_from_hub(generator)
+
+        assert (image - new_image).abs().sum() < 1e-5, "Models don't give the same forward pass"

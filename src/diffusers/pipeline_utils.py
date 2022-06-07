@@ -56,19 +56,23 @@ class DiffusionPipeline(ConfigMixin):
             class_name = module.__class__.__name__
 
             register_dict = {name: (library, class_name)}
-            register_dict["_module"] = self.__module__
+            
 
             # save model index config
             self.register(**register_dict)
 
             # set models
             setattr(self, name, module)
+        
+        register_dict = {"_module" : self.__module__.split(".")[-1] + ".py"}
+        self.register(**register_dict)
 
     def save_pretrained(self, save_directory: Union[str, os.PathLike]):
         self.save_config(save_directory)
 
         model_index_dict = self._dict_to_save
         model_index_dict.pop("_class_name")
+        model_index_dict.pop("_module")
 
         for name, (library_name, class_name) in self._dict_to_save.items():
             importable_classes = LOADABLE_CLASSES[library_name]
@@ -98,12 +102,17 @@ class DiffusionPipeline(ConfigMixin):
             cached_folder = pretrained_model_name_or_path
 
         config_dict = cls.get_config_dict(cached_folder)
+        
         module = config_dict["_module"]
         class_name_ = config_dict["_class_name"]
-        class_obj = get_class_from_dynamic_module(cached_folder, module, class_name_, cached_folder)
+        
+        if class_name_ == cls.__name__:
+            pipeline_class = cls
+        else:
+            pipeline_class = get_class_from_dynamic_module(cached_folder, module, class_name_, cached_folder)
+        
 
-        init_dict, unused = class_obj.extract_init_dict(config_dict, **kwargs)
-        import ipdb; ipdb.set_trace()
+        init_dict, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
         init_kwargs = {}
 
@@ -132,6 +141,5 @@ class DiffusionPipeline(ConfigMixin):
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
-        
-        model = class_obj(**init_kwargs)
+        model = pipeline_class(**init_kwargs)
         return model

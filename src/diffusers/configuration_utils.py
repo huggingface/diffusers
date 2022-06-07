@@ -190,7 +190,6 @@ class ConfigMixin:
     def extract_init_dict(cls, config_dict, **kwargs):
         expected_keys = set(dict(inspect.signature(cls.__init__).parameters).keys())
         expected_keys.remove("self")
-        import ipdb; ipdb.set_trace()
         init_dict = {}
         for key in expected_keys:
             if key in kwargs:
