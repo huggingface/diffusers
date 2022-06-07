@@ -7,8 +7,8 @@
 
 ![model_diff_1_50](https://user-images.githubusercontent.com/23423619/171610307-dab0cd8b-75da-4d4e-9f5a-5922072e2bb5.png)
 
-**Samplers**: Algorithm to *train* and *sample* from **Model**. Defines alpha and beta schedule, timesteps, etc..
-*Example: Vanilla DDPM, DDIM, PMLS, DEIN*
+**Schedulers**: Algorithm to sample noise schedule for both *training* and *inference*. Defines alpha and beta schedule, timesteps, etc..
+*Example: Gaussian DDPM, DDIM, PMLS, DEIN*
 
 ![sampling](https://user-images.githubusercontent.com/23423619/171608981-3ad05953-a684-4c82-89f8-62a459147a07.png)
 ![training](https://user-images.githubusercontent.com/23423619/171608964-b3260cce-e6b4-4841-959d-7d8ba4b8d1b2.png)
