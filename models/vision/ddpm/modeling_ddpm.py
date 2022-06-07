@@ -33,7 +33,7 @@ class DDPM(DiffusionPipeline):
 
         self.unet.to(torch_device)
         # 1. Sample gaussian noise
-        image = self.noise_scheduler.sample_noise((1, self.unet.in_channels, self.unet.resolution, self.unet.resolution), device=torch_device, generator=generator)
+        image = self.noise_scheduler.sample_noise((batch_size, self.unet.in_channels, self.unet.resolution, self.unet.resolution), device=torch_device, generator=generator)
         for t in tqdm.tqdm(reversed(range(len(self.noise_scheduler))), total=len(self.noise_scheduler)):
             # i) define coefficients for time step t
             clip_image_coeff = 1 / torch.sqrt(self.noise_scheduler.get_alpha_prod(t))

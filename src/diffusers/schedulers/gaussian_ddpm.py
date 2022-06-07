@@ -108,7 +108,7 @@ class GaussianDDPMScheduler(nn.Module, ConfigMixin):
 
     def sample_variance(self, time_step, shape, device, generator=None):
         variance = self.log_variance[time_step]
-        nonzero_mask = torch.tensor([1 - (time_step == 0)], device=device).float()[None, :].repeat(shape[0], 1)
+        nonzero_mask = torch.tensor([1 - (time_step == 0)], device=device).float()[None, :]
 
         noise = self.sample_noise(shape, device=device, generator=generator)
 

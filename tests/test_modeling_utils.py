@@ -76,7 +76,7 @@ def floats_tensor(shape, scale=1.0, rng=None, name=None):
 class ModelTesterMixin(unittest.TestCase):
     @property
     def dummy_input(self):
-        batch_size = 1
+        batch_size = 4
         num_channels = 3
         sizes = (32, 32)
 
