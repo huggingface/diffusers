@@ -36,10 +36,10 @@ class DDPM(DiffusionPipeline):
         image = self.noise_scheduler.sample_noise((batch_size, self.unet.in_channels, self.unet.resolution, self.unet.resolution), device=torch_device, generator=generator)
         for t in tqdm.tqdm(reversed(range(len(self.noise_scheduler))), total=len(self.noise_scheduler)):
             # i) define coefficients for time step t
-            clip_image_coeff = 1 / torch.sqrt(self.noise_scheduler.get_alpha_prod(t))
-            clip_noise_coeff = torch.sqrt(1 / self.noise_scheduler.get_alpha_prod(t) - 1)
+            clipped_image_coeff = 1 / torch.sqrt(self.noise_scheduler.get_alpha_prod(t))
+            clipped_noise_coeff = torch.sqrt(1 / self.noise_scheduler.get_alpha_prod(t) - 1)
             image_coeff = (1 - self.noise_scheduler.get_alpha_prod(t - 1)) * torch.sqrt(self.noise_scheduler.get_alpha(t)) / (1 - self.noise_scheduler.get_alpha_prod(t))
-            clip_coeff = torch.sqrt(self.noise_scheduler.get_alpha_prod(t - 1)) * self.noise_scheduler.get_beta(t) / (1 - self.noise_scheduler.get_alpha_prod(t))
+            clipped_coeff = torch.sqrt(self.noise_scheduler.get_alpha_prod(t - 1)) * self.noise_scheduler.get_beta(t) / (1 - self.noise_scheduler.get_alpha_prod(t))
 
             # ii) predict noise residual
             with torch.no_grad():
@@ -47,9 +47,9 @@ class DDPM(DiffusionPipeline):
 
             # iii) compute predicted image from residual
             # See 2nd formula at https://github.com/hojonathanho/diffusion/issues/5#issue-896554416 for comparison
-            pred_mean = clip_image_coeff * image - clip_noise_coeff * noise_residual
+            pred_mean = clipped_image_coeff * image - clipped_noise_coeff * noise_residual
             pred_mean = torch.clamp(pred_mean, -1, 1)
-            prev_image = clip_coeff * pred_mean + image_coeff * image
+            prev_image = clipped_coeff * pred_mean + image_coeff * image
 
             # iv) sample variance
             prev_variance = self.noise_scheduler.sample_variance(t, prev_image.shape, device=torch_device, generator=generator)
