@@ -16,6 +16,7 @@
 
 import importlib
 import os
+from pathlib import Path
 from typing import Optional, Union
 from huggingface_hub import snapshot_download
 
@@ -23,6 +24,7 @@ from huggingface_hub import snapshot_download
 from transformers.utils import logging
 
 from .configuration_utils import ConfigMixin
+from .dynamic_modules_utils import get_class_from_dynamic_module
 
 
 INDEX_FILE = "diffusion_model.pt"
@@ -91,12 +93,10 @@ class DiffusionPipeline(ConfigMixin):
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
         # use snapshot download here to get it working from from_pretrained
         cached_folder = snapshot_download(pretrained_model_name_or_path)
-        config_dict, pipeline_kwargs = cls.get_config_dict(cached_folder)
+        _, config_dict = cls.get_config_dict(cached_folder)
 
-        module = pipeline_kwargs["_module"]
-        # TODO(Suraj) - make from hub import work
-        # Make `ddpm = DiffusionPipeline.from_pretrained("fusing/ddpm-lsun-bedroom-pipe")` work
-        # Add Sylvains code from transformers
+        module = config_dict.pop("_module", None)
+        class_name_ = config_dict.pop("_class_name")
 
         init_kwargs = {}
 
@@ -122,5 +122,6 @@ class DiffusionPipeline(ConfigMixin):
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
-        model = cls(**init_kwargs)
+        class_obj = get_class_from_dynamic_module(cached_folder, module, class_name_, cached_folder)
+        model = class_obj(**init_kwargs)
         return model
