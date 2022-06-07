@@ -1,9 +1,12 @@
 import math
 from abc import abstractmethod
 
-import torch as th
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from ..configuration_utils import Config
+from ..modeling_utils import PreTrainedModel
 
 
 def convert_module_to_f16(l):
@@ -94,13 +97,13 @@ def timestep_embedding(timesteps, dim, max_period=10000):
     :return: an [N x dim] Tensor of positional embeddings.
     """
     half = dim // 2
-    freqs = th.exp(-math.log(max_period) * th.arange(start=0, end=half, dtype=th.float32) / half).to(
+    freqs = torch.exp(-math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half).to(
         device=timesteps.device
     )
     args = timesteps[:, None].float() * freqs[None]
-    embedding = th.cat([th.cos(args), th.sin(args)], dim=-1)
+    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
     if dim % 2:
-        embedding = th.cat([embedding, th.zeros_like(embedding[:, :1])], dim=-1)
+        embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
     return embedding
 
 
@@ -298,7 +301,7 @@ class ResBlock(TimestepBlock):
             emb_out = emb_out[..., None]
         if self.use_scale_shift_norm:
             out_norm, out_rest = self.out_layers[0], self.out_layers[1:]
-            scale, shift = th.chunk(emb_out, 2, dim=1)
+            scale, shift = torch.chunk(emb_out, 2, dim=1)
             h = out_norm(h) * (1 + scale) + shift
             h = out_rest(h)
         else:
@@ -376,16 +379,16 @@ class QKVAttention(nn.Module):
         if encoder_kv is not None:
             assert encoder_kv.shape[1] == self.n_heads * ch * 2
             ek, ev = encoder_kv.reshape(bs * self.n_heads, ch * 2, -1).split(ch, dim=1)
-            k = th.cat([ek, k], dim=-1)
-            v = th.cat([ev, v], dim=-1)
+            k = torch.cat([ek, k], dim=-1)
+            v = torch.cat([ev, v], dim=-1)
         scale = 1 / math.sqrt(math.sqrt(ch))
-        weight = th.einsum("bct,bcs->bts", q * scale, k * scale)  # More stable with f16 than dividing afterwards
-        weight = th.softmax(weight.float(), dim=-1).type(weight.dtype)
-        a = th.einsum("bts,bcs->bct", weight, v)
+        weight = torch.einsum("bct,bcs->bts", q * scale, k * scale)  # More stable with f16 than dividing afterwards
+        weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
+        a = torch.einsum("bts,bcs->bct", weight, v)
         return a.reshape(bs, -1, length)
 
 
-class UNetGLIDEModel(nn.Module):
+class UNetGLIDEModel(PreTrainedModel, Config):
     """
     The full UNet model with attention and timestep embedding.
 
@@ -435,6 +438,25 @@ class UNetGLIDEModel(nn.Module):
         encoder_channels=None,
     ):
         super().__init__()
+        self.register(
+            in_channels=in_channels,
+            model_channels=model_channels,
+            out_channels=out_channels,
+            num_res_blocks=num_res_blocks,
+            attention_resolutions=attention_resolutions,
+            dropout=dropout,
+            channel_mult=channel_mult,
+            conv_resample=conv_resample,
+            dims=dims,
+            use_checkpoint=use_checkpoint,
+            use_fp16=use_fp16,
+            num_heads=num_heads,
+            num_head_channels=num_head_channels,
+            num_heads_upsample=num_heads_upsample,
+            use_scale_shift_norm=use_scale_shift_norm,
+            resblock_updown=resblock_updown,
+            encoder_channels=encoder_channels,
+        )
 
         if num_heads_upsample == -1:
             num_heads_upsample = num_heads
@@ -448,7 +470,7 @@ class UNetGLIDEModel(nn.Module):
         self.channel_mult = channel_mult
         self.conv_resample = conv_resample
         self.use_checkpoint = use_checkpoint
-        self.dtype = th.float16 if use_fp16 else th.float32
+        self.dtype = torch.float16 if use_fp16 else torch.float32
         self.num_heads = num_heads
         self.num_head_channels = num_head_channels
         self.num_heads_upsample = num_heads_upsample
@@ -637,7 +659,7 @@ class UNetGLIDEModel(nn.Module):
             hs.append(h)
         h = self.middle_block(h, emb)
         for module in self.output_blocks:
-            h = th.cat([h, hs.pop()], dim=1)
+            h = torch.cat([h, hs.pop()], dim=1)
             h = module(h, emb)
         h = h.type(x.dtype)
         return self.out(h)

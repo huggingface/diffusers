@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import torch
+import math
 from torch import nn
 
 from ..configuration_utils import Config
@@ -22,6 +23,26 @@ SAMPLING_CONFIG_NAME = "scheduler_config.json"
 
 def linear_beta_schedule(timesteps, beta_start, beta_end):
     return torch.linspace(beta_start, beta_end, timesteps, dtype=torch.float64)
+
+
+def betas_for_alpha_bar(num_diffusion_timesteps, alpha_bar, max_beta=0.999):
+    """
+    Create a beta schedule that discretizes the given alpha_t_bar function,
+    which defines the cumulative product of (1-beta) over time from t = [0,1].
+
+    :param num_diffusion_timesteps: the number of betas to produce.
+    :param alpha_bar: a lambda that takes an argument t from 0 to 1 and
+                      produces the cumulative product of (1-beta) up to that
+                      part of the diffusion process.
+    :param max_beta: the maximum beta to use; use values lower than 1 to
+                     prevent singularities.
+    """
+    betas = []
+    for i in range(num_diffusion_timesteps):
+        t1 = i / num_diffusion_timesteps
+        t2 = (i + 1) / num_diffusion_timesteps
+        betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
+    return torch.tensor(betas, dtype=torch.float64)
 
 
 class GaussianDDPMScheduler(nn.Module, Config):
@@ -48,6 +69,12 @@ class GaussianDDPMScheduler(nn.Module, Config):
 
         if beta_schedule == "linear":
             betas = linear_beta_schedule(timesteps, beta_start=beta_start, beta_end=beta_end)
+        elif beta_schedule == "squaredcos_cap_v2":
+            # GLIDE cosine schedule
+            betas = betas_for_alpha_bar(
+                timesteps,
+                lambda t: math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2,
+            )
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
