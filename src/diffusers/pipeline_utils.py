@@ -71,6 +71,10 @@ class DiffusionPipeline(ConfigMixin):
         for name, (library_name, class_name) in self._dict_to_save.items():
             importable_classes = LOADABLE_CLASSES[library_name]
 
+            # TODO: Suraj
+            if library_name == self.__module__:
+                library_name = self
+
             library = importlib.import_module(library_name)
             class_obj = getattr(library, class_name)
             class_candidates = {c: getattr(library, c) for c in importable_classes.keys()}
@@ -91,11 +95,17 @@ class DiffusionPipeline(ConfigMixin):
 
         module = pipeline_kwargs["_module"]
         # TODO(Suraj) - make from hub import work
+        # Make `ddpm = DiffusionPipeline.from_pretrained("fusing/ddpm-lsun-bedroom-pipe")` work
+        # Add Sylvains code from transformers
 
         init_kwargs = {}
 
         for name, (library_name, class_name) in config_dict.items():
             importable_classes = LOADABLE_CLASSES[library_name]
+
+            if library_name == module:
+                # TODO(Suraj)
+                pass
 
             library = importlib.import_module(library_name)
             class_obj = getattr(library, class_name)
@@ -110,7 +120,7 @@ class DiffusionPipeline(ConfigMixin):
 
             loaded_sub_model = load_method(os.path.join(cached_folder, name))
 
-            init_kwargs[name] = loaded_sub_model
+            init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
         model = cls(**init_kwargs)
         return model
