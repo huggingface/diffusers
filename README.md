@@ -7,8 +7,8 @@
 
 ![model_diff_1_50](https://user-images.githubusercontent.com/23423619/171610307-dab0cd8b-75da-4d4e-9f5a-5922072e2bb5.png)
 
-**Samplers**: Algorithm to *train* and *sample* from **Model**. Defines alpha and beta schedule, timesteps, etc..
-*Example: Vanilla DDPM, DDIM, PMLS, DEIN*
+**Schedulers**: Algorithm to sample noise schedule for both *training* and *inference*. Defines alpha and beta schedule, timesteps, etc..
+*Example: Gaussian DDPM, DDIM, PMLS, DEIN*
 
 ![sampling](https://user-images.githubusercontent.com/23423619/171608981-3ad05953-a684-4c82-89f8-62a459147a07.png)
 ![training](https://user-images.githubusercontent.com/23423619/171608964-b3260cce-e6b4-4841-959d-7d8ba4b8d1b2.png)
@@ -20,9 +20,9 @@
 
 ## 1. `diffusers` as a central modular diffusion and sampler library
 
-`diffusers` should be more modularized than `transformers` so that parts of it can be easily used in other libraries.
-It could become a central place for all kinds of models, schedulers, training utils and processors required when using diffusion models in audio, vision, ... 
-One should be able to save both models and samplers as well as load them from the Hub.
+`diffusers` is more modularized than `transformers`. The idea is that researchers and engineers can use only parts of the library easily for the own use cases.
+It could become a central place for all kinds of models, schedulers, training utils and processors that one can mix and match for one's own use case.
+Both models and scredulers should be load- and saveable from the Hub.
 
 Example:
 
@@ -78,8 +78,8 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 image_pil.save("test.png")
 ```
 
-## 2. `diffusers` as a collection of most import Diffusion models (GLIDE, Dalle, ...)
-`models` directory in repository hosts complete diffusion training code & pipelines. Easily load & saveable from the Hub. Will be possible to use just from pip `diffusers` version:
+## 2. `diffusers` as a collection of most important Diffusion systems (GLIDE, Dalle, ...)
+`models` directory in repository hosts the complete code necessary for running a diffusion system as well as to train it. A `DiffusionPipeline` class allows to easily run the diffusion model in inference:
 
 Example:
 
@@ -113,38 +113,48 @@ image_pil.save("test.png")
 │   │       ├── modeling_fastdiff.py
 │   │       ├── README.md
 │   │       └── run_fastdiff.py
+│   ├── __init__.py
 │   └── vision
 │       ├── dalle2
 │       │   ├── modeling_dalle2.py
 │       │   ├── README.md
 │       │   └── run_dalle2.py
 │       ├── ddpm
+│       │   ├── example.py
 │       │   ├── modeling_ddpm.py
 │       │   ├── README.md
 │       │   └── run_ddpm.py
 │       ├── glide
 │       │   ├── modeling_glide.py
+│       │   ├── modeling_vqvae.py.py
 │       │   ├── README.md
-│       │   └── run_dalle2.py
+│       │   └── run_glide.py
 │       ├── imagen
 │       │   ├── modeling_dalle2.py
 │       │   ├── README.md
 │       │   └── run_dalle2.py
+│       ├── __init__.py
 │       └── latent_diffusion
 │           ├── modeling_latent_diffusion.py
 │           ├── README.md
 │           └── run_latent_diffusion.py
-
+├── pyproject.toml
+├── README.md
+├── setup.cfg
+├── setup.py
 ├── src
 │   └── diffusers
 │       ├── configuration_utils.py
 │       ├── __init__.py
 │       ├── modeling_utils.py
 │       ├── models
+│       │   ├── __init__.py
+│       │   ├── unet_glide.py
 │       │   └── unet.py
-│       ├── processors
+│       ├── pipeline_utils.py
 │       └── schedulers
 │           ├── gaussian_ddpm.py
+│           ├── __init__.py
 ├── tests
 │   └── test_modeling_utils.py
 ```

@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 import random
 import tempfile
 import unittest
@@ -28,6 +29,7 @@ from models.vision.ddpm.modeling_ddpm import DDPM
 
 global_rng = random.Random()
 torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+torch.backends.cuda.matmul.allow_tf32 = False
 
 
 def parse_flag_from_env(key, default=False):
@@ -113,8 +115,7 @@ class SamplerTesterMixin(unittest.TestCase):
 
     @slow
     def test_sample(self):
-        generator = torch.Generator()
-        generator = generator.manual_seed(6694729458485568)
+        generator = torch.manual_seed(0)
 
         # 1. Load models
         scheduler = GaussianDDPMScheduler.from_config("fusing/ddpm-lsun-church")
@@ -159,18 +160,17 @@ class SamplerTesterMixin(unittest.TestCase):
 
         assert image.shape == (1, 3, 256, 256)
         image_slice = image[0, -1, -3:, -3:].cpu()
-        assert (image_slice - torch.tensor([[-0.0598, -0.0611, -0.0506], [-0.0726, 0.0220, 0.0103], [-0.0723, -0.1310, -0.2458]])).abs().sum() < 1e-3
+        expected_slice = torch.tensor([-0.1636, -0.1765, -0.1968, -0.1338, -0.1432, -0.1622, -0.1793, -0.2001, -0.2280])
+        assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
 
     def test_sample_fast(self):
         # 1. Load models
-        generator = torch.Generator()
-        generator = generator.manual_seed(6694729458485568)
+        generator = torch.manual_seed(0)
 
         scheduler = GaussianDDPMScheduler.from_config("fusing/ddpm-lsun-church", timesteps=10)
         model = UNetModel.from_pretrained("fusing/ddpm-lsun-church").to(torch_device)
 
         # 2. Sample gaussian noise
-        torch.manual_seed(0)
         image = scheduler.sample_noise((1, model.in_channels, model.resolution, model.resolution), device=torch_device, generator=generator)
 
         # 3. Denoise
@@ -200,7 +200,8 @@ class SamplerTesterMixin(unittest.TestCase):
 
         assert image.shape == (1, 3, 256, 256)
         image_slice = image[0, -1, -3:, -3:].cpu()
-        assert (image_slice - torch.tensor([[0.1746, 0.5125, -0.7920], [-0.5734, -0.2910, -0.1984], [0.4090, -0.7740, -0.3941]])).abs().sum() < 1e-3
+        expected_slice = torch.tensor([-0.0304, -0.1895, -0.2436, -0.9837, -0.5422, 0.1931, -0.8175, 0.0862, -0.7783])
+        assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
 
 
 class PipelineTesterMixin(unittest.TestCase):
@@ -214,16 +215,14 @@ class PipelineTesterMixin(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdirname:
             ddpm.save_pretrained(tmpdirname)
             new_ddpm = DDPM.from_pretrained(tmpdirname)
-        
-        generator = torch.Generator()
-        generator = generator.manual_seed(669472945848556)
+
+        generator = torch.manual_seed(0)
 
         image = ddpm(generator=generator)
-        generator = generator.manual_seed(669472945848556)
+        generator = generator.manual_seed(0)
         new_image = new_ddpm(generator=generator)
 
         assert (image - new_image).abs().sum() < 1e-5, "Models don't give the same forward pass"
-    
 
     @slow
     def test_from_pretrained_hub(self):
@@ -235,12 +234,10 @@ class PipelineTesterMixin(unittest.TestCase):
         ddpm.noise_scheduler.num_timesteps = 10
         ddpm_from_hub.noise_scheduler.num_timesteps = 10
 
-
-        generator = torch.Generator(device=torch_device)
-        generator = generator.manual_seed(669472945848556)
+        generator = torch.manual_seed(0)
 
         image = ddpm(generator=generator)
-        generator = generator.manual_seed(669472945848556)
+        generator = generator.manual_seed(0)
         new_image = ddpm_from_hub(generator=generator)
 
         assert (image - new_image).abs().sum() < 1e-5, "Models don't give the same forward pass"
