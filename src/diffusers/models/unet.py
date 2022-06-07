@@ -29,7 +29,7 @@ from torchvision import transforms, utils
 from PIL import Image
 from tqdm import tqdm
 
-from ..configuration_utils import ConfigMixinMixin
+from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 
 
@@ -175,7 +175,7 @@ class AttnBlock(nn.Module):
         return x + h_
 
 
-class UNetModel(ModelMixin, ConfigMixinMixin):
+class UNetModel(ModelMixin, ConfigMixin):
     def __init__(
         self,
         ch=128,
