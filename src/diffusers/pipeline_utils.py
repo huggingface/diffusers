@@ -118,7 +118,10 @@ class DiffusionPipeline(ConfigMixin):
 
             load_method = getattr(class_obj, load_method_name)
 
-            loaded_sub_model = load_method(os.path.join(cached_folder, name))
+            if os.path.dir(os.path.join(cached_folder, name)):
+                loaded_sub_model = load_method(os.path.join(cached_folder, name))
+            else:
+                loaded_sub_model = load_method(cached_folder)
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
