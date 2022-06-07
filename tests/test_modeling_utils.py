@@ -22,6 +22,8 @@ from distutils.util import strtobool
 import torch
 
 from diffusers import GaussianDDPMScheduler, UNetModel
+from diffusers.pipeline_utils import DiffusionPipeline
+from models.vision.ddpm.modeling_ddpm import DDPM
 
 
 global_rng = random.Random()
@@ -76,7 +78,7 @@ def floats_tensor(shape, scale=1.0, rng=None, name=None):
 class ModelTesterMixin(unittest.TestCase):
     @property
     def dummy_input(self):
-        batch_size = 1
+        batch_size = 4
         num_channels = 3
         sizes = (32, 32)
 
@@ -124,10 +126,10 @@ class SamplerTesterMixin(unittest.TestCase):
         # 3. Denoise
         for t in reversed(range(len(scheduler))):
             # i) define coefficients for time step t
-            clip_image_coeff = 1 / torch.sqrt(scheduler.get_alpha_prod(t))
-            clip_noise_coeff = torch.sqrt(1 / scheduler.get_alpha_prod(t) - 1)
+            clipped_image_coeff = 1 / torch.sqrt(scheduler.get_alpha_prod(t))
+            clipped_noise_coeff = torch.sqrt(1 / scheduler.get_alpha_prod(t) - 1)
             image_coeff = (1 - scheduler.get_alpha_prod(t - 1)) * torch.sqrt(scheduler.get_alpha(t)) / (1 - scheduler.get_alpha_prod(t))
-            clip_coeff = torch.sqrt(scheduler.get_alpha_prod(t - 1)) * scheduler.get_beta(t) / (1 - scheduler.get_alpha_prod(t))
+            clipped_coeff = torch.sqrt(scheduler.get_alpha_prod(t - 1)) * scheduler.get_beta(t) / (1 - scheduler.get_alpha_prod(t))
 
             # ii) predict noise residual
             with torch.no_grad():
@@ -135,9 +137,9 @@ class SamplerTesterMixin(unittest.TestCase):
 
             # iii) compute predicted image from residual
             # See 2nd formula at https://github.com/hojonathanho/diffusion/issues/5#issue-896554416 for comparison
-            pred_mean = clip_image_coeff * image - clip_noise_coeff * noise_residual
+            pred_mean = clipped_image_coeff * image - clipped_noise_coeff * noise_residual
             pred_mean = torch.clamp(pred_mean, -1, 1)
-            prev_image = clip_coeff * pred_mean + image_coeff * image
+            prev_image = clipped_coeff * pred_mean + image_coeff * image
 
             # iv) sample variance
             prev_variance = scheduler.sample_variance(t, prev_image.shape, device=torch_device, generator=generator)
@@ -174,10 +176,10 @@ class SamplerTesterMixin(unittest.TestCase):
         # 3. Denoise
         for t in reversed(range(len(scheduler))):
             # i) define coefficients for time step t
-            clip_image_coeff = 1 / torch.sqrt(scheduler.get_alpha_prod(t))
-            clip_noise_coeff = torch.sqrt(1 / scheduler.get_alpha_prod(t) - 1)
+            clipped_image_coeff = 1 / torch.sqrt(scheduler.get_alpha_prod(t))
+            clipped_noise_coeff = torch.sqrt(1 / scheduler.get_alpha_prod(t) - 1)
             image_coeff = (1 - scheduler.get_alpha_prod(t - 1)) * torch.sqrt(scheduler.get_alpha(t)) / (1 - scheduler.get_alpha_prod(t))
-            clip_coeff = torch.sqrt(scheduler.get_alpha_prod(t - 1)) * scheduler.get_beta(t) / (1 - scheduler.get_alpha_prod(t))
+            clipped_coeff = torch.sqrt(scheduler.get_alpha_prod(t - 1)) * scheduler.get_beta(t) / (1 - scheduler.get_alpha_prod(t))
 
             # ii) predict noise residual
             with torch.no_grad():
@@ -185,9 +187,9 @@ class SamplerTesterMixin(unittest.TestCase):
 
             # iii) compute predicted image from residual
             # See 2nd formula at https://github.com/hojonathanho/diffusion/issues/5#issue-896554416 for comparison
-            pred_mean = clip_image_coeff * image - clip_noise_coeff * noise_residual
+            pred_mean = clipped_image_coeff * image - clipped_noise_coeff * noise_residual
             pred_mean = torch.clamp(pred_mean, -1, 1)
-            prev_image = clip_coeff * pred_mean + image_coeff * image
+            prev_image = clipped_coeff * pred_mean + image_coeff * image
 
             # iv) sample variance
             prev_variance = scheduler.sample_variance(t, prev_image.shape, device=torch_device, generator=generator)
@@ -199,3 +201,46 @@ class SamplerTesterMixin(unittest.TestCase):
         assert image.shape == (1, 3, 256, 256)
         image_slice = image[0, -1, -3:, -3:].cpu()
         assert (image_slice - torch.tensor([[0.1746, 0.5125, -0.7920], [-0.5734, -0.2910, -0.1984], [0.4090, -0.7740, -0.3941]])).abs().sum() < 1e-3
+
+
+class PipelineTesterMixin(unittest.TestCase):
+    def test_from_pretrained_save_pretrained(self):
+        # 1. Load models
+        model = UNetModel(ch=32, ch_mult=(1, 2), num_res_blocks=2, attn_resolutions=(16,), resolution=32)
+        schedular = GaussianDDPMScheduler(timesteps=10)
+
+        ddpm = DDPM(model, schedular)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            ddpm.save_pretrained(tmpdirname)
+            new_ddpm = DDPM.from_pretrained(tmpdirname)
+        
+        generator = torch.Generator()
+        generator = generator.manual_seed(669472945848556)
+
+        image = ddpm(generator=generator)
+        generator = generator.manual_seed(669472945848556)
+        new_image = new_ddpm(generator=generator)
+
+        assert (image - new_image).abs().sum() < 1e-5, "Models don't give the same forward pass"
+    
+
+    @slow
+    def test_from_pretrained_hub(self):
+        model_path = "fusing/ddpm-cifar10"
+
+        ddpm = DDPM.from_pretrained(model_path)
+        ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path)
+
+        ddpm.noise_scheduler.num_timesteps = 10
+        ddpm_from_hub.noise_scheduler.num_timesteps = 10
+
+
+        generator = torch.Generator(device=torch_device)
+        generator = generator.manual_seed(669472945848556)
+
+        image = ddpm(generator=generator)
+        generator = generator.manual_seed(669472945848556)
+        new_image = ddpm_from_hub(generator=generator)
+
+        assert (image - new_image).abs().sum() < 1e-5, "Models don't give the same forward pass"

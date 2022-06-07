@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 
+
 def convert_module_to_f16(l):
     """
     Convert primitive modules to float16.

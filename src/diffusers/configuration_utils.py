@@ -89,6 +89,7 @@ class ConfigMixin:
 
         self.to_json_file(output_config_file)
         logger.info(f"ConfigMixinuration saved in {output_config_file}")
+    
 
     @classmethod
     def get_config_dict(
@@ -182,35 +183,42 @@ class ConfigMixin:
             logger.info(f"loading configuration file {config_file}")
         else:
             logger.info(f"loading configuration file {config_file} from cache at {resolved_config_file}")
+        
+        return config_dict
 
+    @classmethod
+    def extract_init_dict(cls, config_dict, **kwargs):
         expected_keys = set(dict(inspect.signature(cls.__init__).parameters).keys())
         expected_keys.remove("self")
-
+        init_dict = {}
         for key in expected_keys:
             if key in kwargs:
                 # overwrite key
-                config_dict[key] = kwargs.pop(key)
+                init_dict[key] = kwargs.pop(key)
+            elif key in config_dict:
+                # use value from config dict
+                init_dict[key] = config_dict.pop(key)
 
-        passed_keys = set(config_dict.keys())
 
-        unused_kwargs = kwargs
-        for key in passed_keys - expected_keys:
-            unused_kwargs[key] = config_dict.pop(key)
-
+        unused_kwargs = config_dict.update(kwargs)
+        
+        passed_keys = set(init_dict.keys())
         if len(expected_keys - passed_keys) > 0:
             logger.warn(
                 f"{expected_keys - passed_keys} was not found in config. Values will be initialized to default values."
             )
 
-        return config_dict, unused_kwargs
+        return init_dict, unused_kwargs
 
     @classmethod
     def from_config(cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs):
-        config_dict, unused_kwargs = cls.get_config_dict(
+        config_dict = cls.get_config_dict(
             pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs
         )
 
-        model = cls(**config_dict)
+        init_dict, unused_kwargs = cls.extract_init_dict(config_dict, **kwargs)
+
+        model = cls(**init_dict)
 
         if return_unused_kwargs:
             return model, unused_kwargs

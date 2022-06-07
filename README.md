@@ -34,6 +34,7 @@ import numpy as np
 
 generator = torch.Generator()
 generator = generator.manual_seed(6694729458485568)
+torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # 1. Load models
 scheduler = GaussianDDPMScheduler.from_config("fusing/ddpm-lsun-church")
@@ -45,10 +46,10 @@ image = scheduler.sample_noise((1, model.in_channels, model.resolution, model.re
 # 3. Denoise                                                                                                                                           
 for t in reversed(range(len(scheduler))):
     # i) define coefficients for time step t
-    clip_image_coeff = 1 / torch.sqrt(scheduler.get_alpha_prod(t))
-    clip_noise_coeff = torch.sqrt(1 / scheduler.get_alpha_prod(t) - 1)
+    clipped_image_coeff = 1 / torch.sqrt(scheduler.get_alpha_prod(t))
+    clipped_noise_coeff = torch.sqrt(1 / scheduler.get_alpha_prod(t) - 1)
     image_coeff = (1 - scheduler.get_alpha_prod(t - 1)) * torch.sqrt(scheduler.get_alpha(t)) / (1 - scheduler.get_alpha_prod(t))
-    clip_coeff = torch.sqrt(scheduler.get_alpha_prod(t - 1)) * scheduler.get_beta(t) / (1 - scheduler.get_alpha_prod(t))
+    clipped_coeff = torch.sqrt(scheduler.get_alpha_prod(t - 1)) * scheduler.get_beta(t) / (1 - scheduler.get_alpha_prod(t))
 
     # ii) predict noise residual
     with torch.no_grad():
@@ -56,9 +57,9 @@ for t in reversed(range(len(scheduler))):
 
     # iii) compute predicted image from residual
     # See 2nd formula at https://github.com/hojonathanho/diffusion/issues/5#issue-896554416 for comparison
-    pred_mean = clip_image_coeff * image - clip_noise_coeff * noise_residual
+    pred_mean = clipped_image_coeff * image - clipped_noise_coeff * noise_residual
     pred_mean = torch.clamp(pred_mean, -1, 1)
-    prev_image = clip_coeff * pred_mean + image_coeff * image
+    prev_image = clipped_coeff * pred_mean + image_coeff * image
 
     # iv) sample variance
     prev_variance = scheduler.sample_variance(t, prev_image.shape, device=torch_device, generator=generator)
@@ -83,12 +84,12 @@ image_pil.save("test.png")
 Example:
 
 ```python
-from modeling_ddpm import DDPM
+from diffusers import DiffusionPipeline
 import PIL.Image
 import numpy as np
 
 # load model and scheduler
-ddpm = DDPM.from_pretrained("fusing/ddpm-lsun-bedroom-pipe")
+ddpm = DiffusionPipeline.from_pretrained("fusing/ddpm-lsun-bedroom")
 
 # run pipeline in inference (sample random noise and denoise)
 image = ddpm()
