@@ -1,9 +1,10 @@
 import torch
 from torch import nn
 
-from transformers import CLIPTextConfig, GPT2Tokenizer
-from diffusers import UNetGLIDEModel, ClassifierFreeGuidanceScheduler, CLIPTextModel
+from diffusers import ClassifierFreeGuidanceScheduler, CLIPTextModel, UNetGLIDEModel
 from modeling_glide import GLIDE
+from transformers import CLIPTextConfig, GPT2Tokenizer
+
 
 # wget https://openaipublic.blob.core.windows.net/diffusion/dec-2021/base.pt
 state_dict = torch.load("base.pt", map_location="cpu")
@@ -22,7 +23,7 @@ config = CLIPTextConfig(
 )
 model = CLIPTextModel(config).eval()
 tokenizer = GPT2Tokenizer("./glide-base/vocab.json", "./glide-base/merges.txt", pad_token="<|endoftext|>")
-#tokenizer.save_pretrained("./glide-base")
+# tokenizer.save_pretrained("./glide-base")
 
 hf_encoder = model.text_model
 
@@ -51,11 +52,11 @@ for layer_idx in range(config.num_hidden_layers):
     hf_layer.mlp.fc2.weight = state_dict[f"transformer.resblocks.{layer_idx}.mlp.c_proj.weight"]
     hf_layer.mlp.fc2.bias = state_dict[f"transformer.resblocks.{layer_idx}.mlp.c_proj.bias"]
 
-#inputs = tokenizer(["an oil painting of a corgi", ""], padding="max_length", max_length=128, return_tensors="pt")
-#with torch.no_grad():
+# inputs = tokenizer(["an oil painting of a corgi", ""], padding="max_length", max_length=128, return_tensors="pt")
+# with torch.no_grad():
 #    outputs = model(**inputs)
 
-#model.save_pretrained("./glide-base")
+# model.save_pretrained("./glide-base")
 
 ### Convert the UNet
 

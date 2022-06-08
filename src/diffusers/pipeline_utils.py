@@ -17,6 +17,7 @@
 import importlib
 import os
 from typing import Optional, Union
+
 from huggingface_hub import snapshot_download
 
 # CHANGE to diffusers.utils
@@ -64,7 +65,7 @@ class DiffusionPipeline(ConfigMixin):
             # set models
             setattr(self, name, module)
 
-        register_dict = {"_module" : self.__module__.split(".")[-1] + ".py"}
+        register_dict = {"_module": self.__module__.split(".")[-1] + ".py"}
         self.register(**register_dict)
 
     def save_pretrained(self, save_directory: Union[str, os.PathLike]):

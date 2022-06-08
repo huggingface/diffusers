@@ -16,7 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .clip_text_transformer import CLIPTextModel
 from .unet import UNetModel
 from .unet_glide import UNetGLIDEModel
 from .unet_ldm import UNetLDMModel
-from .clip_text_transformer import CLIPTextModel

@@ -11,10 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import torch
 import math
-from torch import nn
+
 import numpy as np
+import torch
+from torch import nn
 
 from ..configuration_utils import ConfigMixin
 
@@ -80,19 +81,13 @@ class ClassifierFreeGuidanceScheduler(nn.Module, ConfigMixin):
         self.sqrt_recipm1_alphas_cumprod = np.sqrt(1.0 / self.alphas_cumprod - 1)
 
         # calculations for posterior q(x_{t-1} | x_t, x_0)
-        self.posterior_variance = (
-                    betas * (1.0 - self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
-            )
+        self.posterior_variance = betas * (1.0 - self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
         # below: log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
         self.posterior_log_variance_clipped = np.log(
-                np.append(self.posterior_variance[1], self.posterior_variance[1:])
-            )
-        self.posterior_mean_coef1 = (
-                betas * np.sqrt(self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
+            np.append(self.posterior_variance[1], self.posterior_variance[1:])
         )
-        self.posterior_mean_coef2 = (
-                (1.0 - self.alphas_cumprod_prev) * np.sqrt(alphas) / (1.0 - self.alphas_cumprod)
-        )
+        self.posterior_mean_coef1 = betas * np.sqrt(self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
+        self.posterior_mean_coef2 = (1.0 - self.alphas_cumprod_prev) * np.sqrt(alphas) / (1.0 - self.alphas_cumprod)
 
     def sample_noise(self, shape, device, generator=None):
         # always sample on CPU to be deterministic

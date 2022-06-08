@@ -470,7 +470,7 @@ class UNetGLIDEModel(ModelMixin, ConfigMixin):
         self.channel_mult = channel_mult
         self.conv_resample = conv_resample
         self.use_checkpoint = use_checkpoint
-        #self.dtype = torch.float16 if use_fp16 else torch.float32
+        # self.dtype = torch.float16 if use_fp16 else torch.float32
         self.num_heads = num_heads
         self.num_head_channels = num_head_channels
         self.num_heads_upsample = num_heads_upsample

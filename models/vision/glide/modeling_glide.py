@@ -14,12 +14,12 @@
 # limitations under the License.
 
 
-from diffusers import DiffusionPipeline, UNetGLIDEModel, ClassifierFreeGuidanceScheduler, CLIPTextModel
-from transformers import GPT2Tokenizer
+import numpy as np
+import torch
 
 import tqdm
-import torch
-import numpy as np
+from diffusers import ClassifierFreeGuidanceScheduler, CLIPTextModel, DiffusionPipeline, UNetGLIDEModel
+from transformers import GPT2Tokenizer
 
 
 def _extract_into_tensor(arr, timesteps, broadcast_shape):
@@ -40,14 +40,16 @@ def _extract_into_tensor(arr, timesteps, broadcast_shape):
 
 class GLIDE(DiffusionPipeline):
     def __init__(
-            self,
-            unet: UNetGLIDEModel,
-            noise_scheduler: ClassifierFreeGuidanceScheduler,
-            text_encoder: CLIPTextModel,
-            tokenizer: GPT2Tokenizer
+        self,
+        unet: UNetGLIDEModel,
+        noise_scheduler: ClassifierFreeGuidanceScheduler,
+        text_encoder: CLIPTextModel,
+        tokenizer: GPT2Tokenizer,
     ):
         super().__init__()
-        self.register_modules(unet=unet, noise_scheduler=noise_scheduler, text_encoder=text_encoder, tokenizer=tokenizer)
+        self.register_modules(
+            unet=unet, noise_scheduler=noise_scheduler, text_encoder=text_encoder, tokenizer=tokenizer
+        )
 
     def q_posterior_mean_variance(self, x_start, x_t, t):
         """
@@ -129,7 +131,9 @@ class GLIDE(DiffusionPipeline):
         self.text_encoder.to(torch_device)
 
         # 1. Sample gaussian noise
-        image = self.noise_scheduler.sample_noise((1, self.unet.in_channels, 64, 64), device=torch_device, generator=generator)
+        image = self.noise_scheduler.sample_noise(
+            (1, self.unet.in_channels, 64, 64), device=torch_device, generator=generator
+        )
 
         # 2. Encode tokens
         # an empty input is needed to guide the model away from (
@@ -141,9 +145,7 @@ class GLIDE(DiffusionPipeline):
             t = torch.tensor([i] * image.shape[0], device=torch_device)
             mean, variance, log_variance, pred_xstart = self.p_mean_variance(self.unet, transformer_out, image, t)
             noise = self.noise_scheduler.sample_noise(image.shape)
-            nonzero_mask = (
-                (t != 0).float().view(-1, *([1] * (len(image.shape) - 1)))
-            )  # no noise when t == 0
+            nonzero_mask = (t != 0).float().view(-1, *([1] * (len(image.shape) - 1)))  # no noise when t == 0
             image = mean + nonzero_mask * torch.exp(0.5 * log_variance) * noise
 
         return image
