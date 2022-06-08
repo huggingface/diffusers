@@ -124,6 +124,7 @@ class GLIDE(DiffusionPipeline):
             - _extract_into_tensor(self.noise_scheduler.sqrt_recipm1_alphas_cumprod, t, x_t.shape) * eps
         )
 
+    @torch.no_grad()
     def __call__(self, prompt, generator=None, torch_device=None):
         torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -163,5 +164,7 @@ class GLIDE(DiffusionPipeline):
             noise = self.noise_scheduler.sample_noise(image.shape, device=torch_device, generator=generator)
             nonzero_mask = (t != 0).float().view(-1, *([1] * (len(image.shape) - 1)))  # no noise when t == 0
             image = mean + nonzero_mask * torch.exp(0.5 * log_variance) * noise
+
+        image = image[0].permute(1, 2, 0)
 
         return image
