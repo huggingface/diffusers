@@ -17,3 +17,4 @@
 # limitations under the License.
 
 from .gaussian_ddpm import GaussianDDPMScheduler
+from .classifier_free_guidance import ClassifierFreeGuidanceScheduler

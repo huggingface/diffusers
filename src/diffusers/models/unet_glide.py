@@ -470,7 +470,7 @@ class UNetGLIDEModel(ModelMixin, ConfigMixin):
         self.channel_mult = channel_mult
         self.conv_resample = conv_resample
         self.use_checkpoint = use_checkpoint
-        self.dtype = torch.float16 if use_fp16 else torch.float32
+        #self.dtype = torch.float16 if use_fp16 else torch.float32
         self.num_heads = num_heads
         self.num_head_channels = num_head_channels
         self.num_heads_upsample = num_heads_upsample
@@ -653,13 +653,15 @@ class UNetGLIDEModel(ModelMixin, ConfigMixin):
         transformer_proj = self.transformer_proj(transformer_out[:, -1])
         transformer_out = transformer_out.permute(0, 2, 1)  # NLC -> NCL
 
+        emb = emb + transformer_proj.to(emb)
+
         h = x.type(self.dtype)
         for module in self.input_blocks:
-            h = module(h, emb)
+            h = module(h, emb, transformer_out)
             hs.append(h)
-        h = self.middle_block(h, emb)
+        h = self.middle_block(h, emb, transformer_out)
         for module in self.output_blocks:
             h = torch.cat([h, hs.pop()], dim=1)
-            h = module(h, emb)
+            h = module(h, emb, transformer_out)
         h = h.type(x.dtype)
         return self.out(h)

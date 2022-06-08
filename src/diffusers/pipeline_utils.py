@@ -35,10 +35,12 @@ logger = logging.get_logger(__name__)
 LOADABLE_CLASSES = {
     "diffusers": {
         "ModelMixin": ["save_pretrained", "from_pretrained"],
+        "CLIPTextModel": ["save_pretrained", "from_pretrained"],  # TODO (Anton): move to transformers
         "GaussianDDPMScheduler": ["save_config", "from_config"],
+        "ClassifierFreeGuidanceScheduler": ["save_config", "from_config"],
     },
     "transformers": {
-        "ModelMixin": ["save_pretrained", "from_pretrained"],
+        "GPT2Tokenizer": ["save_pretrained", "from_pretrained"],
     },
 }
 
