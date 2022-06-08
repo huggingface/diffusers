@@ -9,6 +9,7 @@ from .models.clip_text_transformer import CLIPTextModel
 from .models.unet import UNetModel
 from .models.unet_glide import UNetGLIDEModel
 from .models.unet_ldm import UNetLDMModel
+from .models.vqvae import VQModel
 from .pipeline_utils import DiffusionPipeline
 from .schedulers.classifier_free_guidance import ClassifierFreeGuidanceScheduler
 from .schedulers.gaussian_ddpm import GaussianDDPMScheduler
