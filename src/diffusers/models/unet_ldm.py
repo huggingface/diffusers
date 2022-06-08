@@ -720,7 +720,7 @@ class QKVAttentionLegacy(nn.Module):
         return count_flops_attn(model, _x, y)
 
 
-class UNetModel(ModelMixin, ConfigMixin):
+class UNetLDMModel(ModelMixin, ConfigMixin):
     """
     The full UNet model with attention and timestep embedding.
     :param in_channels: channels in the input Tensor.
