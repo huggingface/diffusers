@@ -18,4 +18,5 @@
 
 from .unet import UNetModel
 from .unet_glide import UNetGLIDEModel
+from .unet_ldm import UNetLDMModel
 from .clip_text_transformer import CLIPTextModel
