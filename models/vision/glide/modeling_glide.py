@@ -130,21 +130,37 @@ class GLIDE(DiffusionPipeline):
         self.unet.to(torch_device)
         self.text_encoder.to(torch_device)
 
+        # Create a classifier-free guidance sampling function
+        guidance_scale = 3.0
+
+        def model_fn(x_t, ts, transformer_out, **kwargs):
+            half = x_t[: len(x_t) // 2]
+            combined = torch.cat([half, half], dim=0)
+            model_out = self.unet(combined, ts, transformer_out, **kwargs)
+            eps, rest = model_out[:, :3], model_out[:, 3:]
+            cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0)
+            half_eps = uncond_eps + guidance_scale * (cond_eps - uncond_eps)
+            eps = torch.cat([half_eps, half_eps], dim=0)
+            return torch.cat([eps, rest], dim=1)
+
         # 1. Sample gaussian noise
+        batch_size = 2  # second image is empty for classifier-free guidance
         image = self.noise_scheduler.sample_noise(
-            (1, self.unet.in_channels, 64, 64), device=torch_device, generator=generator
+            (batch_size, self.unet.in_channels, 64, 64), device=torch_device, generator=generator
         )
 
         # 2. Encode tokens
         # an empty input is needed to guide the model away from (
         inputs = self.tokenizer([prompt, ""], padding="max_length", max_length=128, return_tensors="pt")
-        transformer_out = self.text_encoder(**inputs).last_hidden_state
+        input_ids = inputs["input_ids"].to(torch_device)
+        attention_mask = inputs["attention_mask"].to(torch_device)
+        transformer_out = self.text_encoder(input_ids, attention_mask).last_hidden_state
 
         num_timesteps = len(self.noise_scheduler)
         for i in tqdm.tqdm(reversed(range(num_timesteps)), total=num_timesteps):
             t = torch.tensor([i] * image.shape[0], device=torch_device)
-            mean, variance, log_variance, pred_xstart = self.p_mean_variance(self.unet, transformer_out, image, t)
-            noise = self.noise_scheduler.sample_noise(image.shape)
+            mean, variance, log_variance, pred_xstart = self.p_mean_variance(model_fn, image, t, transformer_out)
+            noise = self.noise_scheduler.sample_noise(image.shape, device=torch_device, generator=generator)
             nonzero_mask = (t != 0).float().view(-1, *([1] * (len(image.shape) - 1)))  # no noise when t == 0
             image = mean + nonzero_mask * torch.exp(0.5 * log_variance) * noise
 

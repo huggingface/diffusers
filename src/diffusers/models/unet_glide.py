@@ -435,7 +435,7 @@ class UNetGLIDEModel(ModelMixin, ConfigMixin):
         num_heads_upsample=-1,
         use_scale_shift_norm=False,
         resblock_updown=False,
-        encoder_channels=None,
+        transformer_dim=512,
     ):
         super().__init__()
         self.register(
@@ -455,7 +455,7 @@ class UNetGLIDEModel(ModelMixin, ConfigMixin):
             num_heads_upsample=num_heads_upsample,
             use_scale_shift_norm=use_scale_shift_norm,
             resblock_updown=resblock_updown,
-            encoder_channels=encoder_channels,
+            transformer_dim=transformer_dim,
         )
 
         if num_heads_upsample == -1:
@@ -481,6 +481,8 @@ class UNetGLIDEModel(ModelMixin, ConfigMixin):
             nn.SiLU(),
             linear(time_embed_dim, time_embed_dim),
         )
+
+        self.transformer_proj = nn.Linear(transformer_dim, self.model_channels * 4)
 
         ch = input_ch = int(channel_mult[0] * model_channels)
         self.input_blocks = nn.ModuleList([TimestepEmbedSequential(conv_nd(dims, in_channels, ch, 3, padding=1))])
@@ -508,7 +510,7 @@ class UNetGLIDEModel(ModelMixin, ConfigMixin):
                             use_checkpoint=use_checkpoint,
                             num_heads=num_heads,
                             num_head_channels=num_head_channels,
-                            encoder_channels=encoder_channels,
+                            encoder_channels=transformer_dim,
                         )
                     )
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
@@ -551,7 +553,7 @@ class UNetGLIDEModel(ModelMixin, ConfigMixin):
                 use_checkpoint=use_checkpoint,
                 num_heads=num_heads,
                 num_head_channels=num_head_channels,
-                encoder_channels=encoder_channels,
+                encoder_channels=transformer_dim,
             ),
             ResBlock(
                 ch,
@@ -587,7 +589,7 @@ class UNetGLIDEModel(ModelMixin, ConfigMixin):
                             use_checkpoint=use_checkpoint,
                             num_heads=num_heads_upsample,
                             num_head_channels=num_head_channels,
-                            encoder_channels=encoder_channels,
+                            encoder_channels=transformer_dim,
                         )
                     )
                 if level and i == num_res_blocks:
@@ -642,10 +644,6 @@ class UNetGLIDEModel(ModelMixin, ConfigMixin):
         :param y: an [N] Tensor of labels, if class-conditional.
         :return: an [N x C x ...] Tensor of outputs.
         """
-        assert (y is not None) == (
-            self.num_classes is not None
-        ), "must specify y if and only if the model is class-conditional"
-
         hs = []
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
 
@@ -655,13 +653,13 @@ class UNetGLIDEModel(ModelMixin, ConfigMixin):
 
         emb = emb + transformer_proj.to(emb)
 
-        h = x.type(self.dtype)
+        h = x
         for module in self.input_blocks:
             h = module(h, emb, transformer_out)
             hs.append(h)
         h = self.middle_block(h, emb, transformer_out)
         for module in self.output_blocks:
-            h = torch.cat([h, hs.pop()], dim=1)
+            other = hs.pop()
+            h = torch.cat([h, other], dim=1)
             h = module(h, emb, transformer_out)
-        h = h.type(x.dtype)
         return self.out(h)

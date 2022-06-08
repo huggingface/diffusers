@@ -65,14 +65,14 @@ class ClassifierFreeGuidanceScheduler(nn.Module, ConfigMixin):
 
         if beta_schedule == "squaredcos_cap_v2":
             # GLIDE cosine schedule
-            betas = betas_for_alpha_bar(
+            self.betas = betas_for_alpha_bar(
                 timesteps,
                 lambda t: math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2,
             )
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
-        alphas = 1.0 - betas
+        alphas = 1.0 - self.betas
         self.alphas_cumprod = np.cumprod(alphas, axis=0)
         self.alphas_cumprod_prev = np.append(1.0, self.alphas_cumprod[:-1])
 
@@ -81,12 +81,12 @@ class ClassifierFreeGuidanceScheduler(nn.Module, ConfigMixin):
         self.sqrt_recipm1_alphas_cumprod = np.sqrt(1.0 / self.alphas_cumprod - 1)
 
         # calculations for posterior q(x_{t-1} | x_t, x_0)
-        self.posterior_variance = betas * (1.0 - self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
+        self.posterior_variance = self.betas * (1.0 - self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
         # below: log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
         self.posterior_log_variance_clipped = np.log(
             np.append(self.posterior_variance[1], self.posterior_variance[1:])
         )
-        self.posterior_mean_coef1 = betas * np.sqrt(self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
+        self.posterior_mean_coef1 = self.betas * np.sqrt(self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
         self.posterior_mean_coef2 = (1.0 - self.alphas_cumprod_prev) * np.sqrt(alphas) / (1.0 - self.alphas_cumprod)
 
     def sample_noise(self, shape, device, generator=None):

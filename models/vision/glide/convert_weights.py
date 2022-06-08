@@ -22,8 +22,7 @@ config = CLIPTextConfig(
     use_padding_embeddings=True,
 )
 model = CLIPTextModel(config).eval()
-tokenizer = GPT2Tokenizer("./glide-base/vocab.json", "./glide-base/merges.txt", pad_token="<|endoftext|>")
-# tokenizer.save_pretrained("./glide-base")
+tokenizer = GPT2Tokenizer("./glide-base/tokenizer/vocab.json", "./glide-base/tokenizer/merges.txt", pad_token="<|endoftext|>")
 
 hf_encoder = model.text_model
 
@@ -52,12 +51,6 @@ for layer_idx in range(config.num_hidden_layers):
     hf_layer.mlp.fc2.weight = state_dict[f"transformer.resblocks.{layer_idx}.mlp.c_proj.weight"]
     hf_layer.mlp.fc2.bias = state_dict[f"transformer.resblocks.{layer_idx}.mlp.c_proj.bias"]
 
-# inputs = tokenizer(["an oil painting of a corgi", ""], padding="max_length", max_length=128, return_tensors="pt")
-# with torch.no_grad():
-#    outputs = model(**inputs)
-
-# model.save_pretrained("./glide-base")
-
 ### Convert the UNet
 
 unet_model = UNetGLIDEModel(
@@ -73,6 +66,7 @@ unet_model = UNetGLIDEModel(
     num_heads_upsample=1,
     use_scale_shift_norm=True,
     resblock_updown=True,
+    transformer_dim=512,
 )
 
 unet_model.load_state_dict(state_dict, strict=False)

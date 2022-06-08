@@ -9,6 +9,6 @@ generator = generator.manual_seed(0)
 # 1. Load models
 pipeline = GLIDE.from_pretrained("fusing/glide-base")
 
-img = pipeline(generator)
+img = pipeline("an oil painting of a corgi", generator)
 
 print(img)
