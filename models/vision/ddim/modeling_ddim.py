@@ -59,6 +59,7 @@ class DDIM(DiffusionPipeline):
 
             # predict mean of prev image
             pred_mean = alpha_prod_t_rsqrt * (image - beta_prod_t_sqrt * noise_residual)
+            pred_mean = torch.clamp(pred_mean, -1, 1)
             pred_mean = (1 / alpha_prod_t_prev_rsqrt) * pred_mean + coeff_2 * noise_residual
 
             # if eta > 0.0 add noise. Note eta = 1.0 essentially corresponds to DDPM
