@@ -32,10 +32,15 @@ class DDIM(DiffusionPipeline):
         self.register_modules(unet=unet, noise_scheduler=noise_scheduler)
 
     def __call__(self, batch_size=1, generator=None, torch_device=None, eta=0.0, inference_time_steps=50):
-        seq = range(0, self.num_timesteps, self.num_timesteps // inference_time_steps)
-        b = self.noise_scheduler.betas
+        # eta is η in paper
+
         if torch_device is None:
             torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        num_timesteps = self.noise_scheduler.num_timesteps
+
+        seq = range(0, num_timesteps, num_timesteps // inference_time_steps)
+        b = self.noise_scheduler.betas.to(torch_device)
 
         self.unet.to(torch_device)
         x = self.noise_scheduler.sample_noise((batch_size, self.unet.in_channels, self.unet.resolution, self.unet.resolution), device=torch_device, generator=generator)
@@ -63,5 +68,4 @@ class DDIM(DiffusionPipeline):
                 xt_next = at_next.sqrt() * x0_t + c1 * torch.randn_like(x) + c2 * et
                 xs.append(xt_next.to('cpu'))
 
-        import ipdb; ipdb.set_trace()
-        return xs, x0_preds
+        return xt_next
