@@ -1,17 +1,14 @@
 import torch
-from .modeling_glide import GLIDE
-from diffusers import UNetGLIDEModel, GaussianDDPMScheduler
+
+from modeling_glide import GLIDE
+
 
 generator = torch.Generator()
 generator = generator.manual_seed(0)
 
 # 1. Load models
+pipeline = GLIDE.from_pretrained("fusing/glide-base")
 
-scheduler = GaussianDDPMScheduler.from_config("fusing/glide-base")
-model = UNetGLIDEModel.from_pretrained("fusing/glide-base")
-
-pipeline = GLIDE(model, scheduler)
-
-img = pipeline(generator)
+img = pipeline("an oil painting of a corgi", generator)
 
 print(img)

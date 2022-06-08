@@ -17,6 +17,7 @@
 import importlib
 import os
 from typing import Optional, Union
+
 from huggingface_hub import snapshot_download
 
 # CHANGE to diffusers.utils
@@ -35,10 +36,12 @@ logger = logging.get_logger(__name__)
 LOADABLE_CLASSES = {
     "diffusers": {
         "ModelMixin": ["save_pretrained", "from_pretrained"],
+        "CLIPTextModel": ["save_pretrained", "from_pretrained"],  # TODO (Anton): move to transformers
         "GaussianDDPMScheduler": ["save_config", "from_config"],
+        "ClassifierFreeGuidanceScheduler": ["save_config", "from_config"],
     },
     "transformers": {
-        "ModelMixin": ["save_pretrained", "from_pretrained"],
+        "GPT2Tokenizer": ["save_pretrained", "from_pretrained"],
     },
 }
 
@@ -62,7 +65,7 @@ class DiffusionPipeline(ConfigMixin):
             # set models
             setattr(self, name, module)
 
-        register_dict = {"_module" : self.__module__.split(".")[-1] + ".py"}
+        register_dict = {"_module": self.__module__.split(".")[-1] + ".py"}
         self.register(**register_dict)
 
     def save_pretrained(self, save_directory: Union[str, os.PathLike]):

@@ -89,7 +89,6 @@ class ConfigMixin:
 
         self.to_json_file(output_config_file)
         logger.info(f"ConfigMixinuration saved in {output_config_file}")
-    
 
     @classmethod
     def get_config_dict(
@@ -183,7 +182,7 @@ class ConfigMixin:
             logger.info(f"loading configuration file {config_file}")
         else:
             logger.info(f"loading configuration file {config_file} from cache at {resolved_config_file}")
-        
+
         return config_dict
 
     @classmethod
@@ -199,9 +198,8 @@ class ConfigMixin:
                 # use value from config dict
                 init_dict[key] = config_dict.pop(key)
 
-
         unused_kwargs = config_dict.update(kwargs)
-        
+
         passed_keys = set(init_dict.keys())
         if len(expected_keys - passed_keys) > 0:
             logger.warn(
@@ -212,9 +210,7 @@ class ConfigMixin:
 
     @classmethod
     def from_config(cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs):
-        config_dict = cls.get_config_dict(
-            pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs
-        )
+        config_dict = cls.get_config_dict(pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs)
 
         init_dict, unused_kwargs = cls.extract_init_dict(config_dict, **kwargs)
 
