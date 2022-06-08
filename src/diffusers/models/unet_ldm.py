@@ -6,7 +6,12 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import repeat, rearrange
+
+try:
+    from einops import repeat, rearrange
+except:
+    print("Einops is not installed")
+    pass
 
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin

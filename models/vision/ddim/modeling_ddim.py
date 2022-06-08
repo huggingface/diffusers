@@ -19,12 +19,6 @@ import tqdm
 import torch
 
 
-def compute_alpha(beta, t):
-    beta = torch.cat([torch.zeros(1).to(beta.device), beta], dim=0)
-    a = (1 - beta).cumprod(dim=0).index_select(0, t + 1).view(-1, 1, 1, 1)
-    return a
-
-
 class DDIM(DiffusionPipeline):
 
     def __init__(self, unet, noise_scheduler):
@@ -32,7 +26,7 @@ class DDIM(DiffusionPipeline):
         self.register_modules(unet=unet, noise_scheduler=noise_scheduler)
 
     def __call__(self, batch_size=1, generator=None, torch_device=None, eta=0.0, num_inference_steps=50):
-        # eta is η in paper
+        # eta corresponds to η in paper and should be between [0, 1]
         if torch_device is None:
             torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -59,15 +53,19 @@ class DDIM(DiffusionPipeline):
             coeff_1 = (alpha_prod_t_prev - alpha_prod_t).sqrt() * alpha_prod_t_prev_rsqrt * beta_prod_t_prev_sqrt / beta_prod_t_sqrt * eta
             coeff_2 = ((1 - alpha_prod_t_prev) - coeff_1 ** 2).sqrt()
 
+            # model forward
             with torch.no_grad():
                 noise_residual = self.unet(image, train_step)
 
-            print(train_step)
+            # predict mean of prev image
+            pred_mean = alpha_prod_t_rsqrt * (image - beta_prod_t_sqrt * noise_residual)
+            pred_mean = (1 / alpha_prod_t_prev_rsqrt) * pred_mean + coeff_2 * noise_residual
 
-            pred_mean = (image - noise_residual * beta_prod_t_sqrt) * alpha_prod_t_rsqrt
-            xt_next = alpha_prod_t_prev.sqrt() * pred_mean + coeff_1 * torch.randn_like(image) + coeff_2 * noise_residual
-#            xt_next = 1 / alpha_prod_t_rsqrt * pred_mean + coeff_1 * torch.randn_like(image) + coeff_2 * noise_residual
-            # eta
-            image = xt_next
+            # if eta > 0.0 add noise. Note eta = 1.0 essentially corresponds to DDPM
+            if eta > 0.0:
+                noise = self.noise_scheduler.sample_noise(image.shape, device=image.device, generator=generator)
+                image = pred_mean + coeff_1 * noise
+            else:
+                image = pred_mean
 
         return image
