@@ -388,7 +388,7 @@ class QKVAttention(nn.Module):
         return a.reshape(bs, -1, length)
 
 
-class UNetGLIDEModel(ModelMixin, ConfigMixin):
+class GLIDEUNetModel(ModelMixin, ConfigMixin):
     """
     The full UNet model with attention and timestep embedding.
 
@@ -435,7 +435,7 @@ class UNetGLIDEModel(ModelMixin, ConfigMixin):
         num_heads_upsample=-1,
         use_scale_shift_norm=False,
         resblock_updown=False,
-        transformer_dim=512,
+        transformer_dim=None,
     ):
         super().__init__()
         self.register(
@@ -455,7 +455,6 @@ class UNetGLIDEModel(ModelMixin, ConfigMixin):
             num_heads_upsample=num_heads_upsample,
             use_scale_shift_norm=use_scale_shift_norm,
             resblock_updown=resblock_updown,
-            transformer_dim=transformer_dim,
         )
 
         if num_heads_upsample == -1:
@@ -481,8 +480,6 @@ class UNetGLIDEModel(ModelMixin, ConfigMixin):
             nn.SiLU(),
             linear(time_embed_dim, time_embed_dim),
         )
-
-        self.transformer_proj = nn.Linear(transformer_dim, self.model_channels * 4)
 
         ch = input_ch = int(channel_mult[0] * model_channels)
         self.input_blocks = nn.ModuleList([TimestepEmbedSequential(conv_nd(dims, in_channels, ch, 3, padding=1))])
@@ -635,7 +632,7 @@ class UNetGLIDEModel(ModelMixin, ConfigMixin):
         self.middle_block.apply(convert_module_to_f32)
         self.output_blocks.apply(convert_module_to_f32)
 
-    def forward(self, x, timesteps, transformer_out):
+    def forward(self, x, timesteps, y=None):
         """
         Apply the model to an input batch.
 
@@ -644,6 +641,42 @@ class UNetGLIDEModel(ModelMixin, ConfigMixin):
         :param y: an [N] Tensor of labels, if class-conditional.
         :return: an [N x C x ...] Tensor of outputs.
         """
+        assert (y is not None) == (
+                self.num_classes is not None
+        ), "must specify y if and only if the model is class-conditional"
+
+        hs = []
+        emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
+
+        if self.num_classes is not None:
+            assert y.shape == (x.shape[0],)
+            emb = emb + self.label_emb(y)
+
+        h = x.type(self.dtype)
+        for module in self.input_blocks:
+            h = module(h, emb)
+            hs.append(h)
+        h = self.middle_block(h, emb)
+        for module in self.output_blocks:
+            h = torch.cat([h, hs.pop()], dim=1)
+            h = module(h, emb)
+        h = h.type(x.dtype)
+        return self.out(h)
+
+
+class GLIDETextToImageUNetModel(GLIDEUNetModel):
+    """
+    A UNetModel that performs super-resolution.
+
+    Expects an extra kwarg `low_res` to condition on a low-resolution image.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.transformer_proj = nn.Linear(kwargs["transformer_dim"], self.model_channels * 4)
+
+    def forward(self, x, timesteps, transformer_out=None):
         hs = []
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
 
@@ -663,3 +696,20 @@ class UNetGLIDEModel(ModelMixin, ConfigMixin):
             h = torch.cat([h, other], dim=1)
             h = module(h, emb, transformer_out)
         return self.out(h)
+
+
+class GLIDESuperResUNetModel(GLIDEUNetModel):
+    """
+    A UNetModel that performs super-resolution.
+
+    Expects an extra kwarg `low_res` to condition on a low-resolution image.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def forward(self, x, timesteps, low_res=None, **kwargs):
+        _, _, new_height, new_width = x.shape
+        upsampled = F.interpolate(low_res, (new_height, new_width), mode="bilinear")
+        x = torch.cat([x, upsampled], dim=1)
+        return super().forward(x, timesteps, **kwargs)

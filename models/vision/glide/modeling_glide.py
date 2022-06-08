@@ -18,7 +18,7 @@ import numpy as np
 import torch
 
 import tqdm
-from diffusers import ClassifierFreeGuidanceScheduler, CLIPTextModel, DiffusionPipeline, UNetGLIDEModel
+from diffusers import ClassifierFreeGuidanceScheduler, CLIPTextModel, DiffusionPipeline, GLIDETextToImageUNetModel, GLIDESuperResUNetModel
 from transformers import GPT2Tokenizer
 
 
@@ -41,7 +41,7 @@ def _extract_into_tensor(arr, timesteps, broadcast_shape):
 class GLIDE(DiffusionPipeline):
     def __init__(
         self,
-        unet: UNetGLIDEModel,
+        unet: GLIDETextToImageUNetModel,
         noise_scheduler: ClassifierFreeGuidanceScheduler,
         text_encoder: CLIPTextModel,
         tokenizer: GPT2Tokenizer,
