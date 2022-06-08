@@ -55,14 +55,13 @@ class DiffusionPipeline(ConfigMixin):
             class_name = module.__class__.__name__
 
             register_dict = {name: (library, class_name)}
-            
 
             # save model index config
             self.register(**register_dict)
 
             # set models
             setattr(self, name, module)
-        
+
         register_dict = {"_module" : self.__module__.split(".")[-1] + ".py"}
         self.register(**register_dict)
 
@@ -101,15 +100,15 @@ class DiffusionPipeline(ConfigMixin):
             cached_folder = pretrained_model_name_or_path
 
         config_dict = cls.get_config_dict(cached_folder)
-        
-        module = config_dict["_module"]
-        class_name_ = config_dict["_class_name"]
-        
-        if class_name_ == cls.__name__:
+
+        # if we load from explicit class, let's use it
+        if cls != DiffusionPipeline:
             pipeline_class = cls
         else:
+            # else we need to load the correct module from the Hub
+            class_name_ = config_dict["_class_name"]
+            module = config_dict["_module"]
             pipeline_class = get_class_from_dynamic_module(cached_folder, module, class_name_, cached_folder)
-        
 
         init_dict, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
@@ -120,6 +119,7 @@ class DiffusionPipeline(ConfigMixin):
 
             if library_name == module:
                 # TODO(Suraj)
+                # for vq
                 pass
 
             library = importlib.import_module(library_name)

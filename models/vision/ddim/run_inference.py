@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # !pip install diffusers
-from diffusers import DiffusionPipeline
+from modeling_ddim import DDIM
 import PIL.Image
 import numpy as np
 
@@ -8,7 +8,7 @@ model_id = "fusing/ddpm-cifar10"
 model_id = "fusing/ddpm-lsun-bedroom"
 
 # load model and scheduler
-ddpm = DiffusionPipeline.from_pretrained(model_id)
+ddpm = DDIM.from_pretrained(model_id)
 
 # run pipeline in inference (sample random noise and denoise)
 image = ddpm()
