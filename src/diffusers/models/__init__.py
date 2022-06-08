@@ -19,3 +19,4 @@
 from .unet import UNetModel
 from .unet_glide import UNetGLIDEModel
 from .unet_ldm import UNetLDMModel
+from .vqvae import VQModel
