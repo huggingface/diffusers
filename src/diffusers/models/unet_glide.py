@@ -647,24 +647,24 @@ class GLIDETextToImageUNetModel(GLIDEUNetModel):
     """
 
     def __init__(
-             self,
-             in_channels=3,
-             model_channels=192,
-             out_channels=6,
-             num_res_blocks=3,
-             attention_resolutions=(2, 4, 8),
-             dropout=0,
-             channel_mult=(1, 2, 4, 8),
-             conv_resample=True,
-             dims=2,
-             use_checkpoint=False,
-             use_fp16=False,
-             num_heads=1,
-             num_head_channels=-1,
-             num_heads_upsample=-1,
-             use_scale_shift_norm=False,
-             resblock_updown=False,
-             transformer_dim=512
+        self,
+        in_channels=3,
+        model_channels=192,
+        out_channels=6,
+        num_res_blocks=3,
+        attention_resolutions=(2, 4, 8),
+        dropout=0,
+        channel_mult=(1, 2, 4, 8),
+        conv_resample=True,
+        dims=2,
+        use_checkpoint=False,
+        use_fp16=False,
+        num_heads=1,
+        num_head_channels=-1,
+        num_heads_upsample=-1,
+        use_scale_shift_norm=False,
+        resblock_updown=False,
+        transformer_dim=512,
     ):
         super().__init__(
             in_channels=in_channels,
@@ -683,7 +683,7 @@ class GLIDETextToImageUNetModel(GLIDEUNetModel):
             num_heads_upsample=num_heads_upsample,
             use_scale_shift_norm=use_scale_shift_norm,
             resblock_updown=resblock_updown,
-            transformer_dim=transformer_dim
+            transformer_dim=transformer_dim,
         )
         self.register(
             in_channels=in_channels,
@@ -702,7 +702,7 @@ class GLIDETextToImageUNetModel(GLIDEUNetModel):
             num_heads_upsample=num_heads_upsample,
             use_scale_shift_norm=use_scale_shift_norm,
             resblock_updown=resblock_updown,
-            transformer_dim=transformer_dim
+            transformer_dim=transformer_dim,
         )
 
         self.transformer_proj = nn.Linear(transformer_dim, self.model_channels * 4)
@@ -737,23 +737,23 @@ class GLIDESuperResUNetModel(GLIDEUNetModel):
     """
 
     def __init__(
-            self,
-            in_channels=3,
-            model_channels=192,
-            out_channels=6,
-            num_res_blocks=3,
-            attention_resolutions=(2, 4, 8),
-            dropout=0,
-            channel_mult=(1, 2, 4, 8),
-            conv_resample=True,
-            dims=2,
-            use_checkpoint=False,
-            use_fp16=False,
-            num_heads=1,
-            num_head_channels=-1,
-            num_heads_upsample=-1,
-            use_scale_shift_norm=False,
-            resblock_updown=False,
+        self,
+        in_channels=3,
+        model_channels=192,
+        out_channels=6,
+        num_res_blocks=3,
+        attention_resolutions=(2, 4, 8),
+        dropout=0,
+        channel_mult=(1, 2, 4, 8),
+        conv_resample=True,
+        dims=2,
+        use_checkpoint=False,
+        use_fp16=False,
+        num_heads=1,
+        num_head_channels=-1,
+        num_heads_upsample=-1,
+        use_scale_shift_norm=False,
+        resblock_updown=False,
     ):
         super().__init__(
             in_channels=in_channels,

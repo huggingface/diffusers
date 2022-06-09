@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 import os
 import pathlib
-from modeling_ddim import DDIM
-import PIL.Image
+
 import numpy as np
+
+import PIL.Image
+from modeling_ddim import DDIM
+
 
 model_ids = ["ddim-celeba-hq", "ddim-lsun-church", "ddim-lsun-bedroom"]
 

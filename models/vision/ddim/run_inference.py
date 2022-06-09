@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # !pip install diffusers
-from modeling_ddim import DDIM
-import PIL.Image
 import numpy as np
+
+import PIL.Image
+from modeling_ddim import DDIM
+
 
 model_id = "fusing/ddpm-cifar10"
 model_id = "fusing/ddpm-lsun-bedroom"
