@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import torch
-import math
+import numpy as np
 from torch import nn
 
 from ..configuration_utils import ConfigMixin
@@ -22,36 +22,30 @@ from .schedulers_utils import linear_beta_schedule, betas_for_alpha_bar
 SAMPLING_CONFIG_NAME = "scheduler_config.json"
 
 
-class GaussianDDPMScheduler(nn.Module, ConfigMixin):
+class GlideDDIMScheduler(nn.Module, ConfigMixin):
 
     config_name = SAMPLING_CONFIG_NAME
 
     def __init__(
         self,
         timesteps=1000,
-        beta_start=0.0001,
-        beta_end=0.02,
         beta_schedule="linear",
-        variance_type="fixed_small",
+        variance_type="fixed_large"
     ):
         super().__init__()
         self.register(
             timesteps=timesteps,
-            beta_start=beta_start,
-            beta_end=beta_end,
             beta_schedule=beta_schedule,
-            variance_type=variance_type,
         )
         self.num_timesteps = int(timesteps)
 
         if beta_schedule == "linear":
+            # Linear schedule from Ho et al, extended to work for any number of
+            # diffusion steps.
+            scale = 1000 / self.num_timesteps
+            beta_start = scale * 0.0001
+            beta_end = scale * 0.02
             betas = linear_beta_schedule(timesteps, beta_start=beta_start, beta_end=beta_end)
-        elif beta_schedule == "squaredcos_cap_v2":
-            # GLIDE cosine schedule
-            betas = betas_for_alpha_bar(
-                timesteps,
-                lambda t: math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2,
-            )
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 

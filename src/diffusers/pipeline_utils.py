@@ -39,6 +39,7 @@ LOADABLE_CLASSES = {
         "CLIPTextModel": ["save_pretrained", "from_pretrained"],  # TODO (Anton): move to transformers
         "GaussianDDPMScheduler": ["save_config", "from_config"],
         "ClassifierFreeGuidanceScheduler": ["save_config", "from_config"],
+        "GlideDDIMScheduler": ["save_config", "from_config"],
     },
     "transformers": {
         "GPT2Tokenizer": ["save_pretrained", "from_pretrained"],

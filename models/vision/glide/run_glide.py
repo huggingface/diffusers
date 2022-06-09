@@ -9,7 +9,6 @@ matplotlib.rcParams['interactive'] = True
 generator = torch.Generator()
 generator = generator.manual_seed(0)
 
-# 1. Load models
 pipeline = GLIDE.from_pretrained("fusing/glide-base")
 
 img = pipeline("a pencil sketch of a corgi", generator)

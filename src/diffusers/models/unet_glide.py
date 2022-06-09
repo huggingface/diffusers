@@ -419,11 +419,11 @@ class GLIDEUNetModel(ModelMixin, ConfigMixin):
 
     def __init__(
         self,
-        in_channels,
-        model_channels,
-        out_channels,
-        num_res_blocks,
-        attention_resolutions,
+        in_channels=3,
+        model_channels=192,
+        out_channels=6,
+        num_res_blocks=3,
+        attention_resolutions=(2, 4, 8),
         dropout=0,
         channel_mult=(1, 2, 4, 8),
         conv_resample=True,
@@ -438,24 +438,6 @@ class GLIDEUNetModel(ModelMixin, ConfigMixin):
         transformer_dim=None,
     ):
         super().__init__()
-        self.register(
-            in_channels=in_channels,
-            model_channels=model_channels,
-            out_channels=out_channels,
-            num_res_blocks=num_res_blocks,
-            attention_resolutions=attention_resolutions,
-            dropout=dropout,
-            channel_mult=channel_mult,
-            conv_resample=conv_resample,
-            dims=dims,
-            use_checkpoint=use_checkpoint,
-            use_fp16=use_fp16,
-            num_heads=num_heads,
-            num_head_channels=num_head_channels,
-            num_heads_upsample=num_heads_upsample,
-            use_scale_shift_norm=use_scale_shift_norm,
-            resblock_updown=resblock_updown,
-        )
 
         if num_heads_upsample == -1:
             num_heads_upsample = num_heads
@@ -632,7 +614,7 @@ class GLIDEUNetModel(ModelMixin, ConfigMixin):
         self.middle_block.apply(convert_module_to_f32)
         self.output_blocks.apply(convert_module_to_f32)
 
-    def forward(self, x, timesteps, y=None):
+    def forward(self, x, timesteps):
         """
         Apply the model to an input batch.
 
@@ -641,16 +623,9 @@ class GLIDEUNetModel(ModelMixin, ConfigMixin):
         :param y: an [N] Tensor of labels, if class-conditional.
         :return: an [N x C x ...] Tensor of outputs.
         """
-        assert (y is not None) == (
-                self.num_classes is not None
-        ), "must specify y if and only if the model is class-conditional"
 
         hs = []
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
-
-        if self.num_classes is not None:
-            assert y.shape == (x.shape[0],)
-            emb = emb + self.label_emb(y)
 
         h = x.type(self.dtype)
         for module in self.input_blocks:
@@ -671,10 +646,66 @@ class GLIDETextToImageUNetModel(GLIDEUNetModel):
     Expects an extra kwarg `low_res` to condition on a low-resolution image.
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+             self,
+             in_channels=3,
+             model_channels=192,
+             out_channels=6,
+             num_res_blocks=3,
+             attention_resolutions=(2, 4, 8),
+             dropout=0,
+             channel_mult=(1, 2, 4, 8),
+             conv_resample=True,
+             dims=2,
+             use_checkpoint=False,
+             use_fp16=False,
+             num_heads=1,
+             num_head_channels=-1,
+             num_heads_upsample=-1,
+             use_scale_shift_norm=False,
+             resblock_updown=False,
+             transformer_dim=512
+    ):
+        super().__init__(
+            in_channels=in_channels,
+            model_channels=model_channels,
+            out_channels=out_channels,
+            num_res_blocks=num_res_blocks,
+            attention_resolutions=attention_resolutions,
+            dropout=dropout,
+            channel_mult=channel_mult,
+            conv_resample=conv_resample,
+            dims=dims,
+            use_checkpoint=use_checkpoint,
+            use_fp16=use_fp16,
+            num_heads=num_heads,
+            num_head_channels=num_head_channels,
+            num_heads_upsample=num_heads_upsample,
+            use_scale_shift_norm=use_scale_shift_norm,
+            resblock_updown=resblock_updown,
+            transformer_dim=transformer_dim
+        )
+        self.register(
+            in_channels=in_channels,
+            model_channels=model_channels,
+            out_channels=out_channels,
+            num_res_blocks=num_res_blocks,
+            attention_resolutions=attention_resolutions,
+            dropout=dropout,
+            channel_mult=channel_mult,
+            conv_resample=conv_resample,
+            dims=dims,
+            use_checkpoint=use_checkpoint,
+            use_fp16=use_fp16,
+            num_heads=num_heads,
+            num_head_channels=num_head_channels,
+            num_heads_upsample=num_heads_upsample,
+            use_scale_shift_norm=use_scale_shift_norm,
+            resblock_updown=resblock_updown,
+            transformer_dim=transformer_dim
+        )
 
-        self.transformer_proj = nn.Linear(kwargs["transformer_dim"], self.model_channels * 4)
+        self.transformer_proj = nn.Linear(transformer_dim, self.model_channels * 4)
 
     def forward(self, x, timesteps, transformer_out=None):
         hs = []
@@ -705,11 +736,77 @@ class GLIDESuperResUNetModel(GLIDEUNetModel):
     Expects an extra kwarg `low_res` to condition on a low-resolution image.
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+            self,
+            in_channels=3,
+            model_channels=192,
+            out_channels=6,
+            num_res_blocks=3,
+            attention_resolutions=(2, 4, 8),
+            dropout=0,
+            channel_mult=(1, 2, 4, 8),
+            conv_resample=True,
+            dims=2,
+            use_checkpoint=False,
+            use_fp16=False,
+            num_heads=1,
+            num_head_channels=-1,
+            num_heads_upsample=-1,
+            use_scale_shift_norm=False,
+            resblock_updown=False,
+    ):
+        super().__init__(
+            in_channels=in_channels,
+            model_channels=model_channels,
+            out_channels=out_channels,
+            num_res_blocks=num_res_blocks,
+            attention_resolutions=attention_resolutions,
+            dropout=dropout,
+            channel_mult=channel_mult,
+            conv_resample=conv_resample,
+            dims=dims,
+            use_checkpoint=use_checkpoint,
+            use_fp16=use_fp16,
+            num_heads=num_heads,
+            num_head_channels=num_head_channels,
+            num_heads_upsample=num_heads_upsample,
+            use_scale_shift_norm=use_scale_shift_norm,
+            resblock_updown=resblock_updown,
+        )
+        self.register(
+            in_channels=in_channels,
+            model_channels=model_channels,
+            out_channels=out_channels,
+            num_res_blocks=num_res_blocks,
+            attention_resolutions=attention_resolutions,
+            dropout=dropout,
+            channel_mult=channel_mult,
+            conv_resample=conv_resample,
+            dims=dims,
+            use_checkpoint=use_checkpoint,
+            use_fp16=use_fp16,
+            num_heads=num_heads,
+            num_head_channels=num_head_channels,
+            num_heads_upsample=num_heads_upsample,
+            use_scale_shift_norm=use_scale_shift_norm,
+            resblock_updown=resblock_updown,
+        )
 
-    def forward(self, x, timesteps, low_res=None, **kwargs):
+    def forward(self, x, timesteps, low_res=None):
         _, _, new_height, new_width = x.shape
         upsampled = F.interpolate(low_res, (new_height, new_width), mode="bilinear")
         x = torch.cat([x, upsampled], dim=1)
-        return super().forward(x, timesteps, **kwargs)
+
+        hs = []
+        emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
+
+        h = x
+        for module in self.input_blocks:
+            h = module(h, emb)
+            hs.append(h)
+        h = self.middle_block(h, emb)
+        for module in self.output_blocks:
+            h = torch.cat([h, hs.pop()], dim=1)
+            h = module(h, emb)
+
+        return self.out(h)

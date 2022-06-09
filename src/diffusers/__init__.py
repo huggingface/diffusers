@@ -13,3 +13,4 @@ from .models.vqvae import VQModel
 from .pipeline_utils import DiffusionPipeline
 from .schedulers.classifier_free_guidance import ClassifierFreeGuidanceScheduler
 from .schedulers.gaussian_ddpm import GaussianDDPMScheduler
+from .schedulers.glide_ddim import GlideDDIMScheduler

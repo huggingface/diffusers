@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from diffusers import ClassifierFreeGuidanceScheduler, CLIPTextModel, GLIDETextToImageUNetModel, GLIDESuperResUNetModel
+from diffusers import ClassifierFreeGuidanceScheduler, GlideDDIMScheduler, CLIPTextModel, GLIDETextToImageUNetModel, GLIDESuperResUNetModel
 from modeling_glide import GLIDE
 from transformers import CLIPTextConfig, GPT2Tokenizer
 
@@ -76,7 +76,7 @@ text_scheduler = ClassifierFreeGuidanceScheduler(timesteps=1000, beta_schedule="
 ### Convert the Super-Resolution UNet
 
 # wget https://openaipublic.blob.core.windows.net/diffusion/dec-2021/upsample.pt
-state_dict = torch.load("upsample.pt", map_location="cpu")
+ups_state_dict = torch.load("upsample.pt", map_location="cpu")
 
 superres_model = GLIDESuperResUNetModel(
     in_channels=6,
@@ -93,12 +93,12 @@ superres_model = GLIDESuperResUNetModel(
     resblock_updown=True,
 )
 
-superres_model.load_state_dict(state_dict)
+superres_model.load_state_dict(ups_state_dict, strict=False)
 
-upscale_scheduler = ClassifierFreeGuidanceScheduler(timesteps=1000, beta_schedule="squaredcos_cap_v2")
+upscale_scheduler = GlideDDIMScheduler(timesteps=1000, beta_schedule="linear")
 
 glide = GLIDE(text_unet=text2im_model, text_noise_scheduler=text_scheduler, text_encoder=model, tokenizer=tokenizer,
-              upscale_unet=superres_model, upscale_noise_scheduler=scheduler)
+              upscale_unet=superres_model, upscale_noise_scheduler=upscale_scheduler)
 
 glide.save_pretrained("./glide-base")
 
