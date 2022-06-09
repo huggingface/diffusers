@@ -223,6 +223,6 @@ class GLIDE(DiffusionPipeline):
             sampled_prev_image = prev_image + prev_variance
             image = sampled_prev_image
 
-        image = image[0].permute(1, 2, 0)
+        image = image.permute(0, 2, 3, 1)
 
         return image
