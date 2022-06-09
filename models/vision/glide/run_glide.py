@@ -13,9 +13,10 @@ model_id = "fusing/glide-base"
 pipeline = DiffusionPipeline.from_pretrained(model_id)
 
 # run inference (text-conditioned denoising + upscaling)
-img = pipeline("a clip art of a hugging face", generator)
+img = pipeline("a crayon drawing of a corgi", generator)
 
 # process image to PIL
+img = img.squeeze(0)
 img = ((img + 1) * 127.5).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
 image_pil = PIL.Image.fromarray(img)
 
