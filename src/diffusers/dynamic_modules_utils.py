@@ -209,21 +209,24 @@ def get_cached_module_file(
     module_file_or_url = os.path.join(pretrained_model_name_or_path, module_file)
     submodule = "local"
 
-    try:
-        # Load from URL or cache if already cached
-        resolved_module_file = cached_download(
-            module_file_or_url,
-            cache_dir=cache_dir,
-            force_download=force_download,
-            proxies=proxies,
-            resume_download=resume_download,
-            local_files_only=local_files_only,
-            use_auth_token=use_auth_token,
-        )
+    if os.path.isfile(module_file_or_url):
+        resolved_module_file = module_file_or_url
+    else:
+        try:
+            # Load from URL or cache if already cached
+            resolved_module_file = cached_download(
+                module_file_or_url,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                proxies=proxies,
+                resume_download=resume_download,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+            )
 
-    except EnvironmentError:
-        logger.error(f"Could not locate the {module_file} inside {pretrained_model_name_or_path}.")
-        raise
+        except EnvironmentError:
+            logger.error(f"Could not locate the {module_file} inside {pretrained_model_name_or_path}.")
+            raise
 
     # Check we have all the requirements in our environment
     modules_needed = check_imports(resolved_module_file)
