@@ -1,4 +1,4 @@
-# Copyright 2021 The HuggingFace Team. All rights reserved.
+# Copyright 2022 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -52,11 +52,11 @@ To create the package for pypi.
    twine upload dist/* -r pypitest --repository-url=https://test.pypi.org/legacy/
 
    Check that you can install it in a virtualenv by running:
-   pip install -i https://testpypi.python.org/pypi transformers
+   pip install -i https://testpypi.python.org/pypi diffusers
 
    Check you can run the following commands:
-   python -c "from transformers import pipeline; classifier = pipeline('text-classification'); print(classifier('What a nice release'))"
-   python -c "from transformers import *"
+   python -c "from diffusers import pipeline; classifier = pipeline('text-classification'); print(classifier('What a nice release'))"
+   python -c "from diffusers import *"
 
 9. Upload the final version to actual pypi:
    twine upload dist/* -r pypi
@@ -77,36 +77,21 @@ from setuptools import find_packages, setup
 # 2. once modified, run: `make deps_table_update` to update src/diffusers/dependency_versions_table.py
 _deps = [
     "Pillow",
-    "accelerate>=0.9.0",
     "black~=22.0,>=22.3",
-    "codecarbon==1.2.0",
-    "dataclasses",
-    "datasets",
-    "GitPython<3.1.19",
-    "hf-doc-builder>=0.3.0",
-    "huggingface-hub>=0.1.0,<1.0",
-    "importlib_metadata",
+    "filelock",
+    "flake8>=3.8.3",
+    "huggingface-hub",
     "isort>=5.5.4",
-    "numpy>=1.17",
+    "numpy",
     "pytest",
-    "pytest-timeout",
-    "pytest-xdist",
-    "python>=3.7.0",
-    "regex!=2019.12.17",
     "requests",
-    "sagemaker>=2.31.0",
-    "tokenizers>=0.11.1,!=0.11.3,<0.13",
     "torch>=1.4",
-    "torchaudio",
-    "tqdm>=4.27",
-    "unidic>=1.0.2",
-    "unidic_lite>=1.0.7",
-    "uvicorn",
+    "torchvision",
 ]
 
 # this is a lookup table with items like:
 #
-# tokenizers: "tokenizers==0.9.4"
+# tokenizers: "huggingface-hub==0.8.0"
 # packaging: "packaging"
 #
 # some of the values are versioned whereas others aren't.
@@ -176,15 +161,17 @@ extras["quality"] = ["black ~= 22.0", "isort >= 5.5.4", "flake8 >= 3.8.3"]
 extras["docs"] = []
 extras["test"] = [
     "pytest",
-    "pytest-xdist",
-    "pytest-subtests",
-    "datasets",
-    "transformers",
 ]
 extras["dev"] = extras["quality"] + extras["test"]
 
-extras["sagemaker"] = [
-    "sagemaker",  # boto3 is a required package in sagemaker
+install_requires = [
+    deps["filelock"],
+    deps["huggingface-hub"],
+    deps["numpy"],
+    deps["requests"],
+    deps["torch"],
+    deps["torchvision"],
+    deps["Pillow"],
 ]
 
 setup(
@@ -201,7 +188,7 @@ setup(
     package_dir={"": "src"},
     packages=find_packages("src"),
     python_requires=">=3.6.0",
-    install_requires=["numpy>=1.17", "packaging>=20.0", "pyyaml", "torch>=1.4.0"],
+    install_requires=install_requires,
     extras_require=extras,
     classifiers=[
         "Development Status :: 5 - Production/Stable",

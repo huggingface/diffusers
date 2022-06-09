@@ -20,8 +20,7 @@ from typing import Optional, Union
 
 from huggingface_hub import snapshot_download
 
-# CHANGE to diffusers.utils
-from transformers.utils import logging
+from .utils import logging, DIFFUSERS_CACHE
 
 from .configuration_utils import ConfigMixin
 from .dynamic_modules_utils import get_class_from_dynamic_module
@@ -76,11 +75,12 @@ class DiffusionPipeline(ConfigMixin):
     def save_pretrained(self, save_directory: Union[str, os.PathLike]):
         self.save_config(save_directory)
 
-        model_index_dict = self._dict_to_save
+        model_index_dict = self.config
         model_index_dict.pop("_class_name")
+        model_index_dict.pop("_diffusers_version")
         model_index_dict.pop("_module")
 
-        for name, (library_name, class_name) in self._dict_to_save.items():
+        for name, (library_name, class_name) in model_index_dict.items():
             importable_classes = LOADABLE_CLASSES[library_name]
 
             # TODO: Suraj
@@ -101,14 +101,36 @@ class DiffusionPipeline(ConfigMixin):
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
+        r"""
+            Add docstrings
+        """
+        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        force_download = kwargs.pop("force_download", False)
+        resume_download = kwargs.pop("resume_download", False)
+        proxies = kwargs.pop("proxies", None)
+        output_loading_info = kwargs.pop("output_loading_info", False)
+        local_files_only = kwargs.pop("local_files_only", False)
+        use_auth_token = kwargs.pop("use_auth_token", None)
+
         # use snapshot download here to get it working from from_pretrained
         if not os.path.isdir(pretrained_model_name_or_path):
-            cached_folder = snapshot_download(pretrained_model_name_or_path)
+            cached_folder = snapshot_download(
+                pretrained_model_name_or_path,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                resume_download=resume_download,
+                proxies=proxies,
+                output_loading_info=output_loading_info,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+            )
         else:
             cached_folder = pretrained_model_name_or_path
 
         config_dict = cls.get_config_dict(cached_folder)
 
+        module = config_dict["_module"]
+        class_name_ = config_dict["_class_name"]
         module_candidate = config_dict["_module"]
         module_candidate_name = module_candidate.replace(".py", "")
 
@@ -126,13 +148,12 @@ class DiffusionPipeline(ConfigMixin):
         init_kwargs = {}
 
         # get all importable classes to get the load method name for custom models/components
-        # here we enforce that custom models/components should always subclass from base classes in tansformers and diffusers 
+        # here we enforce that custom models/components should always subclass from base classes in tansformers and diffusers
         all_importable_classes = {}
         for library in LOADABLE_CLASSES:
             all_importable_classes.update(LOADABLE_CLASSES[library])
 
         for name, (library_name, class_name) in init_dict.items():
-            
             # if the model is not in diffusers or transformers, we need to load it from the hub
             # assumes that it's a subclass of ModelMixin
             if library_name == module_candidate_name:
