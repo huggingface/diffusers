@@ -21,18 +21,15 @@ import torch
 from torch import Tensor, device
 
 from requests import HTTPError
+from huggingface_hub import hf_hub_download
 
-# CHANGE to diffusers.utils
-from transformers.utils import (
+from .utils import (
     CONFIG_NAME,
+    DIFFUSERS_CACHE,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     EntryNotFoundError,
     RepositoryNotFoundError,
     RevisionNotFoundError,
-    cached_path,
-    hf_bucket_url,
-    is_offline_mode,
-    is_remote_url,
     logging,
 )
 
@@ -314,7 +311,7 @@ class ModelMixin(torch.nn.Module):
         </Tip>
 
         """
-        cache_dir = kwargs.pop("cache_dir", None)
+        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         ignore_mismatched_sizes = kwargs.pop("ignore_mismatched_sizes", False)
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", False)
@@ -323,14 +320,9 @@ class ModelMixin(torch.nn.Module):
         local_files_only = kwargs.pop("local_files_only", False)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
-        mirror = kwargs.pop("mirror", None)
         from_auto_class = kwargs.pop("_from_auto", False)
 
         user_agent = {"file_type": "model", "framework": "pytorch", "from_auto_class": from_auto_class}
-
-        if is_offline_mode() and not local_files_only:
-            logger.info("Offline mode: forcing local_files_only=True")
-            local_files_only = True
 
         # Load config if we don't provide a configuration
         config_path = pretrained_model_name_or_path
@@ -353,79 +345,67 @@ class ModelMixin(torch.nn.Module):
         if os.path.isdir(pretrained_model_name_or_path):
             if os.path.isfile(os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)):
                 # Load from a PyTorch checkpoint
-                archive_file = os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)
+                model_file = os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)
             else:
                 raise EnvironmentError(
                     f"Error no file named {WEIGHTS_NAME} found in directory {pretrained_model_name_or_path}."
                 )
-        elif os.path.isfile(pretrained_model_name_or_path) or is_remote_url(pretrained_model_name_or_path):
-            archive_file = pretrained_model_name_or_path
         else:
-            filename = WEIGHTS_NAME
+            try:
+                # Load from URL or cache if already cached
+                model_file = hf_hub_download(
+                    pretrained_model_name_or_path,
+                    filename=WEIGHTS_NAME,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    proxies=proxies,
+                    resume_download=resume_download,
+                    local_files_only=local_files_only,
+                    use_auth_token=use_auth_token,
+                    user_agent=user_agent,
+                )
 
-            archive_file = hf_bucket_url(
-                pretrained_model_name_or_path, filename=filename, revision=revision, mirror=mirror
-            )
+            except RepositoryNotFoundError:
+                raise EnvironmentError(
+                    f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier "
+                    "listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a "
+                    "token having permission to this repo with `use_auth_token` or log in with `huggingface-cli "
+                    "login` and pass `use_auth_token=True`."
+                )
+            except RevisionNotFoundError:
+                raise EnvironmentError(
+                    f"{revision} is not a valid git identifier (branch name, tag name or commit id) that exists for "
+                    "this model name. Check the model page at "
+                    f"'https://huggingface.co/{pretrained_model_name_or_path}' for available revisions."
+                )
+            except EntryNotFoundError:
+                raise EnvironmentError(f"{pretrained_model_name_or_path} does not appear to have a file named {model_file}.")
+            except HTTPError as err:
+                raise EnvironmentError(
+                    f"There was a specific connection error when trying to load {pretrained_model_name_or_path}:\n{err}"
+                )
+            except ValueError:
+                raise EnvironmentError(
+                    f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load this model, couldn't find it"
+                    f" in the cached files and it looks like {pretrained_model_name_or_path} is not the path to a"
+                    f" directory containing a file named {WEIGHTS_NAME} or"
+                    " \nCheckout your internet connection or see how to run the library in"
+                    " offline mode at 'https://huggingface.co/docs/transformers/installation#offline-mode'."
+                )
+            except EnvironmentError:
+                raise EnvironmentError(
+                    f"Can't load the model for '{pretrained_model_name_or_path}'. If you were trying to load it from "
+                    "'https://huggingface.co/models', make sure you don't have a local directory with the same name. "
+                    f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
+                    f"containing a file named {WEIGHTS_NAME}"
+                )
 
-        try:
-            # Load from URL or cache if already cached
-            resolved_archive_file = cached_path(
-                archive_file,
-                cache_dir=cache_dir,
-                force_download=force_download,
-                proxies=proxies,
-                resume_download=resume_download,
-                local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
-                user_agent=user_agent,
-            )
-
-        except RepositoryNotFoundError:
-            raise EnvironmentError(
-                f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier "
-                "listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a "
-                "token having permission to this repo with `use_auth_token` or log in with `huggingface-cli "
-                "login` and pass `use_auth_token=True`."
-            )
-        except RevisionNotFoundError:
-            raise EnvironmentError(
-                f"{revision} is not a valid git identifier (branch name, tag name or commit id) that exists for "
-                "this model name. Check the model page at "
-                f"'https://huggingface.co/{pretrained_model_name_or_path}' for available revisions."
-            )
-        except EntryNotFoundError:
-            raise EnvironmentError(f"{pretrained_model_name_or_path} does not appear to have a file named {filename}.")
-        except HTTPError as err:
-            raise EnvironmentError(
-                f"There was a specific connection error when trying to load {pretrained_model_name_or_path}:\n{err}"
-            )
-        except ValueError:
-            raise EnvironmentError(
-                f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load this model, couldn't find it"
-                f" in the cached files and it looks like {pretrained_model_name_or_path} is not the path to a"
-                f" directory containing a file named {WEIGHTS_NAME} or"
-                " \nCheckout your internet connection or see how to run the library in"
-                " offline mode at 'https://huggingface.co/docs/transformers/installation#offline-mode'."
-            )
-        except EnvironmentError:
-            raise EnvironmentError(
-                f"Can't load the model for '{pretrained_model_name_or_path}'. If you were trying to load it from "
-                "'https://huggingface.co/models', make sure you don't have a local directory with the same name. "
-                f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
-                f"containing a file named {WEIGHTS_NAME}"
-            )
-
-        if resolved_archive_file == archive_file:
-            logger.info(f"loading weights file {archive_file}")
-        else:
-            logger.info(f"loading weights file {archive_file} from cache at {resolved_archive_file}")
-
-        # restore default dtype
-        state_dict = load_state_dict(resolved_archive_file)
+            # restore default dtype
+        state_dict = load_state_dict(model_file)
         model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
             model,
             state_dict,
-            resolved_archive_file,
+            model_file,
             pretrained_model_name_or_path,
             ignore_mismatched_sizes=ignore_mismatched_sizes,
         )
