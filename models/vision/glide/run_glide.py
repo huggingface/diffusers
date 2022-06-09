@@ -1,19 +1,21 @@
 import torch
-
-from modeling_glide import GLIDE
-import matplotlib
-import matplotlib.pyplot as plt
-matplotlib.rcParams['interactive'] = True
-
+from diffusers import DiffusionPipeline
+import PIL.Image
 
 generator = torch.Generator()
 generator = generator.manual_seed(0)
 
-pipeline = GLIDE.from_pretrained("fusing/glide-base")
+model_id = "fusing/glide-base"
 
-img = pipeline("a pencil sketch of a corgi", generator)
+# load model and scheduler
+pipeline = DiffusionPipeline.from_pretrained(model_id)
+
+# run inference (text-conditioned denoising + upscaling)
+img = pipeline("a clip art of a hugging face", generator)
+
+# process image to PIL
 img = ((img + 1)*127.5).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
+image_pil = PIL.Image.fromarray(img)
 
-plt.figure(figsize=(8, 8))
-plt.imshow(img)
-plt.show()
+# save image
+image_pil.save("test.png")

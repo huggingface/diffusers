@@ -42,7 +42,7 @@ LOADABLE_CLASSES = {
         "GlideDDIMScheduler": ["save_config", "from_config"],
     },
     "transformers": {
-        "GPT2Tokenizer": ["save_pretrained", "from_pretrained"],
+        "PreTrainedTokenizer": ["save_pretrained", "from_pretrained"],
     },
 }
 
