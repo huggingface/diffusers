@@ -18,3 +18,4 @@
 
 from .classifier_free_guidance import ClassifierFreeGuidanceScheduler
 from .gaussian_ddpm import GaussianDDPMScheduler
+from .glide_ddim import GlideDDIMScheduler

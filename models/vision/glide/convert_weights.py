@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from diffusers import ClassifierFreeGuidanceScheduler, CLIPTextModel, UNetGLIDEModel
+from diffusers import ClassifierFreeGuidanceScheduler, GlideDDIMScheduler, CLIPTextModel, GLIDETextToImageUNetModel, GLIDESuperResUNetModel
 from modeling_glide import GLIDE
 from transformers import CLIPTextConfig, GPT2Tokenizer
 
@@ -51,9 +51,9 @@ for layer_idx in range(config.num_hidden_layers):
     hf_layer.mlp.fc2.weight = state_dict[f"transformer.resblocks.{layer_idx}.mlp.c_proj.weight"]
     hf_layer.mlp.fc2.bias = state_dict[f"transformer.resblocks.{layer_idx}.mlp.c_proj.bias"]
 
-### Convert the UNet
+### Convert the Text-to-Image UNet
 
-unet_model = UNetGLIDEModel(
+text2im_model = GLIDETextToImageUNetModel(
     in_channels=3,
     model_channels=192,
     out_channels=6,
@@ -69,10 +69,38 @@ unet_model = UNetGLIDEModel(
     transformer_dim=512,
 )
 
-unet_model.load_state_dict(state_dict, strict=False)
+text2im_model.load_state_dict(state_dict, strict=False)
 
-scheduler = ClassifierFreeGuidanceScheduler(timesteps=1000, beta_schedule="squaredcos_cap_v2")
+text_scheduler = ClassifierFreeGuidanceScheduler(timesteps=1000, beta_schedule="squaredcos_cap_v2")
 
-glide = GLIDE(unet=unet_model, noise_scheduler=scheduler, text_encoder=model, tokenizer=tokenizer)
+### Convert the Super-Resolution UNet
+
+# wget https://openaipublic.blob.core.windows.net/diffusion/dec-2021/upsample.pt
+ups_state_dict = torch.load("upsample.pt", map_location="cpu")
+
+superres_model = GLIDESuperResUNetModel(
+    in_channels=6,
+    model_channels=192,
+    out_channels=6,
+    num_res_blocks=2,
+    attention_resolutions=(8, 16, 32),
+    dropout=0.1,
+    channel_mult=(1, 1, 2, 2, 4, 4),
+    num_heads=1,
+    num_head_channels=64,
+    num_heads_upsample=1,
+    use_scale_shift_norm=True,
+    resblock_updown=True,
+)
+
+superres_model.load_state_dict(ups_state_dict, strict=False)
+
+upscale_scheduler = GlideDDIMScheduler(timesteps=1000, beta_schedule="linear")
+
+glide = GLIDE(text_unet=text2im_model, text_noise_scheduler=text_scheduler, text_encoder=model, tokenizer=tokenizer,
+              upscale_unet=superres_model, upscale_noise_scheduler=upscale_scheduler)
 
 glide.save_pretrained("./glide-base")
+
+
+
