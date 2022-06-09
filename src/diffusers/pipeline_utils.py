@@ -154,7 +154,7 @@ class DiffusionPipeline(ConfigMixin):
             # if the model is not in diffusers or transformers, we need to load it from the hub
             # assumes that it's a subclass of ModelMixin
             if library_name == module_candidate_name:
-                class_obj = get_class_from_dynamic_module(cached_folder, module, class_name, cached_folder)
+                class_obj = get_class_from_dynamic_module(cached_folder, module_candidate, class_name, cached_folder)
                 # since it's not from a library, we need to check class candidates for all importable classes
                 importable_classes = ALL_IMPORTABLE_CLASSES
                 class_candidates = {c: class_obj for c in ALL_IMPORTABLE_CLASSES.keys()}
