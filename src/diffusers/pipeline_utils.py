@@ -109,10 +109,8 @@ class DiffusionPipeline(ConfigMixin):
             Add docstrings
         """
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
-        force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
-        output_loading_info = kwargs.pop("output_loading_info", False)
         local_files_only = kwargs.pop("local_files_only", False)
         use_auth_token = kwargs.pop("use_auth_token", None)
 
@@ -121,10 +119,8 @@ class DiffusionPipeline(ConfigMixin):
             cached_folder = snapshot_download(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
-                force_download=force_download,
                 resume_download=resume_download,
                 proxies=proxies,
-                output_loading_info=output_loading_info,
                 local_files_only=local_files_only,
                 use_auth_token=use_auth_token,
             )
