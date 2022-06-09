@@ -42,7 +42,7 @@ class DDIM(DiffusionPipeline):
             generator=generator,
         )
 
-        # See formulas (9), (10) and (7) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
+        # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
         # Ideally, read DDIM paper in-detail understanding
 
         # Notation (<variable name> -> <name in paper>
@@ -64,11 +64,10 @@ class DDIM(DiffusionPipeline):
             # 3. compute alphas, betas
             alpha_prod_t = self.noise_scheduler.get_alpha_prod(train_step)
             alpha_prod_t_prev = self.noise_scheduler.get_alpha_prod(prev_train_step)
-            beta_prod_t = (1 - alpha_prod_t)
-            beta_prod_t_prev = (1 - alpha_prod_t_prev)
+            beta_prod_t = 1 - alpha_prod_t
+            beta_prod_t_prev = 1 - alpha_prod_t_prev
 
             # 4. Compute predicted previous image from predicted noise
-
             # First: compute predicted original image from predicted noise also called
             # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
             pred_original_image = (image - beta_prod_t.sqrt() * pred_noise_t) / alpha_prod_t.sqrt()
