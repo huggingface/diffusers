@@ -19,8 +19,7 @@ import os
 from typing import Optional, Union
 from huggingface_hub import snapshot_download
 
-# CHANGE to diffusers.utils
-from transformers.utils import logging
+from .utils import logging, DIFFUSERS_CACHE
 
 from .configuration_utils import ConfigMixin
 from .dynamic_modules_utils import get_class_from_dynamic_module
@@ -55,14 +54,13 @@ class DiffusionPipeline(ConfigMixin):
             class_name = module.__class__.__name__
 
             register_dict = {name: (library, class_name)}
-            
 
             # save model index config
             self.register(**register_dict)
 
             # set models
             setattr(self, name, module)
-        
+
         register_dict = {"_module" : self.__module__.split(".")[-1] + ".py"}
         self.register(**register_dict)
 
@@ -94,22 +92,41 @@ class DiffusionPipeline(ConfigMixin):
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
+        r"""
+            Add docstrings
+        """
+        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        force_download = kwargs.pop("force_download", False)
+        resume_download = kwargs.pop("resume_download", False)
+        proxies = kwargs.pop("proxies", None)
+        output_loading_info = kwargs.pop("output_loading_info", False)
+        local_files_only = kwargs.pop("local_files_only", False)
+        use_auth_token = kwargs.pop("use_auth_token", None)
+
         # use snapshot download here to get it working from from_pretrained
         if not os.path.isdir(pretrained_model_name_or_path):
-            cached_folder = snapshot_download(pretrained_model_name_or_path)
+            cached_folder = snapshot_download(
+                pretrained_model_name_or_path,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                resume_download=resume_download,
+                proxies=proxies,
+                output_loading_info=output_loading_info,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+            )
         else:
             cached_folder = pretrained_model_name_or_path
 
         config_dict = cls.get_config_dict(cached_folder)
-        
+
         module = config_dict["_module"]
         class_name_ = config_dict["_class_name"]
-        
+
         if class_name_ == cls.__name__:
             pipeline_class = cls
         else:
             pipeline_class = get_class_from_dynamic_module(cached_folder, module, class_name_, cached_folder)
-        
 
         init_dict, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 

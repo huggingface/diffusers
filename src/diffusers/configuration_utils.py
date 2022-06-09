@@ -24,17 +24,18 @@ import re
 from typing import Any, Dict, Tuple, Union
 
 from requests import HTTPError
-from transformers.utils import (
+from huggingface_hub import hf_hub_download
+
+
+from .utils import (
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
+    DIFFUSERS_CACHE,
     EntryNotFoundError,
     RepositoryNotFoundError,
     RevisionNotFoundError,
-    cached_path,
-    hf_bucket_url,
-    is_offline_mode,
-    is_remote_url,
     logging,
 )
+
 
 from . import __version__
 
@@ -89,13 +90,12 @@ class ConfigMixin:
 
         self.to_json_file(output_config_file)
         logger.info(f"ConfigMixinuration saved in {output_config_file}")
-    
 
     @classmethod
     def get_config_dict(
         cls, pretrained_model_name_or_path: Union[str, os.PathLike], **kwargs
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-        cache_dir = kwargs.pop("cache_dir", None)
+        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -105,85 +105,77 @@ class ConfigMixin:
 
         user_agent = {"file_type": "config"}
 
-        if is_offline_mode() and not local_files_only:
-            logger.info("Offline mode: forcing local_files_only=True")
-            local_files_only = True
-
         pretrained_model_name_or_path = str(pretrained_model_name_or_path)
-        if os.path.isfile(pretrained_model_name_or_path) or is_remote_url(pretrained_model_name_or_path):
-            config_file = pretrained_model_name_or_path
-        else:
-            configuration_file = cls.config_name
 
-            if os.path.isdir(pretrained_model_name_or_path):
-                config_file = os.path.join(pretrained_model_name_or_path, configuration_file)
+        if os.path.isfile(pretrained_model_name_or_path):
+            config_file = pretrained_model_name_or_path
+        elif os.path.isdir(pretrained_model_name_or_path):
+            if os.path.isfile(os.path.join(pretrained_model_name_or_path, cls.config_name)):
+                # Load from a PyTorch checkpoint
+                config_file = os.path.join(pretrained_model_name_or_path, cls.config_name)
             else:
-                config_file = hf_bucket_url(
-                    pretrained_model_name_or_path, filename=configuration_file, revision=revision, mirror=None
+                raise EnvironmentError(
+                    f"Error no file named {cls.config_name} found in directory {pretrained_model_name_or_path}."
+                )
+        else:
+            try:
+                # Load from URL or cache if already cached
+                config_file = hf_hub_download(
+                    pretrained_model_name_or_path,
+                    filename=cls.config_name,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    proxies=proxies,
+                    resume_download=resume_download,
+                    local_files_only=local_files_only,
+                    use_auth_token=use_auth_token,
+                    user_agent=user_agent,
                 )
 
-        try:
-            # Load from URL or cache if already cached
-            resolved_config_file = cached_path(
-                config_file,
-                cache_dir=cache_dir,
-                force_download=force_download,
-                proxies=proxies,
-                resume_download=resume_download,
-                local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
-                user_agent=user_agent,
-            )
+            except RepositoryNotFoundError:
+                raise EnvironmentError(
+                    f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier listed on "
+                    "'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having "
+                    "permission to this repo with `use_auth_token` or log in with `huggingface-cli login` and pass "
+                    "`use_auth_token=True`."
+                )
+            except RevisionNotFoundError:
+                raise EnvironmentError(
+                    f"{revision} is not a valid git identifier (branch name, tag name or commit id) that exists for this "
+                    f"model name. Check the model page at 'https://huggingface.co/{pretrained_model_name_or_path}' for "
+                    "available revisions."
+                )
+            except EntryNotFoundError:
+                raise EnvironmentError(
+                    f"{pretrained_model_name_or_path} does not appear to have a file named {cls.config_name}."
+                )
+            except HTTPError as err:
+                raise EnvironmentError(
+                    f"There was a specific connection error when trying to load {pretrained_model_name_or_path}:\n{err}"
+                )
+            except ValueError:
+                raise EnvironmentError(
+                    f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load this model, couldn't find it in"
+                    f" the cached files and it looks like {pretrained_model_name_or_path} is not the path to a directory"
+                    f" containing a {cls.config_name} file.\nCheckout your internet connection or see how to run the"
+                    " library in offline mode at 'https://huggingface.co/docs/diffusers/installation#offline-mode'."
+                )
+            except EnvironmentError:
+                raise EnvironmentError(
+                    f"Can't load config for '{pretrained_model_name_or_path}'. If you were trying to load it from "
+                    "'https://huggingface.co/models', make sure you don't have a local directory with the same name. "
+                    f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
+                    f"containing a {cls.config_name} file"
+                )
 
-        except RepositoryNotFoundError:
-            raise EnvironmentError(
-                f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier listed on "
-                "'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having "
-                "permission to this repo with `use_auth_token` or log in with `huggingface-cli login` and pass "
-                "`use_auth_token=True`."
-            )
-        except RevisionNotFoundError:
-            raise EnvironmentError(
-                f"{revision} is not a valid git identifier (branch name, tag name or commit id) that exists for this "
-                f"model name. Check the model page at 'https://huggingface.co/{pretrained_model_name_or_path}' for "
-                "available revisions."
-            )
-        except EntryNotFoundError:
-            raise EnvironmentError(
-                f"{pretrained_model_name_or_path} does not appear to have a file named {configuration_file}."
-            )
-        except HTTPError as err:
-            raise EnvironmentError(
-                f"There was a specific connection error when trying to load {pretrained_model_name_or_path}:\n{err}"
-            )
-        except ValueError:
-            raise EnvironmentError(
-                f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load this model, couldn't find it in"
-                f" the cached files and it looks like {pretrained_model_name_or_path} is not the path to a directory"
-                f" containing a {configuration_file} file.\nCheckout your internet connection or see how to run the"
-                " library in offline mode at 'https://huggingface.co/docs/diffusers/installation#offline-mode'."
-            )
-        except EnvironmentError:
-            raise EnvironmentError(
-                f"Can't load config for '{pretrained_model_name_or_path}'. If you were trying to load it from "
-                "'https://huggingface.co/models', make sure you don't have a local directory with the same name. "
-                f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
-                f"containing a {configuration_file} file"
-            )
+            try:
+                # Load config dict
+                config_dict = cls._dict_from_json_file(config_file)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                raise EnvironmentError(
+                    f"It looks like the config file at '{config_file}' is not a valid JSON file."
+                )
 
-        try:
-            # Load config dict
-            config_dict = cls._dict_from_json_file(resolved_config_file)
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            raise EnvironmentError(
-                f"It looks like the config file at '{resolved_config_file}' is not a valid JSON file."
-            )
-
-        if resolved_config_file == config_file:
-            logger.info(f"loading configuration file {config_file}")
-        else:
-            logger.info(f"loading configuration file {config_file} from cache at {resolved_config_file}")
-        
         return config_dict
 
     @classmethod
@@ -199,9 +191,7 @@ class ConfigMixin:
                 # use value from config dict
                 init_dict[key] = config_dict.pop(key)
 
-
         unused_kwargs = config_dict.update(kwargs)
-        
         passed_keys = set(init_dict.keys())
         if len(expected_keys - passed_keys) > 0:
             logger.warn(

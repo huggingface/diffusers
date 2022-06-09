@@ -22,16 +22,8 @@ import sys
 from pathlib import Path
 from typing import Dict, Optional, Union
 
-from huggingface_hub import HfFolder, model_info
-
-from transformers.utils import (
-    HF_MODULES_CACHE,
-    TRANSFORMERS_DYNAMIC_MODULE_NAME,
-    cached_path,
-    hf_bucket_url,
-    is_offline_mode,
-    logging,
-)
+from huggingface_hub import cached_download
+from .utils import HF_MODULES_CACHE, DIFFUSERS_DYNAMIC_MODULE_NAME, logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -219,7 +211,7 @@ def get_cached_module_file(
 
     try:
         # Load from URL or cache if already cached
-        resolved_module_file = cached_path(
+        resolved_module_file = cached_download(
             module_file_or_url,
             cache_dir=cache_dir,
             force_download=force_download,
@@ -237,7 +229,7 @@ def get_cached_module_file(
     modules_needed = check_imports(resolved_module_file)
 
     # Now we move the module inside our cached dynamic modules.
-    full_submodule = TRANSFORMERS_DYNAMIC_MODULE_NAME + os.path.sep + submodule
+    full_submodule = DIFFUSERS_DYNAMIC_MODULE_NAME + os.path.sep + submodule
     create_dynamic_module(full_submodule)
     submodule_path = Path(HF_MODULES_CACHE) / full_submodule
     # We always copy local files (we could hash the file to see if there was a change, and give them the name of
