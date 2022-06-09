@@ -24,6 +24,7 @@ import torch
 
 from diffusers import GaussianDDPMScheduler, UNetModel
 from diffusers.pipeline_utils import DiffusionPipeline
+from diffusers.configuration_utils import ConfigMixin
 from models.vision.ddpm.modeling_ddpm import DDPM
 
 
@@ -75,6 +76,45 @@ def floats_tensor(shape, scale=1.0, rng=None, name=None):
         values.append(rng.random() * scale)
 
     return torch.tensor(data=values, dtype=torch.float).view(shape).contiguous()
+
+
+class ConfigTester(unittest.TestCase):
+    def test_load_not_from_mixin(self):
+        with self.assertRaises(ValueError):
+            ConfigMixin.from_config("dummy_path")
+
+    def test_save_load(self):
+
+        class SampleObject(ConfigMixin):
+            config_name = "config.json"
+
+            def __init__(
+                self,
+                a=2,
+                b=5,
+                c=(2, 5),
+                d="for diffusion",
+                e=[1, 3],
+            ):
+                self.register(a=a, b=b, c=c, d=d, e=e)
+
+        obj = SampleObject()
+        config = obj.config
+
+        assert config["a"] == 2
+        assert config["b"] == 5
+        assert config["c"] == (2, 5)
+        assert config["d"] == "for diffusion"
+        assert config["e"] == [1, 3]
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            obj.save_config(tmpdirname)
+            new_obj = SampleObject.from_config(tmpdirname)
+            new_config = new_obj.config
+
+        assert config.pop("c") == (2, 5)  # instantiated as tuple
+        assert new_config.pop("c") == [2, 5]  # saved & loaded as list because of json
+        assert config == new_config
 
 
 class ModelTesterMixin(unittest.TestCase):

@@ -57,6 +57,8 @@ class ConfigMixin:
         if self.config_name is None:
             raise NotImplementedError(f"Make sure that {self.__class__} has defined a class name `config_name`")
         kwargs["_class_name"] = self.__class__.__name__
+        kwargs["_diffusers_version"] = __version__
+
         for key, value in kwargs.items():
             try:
                 setattr(self, key, value)
@@ -92,6 +94,21 @@ class ConfigMixin:
         logger.info(f"ConfigMixinuration saved in {output_config_file}")
 
     @classmethod
+    def from_config(cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs):
+        config_dict = cls.get_config_dict(
+            pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs
+        )
+
+        init_dict, unused_kwargs = cls.extract_init_dict(config_dict, **kwargs)
+
+        model = cls(**init_dict)
+
+        if return_unused_kwargs:
+            return model, unused_kwargs
+        else:
+            return model
+
+    @classmethod
     def get_config_dict(
         cls, pretrained_model_name_or_path: Union[str, os.PathLike], **kwargs
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -106,6 +123,12 @@ class ConfigMixin:
         user_agent = {"file_type": "config"}
 
         pretrained_model_name_or_path = str(pretrained_model_name_or_path)
+
+        if cls.config_name is None:
+            raise ValueError(
+                "`self.config_name` is not defined. Note that one should not load a config from "
+                "`ConfigMixin`. Please make sure to define `config_name` in a class inheriting from `ConfigMixin`"
+            )
 
         if os.path.isfile(pretrained_model_name_or_path):
             config_file = pretrained_model_name_or_path
@@ -168,13 +191,13 @@ class ConfigMixin:
                     f"containing a {cls.config_name} file"
                 )
 
-            try:
-                # Load config dict
-                config_dict = cls._dict_from_json_file(config_file)
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                raise EnvironmentError(
-                    f"It looks like the config file at '{config_file}' is not a valid JSON file."
-                )
+        try:
+            # Load config dict
+            config_dict = cls._dict_from_json_file(config_file)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            raise EnvironmentError(
+                f"It looks like the config file at '{config_file}' is not a valid JSON file."
+            )
 
         return config_dict
 
@@ -201,21 +224,6 @@ class ConfigMixin:
         return init_dict, unused_kwargs
 
     @classmethod
-    def from_config(cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs):
-        config_dict = cls.get_config_dict(
-            pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs
-        )
-
-        init_dict, unused_kwargs = cls.extract_init_dict(config_dict, **kwargs)
-
-        model = cls(**init_dict)
-
-        if return_unused_kwargs:
-            return model, unused_kwargs
-        else:
-            return model
-
-    @classmethod
     def _dict_from_json_file(cls, json_file: Union[str, os.PathLike]):
         with open(json_file, "r", encoding="utf-8") as reader:
             text = reader.read()
@@ -227,18 +235,9 @@ class ConfigMixin:
     def __repr__(self):
         return f"{self.__class__.__name__} {self.to_json_string()}"
 
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Serializes this instance to a Python dictionary.
-
-        Returns:
-            `Dict[str, Any]`: Dictionary of all the attributes that make up this configuration instance.
-        """
-        output = copy.deepcopy(self.__dict__)
-
-        # Diffusion version when serializing the model
-        output["diffusers_version"] = __version__
-
+    @property
+    def config(self) -> Dict[str, Any]:
+        output = copy.deepcopy(self._dict_to_save)
         return output
 
     def to_json_string(self) -> str:

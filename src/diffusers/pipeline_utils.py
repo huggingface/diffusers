@@ -67,11 +67,12 @@ class DiffusionPipeline(ConfigMixin):
     def save_pretrained(self, save_directory: Union[str, os.PathLike]):
         self.save_config(save_directory)
 
-        model_index_dict = self._dict_to_save
+        model_index_dict = self.config
         model_index_dict.pop("_class_name")
+        model_index_dict.pop("_diffusers_version")
         model_index_dict.pop("_module")
 
-        for name, (library_name, class_name) in self._dict_to_save.items():
+        for name, (library_name, class_name) in model_index_dict.items():
             importable_classes = LOADABLE_CLASSES[library_name]
 
             # TODO: Suraj

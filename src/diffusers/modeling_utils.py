@@ -401,14 +401,14 @@ class ModelMixin(torch.nn.Module):
                 )
 
             # restore default dtype
-            state_dict = load_state_dict(model_file)
-            model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
-                model,
-                state_dict,
-                model_file,
-                pretrained_model_name_or_path,
-                ignore_mismatched_sizes=ignore_mismatched_sizes,
-            )
+        state_dict = load_state_dict(model_file)
+        model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
+            model,
+            state_dict,
+            model_file,
+            pretrained_model_name_or_path,
+            ignore_mismatched_sizes=ignore_mismatched_sizes,
+        )
 
         # Set model in evaluation mode to deactivate DropOut modules by default
         model.eval()
