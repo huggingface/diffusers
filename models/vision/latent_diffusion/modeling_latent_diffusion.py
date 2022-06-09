@@ -961,5 +961,6 @@ class LatentDiffusion(DiffusionPipeline):
         image = 1 /  0.18215 * image
         image = self.vqvae.decode(image)
         image = torch.clamp((image+1.0)/2.0, min=0.0, max=1.0)
+        image = 255. * image
 
         return image
