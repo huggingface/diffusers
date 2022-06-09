@@ -14,13 +14,13 @@
 # limitations under the License.
 
 
-from diffusers import DiffusionPipeline
-import tqdm
 import torch
+
+import tqdm
+from diffusers import DiffusionPipeline
 
 
 class DDPM(DiffusionPipeline):
-
     def __init__(self, unet, noise_scheduler):
         super().__init__()
         self.register_modules(unet=unet, noise_scheduler=noise_scheduler)
@@ -31,13 +31,25 @@ class DDPM(DiffusionPipeline):
 
         self.unet.to(torch_device)
         # 1. Sample gaussian noise
-        image = self.noise_scheduler.sample_noise((batch_size, self.unet.in_channels, self.unet.resolution, self.unet.resolution), device=torch_device, generator=generator)
+        image = self.noise_scheduler.sample_noise(
+            (batch_size, self.unet.in_channels, self.unet.resolution, self.unet.resolution),
+            device=torch_device,
+            generator=generator,
+        )
         for t in tqdm.tqdm(reversed(range(len(self.noise_scheduler))), total=len(self.noise_scheduler)):
             # i) define coefficients for time step t
             clipped_image_coeff = 1 / torch.sqrt(self.noise_scheduler.get_alpha_prod(t))
             clipped_noise_coeff = torch.sqrt(1 / self.noise_scheduler.get_alpha_prod(t) - 1)
-            image_coeff = (1 - self.noise_scheduler.get_alpha_prod(t - 1)) * torch.sqrt(self.noise_scheduler.get_alpha(t)) / (1 - self.noise_scheduler.get_alpha_prod(t))
-            clipped_coeff = torch.sqrt(self.noise_scheduler.get_alpha_prod(t - 1)) * self.noise_scheduler.get_beta(t) / (1 - self.noise_scheduler.get_alpha_prod(t))
+            image_coeff = (
+                (1 - self.noise_scheduler.get_alpha_prod(t - 1))
+                * torch.sqrt(self.noise_scheduler.get_alpha(t))
+                / (1 - self.noise_scheduler.get_alpha_prod(t))
+            )
+            clipped_coeff = (
+                torch.sqrt(self.noise_scheduler.get_alpha_prod(t - 1))
+                * self.noise_scheduler.get_beta(t)
+                / (1 - self.noise_scheduler.get_alpha_prod(t))
+            )
 
             # ii) predict noise residual
             with torch.no_grad():
@@ -50,7 +62,9 @@ class DDPM(DiffusionPipeline):
             prev_image = clipped_coeff * pred_mean + image_coeff * image
 
             # iv) sample variance
-            prev_variance = self.noise_scheduler.sample_variance(t, prev_image.shape, device=torch_device, generator=generator)
+            prev_variance = self.noise_scheduler.sample_variance(
+                t, prev_image.shape, device=torch_device, generator=generator
+            )
 
             # v) sample  x_{t-1} ~ N(prev_image, prev_variance)
             sampled_prev_image = prev_image + prev_variance

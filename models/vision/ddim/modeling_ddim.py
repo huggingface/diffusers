@@ -14,13 +14,13 @@
 # limitations under the License.
 
 
-from diffusers import DiffusionPipeline
-import tqdm
 import torch
+
+import tqdm
+from diffusers import DiffusionPipeline
 
 
 class DDIM(DiffusionPipeline):
-
     def __init__(self, unet, noise_scheduler):
         super().__init__()
         self.register_modules(unet=unet, noise_scheduler=noise_scheduler)
@@ -34,12 +34,16 @@ class DDIM(DiffusionPipeline):
         inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps)
 
         self.unet.to(torch_device)
-        image = self.noise_scheduler.sample_noise((batch_size, self.unet.in_channels, self.unet.resolution, self.unet.resolution), device=torch_device, generator=generator)
+        image = self.noise_scheduler.sample_noise(
+            (batch_size, self.unet.in_channels, self.unet.resolution, self.unet.resolution),
+            device=torch_device,
+            generator=generator,
+        )
 
         for t in tqdm.tqdm(reversed(range(num_inference_steps)), total=num_inference_steps):
             # get actual t and t-1
             train_step = inference_step_times[t]
-            prev_train_step = inference_step_times[t - 1] if t > 0 else - 1
+            prev_train_step = inference_step_times[t - 1] if t > 0 else -1
 
             # compute alphas
             alpha_prod_t = self.noise_scheduler.get_alpha_prod(train_step)
@@ -50,8 +54,14 @@ class DDIM(DiffusionPipeline):
             beta_prod_t_prev_sqrt = (1 - alpha_prod_t_prev).sqrt()
 
             # compute relevant coefficients
-            coeff_1 = (alpha_prod_t_prev - alpha_prod_t).sqrt() * alpha_prod_t_prev_rsqrt * beta_prod_t_prev_sqrt / beta_prod_t_sqrt * eta
-            coeff_2 = ((1 - alpha_prod_t_prev) - coeff_1 ** 2).sqrt()
+            coeff_1 = (
+                (alpha_prod_t_prev - alpha_prod_t).sqrt()
+                * alpha_prod_t_prev_rsqrt
+                * beta_prod_t_prev_sqrt
+                / beta_prod_t_sqrt
+                * eta
+            )
+            coeff_2 = ((1 - alpha_prod_t_prev) - coeff_1**2).sqrt()
 
             # model forward
             with torch.no_grad():

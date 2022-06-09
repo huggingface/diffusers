@@ -23,7 +23,8 @@ from pathlib import Path
 from typing import Dict, Optional, Union
 
 from huggingface_hub import cached_download
-from .utils import HF_MODULES_CACHE, DIFFUSERS_DYNAMIC_MODULE_NAME, logging
+
+from .utils import DIFFUSERS_DYNAMIC_MODULE_NAME, HF_MODULES_CACHE, logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

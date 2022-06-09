@@ -23,21 +23,18 @@ import os
 import re
 from typing import Any, Dict, Tuple, Union
 
-from requests import HTTPError
 from huggingface_hub import hf_hub_download
+from requests import HTTPError
 
-
+from . import __version__
 from .utils import (
-    HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     DIFFUSERS_CACHE,
+    HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     EntryNotFoundError,
     RepositoryNotFoundError,
     RevisionNotFoundError,
     logging,
 )
-
-
-from . import __version__
 
 
 logger = logging.get_logger(__name__)
@@ -95,9 +92,7 @@ class ConfigMixin:
 
     @classmethod
     def from_config(cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs):
-        config_dict = cls.get_config_dict(
-            pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs
-        )
+        config_dict = cls.get_config_dict(pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs)
 
         init_dict, unused_kwargs = cls.extract_init_dict(config_dict, **kwargs)
 
@@ -157,16 +152,16 @@ class ConfigMixin:
 
             except RepositoryNotFoundError:
                 raise EnvironmentError(
-                    f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier listed on "
-                    "'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token having "
-                    "permission to this repo with `use_auth_token` or log in with `huggingface-cli login` and pass "
-                    "`use_auth_token=True`."
+                    f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier listed"
+                    " on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token"
+                    " having permission to this repo with `use_auth_token` or log in with `huggingface-cli login` and"
+                    " pass `use_auth_token=True`."
                 )
             except RevisionNotFoundError:
                 raise EnvironmentError(
-                    f"{revision} is not a valid git identifier (branch name, tag name or commit id) that exists for this "
-                    f"model name. Check the model page at 'https://huggingface.co/{pretrained_model_name_or_path}' for "
-                    "available revisions."
+                    f"{revision} is not a valid git identifier (branch name, tag name or commit id) that exists for"
+                    " this model name. Check the model page at"
+                    f" 'https://huggingface.co/{pretrained_model_name_or_path}' for available revisions."
                 )
             except EntryNotFoundError:
                 raise EnvironmentError(
@@ -174,14 +169,16 @@ class ConfigMixin:
                 )
             except HTTPError as err:
                 raise EnvironmentError(
-                    f"There was a specific connection error when trying to load {pretrained_model_name_or_path}:\n{err}"
+                    "There was a specific connection error when trying to load"
+                    f" {pretrained_model_name_or_path}:\n{err}"
                 )
             except ValueError:
                 raise EnvironmentError(
-                    f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load this model, couldn't find it in"
-                    f" the cached files and it looks like {pretrained_model_name_or_path} is not the path to a directory"
-                    f" containing a {cls.config_name} file.\nCheckout your internet connection or see how to run the"
-                    " library in offline mode at 'https://huggingface.co/docs/diffusers/installation#offline-mode'."
+                    f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load this model, couldn't find it"
+                    f" in the cached files and it looks like {pretrained_model_name_or_path} is not the path to a"
+                    f" directory containing a {cls.config_name} file.\nCheckout your internet connection or see how to"
+                    " run the library in offline mode at"
+                    " 'https://huggingface.co/docs/diffusers/installation#offline-mode'."
                 )
             except EnvironmentError:
                 raise EnvironmentError(
@@ -195,9 +192,7 @@ class ConfigMixin:
             # Load config dict
             config_dict = cls._dict_from_json_file(config_file)
         except (json.JSONDecodeError, UnicodeDecodeError):
-            raise EnvironmentError(
-                f"It looks like the config file at '{config_file}' is not a valid JSON file."
-            )
+            raise EnvironmentError(f"It looks like the config file at '{config_file}' is not a valid JSON file.")
 
         return config_dict
 

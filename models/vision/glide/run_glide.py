@@ -1,6 +1,8 @@
 import torch
-from diffusers import DiffusionPipeline
+
 import PIL.Image
+from diffusers import DiffusionPipeline
+
 
 generator = torch.Generator()
 generator = generator.manual_seed(0)
@@ -15,7 +17,7 @@ img = pipeline("a crayon drawing of a corgi", generator)
 
 # process image to PIL
 img = img.squeeze(0)
-img = ((img + 1)*127.5).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
+img = ((img + 1) * 127.5).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
 image_pil = PIL.Image.fromarray(img)
 
 # save image

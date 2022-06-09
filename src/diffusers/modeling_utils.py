@@ -20,8 +20,8 @@ from typing import Callable, List, Optional, Tuple, Union
 import torch
 from torch import Tensor, device
 
-from requests import HTTPError
 from huggingface_hub import hf_hub_download
+from requests import HTTPError
 
 from .utils import (
     CONFIG_NAME,
@@ -379,10 +379,13 @@ class ModelMixin(torch.nn.Module):
                     f"'https://huggingface.co/{pretrained_model_name_or_path}' for available revisions."
                 )
             except EntryNotFoundError:
-                raise EnvironmentError(f"{pretrained_model_name_or_path} does not appear to have a file named {model_file}.")
+                raise EnvironmentError(
+                    f"{pretrained_model_name_or_path} does not appear to have a file named {model_file}."
+                )
             except HTTPError as err:
                 raise EnvironmentError(
-                    f"There was a specific connection error when trying to load {pretrained_model_name_or_path}:\n{err}"
+                    "There was a specific connection error when trying to load"
+                    f" {pretrained_model_name_or_path}:\n{err}"
                 )
             except ValueError:
                 raise EnvironmentError(

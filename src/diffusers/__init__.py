@@ -6,7 +6,7 @@ __version__ = "0.0.1"
 
 from .modeling_utils import ModelMixin
 from .models.unet import UNetModel
-from .models.unet_glide import GLIDETextToImageUNetModel, GLIDESuperResUNetModel
+from .models.unet_glide import GLIDESuperResUNetModel, GLIDETextToImageUNetModel
 from .models.unet_ldm import UNetLDMModel
 from .models.vqvae import VQModel
 from .pipeline_utils import DiffusionPipeline

@@ -18,10 +18,20 @@ import math
 from dataclasses import dataclass
 from typing import Any, Optional, Tuple, Union
 
+import numpy as np
+import torch
 import torch.utils.checkpoint
 from torch import nn
 
-from transformers import CLIPConfig, CLIPModel, CLIPTextConfig, CLIPVisionConfig
+import tqdm
+from diffusers import (
+    ClassifierFreeGuidanceScheduler,
+    DiffusionPipeline,
+    GlideDDIMScheduler,
+    GLIDESuperResUNetModel,
+    GLIDETextToImageUNetModel,
+)
+from transformers import CLIPConfig, CLIPModel, CLIPTextConfig, CLIPVisionConfig, GPT2Tokenizer
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
 from transformers.modeling_utils import PreTrainedModel
@@ -32,14 +42,6 @@ from transformers.utils import (
     logging,
     replace_return_docstrings,
 )
-
-
-import numpy as np
-import torch
-
-import tqdm
-from diffusers import ClassifierFreeGuidanceScheduler, GlideDDIMScheduler, DiffusionPipeline, GLIDETextToImageUNetModel, GLIDESuperResUNetModel
-from transformers import GPT2Tokenizer
 
 
 #####################
@@ -725,12 +727,16 @@ class GLIDE(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: GPT2Tokenizer,
         upscale_unet: GLIDESuperResUNetModel,
-        upscale_noise_scheduler: GlideDDIMScheduler
+        upscale_noise_scheduler: GlideDDIMScheduler,
     ):
         super().__init__()
         self.register_modules(
-            text_unet=text_unet, text_noise_scheduler=text_noise_scheduler, text_encoder=text_encoder, tokenizer=tokenizer,
-            upscale_unet=upscale_unet, upscale_noise_scheduler=upscale_noise_scheduler
+            text_unet=text_unet,
+            text_noise_scheduler=text_noise_scheduler,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            upscale_unet=upscale_unet,
+            upscale_noise_scheduler=upscale_noise_scheduler,
         )
 
     def q_posterior_mean_variance(self, scheduler, x_start, x_t, t):
@@ -746,9 +752,7 @@ class GLIDE(DiffusionPipeline):
             + _extract_into_tensor(scheduler.posterior_mean_coef2, t, x_t.shape) * x_t
         )
         posterior_variance = _extract_into_tensor(scheduler.posterior_variance, t, x_t.shape)
-        posterior_log_variance_clipped = _extract_into_tensor(
-            scheduler.posterior_log_variance_clipped, t, x_t.shape
-        )
+        posterior_log_variance_clipped = _extract_into_tensor(scheduler.posterior_log_variance_clipped, t, x_t.shape)
         assert (
             posterior_mean.shape[0]
             == posterior_variance.shape[0]
@@ -869,19 +873,30 @@ class GLIDE(DiffusionPipeline):
         # A value of 1.0 is sharper, but sometimes results in grainy artifacts.
         upsample_temp = 0.997
 
-        image = self.upscale_noise_scheduler.sample_noise(
-            (batch_size, 3, 256, 256), device=torch_device, generator=generator
-        ) * upsample_temp
+        image = (
+            self.upscale_noise_scheduler.sample_noise(
+                (batch_size, 3, 256, 256), device=torch_device, generator=generator
+            )
+            * upsample_temp
+        )
 
         num_timesteps = len(self.upscale_noise_scheduler)
-        for t in tqdm.tqdm(reversed(range(len(self.upscale_noise_scheduler))), total=len(self.upscale_noise_scheduler)):
+        for t in tqdm.tqdm(
+            reversed(range(len(self.upscale_noise_scheduler))), total=len(self.upscale_noise_scheduler)
+        ):
             # i) define coefficients for time step t
             clipped_image_coeff = 1 / torch.sqrt(self.upscale_noise_scheduler.get_alpha_prod(t))
             clipped_noise_coeff = torch.sqrt(1 / self.upscale_noise_scheduler.get_alpha_prod(t) - 1)
-            image_coeff = (1 - self.upscale_noise_scheduler.get_alpha_prod(t - 1)) * torch.sqrt(
-                self.upscale_noise_scheduler.get_alpha(t)) / (1 - self.upscale_noise_scheduler.get_alpha_prod(t))
-            clipped_coeff = torch.sqrt(self.upscale_noise_scheduler.get_alpha_prod(t - 1)) * self.upscale_noise_scheduler.get_beta(
-                t) / (1 - self.upscale_noise_scheduler.get_alpha_prod(t))
+            image_coeff = (
+                (1 - self.upscale_noise_scheduler.get_alpha_prod(t - 1))
+                * torch.sqrt(self.upscale_noise_scheduler.get_alpha(t))
+                / (1 - self.upscale_noise_scheduler.get_alpha_prod(t))
+            )
+            clipped_coeff = (
+                torch.sqrt(self.upscale_noise_scheduler.get_alpha_prod(t - 1))
+                * self.upscale_noise_scheduler.get_beta(t)
+                / (1 - self.upscale_noise_scheduler.get_alpha_prod(t))
+            )
 
             # ii) predict noise residual
             time_input = torch.tensor([t] * image.shape[0], device=torch_device)
@@ -895,8 +910,9 @@ class GLIDE(DiffusionPipeline):
             prev_image = clipped_coeff * pred_mean + image_coeff * image
 
             # iv) sample variance
-            prev_variance = self.upscale_noise_scheduler.sample_variance(t, prev_image.shape, device=torch_device,
-                                                                 generator=generator)
+            prev_variance = self.upscale_noise_scheduler.sample_variance(
+                t, prev_image.shape, device=torch_device, generator=generator
+            )
 
             # v) sample  x_{t-1} ~ N(prev_image, prev_variance)
             sampled_prev_image = prev_image + prev_variance

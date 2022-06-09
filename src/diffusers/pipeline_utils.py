@@ -20,10 +20,9 @@ from typing import Optional, Union
 
 from huggingface_hub import snapshot_download
 
-from .utils import logging, DIFFUSERS_CACHE
-
 from .configuration_utils import ConfigMixin
 from .dynamic_modules_utils import get_class_from_dynamic_module
+from .utils import DIFFUSERS_CACHE, logging
 
 
 INDEX_FILE = "diffusion_model.pt"
@@ -105,7 +104,7 @@ class DiffusionPipeline(ConfigMixin):
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
         r"""
-            Add docstrings
+        Add docstrings
         """
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         resume_download = kwargs.pop("resume_download", False)
