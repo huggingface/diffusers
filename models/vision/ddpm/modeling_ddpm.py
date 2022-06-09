@@ -46,8 +46,8 @@ class DDPM(DiffusionPipeline):
             # 2. compute alphas, betas
             alpha_prod_t = self.noise_scheduler.get_alpha_prod(t)
             alpha_prod_t_prev = self.noise_scheduler.get_alpha_prod(t - 1)
-            beta_prod_t = (1 - alpha_prod_t)
-            beta_prod_t_prev = (1 - alpha_prod_t_prev)
+            beta_prod_t = 1 - alpha_prod_t
+            beta_prod_t_prev = 1 - alpha_prod_t_prev
 
             # 3. compute predicted image from residual
             # First: compute predicted original image from predicted noise also called
@@ -69,12 +69,14 @@ class DDPM(DiffusionPipeline):
             # and sample from it to get previous image
             # x_{t-1} ~ N(pred_prev_image, variance) == add variane to pred_image
             if t > 0:
-                variance = ((1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * self.noise_scheduler.get_beta(t)).sqrt()
+                variance = (1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * self.noise_scheduler.get_beta(t).sqrt()
+                # TODO(PVP):
+                # This variance seems to be good enough for inference - check if those `fix_small`, `fix_large`
+                # are really only needed for training or also for inference
+                # Also note LDM only uses "fixed_small";
+                # glide seems to use a weird mix of the two: https://github.com/openai/glide-text2im/blob/69b530740eb6cef69442d6180579ef5ba9ef063e/glide_text2im/gaussian_diffusion.py#L246
                 noise = self.noise_scheduler.sample_noise(image.shape, device=image.device, generator=generator)
                 sampled_variance = variance * noise
-#                sampled_variance = self.noise_scheduler.sample_variance(
-#                    t, pred_prev_image.shape, device=torch_device, generator=generator
-#                )
                 prev_image = pred_prev_image + sampled_variance
             else:
                 prev_image = pred_prev_image

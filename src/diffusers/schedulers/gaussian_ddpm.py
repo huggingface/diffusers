@@ -62,6 +62,9 @@ class GaussianDDPMScheduler(nn.Module, ConfigMixin):
 
         variance = betas * (1.0 - alphas_cumprod_prev) / (1.0 - alphas_cumprod)
 
+        # TODO(PVP) - check how much of these is actually necessary!
+        # LDM only uses "fixed_small"; glide seems to use a weird mix of the two, ...
+        # https://github.com/openai/glide-text2im/blob/69b530740eb6cef69442d6180579ef5ba9ef063e/glide_text2im/gaussian_diffusion.py#L246
         if variance_type == "fixed_small":
             log_variance = torch.log(variance.clamp(min=1e-20))
         elif variance_type == "fixed_large":
@@ -83,17 +86,6 @@ class GaussianDDPMScheduler(nn.Module, ConfigMixin):
         if time_step < 0:
             return torch.tensor(1.0)
         return self.alphas_cumprod[time_step]
-
-    def sample_variance(self, time_step, shape, device, generator=None):
-        variance = self.log_variance[time_step]
-        nonzero_mask = torch.tensor([1 - (time_step == 0)], device=device).float()[None, :]
-
-        noise = self.sample_noise(shape, device=device, generator=generator)
-
-        sampled_variance = nonzero_mask * (0.5 * variance).exp()
-        sampled_variance = sampled_variance * noise
-
-        return sampled_variance
 
     def sample_noise(self, shape, device, generator=None):
         # always sample on CPU to be deterministic

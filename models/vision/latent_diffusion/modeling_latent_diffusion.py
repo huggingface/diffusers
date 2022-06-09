@@ -2,10 +2,10 @@
 import math
 
 import numpy as np
-import tqdm
 import torch
 import torch.nn as nn
 
+import tqdm
 from diffusers import DiffusionPipeline
 from diffusers.configuration_utils import ConfigMixin
 from diffusers.modeling_utils import ModelMixin
@@ -740,28 +740,29 @@ class DiagonalGaussianDistribution(object):
 
     def kl(self, other=None):
         if self.deterministic:
-            return torch.Tensor([0.])
+            return torch.Tensor([0.0])
         else:
             if other is None:
-                return 0.5 * torch.sum(torch.pow(self.mean, 2)
-                                       + self.var - 1.0 - self.logvar,
-                                       dim=[1, 2, 3])
+                return 0.5 * torch.sum(torch.pow(self.mean, 2) + self.var - 1.0 - self.logvar, dim=[1, 2, 3])
             else:
                 return 0.5 * torch.sum(
                     torch.pow(self.mean - other.mean, 2) / other.var
-                    + self.var / other.var - 1.0 - self.logvar + other.logvar,
-                    dim=[1, 2, 3])
+                    + self.var / other.var
+                    - 1.0
+                    - self.logvar
+                    + other.logvar,
+                    dim=[1, 2, 3],
+                )
 
-    def nll(self, sample, dims=[1,2,3]):
+    def nll(self, sample, dims=[1, 2, 3]):
         if self.deterministic:
-            return torch.Tensor([0.])
+            return torch.Tensor([0.0])
         logtwopi = np.log(2.0 * np.pi)
-        return 0.5 * torch.sum(
-            logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var,
-            dim=dims)
+        return 0.5 * torch.sum(logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var, dim=dims)
 
     def mode(self):
         return self.mean
+
 
 class AutoencoderKL(ModelMixin, ConfigMixin):
     def __init__(
@@ -836,7 +837,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             give_pre_end=give_pre_end,
         )
 
-        self.quant_conv = torch.nn.Conv2d(2*z_channels, 2*embed_dim, 1)
+        self.quant_conv = torch.nn.Conv2d(2 * z_channels, 2 * embed_dim, 1)
         self.post_quant_conv = torch.nn.Conv2d(embed_dim, z_channels, 1)
 
     def encode(self, x):
@@ -874,11 +875,11 @@ class LatentDiffusion(DiffusionPipeline):
         self.unet.to(torch_device)
         self.vqvae.to(torch_device)
         self.bert.to(torch_device)
-        
+
         # get text embedding
-        text_input = self.tokenizer(prompt, padding="max_length", max_length=77, return_tensors='pt').to(torch_device)
+        text_input = self.tokenizer(prompt, padding="max_length", max_length=77, return_tensors="pt").to(torch_device)
         text_embedding = self.bert(**text_input)[0]
-        
+
         num_trained_timesteps = self.noise_scheduler.num_timesteps
         inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps)
 
@@ -927,9 +928,9 @@ class LatentDiffusion(DiffusionPipeline):
                 image = pred_mean + coeff_1 * noise
             else:
                 image = pred_mean
-        
+
         image = 1 / image
         image = self.vqvae(image)
-        image = torch.clamp((image+1.0)/2.0, min=0.0, max=1.0)
+        image = torch.clamp((image + 1.0) / 2.0, min=0.0, max=1.0)
 
         return image
