@@ -1026,7 +1026,7 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
         hs = []
         if not torch.is_tensor(timesteps):
             timesteps = torch.tensor([timesteps], dtype=torch.long, device=x.device)
-        t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
+        t_emb = timestep_embedding(timesteps, self.model_channels)
         emb = self.time_embed(t_emb)
 
         if self.num_classes is not None:
