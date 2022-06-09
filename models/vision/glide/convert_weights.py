@@ -3,12 +3,11 @@ from torch import nn
 
 from diffusers import (
     ClassifierFreeGuidanceScheduler,
-    CLIPTextModel,
     GlideDDIMScheduler,
     GLIDESuperResUNetModel,
     GLIDETextToImageUNetModel,
 )
-from modeling_glide import GLIDE
+from modeling_glide import GLIDE, CLIPTextModel
 from transformers import CLIPTextConfig, GPT2Tokenizer
 
 
