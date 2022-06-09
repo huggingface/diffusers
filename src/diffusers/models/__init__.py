@@ -19,4 +19,3 @@
 from .unet import UNetModel
 from .unet_glide import GLIDESuperResUNetModel, GLIDETextToImageUNetModel
 from .unet_ldm import UNetLDMModel
-from .vqvae import VQModel
