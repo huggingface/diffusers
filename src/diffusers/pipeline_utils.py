@@ -17,6 +17,7 @@
 import importlib
 import os
 from typing import Optional, Union
+
 from huggingface_hub import snapshot_download
 
 from .utils import logging, DIFFUSERS_CACHE
@@ -34,10 +35,13 @@ logger = logging.get_logger(__name__)
 LOADABLE_CLASSES = {
     "diffusers": {
         "ModelMixin": ["save_pretrained", "from_pretrained"],
+        "CLIPTextModel": ["save_pretrained", "from_pretrained"],  # TODO (Anton): move to transformers
         "GaussianDDPMScheduler": ["save_config", "from_config"],
+        "ClassifierFreeGuidanceScheduler": ["save_config", "from_config"],
+        "GlideDDIMScheduler": ["save_config", "from_config"],
     },
     "transformers": {
-        "ModelMixin": ["save_pretrained", "from_pretrained"],
+        "PreTrainedTokenizer": ["save_pretrained", "from_pretrained"],
     },
 }
 
@@ -50,6 +54,10 @@ class DiffusionPipeline(ConfigMixin):
         for name, module in kwargs.items():
             # retrive library
             library = module.__module__.split(".")[0]
+            # if library is not in LOADABLE_CLASSES, then it is a custom module
+            if library not in LOADABLE_CLASSES:
+                library = module.__module__.split(".")[-1]
+
             # retrive class_name
             class_name = module.__class__.__name__
 
@@ -61,7 +69,7 @@ class DiffusionPipeline(ConfigMixin):
             # set models
             setattr(self, name, module)
 
-        register_dict = {"_module" : self.__module__.split(".")[-1] + ".py"}
+        register_dict = {"_module": self.__module__.split(".")[-1] + ".py"}
         self.register(**register_dict)
 
     def save_pretrained(self, save_directory: Union[str, os.PathLike]):
@@ -123,26 +131,41 @@ class DiffusionPipeline(ConfigMixin):
 
         module = config_dict["_module"]
         class_name_ = config_dict["_class_name"]
+        module_candidate = config_dict["_module"]
+        module_candidate_name = module_candidate.replace(".py", "")
 
-        if class_name_ == cls.__name__:
+        # if we load from explicit class, let's use it
+        if cls != DiffusionPipeline:
             pipeline_class = cls
         else:
+            # else we need to load the correct module from the Hub
+            class_name_ = config_dict["_class_name"]
+            module = module_candidate
             pipeline_class = get_class_from_dynamic_module(cached_folder, module, class_name_, cached_folder)
 
         init_dict, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
         init_kwargs = {}
 
+        # get all importable classes to get the load method name for custom models/components
+        # here we enforce that custom models/components should always subclass from base classes in tansformers and diffusers
+        all_importable_classes = {}
+        for library in LOADABLE_CLASSES:
+            all_importable_classes.update(LOADABLE_CLASSES[library])
+
         for name, (library_name, class_name) in init_dict.items():
-            importable_classes = LOADABLE_CLASSES[library_name]
-
-            if library_name == module:
-                # TODO(Suraj)
-                pass
-
-            library = importlib.import_module(library_name)
-            class_obj = getattr(library, class_name)
-            class_candidates = {c: getattr(library, c) for c in importable_classes.keys()}
+            # if the model is not in diffusers or transformers, we need to load it from the hub
+            # assumes that it's a subclass of ModelMixin
+            if library_name == module_candidate_name:
+                class_obj = get_class_from_dynamic_module(cached_folder, module, class_name, cached_folder)
+                # since it's not from a library, we need to check class candidates for all importable classes
+                importable_classes = all_importable_classes
+                class_candidates = {c: class_obj for c in all_importable_classes}
+            else:
+                library = importlib.import_module(library_name)
+                class_obj = getattr(library, class_name)
+                importable_classes = LOADABLE_CLASSES[library_name]
+                class_candidates = {c: getattr(library, c) for c in importable_classes.keys()}
 
             load_method_name = None
             for class_name, class_candidate in class_candidates.items():

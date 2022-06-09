@@ -215,6 +215,7 @@ class ConfigMixin:
                 init_dict[key] = config_dict.pop(key)
 
         unused_kwargs = config_dict.update(kwargs)
+
         passed_keys = set(init_dict.keys())
         if len(expected_keys - passed_keys) > 0:
             logger.warn(

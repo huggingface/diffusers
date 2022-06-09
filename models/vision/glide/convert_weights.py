@@ -1,23 +1,28 @@
-import argparse
-
 import torch
 from torch import nn
 
-from transformers import CLIPTextConfig, CLIPTextModel, GPT2Tokenizer
+from diffusers import ClassifierFreeGuidanceScheduler, GlideDDIMScheduler, CLIPTextModel, GLIDETextToImageUNetModel, GLIDESuperResUNetModel
+from modeling_glide import GLIDE
+from transformers import CLIPTextConfig, GPT2Tokenizer
+
 
 # wget https://openaipublic.blob.core.windows.net/diffusion/dec-2021/base.pt
 state_dict = torch.load("base.pt", map_location="cpu")
 state_dict = {k: nn.Parameter(v) for k, v in state_dict.items()}
+
+### Convert the text encoder
+
 config = CLIPTextConfig(
+    vocab_size=50257,
+    max_position_embeddings=128,
     hidden_size=512,
     intermediate_size=2048,
     num_hidden_layers=16,
     num_attention_heads=8,
-    max_position_embeddings=128
+    use_padding_embeddings=True,
 )
 model = CLIPTextModel(config).eval()
-tokenizer = GPT2Tokenizer("./glide-base/vocab.json", "./glide-base/merges.txt", pad_token="<|endoftext|>")
-tokenizer.save_pretrained("./glide-base")
+tokenizer = GPT2Tokenizer("./glide-base/tokenizer/vocab.json", "./glide-base/tokenizer/merges.txt", pad_token="<|endoftext|>")
 
 hf_encoder = model.text_model
 
@@ -30,15 +35,8 @@ hf_encoder.final_layer_norm.bias = state_dict["final_ln.bias"]
 
 for layer_idx in range(config.num_hidden_layers):
     hf_layer = hf_encoder.encoder.layers[layer_idx]
-    q_proj, k_proj, v_proj = state_dict[f"transformer.resblocks.{layer_idx}.attn.c_qkv.weight"].chunk(3, dim=0)
-    q_proj_bias, k_proj_bias, v_proj_bias = state_dict[f"transformer.resblocks.{layer_idx}.attn.c_qkv.bias"].chunk(3, dim=0)
-
-    hf_layer.self_attn.q_proj.weight.data = q_proj
-    hf_layer.self_attn.q_proj.bias.data = q_proj_bias
-    hf_layer.self_attn.k_proj.weight.data = k_proj
-    hf_layer.self_attn.k_proj.bias.data = k_proj_bias
-    hf_layer.self_attn.v_proj.weight.data = v_proj
-    hf_layer.self_attn.v_proj.bias.data = v_proj_bias
+    hf_layer.self_attn.qkv_proj.weight = state_dict[f"transformer.resblocks.{layer_idx}.attn.c_qkv.weight"]
+    hf_layer.self_attn.qkv_proj.bias = state_dict[f"transformer.resblocks.{layer_idx}.attn.c_qkv.bias"]
 
     hf_layer.self_attn.out_proj.weight = state_dict[f"transformer.resblocks.{layer_idx}.attn.c_proj.weight"]
     hf_layer.self_attn.out_proj.bias = state_dict[f"transformer.resblocks.{layer_idx}.attn.c_proj.bias"]
@@ -53,8 +51,56 @@ for layer_idx in range(config.num_hidden_layers):
     hf_layer.mlp.fc2.weight = state_dict[f"transformer.resblocks.{layer_idx}.mlp.c_proj.weight"]
     hf_layer.mlp.fc2.bias = state_dict[f"transformer.resblocks.{layer_idx}.mlp.c_proj.bias"]
 
-inputs = tokenizer(["an oil painting of a corgi", ""], padding="max_length", max_length=128, return_tensors="pt")
-with torch.no_grad():
-    outputs = model(**inputs)
+### Convert the Text-to-Image UNet
 
-model.save_pretrained("./glide-base")
+text2im_model = GLIDETextToImageUNetModel(
+    in_channels=3,
+    model_channels=192,
+    out_channels=6,
+    num_res_blocks=3,
+    attention_resolutions=(2, 4, 8),
+    dropout=0.1,
+    channel_mult=(1, 2, 3, 4),
+    num_heads=1,
+    num_head_channels=64,
+    num_heads_upsample=1,
+    use_scale_shift_norm=True,
+    resblock_updown=True,
+    transformer_dim=512,
+)
+
+text2im_model.load_state_dict(state_dict, strict=False)
+
+text_scheduler = ClassifierFreeGuidanceScheduler(timesteps=1000, beta_schedule="squaredcos_cap_v2")
+
+### Convert the Super-Resolution UNet
+
+# wget https://openaipublic.blob.core.windows.net/diffusion/dec-2021/upsample.pt
+ups_state_dict = torch.load("upsample.pt", map_location="cpu")
+
+superres_model = GLIDESuperResUNetModel(
+    in_channels=6,
+    model_channels=192,
+    out_channels=6,
+    num_res_blocks=2,
+    attention_resolutions=(8, 16, 32),
+    dropout=0.1,
+    channel_mult=(1, 1, 2, 2, 4, 4),
+    num_heads=1,
+    num_head_channels=64,
+    num_heads_upsample=1,
+    use_scale_shift_norm=True,
+    resblock_updown=True,
+)
+
+superres_model.load_state_dict(ups_state_dict, strict=False)
+
+upscale_scheduler = GlideDDIMScheduler(timesteps=1000, beta_schedule="linear")
+
+glide = GLIDE(text_unet=text2im_model, text_noise_scheduler=text_scheduler, text_encoder=model, tokenizer=tokenizer,
+              upscale_unet=superres_model, upscale_noise_scheduler=upscale_scheduler)
+
+glide.save_pretrained("./glide-base")
+
+
+

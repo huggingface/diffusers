@@ -26,6 +26,7 @@ from diffusers import GaussianDDPMScheduler, UNetModel
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.configuration_utils import ConfigMixin
 from models.vision.ddpm.modeling_ddpm import DDPM
+from models.vision.ddim.modeling_ddim import DDIM
 
 
 global_rng = random.Random()
@@ -245,6 +246,7 @@ class SamplerTesterMixin(unittest.TestCase):
 
 
 class PipelineTesterMixin(unittest.TestCase):
+
     def test_from_pretrained_save_pretrained(self):
         # 1. Load models
         model = UNetModel(ch=32, ch_mult=(1, 2), num_res_blocks=2, attn_resolutions=(16,), resolution=32)
@@ -281,3 +283,31 @@ class PipelineTesterMixin(unittest.TestCase):
         new_image = ddpm_from_hub(generator=generator)
 
         assert (image - new_image).abs().sum() < 1e-5, "Models don't give the same forward pass"
+
+    @slow
+    def test_ddpm_cifar10(self):
+        generator = torch.manual_seed(0)
+        model_id = "fusing/ddpm-cifar10"
+
+        ddpm = DDPM.from_pretrained(model_id)
+        image = ddpm(generator=generator)
+
+        image_slice = image[0, -1, -3:, -3:].cpu()
+
+        assert image.shape == (1, 3, 32, 32)
+        expected_slice = torch.tensor([0.2250, 0.3375, 0.2360, 0.0930, 0.3440, 0.3156, 0.1937, 0.3585, 0.1761])
+        assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
+
+    @slow
+    def test_ddim_cifar10(self):
+        generator = torch.manual_seed(0)
+        model_id = "fusing/ddpm-cifar10"
+
+        ddim = DDIM.from_pretrained(model_id)
+        image = ddim(generator=generator, eta=0.0)
+
+        image_slice = image[0, -1, -3:, -3:].cpu()
+
+        assert image.shape == (1, 3, 32, 32)
+        expected_slice = torch.tensor([-0.7688, -0.7690, -0.7597, -0.7660, -0.7713, -0.7531, -0.7009, -0.7098, -0.7350])
+        assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
