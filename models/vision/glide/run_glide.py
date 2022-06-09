@@ -1,6 +1,8 @@
 import torch
-from diffusers import DiffusionPipeline
+
 import PIL.Image
+from diffusers import DiffusionPipeline
+
 
 generator = torch.Generator()
 generator = generator.manual_seed(0)
@@ -14,7 +16,7 @@ pipeline = DiffusionPipeline.from_pretrained(model_id)
 img = pipeline("a clip art of a hugging face", generator)
 
 # process image to PIL
-img = ((img + 1)*127.5).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
+img = ((img + 1) * 127.5).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
 image_pil = PIL.Image.fromarray(img)
 
 # save image

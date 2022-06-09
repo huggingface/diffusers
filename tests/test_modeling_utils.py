@@ -14,19 +14,19 @@
 # limitations under the License.
 
 
+import os
 import random
 import tempfile
 import unittest
-import os
 from distutils.util import strtobool
 
 import torch
 
 from diffusers import GaussianDDPMScheduler, UNetModel
-from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.configuration_utils import ConfigMixin
-from models.vision.ddpm.modeling_ddpm import DDPM
+from diffusers.pipeline_utils import DiffusionPipeline
 from models.vision.ddim.modeling_ddim import DDIM
+from models.vision.ddpm.modeling_ddpm import DDPM
 
 
 global_rng = random.Random()
@@ -85,7 +85,6 @@ class ConfigTester(unittest.TestCase):
             ConfigMixin.from_config("dummy_path")
 
     def test_save_load(self):
-
         class SampleObject(ConfigMixin):
             config_name = "config.json"
 
@@ -153,7 +152,6 @@ class ModelTesterMixin(unittest.TestCase):
 
 
 class SamplerTesterMixin(unittest.TestCase):
-
     @slow
     def test_sample(self):
         generator = torch.manual_seed(0)
@@ -163,15 +161,23 @@ class SamplerTesterMixin(unittest.TestCase):
         model = UNetModel.from_pretrained("fusing/ddpm-lsun-church").to(torch_device)
 
         # 2. Sample gaussian noise
-        image = scheduler.sample_noise((1, model.in_channels, model.resolution, model.resolution), device=torch_device, generator=generator)
+        image = scheduler.sample_noise(
+            (1, model.in_channels, model.resolution, model.resolution), device=torch_device, generator=generator
+        )
 
         # 3. Denoise
         for t in reversed(range(len(scheduler))):
             # i) define coefficients for time step t
             clipped_image_coeff = 1 / torch.sqrt(scheduler.get_alpha_prod(t))
             clipped_noise_coeff = torch.sqrt(1 / scheduler.get_alpha_prod(t) - 1)
-            image_coeff = (1 - scheduler.get_alpha_prod(t - 1)) * torch.sqrt(scheduler.get_alpha(t)) / (1 - scheduler.get_alpha_prod(t))
-            clipped_coeff = torch.sqrt(scheduler.get_alpha_prod(t - 1)) * scheduler.get_beta(t) / (1 - scheduler.get_alpha_prod(t))
+            image_coeff = (
+                (1 - scheduler.get_alpha_prod(t - 1))
+                * torch.sqrt(scheduler.get_alpha(t))
+                / (1 - scheduler.get_alpha_prod(t))
+            )
+            clipped_coeff = (
+                torch.sqrt(scheduler.get_alpha_prod(t - 1)) * scheduler.get_beta(t) / (1 - scheduler.get_alpha_prod(t))
+            )
 
             # ii) predict noise residual
             with torch.no_grad():
@@ -201,7 +207,9 @@ class SamplerTesterMixin(unittest.TestCase):
 
         assert image.shape == (1, 3, 256, 256)
         image_slice = image[0, -1, -3:, -3:].cpu()
-        expected_slice = torch.tensor([-0.1636, -0.1765, -0.1968, -0.1338, -0.1432, -0.1622, -0.1793, -0.2001, -0.2280])
+        expected_slice = torch.tensor(
+            [-0.1636, -0.1765, -0.1968, -0.1338, -0.1432, -0.1622, -0.1793, -0.2001, -0.2280]
+        )
         assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
 
     def test_sample_fast(self):
@@ -212,15 +220,23 @@ class SamplerTesterMixin(unittest.TestCase):
         model = UNetModel.from_pretrained("fusing/ddpm-lsun-church").to(torch_device)
 
         # 2. Sample gaussian noise
-        image = scheduler.sample_noise((1, model.in_channels, model.resolution, model.resolution), device=torch_device, generator=generator)
+        image = scheduler.sample_noise(
+            (1, model.in_channels, model.resolution, model.resolution), device=torch_device, generator=generator
+        )
 
         # 3. Denoise
         for t in reversed(range(len(scheduler))):
             # i) define coefficients for time step t
             clipped_image_coeff = 1 / torch.sqrt(scheduler.get_alpha_prod(t))
             clipped_noise_coeff = torch.sqrt(1 / scheduler.get_alpha_prod(t) - 1)
-            image_coeff = (1 - scheduler.get_alpha_prod(t - 1)) * torch.sqrt(scheduler.get_alpha(t)) / (1 - scheduler.get_alpha_prod(t))
-            clipped_coeff = torch.sqrt(scheduler.get_alpha_prod(t - 1)) * scheduler.get_beta(t) / (1 - scheduler.get_alpha_prod(t))
+            image_coeff = (
+                (1 - scheduler.get_alpha_prod(t - 1))
+                * torch.sqrt(scheduler.get_alpha(t))
+                / (1 - scheduler.get_alpha_prod(t))
+            )
+            clipped_coeff = (
+                torch.sqrt(scheduler.get_alpha_prod(t - 1)) * scheduler.get_beta(t) / (1 - scheduler.get_alpha_prod(t))
+            )
 
             # ii) predict noise residual
             with torch.no_grad():
@@ -246,7 +262,6 @@ class SamplerTesterMixin(unittest.TestCase):
 
 
 class PipelineTesterMixin(unittest.TestCase):
-
     def test_from_pretrained_save_pretrained(self):
         # 1. Load models
         model = UNetModel(ch=32, ch_mult=(1, 2), num_res_blocks=2, attn_resolutions=(16,), resolution=32)
@@ -309,5 +324,7 @@ class PipelineTesterMixin(unittest.TestCase):
         image_slice = image[0, -1, -3:, -3:].cpu()
 
         assert image.shape == (1, 3, 32, 32)
-        expected_slice = torch.tensor([-0.7383, -0.7385, -0.7298, -0.7364, -0.7414, -0.7239, -0.6737, -0.6813, -0.7068])
+        expected_slice = torch.tensor(
+            [-0.7383, -0.7385, -0.7298, -0.7364, -0.7414, -0.7239, -0.6737, -0.6813, -0.7068]
+        )
         assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2

@@ -11,12 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import torch
 import numpy as np
+import torch
 from torch import nn
 
 from ..configuration_utils import ConfigMixin
-from .schedulers_utils import linear_beta_schedule, betas_for_alpha_bar
+from .schedulers_utils import betas_for_alpha_bar, linear_beta_schedule
 
 
 SAMPLING_CONFIG_NAME = "scheduler_config.json"
@@ -26,12 +26,7 @@ class GlideDDIMScheduler(nn.Module, ConfigMixin):
 
     config_name = SAMPLING_CONFIG_NAME
 
-    def __init__(
-        self,
-        timesteps=1000,
-        beta_schedule="linear",
-        variance_type="fixed_large"
-    ):
+    def __init__(self, timesteps=1000, beta_schedule="linear", variance_type="fixed_large"):
         super().__init__()
         self.register(
             timesteps=timesteps,

@@ -1,7 +1,13 @@
 import torch
 from torch import nn
 
-from diffusers import ClassifierFreeGuidanceScheduler, GlideDDIMScheduler, CLIPTextModel, GLIDETextToImageUNetModel, GLIDESuperResUNetModel
+from diffusers import (
+    ClassifierFreeGuidanceScheduler,
+    CLIPTextModel,
+    GlideDDIMScheduler,
+    GLIDESuperResUNetModel,
+    GLIDETextToImageUNetModel,
+)
 from modeling_glide import GLIDE
 from transformers import CLIPTextConfig, GPT2Tokenizer
 
@@ -22,7 +28,9 @@ config = CLIPTextConfig(
     use_padding_embeddings=True,
 )
 model = CLIPTextModel(config).eval()
-tokenizer = GPT2Tokenizer("./glide-base/tokenizer/vocab.json", "./glide-base/tokenizer/merges.txt", pad_token="<|endoftext|>")
+tokenizer = GPT2Tokenizer(
+    "./glide-base/tokenizer/vocab.json", "./glide-base/tokenizer/merges.txt", pad_token="<|endoftext|>"
+)
 
 hf_encoder = model.text_model
 
@@ -97,10 +105,13 @@ superres_model.load_state_dict(ups_state_dict, strict=False)
 
 upscale_scheduler = GlideDDIMScheduler(timesteps=1000, beta_schedule="linear")
 
-glide = GLIDE(text_unet=text2im_model, text_noise_scheduler=text_scheduler, text_encoder=model, tokenizer=tokenizer,
-              upscale_unet=superres_model, upscale_noise_scheduler=upscale_scheduler)
+glide = GLIDE(
+    text_unet=text2im_model,
+    text_noise_scheduler=text_scheduler,
+    text_encoder=model,
+    tokenizer=tokenizer,
+    upscale_unet=superres_model,
+    upscale_noise_scheduler=upscale_scheduler,
+)
 
 glide.save_pretrained("./glide-base")
-
-
-

@@ -18,6 +18,6 @@
 
 from .clip_text_transformer import CLIPTextModel
 from .unet import UNetModel
-from .unet_glide import GLIDETextToImageUNetModel, GLIDESuperResUNetModel
+from .unet_glide import GLIDESuperResUNetModel, GLIDETextToImageUNetModel
 from .unet_ldm import UNetLDMModel
 from .vqvae import VQModel
