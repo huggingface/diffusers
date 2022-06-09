@@ -1,8 +1,8 @@
 import torch
 from torch import nn
 
-from diffusers import ClassifierFreeGuidanceScheduler, GlideDDIMScheduler, CLIPTextModel, GLIDETextToImageUNetModel, GLIDESuperResUNetModel
-from modeling_glide import GLIDE
+from diffusers import ClassifierFreeGuidanceScheduler, GlideDDIMScheduler, GLIDETextToImageUNetModel, GLIDESuperResUNetModel
+from modeling_glide import GLIDE, CLIPTextModel
 from transformers import CLIPTextConfig, GPT2Tokenizer
 
 
