@@ -45,7 +45,7 @@ class DDPM(DiffusionPipeline):
                 residual = self.unet(image, t)
 
             # 2. predict previous mean of image x_t-1
-            pred_prev_image = self.noise_scheduler.get_prev_image_step(residual, image, t)
+            pred_prev_image = self.noise_scheduler.compute_prev_image_step(residual, image, t)
 
             # 3. optionally sample variance
             variance = 0

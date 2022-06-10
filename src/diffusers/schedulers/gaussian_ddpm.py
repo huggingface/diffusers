@@ -108,7 +108,7 @@ class GaussianDDPMScheduler(nn.Module, ConfigMixin):
 
         return variance
 
-    def get_prev_image_step(self, residual, image, t, output_pred_x_0=False):
+    def compute_prev_image_step(self, residual, image, t, output_pred_x_0=False):
         # 1. compute alphas, betas
         alpha_prod_t = self.get_alpha_prod(t)
         alpha_prod_t_prev = self.get_alpha_prod(t - 1)

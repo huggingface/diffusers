@@ -58,7 +58,7 @@ class DDIM(DiffusionPipeline):
                 residual = self.unet(image, inference_step_times[t])
 
             # 2. predict previous mean of image x_t-1
-            pred_prev_image = self.noise_scheduler.get_prev_image_step(residual, image, t, num_inference_steps, eta)
+            pred_prev_image = self.noise_scheduler.compute_prev_image_step(residual, image, t, num_inference_steps, eta)
 
             # 3. optionally sample variance
             variance = 0
