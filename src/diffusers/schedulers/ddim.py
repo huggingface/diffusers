@@ -87,9 +87,14 @@ class DDIMScheduler(nn.Module, ConfigMixin):
             return torch.tensor(1.0)
         return self.alphas_cumprod[time_step]
 
+    def get_orig_t(self, t, num_inference_steps):
+        if t < 0:
+            return -1
+        return self.num_timesteps // num_inference_steps * t
+
     def get_variance(self, t, num_inference_steps):
-        orig_t = (self.num_timesteps // num_inference_steps) * t
-        orig_prev_t = (self.num_timesteps // num_inference_steps) * (t - 1) if t > 0 else -1
+        orig_t = self.get_orig_t(t, num_inference_steps)
+        orig_prev_t = self.get_orig_t(t - 1, num_inference_steps)
 
         alpha_prod_t = self.get_alpha_prod(orig_t)
         alpha_prod_t_prev = self.get_alpha_prod(orig_prev_t)
@@ -113,10 +118,8 @@ class DDIMScheduler(nn.Module, ConfigMixin):
         # - pred_prev_image -> "x_t-1"
 
         # 1. get actual t and t-1
-        orig_t = (self.num_timesteps // num_inference_steps) * t
-        orig_prev_t = (self.num_timesteps // num_inference_steps) * (t - 1) if t > 0 else -1
-#        train_step = inference_step_times[t]
-#        prev_train_step = inference_step_times[t - 1] if t > 0 else -1
+        orig_t = self.get_orig_t(t, num_inference_steps)
+        orig_prev_t = self.get_orig_t(t - 1, num_inference_steps)
 
         # 2. compute alphas, betas
         alpha_prod_t = self.get_alpha_prod(orig_t)
