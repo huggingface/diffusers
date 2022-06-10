@@ -37,6 +37,7 @@ LOADABLE_CLASSES = {
         "GaussianDDPMScheduler": ["save_config", "from_config"],
         "ClassifierFreeGuidanceScheduler": ["save_config", "from_config"],
         "GlideDDIMScheduler": ["save_config", "from_config"],
+        "DDIMScheduler": ["save_config", "from_config"],
     },
     "transformers": {
         "PreTrainedTokenizer": ["save_pretrained", "from_pretrained"],
