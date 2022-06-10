@@ -22,7 +22,7 @@ from distutils.util import strtobool
 
 import torch
 
-from diffusers import GaussianDDPMScheduler, UNetModel
+from diffusers import GaussianDDPMScheduler, UNetModel, DDIMScheduler
 from diffusers.configuration_utils import ConfigMixin
 from diffusers.pipeline_utils import DiffusionPipeline
 from models.vision.ddim.modeling_ddim import DDIM
@@ -304,7 +304,10 @@ class PipelineTesterMixin(unittest.TestCase):
         generator = torch.manual_seed(0)
         model_id = "fusing/ddpm-cifar10"
 
-        ddpm = DDPM.from_pretrained(model_id)
+        unet = UNetModel.from_pretrained(model_id)
+        noise_scheduler = GaussianDDPMScheduler.from_config(model_id)
+
+        ddpm = DDPM(unet=unet, noise_scheduler=noise_scheduler)
         image = ddpm(generator=generator)
 
         image_slice = image[0, -1, -3:, -3:].cpu()
@@ -318,7 +321,10 @@ class PipelineTesterMixin(unittest.TestCase):
         generator = torch.manual_seed(0)
         model_id = "fusing/ddpm-cifar10"
 
-        ddim = DDIM.from_pretrained(model_id)
+        unet = UNetModel.from_pretrained(model_id)
+        noise_scheduler = DDIMScheduler()
+
+        ddim = DDIM(unet=unet, noise_scheduler=noise_scheduler)
         image = ddim(generator=generator, eta=0.0)
 
         image_slice = image[0, -1, -3:, -3:].cpu()

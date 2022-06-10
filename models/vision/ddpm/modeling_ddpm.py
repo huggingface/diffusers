@@ -38,50 +38,23 @@ class DDPM(DiffusionPipeline):
             generator=generator,
         )
 
-        for t in tqdm.tqdm(reversed(range(len(self.noise_scheduler))), total=len(self.noise_scheduler)):
+        num_prediction_steps = len(self.noise_scheduler)
+
+        for t in tqdm.tqdm(reversed(range(num_prediction_steps)), total=num_prediction_steps):
             # 1. predict noise residual
             with torch.no_grad():
-                pred_noise_t = self.unet(image, t)
+                residual = self.unet(image, t)
 
-            # 2. compute alphas, betas
-            alpha_prod_t = self.noise_scheduler.get_alpha_prod(t)
-            alpha_prod_t_prev = self.noise_scheduler.get_alpha_prod(t - 1)
-            beta_prod_t = 1 - alpha_prod_t
-            beta_prod_t_prev = 1 - alpha_prod_t_prev
+            # 2. predict previous mean of image x_t-1
+            pred_prev_image = self.noise_scheduler.predict_prev_image_step(residual, image, t)
 
-            # 3. compute predicted image from residual
-            # First: compute predicted original image from predicted noise also called
-            # "predicted x_0" of formula (15) from https://arxiv.org/pdf/2006.11239.pdf
-            pred_original_image = (image - beta_prod_t.sqrt() * pred_noise_t) / alpha_prod_t.sqrt()
-
-            # Second: Clip "predicted x_0"
-            pred_original_image = torch.clamp(pred_original_image, -1, 1)
-
-            # Third: Compute coefficients for pred_original_image x_0 and current image x_t
-            # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
-            pred_original_image_coeff = (alpha_prod_t_prev.sqrt() * self.noise_scheduler.get_beta(t)) / beta_prod_t
-            current_image_coeff = self.noise_scheduler.get_alpha(t).sqrt() * beta_prod_t_prev / beta_prod_t
-            # Fourth: Compute predicted previous image µ_t
-            # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
-            pred_prev_image = pred_original_image_coeff * pred_original_image + current_image_coeff * image
-
-            # 5. For t > 0, compute predicted variance βt (see formala (6) and (7) from https://arxiv.org/pdf/2006.11239.pdf)
-            # and sample from it to get previous image
-            # x_{t-1} ~ N(pred_prev_image, variance) == add variane to pred_image
+            # 3. optionally sample variance
+            variance = 0
             if t > 0:
-                variance = (1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * self.noise_scheduler.get_beta(t).sqrt()
-                # TODO(PVP):
-                # This variance seems to be good enough for inference - check if those `fix_small`, `fix_large`
-                # are really only needed for training or also for inference
-                # Also note LDM only uses "fixed_small";
-                # glide seems to use a weird mix of the two: https://github.com/openai/glide-text2im/blob/69b530740eb6cef69442d6180579ef5ba9ef063e/glide_text2im/gaussian_diffusion.py#L246
                 noise = self.noise_scheduler.sample_noise(image.shape, device=image.device, generator=generator)
-                sampled_variance = variance * noise
-                prev_image = pred_prev_image + sampled_variance
-            else:
-                prev_image = pred_prev_image
+                variance = self.noise_scheduler.get_variance(t) * noise
 
-            # 6. Set current image to prev_image: x_t -> x_t-1
-            image = prev_image
+            # 4. set current image to prev_image: x_t -> x_t-1
+            image = pred_prev_image + variance
 
         return image
