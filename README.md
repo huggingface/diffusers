@@ -48,7 +48,7 @@ noise_scheduler = GaussianDDPMScheduler.from_config("fusing/ddpm-lsun-church")
 unet = UNetModel.from_pretrained("fusing/ddpm-lsun-church").to(torch_device)
 
 # 2. Sample gaussian noise
-image = noise_scheduler.sample_noise((1, model.in_channels, model.resolution, model.resolution), device=torch_device, generator=generator)
+image = noise_scheduler.sample_noise((1, unet.in_channels, unet.resolution, unet.resolution), device=torch_device, generator=generator)
 
 # 3. Denoise                                                                                                                                           
 num_prediction_steps = len(noise_scheduler)
