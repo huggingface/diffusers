@@ -100,7 +100,7 @@ class DDIMScheduler(nn.Module, ConfigMixin):
 
         return variance
 
-    def predict_prev_image_step(self, residual, image, t, num_inference_steps, eta, output_pred_x_0=False):
+    def get_prev_image_step(self, residual, image, t, num_inference_steps, eta, output_pred_x_0=False):
         # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
         # Ideally, read DDIM paper in-detail understanding
 

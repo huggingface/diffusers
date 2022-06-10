@@ -47,6 +47,7 @@ class GaussianDDPMScheduler(nn.Module, ConfigMixin):
         )
         self.num_timesteps = int(timesteps)
         self.clip_image = clip_predicted_image
+        self.variance_type = variance_type
 
         if beta_schedule == "linear":
             betas = linear_beta_schedule(timesteps, beta_start=beta_start, beta_end=beta_end)
@@ -97,11 +98,17 @@ class GaussianDDPMScheduler(nn.Module, ConfigMixin):
         # For t > 0, compute predicted variance βt (see formala (6) and (7) from https://arxiv.org/pdf/2006.11239.pdf)
         # and sample from it to get previous image
         # x_{t-1} ~ N(pred_prev_image, variance) == add variane to pred_image
-        variance = (1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * self.get_beta(t).sqrt()
+        variance = ((1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * self.get_beta(t))
+
+        # hacks - were probs added for training stability
+        if self.variance_type == "fixed_small":
+            variance = variance.clamp(min=1e-20)
+        elif self.variance_type == "fixed_large":
+            variance = self.get_beta(t)
 
         return variance
 
-    def predict_prev_image_step(self, residual, image, t, output_pred_x_0=False):
+    def get_prev_image_step(self, residual, image, t, output_pred_x_0=False):
         # 1. compute alphas, betas
         alpha_prod_t = self.get_alpha_prod(t)
         alpha_prod_t_prev = self.get_alpha_prod(t - 1)
