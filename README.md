@@ -156,6 +156,28 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 image_pil.save("test.png")
 ```
 
+**Text to Image generation with Latent Diffusion**
+
+```python
+from diffusers import DiffusionPipeline
+
+ldm = DiffusionPipeline.from_pretrained("fusing/latent-diffusion-text2im-large")
+
+generator = torch.Generator()
+generator = generator.manual_seed(6694729458485568)
+
+prompt = "A painting of a squirrel eating a burger"
+image = ldm([prompt], generator=generator, eta=0.3, guidance_scale=6.0, num_inference_steps=50)
+
+image_processed = image.cpu().permute(0, 2, 3, 1)
+image_processed = image_processed  * 255.
+image_processed = image_processed.numpy().astype(np.uint8)
+image_pil = PIL.Image.fromarray(image_processed[0])
+
+# save image
+image_pil.save("test.png")
+```
+
 ## Library structure:
 
 ```
