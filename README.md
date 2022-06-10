@@ -23,7 +23,7 @@
 ```
 git clone https://github.com/huggingface/diffusers.git
 cd diffusers && pip install -e .
-``
+```
 
 ### 1. `diffusers` as a central modular diffusion and sampler library
 
@@ -55,7 +55,7 @@ num_prediction_steps = len(noise_scheduler)
 for t in tqdm.tqdm(reversed(range(num_prediction_steps)), total=num_prediction_steps):
 		# predict noise residual
 		with torch.no_grad():
-				residual = self.unet(image, t)
+				residual = unet(image, t)
 
 		# predict previous mean of image x_t-1
 		pred_prev_image = noise_scheduler.compute_prev_image_step(residual, image, t)
@@ -105,7 +105,7 @@ eta = 0.0  # <- deterministic sampling
 for t in tqdm.tqdm(reversed(range(num_inference_steps)), total=num_inference_steps):
 		# 1. predict noise residual
 		with torch.no_grad():
-				residual = self.unet(image, inference_step_times[t])
+				residual = unet(image, inference_step_times[t])
 
 		# 2. predict previous mean of image x_t-1
 		pred_prev_image = noise_scheduler.compute_prev_image_step(residual, image, t, num_inference_steps, eta)
