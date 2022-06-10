@@ -20,6 +20,11 @@
 
 ## Quickstart
 
+```
+git clone https://github.com/huggingface/diffusers.git
+cd diffusers && pip install -e .
+``
+
 ### 1. `diffusers` as a central modular diffusion and sampler library
 
 `diffusers` is more modularized than `transformers`. The idea is that researchers and engineers can use only parts of the library easily for the own use cases.
@@ -33,6 +38,7 @@ import torch
 from diffusers import UNetModel, GaussianDDPMScheduler
 import PIL
 import numpy as np
+import tqdm
 
 generator = torch.manual_seed(0)
 torch_device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -80,6 +86,7 @@ import torch
 from diffusers import UNetModel, DDIMScheduler
 import PIL
 import numpy as np
+import tqdm
 
 generator = torch.manual_seed(0)
 torch_device = "cuda" if torch.cuda.is_available() else "cpu"
