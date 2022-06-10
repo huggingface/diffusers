@@ -27,7 +27,7 @@ from diffusers.configuration_utils import ConfigMixin
 from diffusers.pipeline_utils import DiffusionPipeline
 from models.vision.ddim.modeling_ddim import DDIM
 from models.vision.ddpm.modeling_ddpm import DDPM
-
+from models.vision.latent_diffusion.modeling_latent_diffusion import LatentDiffusion
 
 global_rng = random.Random()
 torch_device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -333,4 +333,20 @@ class PipelineTesterMixin(unittest.TestCase):
         expected_slice = torch.tensor(
             [-0.7383, -0.7385, -0.7298, -0.7364, -0.7414, -0.7239, -0.6737, -0.6813, -0.7068]
         )
+        assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
+
+    @slow
+    def test_ldm_text2img(self):
+        model_id = "fusing/latent-diffusion-text2im-large"
+        ldm = LatentDiffusion.from_pretrained(model_id)
+
+        prompt = "A painting of a squirrel eating a burger"
+        generator = torch.manual_seed(0)
+        image = ldm([prompt], generator=generator, num_inference_steps=20)
+
+        image_slice = image[0, -1, -3:, -3:].cpu()
+        print(image_slice.shape)
+
+        assert image.shape == (1, 3, 256, 256)
+        expected_slice = torch.tensor([0.7295, 0.7358, 0.7256, 0.7435, 0.7095, 0.6884, 0.7325, 0.6921, 0.6458])
         assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
