@@ -31,7 +31,7 @@ cd diffusers && pip install -e .
 It could become a central place for all kinds of models, schedulers, training utils and processors that one can mix and match for one's own use case.
 Both models and schedulers should be load- and saveable from the Hub.
 
-**Example for [DDPM](https://arxiv.org/abs/2006.11239):**
+#### **Example for [DDPM](https://arxiv.org/abs/2006.11239):**
 
 ```python
 import torch
@@ -79,7 +79,7 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 image_pil.save("test.png")
 ```
 
-**Example for [DDIM](https://arxiv.org/abs/2010.02502):**
+#### **Example for [DDIM](https://arxiv.org/abs/2010.02502):**
 
 ```python
 import torch
@@ -133,7 +133,7 @@ image_pil.save("test.png")
 ### 2. `diffusers` as a collection of most important Diffusion systems (GLIDE, Dalle, ...)
 `models` directory in repository hosts the complete code necessary for running a diffusion system as well as to train it. A `DiffusionPipeline` class allows to easily run the diffusion model in inference:
 
-**Example image generation with DDPM**
+#### **Example image generation with DDPM**
 
 ```python
 from diffusers import DiffusionPipeline
