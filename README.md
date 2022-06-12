@@ -31,7 +31,7 @@ cd diffusers && pip install -e .
 It could become a central place for all kinds of models, schedulers, training utils and processors that one can mix and match for one's own use case.
 Both models and schedulers should be load- and saveable from the Hub.
 
-**Example for [DDPM](https://arxiv.org/abs/2006.11239):**
+#### **Example for [DDPM](https://arxiv.org/abs/2006.11239):**
 
 ```python
 import torch
@@ -45,29 +45,29 @@ torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # 1. Load models
 noise_scheduler = GaussianDDPMScheduler.from_config("fusing/ddpm-lsun-church")
-model = UNetModel.from_pretrained("fusing/ddpm-lsun-church").to(torch_device)
+unet = UNetModel.from_pretrained("fusing/ddpm-lsun-church").to(torch_device)
 
 # 2. Sample gaussian noise
-image = noise_scheduler.sample_noise((1, model.in_channels, model.resolution, model.resolution), device=torch_device, generator=generator)
+image = noise_scheduler.sample_noise((1, unet.in_channels, unet.resolution, unet.resolution), device=torch_device, generator=generator)
 
 # 3. Denoise                                                                                                                                           
 num_prediction_steps = len(noise_scheduler)
 for t in tqdm.tqdm(reversed(range(num_prediction_steps)), total=num_prediction_steps):
-		# predict noise residual
-		with torch.no_grad():
-				residual = unet(image, t)
+	# predict noise residual
+	with torch.no_grad():
+		residual = unet(image, t)
 
-		# predict previous mean of image x_t-1
-		pred_prev_image = noise_scheduler.compute_prev_image_step(residual, image, t)
+	# predict previous mean of image x_t-1
+	pred_prev_image = noise_scheduler.step(residual, image, t)
 
-		# optionally sample variance
-		variance = 0
-		if t > 0:
-				noise = noise_scheduler.sample_noise(image.shape, device=image.device, generator=generator)
-				variance = noise_scheduler.get_variance(t).sqrt() * noise
+	# optionally sample variance
+	variance = 0
+	if t > 0:
+		noise = noise_scheduler.sample_noise(image.shape, device=image.device, generator=generator)
+		variance = noise_scheduler.get_variance(t).sqrt() * noise
 
-		# set current image to prev_image: x_t -> x_t-1
-		image = pred_prev_image + variance
+	# set current image to prev_image: x_t -> x_t-1
+	image = pred_prev_image + variance
 
 # 5. process image to PIL
 image_processed = image.cpu().permute(0, 2, 3, 1)
@@ -79,7 +79,7 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 image_pil.save("test.png")
 ```
 
-**Example for [DDIM](https://arxiv.org/abs/2010.02502):**
+#### **Example for [DDIM](https://arxiv.org/abs/2010.02502):**
 
 ```python
 import torch
@@ -93,31 +93,32 @@ torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # 1. Load models
 noise_scheduler = DDIMScheduler.from_config("fusing/ddpm-celeba-hq")
-model = UNetModel.from_pretrained("fusing/ddpm-celeba-hq").to(torch_device)
+unet = UNetModel.from_pretrained("fusing/ddpm-celeba-hq").to(torch_device)
 
 # 2. Sample gaussian noise
-image = noise_scheduler.sample_noise((1, model.in_channels, model.resolution, model.resolution), device=torch_device, generator=generator)
+image = noise_scheduler.sample_noise((1, unet.in_channels, unet.resolution, unet.resolution), device=torch_device, generator=generator)
 
 # 3. Denoise                                                                                                                                           
 num_inference_steps = 50
 eta = 0.0  # <- deterministic sampling
 
 for t in tqdm.tqdm(reversed(range(num_inference_steps)), total=num_inference_steps):
-		# 1. predict noise residual
-		with torch.no_grad():
-				residual = unet(image, inference_step_times[t])
+	# 1. predict noise residual
+	orig_t = noise_scheduler.get_orig_t(t, num_inference_steps)
+	with torch.no_grad():
+	    residual = unet(image, orig_t)
 
-		# 2. predict previous mean of image x_t-1
-		pred_prev_image = noise_scheduler.compute_prev_image_step(residual, image, t, num_inference_steps, eta)
+	# 2. predict previous mean of image x_t-1
+	pred_prev_image = noise_scheduler.step(residual, image, t, num_inference_steps, eta)
 
-		# 3. optionally sample variance
-		variance = 0
-		if eta > 0:
-				noise = noise_scheduler.sample_noise(image.shape, device=image.device, generator=generator)
-				variance = noise_scheduler.get_variance(t).sqrt() * eta * noise
+	# 3. optionally sample variance
+	variance = 0
+	if eta > 0:
+		noise = noise_scheduler.sample_noise(image.shape, device=image.device, generator=generator)
+		variance = noise_scheduler.get_variance(t).sqrt() * eta * noise
 
-		# 4. set current image to prev_image: x_t -> x_t-1
-		image = pred_prev_image + variance
+	# 4. set current image to prev_image: x_t -> x_t-1
+	image = pred_prev_image + variance
 
 # 5. process image to PIL
 image_processed = image.cpu().permute(0, 2, 3, 1)
@@ -132,7 +133,7 @@ image_pil.save("test.png")
 ### 2. `diffusers` as a collection of most important Diffusion systems (GLIDE, Dalle, ...)
 `models` directory in repository hosts the complete code necessary for running a diffusion system as well as to train it. A `DiffusionPipeline` class allows to easily run the diffusion model in inference:
 
-**Example image generation with DDPM**
+#### **Example image generation with DDPM**
 
 ```python
 from diffusers import DiffusionPipeline
@@ -148,6 +149,28 @@ image = ddpm()
 # process image to PIL
 image_processed = image.cpu().permute(0, 2, 3, 1)
 image_processed = (image_processed + 1.0) * 127.5
+image_processed = image_processed.numpy().astype(np.uint8)
+image_pil = PIL.Image.fromarray(image_processed[0])
+
+# save image
+image_pil.save("test.png")
+```
+
+**Text to Image generation with Latent Diffusion**
+
+```python
+from diffusers import DiffusionPipeline
+
+ldm = DiffusionPipeline.from_pretrained("fusing/latent-diffusion-text2im-large")
+
+generator = torch.Generator()
+generator = generator.manual_seed(6694729458485568)
+
+prompt = "A painting of a squirrel eating a burger"
+image = ldm([prompt], generator=generator, eta=0.3, guidance_scale=6.0, num_inference_steps=50)
+
+image_processed = image.cpu().permute(0, 2, 3, 1)
+image_processed = image_processed  * 255.
 image_processed = image_processed.numpy().astype(np.uint8)
 image_pil = PIL.Image.fromarray(image_processed[0])
 

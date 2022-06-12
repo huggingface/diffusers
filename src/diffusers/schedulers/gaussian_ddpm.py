@@ -24,7 +24,6 @@ SAMPLING_CONFIG_NAME = "scheduler_config.json"
 
 
 class GaussianDDPMScheduler(nn.Module, ConfigMixin):
-
     config_name = SAMPLING_CONFIG_NAME
 
     def __init__(
@@ -108,7 +107,7 @@ class GaussianDDPMScheduler(nn.Module, ConfigMixin):
 
         return variance
 
-    def compute_prev_image_step(self, residual, image, t, output_pred_x_0=False):
+    def step(self, residual, image, t, output_pred_x_0=False):
         # 1. compute alphas, betas
         alpha_prod_t = self.get_alpha_prod(t)
         alpha_prod_t_prev = self.get_alpha_prod(t - 1)
