@@ -44,7 +44,7 @@ class GaussianDDPMScheduler(nn.Module, ConfigMixin):
             variance_type=variance_type,
             clip_predicted_image=clip_predicted_image,
         )
-        self.num_timesteps = int(timesteps)
+        self.timesteps = int(timesteps)
         self.clip_image = clip_predicted_image
         self.variance_type = variance_type
 
@@ -107,7 +107,7 @@ class GaussianDDPMScheduler(nn.Module, ConfigMixin):
 
         return variance
 
-    def step(self, residual, image, t, output_pred_x_0=False):
+    def step(self, residual, image, t):
         # 1. compute alphas, betas
         alpha_prod_t = self.get_alpha_prod(t)
         alpha_prod_t_prev = self.get_alpha_prod(t - 1)
@@ -138,4 +138,4 @@ class GaussianDDPMScheduler(nn.Module, ConfigMixin):
         return torch.randn(shape, generator=generator).to(device)
 
     def __len__(self):
-        return self.num_timesteps
+        return self.timesteps

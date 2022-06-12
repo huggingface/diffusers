@@ -17,7 +17,7 @@
 import torch
 
 import tqdm
-from .. import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline
 
 
 class DDIM(DiffusionPipeline):
@@ -30,7 +30,7 @@ class DDIM(DiffusionPipeline):
         if torch_device is None:
             torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        num_trained_timesteps = self.noise_scheduler.num_timesteps
+        num_trained_timesteps = self.noise_scheduler.timesteps
         inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps)
 
         self.unet.to(torch_device)
@@ -64,7 +64,7 @@ class DDIM(DiffusionPipeline):
             variance = 0
             if eta > 0:
                 noise = self.noise_scheduler.sample_noise(image.shape, device=image.device, generator=generator)
-                variance = self.noise_scheduler.get_variance(t).sqrt() * eta * noise
+                variance = self.noise_scheduler.get_variance(t, num_inference_steps).sqrt() * eta * noise
 
             # 4. set current image to prev_image: x_t -> x_t-1
             image = pred_prev_image + variance

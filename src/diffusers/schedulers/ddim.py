@@ -42,7 +42,7 @@ class DDIMScheduler(nn.Module, ConfigMixin):
             beta_end=beta_end,
             beta_schedule=beta_schedule,
         )
-        self.num_timesteps = int(timesteps)
+        self.timesteps = int(timesteps)
         self.clip_image = clip_predicted_image
 
         if beta_schedule == "linear":
@@ -90,7 +90,7 @@ class DDIMScheduler(nn.Module, ConfigMixin):
     def get_orig_t(self, t, num_inference_steps):
         if t < 0:
             return -1
-        return self.num_timesteps // num_inference_steps * t
+        return self.timesteps // num_inference_steps * t
 
     def get_variance(self, t, num_inference_steps):
         orig_t = self.get_orig_t(t, num_inference_steps)
@@ -105,7 +105,7 @@ class DDIMScheduler(nn.Module, ConfigMixin):
 
         return variance
 
-    def step(self, residual, image, t, num_inference_steps, eta, output_pred_x_0=False):
+    def step(self, residual, image, t, num_inference_steps, eta):
         # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
         # Ideally, read DDIM paper in-detail understanding
 
@@ -152,4 +152,4 @@ class DDIMScheduler(nn.Module, ConfigMixin):
         return torch.randn(shape, generator=generator).to(device)
 
     def __len__(self):
-        return self.num_timesteps
+        return self.timesteps

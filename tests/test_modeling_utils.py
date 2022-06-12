@@ -75,16 +75,18 @@ class ModelTesterMixin(unittest.TestCase):
         sizes = (32, 32)
 
         noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor([10])
+        time_step = torch.tensor([10]).to(torch_device)
 
         return (noise, time_step)
 
     def test_from_pretrained_save_pretrained(self):
         model = UNetModel(ch=32, ch_mult=(1, 2), num_res_blocks=2, attn_resolutions=(16,), resolution=32)
+        model.to(torch_device)
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_pretrained(tmpdirname)
             new_model = UNetModel.from_pretrained(tmpdirname)
+            new_model.to(torch_device)
 
         dummy_input = self.dummy_input
 
@@ -95,6 +97,7 @@ class ModelTesterMixin(unittest.TestCase):
 
     def test_from_pretrained_hub(self):
         model = UNetModel.from_pretrained("fusing/ddpm_dummy")
+        model.to(torch_device)
 
         image = model(*self.dummy_input)
 

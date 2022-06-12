@@ -32,12 +32,12 @@ class GlideDDIMScheduler(nn.Module, ConfigMixin):
             timesteps=timesteps,
             beta_schedule=beta_schedule,
         )
-        self.num_timesteps = int(timesteps)
+        self.timesteps = int(timesteps)
 
         if beta_schedule == "linear":
             # Linear schedule from Ho et al, extended to work for any number of
             # diffusion steps.
-            scale = 1000 / self.num_timesteps
+            scale = 1000 / self.timesteps
             beta_start = scale * 0.0001
             beta_end = scale * 0.02
             betas = linear_beta_schedule(timesteps, beta_start=beta_start, beta_end=beta_end)
@@ -88,4 +88,4 @@ class GlideDDIMScheduler(nn.Module, ConfigMixin):
         return torch.randn(shape, generator=generator).to(device)
 
     def __len__(self):
-        return self.num_timesteps
+        return self.timesteps
