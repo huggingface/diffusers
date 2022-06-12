@@ -105,9 +105,18 @@ class SchedulerCommonTest(unittest.TestCase):
         return model
 
     def test_from_pretrained_save_pretrained(self):
+        image = self.dummy_image
+
+        residual = 0.1 * image
+
         scheduler_config = self.get_scheduler_config()
         scheduler = self.scheduler_class(scheduler_config())
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             scheduler.save_pretrained(tmpdirname)
             new_scheduler = self.scheduler_class.from_config(tmpdirname)
+
+        output = scheduler(residual, image, 1)
+        new_output = new_scheduler(residual, image, 1)
+
+        import ipdb; ipdb.set_trace()
