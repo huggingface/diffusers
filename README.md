@@ -49,8 +49,8 @@ unet = UNetModel.from_pretrained("fusing/ddpm-lsun-church").to(torch_device)
 
 # 2. Sample gaussian noise
 image = torch.randn(
-		(1, unet.in_channels, unet.resolution, unet.resolution)
-		generator=generator,
+	(1, unet.in_channels, unet.resolution, unet.resolution),
+	generator=generator,
 )
 image = image.to(torch_device)
 
@@ -101,8 +101,8 @@ unet = UNetModel.from_pretrained("fusing/ddpm-celeba-hq").to(torch_device)
 
 # 2. Sample gaussian noise
 image = torch.randn(
-		(1, unet.in_channels, unet.resolution, unet.resolution)
-		generator=generator,
+	(1, unet.in_channels, unet.resolution, unet.resolution),
+	generator=generator,
 )
 image = image.to(torch_device)
 
