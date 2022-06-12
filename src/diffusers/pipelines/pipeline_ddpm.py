@@ -17,7 +17,7 @@
 import torch
 
 import tqdm
-from .. import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline
 
 
 class DDPM(DiffusionPipeline):

@@ -6,7 +6,9 @@ import tqdm
 import torch
 import torch.nn as nn
 
-from .. import DiffusionPipeline, ConfigMixin, ModelMixin
+from ..pipeline_utils import DiffusionPipeline
+from ..configuration_utils import ConfigMixin
+from ..modeling_utils import ModelMixin
 
 
 def get_timestep_embedding(timesteps, embedding_dim):

@@ -13,3 +13,4 @@ from .schedulers.classifier_free_guidance import ClassifierFreeGuidanceScheduler
 from .schedulers.gaussian_ddpm import GaussianDDPMScheduler
 from .schedulers.ddim import DDIMScheduler
 from .schedulers.glide_ddim import GlideDDIMScheduler
+from .pipelines import DDIM, DDPM, GLIDE, LatentDiffusion
