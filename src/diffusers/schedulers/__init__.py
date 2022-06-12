@@ -17,6 +17,7 @@
 # limitations under the License.
 
 from .classifier_free_guidance import ClassifierFreeGuidanceScheduler
-from .gaussian_ddpm import GaussianDDPMScheduler
 from .ddim import DDIMScheduler
+from .gaussian_ddpm import GaussianDDPMScheduler
 from .glide_ddim import GlideDDIMScheduler
+from .schedulers_utils import SchedulerMixin

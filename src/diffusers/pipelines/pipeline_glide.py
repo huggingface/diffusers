@@ -24,10 +24,6 @@ import torch.utils.checkpoint
 from torch import nn
 
 import tqdm
-from ..pipeline_utils import DiffusionPipeline
-from ..models import GLIDESuperResUNetModel, GLIDETextToImageUNetModel
-from ..schedulers import ClassifierFreeGuidanceScheduler, GlideDDIMScheduler
-
 from transformers import CLIPConfig, CLIPModel, CLIPTextConfig, CLIPVisionConfig, GPT2Tokenizer
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
@@ -39,6 +35,10 @@ from transformers.utils import (
     logging,
     replace_return_docstrings,
 )
+
+from ..models import GLIDESuperResUNetModel, GLIDETextToImageUNetModel
+from ..pipeline_utils import DiffusionPipeline
+from ..schedulers import ClassifierFreeGuidanceScheduler, GlideDDIMScheduler
 
 
 #####################

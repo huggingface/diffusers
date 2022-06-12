@@ -490,7 +490,7 @@ class ModelMixin(torch.nn.Module):
             raise RuntimeError(f"Error(s) in loading state_dict for {model.__class__.__name__}:\n\t{error_msg}")
 
         if len(unexpected_keys) > 0:
-            logger.warning(
+            logger.warninging(
                 f"Some weights of the model checkpoint at {pretrained_model_name_or_path} were not used when"
                 f" initializing {model.__class__.__name__}: {unexpected_keys}\n- This IS expected if you are"
                 f" initializing {model.__class__.__name__} from the checkpoint of a model trained on another task or"
@@ -502,7 +502,7 @@ class ModelMixin(torch.nn.Module):
         else:
             logger.info(f"All model checkpoint weights were used when initializing {model.__class__.__name__}.\n")
         if len(missing_keys) > 0:
-            logger.warning(
+            logger.warninging(
                 f"Some weights of {model.__class__.__name__} were not initialized from the model checkpoint at"
                 f" {pretrained_model_name_or_path} and are newly initialized: {missing_keys}\nYou should probably"
                 " TRAIN this model on a down-stream task to be able to use it for predictions and inference."
@@ -521,7 +521,7 @@ class ModelMixin(torch.nn.Module):
                     for key, shape1, shape2 in mismatched_keys
                 ]
             )
-            logger.warning(
+            logger.warninging(
                 f"Some weights of {model.__class__.__name__} were not initialized from the model checkpoint at"
                 f" {pretrained_model_name_or_path} and are newly initialized because the shapes did not"
                 f" match:\n{mismatched_warning}\nYou should probably TRAIN this model on a down-stream task to be able"

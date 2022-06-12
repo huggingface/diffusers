@@ -1,8 +1,9 @@
 import os
 import random
 import unittest
-import torch
 from distutils.util import strtobool
+
+import torch
 
 
 global_rng = random.Random()

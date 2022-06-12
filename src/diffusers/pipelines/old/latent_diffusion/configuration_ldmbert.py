@@ -123,7 +123,7 @@ class LDMBertConfig(PretrainedConfig):
         scale_embedding=False,
         use_cache=True,
         pad_token_id=0,
-        **kwargs
+        **kwargs,
     ):
         self.vocab_size = vocab_size
         self.max_position_embeddings = max_position_embeddings

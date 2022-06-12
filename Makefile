@@ -3,7 +3,7 @@
 # make sure to test the local checkout in scripts and not the pre-installed one (don't use quotes!)
 export PYTHONPATH = src
 
-check_dirs := models tests src utils
+check_dirs := tests src utils
 
 modified_only_fixup:
 	$(eval modified_py_files := $(shell python utils/get_modified_files.py $(check_dirs)))

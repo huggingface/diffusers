@@ -17,12 +17,14 @@
 import torch
 
 import tqdm
+
 from ..pipeline_utils import DiffusionPipeline
 
 
 class DDIM(DiffusionPipeline):
     def __init__(self, unet, noise_scheduler):
         super().__init__()
+        noise_scheduler = noise_scheduler.set_format("pt")
         self.register_modules(unet=unet, noise_scheduler=noise_scheduler)
 
     def __call__(self, batch_size=1, generator=None, torch_device=None, eta=0.0, num_inference_steps=50):
@@ -36,11 +38,11 @@ class DDIM(DiffusionPipeline):
         self.unet.to(torch_device)
 
         # Sample gaussian noise to begin loop
-        image = self.noise_scheduler.sample_noise(
+        image = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.resolution, self.unet.resolution),
-            device=torch_device,
             generator=generator,
         )
+        image = image.to(torch_device)
 
         # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
         # Ideally, read DDIM paper in-detail understanding
@@ -63,7 +65,7 @@ class DDIM(DiffusionPipeline):
             # 3. optionally sample variance
             variance = 0
             if eta > 0:
-                noise = self.noise_scheduler.sample_noise(image.shape, device=image.device, generator=generator)
+                noise = torch.randn(image.shape, generator=generator).to(image.device)
                 variance = self.noise_scheduler.get_variance(t, num_inference_steps).sqrt() * eta * noise
 
             # 4. set current image to prev_image: x_t -> x_t-1

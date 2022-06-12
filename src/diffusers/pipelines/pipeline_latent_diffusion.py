@@ -2,13 +2,14 @@
 import math
 
 import numpy as np
-import tqdm
 import torch
 import torch.nn as nn
 
-from ..pipeline_utils import DiffusionPipeline
+import tqdm
+
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
+from ..pipeline_utils import DiffusionPipeline
 
 
 def get_timestep_embedding(timesteps, embedding_dim):
@@ -740,28 +741,29 @@ class DiagonalGaussianDistribution(object):
 
     def kl(self, other=None):
         if self.deterministic:
-            return torch.Tensor([0.])
+            return torch.Tensor([0.0])
         else:
             if other is None:
-                return 0.5 * torch.sum(torch.pow(self.mean, 2)
-                                       + self.var - 1.0 - self.logvar,
-                                       dim=[1, 2, 3])
+                return 0.5 * torch.sum(torch.pow(self.mean, 2) + self.var - 1.0 - self.logvar, dim=[1, 2, 3])
             else:
                 return 0.5 * torch.sum(
                     torch.pow(self.mean - other.mean, 2) / other.var
-                    + self.var / other.var - 1.0 - self.logvar + other.logvar,
-                    dim=[1, 2, 3])
+                    + self.var / other.var
+                    - 1.0
+                    - self.logvar
+                    + other.logvar,
+                    dim=[1, 2, 3],
+                )
 
-    def nll(self, sample, dims=[1,2,3]):
+    def nll(self, sample, dims=[1, 2, 3]):
         if self.deterministic:
-            return torch.Tensor([0.])
+            return torch.Tensor([0.0])
         logtwopi = np.log(2.0 * np.pi)
-        return 0.5 * torch.sum(
-            logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var,
-            dim=dims)
+        return 0.5 * torch.sum(logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var, dim=dims)
 
     def mode(self):
         return self.mean
+
 
 class AutoencoderKL(ModelMixin, ConfigMixin):
     def __init__(
@@ -834,7 +836,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             give_pre_end=give_pre_end,
         )
 
-        self.quant_conv = torch.nn.Conv2d(2*z_channels, 2*embed_dim, 1)
+        self.quant_conv = torch.nn.Conv2d(2 * z_channels, 2 * embed_dim, 1)
         self.post_quant_conv = torch.nn.Conv2d(embed_dim, z_channels, 1)
 
     def encode(self, x):
@@ -861,10 +863,20 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
 class LatentDiffusion(DiffusionPipeline):
     def __init__(self, vqvae, bert, tokenizer, unet, noise_scheduler):
         super().__init__()
+        noise_scheduler = noise_scheduler.set_format("pt")
         self.register_modules(vqvae=vqvae, bert=bert, tokenizer=tokenizer, unet=unet, noise_scheduler=noise_scheduler)
 
     @torch.no_grad()
-    def __call__(self, prompt, batch_size=1, generator=None, torch_device=None, eta=0.0, guidance_scale=1.0, num_inference_steps=50):
+    def __call__(
+        self,
+        prompt,
+        batch_size=1,
+        generator=None,
+        torch_device=None,
+        eta=0.0,
+        guidance_scale=1.0,
+        num_inference_steps=50,
+    ):
         # eta corresponds to η in paper and should be between [0, 1]
 
         if torch_device is None:
@@ -873,25 +885,26 @@ class LatentDiffusion(DiffusionPipeline):
         self.unet.to(torch_device)
         self.vqvae.to(torch_device)
         self.bert.to(torch_device)
-        
+
         # get unconditional embeddings for classifier free guidence
         if guidance_scale != 1.0:
-            uncond_input = self.tokenizer([""], padding="max_length", max_length=77, return_tensors='pt').to(torch_device)
+            uncond_input = self.tokenizer([""], padding="max_length", max_length=77, return_tensors="pt").to(
+                torch_device
+            )
             uncond_embeddings = self.bert(uncond_input.input_ids)[0]
-        
+
         # get text embedding
-        text_input = self.tokenizer(prompt, padding="max_length", max_length=77, return_tensors='pt').to(torch_device)
+        text_input = self.tokenizer(prompt, padding="max_length", max_length=77, return_tensors="pt").to(torch_device)
         text_embedding = self.bert(text_input.input_ids)[0]
-        
+
         num_trained_timesteps = self.noise_scheduler.timesteps
         inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps)
 
-        image = self.noise_scheduler.sample_noise(
+        image = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.image_size, self.unet.image_size),
-            device=torch_device,
             generator=generator,
         )
-        
+        image = image.to(torch_device)
         # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
         # Ideally, read DDIM paper in-detail understanding
 
@@ -910,7 +923,7 @@ class LatentDiffusion(DiffusionPipeline):
                 timesteps = torch.tensor([inference_step_times[t]] * image.shape[0], device=torch_device)
             else:
                 # for classifier free guidance, we need to do two forward passes
-                # here we concanate embedding and unconditioned embedding in a single batch 
+                # here we concanate embedding and unconditioned embedding in a single batch
                 # to avoid doing two forward passes
                 image_in = torch.cat([image] * 2)
                 context = torch.cat([uncond_embeddings, text_embedding])
@@ -918,12 +931,12 @@ class LatentDiffusion(DiffusionPipeline):
 
             # 1. predict noise residual
             pred_noise_t = self.unet(image_in, timesteps, context=context)
-            
+
             # perform guidance
             if guidance_scale != 1.0:
                 pred_noise_t_uncond, pred_noise_t = pred_noise_t.chunk(2)
                 pred_noise_t = pred_noise_t_uncond + guidance_scale * (pred_noise_t - pred_noise_t_uncond)
-                    
+
             # 2. get actual t and t-1
             train_step = inference_step_times[t]
             prev_train_step = inference_step_times[t - 1] if t > 0 else -1
@@ -953,7 +966,11 @@ class LatentDiffusion(DiffusionPipeline):
             # 5. Sample x_t-1 image optionally if η > 0.0 by adding noise to pred_prev_image
             # Note: eta = 1.0 essentially corresponds to DDPM
             if eta > 0.0:
-                noise = self.noise_scheduler.sample_noise(image.shape, device=image.device, generator=generator)
+                noise = torch.randn(
+                    (batch_size, self.unet.in_channels, self.unet.resolution, self.unet.resolution),
+                    generator=generator,
+                )
+                noise = noise.to(torch_device)
                 prev_image = pred_prev_image + std_dev_t * noise
             else:
                 prev_image = pred_prev_image
@@ -962,8 +979,8 @@ class LatentDiffusion(DiffusionPipeline):
             image = prev_image
 
         # scale and decode image with vae
-        image = 1 /  0.18215 * image
+        image = 1 / 0.18215 * image
         image = self.vqvae.decode(image)
-        image = torch.clamp((image+1.0)/2.0, min=0.0, max=1.0)
+        image = torch.clamp((image + 1.0) / 2.0, min=0.0, max=1.0)
 
         return image

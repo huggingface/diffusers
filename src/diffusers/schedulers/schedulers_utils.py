@@ -11,11 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import numpy as np
 import torch
 
 
+SCHEDULER_CONFIG_NAME = "scheduler_config.json"
+
+
 def linear_beta_schedule(timesteps, beta_start, beta_end):
-    return torch.linspace(beta_start, beta_end, timesteps, dtype=torch.float64)
+    return np.linspace(beta_start, beta_end, timesteps, dtype=np.float32)
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, alpha_bar, max_beta=0.999):
@@ -35,4 +39,28 @@ def betas_for_alpha_bar(num_diffusion_timesteps, alpha_bar, max_beta=0.999):
         t1 = i / num_diffusion_timesteps
         t2 = (i + 1) / num_diffusion_timesteps
         betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
-    return torch.tensor(betas, dtype=torch.float64)
+    return np.array(betas, dtype=np.float32)
+
+
+class SchedulerMixin:
+
+    config_name = SCHEDULER_CONFIG_NAME
+
+    def set_format(self, tensor_format="pt"):
+        self.tensor_format = tensor_format
+        if tensor_format == "pt":
+            for key, value in vars(self).items():
+                if isinstance(value, np.ndarray):
+                    setattr(self, key, torch.from_numpy(value))
+
+        return self
+
+    def clip(self, tensor, min_value=None, max_value=None):
+        tensor_format = getattr(self, "tensor_format", "pt")
+
+        if tensor_format == "np":
+            return np.clip(tensor, min_value, max_value)
+        elif tensor_format == "pt":
+            return torch.clamp(tensor, min_value, max_value)
+
+        raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")

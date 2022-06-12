@@ -43,6 +43,7 @@ from transformers.utils import (
     logging,
     replace_return_docstrings,
 )
+
 from .configuration_ldmbert import LDMBertConfig
 
 
@@ -662,7 +663,7 @@ class LDMBertModel(LDMBertPreTrainedModel):
         super().__init__(config)
         self.model = LDMBertEncoder(config)
         self.to_logits = nn.Linear(config.hidden_size, config.vocab_size)
-    
+
     def forward(
         self,
         input_ids=None,
@@ -674,7 +675,7 @@ class LDMBertModel(LDMBertPreTrainedModel):
         output_attentions=None,
         output_hidden_states=None,
         return_dict=None,
-    ): 
+    ):
 
         outputs = self.model(
             input_ids,
@@ -689,15 +690,15 @@ class LDMBertModel(LDMBertPreTrainedModel):
         sequence_output = outputs[0]
         # logits = self.to_logits(sequence_output)
         # outputs = (logits,) + outputs[1:]
-        
+
         # if labels is not None:
         #     loss_fct = CrossEntropyLoss()
         #     loss = loss_fct(logits.view(-1, self.config.vocab_size), labels.view(-1))
         #     outputs = (loss,) + outputs
-        
+
         # if not return_dict:
         #     return outputs
-        
+
         return BaseModelOutput(
             last_hidden_state=sequence_output,
             # hidden_states=outputs[1],

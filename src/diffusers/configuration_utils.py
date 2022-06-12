@@ -213,7 +213,7 @@ class ConfigMixin:
 
         passed_keys = set(init_dict.keys())
         if len(expected_keys - passed_keys) > 0:
-            logger.warn(
+            logger.warning(
                 f"{expected_keys - passed_keys} was not found in config. Values will be initialized to default values."
             )
 
