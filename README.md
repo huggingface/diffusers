@@ -58,7 +58,7 @@ for t in tqdm.tqdm(reversed(range(num_prediction_steps)), total=num_prediction_s
 		residual = unet(image, t)
 
 	# predict previous mean of image x_t-1
-	pred_prev_image = noise_scheduler.compute_prev_image_step(residual, image, t)
+	pred_prev_image = noise_scheduler.step(residual, image, t)
 
 	# optionally sample variance
 	variance = 0
@@ -109,7 +109,7 @@ for t in tqdm.tqdm(reversed(range(num_inference_steps)), total=num_inference_ste
 	    residual = unet(image, orig_t)
 
 	# 2. predict previous mean of image x_t-1
-	pred_prev_image = noise_scheduler.compute_prev_image_step(residual, image, t, num_inference_steps, eta)
+	pred_prev_image = noise_scheduler.step(residual, image, t, num_inference_steps, eta)
 
 	# 3. optionally sample variance
 	variance = 0

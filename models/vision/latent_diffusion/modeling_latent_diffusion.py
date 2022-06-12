@@ -75,7 +75,7 @@ class LatentDiffusion(DiffusionPipeline):
                 pred_noise_t = pred_noise_t_uncond + guidance_scale * (pred_noise_t - pred_noise_t_uncond)
                     
             # 2. predict previous mean of image x_t-1
-            pred_prev_image = self.noise_scheduler.compute_prev_image_step(pred_noise_t, image, t, num_inference_steps, eta)
+            pred_prev_image = self.noise_scheduler.step(pred_noise_t, image, t, num_inference_steps, eta)
 
             # 3. optionally sample variance
             variance = 0
