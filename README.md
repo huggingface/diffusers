@@ -44,7 +44,7 @@ generator = torch.manual_seed(0)
 torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # 1. Load models
-noise_scheduler = GaussianDDPMScheduler.from_config("fusing/ddpm-lsun-church")
+noise_scheduler = GaussianDDPMScheduler.from_config("fusing/ddpm-lsun-church", tensor_format="pt")
 unet = UNetModel.from_pretrained("fusing/ddpm-lsun-church").to(torch_device)
 
 # 2. Sample gaussian noise
@@ -96,7 +96,7 @@ generator = torch.manual_seed(0)
 torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # 1. Load models
-noise_scheduler = DDIMScheduler.from_config("fusing/ddpm-celeba-hq")
+noise_scheduler = DDIMScheduler.from_config("fusing/ddpm-celeba-hq", tensor_format="pt")
 unet = UNetModel.from_pretrained("fusing/ddpm-celeba-hq").to(torch_device)
 
 # 2. Sample gaussian noise
