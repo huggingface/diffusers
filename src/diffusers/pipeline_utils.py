@@ -34,11 +34,10 @@ logger = logging.get_logger(__name__)
 LOADABLE_CLASSES = {
     "diffusers": {
         "ModelMixin": ["save_pretrained", "from_pretrained"],
+        "SchedulerMixin": ["save_config", "from_config"],
         "DiffusionPipeline": ["save_pretrained", "from_pretrained"],
-        "GaussianDDPMScheduler": ["save_config", "from_config"],
         "ClassifierFreeGuidanceScheduler": ["save_config", "from_config"],
         "GlideDDIMScheduler": ["save_config", "from_config"],
-        "DDIMScheduler": ["save_config", "from_config"],
     },
     "transformers": {
         "PreTrainedTokenizer": ["save_pretrained", "from_pretrained"],
