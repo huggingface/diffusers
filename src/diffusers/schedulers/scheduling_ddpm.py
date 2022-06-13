@@ -16,10 +16,10 @@ import math
 import numpy as np
 
 from ..configuration_utils import ConfigMixin
-from .schedulers_utils import SchedulerMixin, betas_for_alpha_bar, linear_beta_schedule
+from .scheduling_utils import SchedulerMixin, betas_for_alpha_bar, linear_beta_schedule
 
 
-class GaussianDDPMScheduler(SchedulerMixin, ConfigMixin):
+class DDPMScheduler(SchedulerMixin, ConfigMixin):
     def __init__(
         self,
         timesteps=1000,

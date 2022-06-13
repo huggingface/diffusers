@@ -35,7 +35,7 @@ Both models and schedulers should be load- and saveable from the Hub.
 
 ```python
 import torch
-from diffusers import UNetModel, GaussianDDPMScheduler
+from diffusers import UNetModel, DDPMScheduler
 import PIL
 import numpy as np
 import tqdm
@@ -44,7 +44,7 @@ generator = torch.manual_seed(0)
 torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # 1. Load models
-noise_scheduler = GaussianDDPMScheduler.from_config("fusing/ddpm-lsun-church", tensor_format="pt")
+noise_scheduler = DDPMScheduler.from_config("fusing/ddpm-lsun-church", tensor_format="pt")
 unet = UNetModel.from_pretrained("fusing/ddpm-lsun-church").to(torch_device)
 
 # 2. Sample gaussian noise
