@@ -16,7 +16,7 @@ import torch
 from torch import nn
 
 from ..configuration_utils import ConfigMixin
-from .schedulers_utils import betas_for_alpha_bar, linear_beta_schedule
+from .scheduling_utils import betas_for_alpha_bar, linear_beta_schedule
 
 
 SAMPLING_CONFIG_NAME = "scheduler_config.json"

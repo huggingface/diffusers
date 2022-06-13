@@ -18,7 +18,7 @@
 
 from .scheduling_ddim import DDIMScheduler
 from .scheduling_ddpm import DDPMScheduler
-from .schedulers_utils import SchedulerMixin
+from .scheduling_utils import SchedulerMixin
 
 from .classifier_free_guidance import ClassifierFreeGuidanceScheduler
 from .glide_ddim import GlideDDIMScheduler
