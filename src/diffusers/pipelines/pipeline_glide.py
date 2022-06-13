@@ -859,9 +859,6 @@ class GLIDE(DiffusionPipeline):
             nonzero_mask = (t != 0).float().view(-1, *([1] * (len(image.shape) - 1)))  # no noise when t == 0
             image = mean + nonzero_mask * torch.exp(0.5 * log_variance) * noise
 
-        image = image[:1].permute(0, 2, 3, 1)
-        return image
-
         # 4. Run the upscaling step
         batch_size = 1
         image = image[:1]
@@ -879,20 +876,10 @@ class GLIDE(DiffusionPipeline):
         )
         image = image.to(torch_device) * upsample_temp
 
-        # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
-        # Ideally, read DDIM paper in-detail understanding
-
-        # Notation (<variable name> -> <name in paper>
-        # - pred_noise_t -> e_theta(x_t, t)
-        # - pred_original_image -> f_theta(x_t, t) or x_0
-        # - std_dev_t -> sigma_t
-        # - eta -> η
-        # - pred_image_direction -> "direction pointingc to x_t"
-        # - pred_prev_image -> "x_t-1"
-
         num_trained_timesteps = self.upscale_noise_scheduler.timesteps
         inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps_upscale)
-        self.upscale_noise_scheduler.rescale_betas(num_inference_steps_upscale)
+        # adapt the beta schedule to the number of steps
+        # self.upscale_noise_scheduler.rescale_betas(num_inference_steps_upscale)
 
         for t in tqdm.tqdm(reversed(range(num_inference_steps_upscale)), total=num_inference_steps_upscale):
             # 1. predict noise residual
@@ -903,7 +890,7 @@ class GLIDE(DiffusionPipeline):
 
             # 2. predict previous mean of image x_t-1
             pred_prev_image = self.upscale_noise_scheduler.step(
-                noise_residual, image, t, num_inference_steps_upscale, eta
+                noise_residual, image, t, num_inference_steps_upscale, eta, use_clipped_residual=True
             )
 
             # 3. optionally sample variance
@@ -917,6 +904,6 @@ class GLIDE(DiffusionPipeline):
             # 4. set current image to prev_image: x_t -> x_t-1
             image = pred_prev_image + variance
 
-        image = image.permute(0, 2, 3, 1)
+        image = image.clamp(-1, 1).permute(0, 2, 3, 1)
 
         return image

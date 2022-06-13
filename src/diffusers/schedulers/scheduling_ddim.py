@@ -69,14 +69,15 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
     #
     #        self.register_buffer("log_variance", log_variance.to(torch.float32))
 
-    def rescale_betas(self, num_timesteps):
-        if self.beta_schedule == "linear":
-            scale = self.timesteps / num_timesteps
-            self.betas = linear_beta_schedule(
-                num_timesteps, beta_start=self.beta_start * scale, beta_end=self.beta_end * scale
-            )
-            self.alphas = 1.0 - self.betas
-            self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
+    # def rescale_betas(self, num_timesteps):
+    #     # GLIDE scaling
+    #     if self.beta_schedule == "linear":
+    #         scale = self.timesteps / num_timesteps
+    #         self.betas = linear_beta_schedule(
+    #             num_timesteps, beta_start=self.beta_start * scale, beta_end=self.beta_end * scale
+    #         )
+    #         self.alphas = 1.0 - self.betas
+    #         self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
 
     def get_alpha(self, time_step):
         return self.alphas[time_step]
@@ -107,7 +108,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
-    def step(self, residual, image, t, num_inference_steps, eta):
+    def step(self, residual, image, t, num_inference_steps, eta, use_clipped_residual=False):
         # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
         # Ideally, read DDIM paper in-detail understanding
 
@@ -140,6 +141,10 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # σ_t = sqrt((1 − α_t−1)/(1 − α_t)) * sqrt(1 − α_t/α_t−1)
         variance = self.get_variance(t, num_inference_steps)
         std_dev_t = eta * variance ** (0.5)
+
+        if use_clipped_residual:
+            # the residual is always re-derived from the clipped x_0 in GLIDE
+            residual = (image - alpha_prod_t ** (0.5) * pred_original_image) / beta_prod_t ** (0.5)
 
         # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
         pred_image_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * residual
