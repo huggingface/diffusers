@@ -19,7 +19,7 @@ import unittest
 
 import torch
 
-from diffusers import DDIM, DDPM, DDIMScheduler, DDPMScheduler, LatentDiffusion, UNetModel
+from diffusers import DDIM, DDPM, DDIMScheduler, DDPMScheduler, LatentDiffusion, UNetModel, PNDM, PNDMScheduler
 from diffusers.configuration_utils import ConfigMixin
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.testing_utils import floats_tensor, slow, torch_device
@@ -175,6 +175,25 @@ class PipelineTesterMixin(unittest.TestCase):
         assert image.shape == (1, 3, 32, 32)
         expected_slice = torch.tensor(
             [-0.7383, -0.7385, -0.7298, -0.7364, -0.7414, -0.7239, -0.6737, -0.6813, -0.7068]
+        )
+        assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
+
+    @slow
+    def test_pndm_cifar10(self):
+        generator = torch.manual_seed(0)
+        model_id = "fusing/ddpm-cifar10"
+
+        unet = UNetModel.from_pretrained(model_id)
+        noise_scheduler = PNDMScheduler(tensor_format="pt")
+
+        pndm = PNDM(unet=unet, noise_scheduler=noise_scheduler)
+        image = pndm(generator=generator)
+
+        image_slice = image[0, -1, -3:, -3:].cpu()
+
+        assert image.shape == (1, 3, 32, 32)
+        expected_slice = torch.tensor(
+            [-0.7888, -0.7870, -0.7759, -0.7823, -0.8014, -0.7608, -0.6818, -0.7130, -0.7471]
         )
         assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
 

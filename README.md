@@ -164,7 +164,7 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 image_pil.save("test.png")
 ```
 
-**Text to Image generation with Latent Diffusion**
+#### **Text to Image generation with Latent Diffusion**
 
 ```python
 from diffusers import DiffusionPipeline
@@ -186,57 +186,96 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 image_pil.save("test.png")
 ```
 
+ #### **Text to speech with BDDM**
+
+_Follow the isnstructions [here](https://pytorch.org/hub/nvidia_deeplearningexamples_tacotron2/) to load tacotron2 model._
+
+```python
+import torch
+from diffusers import BDDM, DiffusionPipeline
+
+torch_device = "cuda"
+
+# load the BDDM pipeline
+bddm = DiffusionPipeline.from_pretrained("fusing/diffwave-vocoder")
+
+# load tacotron2 to get the mel spectograms
+tacotron2 = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_tacotron2', model_math='fp16')
+tacotron2 = tacotron2.to(torch_device).eval()
+
+text = "Hello world, I missed you so much."
+
+utils = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_tts_utils')
+sequences, lengths = utils.prepare_input_sequence([text])
+
+# generate mel spectograms using text
+with torch.no_grad():
+    mel_spec, _, _ = tacotron2.infer(sequences, lengths)
+
+# generate the speech by passing mel spectograms to BDDM pipeline
+generator = torch.manual_seed(0)
+audio = bddm(mel_spec, generator, torch_device)
+
+# save generated audio
+from scipy.io.wavfile import write as wavwrite
+sampling_rate = 22050
+wavwrite("generated_audio.wav", sampling_rate, audio.squeeze().cpu().numpy())
+```
+
 ## Library structure:
 
 ```
-├── models
-│   ├── audio
-│   │   └── fastdiff
-│   │       ├── modeling_fastdiff.py
-│   │       ├── README.md
-│   │       └── run_fastdiff.py
-│   ├── __init__.py
-│   └── vision
-│       ├── dalle2
-│       │   ├── modeling_dalle2.py
-│       │   ├── README.md
-│       │   └── run_dalle2.py
-│       ├── ddpm
-│       │   ├── example.py
-│       │   ├── modeling_ddpm.py
-│       │   ├── README.md
-│       │   └── run_ddpm.py
-│       ├── glide
-│       │   ├── modeling_glide.py
-│       │   ├── modeling_vqvae.py.py
-│       │   ├── README.md
-│       │   └── run_glide.py
-│       ├── imagen
-│       │   ├── modeling_dalle2.py
-│       │   ├── README.md
-│       │   └── run_dalle2.py
-│       ├── __init__.py
-│       └── latent_diffusion
-│           ├── modeling_latent_diffusion.py
-│           ├── README.md
-│           └── run_latent_diffusion.py
-├── pyproject.toml
+├── LICENSE
+├── Makefile
 ├── README.md
+├── pyproject.toml
 ├── setup.cfg
 ├── setup.py
 ├── src
-│   └── diffusers
-│       ├── configuration_utils.py
-│       ├── __init__.py
-│       ├── modeling_utils.py
-│       ├── models
-│       │   ├── __init__.py
-│       │   ├── unet_glide.py
-│       │   └── unet.py
-│       ├── pipeline_utils.py
-│       └── schedulers
-│           ├── gaussian_ddpm.py
-│           ├── __init__.py
+│   ├── diffusers
+│       ├── __init__.py
+│       ├── configuration_utils.py
+│       ├── dependency_versions_check.py
+│       ├── dependency_versions_table.py
+│       ├── dynamic_modules_utils.py
+│       ├── modeling_utils.py
+│       ├── models
+│       │   ├── __init__.py
+│       │   ├── unet.py
+│       │   ├── unet_glide.py
+│       │   └── unet_ldm.py
+│       ├── pipeline_utils.py
+│       ├── pipelines
+│       │   ├── __init__.py
+│       │   ├── configuration_ldmbert.py
+│       │   ├── conversion_glide.py
+│       │   ├── modeling_vae.py
+│       │   ├── pipeline_bddm.py
+│       │   ├── pipeline_ddim.py
+│       │   ├── pipeline_ddpm.py
+│       │   ├── pipeline_glide.py
+│       │   └── pipeline_latent_diffusion.py
+│       ├── schedulers
+│       │   ├── __init__.py
+│       │   ├── classifier_free_guidance.py
+│       │   ├── scheduling_ddim.py
+│       │   ├── scheduling_ddpm.py
+│       │   ├── scheduling_plms.py
+│       │   └── scheduling_utils.py
+│       ├── testing_utils.py
+│       └── utils
+│           ├── __init__.py
+│           └── logging.py
 ├── tests
-│   └── test_modeling_utils.py
+│   ├── __init__.py
+│   ├── test_modeling_utils.py
+│   └── test_scheduler.py
+└── utils
+    ├── check_config_docstrings.py
+    ├── check_copies.py
+    ├── check_dummies.py
+    ├── check_inits.py
+    ├── check_repo.py
+    ├── check_table.py
+    └── check_tf_ops.py
 ```
