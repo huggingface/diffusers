@@ -9,6 +9,6 @@ from .models.unet import UNetModel
 from .models.unet_glide import GLIDESuperResUNetModel, GLIDETextToImageUNetModel
 from .models.unet_ldm import UNetLDMModel
 from .pipeline_utils import DiffusionPipeline
-from .pipelines import DDIM, DDPM, GLIDE, BDDMPipeline, LatentDiffusion
+from .pipelines import DDIM, DDPM, GLIDE, LatentDiffusion, BDDM
 from .schedulers import DDIMScheduler, DDPMScheduler, SchedulerMixin
 from .schedulers.classifier_free_guidance import ClassifierFreeGuidanceScheduler
