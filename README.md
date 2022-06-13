@@ -164,7 +164,7 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 image_pil.save("test.png")
 ```
 
-**Text to Image generation with Latent Diffusion**
+#### **Text to Image generation with Latent Diffusion**
 
 ```python
 from diffusers import DiffusionPipeline
@@ -186,7 +186,7 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 image_pil.save("test.png")
 ```
 
-**Text to speech with BDDM**
+ #### **Text to speech with BDDM**
 
 _Follow the isnstructions [here](https://pytorch.org/hub/nvidia_deeplearningexamples_tacotron2/) to load tacotron2 model._
 
