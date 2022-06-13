@@ -200,7 +200,6 @@ torch_device = "cuda"
 bddm = DiffusionPipeline.from_pretrained("fusing/diffwave-vocoder")
 
 # load tacotron2 to get the mel spectograms
-
 tacotron2 = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_tacotron2', model_math='fp16')
 tacotron2 = tacotron2.to(torch_device).eval()
 
@@ -209,12 +208,15 @@ text = "Hello world, I missed you so much."
 utils = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_tts_utils')
 sequences, lengths = utils.prepare_input_sequence([text])
 
+# generate mel spectograms using text
 with torch.no_grad():
-    mel, _, _ = tacotron2.infer(sequences, lengths)
+    mel_spec, _, _ = tacotron2.infer(sequences, lengths)
 
+# generate the speech by passing mel spectograms to BDDM pipeline
 generator = torch.manual_seed(0)
-audio = bddm(mel, generator, torch_device)
+audio = bddm(mel_spec, generator, torch_device)
 
+# save generated audio
 from scipy.io.wavfile import write as wavwrite
 sampling_rate = 22050
 wavwrite("generated_audio.wav", sampling_rate, audio.squeeze().cpu().numpy())
