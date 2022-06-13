@@ -56,6 +56,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
+        self.sqrt_alphas_cumprod = np.sqrt(self.alphas_cumprod)
+        self.sqrt_one_minus_alphas_cumprod = np.sqrt(1 - self.alphas_cumprod)
         self.one = np.array(1.0)
 
         self.set_format(tensor_format=tensor_format)
@@ -130,6 +132,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         pred_prev_image = pred_original_image_coeff * pred_original_image + current_image_coeff * image
 
         return pred_prev_image
+
+    def forward_step(self, original_image, noise, t):
+        noisy_image = self.sqrt_alphas_cumprod[t] * original_image + self.sqrt_one_minus_alphas_cumprod[t] * noise
+        return noisy_image
 
     def __len__(self):
         return self.timesteps

@@ -39,7 +39,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             beta_schedule=beta_schedule,
         )
         self.timesteps = int(timesteps)
-        self.timestep_values = timestep_values # save the fixed timestep values for BDDM
+        self.timestep_values = timestep_values  # save the fixed timestep values for BDDM
         self.clip_image = clip_predicted_image
 
         if trained_betas is not None:

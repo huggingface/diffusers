@@ -28,12 +28,7 @@ from transformers import CLIPConfig, CLIPModel, CLIPTextConfig, CLIPVisionConfig
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
 from transformers.modeling_utils import PreTrainedModel
-from transformers.utils import (
-    ModelOutput,
-    add_start_docstrings_to_model_forward,
-    logging,
-    replace_return_docstrings,
-)
+from transformers.utils import ModelOutput, add_start_docstrings_to_model_forward, logging, replace_return_docstrings
 
 from ..models import GLIDESuperResUNetModel, GLIDETextToImageUNetModel
 from ..pipeline_utils import DiffusionPipeline
@@ -871,7 +866,12 @@ class GLIDE(DiffusionPipeline):
 
         # Sample gaussian noise to begin loop
         image = torch.randn(
-            (batch_size, self.upscale_unet.in_channels // 2, self.upscale_unet.resolution, self.upscale_unet.resolution),
+            (
+                batch_size,
+                self.upscale_unet.in_channels // 2,
+                self.upscale_unet.resolution,
+                self.upscale_unet.resolution,
+            ),
             generator=generator,
         )
         image = image.to(torch_device) * upsample_temp

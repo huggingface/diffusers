@@ -13,14 +13,16 @@
 
 
 import math
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 import tqdm
 
-from ..modeling_utils import ModelMixin
 from ..configuration_utils import ConfigMixin
+from ..modeling_utils import ModelMixin
 from ..pipeline_utils import DiffusionPipeline
 
 
@@ -46,8 +48,7 @@ def calc_diffusion_step_embedding(diffusion_steps, diffusion_step_embed_dim_in):
     _embed = np.log(10000) / (half_dim - 1)
     _embed = torch.exp(torch.arange(half_dim) * -_embed).cuda()
     _embed = diffusion_steps * _embed
-    diffusion_step_embed = torch.cat((torch.sin(_embed),
-                                      torch.cos(_embed)), 1)
+    diffusion_step_embed = torch.cat((torch.sin(_embed), torch.cos(_embed)), 1)
     return diffusion_step_embed
 
 
@@ -67,8 +68,7 @@ class Conv(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, dilation=1):
         super().__init__()
         self.padding = dilation * (kernel_size - 1) // 2
-        self.conv = nn.Conv1d(in_channels, out_channels, kernel_size,
-                              dilation=dilation, padding=self.padding)
+        self.conv = nn.Conv1d(in_channels, out_channels, kernel_size, dilation=dilation, padding=self.padding)
         self.conv = nn.utils.weight_norm(self.conv)
         nn.init.kaiming_normal_(self.conv.weight)
 
@@ -94,8 +94,7 @@ class ZeroConv1d(nn.Module):
 # every residual block (named residual layer in paper)
 # contains one noncausal dilated conv
 class ResidualBlock(nn.Module):
-    def __init__(self, res_channels, skip_channels, dilation,
-                 diffusion_step_embed_dim_out):
+    def __init__(self, res_channels, skip_channels, dilation, diffusion_step_embed_dim_out):
         super().__init__()
         self.res_channels = res_channels
 
@@ -103,15 +102,12 @@ class ResidualBlock(nn.Module):
         self.fc_t = nn.Linear(diffusion_step_embed_dim_out, self.res_channels)
 
         # Dilated conv layer
-        self.dilated_conv_layer = Conv(self.res_channels, 2 * self.res_channels,
-                                       kernel_size=3, dilation=dilation)
+        self.dilated_conv_layer = Conv(self.res_channels, 2 * self.res_channels, kernel_size=3, dilation=dilation)
 
         # Add mel spectrogram upsampler and conditioner conv1x1 layer
         self.upsample_conv2d = nn.ModuleList()
         for s in [16, 16]:
-            conv_trans2d = nn.ConvTranspose2d(1, 1, (3, 2 * s),
-                                              padding=(1, s // 2),
-                                              stride=(1, s))
+            conv_trans2d = nn.ConvTranspose2d(1, 1, (3, 2 * s), padding=(1, s // 2), stride=(1, s))
             conv_trans2d = nn.utils.weight_norm(conv_trans2d)
             nn.init.kaiming_normal_(conv_trans2d.weight)
             self.upsample_conv2d.append(conv_trans2d)
@@ -157,7 +153,7 @@ class ResidualBlock(nn.Module):
         h += mel_spec
 
         # Gated-tanh nonlinearity
-        out = torch.tanh(h[:, :self.res_channels, :]) * torch.sigmoid(h[:, self.res_channels:, :])
+        out = torch.tanh(h[:, : self.res_channels, :]) * torch.sigmoid(h[:, self.res_channels :, :])
 
         # Residual and skip outputs
         res = self.res_conv(out)
@@ -169,10 +165,16 @@ class ResidualBlock(nn.Module):
 
 
 class ResidualGroup(nn.Module):
-    def __init__(self, res_channels, skip_channels, num_res_layers, dilation_cycle,
-                 diffusion_step_embed_dim_in,
-                 diffusion_step_embed_dim_mid,
-                 diffusion_step_embed_dim_out):
+    def __init__(
+        self,
+        res_channels,
+        skip_channels,
+        num_res_layers,
+        dilation_cycle,
+        diffusion_step_embed_dim_in,
+        diffusion_step_embed_dim_mid,
+        diffusion_step_embed_dim_out,
+    ):
         super().__init__()
         self.num_res_layers = num_res_layers
         self.diffusion_step_embed_dim_in = diffusion_step_embed_dim_in
@@ -185,16 +187,19 @@ class ResidualGroup(nn.Module):
         self.residual_blocks = nn.ModuleList()
         for n in range(self.num_res_layers):
             self.residual_blocks.append(
-                ResidualBlock(res_channels, skip_channels,
-                               dilation=2 ** (n % dilation_cycle),
-                               diffusion_step_embed_dim_out=diffusion_step_embed_dim_out))
+                ResidualBlock(
+                    res_channels,
+                    skip_channels,
+                    dilation=2 ** (n % dilation_cycle),
+                    diffusion_step_embed_dim_out=diffusion_step_embed_dim_out,
+                )
+            )
 
     def forward(self, input_data):
         x, mel_spectrogram, diffusion_steps = input_data
 
         # Embed diffusion step t
-        diffusion_step_embed = calc_diffusion_step_embedding(
-            diffusion_steps, self.diffusion_step_embed_dim_in)
+        diffusion_step_embed = calc_diffusion_step_embedding(diffusion_steps, self.diffusion_step_embed_dim_in)
         diffusion_step_embed = swish(self.fc_t1(diffusion_step_embed))
         diffusion_step_embed = swish(self.fc_t2(diffusion_step_embed))
 
@@ -239,20 +244,24 @@ class DiffWave(ModelMixin, ConfigMixin):
             diffusion_step_embed_dim_out=diffusion_step_embed_dim_out,
         )
 
-
         # Initial conv1x1 with relu
         self.init_conv = nn.Sequential(Conv(in_channels, res_channels, kernel_size=1), nn.ReLU(inplace=False))
         # All residual layers
-        self.residual_layer = ResidualGroup(res_channels,
-                                            skip_channels,
-                                            num_res_layers,
-                                            dilation_cycle,
-                                            diffusion_step_embed_dim_in,
-                                            diffusion_step_embed_dim_mid,
-                                            diffusion_step_embed_dim_out)
+        self.residual_layer = ResidualGroup(
+            res_channels,
+            skip_channels,
+            num_res_layers,
+            dilation_cycle,
+            diffusion_step_embed_dim_in,
+            diffusion_step_embed_dim_mid,
+            diffusion_step_embed_dim_out,
+        )
         # Final conv1x1 -> relu -> zeroconv1x1
-        self.final_conv = nn.Sequential(Conv(skip_channels, skip_channels, kernel_size=1),
-                                        nn.ReLU(inplace=False), ZeroConv1d(skip_channels, out_channels))
+        self.final_conv = nn.Sequential(
+            Conv(skip_channels, skip_channels, kernel_size=1),
+            nn.ReLU(inplace=False),
+            ZeroConv1d(skip_channels, out_channels),
+        )
 
     def forward(self, input_data):
         audio, mel_spectrogram, diffusion_steps = input_data
@@ -267,12 +276,12 @@ class BDDMPipeline(DiffusionPipeline):
         super().__init__()
         noise_scheduler = noise_scheduler.set_format("pt")
         self.register_modules(diffwave=diffwave, noise_scheduler=noise_scheduler)
-    
+
     @torch.no_grad()
     def __call__(self, mel_spectrogram, generator):
         if torch_device is None:
             torch_device = "cuda" if torch.cuda.is_available() else "cpu"
-        
+
         self.diffwave.to(torch_device)
 
         audio_length = mel_spectrogram.size(-1) * self.config.hop_len
