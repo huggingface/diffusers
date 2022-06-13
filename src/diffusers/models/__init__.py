@@ -17,5 +17,5 @@
 # limitations under the License.
 
 from .unet import UNetModel
-from .unet_glide import GLIDESuperResUNetModel, GLIDETextToImageUNetModel
+from .unet_glide import GLIDEUNetModel, GLIDESuperResUNetModel, GLIDETextToImageUNetModel
 from .unet_ldm import UNetLDMModel
