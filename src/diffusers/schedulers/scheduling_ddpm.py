@@ -38,6 +38,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             beta_start=beta_start,
             beta_end=beta_end,
             beta_schedule=beta_schedule,
+            trained_betas=trained_betas,
+            timestep_values=timestep_values,
             variance_type=variance_type,
             clip_predicted_image=clip_predicted_image,
         )
