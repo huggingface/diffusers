@@ -16,8 +16,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .classifier_free_guidance import ClassifierFreeGuidanceScheduler
-from .ddim import DDIMScheduler
-from .gaussian_ddpm import GaussianDDPMScheduler
-from .glide_ddim import GlideDDIMScheduler
+from .scheduling_ddim import DDIMScheduler
+from .scheduling_ddpm import DDPMScheduler
 from .schedulers_utils import SchedulerMixin
+
+from .classifier_free_guidance import ClassifierFreeGuidanceScheduler
+from .glide_ddim import GlideDDIMScheduler

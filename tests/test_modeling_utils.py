@@ -19,7 +19,7 @@ import unittest
 
 import torch
 
-from diffusers import DDIM, DDPM, DDIMScheduler, GaussianDDPMScheduler, LatentDiffusion, UNetModel
+from diffusers import DDIM, DDPM, DDIMScheduler, DDPMScheduler, LatentDiffusion, UNetModel
 from diffusers.configuration_utils import ConfigMixin
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.testing_utils import floats_tensor, slow, torch_device
@@ -107,7 +107,7 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_from_pretrained_save_pretrained(self):
         # 1. Load models
         model = UNetModel(ch=32, ch_mult=(1, 2), num_res_blocks=2, attn_resolutions=(16,), resolution=32)
-        schedular = GaussianDDPMScheduler(timesteps=10)
+        schedular = DDPMScheduler(timesteps=10)
 
         ddpm = DDPM(model, schedular)
 
@@ -147,7 +147,7 @@ class PipelineTesterMixin(unittest.TestCase):
         model_id = "fusing/ddpm-cifar10"
 
         unet = UNetModel.from_pretrained(model_id)
-        noise_scheduler = GaussianDDPMScheduler.from_config(model_id)
+        noise_scheduler = DDPMScheduler.from_config(model_id)
         noise_scheduler = noise_scheduler.set_format("pt")
 
         ddpm = DDPM(unet=unet, noise_scheduler=noise_scheduler)

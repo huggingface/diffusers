@@ -10,8 +10,10 @@ from .models.unet_glide import GLIDESuperResUNetModel, GLIDETextToImageUNetModel
 from .models.unet_ldm import UNetLDMModel
 from .pipeline_utils import DiffusionPipeline
 from .pipelines import DDIM, DDPM, GLIDE, LatentDiffusion
+
 from .schedulers import SchedulerMixin
+from .schedulers.scheduling_ddim import DDIMScheduler
+from .schedulers.scheduling_ddpm import DDPMScheduler
+
 from .schedulers.classifier_free_guidance import ClassifierFreeGuidanceScheduler
-from .schedulers.ddim import DDIMScheduler
-from .schedulers.gaussian_ddpm import GaussianDDPMScheduler
 from .schedulers.glide_ddim import GlideDDIMScheduler

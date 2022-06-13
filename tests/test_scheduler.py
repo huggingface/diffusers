@@ -20,7 +20,7 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import DDIMScheduler, GaussianDDPMScheduler
+from diffusers import DDIMScheduler, DDPMScheduler
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -163,7 +163,7 @@ class SchedulerCommonTest(unittest.TestCase):
 
 
 class DDPMSchedulerTest(SchedulerCommonTest):
-    scheduler_classes = (GaussianDDPMScheduler,)
+    scheduler_classes = (DDPMScheduler,)
 
     def get_scheduler_config(self, **kwargs):
         config = {
