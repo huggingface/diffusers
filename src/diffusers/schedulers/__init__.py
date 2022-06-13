@@ -19,4 +19,5 @@
 from .classifier_free_guidance import ClassifierFreeGuidanceScheduler
 from .scheduling_ddim import DDIMScheduler
 from .scheduling_ddpm import DDPMScheduler
+from .scheduling_pndm import PNDMScheduler
 from .scheduling_utils import SchedulerMixin
