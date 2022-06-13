@@ -88,35 +88,34 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 #def gen_order_4(img, t, t_next, model, alphas_cump, ets):
         t_next, t = t_start, t_end
 
+        noise_ = model(img.to("cuda"), t.to("cuda"))
+        noise_ = noise_.to("cpu")
+
         t_list = [t, (t+t_next)/2, t_next]
-        alphas_cump = self.alphas_cumprod
         if len(ets) > 2:
-            noise_ = model(img.to("cuda"), t.to("cuda"))
-            noise_ = noise_.to("cpu")
             ets.append(noise_)
             noise = (1 / 24) * (55 * ets[-1] - 59 * ets[-2] + 37 * ets[-3] - 9 * ets[-4])
         else:
-            noise = self.runge_kutta(img, t_list, model, alphas_cump, ets)
+            noise = self.runge_kutta(img, t_list, model, ets, noise_)
 
-        img_next = self.transfer(img.to("cpu"), t, t_next, noise, alphas_cump)
+        img_next = self.transfer(img.to("cpu"), t, t_next, noise)
         return img_next, ets
 
-    def runge_kutta(self, x, t_list, model, alphas_cump, ets):
+    def runge_kutta(self, x, t_list, model, ets, noise_):
         model = model.to("cuda")
         x = x.to("cpu")
 
-        e_1 = model(x.to("cuda"), t_list[0].to("cuda"))
-        e_1 = e_1.to("cpu")
+        e_1 = noise_
         ets.append(e_1)
-        x_2 = self.transfer(x, t_list[0], t_list[1], e_1, alphas_cump)
+        x_2 = self.transfer(x, t_list[0], t_list[1], e_1)
 
         e_2 = model(x_2.to("cuda"), t_list[1].to("cuda"))
         e_2 = e_2.to("cpu")
-        x_3 = self.transfer(x, t_list[0], t_list[1], e_2, alphas_cump)
+        x_3 = self.transfer(x, t_list[0], t_list[1], e_2)
 
         e_3 = model(x_3.to("cuda"), t_list[1].to("cuda"))
         e_3 = e_3.to("cpu")
-        x_4 = self.transfer(x, t_list[0], t_list[2], e_3, alphas_cump)
+        x_4 = self.transfer(x, t_list[0], t_list[2], e_3)
 
         e_4 = model(x_4.to("cuda"), t_list[2].to("cuda"))
         e_4 = e_4.to("cpu")
@@ -125,7 +124,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         return et
 
-    def transfer(self, x, t, t_next, et, alphas_cump):
+    def transfer(self, x, t, t_next, et):
+        alphas_cump = self.alphas_cumprod
         at = alphas_cump[t.long() + 1].view(-1, 1, 1, 1)
         at_next = alphas_cump[t_next.long() + 1].view(-1, 1, 1, 1)
 

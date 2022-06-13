@@ -40,7 +40,7 @@ class PNDM(DiffusionPipeline):
         # Sample gaussian noise to begin loop
         image = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.resolution, self.unet.resolution),
-#            generator=torch.manual_seed(0)
+            generator=generator,
         )
         image = image.to(torch_device)
 
@@ -53,9 +53,30 @@ class PNDM(DiffusionPipeline):
             t = (torch.ones(image.shape[0]) * i)
             t_next = (torch.ones(image.shape[0]) * j)
 
-            with torch.no_grad():
-                t_start, t_end = t_next, t
-                img_next, ets = self.noise_scheduler.step(image, t_start, t_end, model, ets)
+            residual = model(image.to("cuda"), t.to("cuda"))
+            residual = residual.to("cpu")
+
+            t_list = [t, (t+t_next)/2, t_next]
+
+            if len(ets) <= 2:
+                ets.append(residual)
+                image = image.to("cpu")
+                x_2 = self.noise_scheduler.transfer(image, t_list[0], t_list[1], residual)
+                e_2 = model(x_2.to("cuda"), t_list[1].to("cuda")).to("cpu")
+                x_3 = self.noise_scheduler.transfer(image, t_list[0], t_list[1], e_2)
+                e_3 = model(x_3.to("cuda"), t_list[1].to("cuda")).to("cpu")
+                x_4 = self.noise_scheduler.transfer(image, t_list[0], t_list[2], e_3)
+                e_4 = model(x_4.to("cuda"), t_list[2].to("cuda")).to("cpu")
+                residual = (1 / 6) * (residual + 2 * e_2 + 2 * e_3 + e_4)
+            else:
+                ets.append(residual)
+                residual = (1 / 24) * (55 * ets[-1] - 59 * ets[-2] + 37 * ets[-3] - 9 * ets[-4])
+
+            img_next = self.noise_scheduler.transfer(image.to("cpu"), t, t_next, residual)
+
+#            with torch.no_grad():
+#                t_start, t_end = t_next, t
+#                img_next, ets = self.noise_scheduler.step(image, t_start, t_end, model, ets)
 
             image = img_next
 
