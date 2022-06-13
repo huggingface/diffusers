@@ -26,6 +26,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         beta_start=0.0001,
         beta_end=0.02,
         beta_schedule="linear",
+        trained_betas=None,
+        timestep_values=None,
         variance_type="fixed_small",
         clip_predicted_image=True,
         tensor_format="np",
@@ -36,14 +38,19 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             beta_start=beta_start,
             beta_end=beta_end,
             beta_schedule=beta_schedule,
+            trained_betas=trained_betas,
+            timestep_values=timestep_values,
             variance_type=variance_type,
             clip_predicted_image=clip_predicted_image,
         )
         self.timesteps = int(timesteps)
+        self.timestep_values = timestep_values # save the fixed timestep values for BDDM
         self.clip_image = clip_predicted_image
         self.variance_type = variance_type
 
-        if beta_schedule == "linear":
+        if trained_betas is not None:
+            self.betas = np.asarray(trained_betas)
+        elif beta_schedule == "linear":
             self.betas = linear_beta_schedule(timesteps, beta_start=beta_start, beta_end=beta_end)
         elif beta_schedule == "squaredcos_cap_v2":
             # GLIDE cosine schedule
@@ -56,6 +63,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
+        self.sqrt_alphas_cumprod = np.sqrt(self.alphas_cumprod)
+        self.sqrt_one_minus_alphas_cumprod = np.sqrt(1 - self.alphas_cumprod)
         self.one = np.array(1.0)
 
         self.set_format(tensor_format=tensor_format)
@@ -130,6 +139,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         pred_prev_image = pred_original_image_coeff * pred_original_image + current_image_coeff * image
 
         return pred_prev_image
+
+    def forward_step(self, original_image, noise, t):
+        noisy_image = self.sqrt_alphas_cumprod[t] * original_image + self.sqrt_one_minus_alphas_cumprod[t] * noise
+        return noisy_image
 
     def __len__(self):
         return self.timesteps

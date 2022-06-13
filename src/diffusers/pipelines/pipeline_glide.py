@@ -28,13 +28,7 @@ from transformers import CLIPConfig, CLIPModel, CLIPTextConfig, CLIPVisionConfig
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
 from transformers.modeling_utils import PreTrainedModel
-from transformers.utils import (
-    ModelOutput,
-    add_start_docstrings,
-    add_start_docstrings_to_model_forward,
-    logging,
-    replace_return_docstrings,
-)
+from transformers.utils import ModelOutput, add_start_docstrings_to_model_forward, logging, replace_return_docstrings
 
 from ..models import GLIDESuperResUNetModel, GLIDETextToImageUNetModel
 from ..pipeline_utils import DiffusionPipeline
@@ -872,31 +866,31 @@ class GLIDE(DiffusionPipeline):
 
         # Sample gaussian noise to begin loop
         image = torch.randn(
-            (batch_size, self.unet.in_channels, self.unet.resolution, self.unet.resolution),
+            (
+                batch_size,
+                self.upscale_unet.in_channels // 2,
+                self.upscale_unet.resolution,
+                self.upscale_unet.resolution,
+            ),
             generator=generator,
         )
-        image = image.to(torch_device)
+        image = image.to(torch_device) * upsample_temp
 
-        # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
-        # Ideally, read DDIM paper in-detail understanding
+        num_trained_timesteps = self.upscale_noise_scheduler.timesteps
+        inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps_upscale)
+        # adapt the beta schedule to the number of steps
+        # self.upscale_noise_scheduler.rescale_betas(num_inference_steps_upscale)
 
-        # Notation (<variable name> -> <name in paper>
-        # - pred_noise_t -> e_theta(x_t, t)
-        # - pred_original_image -> f_theta(x_t, t) or x_0
-        # - std_dev_t -> sigma_t
-        # - eta -> η
-        # - pred_image_direction -> "direction pointingc to x_t"
-        # - pred_prev_image -> "x_t-1"
         for t in tqdm.tqdm(reversed(range(num_inference_steps_upscale)), total=num_inference_steps_upscale):
             # 1. predict noise residual
             with torch.no_grad():
-                time_input = torch.tensor([t] * image.shape[0], device=torch_device)
+                time_input = torch.tensor([inference_step_times[t]] * image.shape[0], device=torch_device)
                 model_output = self.upscale_unet(image, time_input, low_res)
                 noise_residual, pred_variance = torch.split(model_output, 3, dim=1)
 
             # 2. predict previous mean of image x_t-1
             pred_prev_image = self.upscale_noise_scheduler.step(
-                noise_residual, image, t, num_inference_steps_upscale, eta
+                noise_residual, image, t, num_inference_steps_upscale, eta, use_clipped_residual=True
             )
 
             # 3. optionally sample variance
@@ -910,6 +904,6 @@ class GLIDE(DiffusionPipeline):
             # 4. set current image to prev_image: x_t -> x_t-1
             image = pred_prev_image + variance
 
-        image = image.permute(0, 2, 3, 1)
+        image = image.clamp(-1, 1).permute(0, 2, 3, 1)
 
         return image

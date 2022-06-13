@@ -97,7 +97,9 @@ superres_model = GLIDESuperResUNetModel(
 
 superres_model.load_state_dict(ups_state_dict, strict=False)
 
-upscale_scheduler = DDIMScheduler(timesteps=1000, beta_schedule="linear", beta_start=0.0001, beta_end=0.02)
+upscale_scheduler = DDIMScheduler(
+    timesteps=1000, beta_schedule="linear", beta_start=0.0001, beta_end=0.02, tensor_format="pt"
+)
 
 glide = GLIDE(
     text_unet=text2im_model,
