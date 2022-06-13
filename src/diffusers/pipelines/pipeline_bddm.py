@@ -262,7 +262,7 @@ class DiffWave(ModelMixin, ConfigMixin):
         return self.final_conv(x)
 
 
-class BDDMPipeline(DiffusionPipeline):
+class BDDM(DiffusionPipeline):
     def __init__(self, diffwave, noise_scheduler):
         super().__init__()
         noise_scheduler = noise_scheduler.set_format("pt")
