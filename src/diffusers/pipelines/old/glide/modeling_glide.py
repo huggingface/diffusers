@@ -26,8 +26,8 @@ from torch import nn
 import tqdm
 from diffusers import (
     ClassifierFreeGuidanceScheduler,
+    DDIMScheduler,
     DiffusionPipeline,
-    GlideDDIMScheduler,
     GLIDESuperResUNetModel,
     GLIDETextToImageUNetModel,
 )
@@ -727,7 +727,7 @@ class GLIDE(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: GPT2Tokenizer,
         upscale_unet: GLIDESuperResUNetModel,
-        upscale_noise_scheduler: GlideDDIMScheduler,
+        upscale_noise_scheduler: DDIMScheduler,
     ):
         super().__init__()
         self.register_modules(

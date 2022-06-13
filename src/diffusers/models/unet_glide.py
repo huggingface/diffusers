@@ -420,6 +420,7 @@ class GLIDEUNetModel(ModelMixin, ConfigMixin):
     def __init__(
         self,
         in_channels=3,
+        resolution=64,
         model_channels=192,
         out_channels=6,
         num_res_blocks=3,
@@ -443,6 +444,7 @@ class GLIDEUNetModel(ModelMixin, ConfigMixin):
             num_heads_upsample = num_heads
 
         self.in_channels = in_channels
+        self.resolution = resolution
         self.model_channels = model_channels
         self.out_channels = out_channels
         self.num_res_blocks = num_res_blocks
@@ -649,6 +651,7 @@ class GLIDETextToImageUNetModel(GLIDEUNetModel):
     def __init__(
         self,
         in_channels=3,
+        resolution=64,
         model_channels=192,
         out_channels=6,
         num_res_blocks=3,
@@ -668,6 +671,7 @@ class GLIDETextToImageUNetModel(GLIDEUNetModel):
     ):
         super().__init__(
             in_channels=in_channels,
+            resolution=resolution,
             model_channels=model_channels,
             out_channels=out_channels,
             num_res_blocks=num_res_blocks,
@@ -687,6 +691,7 @@ class GLIDETextToImageUNetModel(GLIDEUNetModel):
         )
         self.register(
             in_channels=in_channels,
+            resolution=resolution,
             model_channels=model_channels,
             out_channels=out_channels,
             num_res_blocks=num_res_blocks,
@@ -739,6 +744,7 @@ class GLIDESuperResUNetModel(GLIDEUNetModel):
     def __init__(
         self,
         in_channels=3,
+        resolution=256,
         model_channels=192,
         out_channels=6,
         num_res_blocks=3,
@@ -757,6 +763,7 @@ class GLIDESuperResUNetModel(GLIDEUNetModel):
     ):
         super().__init__(
             in_channels=in_channels,
+            resolution=resolution,
             model_channels=model_channels,
             out_channels=out_channels,
             num_res_blocks=num_res_blocks,
@@ -775,6 +782,7 @@ class GLIDESuperResUNetModel(GLIDEUNetModel):
         )
         self.register(
             in_channels=in_channels,
+            resolution=resolution,
             model_channels=model_channels,
             out_channels=out_channels,
             num_res_blocks=num_res_blocks,

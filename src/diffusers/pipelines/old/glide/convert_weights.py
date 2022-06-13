@@ -1,12 +1,7 @@
 import torch
 from torch import nn
 
-from diffusers import (
-    ClassifierFreeGuidanceScheduler,
-    GlideDDIMScheduler,
-    GLIDESuperResUNetModel,
-    GLIDETextToImageUNetModel,
-)
+from diffusers import ClassifierFreeGuidanceScheduler, GLIDESuperResUNetModel, GLIDETextToImageUNetModel
 from modeling_glide import GLIDE, CLIPTextModel
 from transformers import CLIPTextConfig, GPT2Tokenizer
 
@@ -102,7 +97,7 @@ superres_model = GLIDESuperResUNetModel(
 
 superres_model.load_state_dict(ups_state_dict, strict=False)
 
-upscale_scheduler = GlideDDIMScheduler(timesteps=1000, beta_schedule="linear")
+upscale_scheduler = DDIMScheduler(timesteps=1000, beta_schedule="linear")
 
 glide = GLIDE(
     text_unet=text2im_model,

@@ -38,7 +38,7 @@ from transformers.utils import (
 
 from ..models import GLIDESuperResUNetModel, GLIDETextToImageUNetModel
 from ..pipeline_utils import DiffusionPipeline
-from ..schedulers import ClassifierFreeGuidanceScheduler, GlideDDIMScheduler
+from ..schedulers import ClassifierFreeGuidanceScheduler, DDIMScheduler
 
 
 #####################
@@ -724,7 +724,7 @@ class GLIDE(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: GPT2Tokenizer,
         upscale_unet: GLIDESuperResUNetModel,
-        upscale_noise_scheduler: GlideDDIMScheduler,
+        upscale_noise_scheduler: DDIMScheduler,
     ):
         super().__init__()
         self.register_modules(
@@ -816,7 +816,7 @@ class GLIDE(DiffusionPipeline):
         ) / _extract_into_tensor(scheduler.sqrt_recipm1_alphas_cumprod, t, x_t.shape)
 
     @torch.no_grad()
-    def __call__(self, prompt, generator=None, torch_device=None):
+    def __call__(self, prompt, generator=None, torch_device=None, num_inference_steps_upscale=50):
         torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self.text_unet.to(torch_device)
@@ -870,50 +870,45 @@ class GLIDE(DiffusionPipeline):
         # A value of 1.0 is sharper, but sometimes results in grainy artifacts.
         upsample_temp = 0.997
 
-        image = (
-            self.upscale_noise_scheduler.sample_noise(
-                (batch_size, 3, 256, 256), device=torch_device, generator=generator
-            )
-            * upsample_temp
+        # Sample gaussian noise to begin loop
+        image = torch.randn(
+            (batch_size, self.unet.in_channels, self.unet.resolution, self.unet.resolution),
+            generator=generator,
         )
+        image = image.to(torch_device)
 
-        num_timesteps = len(self.upscale_noise_scheduler)
-        for t in tqdm.tqdm(
-            reversed(range(len(self.upscale_noise_scheduler))), total=len(self.upscale_noise_scheduler)
-        ):
-            # i) define coefficients for time step t
-            clipped_image_coeff = 1 / torch.sqrt(self.upscale_noise_scheduler.get_alpha_prod(t))
-            clipped_noise_coeff = torch.sqrt(1 / self.upscale_noise_scheduler.get_alpha_prod(t) - 1)
-            image_coeff = (
-                (1 - self.upscale_noise_scheduler.get_alpha_prod(t - 1))
-                * torch.sqrt(self.upscale_noise_scheduler.get_alpha(t))
-                / (1 - self.upscale_noise_scheduler.get_alpha_prod(t))
-            )
-            clipped_coeff = (
-                torch.sqrt(self.upscale_noise_scheduler.get_alpha_prod(t - 1))
-                * self.upscale_noise_scheduler.get_beta(t)
-                / (1 - self.upscale_noise_scheduler.get_alpha_prod(t))
-            )
+        # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
+        # Ideally, read DDIM paper in-detail understanding
 
-            # ii) predict noise residual
-            time_input = torch.tensor([t] * image.shape[0], device=torch_device)
-            model_output = self.upscale_unet(image, time_input, low_res)
-            noise_residual, pred_variance = torch.split(model_output, 3, dim=1)
+        # Notation (<variable name> -> <name in paper>
+        # - pred_noise_t -> e_theta(x_t, t)
+        # - pred_original_image -> f_theta(x_t, t) or x_0
+        # - std_dev_t -> sigma_t
+        # - eta -> η
+        # - pred_image_direction -> "direction pointingc to x_t"
+        # - pred_prev_image -> "x_t-1"
+        for t in tqdm.tqdm(reversed(range(num_inference_steps_upscale)), total=num_inference_steps_upscale):
+            # 1. predict noise residual
+            with torch.no_grad():
+                time_input = torch.tensor([t] * image.shape[0], device=torch_device)
+                model_output = self.upscale_unet(image, time_input, low_res)
+                noise_residual, pred_variance = torch.split(model_output, 3, dim=1)
 
-            # iii) compute predicted image from residual
-            # See 2nd formula at https://github.com/hojonathanho/diffusion/issues/5#issue-896554416 for comparison
-            pred_mean = clipped_image_coeff * image - clipped_noise_coeff * noise_residual
-            pred_mean = torch.clamp(pred_mean, -1, 1)
-            prev_image = clipped_coeff * pred_mean + image_coeff * image
-
-            # iv) sample variance
-            prev_variance = self.upscale_noise_scheduler.sample_variance(
-                t, prev_image.shape, device=torch_device, generator=generator
+            # 2. predict previous mean of image x_t-1
+            pred_prev_image = self.upscale_noise_scheduler.step(
+                noise_residual, image, t, num_inference_steps_upscale, eta
             )
 
-            # v) sample  x_{t-1} ~ N(prev_image, prev_variance)
-            sampled_prev_image = prev_image + prev_variance
-            image = sampled_prev_image
+            # 3. optionally sample variance
+            variance = 0
+            if eta > 0:
+                noise = torch.randn(image.shape, generator=generator).to(image.device)
+                variance = (
+                    self.upscale_noise_scheduler.get_variance(t, num_inference_steps_upscale).sqrt() * eta * noise
+                )
+
+            # 4. set current image to prev_image: x_t -> x_t-1
+            image = pred_prev_image + variance
 
         image = image.permute(0, 2, 3, 1)
 

@@ -14,4 +14,3 @@ from .schedulers import SchedulerMixin
 from .schedulers.classifier_free_guidance import ClassifierFreeGuidanceScheduler
 from .schedulers.ddim import DDIMScheduler
 from .schedulers.gaussian_ddpm import GaussianDDPMScheduler
-from .schedulers.glide_ddim import GlideDDIMScheduler

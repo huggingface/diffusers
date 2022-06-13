@@ -69,6 +69,15 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
     #
     #        self.register_buffer("log_variance", log_variance.to(torch.float32))
 
+    def rescale_betas(self, num_timesteps):
+        if self.beta_schedule == "linear":
+            scale = self.timesteps / num_timesteps
+            self.betas = linear_beta_schedule(
+                num_timesteps, beta_start=self.beta_start * scale, beta_end=self.beta_end * scale
+            )
+            self.alphas = 1.0 - self.betas
+            self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
+
     def get_alpha(self, time_step):
         return self.alphas[time_step]
 

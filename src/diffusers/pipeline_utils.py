@@ -37,7 +37,6 @@ LOADABLE_CLASSES = {
         "SchedulerMixin": ["save_config", "from_config"],
         "DiffusionPipeline": ["save_pretrained", "from_pretrained"],
         "ClassifierFreeGuidanceScheduler": ["save_config", "from_config"],
-        "GlideDDIMScheduler": ["save_config", "from_config"],
     },
     "transformers": {
         "PreTrainedTokenizer": ["save_pretrained", "from_pretrained"],
