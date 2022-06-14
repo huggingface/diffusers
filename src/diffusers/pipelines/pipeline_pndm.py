@@ -32,9 +32,6 @@ class PNDM(DiffusionPipeline):
         if torch_device is None:
             torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        num_trained_timesteps = self.noise_scheduler.timesteps
-        inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps)
-
         self.unet.to(torch_device)
 
         # Sample gaussian noise to begin loop
@@ -44,55 +41,22 @@ class PNDM(DiffusionPipeline):
         )
         image = image.to(torch_device)
 
-        seq = list(inference_step_times)
-        seq_next = [-1] + list(seq[:-1])
-        model = self.unet
-
-        warmup_time_steps = list(reversed([(t + 5) // 10 * 10 for t in range(seq[-4], seq[-1], 5)]))
-
-        cur_residual = 0
+        warmup_time_steps = self.noise_scheduler.get_warmup_time_steps(num_inference_steps)
         prev_image = image
-        ets = []
-        for i in range(len(warmup_time_steps)):
-            t = warmup_time_steps[i] * torch.ones(image.shape[0])
-            t_next = (warmup_time_steps[i + 1] if i < len(warmup_time_steps) - 1 else warmup_time_steps[-1]) * torch.ones(image.shape[0])
+        for t in tqdm.tqdm(range(len(warmup_time_steps))):
+            t_orig = warmup_time_steps[t]
+            residual = self.unet(image, t_orig)
 
-            residual = model(image.to("cuda"), t.to("cuda"))
-            residual = residual.to("cpu")
-
-            if i % 4 == 0:
-                cur_residual += 1 / 6 * residual
-                ets.append(residual)
+            if t % 4 == 0:
                 prev_image = image
-            elif (i - 1) % 4 == 0:
-                cur_residual += 1 / 3 * residual
-            elif (i - 2) % 4 == 0:
-                cur_residual += 1 / 3 * residual
-            elif (i - 3) % 4 == 0:
-                cur_residual += 1 / 6 * residual
-                residual = cur_residual
-                cur_residual = 0
 
-            image = image.to("cpu")
-            t_2 = warmup_time_steps[4 * (i // 4)] * torch.ones(image.shape[0])
-            image = self.noise_scheduler.transfer(prev_image.to("cpu"), t_2, t_next, residual)
+            image = self.noise_scheduler.step_warm_up(residual, prev_image, t, num_inference_steps)
 
-        step_idx = len(seq) - 4
-        while step_idx >= 0:
-            i = seq[step_idx]
-            j = seq_next[step_idx]
+        timesteps = self.noise_scheduler.get_time_steps(num_inference_steps)
+        for t in tqdm.tqdm(range(len(timesteps))):
+            t_orig = timesteps[t]
+            residual = self.unet(image, t_orig)
 
-            t = (torch.ones(image.shape[0]) * i)
-            t_next = (torch.ones(image.shape[0]) * j)
-
-            residual = model(image.to("cuda"), t.to("cuda"))
-            residual = residual.to("cpu")
-            ets.append(residual)
-            residual = (1 / 24) * (55 * ets[-1] - 59 * ets[-2] + 37 * ets[-3] - 9 * ets[-4])
-
-            img_next = self.noise_scheduler.transfer(image.to("cpu"), t, t_next, residual)
-            image = img_next
-
-            step_idx = step_idx - 1
+            image = self.noise_scheduler.step(residual, image, t, num_inference_steps)
 
         return image
