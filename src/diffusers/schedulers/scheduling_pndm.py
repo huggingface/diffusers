@@ -55,11 +55,14 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         self.set_format(tensor_format=tensor_format)
 
-        # for now we only support F-PNDM, i.e. the runge-kutta method
+        # For now we only support F-PNDM, i.e. the runge-kutta method
+        # For more information on the algorithm please take a look at the paper: https://arxiv.org/pdf/2202.09778.pdf
+        # mainly at equations (12) and (13) and the Algorithm 2.
         self.pndm_order = 4
 
         # running values
         self.cur_residual = 0
+        self.cur_image = None
         self.ets = []
         self.warmup_time_steps = {}
         self.time_steps = {}
@@ -95,7 +98,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         return self.time_steps[num_inference_steps]
 
-    def step_warm_up(self, residual, image, t, num_inference_steps):
+    def step_prk(self, residual, image, t, num_inference_steps):
+        # TODO(Patrick) - need to rethink whether the "warmup" way is the correct API design here
         warmup_time_steps = self.get_warmup_time_steps(num_inference_steps)
 
         t_prev = warmup_time_steps[t // 4 * 4]
@@ -104,6 +108,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         if t % 4 == 0:
             self.cur_residual += 1 / 6 * residual
             self.ets.append(residual)
+            self.cur_image = image
         elif (t - 1) % 4 == 0:
             self.cur_residual += 1 / 3 * residual
         elif (t - 2) % 4 == 0:
@@ -112,9 +117,9 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             residual = self.cur_residual + 1 / 6 * residual
             self.cur_residual = 0
 
-        return self.transfer(image, t_prev, t_next, residual)
+        return self.transfer(self.cur_image, t_prev, t_next, residual)
 
-    def step(self, residual, image, t, num_inference_steps):
+    def step_plms(self, residual, image, t, num_inference_steps):
         timesteps = self.get_time_steps(num_inference_steps)
 
         t_prev = timesteps[t]
