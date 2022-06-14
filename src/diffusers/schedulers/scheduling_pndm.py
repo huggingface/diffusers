@@ -55,31 +55,14 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         self.set_format(tensor_format=tensor_format)
 
-        # hardcode for now
+        # for now we only support F-PNDM, i.e. the runge-kutta method
         self.pndm_order = 4
-        self.cur_residual = 0
 
         # running values
+        self.cur_residual = 0
         self.ets = []
         self.warmup_time_steps = {}
         self.time_steps = {}
-
-    #        self.register_buffer("betas", betas.to(torch.float32))
-    #        self.register_buffer("alphas", alphas.to(torch.float32))
-    #        self.register_buffer("alphas_cumprod", alphas_cumprod.to(torch.float32))
-
-    #        alphas_cumprod_prev = torch.nn.functional.pad(alphas_cumprod[:-1], (1, 0), value=1.0)
-    # TODO(PVP) - check how much of these is actually necessary!
-    # LDM only uses "fixed_small"; glide seems to use a weird mix of the two, ...
-    # https://github.com/openai/glide-text2im/blob/69b530740eb6cef69442d6180579ef5ba9ef063e/glide_text2im/gaussian_diffusion.py#L246
-    #        variance = betas * (1.0 - alphas_cumprod_prev) / (1.0 - alphas_cumprod)
-    #        if variance_type == "fixed_small":
-    #            log_variance = torch.log(variance.clamp(min=1e-20))
-    #        elif variance_type == "fixed_large":
-    #            log_variance = torch.log(torch.cat([variance[1:2], betas[1:]], dim=0))
-    #
-    #
-    #        self.register_buffer("log_variance", log_variance.to(torch.float32))
 
     def get_alpha(self, time_step):
         return self.alphas[time_step]
