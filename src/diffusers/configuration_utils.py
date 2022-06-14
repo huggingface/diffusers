@@ -225,11 +225,11 @@ class ConfigMixin:
             text = reader.read()
         return json.loads(text)
 
-    # def __eq__(self, other):
-    #    return self.__dict__ == other.__dict__
+    def __eq__(self, other):
+       return self.__dict__ == other.__dict__
 
-    # def __repr__(self):
-    #    return f"{self.__class__.__name__} {self.to_json_string()}"
+    def __repr__(self):
+       return f"{self.__class__.__name__} {self.to_json_string()}"
 
     @property
     def config(self) -> Dict[str, Any]:
