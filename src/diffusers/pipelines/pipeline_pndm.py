@@ -48,9 +48,36 @@ class PNDM(DiffusionPipeline):
         seq_next = [-1] + list(seq[:-1])
         model = self.unet
 
+        warmup_time_steps = list(reversed([(t + 5) // 10 * 10 for t in range(seq[-4], seq[-1], 5)]))
+
+        cur_residual = 0
+        prev_image = image
         ets = []
-        prev_noises = []
-        step_idx = len(seq) - 1
+        for i in range(len(warmup_time_steps)):
+            t = warmup_time_steps[i] * torch.ones(image.shape[0])
+            t_next = (warmup_time_steps[i + 1] if i < len(warmup_time_steps) - 1 else warmup_time_steps[-1]) * torch.ones(image.shape[0])
+
+            residual = model(image.to("cuda"), t.to("cuda"))
+            residual = residual.to("cpu")
+
+            if i % 4 == 0:
+                cur_residual += 1 / 6 * residual
+                ets.append(residual)
+                prev_image = image
+            elif (i - 1) % 4 == 0:
+                cur_residual += 1 / 3 * residual
+            elif (i - 2) % 4 == 0:
+                cur_residual += 1 / 3 * residual
+            elif (i - 3) % 4 == 0:
+                cur_residual += 1 / 6 * residual
+                residual = cur_residual
+                cur_residual = 0
+
+            image = image.to("cpu")
+            t_2 = warmup_time_steps[4 * (i // 4)] * torch.ones(image.shape[0])
+            image = self.noise_scheduler.transfer(prev_image.to("cpu"), t_2, t_next, residual)
+
+        step_idx = len(seq) - 4
         while step_idx >= 0:
             i = seq[step_idx]
             j = seq_next[step_idx]
@@ -60,75 +87,12 @@ class PNDM(DiffusionPipeline):
 
             residual = model(image.to("cuda"), t.to("cuda"))
             residual = residual.to("cpu")
-
-            t_list = [t, (t+t_next)/2, t_next]
-
             ets.append(residual)
-            if len(ets) <= 3:
-                image = image.to("cpu")
-                x_2 = self.noise_scheduler.transfer(image.to("cpu"), t_list[0], t_list[1], residual)
-
-                e_2 = model(x_2.to("cuda"), t_list[1].to("cuda")).to("cpu")
-                x_3 = self.noise_scheduler.transfer(image, t_list[0], t_list[1], e_2)
-                e_3 = model(x_3.to("cuda"), t_list[1].to("cuda")).to("cpu")
-                x_4 = self.noise_scheduler.transfer(image, t_list[0], t_list[2], e_3)
-                e_4 = model(x_4.to("cuda"), t_list[2].to("cuda")).to("cpu")
-                residual = (1 / 6) * (residual + 2 * e_2 + 2 * e_3 + e_4)
-            else:
-                residual = (1 / 24) * (55 * ets[-1] - 59 * ets[-2] + 37 * ets[-3] - 9 * ets[-4])
+            residual = (1 / 24) * (55 * ets[-1] - 59 * ets[-2] + 37 * ets[-3] - 9 * ets[-4])
 
             img_next = self.noise_scheduler.transfer(image.to("cpu"), t, t_next, residual)
             image = img_next
 
             step_idx = step_idx - 1
 
-#            if len(prev_noises) in [1, 2]:
-#                t = (t + t_next) / 2
-#            elif len(prev_noises) == 3:
-#                t = t_next / 2
-
-#            if len(prev_noises) == 0:
-#                ets.append(residual)
-#
-#            if len(ets) > 3:
-#                residual = (1 / 24) * (55 * ets[-1] - 59 * ets[-2] + 37 * ets[-3] - 9 * ets[-4])
-#                step_idx = step_idx - 1
-#            elif len(ets) <= 3 and len(prev_noises) == 3:
-#                residual = (1 / 6) * (prev_noises[-3] + 2 * prev_noises[-2] + 2 * prev_noises[-1] + residual)
-#                prev_noises = []
-#                step_idx = step_idx - 1
-#            elif len(ets) <= 3 and len(prev_noises) < 3:
-#                prev_noises.append(residual)
-#                if len(prev_noises) < 2:
-#                    t_next = (t + t_next) / 2
-#
-#            image = self.noise_scheduler.transfer(image.to("cpu"), t, t_next, residual)
-
         return image
-
-        # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
-        # Ideally, read DDIM paper in-detail understanding
-
-        # Notation (<variable name> -> <name in paper>
-        # - pred_noise_t -> e_theta(x_t, t)
-        # - pred_original_image -> f_theta(x_t, t) or x_0
-        # - std_dev_t -> sigma_t
-        # - eta -> η
-        # - pred_image_direction -> "direction pointingc to x_t"
-        # - pred_prev_image -> "x_t-1"
-#        for t in tqdm.tqdm(reversed(range(num_inference_steps)), total=num_inference_steps):
-            # 1. predict noise residual
-#            with torch.no_grad():
-#                residual = self.unet(image, inference_step_times[t])
-#
-            # 2. predict previous mean of image x_t-1
-#            pred_prev_image = self.noise_scheduler.step(residual, image, t, num_inference_steps, eta)
-#
-            # 3. optionally sample variance
-#            variance = 0
-#            if eta > 0:
-#                noise = torch.randn(image.shape, generator=generator).to(image.device)
-#                variance = self.noise_scheduler.get_variance(t, num_inference_steps).sqrt() * eta * noise
-#
-            # 4. set current image to prev_image: x_t -> x_t-1
-#            image = pred_prev_image + variance
