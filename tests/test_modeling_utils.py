@@ -19,7 +19,7 @@ import unittest
 
 import torch
 
-from diffusers import DDIM, DDPM, BDDM, DDIMScheduler, DDPMScheduler, LatentDiffusion, UNetModel, PNDM, PNDMScheduler
+from diffusers import DDIM, DDPM, PNDM, GLIDE, BDDM, DDIMScheduler, DDPMScheduler, LatentDiffusion, PNDMScheduler, UNetModel
 from diffusers.configuration_utils import ConfigMixin
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.pipeline_bddm import DiffWave
@@ -229,3 +229,17 @@ class PipelineTesterMixin(unittest.TestCase):
             _ = BDDM.from_pretrained(tmpdirname)
             # check if the same works using the DifusionPipeline class
             _ = DiffusionPipeline.from_pretrained(tmpdirname)
+    @slow
+    def test_glide_text2img(self):
+        model_id = "fusing/glide-base"
+        glide = GLIDE.from_pretrained(model_id)
+
+        prompt = "a pencil sketch of a corgi"
+        generator = torch.manual_seed(0)
+        image = glide(prompt, generator=generator, num_inference_steps_upscale=20)
+
+        image_slice = image[0, :3, :3, -1].cpu()
+
+        assert image.shape == (1, 256, 256, 3)
+        expected_slice = torch.tensor([0.7119, 0.7073, 0.6460, 0.7780, 0.7423, 0.6926, 0.7378, 0.7189, 0.7784])
+        assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2

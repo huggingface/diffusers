@@ -28,12 +28,10 @@ class PNDM(DiffusionPipeline):
         self.register_modules(unet=unet, noise_scheduler=noise_scheduler)
 
     def __call__(self, batch_size=1, generator=None, torch_device=None, num_inference_steps=50):
-        # eta corresponds to η in paper and should be between [0, 1]
+        # For more information on the sampling method you can take a look at Algorithm 2 of
+        # the official paper: https://arxiv.org/pdf/2202.09778.pdf
         if torch_device is None:
             torch_device = "cuda" if torch.cuda.is_available() else "cpu"
-
-        num_trained_timesteps = self.noise_scheduler.timesteps
-        inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps)
 
         self.unet.to(torch_device)
 
@@ -44,91 +42,18 @@ class PNDM(DiffusionPipeline):
         )
         image = image.to(torch_device)
 
-        seq = list(inference_step_times)
-        seq_next = [-1] + list(seq[:-1])
-        model = self.unet
+        warmup_time_steps = self.noise_scheduler.get_warmup_time_steps(num_inference_steps)
+        for t in tqdm.tqdm(range(len(warmup_time_steps))):
+            t_orig = warmup_time_steps[t]
+            residual = self.unet(image, t_orig)
 
-        ets = []
-        prev_noises = []
-        step_idx = len(seq) - 1
-        while step_idx >= 0:
-            i = seq[step_idx]
-            j = seq_next[step_idx]
+            image = self.noise_scheduler.step_prk(residual, image, t, num_inference_steps)
 
-            t = (torch.ones(image.shape[0]) * i)
-            t_next = (torch.ones(image.shape[0]) * j)
+        timesteps = self.noise_scheduler.get_time_steps(num_inference_steps)
+        for t in tqdm.tqdm(range(len(timesteps))):
+            t_orig = timesteps[t]
+            residual = self.unet(image, t_orig)
 
-            residual = model(image.to("cuda"), t.to("cuda"))
-            residual = residual.to("cpu")
-
-            t_list = [t, (t+t_next)/2, t_next]
-
-            ets.append(residual)
-            if len(ets) <= 3:
-                image = image.to("cpu")
-                x_2 = self.noise_scheduler.transfer(image.to("cpu"), t_list[0], t_list[1], residual)
-
-                e_2 = model(x_2.to("cuda"), t_list[1].to("cuda")).to("cpu")
-                x_3 = self.noise_scheduler.transfer(image, t_list[0], t_list[1], e_2)
-                e_3 = model(x_3.to("cuda"), t_list[1].to("cuda")).to("cpu")
-                x_4 = self.noise_scheduler.transfer(image, t_list[0], t_list[2], e_3)
-                e_4 = model(x_4.to("cuda"), t_list[2].to("cuda")).to("cpu")
-                residual = (1 / 6) * (residual + 2 * e_2 + 2 * e_3 + e_4)
-            else:
-                residual = (1 / 24) * (55 * ets[-1] - 59 * ets[-2] + 37 * ets[-3] - 9 * ets[-4])
-
-            img_next = self.noise_scheduler.transfer(image.to("cpu"), t, t_next, residual)
-            image = img_next
-
-            step_idx = step_idx - 1
-
-#            if len(prev_noises) in [1, 2]:
-#                t = (t + t_next) / 2
-#            elif len(prev_noises) == 3:
-#                t = t_next / 2
-
-#            if len(prev_noises) == 0:
-#                ets.append(residual)
-#
-#            if len(ets) > 3:
-#                residual = (1 / 24) * (55 * ets[-1] - 59 * ets[-2] + 37 * ets[-3] - 9 * ets[-4])
-#                step_idx = step_idx - 1
-#            elif len(ets) <= 3 and len(prev_noises) == 3:
-#                residual = (1 / 6) * (prev_noises[-3] + 2 * prev_noises[-2] + 2 * prev_noises[-1] + residual)
-#                prev_noises = []
-#                step_idx = step_idx - 1
-#            elif len(ets) <= 3 and len(prev_noises) < 3:
-#                prev_noises.append(residual)
-#                if len(prev_noises) < 2:
-#                    t_next = (t + t_next) / 2
-#
-#            image = self.noise_scheduler.transfer(image.to("cpu"), t, t_next, residual)
+            image = self.noise_scheduler.step_plms(residual, image, t, num_inference_steps)
 
         return image
-
-        # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
-        # Ideally, read DDIM paper in-detail understanding
-
-        # Notation (<variable name> -> <name in paper>
-        # - pred_noise_t -> e_theta(x_t, t)
-        # - pred_original_image -> f_theta(x_t, t) or x_0
-        # - std_dev_t -> sigma_t
-        # - eta -> η
-        # - pred_image_direction -> "direction pointingc to x_t"
-        # - pred_prev_image -> "x_t-1"
-#        for t in tqdm.tqdm(reversed(range(num_inference_steps)), total=num_inference_steps):
-            # 1. predict noise residual
-#            with torch.no_grad():
-#                residual = self.unet(image, inference_step_times[t])
-#
-            # 2. predict previous mean of image x_t-1
-#            pred_prev_image = self.noise_scheduler.step(residual, image, t, num_inference_steps, eta)
-#
-            # 3. optionally sample variance
-#            variance = 0
-#            if eta > 0:
-#                noise = torch.randn(image.shape, generator=generator).to(image.device)
-#                variance = self.noise_scheduler.get_variance(t, num_inference_steps).sqrt() * eta * noise
-#
-            # 4. set current image to prev_image: x_t -> x_t-1
-#            image = pred_prev_image + variance
