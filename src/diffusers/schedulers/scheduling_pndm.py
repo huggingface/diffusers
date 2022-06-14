@@ -96,6 +96,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         return self.time_steps[num_inference_steps]
 
     def step_warm_up(self, residual, image, t, num_inference_steps):
+        # TODO(Patrick) - need to rethink whether the "warmup" way is the correct API design here
         warmup_time_steps = self.get_warmup_time_steps(num_inference_steps)
 
         t_prev = warmup_time_steps[t // 4 * 4]
