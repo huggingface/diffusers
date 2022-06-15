@@ -174,7 +174,7 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 image_pil.save("test.png")
 ```
 
-### 2. `diffusers` as a collection of popula Diffusion systems (GLIDE, Dalle, ...)
+### 2. `diffusers` as a collection of popular Diffusion systems (GLIDE, Dalle, ...)
 
 For more examples see [pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines).
 
@@ -277,6 +277,7 @@ wavwrite("generated_audio.wav", sampling_rate, audio.squeeze().cpu().numpy())
 - Write google colab for training [ ]
 - Write docs / Think about how to structure docs [ ]
 - Add tests to circle ci [ ]
+- Add [Diffusion LM models](https://arxiv.org/pdf/2205.14217.pdf) [ ]
 - Add more vision models [ ]
 - Add more speech models [ ]
 - Add RL model [ ]
