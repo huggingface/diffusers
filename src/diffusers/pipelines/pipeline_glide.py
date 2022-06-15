@@ -832,9 +832,7 @@ class GLIDE(DiffusionPipeline):
 
         # 1. Sample gaussian noise
         batch_size = 2  # second image is empty for classifier-free guidance
-        image = torch.randn(
-            (batch_size, self.text_unet.in_channels, 64, 64), generator=generator
-        ).to(torch_device)
+        image = torch.randn((batch_size, self.text_unet.in_channels, 64, 64), generator=generator).to(torch_device)
 
         # 2. Encode tokens
         # an empty input is needed to guide the model away from it

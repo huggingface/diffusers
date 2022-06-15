@@ -19,7 +19,18 @@ import unittest
 
 import torch
 
-from diffusers import DDIM, DDPM, PNDM, GLIDE, BDDM, DDIMScheduler, DDPMScheduler, LatentDiffusion, PNDMScheduler, UNetModel
+from diffusers import (
+    BDDM,
+    DDIM,
+    DDPM,
+    GLIDE,
+    PNDM,
+    DDIMScheduler,
+    DDPMScheduler,
+    LatentDiffusion,
+    PNDMScheduler,
+    UNetModel,
+)
 from diffusers.configuration_utils import ConfigMixin
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.pipeline_bddm import DiffWave

@@ -283,7 +283,7 @@ class BDDM(DiffusionPipeline):
             torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self.diffwave.to(torch_device)
-        
+
         mel_spectrogram = mel_spectrogram.to(torch_device)
         audio_length = mel_spectrogram.size(-1) * 256
         audio_size = (1, 1, audio_length)

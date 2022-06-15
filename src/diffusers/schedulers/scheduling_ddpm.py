@@ -44,7 +44,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             clip_predicted_image=clip_predicted_image,
         )
         self.timesteps = int(timesteps)
-        self.timestep_values = timestep_values # save the fixed timestep values for BDDM
+        self.timestep_values = timestep_values  # save the fixed timestep values for BDDM
         self.clip_image = clip_predicted_image
         self.variance_type = variance_type
 

@@ -87,7 +87,6 @@ _deps = [
     "regex!=2019.12.17",
     "requests",
     "torch>=1.4",
-    "torchvision",
 ]
 
 # this is a lookup table with items like:
@@ -172,7 +171,6 @@ install_requires = [
     deps["regex"],
     deps["requests"],
     deps["torch"],
-    deps["torchvision"],
     deps["Pillow"],
 ]
 

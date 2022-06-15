@@ -84,7 +84,9 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         inference_step_times = list(range(0, self.timesteps, self.timesteps // num_inference_steps))
 
-        warmup_time_steps = np.array(inference_step_times[-self.pndm_order:]).repeat(2) + np.tile(np.array([0, self.timesteps // num_inference_steps // 2]), self.pndm_order)
+        warmup_time_steps = np.array(inference_step_times[-self.pndm_order :]).repeat(2) + np.tile(
+            np.array([0, self.timesteps // num_inference_steps // 2]), self.pndm_order
+        )
         self.warmup_time_steps[num_inference_steps] = list(reversed(warmup_time_steps[:-1].repeat(2)[1:-1]))
 
         return self.warmup_time_steps[num_inference_steps]
@@ -137,7 +139,10 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         at = alphas_cump[t + 1].view(-1, 1, 1, 1)
         at_next = alphas_cump[t_next + 1].view(-1, 1, 1, 1)
 
-        x_delta = (at_next - at) * ((1 / (at.sqrt() * (at.sqrt() + at_next.sqrt()))) * x - 1 / (at.sqrt() * (((1 - at_next) * at).sqrt() + ((1 - at) * at_next).sqrt())) * et)
+        x_delta = (at_next - at) * (
+            (1 / (at.sqrt() * (at.sqrt() + at_next.sqrt()))) * x
+            - 1 / (at.sqrt() * (((1 - at_next) * at).sqrt() + ((1 - at) * at_next).sqrt())) * et
+        )
 
         x_next = x + x_delta
         return x_next
