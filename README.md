@@ -235,7 +235,7 @@ image_pil.save("test.png")
 
  #### **Text to speech with BDDM**
 
-_Follow the isnstructions [here](https://pytorch.org/hub/nvidia_deeplearningexamples_tacotron2/) to load tacotron2 model._
+_Follow the instructions [here](https://pytorch.org/hub/nvidia_deeplearningexamples_tacotron2/) to load tacotron2 model._
 
 ```python
 import torch
