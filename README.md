@@ -195,11 +195,11 @@ model = UNetModel.from_pretrained(model_id)
 scheduler = PNDMScheduler()
 
 # load model and scheduler
-ddpm = PNDM(unet=model, noise_scheduler=scheduler)
+pndm = PNDM(unet=model, noise_scheduler=scheduler)
 
 # run pipeline in inference (sample random noise and denoise)
 with torch.no_grad():
-    image = ddpm()
+    image = pndm()
 
 # process image to PIL
 image_processed = image.cpu().permute(0, 2, 3, 1)
