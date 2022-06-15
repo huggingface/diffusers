@@ -271,3 +271,15 @@ from scipy.io.wavfile import write as wavwrite
 sampling_rate = 22050
 wavwrite("generated_audio.wav", sampling_rate, audio.squeeze().cpu().numpy())
 ```
+
+## TODO
+
+- Create common API for models [ ]
+- Add tests for models [ ]
+- Adapt schedulers for training [ ]
+- Write google colab for training [ ]
+- Write docs / Think about how to structure docs [ ]
+- Add tests to circle ci [ ]
+- Add more vision models [ ]
+- Add more speech models [ ]
+- Add RL model [ ]
