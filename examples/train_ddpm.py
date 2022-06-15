@@ -9,10 +9,10 @@ from accelerate import Accelerator
 from datasets import load_dataset
 from diffusers import DDPM, DDPMScheduler, UNetModel
 from torchvision.transforms import (
+    CenterCrop,
     Compose,
     InterpolationMode,
     Lambda,
-    CenterCrop,
     RandomHorizontalFlip,
     Resize,
     ToTensor,
