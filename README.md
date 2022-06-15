@@ -58,11 +58,13 @@ git clone https://github.com/huggingface/diffusers.git
 cd diffusers && pip install -e .
 ```
 
-### 1. `diffusers` as a central modular diffusion and sampler library
+### 1. `diffusers` as a toolbox for schedulers and models.
 
 `diffusers` is more modularized than `transformers`. The idea is that researchers and engineers can use only parts of the library easily for the own use cases.
 It could become a central place for all kinds of models, schedulers, training utils and processors that one can mix and match for one's own use case.
 Both models and schedulers should be load- and saveable from the Hub.
+
+For more examples see [schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers) and [models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models)
 
 #### **Example for [DDPM](https://arxiv.org/abs/2006.11239):**
 
@@ -171,25 +173,35 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 image_pil.save("test.png")
 ```
 
-### 2. `diffusers` as a collection of most important Diffusion systems (GLIDE, Dalle, ...)
-`models` directory in repository hosts the complete code necessary for running a diffusion system as well as to train it. A `DiffusionPipeline` class allows to easily run the diffusion model in inference:
+### 2. `diffusers` as a collection of popula Diffusion systems (GLIDE, Dalle, ...)
 
-#### **Example image generation with DDPM**
+For more examples see [pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines).
+
+#### **Example image generation with PNDM**
 
 ```python
-from diffusers import DiffusionPipeline
+from diffusers import PNDM, UNetModel, PNDMScheduler
 import PIL.Image
 import numpy as np
+import torch
+
+model_id = "fusing/ddim-celeba-hq"
+
+model = UNetModel.from_pretrained(model_id)
+scheduler = PNDMScheduler()
 
 # load model and scheduler
-ddpm = DiffusionPipeline.from_pretrained("fusing/ddpm-lsun-bedroom")
+ddpm = PNDM(unet=model, noise_scheduler=scheduler)
 
 # run pipeline in inference (sample random noise and denoise)
-image = ddpm()
+with torch.no_grad():
+    image = ddpm()
 
 # process image to PIL
 image_processed = image.cpu().permute(0, 2, 3, 1)
-image_processed = (image_processed + 1.0) * 127.5
+image_processed = (image_processed + 1.0) / 2
+image_processed = torch.clamp(image_processed, 0.0, 1.0)
+image_processed = image_processed * 255
 image_processed = image_processed.numpy().astype(np.uint8)
 image_pil = PIL.Image.fromarray(image_processed[0])
 
