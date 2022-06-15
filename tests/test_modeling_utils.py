@@ -214,6 +214,21 @@ class PipelineTesterMixin(unittest.TestCase):
         expected_slice = torch.tensor([0.7295, 0.7358, 0.7256, 0.7435, 0.7095, 0.6884, 0.7325, 0.6921, 0.6458])
         assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
 
+    @slow
+    def test_glide_text2img(self):
+        model_id = "fusing/glide-base"
+        glide = GLIDE.from_pretrained(model_id)
+
+        prompt = "a pencil sketch of a corgi"
+        generator = torch.manual_seed(0)
+        image = glide(prompt, generator=generator, num_inference_steps_upscale=20)
+
+        image_slice = image[0, :3, :3, -1].cpu()
+
+        assert image.shape == (1, 256, 256, 3)
+        expected_slice = torch.tensor([0.7119, 0.7073, 0.6460, 0.7780, 0.7423, 0.6926, 0.7378, 0.7189, 0.7784])
+        assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
+
     def test_module_from_pipeline(self):
         model = DiffWave(num_res_layers=4)
         noise_scheduler = DDPMScheduler(timesteps=12)
@@ -229,17 +244,3 @@ class PipelineTesterMixin(unittest.TestCase):
             _ = BDDM.from_pretrained(tmpdirname)
             # check if the same works using the DifusionPipeline class
             _ = DiffusionPipeline.from_pretrained(tmpdirname)
-    @slow
-    def test_glide_text2img(self):
-        model_id = "fusing/glide-base"
-        glide = GLIDE.from_pretrained(model_id)
-
-        prompt = "a pencil sketch of a corgi"
-        generator = torch.manual_seed(0)
-        image = glide(prompt, generator=generator, num_inference_steps_upscale=20)
-
-        image_slice = image[0, :3, :3, -1].cpu()
-
-        assert image.shape == (1, 256, 256, 3)
-        expected_slice = torch.tensor([0.7119, 0.7073, 0.6460, 0.7780, 0.7423, 0.6926, 0.7378, 0.7189, 0.7784])
-        assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
