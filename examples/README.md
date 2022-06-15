@@ -34,7 +34,7 @@ python -m torch.distributed.launch \
   train_ddpm.py \
   --dataset="huggan/pokemon" \
   --resolution=64 \
-  --output_path="flowers-ddpm" \
+  --output_path="pokemon-ddpm" \
   --batch_size=16 \
   --num_epochs=100 \
   --gradient_accumulation_steps=1 \
