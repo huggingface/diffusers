@@ -197,7 +197,7 @@ from diffusers import BDDM, DiffusionPipeline
 torch_device = "cuda"
 
 # load the BDDM pipeline
-bddm = DiffusionPipeline.from_pretrained("fusing/diffwave-vocoder")
+bddm = DiffusionPipeline.from_pretrained("fusing/diffwave-vocoder-ljspeech")
 
 # load tacotron2 to get the mel spectograms
 tacotron2 = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_tacotron2', model_math='fp16')
