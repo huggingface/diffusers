@@ -34,7 +34,6 @@ try:
     from transformers.utils import (
         ModelOutput,
         add_start_docstrings_to_model_forward,
-        logging,
         replace_return_docstrings,
     )
 except:
