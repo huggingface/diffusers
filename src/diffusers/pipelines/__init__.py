@@ -5,8 +5,7 @@ from .pipeline_ddpm import DDPM
 
 try:
     from .pipeline_glide import GLIDE
-except ImportError:
-
+except (NameError, ImportError):
     class GLIDE:
         pass
 
