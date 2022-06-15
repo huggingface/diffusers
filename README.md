@@ -53,6 +53,10 @@ The class provides functionality to compute previous image according to alpha, b
 
 ## Quickstart
 
+### Installation
+
+**Note**: If you want to run PyTorch on GPU on a CUDA-compatible machine, please make sure to install the corresponding `torch` version from the 
+[official website](
 ```
 git clone https://github.com/huggingface/diffusers.git
 cd diffusers && pip install -e .
@@ -84,29 +88,29 @@ unet = UNetModel.from_pretrained("fusing/ddpm-lsun-church").to(torch_device)
 
 # 2. Sample gaussian noise
 image = torch.randn(
-	(1, unet.in_channels, unet.resolution, unet.resolution),
-	generator=generator,
+    (1, unet.in_channels, unet.resolution, unet.resolution),
+    generator=generator,
 )
 image = image.to(torch_device)
 
 # 3. Denoise
 num_prediction_steps = len(noise_scheduler)
 for t in tqdm.tqdm(reversed(range(num_prediction_steps)), total=num_prediction_steps):
-	# predict noise residual
-	with torch.no_grad():
-		residual = unet(image, t)
+    # predict noise residual
+    with torch.no_grad():
+	residual = unet(image, t)
 
-	# predict previous mean of image x_t-1
-	pred_prev_image = noise_scheduler.step(residual, image, t)
+    # predict previous mean of image x_t-1
+    pred_prev_image = noise_scheduler.step(residual, image, t)
 
-	# optionally sample variance
-	variance = 0
-	if t > 0:
-		noise = torch.randn(image.shape, generator=generator).to(image.device)
-		variance = noise_scheduler.get_variance(t).sqrt() * noise
+    # optionally sample variance
+    variance = 0
+    if t > 0:
+        noise = torch.randn(image.shape, generator=generator).to(image.device)
+	variance = noise_scheduler.get_variance(t).sqrt() * noise
 
-	# set current image to prev_image: x_t -> x_t-1
-	image = pred_prev_image + variance
+    # set current image to prev_image: x_t -> x_t-1
+    image = pred_prev_image + variance
 
 # 5. process image to PIL
 image_processed = image.cpu().permute(0, 2, 3, 1)
