@@ -166,13 +166,14 @@ image_pil.save("test.png")
 
 #### **Text to Image generation with Latent Diffusion**
 
+_Note: To use latent diffusion install transformers from [this branch](https://github.com/patil-suraj/transformers/tree/ldm-bert)._
+
 ```python
 from diffusers import DiffusionPipeline
 
 ldm = DiffusionPipeline.from_pretrained("fusing/latent-diffusion-text2im-large")
 
-generator = torch.Generator()
-generator = generator.manual_seed(6694729458485568)
+generator = torch.manual_seed(42)
 
 prompt = "A painting of a squirrel eating a burger"
 image = ldm([prompt], generator=generator, eta=0.3, guidance_scale=6.0, num_inference_steps=50)
@@ -197,7 +198,7 @@ from diffusers import BDDM, DiffusionPipeline
 torch_device = "cuda"
 
 # load the BDDM pipeline
-bddm = DiffusionPipeline.from_pretrained("fusing/diffwave-vocoder")
+bddm = DiffusionPipeline.from_pretrained("fusing/diffwave-vocoder-ljspeech")
 
 # load tacotron2 to get the mel spectograms
 tacotron2 = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_tacotron2', model_math='fp16')

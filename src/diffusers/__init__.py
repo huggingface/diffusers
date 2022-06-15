@@ -8,6 +8,7 @@ from .modeling_utils import ModelMixin
 from .models.unet import UNetModel
 from .models.unet_glide import GLIDEUNetModel, GLIDESuperResUNetModel, GLIDETextToImageUNetModel
 from .models.unet_ldm import UNetLDMModel
+from .models.unet_grad_tts import UNetGradTTSModel
 from .pipeline_utils import DiffusionPipeline
 from .pipelines import DDIM, DDPM, GLIDE, LatentDiffusion, PNDM, BDDM
 from .schedulers import DDIMScheduler, DDPMScheduler, SchedulerMixin, PNDMScheduler
