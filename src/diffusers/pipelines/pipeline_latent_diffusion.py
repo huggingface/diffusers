@@ -944,7 +944,7 @@ class LatentDiffusion(DiffusionPipeline):
             # 3. optionally sample variance
             variance = 0
             if eta > 0:
-                noise = self.noise_scheduler.sample_noise(image.shape, device=image.device, generator=generator)
+                noise = torch.randn(image.shape, generator=generator, device=image.device)
                 variance = self.noise_scheduler.get_variance(t, num_inference_steps).sqrt() * eta * noise
 
             # 4. set current image to prev_image: x_t -> x_t-1
