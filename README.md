@@ -55,11 +55,8 @@ The class provides functionality to compute previous image according to alpha, b
 
 ### Installation
 
-**Note**: If you want to run PyTorch on GPU on a CUDA-compatible machine, please make sure to install the corresponding `torch` version from the 
-[official website](https://pytorch.org/).
 ```
-git clone https://github.com/huggingface/diffusers.git
-cd diffusers && pip install -e .
+pip install diffusers  # should install diffusers 0.0.4
 ```
 
 ### 1. `diffusers` as a toolbox for schedulers and models.
