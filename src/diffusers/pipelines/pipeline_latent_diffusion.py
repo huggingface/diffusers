@@ -902,9 +902,8 @@ class LatentDiffusion(DiffusionPipeline):
 
         image = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.image_size, self.unet.image_size),
-            device=torch_device,
             generator=generator,
-        )
+        ).to(torch_device)
 
         # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
         # Ideally, read DDIM paper in-detail understanding
