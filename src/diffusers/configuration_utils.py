@@ -226,7 +226,7 @@ class ConfigMixin:
         return json.loads(text)
 
     def __repr__(self):
-       return f"{self.__class__.__name__} {self.to_json_string()}"
+        return f"{self.__class__.__name__} {self.to_json_string()}"
 
     @property
     def config(self) -> Dict[str, Any]:

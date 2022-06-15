@@ -24,11 +24,15 @@ import torch.utils.checkpoint
 from torch import nn
 
 import tqdm
-from transformers import CLIPConfig, CLIPModel, CLIPTextConfig, CLIPVisionConfig, GPT2Tokenizer
-from transformers.activations import ACT2FN
-from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
-from transformers.modeling_utils import PreTrainedModel
-from transformers.utils import ModelOutput, add_start_docstrings_to_model_forward, logging, replace_return_docstrings
+try:
+    from transformers import CLIPConfig, CLIPModel, CLIPTextConfig, CLIPVisionConfig, GPT2Tokenizer
+    from transformers.activations import ACT2FN
+    from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
+    from transformers.modeling_utils import PreTrainedModel
+    from transformers.utils import ModelOutput, add_start_docstrings_to_model_forward, logging, replace_return_docstrings
+except:
+    print("Transformers is not installed")
+    pass
 
 from ..models import GLIDESuperResUNetModel, GLIDETextToImageUNetModel
 from ..pipeline_utils import DiffusionPipeline
@@ -832,9 +836,7 @@ class GLIDE(DiffusionPipeline):
 
         # 1. Sample gaussian noise
         batch_size = 2  # second image is empty for classifier-free guidance
-        image = torch.randn(
-            (batch_size, self.text_unet.in_channels, 64, 64), generator=generator
-        ).to(torch_device)
+        image = torch.randn((batch_size, self.text_unet.in_channels, 64, 64), generator=generator).to(torch_device)
 
         # 2. Encode tokens
         # an empty input is needed to guide the model away from it
