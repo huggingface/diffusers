@@ -900,7 +900,7 @@ class LatentDiffusion(DiffusionPipeline):
         num_trained_timesteps = self.noise_scheduler.timesteps
         inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps)
 
-        image = self.noise_scheduler.sample_noise(
+        image = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.image_size, self.unet.image_size),
             device=torch_device,
             generator=generator,
