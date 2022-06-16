@@ -1,6 +1,8 @@
 # tokenizer
 
 import re
+import os
+from shutil import copyfile
 
 import torch
 from transformers import PreTrainedTokenizer
@@ -325,17 +327,27 @@ def _should_keep_symbol(s):
 
 
 VOCAB_FILES_NAMES = {
-    "dict_file": "merges.txt",
+    "dict_file": "dict_file.txt",
 }
 
 class GradTTSTokenizer(PreTrainedTokenizer):
     vocab_files_names = VOCAB_FILES_NAMES
-    
+
     def __init__(self, dict_file, **kwargs):
         super().__init__(**kwargs)
         self.cmu = CMUDict(dict_file)
+        self.dict_file = dict_file
     
     def __call__(self, text):
         x = torch.LongTensor(intersperse(text_to_sequence(text, dictionary=self.cmu), len(symbols)))[None]
         x_lengths = torch.LongTensor([x.shape[-1]])
-        return x.shape, x_lengths
+        return x, x_lengths
+    
+    def save_vocabulary(self, save_directory: str, filename_prefix = None):
+        dict_file = os.path.join(
+            save_directory, (filename_prefix + "-" if filename_prefix else "") + VOCAB_FILES_NAMES["dict_file"]
+        )
+
+        copyfile(self.dict_file, dict_file)
+        
+        return (dict_file, )
