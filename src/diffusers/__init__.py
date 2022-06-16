@@ -11,5 +11,5 @@ from .models.unet_ldm import UNetLDMModel
 from .models.unet_grad_tts import UNetGradTTSModel
 from .pipeline_utils import DiffusionPipeline
 from .pipelines import DDIM, DDPM, GLIDE, LatentDiffusion, PNDM, BDDM
-from .schedulers import DDIMScheduler, DDPMScheduler, SchedulerMixin, PNDMScheduler
+from .schedulers import DDIMScheduler, DDPMScheduler, SchedulerMixin, PNDMScheduler, GradTTSScheduler
 from .schedulers.classifier_free_guidance import ClassifierFreeGuidanceScheduler
