@@ -4,13 +4,13 @@ import math
 
 import torch
 from torch import nn
-import tqdm
 
+import tqdm
+from diffusers import DiffusionPipeline
 from diffusers.configuration_utils import ConfigMixin
 from diffusers.modeling_utils import ModelMixin
-from diffusers import DiffusionPipeline
 
-from .grad_tts_utils import GradTTSTokenizer # flake8: noqa
+from .grad_tts_utils import GradTTSTokenizer  # flake8: noqa
 
 
 def sequence_mask(length, max_length=None):
@@ -382,7 +382,7 @@ class TextEncoder(ModelMixin, ConfigMixin):
         self.window_size = window_size
         self.spk_emb_dim = spk_emb_dim
         self.n_spks = n_spks
-        
+
         self.emb = torch.nn.Embedding(n_vocab, n_channels)
         torch.nn.init.normal_(self.emb.weight, 0.0, n_channels**-0.5)
 
@@ -403,7 +403,7 @@ class TextEncoder(ModelMixin, ConfigMixin):
             n_channels + (spk_emb_dim if n_spks > 1 else 0), filter_channels_dp, kernel_size, p_dropout
         )
 
-    def forward(self, x, x_lengths, spk=None):    
+    def forward(self, x, x_lengths, spk=None):
         x = self.emb(x) * math.sqrt(self.n_channels)
         x = torch.transpose(x, 1, -1)
         x_mask = torch.unsqueeze(sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype)
@@ -424,26 +424,30 @@ class GradTTS(DiffusionPipeline):
     def __init__(self, unet, text_encoder, noise_scheduler, tokenizer):
         super().__init__()
         noise_scheduler = noise_scheduler.set_format("pt")
-        self.register_modules(unet=unet, text_encoder=text_encoder, noise_scheduler=noise_scheduler, tokenizer=tokenizer)
-    
+        self.register_modules(
+            unet=unet, text_encoder=text_encoder, noise_scheduler=noise_scheduler, tokenizer=tokenizer
+        )
+
     @torch.no_grad()
-    def __call__(self, text, num_inference_steps=50, temperature=1.3, length_scale=0.91, speaker_id=15, torch_device=None):
+    def __call__(
+        self, text, num_inference_steps=50, temperature=1.3, length_scale=0.91, speaker_id=15, torch_device=None
+    ):
         if torch_device is None:
             torch_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        
+
         self.unet.to(torch_device)
         self.text_encoder.to(torch_device)
-        
+
         x, x_lengths = self.tokenizer(text)
         x = x.to(torch_device)
         x_lengths = x_lengths.to(torch_device)
-        
+
         if speaker_id is not None:
-            speaker_id= torch.LongTensor([speaker_id]).to(torch_device)
-        
+            speaker_id = torch.LongTensor([speaker_id]).to(torch_device)
+
         # Get encoder_outputs `mu_x` and log-scaled token durations `logw`
         mu_x, logw, x_mask = self.text_encoder(x, x_lengths)
-        
+
         w = torch.exp(logw) * x_mask
         w_ceil = torch.ceil(w) * length_scale
         y_lengths = torch.clamp_min(torch.sum(w_ceil, [1, 2]), 1).long()
@@ -461,16 +465,16 @@ class GradTTS(DiffusionPipeline):
 
         # Sample latent representation from terminal distribution N(mu_y, I)
         z = mu_y + torch.randn_like(mu_y, device=mu_y.device) / temperature
-        
+
         xt = z * y_mask
         h = 1.0 / num_inference_steps
         for t in tqdm.tqdm(range(num_inference_steps), total=num_inference_steps):
-            t = (1.0 - (t + 0.5)*h) * torch.ones(z.shape[0], dtype=z.dtype, device=z.device)
+            t = (1.0 - (t + 0.5) * h) * torch.ones(z.shape[0], dtype=z.dtype, device=z.device)
             time = t.unsqueeze(-1).unsqueeze(-1)
-            
+
             residual = self.unet(xt, y_mask, mu_y, t, speaker_id)
-            
+
             xt = self.noise_scheduler.step(xt, residual, mu_y, h, time)
             xt = xt * y_mask
-        
+
         return xt[:, :, :y_max_length]
