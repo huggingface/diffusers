@@ -27,7 +27,7 @@ More precisely, 🤗 Diffusers offers:
 
 ## Definitions
 
-**Models**: Neural network that models **p_θ(x_t-1|x_t)** (see image below) and is trained end-to-end to *denoise* a noisy input to an image.
+**Models**: Neural network that models $p_\theta(\mathbf{x}_{t-1}|\mathbf{x}_t)$ (see image below) and is trained end-to-end to *denoise* a noisy input to an image.
 *Examples*: UNet, Conditioned UNet, 3D UNet, Transformer UNet
 
 ![model_diff_1_50](https://user-images.githubusercontent.com/23423619/171610307-dab0cd8b-75da-4d4e-9f5a-5922072e2bb5.png)
@@ -44,7 +44,6 @@ The class provides functionality to compute previous image according to alpha, b
 
 ![imagen](https://user-images.githubusercontent.com/23423619/171609001-c3f2c1c9-f597-4a16-9843-749bf3f9431c.png)
 
-
 ## Philosophy
 
 - Readability and clarity is prefered over highly optimized code. A strong importance is put on providing readable, intuitive and elementary code design. *E.g.*, the provided [schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers) are separated from the provided [models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models) and provide well-commented code that can be read alongside the original paper.
@@ -59,7 +58,7 @@ The class provides functionality to compute previous image according to alpha, b
 pip install diffusers  # should install diffusers 0.0.4
 ```
 
-### 1. `diffusers` as a toolbox for schedulers and models.
+### 1. `diffusers` as a toolbox for schedulers and models
 
 `diffusers` is more modularized than `transformers`. The idea is that researchers and engineers can use only parts of the library easily for the own use cases.
 It could become a central place for all kinds of models, schedulers, training utils and processors that one can mix and match for one's own use case.
@@ -148,21 +147,21 @@ eta = 0.0  # <- deterministic sampling
 
 for t in tqdm.tqdm(reversed(range(num_inference_steps)), total=num_inference_steps):
     # 1. predict noise residual
-	orig_t = noise_scheduler.get_orig_t(t, num_inference_steps)
-	with torch.no_grad():
-		residual = unet(image, orig_t)
+    orig_t = noise_scheduler.get_orig_t(t, num_inference_steps)
+    with torch.inference_mode():
+        residual = unet(image, orig_t)
 
-	# 2. predict previous mean of image x_t-1
-	pred_prev_image = noise_scheduler.step(residual, image, t, num_inference_steps, eta)
+    # 2. predict previous mean of image x_t-1
+    pred_prev_image = noise_scheduler.step(residual, image, t, num_inference_steps, eta)
 
-	# 3. optionally sample variance
-	variance = 0
-	if eta > 0:
-		noise = torch.randn(image.shape, generator=generator).to(image.device)
-		variance = noise_scheduler.get_variance(t).sqrt() * eta * noise
+    # 3. optionally sample variance
+    variance = 0
+    if eta > 0:
+        noise = torch.randn(image.shape, generator=generator).to(image.device)
+        variance = noise_scheduler.get_variance(t).sqrt() * eta * noise
 
-	# 4. set current image to prev_image: x_t -> x_t-1
-	image = pred_prev_image + variance
+    # 4. set current image to prev_image: x_t -> x_t-1
+    image = pred_prev_image + variance
 
 # 5. process image to PIL
 image_processed = image.cpu().permute(0, 2, 3, 1)
@@ -233,7 +232,7 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 image_pil.save("test.png")
 ```
 
- #### **Text to speech with BDDM**
+#### **Text to speech with BDDM**
 
 _Follow the instructions [here](https://pytorch.org/hub/nvidia_deeplearningexamples_tacotron2/) to load tacotron2 model._
 
