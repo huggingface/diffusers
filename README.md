@@ -46,7 +46,7 @@ The class provides functionality to compute previous image according to alpha, b
 
 ## Philosophy
 
-- Readability and clarity is prefered over highly optimized code. A strong importance is put on providing readable, intuitive and elementary code desgin. *E.g.*, the provided [schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers) are separated from the provided [models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models) and provide well-commented code that can be read alongside the original paper.
+- Readability and clarity is prefered over highly optimized code. A strong importance is put on providing readable, intuitive and elementary code design. *E.g.*, the provided [schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers) are separated from the provided [models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models) and provide well-commented code that can be read alongside the original paper.
 - Diffusers is **modality independent** and focusses on providing pretrained models and tools to build systems that generate **continous outputs**, *e.g.* vision and audio.
 - Diffusion models and schedulers are provided as consise, elementary building blocks whereas diffusion pipelines are a collection of end-to-end diffusion systems that can be used out-of-the-box, should stay as close as possible to their original implementation and can include components of other library, such as text-encoders. Examples for diffusion pipelines are [Glide](https://github.com/openai/glide-text2im) and [Latent Diffusion](https://github.com/CompVis/latent-diffusion).
 
@@ -136,8 +136,8 @@ unet = UNetModel.from_pretrained("fusing/ddpm-celeba-hq").to(torch_device)
 
 # 2. Sample gaussian noise
 image = torch.randn(
-    (1, unet.in_channels, unet.resolution, unet.resolution),
-    generator=generator,
+   (1, unet.in_channels, unet.resolution, unet.resolution),
+   generator=generator,
 )
 image = image.to(torch_device)
 
@@ -147,9 +147,9 @@ eta = 0.0  # <- deterministic sampling
 
 for t in tqdm.tqdm(reversed(range(num_inference_steps)), total=num_inference_steps):
     # 1. predict noise residual
-    orig_t = noise_scheduler.get_orig_t(t, num_inference_steps)
-    with torch.no_grad():
-        residual = unet(image, orig_t)
+	orig_t = noise_scheduler.get_orig_t(t, num_inference_steps)
+	with torch.no_grad():
+		residual = unet(image, orig_t)
 
     # 2. predict previous mean of image x_t-1
     pred_prev_image = noise_scheduler.step(residual, image, t, num_inference_steps, eta)
@@ -173,7 +173,7 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 image_pil.save("test.png")
 ```
 
-### 2. `diffusers` as a collection of popula Diffusion systems (GLIDE, Dalle, ...)
+### 2. `diffusers` as a collection of popular Diffusion systems (GLIDE, Dalle, ...)
 
 For more examples see [pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines).
 
@@ -276,6 +276,7 @@ wavwrite("generated_audio.wav", sampling_rate, audio.squeeze().cpu().numpy())
 - Write google colab for training [ ]
 - Write docs / Think about how to structure docs [ ]
 - Add tests to circle ci [ ]
+- Add [Diffusion LM models](https://arxiv.org/pdf/2205.14217.pdf) [ ]
 - Add more vision models [ ]
 - Add more speech models [ ]
 - Add RL model [ ]
