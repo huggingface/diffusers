@@ -3,7 +3,7 @@ import math
 import torch
 
 try:
-    from einops import rearrange, repeat
+    from einops import rearrange
 except:
     print("Einops is not installed")
     pass
