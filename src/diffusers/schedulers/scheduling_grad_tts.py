@@ -11,9 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import math
-
-import numpy as np
 
 from ..configuration_utils import ConfigMixin
 from .scheduling_utils import SchedulerMixin
