@@ -277,6 +277,7 @@ wavwrite("generated_audio.wav", sampling_rate, audio.squeeze().cpu().numpy())
 - Write google colab for training [ ]
 - Write docs / Think about how to structure docs [ ]
 - Add tests to circle ci [ ]
+- Add [Diffusion LM models](https://arxiv.org/pdf/2205.14217.pdf) [ ]
 - Add more vision models [ ]
 - Add more speech models [ ]
 - Add RL model [ ]
