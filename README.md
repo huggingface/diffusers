@@ -247,11 +247,11 @@ bddm = BDDM.from_pretrained("fusing/diffwave-vocoder-ljspeech")
 text = "Hello world, I missed you so much."
 
 # generate mel spectograms using text
-mel_spec = grad_tts(text)
+mel_spec = grad_tts(text, torch_device=torch_device)
 
 #  generate the speech by passing mel spectograms to BDDM pipeline
 generator = torch.manual_seed(42)
-audio = bddm(mel_spec, generator)
+audio = bddm(mel_spec, generator, torch_device=torch_device)
 
 # save generated audio
 from scipy.io.wavfile import write as wavwrite
