@@ -27,7 +27,7 @@ More precisely, 🤗 Diffusers offers:
 
 ## Definitions
 
-**Models**: Neural network that models $p_\theta(x_{t-1}|x_t)$ (see image below) and is trained end-to-end to *denoise* a noisy input to an image.
+**Models**: Neural network that models $p_\theta(\mathbf{x}_{t-1}|\mathbf{x}_t)$ (see image below) and is trained end-to-end to *denoise* a noisy input to an image.
 *Examples*: UNet, Conditioned UNet, 3D UNet, Transformer UNet
 
 ![model_diff_1_50](https://user-images.githubusercontent.com/23423619/171610307-dab0cd8b-75da-4d4e-9f5a-5922072e2bb5.png)
@@ -136,8 +136,8 @@ unet = UNetModel.from_pretrained("fusing/ddpm-celeba-hq").to(torch_device)
 
 # 2. Sample gaussian noise
 image = torch.randn(
- (1, unet.in_channels, unet.resolution, unet.resolution),
- generator=generator,
+    (1, unet.in_channels, unet.resolution, unet.resolution),
+    generator=generator,
 )
 image = image.to(torch_device)
 
@@ -146,22 +146,22 @@ num_inference_steps = 50
 eta = 0.0  # <- deterministic sampling
 
 for t in tqdm.tqdm(reversed(range(num_inference_steps)), total=num_inference_steps):
- # 1. predict noise residual
- orig_t = noise_scheduler.get_orig_t(t, num_inference_steps)
- with torch.no_grad():
-     residual = unet(image, orig_t)
+    # 1. predict noise residual
+    orig_t = noise_scheduler.get_orig_t(t, num_inference_steps)
+    with torch.no_grad():
+        residual = unet(image, orig_t)
 
- # 2. predict previous mean of image x_t-1
- pred_prev_image = noise_scheduler.step(residual, image, t, num_inference_steps, eta)
+    # 2. predict previous mean of image x_t-1
+    pred_prev_image = noise_scheduler.step(residual, image, t, num_inference_steps, eta)
 
- # 3. optionally sample variance
- variance = 0
- if eta > 0:
-  noise = torch.randn(image.shape, generator=generator).to(image.device)
-  variance = noise_scheduler.get_variance(t).sqrt() * eta * noise
+    # 3. optionally sample variance
+    variance = 0
+    if eta > 0:
+        noise = torch.randn(image.shape, generator=generator).to(image.device)
+        variance = noise_scheduler.get_variance(t).sqrt() * eta * noise
 
- # 4. set current image to prev_image: x_t -> x_t-1
- image = pred_prev_image + variance
+    # 4. set current image to prev_image: x_t -> x_t-1
+    image = pred_prev_image + variance
 
 # 5. process image to PIL
 image_processed = image.cpu().permute(0, 2, 3, 1)
