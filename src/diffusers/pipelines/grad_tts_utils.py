@@ -5,7 +5,11 @@ import os
 from shutil import copyfile
 
 import torch
-from transformers import PreTrainedTokenizer
+
+try:
+    from transformers import PreTrainedTokenizer
+except:
+    print("transformers is not installed")
 
 try:
     from unidecode import unidecode
