@@ -57,14 +57,14 @@ class DiffusionPipeline(ConfigMixin):
     def register_modules(self, **kwargs):
         # import it here to avoid circular import
         from diffusers import pipelines
-        
+
         for name, module in kwargs.items():
             # check if the module is a pipeline module
             is_pipeline_module = hasattr(pipelines, module.__module__.split(".")[-1])
-            
+
             # retrive library
             library = module.__module__.split(".")[0]
-            
+
             # if library is not in LOADABLE_CLASSES, then it is a custom module.
             # Or if it's a pipeline module, then the module is inside the pipeline
             # so we set the library to module name.
@@ -160,10 +160,10 @@ class DiffusionPipeline(ConfigMixin):
         init_dict, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
         init_kwargs = {}
-        
+
         # import it here to avoid circular import
         from diffusers import pipelines
-        
+
         # 4. Load each module in the pipeline
         for name, (library_name, class_name) in init_dict.items():
             is_pipeline_module = hasattr(pipelines, library_name)

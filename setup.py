@@ -87,7 +87,6 @@ _deps = [
     "regex!=2019.12.17",
     "requests",
     "torch>=1.4",
-    "torchvision",
 ]
 
 # this is a lookup table with items like:
@@ -172,13 +171,12 @@ install_requires = [
     deps["regex"],
     deps["requests"],
     deps["torch"],
-    deps["torchvision"],
     deps["Pillow"],
 ]
 
 setup(
     name="diffusers",
-    version="0.0.2",
+    version="0.0.4",
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

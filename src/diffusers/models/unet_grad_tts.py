@@ -2,6 +2,7 @@ import math
 
 import torch
 
+
 try:
     from einops import rearrange
 except:
@@ -10,6 +11,7 @@ except:
 
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
+
 
 class Mish(torch.nn.Module):
     def forward(self, x):
@@ -47,9 +49,9 @@ class Rezero(torch.nn.Module):
 class Block(torch.nn.Module):
     def __init__(self, dim, dim_out, groups=8):
         super(Block, self).__init__()
-        self.block = torch.nn.Sequential(torch.nn.Conv2d(dim, dim_out, 3, 
-                                         padding=1), torch.nn.GroupNorm(
-                                         groups, dim_out), Mish())
+        self.block = torch.nn.Sequential(
+            torch.nn.Conv2d(dim, dim_out, 3, padding=1), torch.nn.GroupNorm(groups, dim_out), Mish()
+        )
 
     def forward(self, x, mask):
         output = self.block(x * mask)
@@ -59,8 +61,7 @@ class Block(torch.nn.Module):
 class ResnetBlock(torch.nn.Module):
     def __init__(self, dim, dim_out, time_emb_dim, groups=8):
         super(ResnetBlock, self).__init__()
-        self.mlp = torch.nn.Sequential(Mish(), torch.nn.Linear(time_emb_dim, 
-                                                               dim_out))
+        self.mlp = torch.nn.Sequential(Mish(), torch.nn.Linear(time_emb_dim, dim_out))
 
         self.block1 = Block(dim, dim_out, groups=groups)
         self.block2 = Block(dim_out, dim_out, groups=groups)
@@ -83,18 +84,16 @@ class LinearAttention(torch.nn.Module):
         self.heads = heads
         hidden_dim = dim_head * heads
         self.to_qkv = torch.nn.Conv2d(dim, hidden_dim * 3, 1, bias=False)
-        self.to_out = torch.nn.Conv2d(hidden_dim, dim, 1)            
+        self.to_out = torch.nn.Conv2d(hidden_dim, dim, 1)
 
     def forward(self, x):
         b, c, h, w = x.shape
         qkv = self.to_qkv(x)
-        q, k, v = rearrange(qkv, 'b (qkv heads c) h w -> qkv b heads c (h w)', 
-                            heads = self.heads, qkv=3)            
+        q, k, v = rearrange(qkv, "b (qkv heads c) h w -> qkv b heads c (h w)", heads=self.heads, qkv=3)
         k = k.softmax(dim=-1)
-        context = torch.einsum('bhdn,bhen->bhde', k, v)
-        out = torch.einsum('bhde,bhdn->bhen', context, q)
-        out = rearrange(out, 'b heads c (h w) -> b (heads c) h w', 
-                        heads=self.heads, h=h, w=w)
+        context = torch.einsum("bhdn,bhen->bhde", k, v)
+        out = torch.einsum("bhde,bhdn->bhen", context, q)
+        out = rearrange(out, "b heads c (h w) -> b (heads c) h w", heads=self.heads, h=h, w=w)
         return self.to_out(out)
 
 
@@ -124,16 +123,7 @@ class SinusoidalPosEmb(torch.nn.Module):
 
 
 class UNetGradTTSModel(ModelMixin, ConfigMixin):
-    def __init__(
-        self,
-        dim,
-        dim_mults=(1, 2, 4),
-        groups=8,
-        n_spks=None,
-        spk_emb_dim=64,
-        n_feats=80,
-        pe_scale=1000
-    ):
+    def __init__(self, dim, dim_mults=(1, 2, 4), groups=8, n_spks=None, spk_emb_dim=64, n_feats=80, pe_scale=1000):
         super(UNetGradTTSModel, self).__init__()
 
         self.register(
@@ -143,23 +133,23 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
             n_spks=n_spks,
             spk_emb_dim=spk_emb_dim,
             n_feats=n_feats,
-            pe_scale=pe_scale
+            pe_scale=pe_scale,
         )
-        
+
         self.dim = dim
         self.dim_mults = dim_mults
         self.groups = groups
         self.n_spks = n_spks if not isinstance(n_spks, type(None)) else 1
         self.spk_emb_dim = spk_emb_dim
         self.pe_scale = pe_scale
-        
+
         if n_spks > 1:
             self.spk_emb = torch.nn.Embedding(n_spks, spk_emb_dim)
             self.spk_mlp = torch.nn.Sequential(torch.nn.Linear(spk_emb_dim, spk_emb_dim * 4), Mish(),
                                                torch.nn.Linear(spk_emb_dim * 4, n_feats))
+
         self.time_pos_emb = SinusoidalPosEmb(dim)
-        self.mlp = torch.nn.Sequential(torch.nn.Linear(dim, dim * 4), Mish(),
-                                       torch.nn.Linear(dim * 4, dim))
+        self.mlp = torch.nn.Sequential(torch.nn.Linear(dim, dim * 4), Mish(), torch.nn.Linear(dim * 4, dim))
 
         dims = [2 + (1 if n_spks > 1 else 0), *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
@@ -169,11 +159,16 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
 
         for ind, (dim_in, dim_out) in enumerate(in_out):
             is_last = ind >= (num_resolutions - 1)
-            self.downs.append(torch.nn.ModuleList([
-                       ResnetBlock(dim_in, dim_out, time_emb_dim=dim),
-                       ResnetBlock(dim_out, dim_out, time_emb_dim=dim),
-                       Residual(Rezero(LinearAttention(dim_out))),
-                       Downsample(dim_out) if not is_last else torch.nn.Identity()]))
+            self.downs.append(
+                torch.nn.ModuleList(
+                    [
+                        ResnetBlock(dim_in, dim_out, time_emb_dim=dim),
+                        ResnetBlock(dim_out, dim_out, time_emb_dim=dim),
+                        Residual(Rezero(LinearAttention(dim_out))),
+                        Downsample(dim_out) if not is_last else torch.nn.Identity(),
+                    ]
+                )
+            )
 
         mid_dim = dims[-1]
         self.mid_block1 = ResnetBlock(mid_dim, mid_dim, time_emb_dim=dim)
@@ -181,11 +176,16 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
         self.mid_block2 = ResnetBlock(mid_dim, mid_dim, time_emb_dim=dim)
 
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
-            self.ups.append(torch.nn.ModuleList([
-                     ResnetBlock(dim_out * 2, dim_in, time_emb_dim=dim),
-                     ResnetBlock(dim_in, dim_in, time_emb_dim=dim),
-                     Residual(Rezero(LinearAttention(dim_in))),
-                     Upsample(dim_in)]))
+            self.ups.append(
+                torch.nn.ModuleList(
+                    [
+                        ResnetBlock(dim_out * 2, dim_in, time_emb_dim=dim),
+                        ResnetBlock(dim_in, dim_in, time_emb_dim=dim),
+                        Residual(Rezero(LinearAttention(dim_in))),
+                        Upsample(dim_in),
+                    ]
+                )
+            )
         self.final_block = Block(dim, dim)
         self.final_conv = torch.nn.Conv2d(dim, 1, 1)
 
@@ -196,7 +196,7 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
 
         if not isinstance(spk, type(None)):
             s = self.spk_mlp(spk)
-        
+
         t = self.time_pos_emb(t, scale=self.pe_scale)
         t = self.mlp(t)
 
