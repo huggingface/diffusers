@@ -232,35 +232,26 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 image_pil.save("test.png")
 ```
 
-#### **Text to speech with BDDM**
-
-_Follow the instructions [here](https://pytorch.org/hub/nvidia_deeplearningexamples_tacotron2/) to load tacotron2 model._
+#### **Text to speech with GradTTS and BDDM**
 
 ```python
 import torch
-from diffusers import BDDM, DiffusionPipeline
+from diffusers import BDDM, GradTTS
 
 torch_device = "cuda"
 
-# load the BDDM pipeline
-bddm = DiffusionPipeline.from_pretrained("fusing/diffwave-vocoder-ljspeech")
-
-# load tacotron2 to get the mel spectograms
-tacotron2 = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_tacotron2', model_math='fp16')
-tacotron2 = tacotron2.to(torch_device).eval()
+# load grad tts and bddm pipelines
+grad_tts = GradTTS.from_pretrained("fusing/grad-tts-libri-tts")
+bddm = BDDM.from_pretrained("fusing/diffwave-vocoder-ljspeech")
 
 text = "Hello world, I missed you so much."
 
-utils = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_tts_utils')
-sequences, lengths = utils.prepare_input_sequence([text])
-
 # generate mel spectograms using text
-with torch.no_grad():
-    mel_spec, _, _ = tacotron2.infer(sequences, lengths)
+mel_spec = grad_tts(text)
 
-# generate the speech by passing mel spectograms to BDDM pipeline
-generator = torch.manual_seed(0)
-audio = bddm(mel_spec, generator, torch_device)
+#  generate the speech by passing mel spectograms to BDDM pipeline
+generator = torch.manual_seed(42)
+audio = bddm(mel_spec, generator)
 
 # save generated audio
 from scipy.io.wavfile import write as wavwrite
