@@ -14,8 +14,10 @@
 # limitations under the License.
 
 
+import inspect
 import tempfile
 import unittest
+import numpy as np
 
 import torch
 
@@ -99,24 +101,86 @@ class ModelTesterMixin:
             image = model(**inputs_dict)
             new_image = new_model(**inputs_dict)
 
-        assert (image - new_image).abs().sum() < 1e-5, "Models don't give the same forward pass"
-    
+        max_diff = (image - new_image).abs().sum().item()
+        self.assertLessEqual(max_diff, 1e-5, "Models give different forward passes")
     
     def test_determinism(self):
-        pass
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+        with torch.no_grad():
+            first = model(**inputs_dict)
+            second = model(**inputs_dict)
+
+        out_1 = first.cpu().numpy()
+        out_2 = second.cpu().numpy()
+        out_1 = out_1[~np.isnan(out_1)]
+        out_2 = out_2[~np.isnan(out_2)]
+        max_diff = np.amax(np.abs(out_1 - out_2))
+        self.assertLessEqual(max_diff, 1e-5)
     
     def test_output(self):
-        pass
-    
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+        
+        self.assertIsNotNone(output)
+        expected_shape = inputs_dict["x"].shape
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+        
     def test_forward_signature(self):
-        pass
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict)
+        signature = inspect.signature(model.forward)
+        # signature.parameters is an OrderedDict => so arg_names order is deterministic
+        arg_names = [*signature.parameters.keys()]
+
+        expected_arg_names = ["x", "timesteps"]
+        self.assertListEqual(arg_names[:2], expected_arg_names)
     
     def test_model_from_config(self):
-        pass
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+        
+        # test if the model can be loaded from the config
+        # and has all the expected shape
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model.save_config(tmpdirname)
+            new_model = self.model_class.from_config(tmpdirname)
+            new_model.to(torch_device)
+            new_model.eval()
+        
+        # check if all paramters shape are the same
+        for param_name in model.state_dict().keys():
+            param_1 = model.state_dict()[param_name]
+            param_2 = new_model.state_dict()[param_name]
+            self.assertEqual(param_1.shape, param_2.shape)
+        
+        with torch.no_grad():
+            output_1 = model(**inputs_dict)
+            output_2 = new_model(**inputs_dict)
+        
+        self.assertEqual(output_1.shape, output_2.shape)
 
     def test_training(self):
-        pass
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.train()
+        output = model(**inputs_dict)
+        noise = torch.randn(inputs_dict["x"].shape).to(torch_device)
+        loss = torch.nn.functional.mse_loss(output, noise)
+        loss.backward()
 
 
 class UnetModelTests(ModelTesterMixin, unittest.TestCase):
@@ -131,7 +195,7 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
         noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
         time_step = torch.tensor([10]).to(torch_device)
 
-        return {"x": noise, "t": time_step}
+        return {"x": noise, "timesteps": time_step}
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
@@ -145,12 +209,37 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
         return init_dict, inputs_dict
     
     def test_from_pretrained_hub(self):
-        model = UNetModel.from_pretrained("fusing/ddpm_dummy")
-        model.to(torch_device)
+        model, loading_info = UNetModel.from_pretrained("fusing/ddpm_dummy", output_loading_info=True)
+        self.assertIsNotNone(model)
+        self.assertEqual(len(loading_info["missing_keys"]), 0)
 
+        model.to(torch_device)
         image = model(**self.dummy_input)
 
         assert image is not None, "Make sure output is not None"
+    
+    def test_output_pretrained(self):
+        model = UNetModel.from_pretrained("fusing/ddpm_dummy")
+        model.eval()
+
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+        
+        noise = torch.randn(1, model.config.in_channels, model.config.resolution, model.config.resolution)
+        print(noise.shape)
+        time_step = torch.tensor([10])
+        
+        with torch.no_grad():
+            output = model(noise, time_step)
+        
+        output_slice = output[0, -1, -3:, -3:].flatten()
+        # fmt: off
+        expected_output_slice = torch.tensor([ 0.2891, -0.1899,  0.2595, -0.6214,  0.0968, -0.2622,  0.4688,  0.1311, 0.0053])
+        # fmt: on
+        print(output_slice)
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+
 
 
 class PipelineTesterMixin(unittest.TestCase):
