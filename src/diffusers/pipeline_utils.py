@@ -88,7 +88,7 @@ class DiffusionPipeline(ConfigMixin):
     def save_pretrained(self, save_directory: Union[str, os.PathLike]):
         self.save_config(save_directory)
 
-        model_index_dict = self.config
+        model_index_dict = dict(self.config)
         model_index_dict.pop("_class_name")
         model_index_dict.pop("_diffusers_version")
         model_index_dict.pop("_module")

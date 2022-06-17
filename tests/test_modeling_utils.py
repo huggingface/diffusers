@@ -73,6 +73,10 @@ class ConfigTester(unittest.TestCase):
             new_obj = SampleObject.from_config(tmpdirname)
             new_config = new_obj.config
 
+        # unfreeze configs
+        config = dict(config)
+        new_config = dict(new_config)
+
         assert config.pop("c") == (2, 5)  # instantiated as tuple
         assert new_config.pop("c") == [2, 5]  # saved & loaded as list because of json
         assert config == new_config

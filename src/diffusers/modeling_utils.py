@@ -338,7 +338,7 @@ class ModelMixin(torch.nn.Module):
             revision=revision,
             **kwargs,
         )
-        model.register(name_or_path=pretrained_model_name_or_path)
+        model.register_to_config(name_or_path=pretrained_model_name_or_path)
         # This variable will flag if we're loading a sharded checkpoint. In this case the archive file is just the
         # Load model
         pretrained_model_name_or_path = str(pretrained_model_name_or_path)
