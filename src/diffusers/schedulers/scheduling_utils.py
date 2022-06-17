@@ -64,3 +64,13 @@ class SchedulerMixin:
             return torch.clamp(tensor, min_value, max_value)
 
         raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
+
+    def log(self, tensor):
+        tensor_format = getattr(self, "tensor_format", "pt")
+
+        if tensor_format == "np":
+            return np.log(tensor)
+        elif tensor_format == "pt":
+            return torch.log(tensor)
+
+        raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
