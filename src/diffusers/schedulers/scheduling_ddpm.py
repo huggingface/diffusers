@@ -105,12 +105,15 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         # hacks - were probs added for training stability
         if self.config.variance_type == "fixed_small":
             variance = self.clip(variance, min_value=1e-20)
+        # for rl-diffuser https://arxiv.org/abs/2205.09991
+        elif self.config.variance_type == "fixed_small_log":
+            variance = self.log(self.clip(variance, min_value=1e-20))
         elif self.config.variance_type == "fixed_large":
             variance = self.get_beta(t)
 
         return variance
 
-    def step(self, residual, sample, t):
+    def step(self, residual, sample, t, predict_epsilon=True):
         # 1. compute alphas, betas
         alpha_prod_t = self.get_alpha_prod(t)
         alpha_prod_t_prev = self.get_alpha_prod(t - 1)
@@ -119,7 +122,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         # 2. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (15) from https://arxiv.org/pdf/2006.11239.pdf
-        pred_original_sample = (sample - beta_prod_t ** (0.5) * residual) / alpha_prod_t ** (0.5)
+        if predict_epsilon:
+            pred_original_sample = (sample - beta_prod_t ** (0.5) * residual) / alpha_prod_t ** (0.5)
+        else:
+            pred_original_sample = residual
 
         # 3. Clip "predicted x_0"
         if self.config.clip_sample:
