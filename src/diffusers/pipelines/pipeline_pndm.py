@@ -42,9 +42,9 @@ class PNDM(DiffusionPipeline):
         )
         image = image.to(torch_device)
 
-        warmup_time_steps = self.noise_scheduler.get_warmup_time_steps(num_inference_steps)
-        for t in tqdm.tqdm(range(len(warmup_time_steps))):
-            t_orig = warmup_time_steps[t]
+        prk_time_steps = self.noise_scheduler.get_prk_time_steps(num_inference_steps)
+        for t in tqdm.tqdm(range(len(prk_time_steps))):
+            t_orig = prk_time_steps[t]
             residual = self.unet(image, t_orig)
 
             image = self.noise_scheduler.step_prk(residual, image, t, num_inference_steps)
