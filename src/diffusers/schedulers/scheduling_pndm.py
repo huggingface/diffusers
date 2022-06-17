@@ -62,7 +62,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         # running values
         self.cur_residual = 0
-        self.cur_image = None
+        self.cur_sample = None
         self.ets = []
         self.warmup_time_steps = {}
         self.time_steps = {}
@@ -100,7 +100,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         return self.time_steps[num_inference_steps]
 
-    def step_prk(self, residual, image, t, num_inference_steps):
+    def step_prk(self, residual, sample, t, num_inference_steps):
         # TODO(Patrick) - need to rethink whether the "warmup" way is the correct API design here
         warmup_time_steps = self.get_warmup_time_steps(num_inference_steps)
 
@@ -110,7 +110,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         if t % 4 == 0:
             self.cur_residual += 1 / 6 * residual
             self.ets.append(residual)
-            self.cur_image = image
+            self.cur_sample = sample
         elif (t - 1) % 4 == 0:
             self.cur_residual += 1 / 3 * residual
         elif (t - 2) % 4 == 0:
@@ -119,9 +119,9 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             residual = self.cur_residual + 1 / 6 * residual
             self.cur_residual = 0
 
-        return self.transfer(self.cur_image, t_prev, t_next, residual)
+        return self.transfer(self.cur_sample, t_prev, t_next, residual)
 
-    def step_plms(self, residual, image, t, num_inference_steps):
+    def step_plms(self, residual, sample, t, num_inference_steps):
         timesteps = self.get_time_steps(num_inference_steps)
 
         t_prev = timesteps[t]
@@ -130,7 +130,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         residual = (1 / 24) * (55 * self.ets[-1] - 59 * self.ets[-2] + 37 * self.ets[-3] - 9 * self.ets[-4])
 
-        return self.transfer(image, t_prev, t_next, residual)
+        return self.transfer(sample, t_prev, t_next, residual)
 
     def transfer(self, x, t, t_next, et):
         # TODO(Patrick): clean up to be compatible with numpy and give better names

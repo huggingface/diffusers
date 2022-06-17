@@ -28,7 +28,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule="linear",
         trained_betas=None,
         timestep_values=None,
-        clip_predicted_image=True,
+        clip_predicted_sample=True,
         tensor_format="np",
     ):
         super().__init__()
@@ -40,7 +40,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         )
         self.timesteps = int(timesteps)
         self.timestep_values = timestep_values  # save the fixed timestep values for BDDM
-        self.clip_image = clip_predicted_image
+        self.clip_sample = clip_predicted_sample
 
         if beta_schedule == "linear":
             self.betas = linear_beta_schedule(timesteps, beta_start=beta_start, beta_end=beta_end)
@@ -111,17 +111,17 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
-    def step(self, residual, image, t, num_inference_steps, eta, use_clipped_residual=False):
+    def step(self, residual, sample, t, num_inference_steps, eta, use_clipped_residual=False):
         # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
         # Ideally, read DDIM paper in-detail understanding
 
         # Notation (<variable name> -> <name in paper>
         # - pred_noise_t -> e_theta(x_t, t)
-        # - pred_original_image -> f_theta(x_t, t) or x_0
+        # - pred_original_sample -> f_theta(x_t, t) or x_0
         # - std_dev_t -> sigma_t
         # - eta -> η
-        # - pred_image_direction -> "direction pointingc to x_t"
-        # - pred_prev_image -> "x_t-1"
+        # - pred_sample_direction -> "direction pointingc to x_t"
+        # - pred_prev_sample -> "x_t-1"
 
         # 1. get actual t and t-1
         orig_t = self.get_orig_t(t, num_inference_steps)
@@ -132,13 +132,13 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         alpha_prod_t_prev = self.get_alpha_prod(orig_prev_t)
         beta_prod_t = 1 - alpha_prod_t
 
-        # 3. compute predicted original image from predicted noise also called
+        # 3. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        pred_original_image = (image - beta_prod_t ** (0.5) * residual) / alpha_prod_t ** (0.5)
+        pred_original_sample = (sample - beta_prod_t ** (0.5) * residual) / alpha_prod_t ** (0.5)
 
         # 4. Clip "predicted x_0"
-        if self.clip_image:
-            pred_original_image = self.clip(pred_original_image, -1, 1)
+        if self.clip_sample:
+            pred_original_sample = self.clip(pred_original_sample, -1, 1)
 
         # 5. compute variance: "sigma_t(η)" -> see formula (16)
         # σ_t = sqrt((1 − α_t−1)/(1 − α_t)) * sqrt(1 − α_t/α_t−1)
@@ -147,15 +147,15 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         if use_clipped_residual:
             # the residual is always re-derived from the clipped x_0 in GLIDE
-            residual = (image - alpha_prod_t ** (0.5) * pred_original_image) / beta_prod_t ** (0.5)
+            residual = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
 
         # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        pred_image_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * residual
+        pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * residual
 
         # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        pred_prev_image = alpha_prod_t_prev ** (0.5) * pred_original_image + pred_image_direction
+        pred_prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
 
-        return pred_prev_image
+        return pred_prev_sample
 
     def __len__(self):
         return self.timesteps

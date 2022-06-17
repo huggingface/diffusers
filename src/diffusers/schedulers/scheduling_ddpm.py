@@ -29,7 +29,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         trained_betas=None,
         timestep_values=None,
         variance_type="fixed_small",
-        clip_predicted_image=True,
+        clip_predicted_sample=True,
         tensor_format="np",
     ):
         super().__init__()
@@ -41,11 +41,11 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             trained_betas=trained_betas,
             timestep_values=timestep_values,
             variance_type=variance_type,
-            clip_predicted_image=clip_predicted_image,
+            clip_predicted_sample=clip_predicted_sample,
         )
         self.timesteps = int(timesteps)
         self.timestep_values = timestep_values  # save the fixed timestep values for BDDM
-        self.clip_image = clip_predicted_image
+        self.clip_sample = clip_predicted_sample
         self.variance_type = variance_type
 
         if trained_betas is not None:
@@ -100,8 +100,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         alpha_prod_t_prev = self.get_alpha_prod(t - 1)
 
         # For t > 0, compute predicted variance βt (see formala (6) and (7) from https://arxiv.org/pdf/2006.11239.pdf)
-        # and sample from it to get previous image
-        # x_{t-1} ~ N(pred_prev_image, variance) == add variane to pred_image
+        # and sample from it to get previous sample
+        # x_{t-1} ~ N(pred_prev_sample, variance) == add variane to pred_sample
         variance = (1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * self.get_beta(t)
 
         # hacks - were probs added for training stability
@@ -112,37 +112,37 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
-    def step(self, residual, image, t):
+    def step(self, residual, sample, t):
         # 1. compute alphas, betas
         alpha_prod_t = self.get_alpha_prod(t)
         alpha_prod_t_prev = self.get_alpha_prod(t - 1)
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
-        # 2. compute predicted original image from predicted noise also called
+        # 2. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (15) from https://arxiv.org/pdf/2006.11239.pdf
-        pred_original_image = (image - beta_prod_t ** (0.5) * residual) / alpha_prod_t ** (0.5)
+        pred_original_sample = (sample - beta_prod_t ** (0.5) * residual) / alpha_prod_t ** (0.5)
 
         # 3. Clip "predicted x_0"
-        if self.clip_predicted_image:
-            pred_original_image = self.clip(pred_original_image, -1, 1)
+        if self.clip_predicted_sample:
+            pred_original_sample = self.clip(pred_original_sample, -1, 1)
 
-        # 4. Compute coefficients for pred_original_image x_0 and current image x_t
+        # 4. Compute coefficients for pred_original_sample x_0 and current sample x_t
         # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
-        pred_original_image_coeff = (alpha_prod_t_prev ** (0.5) * self.get_beta(t)) / beta_prod_t
-        current_image_coeff = self.get_alpha(t) ** (0.5) * beta_prod_t_prev / beta_prod_t
+        pred_original_sample_coeff = (alpha_prod_t_prev ** (0.5) * self.get_beta(t)) / beta_prod_t
+        current_sample_coeff = self.get_alpha(t) ** (0.5) * beta_prod_t_prev / beta_prod_t
 
-        # 5. Compute predicted previous image µ_t
+        # 5. Compute predicted previous sample µ_t
         # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
-        pred_prev_image = pred_original_image_coeff * pred_original_image + current_image_coeff * image
+        pred_prev_sample = pred_original_sample_coeff * pred_original_sample + current_sample_coeff * sample
 
-        return pred_prev_image
+        return pred_prev_sample
 
-    def forward_step(self, original_image, noise, t):
+    def forward_step(self, original_sample, noise, t):
         sqrt_alpha_prod = self.get_alpha_prod(t) ** 0.5
         sqrt_one_minus_alpha_prod = (1 - self.get_alpha_prod(t)) ** 0.5
-        noisy_image = sqrt_alpha_prod * original_image + sqrt_one_minus_alpha_prod * noise
-        return noisy_image
+        noisy_sample = sqrt_alpha_prod * original_sample + sqrt_one_minus_alpha_prod * noise
+        return noisy_sample
 
     def __len__(self):
         return self.timesteps
