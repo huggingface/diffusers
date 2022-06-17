@@ -43,10 +43,6 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             variance_type=variance_type,
             clip_sample=clip_sample,
         )
-        self.timesteps = int(timesteps)
-        self.timestep_values = timestep_values  # save the fixed timestep values for BDDM
-        self.clip_sample = clip_sample
-        self.variance_type = variance_type
 
         if trained_betas is not None:
             self.betas = np.asarray(trained_betas)
@@ -83,6 +79,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
     #
     #
     #        self.register_buffer("log_variance", log_variance.to(torch.float32))
+    def get_timestep_values(self):
+        return self.config.timestep_values
 
     def get_alpha(self, time_step):
         return self.alphas[time_step]
@@ -105,9 +103,9 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         variance = (1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * self.get_beta(t)
 
         # hacks - were probs added for training stability
-        if self.variance_type == "fixed_small":
+        if self.config.variance_type == "fixed_small":
             variance = self.clip(variance, min_value=1e-20)
-        elif self.variance_type == "fixed_large":
+        elif self.config.variance_type == "fixed_large":
             variance = self.get_beta(t)
 
         return variance
@@ -124,7 +122,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         pred_original_sample = (sample - beta_prod_t ** (0.5) * residual) / alpha_prod_t ** (0.5)
 
         # 3. Clip "predicted x_0"
-        if self.clip_sample:
+        if self.config.clip_sample:
             pred_original_sample = self.clip(pred_original_sample, -1, 1)
 
         # 4. Compute coefficients for pred_original_sample x_0 and current sample x_t
@@ -145,4 +143,4 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         return noisy_sample
 
     def __len__(self):
-        return self.timesteps
+        return self.config.timesteps

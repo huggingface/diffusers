@@ -32,7 +32,7 @@ class DDIM(DiffusionPipeline):
         if torch_device is None:
             torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        num_trained_timesteps = self.noise_scheduler.timesteps
+        num_trained_timesteps = self.noise_scheduler.config.timesteps
         inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps)
 
         self.unet.to(torch_device)

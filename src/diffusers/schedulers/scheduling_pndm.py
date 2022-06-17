@@ -35,7 +35,6 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             beta_end=beta_end,
             beta_schedule=beta_schedule,
         )
-        self.timesteps = int(timesteps)
 
         if beta_schedule == "linear":
             self.betas = linear_beta_schedule(timesteps, beta_start=beta_start, beta_end=beta_end)
@@ -82,10 +81,10 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         if num_inference_steps in self.warmup_time_steps:
             return self.warmup_time_steps[num_inference_steps]
 
-        inference_step_times = list(range(0, self.timesteps, self.timesteps // num_inference_steps))
+        inference_step_times = list(range(0, self.config.timesteps, self.config.timesteps // num_inference_steps))
 
         warmup_time_steps = np.array(inference_step_times[-self.pndm_order :]).repeat(2) + np.tile(
-            np.array([0, self.timesteps // num_inference_steps // 2]), self.pndm_order
+            np.array([0, self.config.timesteps // num_inference_steps // 2]), self.pndm_order
         )
         self.warmup_time_steps[num_inference_steps] = list(reversed(warmup_time_steps[:-1].repeat(2)[1:-1]))
 
@@ -95,7 +94,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         if num_inference_steps in self.time_steps:
             return self.time_steps[num_inference_steps]
 
-        inference_step_times = list(range(0, self.timesteps, self.timesteps // num_inference_steps))
+        inference_step_times = list(range(0, self.config.timesteps, self.config.timesteps // num_inference_steps))
         self.time_steps[num_inference_steps] = list(reversed(inference_step_times[:-3]))
 
         return self.time_steps[num_inference_steps]
@@ -148,4 +147,4 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         return x_next
 
     def __len__(self):
-        return self.timesteps
+        return self.config.timesteps
