@@ -117,6 +117,24 @@ class ModelTesterMixin(unittest.TestCase):
         image = model(*self.dummy_input)
 
         assert image is not None, "Make sure output is not None"
+    
+    def test_save_load(self):
+        pass
+    
+    def test_determinism(self):
+        pass
+    
+    def test_output(self):
+        pass
+    
+    def test_forward_signature(self):
+        pass
+    
+    def test_model_from_config(self):
+        pass
+
+    def test_training(self):
+        pass
 
 
 class PipelineTesterMixin(unittest.TestCase):
