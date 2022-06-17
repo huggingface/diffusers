@@ -236,8 +236,12 @@ def english_cleaners(text):
     text = collapse_whitespace(text)
     return text
 
+try:
+    _inflect = inflect.engine()
+except:
+    print("inflect is not installed")
+    _inflect = None
 
-_inflect = inflect.engine()
 _comma_number_re = re.compile(r"([0-9][0-9\,]+[0-9])")
 _decimal_number_re = re.compile(r"([0-9]+\.[0-9]+)")
 _pounds_re = re.compile(r"£([0-9\,]*[0-9]+)")
