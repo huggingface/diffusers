@@ -172,7 +172,7 @@ class DDPMSchedulerTest(SchedulerCommonTest):
             "beta_end": 0.02,
             "beta_schedule": "linear",
             "variance_type": "fixed_small",
-            "clip_predicted_image": True,
+            "clip_predicted_sample": True,
         }
 
         config.update(**kwargs)
@@ -195,8 +195,8 @@ class DDPMSchedulerTest(SchedulerCommonTest):
             self.check_over_configs(variance_type=variance)
 
     def test_clip_image(self):
-        for clip_predicted_image in [True, False]:
-            self.check_over_configs(clip_predicted_image=clip_predicted_image)
+        for clip_predicted_sample in [True, False]:
+            self.check_over_configs(clip_predicted_sample=clip_predicted_sample)
 
     def test_time_indices(self):
         for t in [0, 500, 999]:
@@ -251,7 +251,7 @@ class DDIMSchedulerTest(SchedulerCommonTest):
             "beta_start": 0.0001,
             "beta_end": 0.02,
             "beta_schedule": "linear",
-            "clip_predicted_image": True,
+            "clip_predicted_sample": True,
         }
 
         config.update(**kwargs)
@@ -270,8 +270,8 @@ class DDIMSchedulerTest(SchedulerCommonTest):
             self.check_over_configs(beta_schedule=schedule)
 
     def test_clip_image(self):
-        for clip_predicted_image in [True, False]:
-            self.check_over_configs(clip_predicted_image=clip_predicted_image)
+        for clip_predicted_sample in [True, False]:
+            self.check_over_configs(clip_predicted_sample=clip_predicted_sample)
 
     def test_time_indices(self):
         for t in [1, 10, 49]:
