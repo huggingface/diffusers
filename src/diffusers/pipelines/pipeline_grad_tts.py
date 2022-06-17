@@ -355,7 +355,7 @@ class TextEncoder(ModelMixin, ConfigMixin):
     ):
         super(TextEncoder, self).__init__()
 
-        self.register(
+        self.register_to_config(
             n_vocab=n_vocab,
             n_feats=n_feats,
             n_channels=n_channels,

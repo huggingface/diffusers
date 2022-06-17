@@ -50,7 +50,7 @@ class ConfigMixin:
     """
     config_name = None
 
-    def register(self, **kwargs):
+    def register_to_config(self, **kwargs):
         if self.config_name is None:
             raise NotImplementedError(f"Make sure that {self.__class__} has defined a class name `config_name`")
         kwargs["_class_name"] = self.__class__.__name__

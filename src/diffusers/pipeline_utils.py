@@ -77,13 +77,13 @@ class DiffusionPipeline(ConfigMixin):
             register_dict = {name: (library, class_name)}
 
             # save model index config
-            self.register(**register_dict)
+            self.register_to_config(**register_dict)
 
             # set models
             setattr(self, name, module)
 
         register_dict = {"_module": self.__module__.split(".")[-1]}
-        self.register(**register_dict)
+        self.register_to_config(**register_dict)
 
     def save_pretrained(self, save_directory: Union[str, os.PathLike]):
         self.save_config(save_directory)

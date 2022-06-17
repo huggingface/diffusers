@@ -188,7 +188,7 @@ class UNetModel(ModelMixin, ConfigMixin):
         resolution=256,
     ):
         super().__init__()
-        self.register(
+        self.register_to_config(
             ch=ch,
             out_ch=out_ch,
             ch_mult=ch_mult,

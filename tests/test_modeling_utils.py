@@ -57,7 +57,7 @@ class ConfigTester(unittest.TestCase):
                 d="for diffusion",
                 e=[1, 3],
             ):
-                self.register(a=a, b=b, c=c, d=d, e=e)
+                self.register_to_config(a=a, b=b, c=c, d=d, e=e)
 
         obj = SampleObject()
         config = obj.config

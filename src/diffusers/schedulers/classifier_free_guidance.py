@@ -57,7 +57,7 @@ class ClassifierFreeGuidanceScheduler(nn.Module, ConfigMixin):
         beta_schedule="squaredcos_cap_v2",
     ):
         super().__init__()
-        self.register(
+        self.register_to_config(
             timesteps=timesteps,
             beta_schedule=beta_schedule,
         )

@@ -126,7 +126,7 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
     def __init__(self, dim, dim_mults=(1, 2, 4), groups=8, n_spks=None, spk_emb_dim=64, n_feats=80, pe_scale=1000):
         super(UNetGradTTSModel, self).__init__()
 
-        self.register(
+        self.register_to_config(
             dim=dim,
             dim_mults=dim_mults,
             groups=groups,

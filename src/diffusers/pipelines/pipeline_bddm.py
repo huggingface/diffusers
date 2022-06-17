@@ -232,7 +232,7 @@ class DiffWave(ModelMixin, ConfigMixin):
         super().__init__()
 
         # register all init arguments with self.register
-        self.register(
+        self.register_to_config(
             in_channels=in_channels,
             res_channels=res_channels,
             skip_channels=skip_channels,

@@ -33,7 +33,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         tensor_format="np",
     ):
         super().__init__()
-        self.register(
+        self.register_to_config(
             timesteps=timesteps,
             beta_start=beta_start,
             beta_end=beta_end,

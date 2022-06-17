@@ -689,7 +689,7 @@ class GLIDETextToImageUNetModel(GLIDEUNetModel):
             resblock_updown=resblock_updown,
             transformer_dim=transformer_dim,
         )
-        self.register(
+        self.register_to_config(
             in_channels=in_channels,
             resolution=resolution,
             model_channels=model_channels,
@@ -780,7 +780,7 @@ class GLIDESuperResUNetModel(GLIDEUNetModel):
             use_scale_shift_norm=use_scale_shift_norm,
             resblock_updown=resblock_updown,
         )
-        self.register(
+        self.register_to_config(
             in_channels=in_channels,
             resolution=resolution,
             model_channels=model_channels,

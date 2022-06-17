@@ -655,7 +655,7 @@ class VQModel(ModelMixin, ConfigMixin):
         super().__init__()
 
         # register all __init__ params with self.register
-        self.register(
+        self.register_to_config(
             ch=ch,
             out_ch=out_ch,
             num_res_blocks=num_res_blocks,
@@ -786,7 +786,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         super().__init__()
 
         # register all __init__ params with self.register
-        self.register(
+        self.register_to_config(
             ch=ch,
             out_ch=out_ch,
             num_res_blocks=num_res_blocks,

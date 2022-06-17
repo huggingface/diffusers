@@ -746,7 +746,7 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
         super().__init__()
 
         # register all __init__ params with self.register
-        self.register(
+        self.register_to_config(
             image_size=image_size,
             in_channels=in_channels,
             model_channels=model_channels,
