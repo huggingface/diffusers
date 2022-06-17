@@ -20,10 +20,10 @@ import re
 
 # All paths are set with the intent you should run this script from the root of the repo with the command
 # python utils/check_dummies.py
-PATH_TO_TRANSFORMERS = "src/transformers"
+PATH_TO_DIFFUSERS = "src/diffusers"
 
 # Matches is_xxx_available()
-_re_backend = re.compile(r"is\_([a-z_]*)_available()")
+_re_backend = re.compile(r"if is\_([a-z_]*)_available\(\)")
 # Matches from xxx import bla
 _re_single_line_import = re.compile(r"\s+from\s+\S*\s+import\s+([^\(\s].*)\n")
 _re_test_backend = re.compile(r"^\s+if\s+not\s+is\_[a-z]*\_available\(\)")
@@ -50,36 +50,30 @@ def {0}(*args, **kwargs):
 
 def find_backend(line):
     """Find one (or multiple) backend in a code line of the init."""
-    if _re_test_backend.search(line) is None:
+    backends = _re_backend.findall(line)
+    if len(backends) == 0:
         return None
-    backends = [b[0] for b in _re_backend.findall(line)]
-    backends.sort()
-    return "_and_".join(backends)
+
+    return backends[0]
 
 
 def read_init():
     """Read the init and extracts PyTorch, TensorFlow, SentencePiece and Tokenizers objects."""
-    with open(os.path.join(PATH_TO_TRANSFORMERS, "__init__.py"), "r", encoding="utf-8", newline="\n") as f:
+    with open(os.path.join(PATH_TO_DIFFUSERS, "__init__.py"), "r", encoding="utf-8", newline="\n") as f:
         lines = f.readlines()
 
     # Get to the point we do the actual imports for type checking
     line_index = 0
-    while not lines[line_index].startswith("if TYPE_CHECKING"):
-        line_index += 1
-
     backend_specific_objects = {}
     # Go through the end of the file
     while line_index < len(lines):
         # If the line is an if is_backend_available, we grab all objects associated.
         backend = find_backend(lines[line_index])
         if backend is not None:
-            while not lines[line_index].startswith("    else:"):
-                line_index += 1
-            line_index += 1
-
             objects = []
+            line_index += 1
             # Until we unindent, add backend objects to the list
-            while len(lines[line_index]) <= 1 or lines[line_index].startswith(" " * 8):
+            while not lines[line_index].startswith("else:"):
                 line = lines[line_index]
                 single_line_import_search = _re_single_line_import.search(line)
                 if single_line_import_search is not None:
@@ -129,7 +123,7 @@ def check_dummies(overwrite=False):
     short_names = {"torch": "pt"}
 
     # Locate actual dummy modules and read their content.
-    path = os.path.join(PATH_TO_TRANSFORMERS, "utils")
+    path = os.path.join(PATH_TO_DIFFUSERS, "utils")
     dummy_file_paths = {
         backend: os.path.join(path, f"dummy_{short_names.get(backend, backend)}_objects.py")
         for backend in dummy_files.keys()
@@ -147,7 +141,7 @@ def check_dummies(overwrite=False):
         if dummy_files[backend] != actual_dummies[backend]:
             if overwrite:
                 print(
-                    f"Updating transformers.utils.dummy_{short_names.get(backend, backend)}_objects.py as the main "
+                    f"Updating diffusers.utils.dummy_{short_names.get(backend, backend)}_objects.py as the main "
                     "__init__ has new objects."
                 )
                 with open(dummy_file_paths[backend], "w", encoding="utf-8", newline="\n") as f:
@@ -155,7 +149,7 @@ def check_dummies(overwrite=False):
             else:
                 raise ValueError(
                     "The main __init__ has objects that are not present in "
-                    f"transformers.utils.dummy_{short_names.get(backend, backend)}_objects.py. Run `make fix-copies` "
+                    f"diffusers.utils.dummy_{short_names.get(backend, backend)}_objects.py. Run `make fix-copies` "
                     "to fix this."
                 )
 

@@ -1,12 +1,3 @@
-#!/usr/bin/env python
-# coding=utf-8
-
-# flake8: noqa
-# There's no way to ignore "F401 '...' imported but unused" warnings in this
-# module, but to preserve other warnings. So, don't check this module at all.
-
-import os
-
 # Copyright 2021 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +12,10 @@ import os
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from requests.exceptions import HTTPError
+import importlib
+import importlib_metadata
+import os
+from .logging import logger
 
 
 hf_cache_home = os.path.expanduser(
@@ -34,6 +29,18 @@ HUGGINGFACE_CO_RESOLVE_ENDPOINT = "https://huggingface.co"
 DIFFUSERS_CACHE = default_cache_path
 DIFFUSERS_DYNAMIC_MODULE_NAME = "diffusers_modules"
 HF_MODULES_CACHE = os.getenv("HF_MODULES_CACHE", os.path.join(hf_cache_home, "modules"))
+
+
+_transformers_available = importlib.util.find_spec("transformers") is not None
+try:
+    _transformers_version = importlib_metadata.version("transformers")
+    logger.debug(f"Successfully imported transformers version {_transformers_version}")
+except importlib_metadata.PackageNotFoundError:
+    _transformers_available = False
+
+
+def is_transformers_available():
+    return _transformers_available
 
 
 class RepositoryNotFoundError(HTTPError):
