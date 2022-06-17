@@ -22,3 +22,27 @@ class GLIDEUNetModel(metaclass=DummyObject):
 
     def __init__(self, *args, **kwargs):
         requires_backends(self, ["transformers"])
+
+
+class UNetGradTTSModel(metaclass=DummyObject):
+    _backends = ["transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["transformers"])
+
+
+GLIDE = None
+
+
+class GradTTS(metaclass=DummyObject):
+    _backends = ["transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["transformers"])
+
+
+class LatentDiffusion(metaclass=DummyObject):
+    _backends = ["transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["transformers"])

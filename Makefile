@@ -74,8 +74,8 @@ fixup: modified_only_fixup extra_style_checks autogenerate_code repo-consistency
 # Make marked copies of snippets of codes conform to the original
 
 fix-copies:
-	python utils/check_table.py --fix_and_overwrite
 	python utils/check_dummies.py --fix_and_overwrite
+	python utils/check_table.py --fix_and_overwrite
 	python utils/check_copies.py --fix_and_overwrite
 
 # Run tests for the library
