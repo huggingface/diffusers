@@ -46,7 +46,7 @@ class LatentDiffusion(DiffusionPipeline):
         text_input = self.tokenizer(prompt, padding="max_length", max_length=77, return_tensors="pt").to(torch_device)
         text_embedding = self.bert(text_input.input_ids)[0]
 
-        num_trained_timesteps = self.noise_scheduler.timesteps
+        num_trained_timesteps = self.noise_scheduler.config.timesteps
         inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps)
 
         image = self.noise_scheduler.sample_noise(

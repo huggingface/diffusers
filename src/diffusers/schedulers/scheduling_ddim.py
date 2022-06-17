@@ -37,10 +37,10 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             beta_start=beta_start,
             beta_end=beta_end,
             beta_schedule=beta_schedule,
+            trained_betas=trained_betas,
+            timestep_values=timestep_values,
+            clip_sample=clip_sample,
         )
-        self.timesteps = int(timesteps)
-        self.timestep_values = timestep_values  # save the fixed timestep values for BDDM
-        self.clip_sample = clip_sample
 
         if beta_schedule == "linear":
             self.betas = linear_beta_schedule(timesteps, beta_start=beta_start, beta_end=beta_end)
@@ -81,6 +81,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
     #         )
     #         self.alphas = 1.0 - self.betas
     #         self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
+    def get_timestep_values(self):
+        return self.config.timestep_values
 
     def get_alpha(self, time_step):
         return self.alphas[time_step]
@@ -96,7 +98,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
     def get_orig_t(self, t, num_inference_steps):
         if t < 0:
             return -1
-        return self.timesteps // num_inference_steps * t
+        return self.config.timesteps // num_inference_steps * t
 
     def get_variance(self, t, num_inference_steps):
         orig_t = self.get_orig_t(t, num_inference_steps)
@@ -137,7 +139,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         pred_original_sample = (sample - beta_prod_t ** (0.5) * residual) / alpha_prod_t ** (0.5)
 
         # 4. Clip "predicted x_0"
-        if self.clip_sample:
+        if self.config.clip_sample:
             pred_original_sample = self.clip(pred_original_sample, -1, 1)
 
         # 5. compute variance: "sigma_t(η)" -> see formula (16)
@@ -158,4 +160,4 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         return pred_prev_sample
 
     def __len__(self):
-        return self.timesteps
+        return self.config.timesteps
