@@ -28,7 +28,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule="linear",
         trained_betas=None,
         timestep_values=None,
-        clip_predicted_sample=True,
+        clip_sample=True,
         tensor_format="np",
     ):
         super().__init__()
@@ -40,7 +40,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         )
         self.timesteps = int(timesteps)
         self.timestep_values = timestep_values  # save the fixed timestep values for BDDM
-        self.clip_sample = clip_predicted_sample
+        self.clip_sample = clip_sample
 
         if beta_schedule == "linear":
             self.betas = linear_beta_schedule(timesteps, beta_start=beta_start, beta_end=beta_end)

@@ -29,7 +29,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         trained_betas=None,
         timestep_values=None,
         variance_type="fixed_small",
-        clip_predicted_sample=True,
+        clip_sample=True,
         tensor_format="np",
     ):
         super().__init__()
@@ -41,11 +41,11 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             trained_betas=trained_betas,
             timestep_values=timestep_values,
             variance_type=variance_type,
-            clip_predicted_sample=clip_predicted_sample,
+            clip_sample=clip_sample,
         )
         self.timesteps = int(timesteps)
         self.timestep_values = timestep_values  # save the fixed timestep values for BDDM
-        self.clip_sample = clip_predicted_sample
+        self.clip_sample = clip_sample
         self.variance_type = variance_type
 
         if trained_betas is not None:
@@ -124,7 +124,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         pred_original_sample = (sample - beta_prod_t ** (0.5) * residual) / alpha_prod_t ** (0.5)
 
         # 3. Clip "predicted x_0"
-        if self.clip_predicted_sample:
+        if self.clip_sample:
             pred_original_sample = self.clip(pred_original_sample, -1, 1)
 
         # 4. Compute coefficients for pred_original_sample x_0 and current sample x_t
