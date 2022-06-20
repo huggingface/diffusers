@@ -6,6 +6,10 @@ import einops
 from einops.layers.torch import Rearrange
 import math
 
+from ..configuration_utils import ConfigMixin
+from ..modeling_utils import ModelMixin
+
+
 class SinusoidalPosEmb(nn.Module):
     def __init__(self, dim):
         super().__init__()
@@ -85,7 +89,7 @@ class ResidualTemporalBlock(nn.Module):
         out = self.blocks[1](out)
         return out + self.residual_conv(x)
 
-class TemporalUnet(nn.Module):
+class TemporalUNet(ModelMixin, ConfigMixin): #(nn.Module):
 
     def __init__(
         self,
@@ -99,7 +103,7 @@ class TemporalUnet(nn.Module):
 
         dims = [transition_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
-        print(f'[ models/temporal ] Channel dimensions: {in_out}')
+        # print(f'[ models/temporal ] Channel dimensions: {in_out}')
 
         time_dim = dim
         self.time_mlp = nn.Sequential(
