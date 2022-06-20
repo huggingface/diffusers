@@ -34,6 +34,8 @@ from diffusers import (
     LatentDiffusion,
     PNDMScheduler,
     UNetModel,
+    UNetLDMModel,
+    UNetGradTTSModel,
 )
 from diffusers.configuration_utils import ConfigMixin
 from diffusers.pipeline_utils import DiffusionPipeline
@@ -246,7 +248,6 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
         # fmt: off
         expected_output_slice = torch.tensor([ 0.2891, -0.1899,  0.2595, -0.6214,  0.0968, -0.2622,  0.4688,  0.1311, 0.0053])
         # fmt: on
-        print(output_slice)
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
 
 
@@ -320,17 +321,14 @@ class GLIDESuperResUNetTests(ModelTesterMixin, unittest.TestCase):
 
         assert image is not None, "Make sure output is not None"
 
-    # TODO (patil-suraj): Check why GLIDESuperResUNetModel always outputs zero
-    @unittest.skip("GLIDESuperResUNetModel always outputs zero")
     def test_output_pretrained(self):
         model = GLIDESuperResUNetModel.from_pretrained("fusing/glide-super-res-dummy")
-        model.eval()
 
         torch.manual_seed(0)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(0)
 
-        noise = torch.randn(1, 3, 32, 32)
+        noise = torch.randn(1, 3, 64, 64)
         low_res = torch.randn(1, 3, 4, 4)
         time_step = torch.tensor([42] * noise.shape[0])
 
@@ -340,9 +338,148 @@ class GLIDESuperResUNetTests(ModelTesterMixin, unittest.TestCase):
         output, _ = torch.split(output, 3, dim=1)
         output_slice = output[0, -1, -3:, -3:].flatten()
         # fmt: off
-        expected_output_slice = torch.tensor([ 0.2891, -0.1899,  0.2595, -0.6214,  0.0968, -0.2622,  0.4688,  0.1311, 0.0053])
+        expected_output_slice = torch.tensor([-22.8782, -23.2652, -15.3966, -22.8034, -23.3159, -15.5640, -15.3970, -15.4614, - 10.4370])
         # fmt: on
-        print(output_slice)
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+
+class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
+    model_class = UNetLDMModel
+
+    @property
+    def dummy_input(self):
+        batch_size = 4
+        num_channels = 4
+        sizes = (32, 32)
+
+        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        time_step = torch.tensor([10]).to(torch_device)
+
+        return {"x": noise, "timesteps": time_step}
+
+    @property
+    def get_input_shape(self):
+        return (4, 32, 32)
+
+    @property
+    def get_output_shape(self):
+        return (4, 32, 32)
+
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = {
+            "image_size": 32,
+            "in_channels": 4,
+            "out_channels": 4,
+            "model_channels": 32,
+            "num_res_blocks": 2,
+            "attention_resolutions": (16,),
+            "channel_mult": (1, 2),
+            "num_heads": 2,
+            "conv_resample": True,
+        }
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+    
+    def test_from_pretrained_hub(self):
+        model, loading_info = UNetLDMModel.from_pretrained("fusing/unet-ldm-dummy", output_loading_info=True)
+        self.assertIsNotNone(model)
+        self.assertEqual(len(loading_info["missing_keys"]), 0)
+
+        model.to(torch_device)
+        image = model(**self.dummy_input)
+
+        assert image is not None, "Make sure output is not None"
+
+    def test_output_pretrained(self):
+        model = UNetLDMModel.from_pretrained("fusing/unet-ldm-dummy")
+        model.eval()
+
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        noise = torch.randn(1, model.config.in_channels, model.config.image_size, model.config.image_size)
+        time_step = torch.tensor([10] * noise.shape[0])
+
+        with torch.no_grad():
+            output = model(noise, time_step)
+
+        output_slice = output[0, -1, -3:, -3:].flatten()
+        # fmt: off
+        expected_output_slice = torch.tensor([-13.3258, -20.1100, -15.9873, -17.6617, -23.0596, -17.9419, -13.3675, -16.1889, -12.3800])
+        # fmt: on
+
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+
+
+class UNetGradTTSModelTests(ModelTesterMixin, unittest.TestCase):
+    model_class = UNetGradTTSModel
+
+    @property
+    def dummy_input(self):
+        batch_size = 4
+        num_features = 32
+        seq_len = 16
+
+        noise = floats_tensor((batch_size, num_features, seq_len)).to(torch_device)
+        condition = floats_tensor((batch_size, num_features, seq_len)).to(torch_device)
+        mask = floats_tensor((batch_size, 1, seq_len)).to(torch_device)
+        time_step = torch.tensor([10] * batch_size).to(torch_device)
+
+        return {"x": noise, "timesteps": time_step, "mu": condition, "mask": mask}
+
+    @property
+    def get_input_shape(self):
+        return (4, 32, 16)
+
+    @property
+    def get_output_shape(self):
+        return (4, 32, 16)
+
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = {
+            "dim": 64,
+            "groups": 4,
+            "dim_mults": (1, 2),
+            "n_feats": 32,
+            "pe_scale": 1000,
+            "n_spks": 1,
+        }
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+    
+    def test_from_pretrained_hub(self):
+        model, loading_info = UNetGradTTSModel.from_pretrained("fusing/unet-grad-tts-dummy", output_loading_info=True)
+        self.assertIsNotNone(model)
+        self.assertEqual(len(loading_info["missing_keys"]), 0)
+
+        model.to(torch_device)
+        image = model(**self.dummy_input)
+
+        assert image is not None, "Make sure output is not None"
+
+    def test_output_pretrained(self):
+        model = UNetGradTTSModel.from_pretrained("fusing/unet-grad-tts-dummy")
+        model.eval()
+
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+        
+        num_features = model.config.n_feats
+        seq_len = 16
+        noise = torch.randn((1, num_features, seq_len))
+        condition = torch.randn((1, num_features, seq_len))
+        mask = torch.randn((1, 1, seq_len))
+        time_step = torch.tensor([10])
+
+        with torch.no_grad():
+            output = model(noise, time_step, condition, mask)
+
+        output_slice = output[0, -3:, -3:].flatten()
+        # fmt: off
+        expected_output_slice = torch.tensor([-0.0690, -0.0531,  0.0633, -0.0660, -0.0541,  0.0650, -0.0656, -0.0555, 0.0617])
+        # fmt: on
+
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
 
 
@@ -450,7 +587,6 @@ class PipelineTesterMixin(unittest.TestCase):
         image = ldm([prompt], generator=generator, num_inference_steps=20)
 
         image_slice = image[0, -1, -3:, -3:].cpu()
-        print(image_slice.shape)
 
         assert image.shape == (1, 3, 256, 256)
         expected_slice = torch.tensor([0.7295, 0.7358, 0.7256, 0.7435, 0.7095, 0.6884, 0.7325, 0.6921, 0.6458])
