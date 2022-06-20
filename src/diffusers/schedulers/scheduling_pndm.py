@@ -86,17 +86,6 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         self.time_steps = {}
         self.set_prk_mode()
 
-    def get_alpha(self, time_step):
-        return self.alphas[time_step]
-
-    def get_beta(self, time_step):
-        return self.betas[time_step]
-
-    def get_alpha_prod(self, time_step):
-        if time_step < 0:
-            return self.one
-        return self.alphas_cumprod[time_step]
-
     def get_prk_time_steps(self, num_inference_steps):
         if num_inference_steps in self.prk_time_steps:
             return self.prk_time_steps[num_inference_steps]
@@ -188,8 +177,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         # sample -> x_t
         # residual -> e_θ(x_t, t)
         # prev_sample -> x_(t−δ)
-        alpha_prod_t = self.get_alpha_prod(t_orig + 1)
-        alpha_prod_t_prev = self.get_alpha_prod(t_orig_prev + 1)
+        alpha_prod_t = self.alphas_cumprod[t_orig + 1]
+        alpha_prod_t_prev = self.alphas_cumprod[t_orig_prev + 1]
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 

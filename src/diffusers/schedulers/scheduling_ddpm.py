@@ -83,44 +83,14 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         self.set_format(tensor_format=tensor_format)
 
-    #        self.register_buffer("betas", betas.to(torch.float32))
-    #        self.register_buffer("alphas", alphas.to(torch.float32))
-    #        self.register_buffer("alphas_cumprod", alphas_cumprod.to(torch.float32))
-
-    #        alphas_cumprod_prev = torch.nn.functional.pad(alphas_cumprod[:-1], (1, 0), value=1.0)
-    # TODO(PVP) - check how much of these is actually necessary!
-    # LDM only uses "fixed_small"; glide seems to use a weird mix of the two, ...
-    # https://github.com/openai/glide-text2im/blob/69b530740eb6cef69442d6180579ef5ba9ef063e/glide_text2im/gaussian_diffusion.py#L246
-    #        variance = betas * (1.0 - alphas_cumprod_prev) / (1.0 - alphas_cumprod)
-    #        if variance_type == "fixed_small":
-    #            log_variance = torch.log(variance.clamp(min=1e-20))
-    #        elif variance_type == "fixed_large":
-    #            log_variance = torch.log(torch.cat([variance[1:2], betas[1:]], dim=0))
-    #
-    #
-    #        self.register_buffer("log_variance", log_variance.to(torch.float32))
-    def get_timestep_values(self):
-        return self.config.timestep_values
-
-    def get_alpha(self, time_step):
-        return self.alphas[time_step]
-
-    def get_beta(self, time_step):
-        return self.betas[time_step]
-
-    def get_alpha_prod(self, time_step):
-        if time_step < 0:
-            return self.one
-        return self.alphas_cumprod[time_step]
-
     def get_variance(self, t):
-        alpha_prod_t = self.get_alpha_prod(t)
-        alpha_prod_t_prev = self.get_alpha_prod(t - 1)
+        alpha_prod_t = self.alphas_cumprod[t]
+        alpha_prod_t_prev = self.alphas_cumprod[t - 1] if t > 0 else self.one
 
         # For t > 0, compute predicted variance βt (see formala (6) and (7) from https://arxiv.org/pdf/2006.11239.pdf)
         # and sample from it to get previous sample
         # x_{t-1} ~ N(pred_prev_sample, variance) == add variane to pred_sample
-        variance = (1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * self.get_beta(t)
+        variance = (1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * self.betas[t]
 
         # hacks - were probs added for training stability
         if self.config.variance_type == "fixed_small":
@@ -129,14 +99,14 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         elif self.config.variance_type == "fixed_small_log":
             variance = self.log(self.clip(variance, min_value=1e-20))
         elif self.config.variance_type == "fixed_large":
-            variance = self.get_beta(t)
+            variance = self.betas[t]
 
         return variance
 
     def step(self, residual, sample, t, predict_epsilon=True):
         # 1. compute alphas, betas
-        alpha_prod_t = self.get_alpha_prod(t)
-        alpha_prod_t_prev = self.get_alpha_prod(t - 1)
+        alpha_prod_t = self.alphas_cumprod[t]
+        alpha_prod_t_prev = self.alphas_cumprod[t - 1] if t > 0 else self.one
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
@@ -153,8 +123,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         # 4. Compute coefficients for pred_original_sample x_0 and current sample x_t
         # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
-        pred_original_sample_coeff = (alpha_prod_t_prev ** (0.5) * self.get_beta(t)) / beta_prod_t
-        current_sample_coeff = self.get_alpha(t) ** (0.5) * beta_prod_t_prev / beta_prod_t
+        pred_original_sample_coeff = (alpha_prod_t_prev ** (0.5) * self.betas[t]) / beta_prod_t
+        current_sample_coeff = self.alphas[t] ** (0.5) * beta_prod_t_prev / beta_prod_t
 
         # 5. Compute predicted previous sample µ_t
         # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
@@ -163,8 +133,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         return pred_prev_sample
 
     def forward_step(self, original_sample, noise, t):
-        sqrt_alpha_prod = self.get_alpha_prod(t) ** 0.5
-        sqrt_one_minus_alpha_prod = (1 - self.get_alpha_prod(t)) ** 0.5
+        sqrt_alpha_prod = self.alpha_prod_t[t] ** 0.5
+        sqrt_one_minus_alpha_prod = (1 - self.alpha_prod_t[t]) ** 0.5
         noisy_sample = sqrt_alpha_prod * original_sample + sqrt_one_minus_alpha_prod * noise
         return noisy_sample
 

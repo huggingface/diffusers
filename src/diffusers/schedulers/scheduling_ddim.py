@@ -79,31 +79,12 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         self.set_format(tensor_format=tensor_format)
 
-    def get_timestep_values(self):
-        return self.config.timestep_values
-
-    def get_alpha(self, time_step):
-        return self.alphas[time_step]
-
-    def get_beta(self, time_step):
-        return self.betas[time_step]
-
-    def get_alpha_prod(self, time_step):
-        if time_step < 0:
-            return self.one
-        return self.alphas_cumprod[time_step]
-
-    def get_orig_t(self, t, num_inference_steps):
-        if t < 0:
-            return -1
-        return self.config.timesteps // num_inference_steps * t
-
     def get_variance(self, t, num_inference_steps):
-        orig_t = self.get_orig_t(t, num_inference_steps)
-        orig_prev_t = self.get_orig_t(t - 1, num_inference_steps)
+        orig_t = self.config.timesteps // num_inference_steps * t
+        orig_prev_t = self.config.timesteps // num_inference_steps * (t - 1) if t > 0 else -1
 
-        alpha_prod_t = self.get_alpha_prod(orig_t)
-        alpha_prod_t_prev = self.get_alpha_prod(orig_prev_t)
+        alpha_prod_t = self.alphas_cumprod[orig_t]
+        alpha_prod_t_prev = self.alphas_cumprod[orig_prev_t] if orig_prev_t >= 0 else self.one
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
@@ -124,12 +105,12 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # - pred_prev_sample -> "x_t-1"
 
         # 1. get actual t and t-1
-        orig_t = self.get_orig_t(t, num_inference_steps)
-        orig_prev_t = self.get_orig_t(t - 1, num_inference_steps)
+        orig_t = self.config.timesteps // num_inference_steps * t
+        orig_prev_t = self.config.timesteps // num_inference_steps * (t - 1) if t > 0 else -1
 
         # 2. compute alphas, betas
-        alpha_prod_t = self.get_alpha_prod(orig_t)
-        alpha_prod_t_prev = self.get_alpha_prod(orig_prev_t)
+        alpha_prod_t = self.alphas_cumprod[orig_t]
+        alpha_prod_t_prev = self.alphas_cumprod[orig_prev_t] if orig_prev_t >= 0 else self.one
         beta_prod_t = 1 - alpha_prod_t
 
         # 3. compute predicted original sample from predicted noise also called
