@@ -66,7 +66,7 @@ class RevisionNotFoundError(HTTPError):
 
 TRANSFORMERS_IMPORT_ERROR = """
 {0} requires the transformers library but it was not found in your environment. You can install it with pip:
-`pip install accelerate`
+`pip install transformers`
 """
 
 
