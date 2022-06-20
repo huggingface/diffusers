@@ -24,17 +24,11 @@ import torch.utils.checkpoint
 from torch import nn
 
 import tqdm
-
-
-try:
-    from transformers import CLIPConfig, CLIPModel, CLIPTextConfig, CLIPVisionConfig, GPT2Tokenizer
-    from transformers.activations import ACT2FN
-    from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
-    from transformers.modeling_utils import PreTrainedModel
-    from transformers.utils import ModelOutput, add_start_docstrings_to_model_forward, replace_return_docstrings
-except:
-    print("Transformers is not installed")
-    pass
+from transformers import CLIPConfig, CLIPModel, CLIPTextConfig, CLIPVisionConfig, GPT2Tokenizer
+from transformers.activations import ACT2FN
+from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
+from transformers.modeling_utils import PreTrainedModel
+from transformers.utils import ModelOutput, add_start_docstrings_to_model_forward, replace_return_docstrings
 
 from ..models import GLIDESuperResUNetModel, GLIDETextToImageUNetModel
 from ..pipeline_utils import DiffusionPipeline

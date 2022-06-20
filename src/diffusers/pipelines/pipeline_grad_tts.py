@@ -472,7 +472,7 @@ class GradTTS(DiffusionPipeline):
             t = (1.0 - (t + 0.5) * h) * torch.ones(z.shape[0], dtype=z.dtype, device=z.device)
             time = t.unsqueeze(-1).unsqueeze(-1)
 
-            residual = self.unet(xt, y_mask, mu_y, t, speaker_id)
+            residual = self.unet(xt, t, mu_y, y_mask, speaker_id)
 
             xt = self.noise_scheduler.step(xt, residual, mu_y, h, time)
             xt = xt * y_mask

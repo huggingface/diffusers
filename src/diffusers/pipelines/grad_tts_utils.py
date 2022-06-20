@@ -6,11 +6,8 @@ from shutil import copyfile
 
 import torch
 
+from transformers import PreTrainedTokenizer
 
-try:
-    from transformers import PreTrainedTokenizer
-except:
-    print("transformers is not installed")
 
 try:
     from unidecode import unidecode
@@ -237,7 +234,12 @@ def english_cleaners(text):
     return text
 
 
-_inflect = inflect.engine()
+try:
+    _inflect = inflect.engine()
+except:
+    print("inflect is not installed")
+    _inflect = None
+
 _comma_number_re = re.compile(r"([0-9][0-9\,]+[0-9])")
 _decimal_number_re = re.compile(r"([0-9]+\.[0-9]+)")
 _pounds_re = re.compile(r"£([0-9\,]*[0-9]+)")
