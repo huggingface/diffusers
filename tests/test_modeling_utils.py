@@ -17,11 +17,11 @@
 import inspect
 import tempfile
 import unittest
-import numpy as np
-import pytest
 
+import numpy as np
 import torch
 
+import pytest
 from diffusers import (
     BDDM,
     DDIM,
@@ -30,10 +30,10 @@ from diffusers import (
     PNDM,
     DDIMScheduler,
     DDPMScheduler,
+    GLIDESuperResUNetModel,
     LatentDiffusion,
     PNDMScheduler,
     UNetModel,
-    GLIDESuperResUNetModel
 )
 from diffusers.configuration_utils import ConfigMixin
 from diffusers.pipeline_utils import DiffusionPipeline
@@ -105,7 +105,7 @@ class ModelTesterMixin:
 
         max_diff = (image - new_image).abs().sum().item()
         self.assertLessEqual(max_diff, 1e-5, "Models give different forward passes")
-    
+
     def test_determinism(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
@@ -121,7 +121,7 @@ class ModelTesterMixin:
         out_2 = out_2[~np.isnan(out_2)]
         max_diff = np.amax(np.abs(out_1 - out_2))
         self.assertLessEqual(max_diff, 1e-5)
-    
+
     def test_output(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
@@ -130,11 +130,11 @@ class ModelTesterMixin:
 
         with torch.no_grad():
             output = model(**inputs_dict)
-        
+
         self.assertIsNotNone(output)
         expected_shape = inputs_dict["x"].shape
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
-        
+
     def test_forward_signature(self):
         init_dict, _ = self.prepare_init_args_and_inputs_for_common()
 
@@ -145,14 +145,14 @@ class ModelTesterMixin:
 
         expected_arg_names = ["x", "timesteps"]
         self.assertListEqual(arg_names[:2], expected_arg_names)
-    
+
     def test_model_from_config(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
         model.to(torch_device)
         model.eval()
-        
+
         # test if the model can be loaded from the config
         # and has all the expected shape
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -160,17 +160,17 @@ class ModelTesterMixin:
             new_model = self.model_class.from_config(tmpdirname)
             new_model.to(torch_device)
             new_model.eval()
-        
+
         # check if all paramters shape are the same
         for param_name in model.state_dict().keys():
             param_1 = model.state_dict()[param_name]
             param_2 = new_model.state_dict()[param_name]
             self.assertEqual(param_1.shape, param_2.shape)
-        
+
         with torch.no_grad():
             output_1 = model(**inputs_dict)
             output_2 = new_model(**inputs_dict)
-        
+
         self.assertEqual(output_1.shape, output_2.shape)
 
     def test_training(self):
@@ -180,7 +180,7 @@ class ModelTesterMixin:
         model.to(torch_device)
         model.train()
         output = model(**inputs_dict)
-        noise = torch.randn((inputs_dict["x"].shape[0], ) + self.get_output_shape).to(torch_device)
+        noise = torch.randn((inputs_dict["x"].shape[0],) + self.get_output_shape).to(torch_device)
         loss = torch.nn.functional.mse_loss(output, noise)
         loss.backward()
 
@@ -198,11 +198,11 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
         time_step = torch.tensor([10]).to(torch_device)
 
         return {"x": noise, "timesteps": time_step}
-    
+
     @property
     def get_input_shape(self):
         return (3, 32, 32)
-    
+
     @property
     def get_output_shape(self):
         return (3, 32, 32)
@@ -217,7 +217,7 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
-    
+
     def test_from_pretrained_hub(self):
         model, loading_info = UNetModel.from_pretrained("fusing/ddpm_dummy", output_loading_info=True)
         self.assertIsNotNone(model)
@@ -227,7 +227,7 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
         image = model(**self.dummy_input)
 
         assert image is not None, "Make sure output is not None"
-    
+
     def test_output_pretrained(self):
         model = UNetModel.from_pretrained("fusing/ddpm_dummy")
         model.eval()
@@ -235,19 +235,20 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(0)
-        
+
         noise = torch.randn(1, model.config.in_channels, model.config.resolution, model.config.resolution)
         time_step = torch.tensor([10])
-        
+
         with torch.no_grad():
             output = model(noise, time_step)
-        
+
         output_slice = output[0, -1, -3:, -3:].flatten()
         # fmt: off
         expected_output_slice = torch.tensor([ 0.2891, -0.1899,  0.2595, -0.6214,  0.0968, -0.2622,  0.4688,  0.1311, 0.0053])
         # fmt: on
         print(output_slice)
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+
 
 class GLIDESuperResUNetTests(ModelTesterMixin, unittest.TestCase):
     model_class = GLIDESuperResUNetModel
@@ -266,19 +267,19 @@ class GLIDESuperResUNetTests(ModelTesterMixin, unittest.TestCase):
         time_step = torch.tensor([10] * noise.shape[0], device=torch_device)
 
         return {"x": noise, "timesteps": time_step, "low_res": low_res}
-    
+
     @property
     def get_input_shape(self):
         return (3, 32, 32)
-    
+
     @property
     def get_output_shape(self):
         return (6, 32, 32)
-    
+
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
             "attention_resolutions": (2,),
-            "channel_mult": (1,2),
+            "channel_mult": (1, 2),
             "in_channels": 6,
             "out_channels": 6,
             "model_channels": 32,
@@ -287,7 +288,7 @@ class GLIDESuperResUNetTests(ModelTesterMixin, unittest.TestCase):
             "num_res_blocks": 2,
             "resblock_updown": True,
             "resolution": 32,
-            "use_scale_shift_norm": True
+            "use_scale_shift_norm": True,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
@@ -302,13 +303,15 @@ class GLIDESuperResUNetTests(ModelTesterMixin, unittest.TestCase):
             output = model(**inputs_dict)
 
         output, _ = torch.split(output, 3, dim=1)
-        
+
         self.assertIsNotNone(output)
         expected_shape = inputs_dict["x"].shape
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
-    
+
     def test_from_pretrained_hub(self):
-        model, loading_info = GLIDESuperResUNetModel.from_pretrained("fusing/glide-super-res-dummy", output_loading_info=True)
+        model, loading_info = GLIDESuperResUNetModel.from_pretrained(
+            "fusing/glide-super-res-dummy", output_loading_info=True
+        )
         self.assertIsNotNone(model)
         self.assertEqual(len(loading_info["missing_keys"]), 0)
 
@@ -316,7 +319,7 @@ class GLIDESuperResUNetTests(ModelTesterMixin, unittest.TestCase):
         image = model(**self.dummy_input)
 
         assert image is not None, "Make sure output is not None"
-    
+
     # TODO (patil-suraj): Check why GLIDESuperResUNetModel always outputs zero
     @unittest.skip("GLIDESuperResUNetModel always outputs zero")
     def test_output_pretrained(self):
@@ -326,14 +329,14 @@ class GLIDESuperResUNetTests(ModelTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(0)
-        
+
         noise = torch.randn(1, 3, 32, 32)
         low_res = torch.randn(1, 3, 4, 4)
         time_step = torch.tensor([42] * noise.shape[0])
-        
+
         with torch.no_grad():
             output = model(noise, time_step, low_res)
-        
+
         output, _ = torch.split(output, 3, dim=1)
         output_slice = output[0, -1, -3:, -3:].flatten()
         # fmt: off
