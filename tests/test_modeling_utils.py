@@ -247,7 +247,6 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
         # fmt: off
         expected_output_slice = torch.tensor([ 0.2891, -0.1899,  0.2595, -0.6214,  0.0968, -0.2622,  0.4688,  0.1311, 0.0053])
         # fmt: on
-        print(output_slice)
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
 
 
@@ -515,7 +514,6 @@ class PipelineTesterMixin(unittest.TestCase):
         image = ldm([prompt], generator=generator, num_inference_steps=20)
 
         image_slice = image[0, -1, -3:, -3:].cpu()
-        print(image_slice.shape)
 
         assert image.shape == (1, 3, 256, 256)
         expected_slice = torch.tensor([0.7295, 0.7358, 0.7256, 0.7435, 0.7095, 0.6884, 0.7325, 0.6921, 0.6458])
