@@ -16,7 +16,30 @@ import math
 import numpy as np
 
 from ..configuration_utils import ConfigMixin
-from .scheduling_utils import SchedulerMixin, betas_for_alpha_bar, linear_beta_schedule
+from .scheduling_utils import SchedulerMixin
+
+
+def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
+    """
+    Create a beta schedule that discretizes the given alpha_t_bar function,
+    which defines the cumulative product of (1-beta) over time from t = [0,1].
+
+    :param num_diffusion_timesteps: the number of betas to produce.
+    :param alpha_bar: a lambda that takes an argument t from 0 to 1 and
+                      produces the cumulative product of (1-beta) up to that
+                      part of the diffusion process.
+    :param max_beta: the maximum beta to use; use values lower than 1 to
+                     prevent singularities.
+    """
+    def alpha_bar(time_step):
+        return math.cos((time_step + 0.008) / 1.008 * math.pi / 2) ** 2
+
+    betas = []
+    for i in range(num_diffusion_timesteps):
+        t1 = i / num_diffusion_timesteps
+        t2 = (i + 1) / num_diffusion_timesteps
+        betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
+    return np.array(betas, dtype=np.float32)
 
 
 class DDPMScheduler(SchedulerMixin, ConfigMixin):
@@ -47,13 +70,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         if trained_betas is not None:
             self.betas = np.asarray(trained_betas)
         elif beta_schedule == "linear":
-            self.betas = linear_beta_schedule(timesteps, beta_start=beta_start, beta_end=beta_end)
+            self.betas = np.linspace(beta_start, beta_end, timesteps, dtype=np.float32)
         elif beta_schedule == "squaredcos_cap_v2":
             # GLIDE cosine schedule
-            self.betas = betas_for_alpha_bar(
-                timesteps,
-                lambda t: math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2,
-            )
+            self.betas = betas_for_alpha_bar(timesteps)
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
