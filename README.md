@@ -30,20 +30,32 @@ More precisely, 🤗 Diffusers offers:
 **Models**: Neural network that models $p_\theta(\mathbf{x}_{t-1}|\mathbf{x}_t)$ (see image below) and is trained end-to-end to *denoise* a noisy input to an image.
 *Examples*: UNet, Conditioned UNet, 3D UNet, Transformer UNet
 
-![model_diff_1_50](https://user-images.githubusercontent.com/23423619/171610307-dab0cd8b-75da-4d4e-9f5a-5922072e2bb5.png)
-
+<p align="center">
+    <img src="https://user-images.githubusercontent.com/10695622/174349667-04e9e485-793b-429a-affe-096e8199ad5b.png" width="800"/>
+    <br>
+    <em> Figure from DDPM paper (https://arxiv.org/abs/2006.11239). </em>
+<p>
+    
 **Schedulers**: Algorithm class for both **inference** and **training**.
 The class provides functionality to compute previous image according to alpha, beta schedule as well as predict noise for training.
 *Examples*: [DDPM](https://arxiv.org/abs/2006.11239), [DDIM](https://arxiv.org/abs/2010.02502), [PNDM](https://arxiv.org/abs/2202.09778), [DEIS](https://arxiv.org/abs/2204.13902)
 
-![sampling](https://user-images.githubusercontent.com/23423619/171608981-3ad05953-a684-4c82-89f8-62a459147a07.png)
-![training](https://user-images.githubusercontent.com/23423619/171608964-b3260cce-e6b4-4841-959d-7d8ba4b8d1b2.png)
+<p align="center">
+    <img src="https://user-images.githubusercontent.com/10695622/174349706-53d58acc-a4d1-4cda-b3e8-432d9dc7ad38.png" width="800"/>
+    <br>
+    <em> Sampling and training algorithms. Figure from DDPM paper (https://arxiv.org/abs/2006.11239). </em>
+<p>
+    
 
 **Diffusion Pipeline**: End-to-end pipeline that includes multiple diffusion models, possible text encoders, ...
 *Examples*: GLIDE, Latent-Diffusion, Imagen, DALL-E 2
 
-![imagen](https://user-images.githubusercontent.com/23423619/171609001-c3f2c1c9-f597-4a16-9843-749bf3f9431c.png)
-
+<p align="center">
+    <img src="https://user-images.githubusercontent.com/10695622/174348898-481bd7c2-5457-4830-89bc-f0907756f64c.jpeg" width="550"/>
+    <br>
+    <em> Figure from ImageGen (https://imagen.research.google/). </em>
+<p>
+    
 ## Philosophy
 
 - Readability and clarity is prefered over highly optimized code. A strong importance is put on providing readable, intuitive and elementary code design. *E.g.*, the provided [schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers) are separated from the provided [models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models) and provide well-commented code that can be read alongside the original paper.
@@ -172,6 +184,10 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 # 6. save image
 image_pil.save("test.png")
 ```
+
+#### **Examples for other modalities:**
+
+[Diffuser](https://diffusion-planning.github.io/) for planning in reinforcement learning: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1TmBmlYeKUZSkUZoJqfBmaicVTKx6nN1R?usp=sharing)
 
 ### 2. `diffusers` as a collection of popular Diffusion systems (GLIDE, Dalle, ...)
 
