@@ -5,8 +5,12 @@ import math
 import torch
 import torch.nn as nn
 
-import einops
-from einops.layers.torch import Rearrange
+try:
+    import einops
+    from einops.layers.torch import Rearrange
+except:
+    print("Einops is not installed")
+    pass
 
 
 from ..configuration_utils import ConfigMixin
