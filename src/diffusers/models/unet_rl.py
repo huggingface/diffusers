@@ -5,6 +5,7 @@ import math
 import torch
 import torch.nn as nn
 
+
 try:
     import einops
     from einops.layers.torch import Rearrange
@@ -103,7 +104,7 @@ class ResidualTemporalBlock(nn.Module):
         return out + self.residual_conv(x)
 
 
-class TemporalUNet(ModelMixin, ConfigMixin): #(nn.Module):
+class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
     def __init__(
         self,
         horizon,
@@ -117,7 +118,6 @@ class TemporalUNet(ModelMixin, ConfigMixin): #(nn.Module):
         dims = [transition_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
         # print(f'[ models/temporal ] Channel dimensions: {in_out}')
-
 
         time_dim = dim
         self.time_mlp = nn.Sequential(

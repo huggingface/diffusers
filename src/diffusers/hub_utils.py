@@ -1,11 +1,13 @@
-from typing import Optional
-from .utils import logging
-from huggingface_hub import HfFolder, Repository, whoami
-import yaml
 import os
-from pathlib import Path
 import shutil
+from pathlib import Path
+from typing import Optional
+
+import yaml
 from diffusers import DiffusionPipeline
+from huggingface_hub import HfFolder, Repository, whoami
+
+from .utils import logging
 
 
 logger = logging.get_logger(__name__)
@@ -68,17 +70,21 @@ def init_git_repo(args, at_init: bool = False):
     repo.git_pull()
 
     # By default, ignore the checkpoint folders
-    if (
-            not os.path.exists(os.path.join(args.output_dir, ".gitignore"))
-            and args.hub_strategy != "all_checkpoints"
-    ):
+    if not os.path.exists(os.path.join(args.output_dir, ".gitignore")) and args.hub_strategy != "all_checkpoints":
         with open(os.path.join(args.output_dir, ".gitignore"), "w", encoding="utf-8") as writer:
             writer.writelines(["checkpoint-*/"])
 
     return repo
 
 
-def push_to_hub(args, pipeline: DiffusionPipeline, repo: Repository, commit_message: Optional[str] = "End of training", blocking: bool = True, **kwargs) -> str:
+def push_to_hub(
+    args,
+    pipeline: DiffusionPipeline,
+    repo: Repository,
+    commit_message: Optional[str] = "End of training",
+    blocking: bool = True,
+    **kwargs,
+) -> str:
     """
     Upload *self.model* and *self.tokenizer* to the 🤗 model hub on the repo *self.args.hub_model_id*.
     Parameters:
@@ -108,18 +114,19 @@ def push_to_hub(args, pipeline: DiffusionPipeline, repo: Repository, commit_mess
         return
 
     # Cancel any async push in progress if blocking=True. The commits will all be pushed together.
-    if blocking and len(repo.command_queue) > 0 and repo.command_queue[-1] is not None and not repo.command_queue[-1].is_done:
+    if (
+        blocking
+        and len(repo.command_queue) > 0
+        and repo.command_queue[-1] is not None
+        and not repo.command_queue[-1].is_done
+    ):
         repo.command_queue[-1]._process.kill()
 
-    git_head_commit_url = repo.push_to_hub(
-        commit_message=commit_message, blocking=blocking, auto_lfs_prune=True
-    )
+    git_head_commit_url = repo.push_to_hub(commit_message=commit_message, blocking=blocking, auto_lfs_prune=True)
     # push separately the model card to be independent from the rest of the model
     create_model_card(args, model_name=model_name)
     try:
-        repo.push_to_hub(
-            commit_message="update model card README.md", blocking=blocking, auto_lfs_prune=True
-        )
+        repo.push_to_hub(commit_message="update model card README.md", blocking=blocking, auto_lfs_prune=True)
     except EnvironmentError as exc:
         logger.error(f"Error pushing update to the model card. Please read logs and retry.\n${exc}")
 
@@ -133,10 +140,7 @@ def create_model_card(args, model_name):
     # TODO: replace this placeholder model card generation
     model_card = ""
 
-    metadata = {
-        "license": "apache-2.0",
-        "tags": ["pytorch", "diffusers"]
-    }
+    metadata = {"license": "apache-2.0", "tags": ["pytorch", "diffusers"]}
     metadata = yaml.dump(metadata, sort_keys=False)
     if len(metadata) > 0:
         model_card = f"---\n{metadata}---\n"

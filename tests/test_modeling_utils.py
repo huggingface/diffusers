@@ -33,9 +33,9 @@ from diffusers import (
     GLIDESuperResUNetModel,
     LatentDiffusion,
     PNDMScheduler,
-    UNetModel,
-    UNetLDMModel,
     UNetGradTTSModel,
+    UNetLDMModel,
+    UNetModel,
 )
 from diffusers.configuration_utils import ConfigMixin
 from diffusers.pipeline_utils import DiffusionPipeline
@@ -342,6 +342,7 @@ class GLIDESuperResUNetTests(ModelTesterMixin, unittest.TestCase):
         # fmt: on
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
 
+
 class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
     model_class = UNetLDMModel
 
@@ -378,7 +379,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
-    
+
     def test_from_pretrained_hub(self):
         model, loading_info = UNetLDMModel.from_pretrained("fusing/unet-ldm-dummy", output_loading_info=True)
         self.assertIsNotNone(model)
@@ -446,7 +447,7 @@ class UNetGradTTSModelTests(ModelTesterMixin, unittest.TestCase):
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
-    
+
     def test_from_pretrained_hub(self):
         model, loading_info = UNetGradTTSModel.from_pretrained("fusing/unet-grad-tts-dummy", output_loading_info=True)
         self.assertIsNotNone(model)
@@ -464,7 +465,7 @@ class UNetGradTTSModelTests(ModelTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(0)
-        
+
         num_features = model.config.n_feats
         seq_len = 16
         noise = torch.randn((1, num_features, seq_len))

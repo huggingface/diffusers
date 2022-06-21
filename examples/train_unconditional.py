@@ -8,6 +8,9 @@ import PIL.Image
 from accelerate import Accelerator
 from datasets import load_dataset
 from diffusers import DDPM, DDPMScheduler, UNetModel
+from diffusers.hub_utils import init_git_repo, push_to_hub
+from diffusers.modeling_utils import unwrap_model
+from diffusers.utils import logging
 from torchvision.transforms import (
     CenterCrop,
     Compose,
@@ -19,10 +22,7 @@ from torchvision.transforms import (
 )
 from tqdm.auto import tqdm
 from transformers import get_linear_schedule_with_warmup
-from diffusers.modeling_utils import unwrap_model
-from diffusers.hub_utils import init_git_repo, push_to_hub
 
-from diffusers.utils import logging
 
 logger = logging.get_logger(__name__)
 
