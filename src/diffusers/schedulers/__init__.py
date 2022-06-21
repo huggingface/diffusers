@@ -16,7 +16,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .classifier_free_guidance import ClassifierFreeGuidanceScheduler
 from .scheduling_ddim import DDIMScheduler
 from .scheduling_ddpm import DDPMScheduler
 from .scheduling_grad_tts import GradTTSScheduler

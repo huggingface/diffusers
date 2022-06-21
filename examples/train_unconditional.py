@@ -10,6 +10,7 @@ from datasets import load_dataset
 from diffusers import DDPM, DDPMScheduler, UNetModel
 from diffusers.hub_utils import init_git_repo, push_to_hub
 from diffusers.modeling_utils import unwrap_model
+from diffusers.optimization import get_scheduler
 from diffusers.utils import logging
 from torchvision.transforms import (
     CenterCrop,
@@ -21,7 +22,6 @@ from torchvision.transforms import (
     ToTensor,
 )
 from tqdm.auto import tqdm
-from diffusers.optimization import get_scheduler
 
 
 logger = logging.get_logger(__name__)

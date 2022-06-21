@@ -32,7 +32,7 @@ from transformers.utils import ModelOutput, add_start_docstrings_to_model_forwar
 
 from ..models import GLIDESuperResUNetModel, GLIDETextToImageUNetModel
 from ..pipeline_utils import DiffusionPipeline
-from ..schedulers import ClassifierFreeGuidanceScheduler, DDIMScheduler
+from ..schedulers import DDIMScheduler, DDPMScheduler
 from ..utils import logging
 
 
@@ -715,7 +715,7 @@ class GLIDE(DiffusionPipeline):
     def __init__(
         self,
         text_unet: GLIDETextToImageUNetModel,
-        text_noise_scheduler: ClassifierFreeGuidanceScheduler,
+        text_noise_scheduler: DDPMScheduler,
         text_encoder: CLIPTextModel,
         tokenizer: GPT2Tokenizer,
         upscale_unet: GLIDESuperResUNetModel,
@@ -731,100 +731,28 @@ class GLIDE(DiffusionPipeline):
             upscale_noise_scheduler=upscale_noise_scheduler,
         )
 
-    def q_posterior_mean_variance(self, scheduler, x_start, x_t, t):
-        """
-        Compute the mean and variance of the diffusion posterior:
-
-            q(x_{t-1} | x_t, x_0)
-
-        """
-        assert x_start.shape == x_t.shape
-        posterior_mean = (
-            _extract_into_tensor(scheduler.posterior_mean_coef1, t, x_t.shape) * x_start
-            + _extract_into_tensor(scheduler.posterior_mean_coef2, t, x_t.shape) * x_t
-        )
-        posterior_variance = _extract_into_tensor(scheduler.posterior_variance, t, x_t.shape)
-        posterior_log_variance_clipped = _extract_into_tensor(scheduler.posterior_log_variance_clipped, t, x_t.shape)
-        assert (
-            posterior_mean.shape[0]
-            == posterior_variance.shape[0]
-            == posterior_log_variance_clipped.shape[0]
-            == x_start.shape[0]
-        )
-        return posterior_mean, posterior_variance, posterior_log_variance_clipped
-
-    def p_mean_variance(self, model, scheduler, x, t, transformer_out=None, low_res=None, clip_denoised=True):
-        """
-        Apply the model to get p(x_{t-1} | x_t), as well as a prediction of
-        the initial x, x_0.
-
-        :param model: the model, which takes a signal and a batch of timesteps
-                      as input.
-        :param x: the [N x C x ...] tensor at time t.
-        :param t: a 1-D Tensor of timesteps.
-        :param clip_denoised: if True, clip the denoised signal into [-1, 1].
-        :param model_kwargs: if not None, a dict of extra keyword arguments to
-            pass to the model. This can be used for conditioning.
-        :return: a dict with the following keys:
-                 - 'mean': the model mean output.
-                 - 'variance': the model variance output.
-                 - 'log_variance': the log of 'variance'.
-                 - 'pred_xstart': the prediction for x_0.
-        """
-
-        B, C = x.shape[:2]
-        assert t.shape == (B,)
-        if transformer_out is None:
-            # super-res model
-            model_output = model(x, t, low_res)
-        else:
-            # text2image model
-            model_output = model(x, t, transformer_out)
-
-        assert model_output.shape == (B, C * 2, *x.shape[2:])
-        model_output, model_var_values = torch.split(model_output, C, dim=1)
-        min_log = _extract_into_tensor(scheduler.posterior_log_variance_clipped, t, x.shape)
-        max_log = _extract_into_tensor(np.log(scheduler.betas), t, x.shape)
-        # The model_var_values is [-1, 1] for [min_var, max_var].
-        frac = (model_var_values + 1) / 2
-        model_log_variance = frac * max_log + (1 - frac) * min_log
-        model_variance = torch.exp(model_log_variance)
-
-        pred_xstart = self._predict_xstart_from_eps(scheduler, x_t=x, t=t, eps=model_output)
-        if clip_denoised:
-            pred_xstart = pred_xstart.clamp(-1, 1)
-        model_mean, _, _ = self.q_posterior_mean_variance(scheduler, x_start=pred_xstart, x_t=x, t=t)
-
-        assert model_mean.shape == model_log_variance.shape == pred_xstart.shape == x.shape
-        return model_mean, model_variance, model_log_variance, pred_xstart
-
-    def _predict_xstart_from_eps(self, scheduler, x_t, t, eps):
-        assert x_t.shape == eps.shape
-        return (
-            _extract_into_tensor(scheduler.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t
-            - _extract_into_tensor(scheduler.sqrt_recipm1_alphas_cumprod, t, x_t.shape) * eps
-        )
-
-    def _predict_eps_from_xstart(self, scheduler, x_t, t, pred_xstart):
-        return (
-            _extract_into_tensor(scheduler.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t - pred_xstart
-        ) / _extract_into_tensor(scheduler.sqrt_recipm1_alphas_cumprod, t, x_t.shape)
-
     @torch.no_grad()
-    def __call__(self, prompt, generator=None, torch_device=None, num_inference_steps_upscale=50):
+    def __call__(
+        self,
+        prompt,
+        generator=None,
+        torch_device=None,
+        num_inference_steps_upscale=50,
+        guidance_scale=3.0,
+        eta=0.0,
+        upsample_temp=0.997,
+    ):
+
         torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self.text_unet.to(torch_device)
         self.text_encoder.to(torch_device)
         self.upscale_unet.to(torch_device)
 
-        # Create a classifier-free guidance sampling function
-        guidance_scale = 3.0
-
-        def text_model_fn(x_t, ts, transformer_out, **kwargs):
+        def text_model_fn(x_t, timesteps, transformer_out, **kwargs):
             half = x_t[: len(x_t) // 2]
             combined = torch.cat([half, half], dim=0)
-            model_out = self.text_unet(combined, ts, transformer_out, **kwargs)
+            model_out = self.text_unet(combined, timesteps, transformer_out, **kwargs)
             eps, rest = model_out[:, :3], model_out[:, 3:]
             cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0)
             half_eps = uncond_eps + guidance_scale * (cond_eps - uncond_eps)
@@ -833,7 +761,15 @@ class GLIDE(DiffusionPipeline):
 
         # 1. Sample gaussian noise
         batch_size = 2  # second image is empty for classifier-free guidance
-        image = torch.randn((batch_size, self.text_unet.in_channels, 64, 64), generator=generator).to(torch_device)
+        image = torch.randn(
+            (
+                batch_size,
+                self.text_unet.in_channels,
+                self.text_unet.resolution,
+                self.text_unet.resolution,
+            ),
+            generator=generator,
+        ).to(torch_device)
 
         # 2. Encode tokens
         # an empty input is needed to guide the model away from it
@@ -843,25 +779,30 @@ class GLIDE(DiffusionPipeline):
         transformer_out = self.text_encoder(input_ids, attention_mask).last_hidden_state
 
         # 3. Run the text2image generation step
-        num_timesteps = len(self.text_noise_scheduler)
-        for i in tqdm.tqdm(reversed(range(num_timesteps)), total=num_timesteps):
-            t = torch.tensor([i] * image.shape[0], device=torch_device)
-            mean, variance, log_variance, pred_xstart = self.p_mean_variance(
-                text_model_fn, self.text_noise_scheduler, image, t, transformer_out=transformer_out
-            )
+        num_prediction_steps = len(self.text_noise_scheduler)
+        for t in tqdm.tqdm(reversed(range(num_prediction_steps)), total=num_prediction_steps):
+            with torch.no_grad():
+                time_input = torch.tensor([t] * image.shape[0], device=torch_device)
+                model_output = text_model_fn(image, time_input, transformer_out)
+                noise_residual, model_var_values = torch.split(model_output, 3, dim=1)
+
+            min_log = self.text_noise_scheduler.get_variance(t, "fixed_small_log")
+            max_log = self.text_noise_scheduler.get_variance(t, "fixed_large_log")
+            # The model_var_values is [-1, 1] for [min_var, max_var].
+            frac = (model_var_values + 1) / 2
+            model_log_variance = frac * max_log + (1 - frac) * min_log
+
+            pred_prev_image = self.text_noise_scheduler.step(noise_residual, image, t)
             noise = torch.randn(image.shape, generator=generator).to(torch_device)
-            nonzero_mask = (t != 0).float().view(-1, *([1] * (len(image.shape) - 1)))  # no noise when t == 0
-            image = mean + nonzero_mask * torch.exp(0.5 * log_variance) * noise
+            variance = torch.exp(0.5 * model_log_variance) * noise
+
+            # set current image to prev_image: x_t -> x_t-1
+            image = pred_prev_image + variance
 
         # 4. Run the upscaling step
         batch_size = 1
         image = image[:1]
         low_res = ((image + 1) * 127.5).round() / 127.5 - 1
-        eta = 0.0
-
-        # Tune this parameter to control the sharpness of 256x256 images.
-        # A value of 1.0 is sharper, but sometimes results in grainy artifacts.
-        upsample_temp = 0.997
 
         # Sample gaussian noise to begin loop
         image = torch.randn(
@@ -877,8 +818,6 @@ class GLIDE(DiffusionPipeline):
 
         num_trained_timesteps = self.upscale_noise_scheduler.timesteps
         inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps_upscale)
-        # adapt the beta schedule to the number of steps
-        # self.upscale_noise_scheduler.rescale_betas(num_inference_steps_upscale)
 
         for t in tqdm.tqdm(reversed(range(num_inference_steps_upscale)), total=num_inference_steps_upscale):
             # 1. predict noise residual

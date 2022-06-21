@@ -87,7 +87,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         self.set_format(tensor_format=tensor_format)
 
-    def get_variance(self, t):
+    def get_variance(self, t, variance_type=None):
         alpha_prod_t = self.alphas_cumprod[t]
         alpha_prod_t_prev = self.alphas_cumprod[t - 1] if t > 0 else self.one
 
@@ -96,14 +96,20 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         # x_{t-1} ~ N(pred_prev_sample, variance) == add variane to pred_sample
         variance = (1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * self.betas[t]
 
+        if variance_type is None:
+            variance_type = self.config.variance_type
+
         # hacks - were probs added for training stability
-        if self.config.variance_type == "fixed_small":
+        if variance_type == "fixed_small":
             variance = self.clip(variance, min_value=1e-20)
         # for rl-diffuser https://arxiv.org/abs/2205.09991
-        elif self.config.variance_type == "fixed_small_log":
+        elif variance_type == "fixed_small_log":
             variance = self.log(self.clip(variance, min_value=1e-20))
-        elif self.config.variance_type == "fixed_large":
+        elif variance_type == "fixed_large":
             variance = self.betas[t]
+        elif variance_type == "fixed_large_log":
+            # GLIDE max_log
+            variance = self.log(self.betas[t])
 
         return variance
 

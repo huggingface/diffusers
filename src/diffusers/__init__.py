@@ -13,7 +13,6 @@ from .models.unet_rl import TemporalUNet
 from .pipeline_utils import DiffusionPipeline
 from .pipelines import BDDM, DDIM, DDPM, PNDM
 from .schedulers import DDIMScheduler, DDPMScheduler, GradTTSScheduler, PNDMScheduler, SchedulerMixin
-from .schedulers.classifier_free_guidance import ClassifierFreeGuidanceScheduler
 
 
 if is_transformers_available():
