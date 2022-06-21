@@ -1,13 +1,13 @@
 ## Training examples
 
-### Flowers DDPM 
+### Unconditional Flowers  
 
 The command to train a DDPM UNet model on the Oxford Flowers dataset:
 
 ```bash
 python -m torch.distributed.launch \
   --nproc_per_node 4 \
-  train_ddpm.py \
+  train_unconditional.py \
   --dataset="huggan/flowers-102-categories" \
   --resolution=64 \
   --output_path="flowers-ddpm" \
@@ -19,19 +19,19 @@ python -m torch.distributed.launch \
   --mixed_precision=no
 ```
 
-A full ltraining run takes 2 hours on 4xV100 GPUs.
+A full training run takes 2 hours on 4xV100 GPUs.
 
 <img src="https://user-images.githubusercontent.com/26864830/173855866-5628989f-856b-4725-a944-d6c09490b2df.png" width="500" />
 
 
-### Pokemon DDPM 
+### Unconditional Pokemon 
 
 The command to train a DDPM UNet model on the Pokemon dataset:
 
 ```bash
 python -m torch.distributed.launch \
   --nproc_per_node 4 \
-  train_ddpm.py \
+  train_unconditional.py \
   --dataset="huggan/pokemon" \
   --resolution=64 \
   --output_path="pokemon-ddpm" \
@@ -43,6 +43,6 @@ python -m torch.distributed.launch \
   --mixed_precision=no
 ```
 
-A full ltraining run takes 2 hours on 4xV100 GPUs.
+A full training run takes 2 hours on 4xV100 GPUs.
 
 <img src="https://user-images.githubusercontent.com/26864830/173856733-4f117f8c-97bd-4f51-8002-56b488c96df9.png" width="500" />

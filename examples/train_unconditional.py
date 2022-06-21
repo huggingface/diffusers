@@ -19,6 +19,12 @@ from torchvision.transforms import (
 )
 from tqdm.auto import tqdm
 from transformers import get_linear_schedule_with_warmup
+from diffusers.modeling_utils import unwrap_model
+from diffusers.hub_utils import init_git_repo, push_to_hub
+
+from diffusers.utils import logging
+
+logger = logging.get_logger(__name__)
 
 
 def main(args):
@@ -64,6 +70,21 @@ def main(args):
         model, optimizer, train_dataloader, lr_scheduler
     )
 
+    if args.push_to_hub:
+        repo = init_git_repo(args, at_init=True)
+
+    # Train!
+    world_size = torch.distributed.get_world_size() if args.local_rank != -1 else 1
+    total_train_batch_size = args.batch_size * args.gradient_accumulation_steps * world_size
+    max_steps = len(train_dataloader) // args.gradient_accumulation_steps * args.num_epochs
+    logger.info("***** Running training *****")
+    logger.info(f"  Num examples = {len(train_dataloader.dataset)}")
+    logger.info(f"  Num Epochs = {args.num_epochs}")
+    logger.info(f"  Instantaneous batch size per device = {args.batch_size}")
+    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_train_batch_size}")
+    logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
+    logger.info(f"  Total optimization steps = {max_steps}")
+
     for epoch in range(args.num_epochs):
         model.train()
         with tqdm(total=len(train_dataloader), unit="ba") as pbar:
@@ -105,11 +126,11 @@ def main(args):
         if args.local_rank in [-1, 0]:
             model.eval()
             with torch.no_grad():
-                if isinstance(model, torch.nn.parallel.DistributedDataParallel):
-                    pipeline = DDPM(unet=model.module, noise_scheduler=noise_scheduler)
+                pipeline = DDPM(unet=unwrap_model(model), noise_scheduler=noise_scheduler)
+                if args.push_to_hub:
+                    push_to_hub(args, pipeline, repo, commit_message=f"Epoch {epoch}", blocking=False)
                 else:
-                    pipeline = DDPM(unet=model, noise_scheduler=noise_scheduler)
-                pipeline.save_pretrained(args.output_path)
+                    pipeline.save_pretrained(args.output_path)
 
                 generator = torch.manual_seed(0)
                 # run pipeline in inference (sample random noise and denoise)
@@ -130,15 +151,16 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
-    parser.add_argument("--local_rank", type=int)
+    parser.add_argument("--local_rank", type=int, default=-1)
     parser.add_argument("--dataset", type=str, default="huggan/flowers-102-categories")
     parser.add_argument("--resolution", type=int, default=64)
     parser.add_argument("--output_path", type=str, default="ddpm-model")
-    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--num_epochs", type=int, default=100)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--warmup_steps", type=int, default=500)
+    parser.add_argument("--push_to_hub", action="store_true")
     parser.add_argument(
         "--mixed_precision",
         type=str,

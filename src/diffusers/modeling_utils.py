@@ -572,3 +572,17 @@ class ModelMixin(torch.nn.Module):
             return sum(p.numel() for p in non_embedding_parameters if p.requires_grad or not only_trainable)
         else:
             return sum(p.numel() for p in self.parameters() if p.requires_grad or not only_trainable)
+
+
+def unwrap_model(model: torch.nn.Module) -> torch.nn.Module:
+    """
+    Recursively unwraps a model from potential containers (as used in distributed training).
+
+    Args:
+        model (`torch.nn.Module`): The model to unwrap.
+    """
+    # since there could be multiple levels of wrapping, unwrap recursively
+    if hasattr(model, "module"):
+        return unwrap_model(model.module)
+    else:
+        return model
