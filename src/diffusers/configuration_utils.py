@@ -241,7 +241,7 @@ class ConfigMixin:
         Returns:
             `str`: String containing all the attributes that make up this configuration instance in JSON format.
         """
-        config_dict = self._internal_dict
+        config_dict = self._internal_dict if hasattr(self, "_internal_dict") else {}
         return json.dumps(config_dict, indent=2, sort_keys=True) + "\n"
 
     def to_json_file(self, json_file_path: Union[str, os.PathLike]):
@@ -258,10 +258,6 @@ class ConfigMixin:
 
 class FrozenDict(OrderedDict):
     def __init__(self, *args, **kwargs):
-        # remove `None`
-        args = (a for a in args if a is not None)
-        kwargs = {k: v for k, v in kwargs if v is not None}
-
         super().__init__(*args, **kwargs)
 
         for key, value in self.items():

@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2022 Stanford University Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,12 +11,40 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+# DISCLAIMER: This code is strongly influenced by https://github.com/pesser/pytorch_diffusion
+# and https://github.com/hojonathanho/diffusion
+
 import math
 
 import numpy as np
 
 from ..configuration_utils import ConfigMixin
-from .scheduling_utils import SchedulerMixin, betas_for_alpha_bar, linear_beta_schedule
+from .scheduling_utils import SchedulerMixin
+
+
+def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
+    """
+    Create a beta schedule that discretizes the given alpha_t_bar function,
+    which defines the cumulative product of (1-beta) over time from t = [0,1].
+
+    :param num_diffusion_timesteps: the number of betas to produce.
+    :param alpha_bar: a lambda that takes an argument t from 0 to 1 and
+                      produces the cumulative product of (1-beta) up to that
+                      part of the diffusion process.
+    :param max_beta: the maximum beta to use; use values lower than 1 to
+                     prevent singularities.
+    """
+
+    def alpha_bar(time_step):
+        return math.cos((time_step + 0.008) / 1.008 * math.pi / 2) ** 2
+
+    betas = []
+    for i in range(num_diffusion_timesteps):
+        t1 = i / num_diffusion_timesteps
+        t2 = (i + 1) / num_diffusion_timesteps
+        betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
+    return np.array(betas, dtype=np.float32)
 
 
 class DDIMScheduler(SchedulerMixin, ConfigMixin):
@@ -37,19 +65,16 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             beta_start=beta_start,
             beta_end=beta_end,
             beta_schedule=beta_schedule,
+            trained_betas=trained_betas,
+            timestep_values=timestep_values,
+            clip_sample=clip_sample,
         )
-        self.timesteps = int(timesteps)
-        self.timestep_values = timestep_values  # save the fixed timestep values for BDDM
-        self.clip_sample = clip_sample
 
         if beta_schedule == "linear":
-            self.betas = linear_beta_schedule(timesteps, beta_start=beta_start, beta_end=beta_end)
+            self.betas = np.linspace(beta_start, beta_end, timesteps, dtype=np.float32)
         elif beta_schedule == "squaredcos_cap_v2":
             # GLIDE cosine schedule
-            self.betas = betas_for_alpha_bar(
-                timesteps,
-                lambda t: math.cos((t + 0.008) / 1.008 * math.pi / 2) ** 2,
-            )
+            self.betas = betas_for_alpha_bar(timesteps)
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
@@ -59,51 +84,12 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         self.set_format(tensor_format=tensor_format)
 
-    #        alphas_cumprod_prev = torch.nn.functional.pad(alphas_cumprod[:-1], (1, 0), value=1.0)
-    # TODO(PVP) - check how much of these is actually necessary!
-    # LDM only uses "fixed_small"; glide seems to use a weird mix of the two, ...
-    # https://github.com/openai/glide-text2im/blob/69b530740eb6cef69442d6180579ef5ba9ef063e/glide_text2im/gaussian_diffusion.py#L246
-    #        variance = betas * (1.0 - alphas_cumprod_prev) / (1.0 - alphas_cumprod)
-    #        if variance_type == "fixed_small":
-    #            log_variance = torch.log(variance.clamp(min=1e-20))
-    #        elif variance_type == "fixed_large":
-    #            log_variance = torch.log(torch.cat([variance[1:2], betas[1:]], dim=0))
-    #
-    #
-    #        self.register_buffer("log_variance", log_variance.to(torch.float32))
-
-    # def rescale_betas(self, num_timesteps):
-    #     # GLIDE scaling
-    #     if self.beta_schedule == "linear":
-    #         scale = self.timesteps / num_timesteps
-    #         self.betas = linear_beta_schedule(
-    #             num_timesteps, beta_start=self.beta_start * scale, beta_end=self.beta_end * scale
-    #         )
-    #         self.alphas = 1.0 - self.betas
-    #         self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
-
-    def get_alpha(self, time_step):
-        return self.alphas[time_step]
-
-    def get_beta(self, time_step):
-        return self.betas[time_step]
-
-    def get_alpha_prod(self, time_step):
-        if time_step < 0:
-            return self.one
-        return self.alphas_cumprod[time_step]
-
-    def get_orig_t(self, t, num_inference_steps):
-        if t < 0:
-            return -1
-        return self.timesteps // num_inference_steps * t
-
     def get_variance(self, t, num_inference_steps):
-        orig_t = self.get_orig_t(t, num_inference_steps)
-        orig_prev_t = self.get_orig_t(t - 1, num_inference_steps)
+        orig_t = self.config.timesteps // num_inference_steps * t
+        orig_prev_t = self.config.timesteps // num_inference_steps * (t - 1) if t > 0 else -1
 
-        alpha_prod_t = self.get_alpha_prod(orig_t)
-        alpha_prod_t_prev = self.get_alpha_prod(orig_prev_t)
+        alpha_prod_t = self.alphas_cumprod[orig_t]
+        alpha_prod_t_prev = self.alphas_cumprod[orig_prev_t] if orig_prev_t >= 0 else self.one
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
@@ -124,12 +110,12 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # - pred_prev_sample -> "x_t-1"
 
         # 1. get actual t and t-1
-        orig_t = self.get_orig_t(t, num_inference_steps)
-        orig_prev_t = self.get_orig_t(t - 1, num_inference_steps)
+        orig_t = self.config.timesteps // num_inference_steps * t
+        orig_prev_t = self.config.timesteps // num_inference_steps * (t - 1) if t > 0 else -1
 
         # 2. compute alphas, betas
-        alpha_prod_t = self.get_alpha_prod(orig_t)
-        alpha_prod_t_prev = self.get_alpha_prod(orig_prev_t)
+        alpha_prod_t = self.alphas_cumprod[orig_t]
+        alpha_prod_t_prev = self.alphas_cumprod[orig_prev_t] if orig_prev_t >= 0 else self.one
         beta_prod_t = 1 - alpha_prod_t
 
         # 3. compute predicted original sample from predicted noise also called
@@ -137,7 +123,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         pred_original_sample = (sample - beta_prod_t ** (0.5) * residual) / alpha_prod_t ** (0.5)
 
         # 4. Clip "predicted x_0"
-        if self.clip_sample:
+        if self.config.clip_sample:
             pred_original_sample = self.clip(pred_original_sample, -1, 1)
 
         # 5. compute variance: "sigma_t(η)" -> see formula (16)
@@ -158,4 +144,4 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         return pred_prev_sample
 
     def __len__(self):
-        return self.timesteps
+        return self.config.timesteps

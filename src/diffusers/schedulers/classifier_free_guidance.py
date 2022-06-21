@@ -61,7 +61,6 @@ class ClassifierFreeGuidanceScheduler(nn.Module, ConfigMixin):
             timesteps=timesteps,
             beta_schedule=beta_schedule,
         )
-        self.timesteps = int(timesteps)
 
         if beta_schedule == "squaredcos_cap_v2":
             # GLIDE cosine schedule
@@ -94,4 +93,4 @@ class ClassifierFreeGuidanceScheduler(nn.Module, ConfigMixin):
         return torch.randn(shape, generator=generator).to(device)
 
     def __len__(self):
-        return self.timesteps
+        return self.config.timesteps

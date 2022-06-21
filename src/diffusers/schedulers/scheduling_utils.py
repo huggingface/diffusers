@@ -18,30 +18,6 @@ import torch
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
 
 
-def linear_beta_schedule(timesteps, beta_start, beta_end):
-    return np.linspace(beta_start, beta_end, timesteps, dtype=np.float32)
-
-
-def betas_for_alpha_bar(num_diffusion_timesteps, alpha_bar, max_beta=0.999):
-    """
-    Create a beta schedule that discretizes the given alpha_t_bar function,
-    which defines the cumulative product of (1-beta) over time from t = [0,1].
-
-    :param num_diffusion_timesteps: the number of betas to produce.
-    :param alpha_bar: a lambda that takes an argument t from 0 to 1 and
-                      produces the cumulative product of (1-beta) up to that
-                      part of the diffusion process.
-    :param max_beta: the maximum beta to use; use values lower than 1 to
-                     prevent singularities.
-    """
-    betas = []
-    for i in range(num_diffusion_timesteps):
-        t1 = i / num_diffusion_timesteps
-        t2 = (i + 1) / num_diffusion_timesteps
-        betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
-    return np.array(betas, dtype=np.float32)
-
-
 class SchedulerMixin:
 
     config_name = SCHEDULER_CONFIG_NAME
@@ -62,5 +38,15 @@ class SchedulerMixin:
             return np.clip(tensor, min_value, max_value)
         elif tensor_format == "pt":
             return torch.clamp(tensor, min_value, max_value)
+
+        raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
+
+    def log(self, tensor):
+        tensor_format = getattr(self, "tensor_format", "pt")
+
+        if tensor_format == "np":
+            return np.log(tensor)
+        elif tensor_format == "pt":
+            return torch.log(tensor)
 
         raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")

@@ -291,7 +291,7 @@ class BDDM(DiffusionPipeline):
         # Sample gaussian noise to begin loop
         audio = torch.normal(0, 1, size=audio_size, generator=generator).to(torch_device)
 
-        timestep_values = self.noise_scheduler.timestep_values
+        timestep_values = self.noise_scheduler.config.timestep_values
         num_prediction_steps = len(self.noise_scheduler)
         for t in tqdm.tqdm(reversed(range(num_prediction_steps)), total=num_prediction_steps):
             # 1. predict noise residual

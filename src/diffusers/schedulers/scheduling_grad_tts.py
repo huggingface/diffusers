@@ -30,8 +30,6 @@ class GradTTSScheduler(SchedulerMixin, ConfigMixin):
             beta_start=beta_start,
             beta_end=beta_end,
         )
-        self.timesteps = int(timesteps)
-
         self.set_format(tensor_format=tensor_format)
 
     def sample_noise(self, timestep):
@@ -46,4 +44,4 @@ class GradTTSScheduler(SchedulerMixin, ConfigMixin):
         return xt
 
     def __len__(self):
-        return self.timesteps
+        return len(self.config.timesteps)

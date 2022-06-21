@@ -20,3 +20,4 @@ from .unet import UNetModel
 from .unet_glide import GLIDESuperResUNetModel, GLIDETextToImageUNetModel, GLIDEUNetModel
 from .unet_grad_tts import UNetGradTTSModel
 from .unet_ldm import UNetLDMModel
+from .unet_rl import TemporalUNet

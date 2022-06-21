@@ -14,11 +14,14 @@
 # limitations under the License.
 
 
+import inspect
 import tempfile
 import unittest
 
+import numpy as np
 import torch
 
+import pytest
 from diffusers import (
     BDDM,
     DDIM,
@@ -27,9 +30,12 @@ from diffusers import (
     PNDM,
     DDIMScheduler,
     DDPMScheduler,
+    GLIDESuperResUNetModel,
     LatentDiffusion,
     PNDMScheduler,
     UNetModel,
+    UNetLDMModel,
+    UNetGradTTSModel,
 )
 from diffusers.configuration_utils import ConfigMixin
 from diffusers.pipeline_utils import DiffusionPipeline
@@ -82,7 +88,108 @@ class ConfigTester(unittest.TestCase):
         assert config == new_config
 
 
-class ModelTesterMixin(unittest.TestCase):
+class ModelTesterMixin:
+    def test_from_pretrained_save_pretrained(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model.save_pretrained(tmpdirname)
+            new_model = self.model_class.from_pretrained(tmpdirname)
+            new_model.to(torch_device)
+
+        with torch.no_grad():
+            image = model(**inputs_dict)
+            new_image = new_model(**inputs_dict)
+
+        max_diff = (image - new_image).abs().sum().item()
+        self.assertLessEqual(max_diff, 1e-5, "Models give different forward passes")
+
+    def test_determinism(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+        with torch.no_grad():
+            first = model(**inputs_dict)
+            second = model(**inputs_dict)
+
+        out_1 = first.cpu().numpy()
+        out_2 = second.cpu().numpy()
+        out_1 = out_1[~np.isnan(out_1)]
+        out_2 = out_2[~np.isnan(out_2)]
+        max_diff = np.amax(np.abs(out_1 - out_2))
+        self.assertLessEqual(max_diff, 1e-5)
+
+    def test_output(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+        self.assertIsNotNone(output)
+        expected_shape = inputs_dict["x"].shape
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
+    def test_forward_signature(self):
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict)
+        signature = inspect.signature(model.forward)
+        # signature.parameters is an OrderedDict => so arg_names order is deterministic
+        arg_names = [*signature.parameters.keys()]
+
+        expected_arg_names = ["x", "timesteps"]
+        self.assertListEqual(arg_names[:2], expected_arg_names)
+
+    def test_model_from_config(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        # test if the model can be loaded from the config
+        # and has all the expected shape
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            model.save_config(tmpdirname)
+            new_model = self.model_class.from_config(tmpdirname)
+            new_model.to(torch_device)
+            new_model.eval()
+
+        # check if all paramters shape are the same
+        for param_name in model.state_dict().keys():
+            param_1 = model.state_dict()[param_name]
+            param_2 = new_model.state_dict()[param_name]
+            self.assertEqual(param_1.shape, param_2.shape)
+
+        with torch.no_grad():
+            output_1 = model(**inputs_dict)
+            output_2 = new_model(**inputs_dict)
+
+        self.assertEqual(output_1.shape, output_2.shape)
+
+    def test_training(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.train()
+        output = model(**inputs_dict)
+        noise = torch.randn((inputs_dict["x"].shape[0],) + self.get_output_shape).to(torch_device)
+        loss = torch.nn.functional.mse_loss(output, noise)
+        loss.backward()
+
+
+class UnetModelTests(ModelTesterMixin, unittest.TestCase):
+    model_class = UNetModel
+
     @property
     def dummy_input(self):
         batch_size = 4
@@ -92,31 +199,288 @@ class ModelTesterMixin(unittest.TestCase):
         noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
         time_step = torch.tensor([10]).to(torch_device)
 
-        return (noise, time_step)
+        return {"x": noise, "timesteps": time_step}
 
-    def test_from_pretrained_save_pretrained(self):
-        model = UNetModel(ch=32, ch_mult=(1, 2), num_res_blocks=2, attn_resolutions=(16,), resolution=32)
-        model.to(torch_device)
+    @property
+    def get_input_shape(self):
+        return (3, 32, 32)
 
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_pretrained(tmpdirname)
-            new_model = UNetModel.from_pretrained(tmpdirname)
-            new_model.to(torch_device)
+    @property
+    def get_output_shape(self):
+        return (3, 32, 32)
 
-        dummy_input = self.dummy_input
-
-        image = model(*dummy_input)
-        new_image = new_model(*dummy_input)
-
-        assert (image - new_image).abs().sum() < 1e-5, "Models don't give the same forward pass"
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = {
+            "ch": 32,
+            "ch_mult": (1, 2),
+            "num_res_blocks": 2,
+            "attn_resolutions": (16,),
+            "resolution": 32,
+        }
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
 
     def test_from_pretrained_hub(self):
-        model = UNetModel.from_pretrained("fusing/ddpm_dummy")
-        model.to(torch_device)
+        model, loading_info = UNetModel.from_pretrained("fusing/ddpm_dummy", output_loading_info=True)
+        self.assertIsNotNone(model)
+        self.assertEqual(len(loading_info["missing_keys"]), 0)
 
-        image = model(*self.dummy_input)
+        model.to(torch_device)
+        image = model(**self.dummy_input)
 
         assert image is not None, "Make sure output is not None"
+
+    def test_output_pretrained(self):
+        model = UNetModel.from_pretrained("fusing/ddpm_dummy")
+        model.eval()
+
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        noise = torch.randn(1, model.config.in_channels, model.config.resolution, model.config.resolution)
+        time_step = torch.tensor([10])
+
+        with torch.no_grad():
+            output = model(noise, time_step)
+
+        output_slice = output[0, -1, -3:, -3:].flatten()
+        # fmt: off
+        expected_output_slice = torch.tensor([ 0.2891, -0.1899,  0.2595, -0.6214,  0.0968, -0.2622,  0.4688,  0.1311, 0.0053])
+        # fmt: on
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+
+
+class GLIDESuperResUNetTests(ModelTesterMixin, unittest.TestCase):
+    model_class = GLIDESuperResUNetModel
+
+    @property
+    def dummy_input(self):
+        batch_size = 4
+        num_channels = 6
+        sizes = (32, 32)
+        low_res_size = (4, 4)
+
+        torch_device = "cpu"
+
+        noise = torch.randn((batch_size, num_channels // 2) + sizes).to(torch_device)
+        low_res = torch.randn((batch_size, 3) + low_res_size).to(torch_device)
+        time_step = torch.tensor([10] * noise.shape[0], device=torch_device)
+
+        return {"x": noise, "timesteps": time_step, "low_res": low_res}
+
+    @property
+    def get_input_shape(self):
+        return (3, 32, 32)
+
+    @property
+    def get_output_shape(self):
+        return (6, 32, 32)
+
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = {
+            "attention_resolutions": (2,),
+            "channel_mult": (1, 2),
+            "in_channels": 6,
+            "out_channels": 6,
+            "model_channels": 32,
+            "num_head_channels": 8,
+            "num_heads_upsample": 1,
+            "num_res_blocks": 2,
+            "resblock_updown": True,
+            "resolution": 32,
+            "use_scale_shift_norm": True,
+        }
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+
+    def test_output(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+        output, _ = torch.split(output, 3, dim=1)
+
+        self.assertIsNotNone(output)
+        expected_shape = inputs_dict["x"].shape
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
+    def test_from_pretrained_hub(self):
+        model, loading_info = GLIDESuperResUNetModel.from_pretrained(
+            "fusing/glide-super-res-dummy", output_loading_info=True
+        )
+        self.assertIsNotNone(model)
+        self.assertEqual(len(loading_info["missing_keys"]), 0)
+
+        model.to(torch_device)
+        image = model(**self.dummy_input)
+
+        assert image is not None, "Make sure output is not None"
+
+    def test_output_pretrained(self):
+        model = GLIDESuperResUNetModel.from_pretrained("fusing/glide-super-res-dummy")
+
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        noise = torch.randn(1, 3, 64, 64)
+        low_res = torch.randn(1, 3, 4, 4)
+        time_step = torch.tensor([42] * noise.shape[0])
+
+        with torch.no_grad():
+            output = model(noise, time_step, low_res)
+
+        output, _ = torch.split(output, 3, dim=1)
+        output_slice = output[0, -1, -3:, -3:].flatten()
+        # fmt: off
+        expected_output_slice = torch.tensor([-22.8782, -23.2652, -15.3966, -22.8034, -23.3159, -15.5640, -15.3970, -15.4614, - 10.4370])
+        # fmt: on
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+
+class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
+    model_class = UNetLDMModel
+
+    @property
+    def dummy_input(self):
+        batch_size = 4
+        num_channels = 4
+        sizes = (32, 32)
+
+        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        time_step = torch.tensor([10]).to(torch_device)
+
+        return {"x": noise, "timesteps": time_step}
+
+    @property
+    def get_input_shape(self):
+        return (4, 32, 32)
+
+    @property
+    def get_output_shape(self):
+        return (4, 32, 32)
+
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = {
+            "image_size": 32,
+            "in_channels": 4,
+            "out_channels": 4,
+            "model_channels": 32,
+            "num_res_blocks": 2,
+            "attention_resolutions": (16,),
+            "channel_mult": (1, 2),
+            "num_heads": 2,
+            "conv_resample": True,
+        }
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+    
+    def test_from_pretrained_hub(self):
+        model, loading_info = UNetLDMModel.from_pretrained("fusing/unet-ldm-dummy", output_loading_info=True)
+        self.assertIsNotNone(model)
+        self.assertEqual(len(loading_info["missing_keys"]), 0)
+
+        model.to(torch_device)
+        image = model(**self.dummy_input)
+
+        assert image is not None, "Make sure output is not None"
+
+    def test_output_pretrained(self):
+        model = UNetLDMModel.from_pretrained("fusing/unet-ldm-dummy")
+        model.eval()
+
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        noise = torch.randn(1, model.config.in_channels, model.config.image_size, model.config.image_size)
+        time_step = torch.tensor([10] * noise.shape[0])
+
+        with torch.no_grad():
+            output = model(noise, time_step)
+
+        output_slice = output[0, -1, -3:, -3:].flatten()
+        # fmt: off
+        expected_output_slice = torch.tensor([-13.3258, -20.1100, -15.9873, -17.6617, -23.0596, -17.9419, -13.3675, -16.1889, -12.3800])
+        # fmt: on
+
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+
+
+class UNetGradTTSModelTests(ModelTesterMixin, unittest.TestCase):
+    model_class = UNetGradTTSModel
+
+    @property
+    def dummy_input(self):
+        batch_size = 4
+        num_features = 32
+        seq_len = 16
+
+        noise = floats_tensor((batch_size, num_features, seq_len)).to(torch_device)
+        condition = floats_tensor((batch_size, num_features, seq_len)).to(torch_device)
+        mask = floats_tensor((batch_size, 1, seq_len)).to(torch_device)
+        time_step = torch.tensor([10] * batch_size).to(torch_device)
+
+        return {"x": noise, "timesteps": time_step, "mu": condition, "mask": mask}
+
+    @property
+    def get_input_shape(self):
+        return (4, 32, 16)
+
+    @property
+    def get_output_shape(self):
+        return (4, 32, 16)
+
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = {
+            "dim": 64,
+            "groups": 4,
+            "dim_mults": (1, 2),
+            "n_feats": 32,
+            "pe_scale": 1000,
+            "n_spks": 1,
+        }
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+    
+    def test_from_pretrained_hub(self):
+        model, loading_info = UNetGradTTSModel.from_pretrained("fusing/unet-grad-tts-dummy", output_loading_info=True)
+        self.assertIsNotNone(model)
+        self.assertEqual(len(loading_info["missing_keys"]), 0)
+
+        model.to(torch_device)
+        image = model(**self.dummy_input)
+
+        assert image is not None, "Make sure output is not None"
+
+    def test_output_pretrained(self):
+        model = UNetGradTTSModel.from_pretrained("fusing/unet-grad-tts-dummy")
+        model.eval()
+
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+        
+        num_features = model.config.n_feats
+        seq_len = 16
+        noise = torch.randn((1, num_features, seq_len))
+        condition = torch.randn((1, num_features, seq_len))
+        mask = torch.randn((1, 1, seq_len))
+        time_step = torch.tensor([10])
+
+        with torch.no_grad():
+            output = model(noise, time_step, condition, mask)
+
+        output_slice = output[0, -3:, -3:].flatten()
+        # fmt: off
+        expected_output_slice = torch.tensor([-0.0690, -0.0531,  0.0633, -0.0660, -0.0541,  0.0650, -0.0656, -0.0555, 0.0617])
+        # fmt: on
+
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
 
 
 class PipelineTesterMixin(unittest.TestCase):
@@ -223,7 +587,6 @@ class PipelineTesterMixin(unittest.TestCase):
         image = ldm([prompt], generator=generator, num_inference_steps=20)
 
         image_slice = image[0, -1, -3:, -3:].cpu()
-        print(image_slice.shape)
 
         assert image.shape == (1, 3, 256, 256)
         expected_slice = torch.tensor([0.7295, 0.7358, 0.7256, 0.7435, 0.7095, 0.6884, 0.7325, 0.6921, 0.6458])
