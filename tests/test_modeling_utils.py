@@ -262,8 +262,6 @@ class GLIDESuperResUNetTests(ModelTesterMixin, unittest.TestCase):
         sizes = (32, 32)
         low_res_size = (4, 4)
 
-        torch_device = "cpu"
-
         noise = torch.randn((batch_size, num_channels // 2) + sizes).to(torch_device)
         low_res = torch.randn((batch_size, 3) + low_res_size).to(torch_device)
         time_step = torch.tensor([10] * noise.shape[0], device=torch_device)
@@ -354,8 +352,6 @@ class GLIDETextToImageUNetModelTests(ModelTesterMixin, unittest.TestCase):
         sizes = (32, 32)
         transformer_dim = 32
         seq_len = 16
-
-        torch_device = "cpu"
 
         noise = torch.randn((batch_size, num_channels) + sizes).to(torch_device)
         emb = torch.randn((batch_size, seq_len, transformer_dim)).to(torch_device)
