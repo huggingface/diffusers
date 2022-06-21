@@ -70,7 +70,7 @@ def init_git_repo(args, at_init: bool = False):
     repo.git_pull()
 
     # By default, ignore the checkpoint folders
-    if not os.path.exists(os.path.join(args.output_dir, ".gitignore")) and args.hub_strategy != "all_checkpoints":
+    if not os.path.exists(os.path.join(args.output_dir, ".gitignore")):
         with open(os.path.join(args.output_dir, ".gitignore"), "w", encoding="utf-8") as writer:
             writer.writelines(["checkpoint-*/"])
 
