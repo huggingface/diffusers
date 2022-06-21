@@ -21,7 +21,7 @@ from torchvision.transforms import (
     ToTensor,
 )
 from tqdm.auto import tqdm
-from transformers import get_linear_schedule_with_warmup
+from diffusers.optimization import get_scheduler
 
 
 logger = logging.get_logger(__name__)
@@ -60,7 +60,8 @@ def main(args):
     dataset.set_transform(transforms)
     train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
 
-    lr_scheduler = get_linear_schedule_with_warmup(
+    lr_scheduler = get_scheduler(
+        "linear",
         optimizer=optimizer,
         num_warmup_steps=args.warmup_steps,
         num_training_steps=(len(train_dataloader) * args.num_epochs) // args.gradient_accumulation_steps,
@@ -107,11 +108,13 @@ def main(args):
                         output = model(noisy_images, timesteps)
                         # predict the noise residual
                         loss = F.mse_loss(output, noise_samples)
+                        loss = loss / args.gradient_accumulation_steps
                         accelerator.backward(loss)
                 else:
                     output = model(noisy_images, timesteps)
                     # predict the noise residual
                     loss = F.mse_loss(output, noise_samples)
+                    loss = loss / args.gradient_accumulation_steps
                     accelerator.backward(loss)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                     optimizer.step()
