@@ -39,7 +39,7 @@ def main(args):
         resamp_with_conv=True,
         resolution=args.resolution,
     )
-    noise_scheduler = DDPMScheduler(timesteps=1000)
+    noise_scheduler = DDPMScheduler(timesteps=1000, tensor_format="pt")
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
     augmentations = Compose(
@@ -93,15 +93,13 @@ def main(args):
             pbar.set_description(f"Epoch {epoch}")
             for step, batch in enumerate(train_dataloader):
                 clean_images = batch["input"]
-                noisy_images = torch.empty_like(clean_images)
-                noise_samples = torch.empty_like(clean_images)
+                noise_samples = torch.randn(clean_images.shape).to(clean_images.device)
                 bsz = clean_images.shape[0]
-
                 timesteps = torch.randint(0, noise_scheduler.timesteps, (bsz,), device=clean_images.device).long()
-                for idx in range(bsz):
-                    noise = torch.randn(clean_images.shape[1:]).to(clean_images.device)
-                    noise_samples[idx] = noise
-                    noisy_images[idx] = noise_scheduler.forward_step(clean_images[idx], noise, timesteps[idx])
+
+                # add noise onto the clean images according to the noise magnitude at each timestep
+                # (this is the forward diffusion process)
+                noisy_images = noise_scheduler.training_step(clean_images, noise_samples, timesteps)
 
                 if step % args.gradient_accumulation_steps != 0:
                     with accelerator.no_sync(model):
@@ -146,7 +144,7 @@ def main(args):
             # save image
             test_dir = os.path.join(args.output_dir, "test_samples")
             os.makedirs(test_dir, exist_ok=True)
-            image_pil.save(f"{test_dir}/{epoch}.png")
+            image_pil.save(f"{test_dir}/{epoch:04d}.png")
 
             # save the model
             if args.push_to_hub:
