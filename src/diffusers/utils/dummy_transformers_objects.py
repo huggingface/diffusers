@@ -3,21 +3,21 @@
 from ..utils import DummyObject, requires_backends
 
 
-class GLIDESuperResUNetModel(metaclass=DummyObject):
+class GlideSuperResUNetModel(metaclass=DummyObject):
     _backends = ["transformers"]
 
     def __init__(self, *args, **kwargs):
         requires_backends(self, ["transformers"])
 
 
-class GLIDETextToImageUNetModel(metaclass=DummyObject):
+class GlideTextToImageUNetModel(metaclass=DummyObject):
     _backends = ["transformers"]
 
     def __init__(self, *args, **kwargs):
         requires_backends(self, ["transformers"])
 
 
-class GLIDEUNetModel(metaclass=DummyObject):
+class GlideUNetModel(metaclass=DummyObject):
     _backends = ["transformers"]
 
     def __init__(self, *args, **kwargs):
@@ -31,10 +31,7 @@ class UNetGradTTSModel(metaclass=DummyObject):
         requires_backends(self, ["transformers"])
 
 
-GLIDE = None
-
-
-class GradTTS(metaclass=DummyObject):
+class Glide(metaclass=DummyObject):
     _backends = ["transformers"]
 
     def __init__(self, *args, **kwargs):

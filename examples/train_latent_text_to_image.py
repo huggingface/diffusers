@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import PIL.Image
 from accelerate import Accelerator
 from datasets import load_dataset
-from diffusers import DDPM, DDPMScheduler, UNetModel
+from diffusers import DDPM, DDPMScheduler, UNetLDMModel
 from diffusers.hub_utils import init_git_repo, push_to_hub
 from diffusers.modeling_utils import unwrap_model
 from diffusers.optimization import get_scheduler
@@ -30,14 +30,25 @@ logger = logging.get_logger(__name__)
 def main(args):
     accelerator = Accelerator(mixed_precision=args.mixed_precision)
 
-    model = UNetModel(
-        attn_resolutions=(16,),
-        ch=128,
-        ch_mult=(1, 2, 4, 8),
-        dropout=0.0,
+    model = UNetLDMModel(
+        attention_resolutions=[4, 2, 1],
+        channel_mult=[1, 2, 4, 4],
+        context_dim=1280,
+        conv_resample=True,
+        dims=2,
+        dropout=0,
+        image_size=32,
+        in_channels=4,
+        model_channels=320,
+        num_heads=8,
         num_res_blocks=2,
-        resamp_with_conv=True,
-        resolution=args.resolution,
+        out_channels=4,
+        resblock_updown=False,
+        transformer_depth=1,
+        use_new_attention_order=False,
+        use_scale_shift_norm=False,
+        use_spatial_transformer=True,
+        legacy=False,
     )
     noise_scheduler = DDPMScheduler(timesteps=1000, tensor_format="pt")
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)

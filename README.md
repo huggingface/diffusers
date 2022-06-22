@@ -48,7 +48,7 @@ The class provides functionality to compute previous image according to alpha, b
     
 
 **Diffusion Pipeline**: End-to-end pipeline that includes multiple diffusion models, possible text encoders, ...
-*Examples*: GLIDE, Latent-Diffusion, Imagen, DALL-E 2
+*Examples*: Glide, Latent-Diffusion, Imagen, DALL-E 2
 
 <p align="center">
     <img src="https://user-images.githubusercontent.com/10695622/174348898-481bd7c2-5457-4830-89bc-f0907756f64c.jpeg" width="550"/>
@@ -190,7 +190,7 @@ image_pil.save("test.png")
 
 [Diffuser](https://diffusion-planning.github.io/) for planning in reinforcement learning: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1TmBmlYeKUZSkUZoJqfBmaicVTKx6nN1R?usp=sharing)
 
-### 2. `diffusers` as a collection of popular Diffusion systems (GLIDE, Dalle, ...)
+### 2. `diffusers` as a collection of popular Diffusion systems (Glide, Dalle, ...)
 
 For more examples see [pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines).
 
@@ -249,24 +249,24 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 image_pil.save("test.png")
 ```
 
-#### **Text to speech with GradTTS and BDDM**
+#### **Text to speech with GradTTS and BDDMPipeline**
 
 ```python
 import torch
-from diffusers import BDDM, GradTTS
+from diffusers import BDDMPipeline, GradTTSPipeline
 
 torch_device = "cuda"
 
 # load grad tts and bddm pipelines
-grad_tts = GradTTS.from_pretrained("fusing/grad-tts-libri-tts")
-bddm = BDDM.from_pretrained("fusing/diffwave-vocoder-ljspeech")
+grad_tts = GradTTSPipeline.from_pretrained("fusing/grad-tts-libri-tts")
+bddm = BDDMPipeline.from_pretrained("fusing/diffwave-vocoder-ljspeech")
 
 text = "Hello world, I missed you so much."
 
 # generate mel spectograms using text
 mel_spec = grad_tts(text, torch_device=torch_device)
 
-#  generate the speech by passing mel spectograms to BDDM pipeline
+#  generate the speech by passing mel spectograms to BDDMPipeline pipeline
 generator = torch.manual_seed(42)
 audio = bddm(mel_spec, generator, torch_device=torch_device)
 
@@ -278,13 +278,14 @@ wavwrite("generated_audio.wav", sampling_rate, audio.squeeze().cpu().numpy())
 
 ## TODO
 
-- Create common API for models [ ]
-- Add tests for models [ ]
-- Adapt schedulers for training [ ]
-- Write google colab for training [ ]
-- Write docs / Think about how to structure docs [ ]
-- Add tests to circle ci [ ]
-- Add [Diffusion LM models](https://arxiv.org/pdf/2205.14217.pdf) [ ]
-- Add more vision models [ ]
-- Add more speech models [ ]
-- Add RL model [ ]
+- [ ] Create common API for models
+- [ ] Add tests for models
+- [ ] Adapt schedulers for training
+- [ ] Write google colab for training
+- [ ] Write docs / Think about how to structure docs
+- [ ] Add tests to circle ci
+- [ ] Add [Diffusion LM models](https://arxiv.org/pdf/2205.14217.pdf)
+- [ ] Add more vision models
+- [ ] Add more speech models
+- [ ] Add RL model
+- [ ] Add FID and KID metrics

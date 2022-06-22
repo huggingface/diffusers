@@ -420,7 +420,7 @@ class TextEncoder(ModelMixin, ConfigMixin):
         return mu, logw, x_mask
 
 
-class GradTTS(DiffusionPipeline):
+class GradTTSPipeline(DiffusionPipeline):
     def __init__(self, unet, text_encoder, noise_scheduler, tokenizer):
         super().__init__()
         noise_scheduler = noise_scheduler.set_format("pt")
@@ -430,7 +430,14 @@ class GradTTS(DiffusionPipeline):
 
     @torch.no_grad()
     def __call__(
-        self, text, num_inference_steps=50, temperature=1.3, length_scale=0.91, speaker_id=15, torch_device=None
+        self,
+        text,
+        num_inference_steps=50,
+        temperature=1.3,
+        length_scale=0.91,
+        speaker_id=15,
+        torch_device=None,
+        generator=None,
     ):
         if torch_device is None:
             torch_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -464,7 +471,7 @@ class GradTTS(DiffusionPipeline):
         mu_y = mu_y.transpose(1, 2)
 
         # Sample latent representation from terminal distribution N(mu_y, I)
-        z = mu_y + torch.randn_like(mu_y, device=mu_y.device) / temperature
+        z = mu_y + torch.randn(mu_y.shape, device=mu_y.device, generator=generator) / temperature
 
         xt = z * y_mask
         h = 1.0 / num_inference_steps

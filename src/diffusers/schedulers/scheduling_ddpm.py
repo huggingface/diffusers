@@ -17,6 +17,7 @@
 import math
 
 import numpy as np
+import torch
 
 from ..configuration_utils import ConfigMixin
 from .scheduling_utils import SchedulerMixin
@@ -76,7 +77,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         elif beta_schedule == "linear":
             self.betas = np.linspace(beta_start, beta_end, timesteps, dtype=np.float32)
         elif beta_schedule == "squaredcos_cap_v2":
-            # GLIDE cosine schedule
+            # Glide cosine schedule
             self.betas = betas_for_alpha_bar(timesteps)
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
@@ -108,7 +109,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         elif variance_type == "fixed_large":
             variance = self.betas[t]
         elif variance_type == "fixed_large_log":
-            # GLIDE max_log
+            # Glide max_log
             variance = self.log(self.betas[t])
 
         return variance
@@ -142,11 +143,18 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         return pred_prev_sample
 
-    def forward_step(self, original_sample, noise, t):
-        sqrt_alpha_prod = self.alphas_cumprod[t] ** 0.5
-        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[t]) ** 0.5
-        noisy_sample = sqrt_alpha_prod * original_sample + sqrt_one_minus_alpha_prod * noise
-        return noisy_sample
+    def training_step(self, original_samples: torch.Tensor, noise: torch.Tensor, timesteps: torch.Tensor):
+        if timesteps.dim() != 1:
+            raise ValueError("`timesteps` must be a 1D tensor")
+
+        device = original_samples.device
+        batch_size = original_samples.shape[0]
+        timesteps = timesteps.reshape(batch_size, 1, 1, 1)
+
+        sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
+        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
+        noisy_samples = sqrt_alpha_prod.to(device) * original_samples + sqrt_one_minus_alpha_prod.to(device) * noise
+        return noisy_samples
 
     def __len__(self):
         return self.config.timesteps

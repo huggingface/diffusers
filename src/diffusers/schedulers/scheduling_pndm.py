@@ -66,7 +66,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         if beta_schedule == "linear":
             self.betas = np.linspace(beta_start, beta_end, timesteps, dtype=np.float32)
         elif beta_schedule == "squaredcos_cap_v2":
-            # GLIDE cosine schedule
+            # Glide cosine schedule
             self.betas = betas_for_alpha_bar(timesteps)
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")

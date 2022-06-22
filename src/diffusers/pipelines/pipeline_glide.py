@@ -30,7 +30,7 @@ from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPo
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import ModelOutput, add_start_docstrings_to_model_forward, replace_return_docstrings
 
-from ..models import GLIDESuperResUNetModel, GLIDETextToImageUNetModel
+from ..models import GlideSuperResUNetModel, GlideTextToImageUNetModel
 from ..pipeline_utils import DiffusionPipeline
 from ..schedulers import DDIMScheduler, DDPMScheduler
 from ..utils import logging
@@ -694,7 +694,6 @@ class CLIPTextModel(CLIPPreTrainedModel):
 # END OF THE CLIP MODEL COPY-PASTE
 #####################
 
-
 def _extract_into_tensor(arr, timesteps, broadcast_shape):
     """
     Extract values from a 1-D numpy array for a batch of indices.
@@ -711,14 +710,14 @@ def _extract_into_tensor(arr, timesteps, broadcast_shape):
     return res + torch.zeros(broadcast_shape, device=timesteps.device)
 
 
-class GLIDE(DiffusionPipeline):
+class GlidePipeline(DiffusionPipeline):
     def __init__(
         self,
-        text_unet: GLIDETextToImageUNetModel,
+        text_unet: GlideTextToImageUNetModel,
         text_noise_scheduler: DDPMScheduler,
         text_encoder: CLIPTextModel,
         tokenizer: GPT2Tokenizer,
-        upscale_unet: GLIDESuperResUNetModel,
+        upscale_unet: GlideSuperResUNetModel,
         upscale_noise_scheduler: DDIMScheduler,
     ):
         super().__init__()
