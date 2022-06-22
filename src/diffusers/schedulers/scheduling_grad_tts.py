@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import numpy as np
+
 from ..configuration_utils import ConfigMixin
 from .scheduling_utils import SchedulerMixin
 
@@ -19,29 +21,34 @@ from .scheduling_utils import SchedulerMixin
 class GradTTSScheduler(SchedulerMixin, ConfigMixin):
     def __init__(
         self,
-        timesteps=1000,
-        beta_start=0.0001,
-        beta_end=0.02,
+        beta_start=0.05,
+        beta_end=20,
         tensor_format="np",
     ):
         super().__init__()
         self.register_to_config(
-            timesteps=timesteps,
             beta_start=beta_start,
             beta_end=beta_end,
         )
         self.set_format(tensor_format=tensor_format)
+        self.betas = None
 
-    def sample_noise(self, timestep):
-        noise = self.beta_start + (self.beta_end - self.beta_start) * timestep
-        return noise
+    def get_timesteps(self, num_inference_steps):
+        return np.array([(t + 0.5) / num_inference_steps for t in range(num_inference_steps)])
 
-    def step(self, xt, residual, mu, h, timestep):
-        noise_t = self.sample_noise(timestep)
-        dxt = 0.5 * (mu - xt - residual)
-        dxt = dxt * noise_t * h
-        xt = xt - dxt
-        return xt
+    def set_betas(self, num_inference_steps):
+        timesteps = self.get_timesteps(num_inference_steps)
+        self.betas = np.array([self.beta_start + (self.beta_end - self.beta_start) * t for t in timesteps])
 
-    def __len__(self):
-        return len(self.config.timesteps)
+    def step(self, residual, sample, t, num_inference_steps):
+        # This is a VE scheduler from https://arxiv.org/pdf/2011.13456.pdf (see Algorithm 2 in Appendix)
+        if self.betas is None:
+            self.set_betas(num_inference_steps)
+
+        beta_t = self.betas[t]
+        beta_t_deriv = beta_t / num_inference_steps
+
+        sample_deriv = residual * beta_t_deriv / 2
+
+        sample = sample + sample_deriv
+        return sample

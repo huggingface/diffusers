@@ -31,6 +31,7 @@ from diffusers import (
     GlideSuperResUNetModel,
     GlideTextToImageUNetModel,
     GradTTSPipeline,
+    GradTTSScheduler,
     LatentDiffusionPipeline,
     PNDMPipeline,
     PNDMScheduler,
@@ -705,6 +706,8 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_grad_tts(self):
         model_id = "fusing/grad-tts-libri-tts"
         grad_tts = GradTTSPipeline.from_pretrained(model_id)
+        noise_scheduler = GradTTSScheduler()
+        grad_tts.noise_scheduler = noise_scheduler
 
         text = "Hello world, I missed you so much."
         generator = torch.manual_seed(0)

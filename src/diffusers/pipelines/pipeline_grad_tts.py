@@ -475,13 +475,15 @@ class GradTTSPipeline(DiffusionPipeline):
 
         xt = z * y_mask
         h = 1.0 / num_inference_steps
+        # (Patrick: TODO)
         for t in tqdm.tqdm(range(num_inference_steps), total=num_inference_steps):
+            t_new = num_inference_steps - t - 1
             t = (1.0 - (t + 0.5) * h) * torch.ones(z.shape[0], dtype=z.dtype, device=z.device)
-            time = t.unsqueeze(-1).unsqueeze(-1)
 
             residual = self.unet(xt, t, mu_y, y_mask, speaker_id)
 
-            xt = self.noise_scheduler.step(xt, residual, mu_y, h, time)
+            scheduler_residual = residual - mu_y + xt
+            xt = self.noise_scheduler.step(scheduler_residual, xt, t_new, num_inference_steps)
             xt = xt * y_mask
 
         return xt[:, :, :y_max_length]
