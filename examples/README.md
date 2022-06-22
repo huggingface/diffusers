@@ -10,7 +10,7 @@ python -m torch.distributed.launch \
   train_unconditional.py \
   --dataset="huggan/flowers-102-categories" \
   --resolution=64 \
-  --output_path="flowers-ddpm" \
+  --output_dir="flowers-ddpm" \
   --batch_size=16 \
   --num_epochs=100 \
   --gradient_accumulation_steps=1 \
@@ -34,7 +34,7 @@ python -m torch.distributed.launch \
   train_unconditional.py \
   --dataset="huggan/pokemon" \
   --resolution=64 \
-  --output_path="pokemon-ddpm" \
+  --output_dir="pokemon-ddpm" \
   --batch_size=16 \
   --num_epochs=100 \
   --gradient_accumulation_steps=1 \
