@@ -288,3 +288,4 @@ wavwrite("generated_audio.wav", sampling_rate, audio.squeeze().cpu().numpy())
 - [ ] Add more vision models
 - [ ] Add more speech models
 - [ ] Add RL model
+- [ ] Add FID and KID metrics
