@@ -388,7 +388,7 @@ class QKVAttention(nn.Module):
         return a.reshape(bs, -1, length)
 
 
-class GLIDEUNetModel(ModelMixin, ConfigMixin):
+class GlideUNetModel(ModelMixin, ConfigMixin):
     """
     The full UNet model with attention and timestep embedding.
 
@@ -641,7 +641,7 @@ class GLIDEUNetModel(ModelMixin, ConfigMixin):
         return self.out(h)
 
 
-class GLIDETextToImageUNetModel(GLIDEUNetModel):
+class GlideTextToImageUNetModel(GlideUNetModel):
     """
     A UNetModel that performs super-resolution.
 
@@ -734,7 +734,7 @@ class GLIDETextToImageUNetModel(GLIDEUNetModel):
         return self.out(h)
 
 
-class GLIDESuperResUNetModel(GLIDEUNetModel):
+class GlideSuperResUNetModel(GlideUNetModel):
     """
     A UNetModel that performs super-resolution.
 

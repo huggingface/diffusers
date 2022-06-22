@@ -21,17 +21,17 @@ import unittest
 import numpy as np
 import torch
 
-import pytest
 from diffusers import (
     BDDM,
     DDIM,
     DDPM,
-    GLIDE,
+    Glide,
     PNDM,
     DDIMScheduler,
     DDPMScheduler,
-    GLIDESuperResUNetModel,
-    GLIDETextToImageUNetModel,
+    GlideSuperResUNetModel,
+    GlideTextToImageUNetModel,
+    GradTTS,
     LatentDiffusion,
     PNDMScheduler,
     UNetGradTTSModel,
@@ -247,13 +247,13 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
 
         output_slice = output[0, -1, -3:, -3:].flatten()
         # fmt: off
-        expected_output_slice = torch.tensor([ 0.2891, -0.1899,  0.2595, -0.6214,  0.0968, -0.2622,  0.4688,  0.1311, 0.0053])
+        expected_output_slice = torch.tensor([0.2891, -0.1899, 0.2595, -0.6214, 0.0968, -0.2622, 0.4688, 0.1311, 0.0053])
         # fmt: on
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
 
 
-class GLIDESuperResUNetTests(ModelTesterMixin, unittest.TestCase):
-    model_class = GLIDESuperResUNetModel
+class GlideSuperResUNetTests(ModelTesterMixin, unittest.TestCase):
+    model_class = GlideSuperResUNetModel
 
     @property
     def dummy_input(self):
@@ -309,7 +309,7 @@ class GLIDESuperResUNetTests(ModelTesterMixin, unittest.TestCase):
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
     def test_from_pretrained_hub(self):
-        model, loading_info = GLIDESuperResUNetModel.from_pretrained(
+        model, loading_info = GlideSuperResUNetModel.from_pretrained(
             "fusing/glide-super-res-dummy", output_loading_info=True
         )
         self.assertIsNotNone(model)
@@ -321,7 +321,7 @@ class GLIDESuperResUNetTests(ModelTesterMixin, unittest.TestCase):
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained(self):
-        model = GLIDESuperResUNetModel.from_pretrained("fusing/glide-super-res-dummy")
+        model = GlideSuperResUNetModel.from_pretrained("fusing/glide-super-res-dummy")
 
         torch.manual_seed(0)
         if torch.cuda.is_available():
@@ -342,8 +342,8 @@ class GLIDESuperResUNetTests(ModelTesterMixin, unittest.TestCase):
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
 
 
-class GLIDETextToImageUNetModelTests(ModelTesterMixin, unittest.TestCase):
-    model_class = GLIDETextToImageUNetModel
+class GlideTextToImageUNetModelTests(ModelTesterMixin, unittest.TestCase):
+    model_class = GlideTextToImageUNetModel
 
     @property
     def dummy_input(self):
@@ -401,7 +401,7 @@ class GLIDETextToImageUNetModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
     def test_from_pretrained_hub(self):
-        model, loading_info = GLIDETextToImageUNetModel.from_pretrained(
+        model, loading_info = GlideTextToImageUNetModel.from_pretrained(
             "fusing/unet-glide-text2im-dummy", output_loading_info=True
         )
         self.assertIsNotNone(model)
@@ -413,7 +413,7 @@ class GLIDETextToImageUNetModelTests(ModelTesterMixin, unittest.TestCase):
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained(self):
-        model = GLIDETextToImageUNetModel.from_pretrained("fusing/unet-glide-text2im-dummy")
+        model = GlideTextToImageUNetModel.from_pretrained("fusing/unet-glide-text2im-dummy")
 
         torch.manual_seed(0)
         if torch.cuda.is_available():
@@ -431,7 +431,7 @@ class GLIDETextToImageUNetModelTests(ModelTesterMixin, unittest.TestCase):
         output, _ = torch.split(output, 3, dim=1)
         output_slice = output[0, -1, -3:, -3:].flatten()
         # fmt: off
-        expected_output_slice = torch.tensor([  2.7766, -10.3558, -14.9149,  -0.9376, -14.9175, -17.7679,  -5.5565, -12.9521, -12.9845])
+        expected_output_slice = torch.tensor([2.7766, -10.3558, -14.9149, -0.9376, -14.9175, -17.7679, -5.5565, -12.9521, -12.9845])
         # fmt: on
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
 
@@ -571,7 +571,7 @@ class UNetGradTTSModelTests(ModelTesterMixin, unittest.TestCase):
 
         output_slice = output[0, -3:, -3:].flatten()
         # fmt: off
-        expected_output_slice = torch.tensor([-0.0690, -0.0531,  0.0633, -0.0660, -0.0541,  0.0650, -0.0656, -0.0555, 0.0617])
+        expected_output_slice = torch.tensor([-0.0690, -0.0531, 0.0633, -0.0660, -0.0541, 0.0650, -0.0656, -0.0555, 0.0617])
         # fmt: on
 
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
@@ -689,7 +689,7 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     def test_glide_text2img(self):
         model_id = "fusing/glide-base"
-        glide = GLIDE.from_pretrained(model_id)
+        glide = Glide.from_pretrained(model_id)
 
         prompt = "a pencil sketch of a corgi"
         generator = torch.manual_seed(0)
@@ -700,6 +700,20 @@ class PipelineTesterMixin(unittest.TestCase):
         assert image.shape == (1, 256, 256, 3)
         expected_slice = torch.tensor([0.7119, 0.7073, 0.6460, 0.7780, 0.7423, 0.6926, 0.7378, 0.7189, 0.7784])
         assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
+
+    @slow
+    def test_grad_tts(self):
+        model_id = "fusing/grad-tts-libri-tts"
+        grad_tts = GradTTS.from_pretrained(model_id)
+
+        text = "Hello world, I missed you so much."
+
+        # generate mel spectograms using text
+        mel_spec = grad_tts(text)
+
+        assert mel_spec.shape == (1, 256, 256, 3)
+        expected_slice = torch.tensor([0.7119, 0.7073, 0.6460, 0.7780, 0.7423, 0.6926, 0.7378, 0.7189, 0.7784])
+        assert (mel_spec.flatten() - expected_slice).abs().max() < 1e-2
 
     def test_module_from_pipeline(self):
         model = DiffWave(num_res_layers=4)

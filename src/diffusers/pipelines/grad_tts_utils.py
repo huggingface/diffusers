@@ -6,20 +6,9 @@ from shutil import copyfile
 
 import torch
 
+import inflect
 from transformers import PreTrainedTokenizer
-
-
-try:
-    from unidecode import unidecode
-except:
-    print("unidecode is not installed")
-    pass
-
-try:
-    import inflect
-except:
-    print("inflect is not installed")
-    pass
+from unidecode import unidecode
 
 
 valid_symbols = [
@@ -234,12 +223,7 @@ def english_cleaners(text):
     return text
 
 
-try:
-    _inflect = inflect.engine()
-except:
-    print("inflect is not installed")
-    _inflect = None
-
+_inflect = inflect.engine()
 _comma_number_re = re.compile(r"([0-9][0-9\,]+[0-9])")
 _decimal_number_re = re.compile(r"([0-9]+\.[0-9]+)")
 _pounds_re = re.compile(r"£([0-9\,]*[0-9]+)")

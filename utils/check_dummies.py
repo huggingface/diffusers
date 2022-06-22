@@ -23,10 +23,9 @@ import re
 PATH_TO_DIFFUSERS = "src/diffusers"
 
 # Matches is_xxx_available()
-_re_backend = re.compile(r"if is\_([a-z_]*)_available\(\)")
+_re_backend = re.compile(r"is\_([a-z_]*)_available\(\)")
 # Matches from xxx import bla
 _re_single_line_import = re.compile(r"\s+from\s+\S*\s+import\s+([^\(\s].*)\n")
-_re_test_backend = re.compile(r"^\s+if\s+not\s+is\_[a-z]*\_available\(\)")
 
 
 DUMMY_CONSTANT = """
@@ -54,7 +53,7 @@ def find_backend(line):
     if len(backends) == 0:
         return None
 
-    return backends[0]
+    return "_and_".join(backends)
 
 
 def read_init():
