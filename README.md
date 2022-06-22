@@ -278,13 +278,13 @@ wavwrite("generated_audio.wav", sampling_rate, audio.squeeze().cpu().numpy())
 
 ## TODO
 
-- Create common API for models [ ]
-- Add tests for models [ ]
-- Adapt schedulers for training [ ]
-- Write google colab for training [ ]
-- Write docs / Think about how to structure docs [ ]
-- Add tests to circle ci [ ]
-- Add [Diffusion LM models](https://arxiv.org/pdf/2205.14217.pdf) [ ]
-- Add more vision models [ ]
-- Add more speech models [ ]
-- Add RL model [ ]
+- [ ] Create common API for models
+- [ ] Add tests for models
+- [ ] Adapt schedulers for training
+- [ ] Write google colab for training
+- [ ] Write docs / Think about how to structure docs
+- [ ] Add tests to circle ci
+- [ ] Add [Diffusion LM models](https://arxiv.org/pdf/2205.14217.pdf)
+- [ ] Add more vision models
+- [ ] Add more speech models
+- [ ] Add RL model
