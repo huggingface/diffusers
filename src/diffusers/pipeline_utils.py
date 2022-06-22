@@ -86,7 +86,7 @@ class DiffusionPipeline(ConfigMixin):
         model_index_dict = dict(self.config)
         model_index_dict.pop("_class_name")
         model_index_dict.pop("_diffusers_version")
-        model_index_dict.pop("_module")
+        model_index_dict.pop("_module", None)
 
         for pipeline_component_name in model_index_dict.keys():
             sub_model = getattr(self, pipeline_component_name)
