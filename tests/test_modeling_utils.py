@@ -22,17 +22,17 @@ import numpy as np
 import torch
 
 from diffusers import (
-    BDDM,
-    DDIM,
-    DDPM,
-    Glide,
-    PNDM,
+    BDDMPipeline,
+    DDIMPipeline,
     DDIMScheduler,
+    DDPMPipeline,
     DDPMScheduler,
+    GlidePipeline,
     GlideSuperResUNetModel,
     GlideTextToImageUNetModel,
-    GradTTS,
-    LatentDiffusion,
+    GradTTSPipeline,
+    LatentDiffusionPipeline,
+    PNDMPipeline,
     PNDMScheduler,
     UNetGradTTSModel,
     UNetLDMModel,
@@ -583,11 +583,11 @@ class PipelineTesterMixin(unittest.TestCase):
         model = UNetModel(ch=32, ch_mult=(1, 2), num_res_blocks=2, attn_resolutions=(16,), resolution=32)
         schedular = DDPMScheduler(timesteps=10)
 
-        ddpm = DDPM(model, schedular)
+        ddpm = DDPMPipeline(model, schedular)
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             ddpm.save_pretrained(tmpdirname)
-            new_ddpm = DDPM.from_pretrained(tmpdirname)
+            new_ddpm = DDPMPipeline.from_pretrained(tmpdirname)
 
         generator = torch.manual_seed(0)
 
@@ -601,7 +601,7 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_from_pretrained_hub(self):
         model_path = "fusing/ddpm-cifar10"
 
-        ddpm = DDPM.from_pretrained(model_path)
+        ddpm = DDPMPipeline.from_pretrained(model_path)
         ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path)
 
         ddpm.noise_scheduler.num_timesteps = 10
@@ -624,7 +624,7 @@ class PipelineTesterMixin(unittest.TestCase):
         noise_scheduler = DDPMScheduler.from_config(model_id)
         noise_scheduler = noise_scheduler.set_format("pt")
 
-        ddpm = DDPM(unet=unet, noise_scheduler=noise_scheduler)
+        ddpm = DDPMPipeline(unet=unet, noise_scheduler=noise_scheduler)
         image = ddpm(generator=generator)
 
         image_slice = image[0, -1, -3:, -3:].cpu()
@@ -641,7 +641,7 @@ class PipelineTesterMixin(unittest.TestCase):
         unet = UNetModel.from_pretrained(model_id)
         noise_scheduler = DDIMScheduler(tensor_format="pt")
 
-        ddim = DDIM(unet=unet, noise_scheduler=noise_scheduler)
+        ddim = DDIMPipeline(unet=unet, noise_scheduler=noise_scheduler)
         image = ddim(generator=generator, eta=0.0)
 
         image_slice = image[0, -1, -3:, -3:].cpu()
@@ -660,7 +660,7 @@ class PipelineTesterMixin(unittest.TestCase):
         unet = UNetModel.from_pretrained(model_id)
         noise_scheduler = PNDMScheduler(tensor_format="pt")
 
-        pndm = PNDM(unet=unet, noise_scheduler=noise_scheduler)
+        pndm = PNDMPipeline(unet=unet, noise_scheduler=noise_scheduler)
         image = pndm(generator=generator)
 
         image_slice = image[0, -1, -3:, -3:].cpu()
@@ -674,7 +674,7 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     def test_ldm_text2img(self):
         model_id = "fusing/latent-diffusion-text2im-large"
-        ldm = LatentDiffusion.from_pretrained(model_id)
+        ldm = LatentDiffusionPipeline.from_pretrained(model_id)
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
@@ -689,7 +689,7 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     def test_glide_text2img(self):
         model_id = "fusing/glide-base"
-        glide = Glide.from_pretrained(model_id)
+        glide = GlidePipeline.from_pretrained(model_id)
 
         prompt = "a pencil sketch of a corgi"
         generator = torch.manual_seed(0)
@@ -704,22 +704,25 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     def test_grad_tts(self):
         model_id = "fusing/grad-tts-libri-tts"
-        grad_tts = GradTTS.from_pretrained(model_id)
+        grad_tts = GradTTSPipeline.from_pretrained(model_id)
 
         text = "Hello world, I missed you so much."
+        generator = torch.manual_seed(0)
 
         # generate mel spectograms using text
-        mel_spec = grad_tts(text)
+        mel_spec = grad_tts(text, generator=generator)
 
-        assert mel_spec.shape == (1, 256, 256, 3)
-        expected_slice = torch.tensor([0.7119, 0.7073, 0.6460, 0.7780, 0.7423, 0.6926, 0.7378, 0.7189, 0.7784])
-        assert (mel_spec.flatten() - expected_slice).abs().max() < 1e-2
+        assert mel_spec.shape == (1, 80, 143)
+        expected_slice = torch.tensor(
+            [-6.6119, -6.5963, -6.2776, -6.7496, -6.7096, -6.5131, -6.4643, -6.4817, -6.7185]
+        )
+        assert (mel_spec[0, :3, :3].flatten() - expected_slice).abs().max() < 1e-2
 
     def test_module_from_pipeline(self):
         model = DiffWave(num_res_layers=4)
         noise_scheduler = DDPMScheduler(timesteps=12)
 
-        bddm = BDDM(model, noise_scheduler)
+        bddm = BDDMPipeline(model, noise_scheduler)
 
         # check if the library name for the diffwave moduel is set to pipeline module
         self.assertTrue(bddm.config["diffwave"][0] == "pipeline_bddm")
@@ -727,6 +730,6 @@ class PipelineTesterMixin(unittest.TestCase):
         # check if we can save and load the pipeline
         with tempfile.TemporaryDirectory() as tmpdirname:
             bddm.save_pretrained(tmpdirname)
-            _ = BDDM.from_pretrained(tmpdirname)
+            _ = BDDMPipeline.from_pretrained(tmpdirname)
             # check if the same works using the DifusionPipeline class
             _ = DiffusionPipeline.from_pretrained(tmpdirname)

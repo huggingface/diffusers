@@ -11,19 +11,19 @@ from .models.unet import UNetModel
 from .models.unet_ldm import UNetLDMModel
 from .models.unet_rl import TemporalUNet
 from .pipeline_utils import DiffusionPipeline
-from .pipelines import BDDM, DDIM, DDPM, PNDM
+from .pipelines import BDDMPipeline, DDIMPipeline, DDPMPipeline, PNDMPipeline
 from .schedulers import DDIMScheduler, DDPMScheduler, GradTTSScheduler, PNDMScheduler, SchedulerMixin
 
 
 if is_transformers_available():
     from .models.unet_glide import GlideSuperResUNetModel, GlideTextToImageUNetModel, GlideUNetModel
     from .models.unet_grad_tts import UNetGradTTSModel
-    from .pipelines import Glide, LatentDiffusion
+    from .pipelines import GlidePipeline, LatentDiffusionPipeline
 else:
     from .utils.dummy_transformers_objects import *
 
 
 if is_transformers_available() and is_inflect_available() and is_unidecode_available():
-    from .pipelines import GradTTS
+    from .pipelines import GradTTSPipeline
 else:
     from .utils.dummy_transformers_and_inflect_and_unidecode_objects import *

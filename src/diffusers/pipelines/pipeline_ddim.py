@@ -21,7 +21,7 @@ import tqdm
 from ..pipeline_utils import DiffusionPipeline
 
 
-class DDIM(DiffusionPipeline):
+class DDIMPipeline(DiffusionPipeline):
     def __init__(self, unet, noise_scheduler):
         super().__init__()
         noise_scheduler = noise_scheduler.set_format("pt")

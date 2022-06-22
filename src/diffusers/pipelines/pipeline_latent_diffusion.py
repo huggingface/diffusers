@@ -860,7 +860,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         return dec, posterior
 
 
-class LatentDiffusion(DiffusionPipeline):
+class LatentDiffusionPipeline(DiffusionPipeline):
     def __init__(self, vqvae, bert, tokenizer, unet, noise_scheduler):
         super().__init__()
         noise_scheduler = noise_scheduler.set_format("pt")

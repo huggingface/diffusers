@@ -249,24 +249,24 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 image_pil.save("test.png")
 ```
 
-#### **Text to speech with GradTTS and BDDM**
+#### **Text to speech with GradTTS and BDDMPipeline**
 
 ```python
 import torch
-from diffusers import BDDM, GradTTS
+from diffusers import BDDMPipeline, GradTTS
 
 torch_device = "cuda"
 
 # load grad tts and bddm pipelines
 grad_tts = GradTTS.from_pretrained("fusing/grad-tts-libri-tts")
-bddm = BDDM.from_pretrained("fusing/diffwave-vocoder-ljspeech")
+bddm = BDDMPipeline.from_pretrained("fusing/diffwave-vocoder-ljspeech")
 
 text = "Hello world, I missed you so much."
 
 # generate mel spectograms using text
 mel_spec = grad_tts(text, torch_device=torch_device)
 
-#  generate the speech by passing mel spectograms to BDDM pipeline
+#  generate the speech by passing mel spectograms to BDDMPipeline pipeline
 generator = torch.manual_seed(42)
 audio = bddm(mel_spec, generator, torch_device=torch_device)
 

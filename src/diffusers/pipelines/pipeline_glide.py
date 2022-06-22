@@ -711,7 +711,7 @@ def _extract_into_tensor(arr, timesteps, broadcast_shape):
     return res + torch.zeros(broadcast_shape, device=timesteps.device)
 
 
-class Glide(DiffusionPipeline):
+class GlidePipeline(DiffusionPipeline):
     def __init__(
         self,
         text_unet: GlideTextToImageUNetModel,
