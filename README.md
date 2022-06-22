@@ -253,12 +253,12 @@ image_pil.save("test.png")
 
 ```python
 import torch
-from diffusers import BDDMPipeline, GradTTS
+from diffusers import BDDMPipeline, GradTTSPipeline
 
 torch_device = "cuda"
 
 # load grad tts and bddm pipelines
-grad_tts = GradTTS.from_pretrained("fusing/grad-tts-libri-tts")
+grad_tts = GradTTSPipeline.from_pretrained("fusing/grad-tts-libri-tts")
 bddm = BDDMPipeline.from_pretrained("fusing/diffwave-vocoder-ljspeech")
 
 text = "Hello world, I missed you so much."
