@@ -471,7 +471,7 @@ class GradTTSPipeline(DiffusionPipeline):
         mu_y = mu_y.transpose(1, 2)
 
         # Sample latent representation from terminal distribution N(mu_y, I)
-        z = mu_y + torch.randn(mu_y.shape, device=mu_y.device, generator=generator) / temperature
+        z = mu_y + torch.randn(mu_y.shape, generator=generator).to(mu_y.device)
 
         xt = z * y_mask
         h = 1.0 / num_inference_steps

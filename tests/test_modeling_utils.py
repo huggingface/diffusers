@@ -714,9 +714,9 @@ class PipelineTesterMixin(unittest.TestCase):
 
         assert mel_spec.shape == (1, 80, 143)
         expected_slice = torch.tensor(
-            [-6.6119, -6.5963, -6.2776, -6.7496, -6.7096, -6.5131, -6.4643, -6.4817, -6.7185]
+            [-6.7584, -6.8347, -6.3293, -6.6437, -6.7233, -6.4684, -6.1187, -6.3172, -6.6890]
         )
-        assert (mel_spec[0, :3, :3].flatten() - expected_slice).abs().max() < 1e-2
+        assert (mel_spec[0, :3, :3].cpu().flatten() - expected_slice).abs().max() < 1e-2
 
     def test_module_from_pipeline(self):
         model = DiffWave(num_res_layers=4)
