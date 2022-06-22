@@ -48,7 +48,7 @@ The class provides functionality to compute previous image according to alpha, b
     
 
 **Diffusion Pipeline**: End-to-end pipeline that includes multiple diffusion models, possible text encoders, ...
-*Examples*: GLIDE, Latent-Diffusion, Imagen, DALL-E 2
+*Examples*: Glide, Latent-Diffusion, Imagen, DALL-E 2
 
 <p align="center">
     <img src="https://user-images.githubusercontent.com/10695622/174348898-481bd7c2-5457-4830-89bc-f0907756f64c.jpeg" width="550"/>
@@ -190,7 +190,7 @@ image_pil.save("test.png")
 
 [Diffuser](https://diffusion-planning.github.io/) for planning in reinforcement learning: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1TmBmlYeKUZSkUZoJqfBmaicVTKx6nN1R?usp=sharing)
 
-### 2. `diffusers` as a collection of popular Diffusion systems (GLIDE, Dalle, ...)
+### 2. `diffusers` as a collection of popular Diffusion systems (Glide, Dalle, ...)
 
 For more examples see [pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines).
 

@@ -45,8 +45,32 @@ except importlib_metadata.PackageNotFoundError:
     _transformers_available = False
 
 
+_inflect_available = importlib.util.find_spec("inflect") is not None
+try:
+    _inflect_version = importlib_metadata.version("inflect")
+    logger.debug(f"Successfully imported inflect version {_inflect_version}")
+except importlib_metadata.PackageNotFoundError:
+    _inflect_available = False
+
+
+_unidecode_available = importlib.util.find_spec("unidecode") is not None
+try:
+    _unidecode_version = importlib_metadata.version("unidecode")
+    logger.debug(f"Successfully imported unidecode version {_unidecode_version}")
+except importlib_metadata.PackageNotFoundError:
+    _unidecode_available = False
+
+
 def is_transformers_available():
     return _transformers_available
+
+
+def is_inflect_available():
+    return _inflect_available
+
+
+def is_unidecode_available():
+    return _unidecode_available
 
 
 class RepositoryNotFoundError(HTTPError):
@@ -70,9 +94,23 @@ TRANSFORMERS_IMPORT_ERROR = """
 """
 
 
+UNIDECODE_IMPORT_ERROR = """
+{0} requires the unidecode library but it was not found in your environment. You can install it with pip:
+`pip install Unidecode`
+"""
+
+
+INFLECT_IMPORT_ERROR = """
+{0} requires the inflect library but it was not found in your environment. You can install it with pip:
+`pip install inflect`
+"""
+
+
 BACKENDS_MAPPING = OrderedDict(
     [
         ("transformers", (is_transformers_available, TRANSFORMERS_IMPORT_ERROR)),
+        ("unidecode", (is_unidecode_available, UNIDECODE_IMPORT_ERROR)),
+        ("inflect", (is_inflect_available, INFLECT_IMPORT_ERROR)),
     ]
 )
 

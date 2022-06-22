@@ -1,8 +1,8 @@
 import torch
 from torch import nn
 
-from diffusers import ClassifierFreeGuidanceScheduler, DDIMScheduler, GLIDESuperResUNetModel, GLIDETextToImageUNetModel
-from diffusers.pipelines.pipeline_glide import GLIDE, CLIPTextModel
+from diffusers import ClassifierFreeGuidanceScheduler, DDIMScheduler, GlideSuperResUNetModel, GlideTextToImageUNetModel
+from diffusers.pipelines.pipeline_glide import Glide, CLIPTextModel
 from transformers import CLIPTextConfig, GPT2Tokenizer
 
 
@@ -55,7 +55,7 @@ for layer_idx in range(config.num_hidden_layers):
 
 ### Convert the Text-to-Image UNet
 
-text2im_model = GLIDETextToImageUNetModel(
+text2im_model = GlideTextToImageUNetModel(
     in_channels=3,
     model_channels=192,
     out_channels=6,
@@ -80,7 +80,7 @@ text_scheduler = ClassifierFreeGuidanceScheduler(timesteps=1000, beta_schedule="
 # wget https://openaipublic.blob.core.windows.net/diffusion/dec-2021/upsample.pt
 ups_state_dict = torch.load("upsample.pt", map_location="cpu")
 
-superres_model = GLIDESuperResUNetModel(
+superres_model = GlideSuperResUNetModel(
     in_channels=6,
     model_channels=192,
     out_channels=6,
@@ -101,7 +101,7 @@ upscale_scheduler = DDIMScheduler(
     timesteps=1000, beta_schedule="linear", beta_start=0.0001, beta_end=0.02, tensor_format="pt"
 )
 
-glide = GLIDE(
+glide = Glide(
     text_unet=text2im_model,
     text_noise_scheduler=text_scheduler,
     text_encoder=model,
