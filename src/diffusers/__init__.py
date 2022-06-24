@@ -7,9 +7,7 @@ from .utils import is_inflect_available, is_transformers_available, is_unidecode
 __version__ = "0.0.4"
 
 from .modeling_utils import ModelMixin
-from .models.unet import UNetModel
-from .models.unet_ldm import UNetLDMModel
-from .models.unet_rl import TemporalUNet
+from .models import NCSNpp, TemporalUNet, UNetLDMModel, UNetModel
 from .pipeline_utils import DiffusionPipeline
 from .pipelines import BDDMPipeline, DDIMPipeline, DDPMPipeline, PNDMPipeline
 from .schedulers import DDIMScheduler, DDPMScheduler, GradTTSScheduler, PNDMScheduler, SchedulerMixin

@@ -5,6 +5,7 @@ import math
 import torch
 import torch.nn as nn
 
+
 try:
     import einops
     from einops.layers.torch import Rearrange
@@ -104,14 +105,14 @@ class ResidualTemporalBlock(nn.Module):
 
 class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
     def __init__(
-            self,
-            training_horizon,
-            transition_dim,
-            cond_dim,
-            predict_epsilon=False,
-            clip_denoised=True,
-            dim=32,
-            dim_mults=(1, 2, 4, 8),
+        self,
+        training_horizon,
+        transition_dim,
+        cond_dim,
+        predict_epsilon=False,
+        clip_denoised=True,
+        dim=32,
+        dim_mults=(1, 2, 4, 8),
     ):
         super().__init__()
 
@@ -211,14 +212,14 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
 
 class TemporalValue(nn.Module):
     def __init__(
-            self,
-            horizon,
-            transition_dim,
-            cond_dim,
-            dim=32,
-            time_dim=None,
-            out_dim=1,
-            dim_mults=(1, 2, 4, 8),
+        self,
+        horizon,
+        transition_dim,
+        cond_dim,
+        dim=32,
+        time_dim=None,
+        out_dim=1,
+        dim_mults=(1, 2, 4, 8),
     ):
         super().__init__()
 
