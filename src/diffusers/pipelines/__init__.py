@@ -5,6 +5,9 @@ from .pipeline_ddpm import DDPMPipeline
 from .pipeline_pndm import PNDMPipeline
 
 
+# from .pipeline_score_sde import NCSNppPipeline
+
+
 if is_transformers_available():
     from .pipeline_glide import GlidePipeline
     from .pipeline_latent_diffusion import LatentDiffusionPipeline

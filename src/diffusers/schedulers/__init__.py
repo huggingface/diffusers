@@ -21,3 +21,4 @@ from .scheduling_ddpm import DDPMScheduler
 from .scheduling_grad_tts import GradTTSScheduler
 from .scheduling_pndm import PNDMScheduler
 from .scheduling_utils import SchedulerMixin
+from .scheduling_ve_sde import VeSdeScheduler
