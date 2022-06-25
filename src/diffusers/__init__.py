@@ -9,8 +9,15 @@ __version__ = "0.0.4"
 from .modeling_utils import ModelMixin
 from .models import NCSNpp, TemporalUNet, UNetLDMModel, UNetModel
 from .pipeline_utils import DiffusionPipeline
-from .pipelines import BDDMPipeline, DDIMPipeline, DDPMPipeline, PNDMPipeline
-from .schedulers import DDIMScheduler, DDPMScheduler, GradTTSScheduler, PNDMScheduler, SchedulerMixin, VeSdeScheduler
+from .pipelines import BDDMPipeline, DDIMPipeline, DDPMPipeline, PNDMPipeline, ScoreSdeVePipeline
+from .schedulers import (
+    DDIMScheduler,
+    DDPMScheduler,
+    GradTTSScheduler,
+    PNDMScheduler,
+    SchedulerMixin,
+    ScoreSdeVeScheduler,
+)
 
 
 if is_transformers_available():

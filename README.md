@@ -226,6 +226,30 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 image_pil.save("test.png")
 ```
 
+#### **Example 1024x1024 image generation with SDE VE**
+
+See [paper](https://arxiv.org/abs/2011.13456) for more information on SDE VE.
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+import PIL.Image
+
+torch.manual_seed(32)
+
+score_sde_sv = DiffusionPipeline.from_pretrained("fusing/ffhq_ncsnpp")
+
+# Note this might take up to 3 minutes on a GPU
+image = score_sde_sv(num_inference_steps=2000)
+
+image = image.permute(0, 2, 3, 1).cpu().numpy()
+image = np.clip(image * 255, 0, 255).astype(np.uint8)
+image_pil = PIL.Image.fromarray(image[0])
+
+# save image
+image_pil.save("test.png")
+```
+
 #### **Text to Image generation with Latent Diffusion**
 
 _Note: To use latent diffusion install transformers from [this branch](https://github.com/patil-suraj/transformers/tree/ldm-bert)._
