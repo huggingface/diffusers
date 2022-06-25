@@ -15,6 +15,9 @@
 
 # helpers functions
 
+from ..modeling_utils import ModelMixin
+from ..configuration_utils import ConfigMixin
+
 
 import functools
 import math
@@ -372,16 +375,16 @@ class NIN(nn.Module):
         return y.permute(0, 3, 1, 2)
 
 
-def get_act(config):
+def get_act(nonlinearity):
     """Get activation functions from the config file."""
 
-    if config.model.nonlinearity.lower() == "elu":
+    if nonlinearity.lower() == "elu":
         return nn.ELU()
-    elif config.model.nonlinearity.lower() == "relu":
+    elif nonlinearity.lower() == "relu":
         return nn.ReLU()
-    elif config.model.nonlinearity.lower() == "lrelu":
+    elif nonlinearity.lower() == "lrelu":
         return nn.LeakyReLU(negative_slope=0.2)
-    elif config.model.nonlinearity.lower() == "swish":
+    elif nonlinearity.lower() == "swish":
         return nn.SiLU()
     else:
         raise NotImplementedError("activation function does not exist!")
@@ -710,46 +713,93 @@ class ResnetBlockBigGANpp(nn.Module):
             return (x + h) / np.sqrt(2.0)
 
 
-class NCSNpp(nn.Module):
+class NCSNpp(ModelMixin, ConfigMixin):
     """NCSN++ model"""
 
-    def __init__(self, config):
+    def __init__(
+        self,
+        centered=False,
+        image_size=1024,
+        num_channels=3,
+        attention_type="ddpm",
+        attn_resolutions=(16,),
+        ch_mult=(1, 2, 4, 8, 16, 32, 32, 32),
+        conditional=True,
+        conv_size=3,
+        dropout=0.0,
+        embedding_type="fourier",
+        fir=True,
+        fir_kernel=(1, 3, 3, 1),
+        fourier_scale=16,
+        init_scale=0.0,
+        nf=16,
+        nonlinearity="swish",
+        normalization="GroupNorm",
+        num_res_blocks=1,
+        progressive="output_skip",
+        progressive_combine="sum",
+        progressive_input="input_skip",
+        resamp_with_conv=True,
+        resblock_type="biggan",
+        scale_by_sigma=True,
+        skip_rescale=True,
+        continuous=True,
+    ):
         super().__init__()
-        self.config = config
-        self.act = act = get_act(config)
+        self.register_to_config(
+            centered=centered,
+            image_size=image_size,
+            num_channels=num_channels,
+            attention_type=attention_type,
+            attn_resolutions=attn_resolutions,
+            ch_mult=ch_mult,
+            conditional=conditional,
+            conv_size=conv_size,
+            dropout=dropout,
+            embedding_type=embedding_type,
+            fir=fir,
+            fir_kernel=fir_kernel,
+            fourier_scale=fourier_scale,
+            init_scale=init_scale,
+            nf=nf,
+            nonlinearity=nonlinearity,
+            normalization=normalization,
+            num_res_blocks=num_res_blocks,
+            progressive=progressive,
+            progressive_combine=progressive_combine,
+            progressive_input=progressive_input,
+            resamp_with_conv=resamp_with_conv,
+            resblock_type=resblock_type,
+            scale_by_sigma=scale_by_sigma,
+            skip_rescale=skip_rescale,
+            continuous=continuous,
+        )
+        self.act = act = get_act(nonlinearity)
         #    self.register_buffer('sigmas', torch.tensor(utils.get_sigmas(config)))
 
-        self.nf = nf = config.model.nf
-        ch_mult = config.model.ch_mult
-        self.num_res_blocks = num_res_blocks = config.model.num_res_blocks
-        self.attn_resolutions = attn_resolutions = config.model.attn_resolutions
-        dropout = config.model.dropout
-        resamp_with_conv = config.model.resamp_with_conv
-        self.num_resolutions = num_resolutions = len(ch_mult)
-        self.all_resolutions = all_resolutions = [config.data.image_size // (2**i) for i in range(num_resolutions)]
+        self.nf = nf
+        self.num_res_blocks = num_res_blocks
+        self.attn_resolutions = attn_resolutions
+        self.num_resolutions = len(ch_mult)
+        self.all_resolutions = all_resolutions = [image_size // (2**i) for i in range(self.num_resolutions)]
 
-        self.conditional = conditional = config.model.conditional  # noise-conditional
-        fir = config.model.fir
-        fir_kernel = config.model.fir_kernel
-        self.skip_rescale = skip_rescale = config.model.skip_rescale
-        self.resblock_type = resblock_type = config.model.resblock_type.lower()
-        self.progressive = progressive = config.model.progressive.lower()
-        self.progressive_input = progressive_input = config.model.progressive_input.lower()
-        self.embedding_type = embedding_type = config.model.embedding_type.lower()
-        init_scale = config.model.init_scale
+        self.conditional = conditional
+        self.skip_rescale = skip_rescale
+        self.resblock_type = resblock_type
+        self.progressive = progressive
+        self.progressive_input = progressive_input
+        self.embedding_type = embedding_type
         assert progressive in ["none", "output_skip", "residual"]
         assert progressive_input in ["none", "input_skip", "residual"]
         assert embedding_type in ["fourier", "positional"]
-        combine_method = config.model.progressive_combine.lower()
+        combine_method = progressive_combine.lower()
         combiner = functools.partial(Combine, method=combine_method)
 
         modules = []
         # timestep/noise_level embedding; only for continuous training
         if embedding_type == "fourier":
             # Gaussian Fourier features embeddings.
-            assert config.training.continuous, "Fourier features are only used for continuous training."
-
-            modules.append(GaussianFourierProjection(embedding_size=nf, scale=config.model.fourier_scale))
+            modules.append(GaussianFourierProjection(embedding_size=nf, scale=fourier_scale))
             embed_dim = 2 * nf
 
         elif embedding_type == "positional":
@@ -809,7 +859,7 @@ class NCSNpp(nn.Module):
 
         # Downsampling block
 
-        channels = config.data.num_channels
+        channels = num_channels
         if progressive_input != "none":
             input_pyramid_ch = channels
 
@@ -817,7 +867,7 @@ class NCSNpp(nn.Module):
         hs_c = [nf]
 
         in_ch = nf
-        for i_level in range(num_resolutions):
+        for i_level in range(self.num_resolutions):
             # Residual blocks for this resolution
             for i_block in range(num_res_blocks):
                 out_ch = nf * ch_mult[i_level]
@@ -828,7 +878,7 @@ class NCSNpp(nn.Module):
                     modules.append(AttnBlock(channels=in_ch))
                 hs_c.append(in_ch)
 
-            if i_level != num_resolutions - 1:
+            if i_level != self.num_resolutions - 1:
                 if resblock_type == "ddpm":
                     modules.append(Downsample(in_ch=in_ch))
                 else:
@@ -852,7 +902,7 @@ class NCSNpp(nn.Module):
 
         pyramid_ch = 0
         # Upsampling block
-        for i_level in reversed(range(num_resolutions)):
+        for i_level in reversed(range(self.num_resolutions)):
             for i_block in range(num_res_blocks + 1):
                 out_ch = nf * ch_mult[i_level]
                 modules.append(ResnetBlock(in_ch=in_ch + hs_c.pop(), out_ch=out_ch))
@@ -862,7 +912,7 @@ class NCSNpp(nn.Module):
                 modules.append(AttnBlock(channels=in_ch))
 
             if progressive != "none":
-                if i_level == num_resolutions - 1:
+                if i_level == self.num_resolutions - 1:
                     if progressive == "output_skip":
                         modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6))
                         modules.append(conv3x3(in_ch, channels, init_scale=init_scale))
@@ -899,7 +949,6 @@ class NCSNpp(nn.Module):
         self.all_modules = nn.ModuleList(modules)
 
     def forward(self, x, time_cond):
-        #    import ipdb; ipdb.set_trace()
         # timestep/noise_level embedding; only for continuous training
         modules = self.all_modules
         m_idx = 0
@@ -926,7 +975,7 @@ class NCSNpp(nn.Module):
         else:
             temb = None
 
-        if not self.config.data.centered:
+        if not self.config.centered:
             # If input data is in [0, 1]
             x = 2 * x - 1.0
 
@@ -1044,7 +1093,7 @@ class NCSNpp(nn.Module):
             m_idx += 1
 
         assert m_idx == len(modules)
-        if self.config.model.scale_by_sigma:
+        if self.config.scale_by_sigma:
             used_sigmas = used_sigmas.reshape((x.shape[0], *([1] * len(x.shape[1:]))))
             h = h / used_sigmas
 
