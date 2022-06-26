@@ -766,7 +766,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
             continuous=continuous,
         )
         self.act = act = get_act(nonlinearity)
-        #    self.register_buffer('sigmas', torch.tensor(utils.get_sigmas(config)))
+        self.register_buffer('sigmas', torch.tensor(np.linspace(np.log(50), np.log(0.01), 10)))
 
         self.nf = nf
         self.num_res_blocks = num_res_blocks

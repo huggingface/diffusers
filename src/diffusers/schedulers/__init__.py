@@ -22,3 +22,4 @@ from .scheduling_grad_tts import GradTTSScheduler
 from .scheduling_pndm import PNDMScheduler
 from .scheduling_utils import SchedulerMixin
 from .scheduling_sde_ve import ScoreSdeVeScheduler
+from .scheduling_sde_vp import ScoreSdeVpScheduler
