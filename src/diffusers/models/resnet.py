@@ -64,7 +64,7 @@ class Upsample(nn.Module):
                  upsampling occurs in the inner-two dimensions.
     """
 
-    def __init__(self, channels, use_conv, use_conv_transpose=False, dims=2, out_channels=None):
+    def __init__(self, channels, use_conv=False, use_conv_transpose=False, dims=2, out_channels=None):
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
