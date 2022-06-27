@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -28,6 +27,7 @@ def conv_nd(dims, *args, **kwargs):
     elif dims == 3:
         return nn.Conv3d(*args, **kwargs)
     raise ValueError(f"unsupported dimensions: {dims}")
+
 
 def conv_transpose_nd(dims, *args, **kwargs):
     """
@@ -73,7 +73,7 @@ class Upsample(nn.Module):
         self.use_conv_transpose = use_conv_transpose
 
         if use_conv_transpose:
-            self.conv = conv_transpose_nd(dims, channels, out_channels, 4, 2, 1)
+            self.conv = conv_transpose_nd(dims, channels, self.out_channels, 4, 2, 1)
         elif use_conv:
             self.conv = conv_nd(dims, self.channels, self.out_channels, 3, padding=1)
 
@@ -81,15 +81,15 @@ class Upsample(nn.Module):
         assert x.shape[1] == self.channels
         if self.use_conv_transpose:
             return self.conv(x)
-        
+
         if self.dims == 3:
             x = F.interpolate(x, (x.shape[2], x.shape[3] * 2, x.shape[4] * 2), mode="nearest")
         else:
             x = F.interpolate(x, scale_factor=2.0, mode="nearest")
-        
+
         if self.use_conv:
             x = self.conv(x)
-        
+
         return x
 
 
@@ -137,6 +137,7 @@ class UNetUpsample(nn.Module):
         if self.with_conv:
             x = self.conv(x)
         return x
+
 
 class GlideUpsample(nn.Module):
     """
@@ -199,13 +200,14 @@ class LDMUpsample(nn.Module):
 
 class GradTTSUpsample(torch.nn.Module):
     def __init__(self, dim):
-        super(Upsample, self).__init__()
+        super(GradTTSUpsample, self).__init__()
         self.conv = torch.nn.ConvTranspose2d(dim, dim, 4, 2, 1)
 
     def forward(self, x):
         return self.conv(x)
 
 
+# TODO (patil-suraj): needs test
 class Upsample1d(nn.Module):
     def __init__(self, dim):
         super().__init__()
