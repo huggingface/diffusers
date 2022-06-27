@@ -1431,11 +1431,11 @@ class LatentDiffusionPipeline(DiffusionPipeline):
             uncond_input = self.tokenizer([""], padding="max_length", max_length=77, return_tensors="pt").to(
                 torch_device
             )
-            uncond_embeddings = self.bert(uncond_input.input_ids)[0]
+            uncond_embeddings = self.bert(uncond_input.input_ids)
 
         # get text embedding
         text_input = self.tokenizer(prompt, padding="max_length", max_length=77, return_tensors="pt").to(torch_device)
-        text_embedding = self.bert(text_input.input_ids)[0]
+        text_embedding = self.bert(text_input.input_ids)
 
         num_trained_timesteps = self.noise_scheduler.config.timesteps
         inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps)
