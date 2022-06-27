@@ -113,7 +113,7 @@ class ModelTesterMixin:
             new_image = new_model(**inputs_dict)
 
         max_diff = (image - new_image).abs().sum().item()
-        self.assertLessEqual(max_diff, 1e-5, "Models give different forward passes")
+        self.assertLessEqual(max_diff, 5e-5, "Models give different forward passes")
 
     def test_determinism(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -431,11 +431,12 @@ class GlideTextToImageUNetModelTests(ModelTesterMixin, unittest.TestCase):
         emb = torch.randn((1, 16, model.config.transformer_dim)).to(torch_device)
         time_step = torch.tensor([10] * noise.shape[0], device=torch_device)
 
+        model.to(torch_device)
         with torch.no_grad():
             output = model(noise, time_step, emb)
 
         output, _ = torch.split(output, 3, dim=1)
-        output_slice = output[0, -1, -3:, -3:].flatten()
+        output_slice = output[0, -1, -3:, -3:].cpu().flatten()
         # fmt: off
         expected_output_slice = torch.tensor([2.7766, -10.3558, -14.9149, -0.9376, -14.9175, -17.7679, -5.5565, -12.9521, -12.9845])
         # fmt: on
