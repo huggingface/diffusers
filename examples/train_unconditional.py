@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import PIL.Image
 from accelerate import Accelerator
 from datasets import load_dataset
-from diffusers import DDPM, DDPMScheduler, UNetModel
+from diffusers import DDPMPipeline, DDPMScheduler, UNetModel
 from diffusers.hub_utils import init_git_repo, push_to_hub
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
@@ -71,7 +71,7 @@ def main(args):
         model, optimizer, train_dataloader, lr_scheduler
     )
 
-    ema_model = EMAModel(model, inv_gamma=1.0, power=3 / 4)
+    ema_model = EMAModel(model, inv_gamma=args.ema_inv_gamma, power=args.ema_power, max_value=args.ema_max_decay)
 
     if args.push_to_hub:
         repo = init_git_repo(args, at_init=True)
@@ -133,7 +133,7 @@ def main(args):
         # Generate a sample image for visual inspection
         if accelerator.is_main_process:
             with torch.no_grad():
-                pipeline = DDPM(
+                pipeline = DDPMPipeline(
                     unet=accelerator.unwrap_model(ema_model.averaged_model), noise_scheduler=noise_scheduler
                 )
 
@@ -172,6 +172,9 @@ if __name__ == "__main__":
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--warmup_steps", type=int, default=500)
+    parser.add_argument("--ema_inv_gamma", type=float, default=1.0)
+    parser.add_argument("--ema_power", type=float, default=3/4)
+    parser.add_argument("--ema_max_decay", type=float, default=0.999)
     parser.add_argument("--push_to_hub", action="store_true")
     parser.add_argument("--hub_token", type=str, default=None)
     parser.add_argument("--hub_model_id", type=str, default=None)
