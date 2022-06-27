@@ -16,7 +16,6 @@
 # helpers functions
 
 import functools
-import math
 import string
 
 import numpy as np
@@ -26,7 +25,7 @@ import torch.nn.functional as F
 
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
-from .embeddings import get_timestep_embedding
+from .embeddings import GaussianFourierProjection, get_timestep_embedding
 
 
 def upfirdn2d(input, kernel, up=1, down=1, pad=(0, 0)):
@@ -416,18 +415,6 @@ def variance_scaling(scale, mode, distribution, in_axis=1, out_axis=0, dtype=tor
             raise ValueError("invalid distribution for variance scaling initializer")
 
     return init
-
-
-class GaussianFourierProjection(nn.Module):
-    """Gaussian Fourier embeddings for noise levels."""
-
-    def __init__(self, embedding_size=256, scale=1.0):
-        super().__init__()
-        self.W = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)
-
-    def forward(self, x):
-        x_proj = x[:, None] * self.W[None, :] * 2 * np.pi
-        return torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1)
 
 
 class Combine(nn.Module):

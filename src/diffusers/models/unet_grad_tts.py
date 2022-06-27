@@ -182,7 +182,6 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
             s = self.spk_mlp(spk)
 
         t = get_timestep_embedding(timesteps, self.dim, scale=self.pe_scale)
-
         t = self.mlp(t)
 
         if self.n_spks < 2:

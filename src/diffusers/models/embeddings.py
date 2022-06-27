@@ -23,7 +23,6 @@ def get_timestep_embedding(
 ):
     """
     This matches the implementation in Denoising Diffusion Probabilistic Models:
-
     Create sinusoidal timestep embeddings.
 
     :param timesteps: a 1-D Tensor of N indices, one per batch element.

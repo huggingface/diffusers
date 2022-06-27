@@ -679,6 +679,7 @@ class PipelineTesterMixin(unittest.TestCase):
         assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
 
     @slow
+    @unittest.skip("Skipping for now as it takes too long")
     def test_ldm_text2img(self):
         model_id = "fusing/latent-diffusion-text2im-large"
         ldm = LatentDiffusionPipeline.from_pretrained(model_id)
@@ -691,6 +692,21 @@ class PipelineTesterMixin(unittest.TestCase):
 
         assert image.shape == (1, 3, 256, 256)
         expected_slice = torch.tensor([0.7295, 0.7358, 0.7256, 0.7435, 0.7095, 0.6884, 0.7325, 0.6921, 0.6458])
+        assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
+
+    @slow
+    def test_ldm_text2img_fast(self):
+        model_id = "fusing/latent-diffusion-text2im-large"
+        ldm = LatentDiffusionPipeline.from_pretrained(model_id)
+
+        prompt = "A painting of a squirrel eating a burger"
+        generator = torch.manual_seed(0)
+        image = ldm([prompt], generator=generator, num_inference_steps=1)
+
+        image_slice = image[0, -1, -3:, -3:].cpu()
+
+        assert image.shape == (1, 3, 256, 256)
+        expected_slice = torch.tensor([0.3163, 0.8670, 0.6465, 0.1865, 0.6291, 0.5139, 0.2824, 0.3723, 0.4344])
         assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
 
     @slow
