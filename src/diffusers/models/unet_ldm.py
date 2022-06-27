@@ -7,13 +7,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-try:
-    from einops import rearrange, repeat
-except:
-    print("Einops is not installed")
-    pass
-
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .embeddings import get_timestep_embedding
@@ -155,7 +148,23 @@ class CrossAttention(nn.Module):
 
         self.to_out = nn.Sequential(nn.Linear(inner_dim, query_dim), nn.Dropout(dropout))
 
+    def reshape_heads_to_batch_dim(self, tensor):
+        batch_size, seq_len, dim = tensor.shape
+        head_size = self.heads
+        tensor = tensor.reshape(batch_size, seq_len, head_size, dim // head_size)
+        tensor = tensor.permute(0, 2, 1, 3).reshape(batch_size * head_size, seq_len, dim // head_size)
+        return tensor
+
+    def reshape_batch_dim_to_heads(self, tensor):
+        batch_size, seq_len, dim = tensor.shape
+        head_size = self.heads
+        tensor = tensor.reshape(batch_size // head_size, head_size, seq_len, dim)
+        tensor = tensor.permute(0, 2, 1, 3).reshape(batch_size // head_size, seq_len, dim * head_size)
+        return tensor
+
     def forward(self, x, context=None, mask=None):
+        batch_size, sequence_length, dim = x.shape
+
         h = self.heads
 
         q = self.to_q(x)
@@ -163,21 +172,29 @@ class CrossAttention(nn.Module):
         k = self.to_k(context)
         v = self.to_v(context)
 
-        q, k, v = map(lambda t: rearrange(t, "b n (h d) -> (b h) n d", h=h), (q, k, v))
+        #        q, k, v = map(lambda t: rearrange(t, "b n (h d) -> (b h) n d", h=h), (q, k, v))
+
+        q = self.reshape_heads_to_batch_dim(q)
+        k = self.reshape_heads_to_batch_dim(k)
+        v = self.reshape_heads_to_batch_dim(v)
 
         sim = torch.einsum("b i d, b j d -> b i j", q, k) * self.scale
 
         if exists(mask):
-            mask = rearrange(mask, "b ... -> b (...)")
+            #            mask = rearrange(mask, "b ... -> b (...)")
+            maks = mask.reshape(batch_size, -1)
             max_neg_value = -torch.finfo(sim.dtype).max
-            mask = repeat(mask, "b j -> (b h) () j", h=h)
+            #            mask = repeat(mask, "b j -> (b h) () j", h=h)
+            mask = mask[:, None, :].repeat(h, 1, 1)
+            #        x = rearrange(x, "b (h w) c -> b c h w", h=h, w=w)
             sim.masked_fill_(~mask, max_neg_value)
 
         # attention, what we cannot get enough of
         attn = sim.softmax(dim=-1)
 
         out = torch.einsum("b i j, b j d -> b i d", attn, v)
-        out = rearrange(out, "(b h) n d -> b n (h d)", h=h)
+        out = self.reshape_batch_dim_to_heads(out)
+        #        out = rearrange(out, "(b h) n d -> b n (h d)", h=h)
         return self.to_out(out)
 
 
@@ -205,11 +222,8 @@ class BasicTransformerBlock(nn.Module):
 
 class SpatialTransformer(nn.Module):
     """
-    Transformer block for image-like data.
-    First, project the input (aka embedding)
-    and reshape to b, t, d.
-    Then apply standard transformer action.
-    Finally, reshape to image
+    Transformer block for image-like data. First, project the input (aka embedding) and reshape to b, t, d. Then apply
+    standard transformer action. Finally, reshape to image
     """
 
     def __init__(self, in_channels, n_heads, d_head, depth=1, dropout=0.0, context_dim=None):
@@ -235,10 +249,10 @@ class SpatialTransformer(nn.Module):
         x_in = x
         x = self.norm(x)
         x = self.proj_in(x)
-        x = rearrange(x, "b c h w -> b (h w) c")
+        x = x.permute(0, 2, 3, 1).reshape(b, h * w, c)
         for block in self.transformer_blocks:
             x = block(x, context=context)
-        x = rearrange(x, "b (h w) c -> b c h w", h=h, w=w)
+        x = x.reshape(b, h, w, c).permute(0, 3, 1, 2)
         x = self.proj_out(x)
         return x + x_in
 
@@ -314,8 +328,7 @@ def normalization(channels, swish=0.0):
     """
     Make a standard normalization layer, with an optional swish activation.
 
-    :param channels: number of input channels.
-    :return: an nn.Module for normalization.
+    :param channels: number of input channels. :return: an nn.Module for normalization.
     """
     return GroupNorm32(num_channels=channels, num_groups=32, swish=swish)
 
@@ -365,8 +378,7 @@ class TimestepBlock(nn.Module):
 
 class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
     """
-    A sequential module that passes timestep embeddings to the children that
-    support it as an extra input.
+    A sequential module that passes timestep embeddings to the children that support it as an extra input.
     """
 
     def forward(self, x, emb, context=None):
@@ -382,18 +394,14 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
 
 class ResBlock(TimestepBlock):
     """
-    A residual block that can optionally change the number of channels.
-    :param channels: the number of input channels.
-    :param emb_channels: the number of timestep embedding channels.
-    :param dropout: the rate of dropout.
-    :param out_channels: if specified, the number of out channels.
-    :param use_conv: if True and out_channels is specified, use a spatial
-        convolution instead of a smaller 1x1 convolution to change the
-        channels in the skip connection.
-    :param dims: determines if the signal is 1D, 2D, or 3D.
-    :param use_checkpoint: if True, use gradient checkpointing on this module.
-    :param up: if True, use this block for upsampling.
-    :param down: if True, use this block for downsampling.
+    A residual block that can optionally change the number of channels. :param channels: the number of input channels.
+    :param emb_channels: the number of timestep embedding channels. :param dropout: the rate of dropout. :param
+    out_channels: if specified, the number of out channels. :param use_conv: if True and out_channels is specified, use
+    a spatial
+        convolution instead of a smaller 1x1 convolution to change the channels in the skip connection.
+    :param dims: determines if the signal is 1D, 2D, or 3D. :param use_checkpoint: if True, use gradient checkpointing
+    on this module. :param up: if True, use this block for upsampling. :param down: if True, use this block for
+    downsampling.
     """
 
     def __init__(
@@ -481,8 +489,8 @@ class ResBlock(TimestepBlock):
 
 class AttentionBlock(nn.Module):
     """
-    An attention block that allows spatial positions to attend to each other.
-    Originally ported from here, but adapted to the N-d case.
+    An attention block that allows spatial positions to attend to each other. Originally ported from here, but adapted
+    to the N-d case.
     https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py#L66.
     """
 
@@ -531,9 +539,8 @@ class QKVAttention(nn.Module):
 
     def forward(self, qkv):
         """
-        Apply QKV attention.
-        :param qkv: an [N x (3 * H * C) x T] tensor of Qs, Ks, and Vs.
-        :return: an [N x (H * C) x T] tensor after attention.
+        Apply QKV attention. :param qkv: an [N x (3 * H * C) x T] tensor of Qs, Ks, and Vs. :return: an [N x (H * C) x
+        T] tensor after attention.
         """
         bs, width, length = qkv.shape
         assert width % (3 * self.n_heads) == 0
@@ -556,13 +563,9 @@ class QKVAttention(nn.Module):
 
 def count_flops_attn(model, _x, y):
     """
-    A counter for the `thop` package to count the operations in an
-    attention operation.
-    Meant to be used like:
+    A counter for the `thop` package to count the operations in an attention operation. Meant to be used like:
         macs, params = thop.profile(
-            model,
-            inputs=(inputs, timestamps),
-            custom_ops={QKVAttention: QKVAttention.count_flops},
+            model, inputs=(inputs, timestamps), custom_ops={QKVAttention: QKVAttention.count_flops},
         )
     """
     b, c, *spatial = y[0].shape
@@ -585,9 +588,8 @@ class QKVAttentionLegacy(nn.Module):
 
     def forward(self, qkv):
         """
-        Apply QKV attention.
-        :param qkv: an [N x (H * 3 * C) x T] tensor of Qs, Ks, and Vs.
-        :return: an [N x (H * C) x T] tensor after attention.
+        Apply QKV attention. :param qkv: an [N x (H * 3 * C) x T] tensor of Qs, Ks, and Vs. :return: an [N x (H * C) x
+        T] tensor after attention.
         """
         bs, width, length = qkv.shape
         assert width % (3 * self.n_heads) == 0
@@ -606,31 +608,25 @@ class QKVAttentionLegacy(nn.Module):
 
 class UNetLDMModel(ModelMixin, ConfigMixin):
     """
-    The full UNet model with attention and timestep embedding.
-    :param in_channels: channels in the input Tensor.
-    :param model_channels: base channel count for the model.
-    :param out_channels: channels in the output Tensor.
-    :param num_res_blocks: number of residual blocks per downsample.
-    :param attention_resolutions: a collection of downsample rates at which
-        attention will take place. May be a set, list, or tuple.
-        For example, if this contains 4, then at 4x downsampling, attention
-        will be used.
-    :param dropout: the dropout probability.
-    :param channel_mult: channel multiplier for each level of the UNet.
-    :param conv_resample: if True, use learned convolutions for upsampling and
+    The full UNet model with attention and timestep embedding. :param in_channels: channels in the input Tensor. :param
+    model_channels: base channel count for the model. :param out_channels: channels in the output Tensor. :param
+    num_res_blocks: number of residual blocks per downsample. :param attention_resolutions: a collection of downsample
+    rates at which
+        attention will take place. May be a set, list, or tuple. For example, if this contains 4, then at 4x
+        downsampling, attention will be used.
+    :param dropout: the dropout probability. :param channel_mult: channel multiplier for each level of the UNet. :param
+    conv_resample: if True, use learned convolutions for upsampling and
         downsampling.
-    :param dims: determines if the signal is 1D, 2D, or 3D.
-    :param num_classes: if specified (as an int), then this model will be
+    :param dims: determines if the signal is 1D, 2D, or 3D. :param num_classes: if specified (as an int), then this
+    model will be
         class-conditional with `num_classes` classes.
-    :param use_checkpoint: use gradient checkpointing to reduce memory usage.
-    :param num_heads: the number of attention heads in each attention layer.
-    :param num_heads_channels: if specified, ignore num_heads and instead use
+    :param use_checkpoint: use gradient checkpointing to reduce memory usage. :param num_heads: the number of attention
+    heads in each attention layer. :param num_heads_channels: if specified, ignore num_heads and instead use
                                a fixed channel width per attention head.
     :param num_heads_upsample: works with num_heads to set a different number
                                of heads for upsampling. Deprecated.
-    :param use_scale_shift_norm: use a FiLM-like conditioning mechanism.
-    :param resblock_updown: use residual blocks for up/downsampling.
-    :param use_new_attention_order: use a different attention pattern for potentially
+    :param use_scale_shift_norm: use a FiLM-like conditioning mechanism. :param resblock_updown: use residual blocks
+    for up/downsampling. :param use_new_attention_order: use a different attention pattern for potentially
                                     increased efficiency.
     """
 
@@ -933,12 +929,9 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
 
     def forward(self, x, timesteps=None, context=None, y=None, **kwargs):
         """
-        Apply the model to an input batch.
-        :param x: an [N x C x ...] Tensor of inputs.
-        :param timesteps: a 1-D batch of timesteps.
-        :param context: conditioning plugged in via crossattn
-        :param y: an [N] Tensor of labels, if class-conditional.
-        :return: an [N x C x ...] Tensor of outputs.
+        Apply the model to an input batch. :param x: an [N x C x ...] Tensor of inputs. :param timesteps: a 1-D batch
+        of timesteps. :param context: conditioning plugged in via crossattn :param y: an [N] Tensor of labels, if
+        class-conditional. :return: an [N x C x ...] Tensor of outputs.
         """
         assert (y is not None) == (
             self.num_classes is not None
@@ -970,8 +963,7 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
 
 class EncoderUNetModel(nn.Module):
     """
-    The half UNet model with attention and timestep embedding.
-    For usage, see UNet.
+    The half UNet model with attention and timestep embedding. For usage, see UNet.
     """
 
     def __init__(
@@ -1157,10 +1149,8 @@ class EncoderUNetModel(nn.Module):
 
     def forward(self, x, timesteps):
         """
-        Apply the model to an input batch.
-        :param x: an [N x C x ...] Tensor of inputs.
-        :param timesteps: a 1-D batch of timesteps.
-        :return: an [N x K] Tensor of outputs.
+        Apply the model to an input batch. :param x: an [N x C x ...] Tensor of inputs. :param timesteps: a 1-D batch
+        of timesteps. :return: an [N x K] Tensor of outputs.
         """
         emb = self.time_embed(
             get_timestep_embedding(timesteps, self.model_channels, flip_sin_to_cos=True, downscale_freq_shift=0)

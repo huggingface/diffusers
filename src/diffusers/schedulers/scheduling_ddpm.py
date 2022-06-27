@@ -25,13 +25,12 @@ from .scheduling_utils import SchedulerMixin
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     """
-    Create a beta schedule that discretizes the given alpha_t_bar function,
-    which defines the cumulative product of (1-beta) over time from t = [0,1].
+    Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
+    (1-beta) over time from t = [0,1].
 
-    :param num_diffusion_timesteps: the number of betas to produce.
-    :param alpha_bar: a lambda that takes an argument t from 0 to 1 and
-                      produces the cumulative product of (1-beta) up to that
-                      part of the diffusion process.
+    :param num_diffusion_timesteps: the number of betas to produce. :param alpha_bar: a lambda that takes an argument t
+    from 0 to 1 and
+                      produces the cumulative product of (1-beta) up to that part of the diffusion process.
     :param max_beta: the maximum beta to use; use values lower than 1 to
                      prevent singularities.
     """
@@ -144,16 +143,12 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         return pred_prev_sample
 
     def training_step(self, original_samples: torch.Tensor, noise: torch.Tensor, timesteps: torch.Tensor):
-        if timesteps.dim() != 1:
-            raise ValueError("`timesteps` must be a 1D tensor")
-
-        device = original_samples.device
-        batch_size = original_samples.shape[0]
-        timesteps = timesteps.reshape(batch_size, 1, 1, 1)
-
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
+        sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
         sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
-        noisy_samples = sqrt_alpha_prod.to(device) * original_samples + sqrt_one_minus_alpha_prod.to(device) * noise
+        sqrt_one_minus_alpha_prod = self.match_shape(sqrt_one_minus_alpha_prod, original_samples)
+
+        noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
         return noisy_samples
 
     def __len__(self):

@@ -5,16 +5,16 @@ import math
 import torch
 import torch.nn as nn
 
-
-try:
-    import einops
-    from einops.layers.torch import Rearrange
-except:
-    print("Einops is not installed")
-    pass
-
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
+
+
+# try:
+#    import einops
+#    from einops.layers.torch import Rearrange
+# except:
+#    print("Einops is not installed")
+#    pass
 
 
 class SinusoidalPosEmb(nn.Module):
@@ -50,6 +50,21 @@ class Upsample1d(nn.Module):
         return self.conv(x)
 
 
+class RearrangeDim(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, tensor):
+        if len(tensor.shape) == 2:
+            return tensor[:, :, None]
+        if len(tensor.shape) == 3:
+            return tensor[:, :, None, :]
+        elif len(tensor.shape) == 4:
+            return tensor[:, :, 0, :]
+        else:
+            raise ValueError(f"`len(tensor)`: {len(tensor)} has to be 2, 3 or 4.")
+
+
 class Conv1dBlock(nn.Module):
     """
     Conv1d --> GroupNorm --> Mish
@@ -60,9 +75,11 @@ class Conv1dBlock(nn.Module):
 
         self.block = nn.Sequential(
             nn.Conv1d(inp_channels, out_channels, kernel_size, padding=kernel_size // 2),
-            Rearrange("batch channels horizon -> batch channels 1 horizon"),
+            RearrangeDim(),
+            #            Rearrange("batch channels horizon -> batch channels 1 horizon"),
             nn.GroupNorm(n_groups, out_channels),
-            Rearrange("batch channels 1 horizon -> batch channels horizon"),
+            RearrangeDim(),
+            #            Rearrange("batch channels 1 horizon -> batch channels horizon"),
             nn.Mish(),
         )
 
@@ -84,7 +101,8 @@ class ResidualTemporalBlock(nn.Module):
         self.time_mlp = nn.Sequential(
             nn.Mish(),
             nn.Linear(embed_dim, out_channels),
-            Rearrange("batch t -> batch t 1"),
+            RearrangeDim(),
+            #            Rearrange("batch t -> batch t 1"),
         )
 
         self.residual_conv = (
@@ -93,10 +111,8 @@ class ResidualTemporalBlock(nn.Module):
 
     def forward(self, x, t):
         """
-        x : [ batch_size x inp_channels x horizon ]
-        t : [ batch_size x embed_dim ]
-        returns:
-        out : [ batch_size x out_channels x horizon ]
+        x : [ batch_size x inp_channels x horizon ] t : [ batch_size x embed_dim ] returns: out : [ batch_size x
+        out_channels x horizon ]
         """
         out = self.blocks[0](x) + self.time_mlp(t)
         out = self.blocks[1](out)
@@ -184,7 +200,8 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
         x : [ batch x horizon x transition ]
         """
 
-        x = einops.rearrange(x, "b h t -> b t h")
+        #        x = einops.rearrange(x, "b h t -> b t h")
+        x = x.permute(0, 2, 1)
 
         t = self.time_mlp(time)
         h = []
@@ -206,7 +223,8 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
 
         x = self.final_conv(x)
 
-        x = einops.rearrange(x, "b t h -> b h t")
+        #        x = einops.rearrange(x, "b t h -> b h t")
+        x = x.permute(0, 2, 1)
         return x
 
 
@@ -263,7 +281,8 @@ class TemporalValue(nn.Module):
         x : [ batch x horizon x transition ]
         """
 
-        x = einops.rearrange(x, "b h t -> b t h")
+        #        x = einops.rearrange(x, "b h t -> b t h")
+        x = x.permute(0, 2, 1)
 
         t = self.time_mlp(time)
 

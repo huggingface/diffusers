@@ -233,8 +233,8 @@ def disable_propagation() -> None:
 
 def enable_propagation() -> None:
     """
-    Enable propagation of the library log outputs. Please disable the HuggingFace Diffusers' default handler to
-    prevent double logging if the root logger has been configured.
+    Enable propagation of the library log outputs. Please disable the HuggingFace Diffusers' default handler to prevent
+    double logging if the root logger has been configured.
     """
 
     _configure_library_root_logger()

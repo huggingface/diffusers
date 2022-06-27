@@ -29,8 +29,7 @@ from ..pipeline_utils import DiffusionPipeline
 def calc_diffusion_step_embedding(diffusion_steps, diffusion_step_embed_dim_in):
     """
     Embed a diffusion step $t$ into a higher dimensional space
-        E.g. the embedding vector in the 128-dimensional space is
-        [sin(t * 10^(0*4/63)), ... , sin(t * 10^(63*4/63)),
+        E.g. the embedding vector in the 128-dimensional space is [sin(t * 10^(0*4/63)), ... , sin(t * 10^(63*4/63)),
          cos(t * 10^(0*4/63)), ... , cos(t * 10^(63*4/63))]
 
     Parameters:
@@ -53,8 +52,7 @@ def calc_diffusion_step_embedding(diffusion_steps, diffusion_step_embed_dim_in):
 
 
 """
-Below scripts were borrowed from
-https://github.com/philsyn/DiffWave-Vocoder/blob/master/WaveNet.py
+Below scripts were borrowed from https://github.com/philsyn/DiffWave-Vocoder/blob/master/WaveNet.py
 """
 
 

@@ -31,14 +31,14 @@ class UNetGradTTSModel(metaclass=DummyObject):
         requires_backends(self, ["transformers"])
 
 
-class Glide(metaclass=DummyObject):
+class GlidePipeline(metaclass=DummyObject):
     _backends = ["transformers"]
 
     def __init__(self, *args, **kwargs):
         requires_backends(self, ["transformers"])
 
 
-class LatentDiffusion(metaclass=DummyObject):
+class LatentDiffusionPipeline(metaclass=DummyObject):
     _backends = ["transformers"]
 
     def __init__(self, *args, **kwargs):

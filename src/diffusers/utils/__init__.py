@@ -89,20 +89,20 @@ class RevisionNotFoundError(HTTPError):
 
 
 TRANSFORMERS_IMPORT_ERROR = """
-{0} requires the transformers library but it was not found in your environment. You can install it with pip:
-`pip install transformers`
+{0} requires the transformers library but it was not found in your environment. You can install it with pip: `pip
+install transformers`
 """
 
 
 UNIDECODE_IMPORT_ERROR = """
-{0} requires the unidecode library but it was not found in your environment. You can install it with pip:
-`pip install Unidecode`
+{0} requires the unidecode library but it was not found in your environment. You can install it with pip: `pip install
+Unidecode`
 """
 
 
 INFLECT_IMPORT_ERROR = """
-{0} requires the inflect library but it was not found in your environment. You can install it with pip:
-`pip install inflect`
+{0} requires the inflect library but it was not found in your environment. You can install it with pip: `pip install
+inflect`
 """
 
 

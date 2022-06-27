@@ -1,4 +1,4 @@
-""" from https://github.com/jaywalnut310/glow-tts """
+""" from https://github.com/jaywalnut310/glow-tts"""
 
 import math
 
