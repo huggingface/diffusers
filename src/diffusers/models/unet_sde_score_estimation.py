@@ -766,7 +766,6 @@ class NCSNpp(ModelMixin, ConfigMixin):
             continuous=continuous,
         )
         self.act = act = get_act(nonlinearity)
-        #    self.register_buffer('sigmas', torch.tensor(utils.get_sigmas(config)))
 
         self.nf = nf
         self.num_res_blocks = num_res_blocks
@@ -939,7 +938,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
 
         self.all_modules = nn.ModuleList(modules)
 
-    def forward(self, x, time_cond):
+    def forward(self, x, time_cond, sigmas=None):
         # timestep/noise_level embedding; only for continuous training
         modules = self.all_modules
         m_idx = 0
@@ -952,7 +951,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
         elif self.embedding_type == "positional":
             # Sinusoidal positional embeddings.
             timesteps = time_cond
-            used_sigmas = self.sigmas[time_cond.long()]
+            used_sigmas = sigmas
             temb = get_timestep_embedding(timesteps, self.nf)
 
         else:

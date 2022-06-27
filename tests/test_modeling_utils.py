@@ -33,8 +33,13 @@ from diffusers import (
     GradTTSPipeline,
     GradTTSScheduler,
     LatentDiffusionPipeline,
+    NCSNpp,
     PNDMPipeline,
     PNDMScheduler,
+    ScoreSdeVePipeline,
+    ScoreSdeVeScheduler,
+    ScoreSdeVpPipeline,
+    ScoreSdeVpScheduler,
     UNetGradTTSModel,
     UNetLDMModel,
     UNetModel,
@@ -720,6 +725,40 @@ class PipelineTesterMixin(unittest.TestCase):
             [-6.7584, -6.8347, -6.3293, -6.6437, -6.7233, -6.4684, -6.1187, -6.3172, -6.6890]
         )
         assert (mel_spec[0, :3, :3].cpu().flatten() - expected_slice).abs().max() < 1e-2
+
+    @slow
+    def test_score_sde_ve_pipeline(self):
+        torch.manual_seed(0)
+
+        model = NCSNpp.from_pretrained("fusing/ffhq_ncsnpp")
+        scheduler = ScoreSdeVeScheduler.from_config("fusing/ffhq_ncsnpp")
+
+        sde_ve = ScoreSdeVePipeline(model=model, scheduler=scheduler)
+
+        image = sde_ve(num_inference_steps=2)
+
+        expected_image_sum = 3382810112.0
+        expected_image_mean = 1075.366455078125
+
+        assert (image.abs().sum() - expected_image_sum).abs().cpu().item() < 1e-2
+        assert (image.abs().mean() - expected_image_mean).abs().cpu().item() < 1e-4
+
+    @slow
+    def test_score_sde_vp_pipeline(self):
+
+        model = NCSNpp.from_pretrained("fusing/cifar10-ddpmpp-vp")
+        scheduler = ScoreSdeVpScheduler.from_config("fusing/cifar10-ddpmpp-vp")
+
+        sde_vp = ScoreSdeVpPipeline(model=model, scheduler=scheduler)
+
+        torch.manual_seed(0)
+        image = sde_vp(num_inference_steps=10)
+
+        expected_image_sum = 4183.2012
+        expected_image_mean = 1.3617
+
+        assert (image.abs().sum() - expected_image_sum).abs().cpu().item() < 1e-2
+        assert (image.abs().mean() - expected_image_mean).abs().cpu().item() < 1e-4
 
     def test_module_from_pipeline(self):
         model = DiffWave(num_res_layers=4)
