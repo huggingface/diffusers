@@ -11,15 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import torch
 import math
+
 import numpy as np
-
+import torch
 from torch import nn
-import torch.nn.functional as F
 
 
-def get_timestep_embedding(timesteps, embedding_dim, flip_sin_to_cos=False, downscale_freq_shift=1, max_period=10000):
+def get_timestep_embedding(
+    timesteps, embedding_dim, flip_sin_to_cos=False, downscale_freq_shift=1, scale=1, max_period=10000
+):
     """
     This matches the implementation in Denoising Diffusion Probabilistic Models:
 
@@ -31,18 +32,22 @@ def get_timestep_embedding(timesteps, embedding_dim, flip_sin_to_cos=False, down
     :param max_period: controls the minimum frequency of the embeddings.
     :return: an [N x dim] Tensor of positional embeddings.
     """
-    assert len(timesteps.shape) == 1
+    assert len(timesteps.shape) == 1, "Timesteps should be a 1d-array"
 
     half_dim = embedding_dim // 2
-    emb = torch.exp(-math.log(max_period) * torch.arange(half_dim, dtype=torch.float32) / (embedding_dim // 2 - downscale_freq_shift))
 
-    emb = emb.to(device=timesteps.device)
+    emb_coeff = -math.log(max_period) / (half_dim - downscale_freq_shift)
+    emb = torch.arange(half_dim, dtype=torch.float32, device=timesteps.device)
+    emb = torch.exp(emb * emb_coeff)
     emb = timesteps[:, None].float() * emb[None, :]
 
-    # concat sine and cosine embeddings
-    emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1)
+    # scale embeddings
+    emb = scale * emb
 
-    # flip sine and cosine embeddings 
+    # concat sine and cosine embeddings
+    emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=-1)
+
+    # flip sine and cosine embeddings
     if flip_sin_to_cos:
         emb = torch.cat([emb[:, half_dim:], emb[:, :half_dim]], dim=-1)
 
@@ -50,96 +55,6 @@ def get_timestep_embedding(timesteps, embedding_dim, flip_sin_to_cos=False, down
     if embedding_dim % 2 == 1:
         emb = torch.nn.functional.pad(emb, (0, 1, 0, 0))
     return emb
-
-
-#def get_timestep_embedding(timesteps, embedding_dim):
-#    """
-#    This matches the implementation in Denoising Diffusion Probabilistic Models:
-#    From Fairseq.
-#    Build sinusoidal embeddings.
-#    This matches the implementation in tensor2tensor, but differs slightly
-#    from the description in Section 3.5 of "Attention Is All You Need".
-#    """
-#    assert len(timesteps.shape) == 1
-#
-#    half_dim = embedding_dim // 2
-#    emb = math.log(10000) / (half_dim - 1)
-#    emb = torch.exp(torch.arange(half_dim, dtype=torch.float32) * -emb)
-#    emb = emb.to(device=timesteps.device)
-#    emb = timesteps.float()[:, None] * emb[None, :]
-#    emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1)
-#    if embedding_dim % 2 == 1:  # zero pad
-#        emb = torch.nn.functional.pad(emb, (0, 1, 0, 0))
-
-
-#def timestep_embedding(timesteps, dim, max_period=10000):
-#    """
-#    Create sinusoidal timestep embeddings.
-#
-#    :param timesteps: a 1-D Tensor of N indices, one per batch element.
-#                      These may be fractional.
-#    :param dim: the dimension of the output.
-#    :param max_period: controls the minimum frequency of the embeddings.
-#    :return: an [N x dim] Tensor of positional embeddings.
-#    """
-#    half = dim // 2
-#    freqs = torch.exp(-math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half).to(
-#        device=timesteps.device
-#    )
-#    args = timesteps[:, None].float() * freqs[None, :]
-#    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
-#    if dim % 2:
-#        embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
-#    return embedding
-
-
-#def a_get_timestep_embedding(timesteps, embedding_dim, max_positions=10000):
-#    assert len(timesteps.shape) == 1  # and timesteps.dtype == tf.int32
-#    half_dim = embedding_dim // 2
-    # magic number 10000 is from transformers
-#    emb = math.log(max_positions) / (half_dim - 1)
-    # emb = math.log(2.) / (half_dim - 1)
-#    emb = torch.exp(torch.arange(half_dim, dtype=torch.float32, device=timesteps.device) * -emb)
-    # emb = tf.range(num_embeddings, dtype=jnp.float32)[:, None] * emb[None, :]
-    # emb = tf.cast(timesteps, dtype=jnp.float32)[:, None] * emb[None, :]
-#    emb = timesteps.float()[:, None] * emb[None, :]
-#    emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1)
-#    if embedding_dim % 2 == 1:  # zero pad
-#        emb = F.pad(emb, (0, 1), mode="constant")
-#    assert emb.shape == (timesteps.shape[0], embedding_dim)
-#    return emb
-
-
-# unet_grad_tts.py
-class SinusoidalPosEmb(torch.nn.Module):
-    def __init__(self, dim):
-        super(SinusoidalPosEmb, self).__init__()
-        self.dim = dim
-
-    def forward(self, x, scale=1000):
-        device = x.device
-        half_dim = self.dim // 2
-        emb = math.log(10000) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, device=device).float() * -emb)
-        emb = scale * x.unsqueeze(1) * emb.unsqueeze(0)
-        emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
-        return emb
-
-
-# unet_rl.py
-class SinusoidalPosEmb(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.dim = dim
-
-    def forward(self, x):
-        device = x.device
-        half_dim = self.dim // 2
-        emb = math.log(10000) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, device=device) * -emb)
-        emb = x[:, None] * emb[None, :]
-        emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
-        return emb
 
 
 # unet_sde_score_estimation.py
@@ -153,3 +68,19 @@ class GaussianFourierProjection(nn.Module):
     def forward(self, x):
         x_proj = x[:, None] * self.W[None, :] * 2 * np.pi
         return torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1)
+
+
+# unet_rl.py - TODO(need test)
+class SinusoidalPosEmb(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, x):
+        device = x.device
+        half_dim = self.dim // 2
+        emb = math.log(10000) / (half_dim - 1)
+        emb = torch.exp(torch.arange(half_dim, device=device) * -emb)
+        emb = x[:, None] * emb[None, :]
+        emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
+        return emb
