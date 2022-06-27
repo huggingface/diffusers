@@ -34,6 +34,7 @@ def get_timestep_embedding(timesteps, embedding_dim):
         emb = torch.nn.functional.pad(emb, (0, 1, 0, 0))
     return emb
 
+
 # unet_glide.py
 def timestep_embedding(timesteps, dim, max_period=10000):
     """
