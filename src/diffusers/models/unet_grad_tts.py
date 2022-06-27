@@ -198,6 +198,7 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
         if not isinstance(spk, type(None)):
             s = self.spk_mlp(spk)
 
+        
         t = self.time_pos_emb(timesteps, scale=self.pe_scale)
         t = self.mlp(t)
 
