@@ -5,6 +5,7 @@ from .pipeline_ddpm import DDPMPipeline
 from .pipeline_pndm import PNDMPipeline
 from .pipeline_score_sde_ve import ScoreSdeVePipeline
 from .pipeline_score_sde_vp import ScoreSdeVpPipeline
+from .pipeline_ext_analytic_dpm import SNDPMPipeline, NPRDPMPipeline
 
 
 # from .pipeline_score_sde import ScoreSdeVePipeline
