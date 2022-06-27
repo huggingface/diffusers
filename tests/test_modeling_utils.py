@@ -21,7 +21,7 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import (
+from diffusers import (  # GradTTSPipeline,
     BDDMPipeline,
     DDIMPipeline,
     DDIMScheduler,
@@ -30,7 +30,6 @@ from diffusers import (
     GlidePipeline,
     GlideSuperResUNetModel,
     GlideTextToImageUNetModel,
-    GradTTSPipeline,
     GradTTSScheduler,
     LatentDiffusionPipeline,
     NCSNpp,
@@ -507,6 +506,28 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         output_slice = output[0, -1, -3:, -3:].flatten()
         # fmt: off
         expected_output_slice = torch.tensor([-13.3258, -20.1100, -15.9873, -17.6617, -23.0596, -17.9419, -13.3675, -16.1889, -12.3800])
+        # fmt: on
+
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+
+    def test_output_pretrained_spatial_transformer(self):
+        model = UNetLDMModel.from_pretrained("fusing/unet-ldm-dummy-spatial")
+        model.eval()
+
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        noise = torch.randn(1, model.config.in_channels, model.config.image_size, model.config.image_size)
+        context = torch.ones((1, 16, 64), dtype=torch.float32)
+        time_step = torch.tensor([10] * noise.shape[0])
+
+        with torch.no_grad():
+            output = model(noise, time_step, context=context)
+
+        output_slice = output[0, -1, -3:, -3:].flatten()
+        # fmt: off
+        expected_output_slice = torch.tensor([61.3445, 56.9005, 29.4339, 59.5497, 60.7375, 34.1719, 48.1951, 42.6569, 25.0890])
         # fmt: on
 
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
