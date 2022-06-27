@@ -1,5 +1,3 @@
-import math
-
 import torch
 
 
@@ -11,6 +9,7 @@ except:
 
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
+from .embeddings import get_timestep_embedding
 
 
 class Mish(torch.nn.Module):
@@ -107,21 +106,6 @@ class Residual(torch.nn.Module):
         return output
 
 
-class SinusoidalPosEmb(torch.nn.Module):
-    def __init__(self, dim):
-        super(SinusoidalPosEmb, self).__init__()
-        self.dim = dim
-
-    def forward(self, x, scale=1000):
-        device = x.device
-        half_dim = self.dim // 2
-        emb = math.log(10000) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, device=device).float() * -emb)
-        emb = scale * x.unsqueeze(1) * emb.unsqueeze(0)
-        emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
-        return emb
-
-
 class UNetGradTTSModel(ModelMixin, ConfigMixin):
     def __init__(self, dim, dim_mults=(1, 2, 4), groups=8, n_spks=None, spk_emb_dim=64, n_feats=80, pe_scale=1000):
         super(UNetGradTTSModel, self).__init__()
@@ -149,7 +133,6 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
                 torch.nn.Linear(spk_emb_dim, spk_emb_dim * 4), Mish(), torch.nn.Linear(spk_emb_dim * 4, n_feats)
             )
 
-        self.time_pos_emb = SinusoidalPosEmb(dim)
         self.mlp = torch.nn.Sequential(torch.nn.Linear(dim, dim * 4), Mish(), torch.nn.Linear(dim * 4, dim))
 
         dims = [2 + (1 if n_spks > 1 else 0), *map(lambda m: dim * m, dim_mults)]
@@ -198,7 +181,7 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
         if not isinstance(spk, type(None)):
             s = self.spk_mlp(spk)
 
-        t = self.time_pos_emb(timesteps, scale=self.pe_scale)
+        t = get_timestep_embedding(timesteps, self.dim, scale=self.pe_scale)
         t = self.mlp(t)
 
         if self.n_spks < 2:
