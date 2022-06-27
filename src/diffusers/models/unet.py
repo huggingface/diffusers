@@ -31,7 +31,7 @@ from tqdm import tqdm
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .embeddings import get_timestep_embedding
-from .resnet import Upsample
+from .resnet import Downsample, Upsample
 
 
 def nonlinearity(x):
@@ -41,24 +41,6 @@ def nonlinearity(x):
 
 def Normalize(in_channels):
     return torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
-
-
-class Downsample(nn.Module):
-    def __init__(self, in_channels, with_conv):
-        super().__init__()
-        self.with_conv = with_conv
-        if self.with_conv:
-            # no asymmetric padding in torch conv, must do it ourselves
-            self.conv = torch.nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=2, padding=0)
-
-    def forward(self, x):
-        if self.with_conv:
-            pad = (0, 1, 0, 1)
-            x = torch.nn.functional.pad(x, pad, mode="constant", value=0)
-            x = self.conv(x)
-        else:
-            x = torch.nn.functional.avg_pool2d(x, kernel_size=2, stride=2)
-        return x
 
 
 class ResnetBlock(nn.Module):
@@ -207,7 +189,7 @@ class UNetModel(ModelMixin, ConfigMixin):
             down.block = block
             down.attn = attn
             if i_level != self.num_resolutions - 1:
-                down.downsample = Downsample(block_in, resamp_with_conv)
+                down.downsample = Downsample(block_in, use_conv=resamp_with_conv, padding=0)
                 curr_res = curr_res // 2
             self.down.append(down)
 

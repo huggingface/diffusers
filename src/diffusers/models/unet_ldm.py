@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .embeddings import get_timestep_embedding
-from .resnet import Upsample
+from .resnet import Downsample, Upsample
 
 
 def exists(val):
@@ -392,32 +392,6 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
         return x
 
 
-class Downsample(nn.Module):
-    """
-    A downsampling layer with an optional convolution. :param channels: channels in the inputs and outputs. :param
-    use_conv: a bool determining if a convolution is applied. :param dims: determines if the signal is 1D, 2D, or 3D.
-    If 3D, then
-                 downsampling occurs in the inner-two dimensions.
-    """
-
-    def __init__(self, channels, use_conv, dims=2, out_channels=None, padding=1):
-        super().__init__()
-        self.channels = channels
-        self.out_channels = out_channels or channels
-        self.use_conv = use_conv
-        self.dims = dims
-        stride = 2 if dims != 3 else (1, 2, 2)
-        if use_conv:
-            self.op = conv_nd(dims, self.channels, self.out_channels, 3, stride=stride, padding=padding)
-        else:
-            assert self.channels == self.out_channels
-            self.op = avg_pool_nd(dims, kernel_size=stride, stride=stride)
-
-    def forward(self, x):
-        assert x.shape[1] == self.channels
-        return self.op(x)
-
-
 class ResBlock(TimestepBlock):
     """
     A residual block that can optionally change the number of channels. :param channels: the number of input channels.
@@ -464,8 +438,8 @@ class ResBlock(TimestepBlock):
             self.h_upd = Upsample(channels, use_conv=False, dims=dims)
             self.x_upd = Upsample(channels, use_conv=False, dims=dims)
         elif down:
-            self.h_upd = Downsample(channels, False, dims)
-            self.x_upd = Downsample(channels, False, dims)
+            self.h_upd = Downsample(channels, use_conv=False, dims=dims, padding=1, name="op")
+            self.x_upd = Downsample(channels, use_conv=False, dims=dims, padding=1, name="op")
         else:
             self.h_upd = self.x_upd = nn.Identity()
 
@@ -820,7 +794,9 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
                             down=True,
                         )
                         if resblock_updown
-                        else Downsample(ch, conv_resample, dims=dims, out_channels=out_ch)
+                        else Downsample(
+                            ch, use_conv=conv_resample, dims=dims, out_channels=out_ch, padding=1, name="op"
+                        )
                     )
                 )
                 ch = out_ch
@@ -1089,7 +1065,9 @@ class EncoderUNetModel(nn.Module):
                             down=True,
                         )
                         if resblock_updown
-                        else Downsample(ch, conv_resample, dims=dims, out_channels=out_ch)
+                        else Downsample(
+                            ch, use_conv=conv_resample, dims=dims, out_channels=out_ch, padding=1, name="op"
+                        )
                     )
                 )
                 ch = out_ch
