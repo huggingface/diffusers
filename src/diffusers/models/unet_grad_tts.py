@@ -1,4 +1,5 @@
 import torch
+from numpy import pad
 
 
 try:
@@ -10,21 +11,12 @@ except:
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .embeddings import get_timestep_embedding
-from .resnet import Upsample
+from .resnet import Downsample, Upsample
 
 
 class Mish(torch.nn.Module):
     def forward(self, x):
         return x * torch.tanh(torch.nn.functional.softplus(x))
-
-
-class Downsample(torch.nn.Module):
-    def __init__(self, dim):
-        super(Downsample, self).__init__()
-        self.conv = torch.nn.Conv2d(dim, dim, 3, 2, 1)
-
-    def forward(self, x):
-        return self.conv(x)
 
 
 class Rezero(torch.nn.Module):
@@ -141,7 +133,7 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
                         ResnetBlock(dim_in, dim_out, time_emb_dim=dim),
                         ResnetBlock(dim_out, dim_out, time_emb_dim=dim),
                         Residual(Rezero(LinearAttention(dim_out))),
-                        Downsample(dim_out) if not is_last else torch.nn.Identity(),
+                        Downsample(dim_out, use_conv=True, padding=1) if not is_last else torch.nn.Identity(),
                     ]
                 )
             )
