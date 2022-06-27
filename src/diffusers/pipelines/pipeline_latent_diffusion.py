@@ -1431,7 +1431,7 @@ class LatentDiffusionPipeline(DiffusionPipeline):
             uncond_input = self.tokenizer([""], padding="max_length", max_length=77, return_tensors="pt").to(
                 torch_device
             )
-            uncond_embeddings = self.bert(uncond_input.input_ids)[0]
+            uncond_embeddings = self.bert(uncond_input.input_ids)
 
         # get text embedding
         text_input = self.tokenizer(prompt, padding="max_length", max_length=77, return_tensors="pt").to(torch_device)
