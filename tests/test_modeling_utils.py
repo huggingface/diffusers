@@ -21,7 +21,7 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import (
+from diffusers import (  # GradTTSPipeline,
     BDDMPipeline,
     DDIMPipeline,
     DDIMScheduler,
@@ -30,7 +30,6 @@ from diffusers import (
     GlidePipeline,
     GlideSuperResUNetModel,
     GlideTextToImageUNetModel,
-    GradTTSPipeline,
     GradTTSScheduler,
     LatentDiffusionPipeline,
     NCSNpp,

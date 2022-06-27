@@ -64,7 +64,7 @@ class Upsample(nn.Module):
                  upsampling occurs in the inner-two dimensions.
     """
 
-    def __init__(self, channels, use_conv, use_conv_transpose=False, dims=2, out_channels=None):
+    def __init__(self, channels, use_conv=False, use_conv_transpose=False, dims=2, out_channels=None):
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
@@ -73,7 +73,7 @@ class Upsample(nn.Module):
         self.use_conv_transpose = use_conv_transpose
 
         if use_conv_transpose:
-            self.conv = conv_transpose_nd(dims, channels, out_channels, 4, 2, 1)
+            self.conv = conv_transpose_nd(dims, channels, self.out_channels, 4, 2, 1)
         elif use_conv:
             self.conv = conv_nd(dims, self.channels, self.out_channels, 3, padding=1)
 
@@ -207,6 +207,7 @@ class GradTTSUpsample(torch.nn.Module):
         return self.conv(x)
 
 
+# TODO (patil-suraj): needs test
 class Upsample1d(nn.Module):
     def __init__(self, dim):
         super().__init__()

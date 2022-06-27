@@ -3,20 +3,12 @@ import torch
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .embeddings import get_timestep_embedding
+from .resnet import Upsample
 
 
 class Mish(torch.nn.Module):
     def forward(self, x):
         return x * torch.tanh(torch.nn.functional.softplus(x))
-
-
-class Upsample(torch.nn.Module):
-    def __init__(self, dim):
-        super(Upsample, self).__init__()
-        self.conv = torch.nn.ConvTranspose2d(dim, dim, 4, 2, 1)
-
-    def forward(self, x):
-        return self.conv(x)
 
 
 class Downsample(torch.nn.Module):
@@ -166,7 +158,7 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
                         ResnetBlock(dim_out * 2, dim_in, time_emb_dim=dim),
                         ResnetBlock(dim_in, dim_in, time_emb_dim=dim),
                         Residual(Rezero(LinearAttention(dim_in))),
-                        Upsample(dim_in),
+                        Upsample(dim_in, use_conv_transpose=True),
                     ]
                 )
             )

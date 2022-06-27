@@ -144,16 +144,12 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         return pred_prev_sample
 
     def training_step(self, original_samples: torch.Tensor, noise: torch.Tensor, timesteps: torch.Tensor):
-        if timesteps.dim() != 1:
-            raise ValueError("`timesteps` must be a 1D tensor")
-
-        device = original_samples.device
-        batch_size = original_samples.shape[0]
-        timesteps = timesteps.reshape(batch_size, 1, 1, 1)
-
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
+        sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
         sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
-        noisy_samples = sqrt_alpha_prod.to(device) * original_samples + sqrt_one_minus_alpha_prod.to(device) * noise
+        sqrt_one_minus_alpha_prod = self.match_shape(sqrt_one_minus_alpha_prod, original_samples)
+
+        noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
         return noisy_samples
 
     def __len__(self):
