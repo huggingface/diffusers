@@ -234,6 +234,7 @@ See [paper](https://arxiv.org/abs/2011.13456) for more information on SDE VE.
 from diffusers import DiffusionPipeline
 import torch
 import PIL.Image
+import numpy as np
 
 torch.manual_seed(32)
 
@@ -249,6 +250,31 @@ image_pil = PIL.Image.fromarray(image[0])
 # save image
 image_pil.save("test.png")
 ```
+#### **Example 32x32 image generation with SDE VP**
+	
+See [paper](https://arxiv.org/abs/2011.13456) for more information on SDE VE.
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+import PIL.Image
+import numpy as np
+
+torch.manual_seed(32)
+
+score_sde_sv = DiffusionPipeline.from_pretrained("fusing/cifar10-ddpmpp-deep-vp")
+
+# Note this might take up to 3 minutes on a GPU
+image = score_sde_sv(num_inference_steps=1000)
+
+image = image.permute(0, 2, 3, 1).cpu().numpy()
+image = np.clip(image * 255, 0, 255).astype(np.uint8)
+image_pil = PIL.Image.fromarray(image[0])
+
+# save image
+image_pil.save("test.png")
+```
+
 
 #### **Text to Image generation with Latent Diffusion**
 
