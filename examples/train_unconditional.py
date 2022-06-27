@@ -9,14 +9,14 @@ from accelerate import Accelerator
 from datasets import load_dataset
 from diffusers import DDPM, DDPMScheduler, UNetModel
 from diffusers.hub_utils import init_git_repo, push_to_hub
-from diffusers.modeling_utils import unwrap_model
 from diffusers.optimization import get_scheduler
+from diffusers.training_utils import EMAModel
 from diffusers.utils import logging
 from torchvision.transforms import (
     CenterCrop,
     Compose,
     InterpolationMode,
-    Lambda,
+    Normalize,
     RandomHorizontalFlip,
     Resize,
     ToTensor,
@@ -48,7 +48,7 @@ def main(args):
             CenterCrop(args.resolution),
             RandomHorizontalFlip(),
             ToTensor(),
-            Lambda(lambda x: x * 2 - 1),
+            Normalize([0.5], [0.5]),
         ]
     )
     dataset = load_dataset(args.dataset, split="train")
@@ -71,6 +71,8 @@ def main(args):
         model, optimizer, train_dataloader, lr_scheduler
     )
 
+    ema_model = EMAModel(model, inv_gamma=1.0, power=3 / 4)
+
     if args.push_to_hub:
         repo = init_git_repo(args, at_init=True)
 
@@ -87,6 +89,7 @@ def main(args):
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {max_steps}")
 
+    global_step = 0
     for epoch in range(args.num_epochs):
         model.train()
         with tqdm(total=len(train_dataloader), unit="ba") as pbar:
@@ -117,19 +120,22 @@ def main(args):
                     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                     optimizer.step()
                     lr_scheduler.step()
+                    ema_model.step(model, global_step)
                     optimizer.zero_grad()
                 pbar.update(1)
-                pbar.set_postfix(loss=loss.detach().item(), lr=optimizer.param_groups[0]["lr"])
+                pbar.set_postfix(
+                    loss=loss.detach().item(), lr=optimizer.param_groups[0]["lr"], ema_decay=ema_model.decay
+                )
+                global_step += 1
 
-                optimizer.step()
-        if is_distributed:
-            torch.distributed.barrier()
+        accelerator.wait_for_everyone()
 
         # Generate a sample image for visual inspection
-        if args.local_rank in [-1, 0]:
-            model.eval()
+        if accelerator.is_main_process:
             with torch.no_grad():
-                pipeline = DDPM(unet=unwrap_model(model), noise_scheduler=noise_scheduler)
+                pipeline = DDPM(
+                    unet=accelerator.unwrap_model(ema_model.averaged_model), noise_scheduler=noise_scheduler
+                )
 
                 generator = torch.manual_seed(0)
                 # run pipeline in inference (sample random noise and denoise)
@@ -151,8 +157,7 @@ def main(args):
                 push_to_hub(args, pipeline, repo, commit_message=f"Epoch {epoch}", blocking=False)
             else:
                 pipeline.save_pretrained(args.output_dir)
-        if is_distributed:
-            torch.distributed.barrier()
+        accelerator.wait_for_everyone()
 
 
 if __name__ == "__main__":
