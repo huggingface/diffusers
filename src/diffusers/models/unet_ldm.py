@@ -6,14 +6,15 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .embeddings import get_timestep_embedding
 
 
-#try:
+# try:
 #    from einops import rearrange, repeat
-#except:
+# except:
 #    print("Einops is not installed")
 #    pass
 
@@ -80,7 +81,7 @@ def Normalize(in_channels):
     return torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
 
 
-#class LinearAttention(nn.Module):
+# class LinearAttention(nn.Module):
 #    def __init__(self, dim, heads=4, dim_head=32):
 #        super().__init__()
 #        self.heads = heads
@@ -100,7 +101,7 @@ def Normalize(in_channels):
 #        return self.to_out(out)
 #
 
-#class SpatialSelfAttention(nn.Module):
+# class SpatialSelfAttention(nn.Module):
 #    def __init__(self, in_channels):
 #        super().__init__()
 #        self.in_channels = in_channels
@@ -118,7 +119,7 @@ def Normalize(in_channels):
 #        k = self.k(h_)
 #        v = self.v(h_)
 #
-        # compute attention
+# compute attention
 #        b, c, h, w = q.shape
 #        q = rearrange(q, "b c h w -> b (h w) c")
 #        k = rearrange(k, "b c h w -> b c (h w)")
@@ -127,7 +128,7 @@ def Normalize(in_channels):
 #        w_ = w_ * (int(c) ** (-0.5))
 #        w_ = torch.nn.functional.softmax(w_, dim=2)
 #
-        # attend to values
+# attend to values
 #        v = rearrange(v, "b c h w -> b c (h w)")
 #        w_ = rearrange(w_, "b i j -> b j i")
 #        h_ = torch.einsum("bij,bjk->bik", v, w_)
@@ -136,6 +137,7 @@ def Normalize(in_channels):
 #
 #        return x + h_
 #
+
 
 class CrossAttention(nn.Module):
     def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.0):
@@ -176,7 +178,7 @@ class CrossAttention(nn.Module):
         k = self.to_k(context)
         v = self.to_v(context)
 
-#        q, k, v = map(lambda t: rearrange(t, "b n (h d) -> (b h) n d", h=h), (q, k, v))
+        #        q, k, v = map(lambda t: rearrange(t, "b n (h d) -> (b h) n d", h=h), (q, k, v))
 
         q = self.reshape_heads_to_batch_dim(q)
         k = self.reshape_heads_to_batch_dim(k)
@@ -185,12 +187,12 @@ class CrossAttention(nn.Module):
         sim = torch.einsum("b i d, b j d -> b i j", q, k) * self.scale
 
         if exists(mask):
-#            mask = rearrange(mask, "b ... -> b (...)")
+            #            mask = rearrange(mask, "b ... -> b (...)")
             maks = mask.reshape(batch_size, -1)
             max_neg_value = -torch.finfo(sim.dtype).max
-#            mask = repeat(mask, "b j -> (b h) () j", h=h)
+            #            mask = repeat(mask, "b j -> (b h) () j", h=h)
             mask = mask[:, None, :].repeat(h, 1, 1)
-#        x = rearrange(x, "b (h w) c -> b c h w", h=h, w=w)
+            #        x = rearrange(x, "b (h w) c -> b c h w", h=h, w=w)
             sim.masked_fill_(~mask, max_neg_value)
 
         # attention, what we cannot get enough of
@@ -198,7 +200,7 @@ class CrossAttention(nn.Module):
 
         out = torch.einsum("b i j, b j d -> b i d", attn, v)
         out = self.reshape_batch_dim_to_heads(out)
-#        out = rearrange(out, "(b h) n d -> b n (h d)", h=h)
+        #        out = rearrange(out, "(b h) n d -> b n (h d)", h=h)
         return self.to_out(out)
 
 
