@@ -679,6 +679,7 @@ class PipelineTesterMixin(unittest.TestCase):
         assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
 
     @slow
+    @unittest.skip("Skipping for now as it takes too long")
     def test_ldm_text2img(self):
         model_id = "fusing/latent-diffusion-text2im-large"
         ldm = LatentDiffusionPipeline.from_pretrained(model_id)
