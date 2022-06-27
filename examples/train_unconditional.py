@@ -173,7 +173,7 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--warmup_steps", type=int, default=500)
     parser.add_argument("--ema_inv_gamma", type=float, default=1.0)
-    parser.add_argument("--ema_power", type=float, default=3/4)
+    parser.add_argument("--ema_power", type=float, default=3 / 4)
     parser.add_argument("--ema_max_decay", type=float, default=0.999)
     parser.add_argument("--push_to_hub", action="store_true")
     parser.add_argument("--hub_token", type=str, default=None)

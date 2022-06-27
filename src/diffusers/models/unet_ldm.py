@@ -13,13 +13,6 @@ from .embeddings import get_timestep_embedding
 from .resnet import Upsample
 
 
-# try:
-#    from einops import rearrange, repeat
-# except:
-#    print("Einops is not installed")
-#    pass
-
-
 def exists(val):
     return val is not None
 

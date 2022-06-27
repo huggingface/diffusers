@@ -17,7 +17,6 @@ from ..modeling_utils import ModelMixin
 #    pass
 
 
-
 class SinusoidalPosEmb(nn.Module):
     def __init__(self, dim):
         super().__init__()

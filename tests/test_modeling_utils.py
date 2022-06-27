@@ -21,7 +21,8 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import (  # GradTTSPipeline,
+from diffusers import (
+    GradTTSPipeline,
     BDDMPipeline,
     DDIMPipeline,
     DDIMScheduler,
