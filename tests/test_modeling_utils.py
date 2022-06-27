@@ -746,8 +746,8 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     def test_score_sde_vp_pipeline(self):
 
-        model = NCSNpp.from_pretrained("/home/patrick/cifar10-ddpmpp-vp")
-        scheduler = ScoreSdeVpScheduler()
+        model = NCSNpp.from_pretrained("fusing/cifar10-ddpmpp-vp")
+        scheduler = ScoreSdeVpScheduler.from_config("fusing/cifar10-ddpmpp-vp")
 
         sde_vp = ScoreSdeVpPipeline(model=model, scheduler=scheduler)
 

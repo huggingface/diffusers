@@ -40,16 +40,25 @@ class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.linspace(1, self.config.sampling_eps, num_inference_steps)
 
     def step_pred(self, result, x, t):
-        dt = -1. / len(self.timesteps)
-        z = torch.randn_like(x)
+        # TODO(Patrick) better comments + non-PyTorch
+        # postprocess model result
+        log_mean_coeff = (
+            -0.25 * t**2 * (self.config.beta_max - self.config.beta_min) - 0.5 * t * self.config.beta_min
+        )
+        std = torch.sqrt(1.0 - torch.exp(2.0 * log_mean_coeff))
+        result = -result / std[:, None, None, None]
 
-        beta_t = self.beta_min + t * (self.beta_max - self.beta_min)
+        # compute
+        dt = -1.0 / len(self.timesteps)
+
+        beta_t = self.config.beta_min + t * (self.config.beta_max - self.config.beta_min)
         drift = -0.5 * beta_t[:, None, None, None] * x
         diffusion = torch.sqrt(beta_t)
-
         drift = drift - diffusion[:, None, None, None] ** 2 * result
-
         x_mean = x + drift * dt
+
+        # add noise
+        z = torch.randn_like(x)
         x = x_mean + diffusion[:, None, None, None] * np.sqrt(-dt) * z
 
         return x, x_mean

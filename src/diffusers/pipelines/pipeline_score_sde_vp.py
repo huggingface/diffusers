@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import torch
+
 from diffusers import DiffusionPipeline
 
 
@@ -16,27 +17,21 @@ class ScoreSdeVpPipeline(DiffusionPipeline):
         channels = self.model.config.num_channels
         shape = (1, channels, img_size, img_size)
 
-        beta_min, beta_max = 0.1, 20
-
         model = self.model.to(device)
 
         x = torch.randn(*shape).to(device)
 
         self.scheduler.set_timesteps(num_inference_steps)
 
-        for i, t in enumerate(self.scheduler.timesteps):
+        for t in self.scheduler.timesteps:
             t = t * torch.ones(shape[0], device=device)
-            sigma_t = t * (num_inference_steps - 1)
+            scaled_t = t * (num_inference_steps - 1)
 
             with torch.no_grad():
-                result = model(x, sigma_t)
-
-            log_mean_coeff = -0.25 * t ** 2 * (beta_max - beta_min) - 0.5 * t * beta_min
-            std = torch.sqrt(1. - torch.exp(2. * log_mean_coeff))
-            result = -result / std[:, None, None, None]
+                result = model(x, scaled_t)
 
             x, x_mean = self.scheduler.step_pred(result, x, t)
 
-        x_mean = (x_mean + 1.) / 2.
+        x_mean = (x_mean + 1.0) / 2.0
 
         return x_mean

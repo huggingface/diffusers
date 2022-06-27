@@ -52,6 +52,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         )
 
     def step_pred(self, result, x, t):
+        # TODO(Patrick) better comments + non-PyTorch
         t = t * torch.ones(x.shape[0], device=x.device)
         timestep = (t * (len(self.timesteps) - 1)).long()
 
@@ -70,6 +71,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         return x, x_mean
 
     def step_correct(self, result, x):
+        # TODO(Patrick) better comments + non-PyTorch
         noise = torch.randn_like(x)
         grad_norm = torch.norm(result.reshape(result.shape[0], -1), dim=-1).mean()
         noise_norm = torch.norm(noise.reshape(noise.shape[0], -1), dim=-1).mean()
