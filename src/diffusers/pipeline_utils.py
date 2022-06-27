@@ -21,7 +21,6 @@ from typing import Optional, Union
 from huggingface_hub import snapshot_download
 
 from .configuration_utils import ConfigMixin
-from .dynamic_modules_utils import get_class_from_dynamic_module
 from .utils import DIFFUSERS_CACHE, logging
 
 
@@ -81,16 +80,13 @@ class DiffusionPipeline(ConfigMixin):
             # set models
             setattr(self, name, module)
 
-        register_dict = {"_module": self.__module__.split(".")[-1]}
-        self.register_to_config(**register_dict)
-
     def save_pretrained(self, save_directory: Union[str, os.PathLike]):
         self.save_config(save_directory)
 
         model_index_dict = dict(self.config)
         model_index_dict.pop("_class_name")
         model_index_dict.pop("_diffusers_version")
-        model_index_dict.pop("_module")
+        model_index_dict.pop("_module", None)
 
         for pipeline_component_name in model_index_dict.keys():
             sub_model = getattr(self, pipeline_component_name)
@@ -139,22 +135,13 @@ class DiffusionPipeline(ConfigMixin):
 
         config_dict = cls.get_config_dict(cached_folder)
 
-        # 2. Get class name and module candidates to load custom models
-        module_candidate_name = config_dict["_module"]
-        module_candidate = module_candidate_name + ".py"
-
-        # 3. Load the pipeline class, if using custom module then load it from the hub
+        # 2. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
         if cls != DiffusionPipeline:
             pipeline_class = cls
         else:
             diffusers_module = importlib.import_module(cls.__module__.split(".")[0])
             pipeline_class = getattr(diffusers_module, config_dict["_class_name"])
-
-            # (TODO - we should allow to load custom pipelines
-            # else we need to load the correct module from the Hub
-            # module = module_candidate
-            # pipeline_class = get_class_from_dynamic_module(cached_folder, module, class_name_, cached_folder)
 
         init_dict, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
@@ -163,7 +150,7 @@ class DiffusionPipeline(ConfigMixin):
         # import it here to avoid circular import
         from diffusers import pipelines
 
-        # 4. Load each module in the pipeline
+        # 3. Load each module in the pipeline
         for name, (library_name, class_name) in init_dict.items():
             is_pipeline_module = hasattr(pipelines, library_name)
             # if the model is in a pipeline module, then we load it from the pipeline
@@ -171,14 +158,7 @@ class DiffusionPipeline(ConfigMixin):
                 pipeline_module = getattr(pipelines, library_name)
                 class_obj = getattr(pipeline_module, class_name)
                 importable_classes = ALL_IMPORTABLE_CLASSES
-                class_candidates = {c: class_obj for c in ALL_IMPORTABLE_CLASSES.keys()}
-            elif library_name == module_candidate_name:
-                # if the model is not in diffusers or transformers, we need to load it from the hub
-                # assumes that it's a subclass of ModelMixin
-                class_obj = get_class_from_dynamic_module(cached_folder, module_candidate, class_name, cached_folder)
-                # since it's not from a library, we need to check class candidates for all importable classes
-                importable_classes = ALL_IMPORTABLE_CLASSES
-                class_candidates = {c: class_obj for c in ALL_IMPORTABLE_CLASSES.keys()}
+                class_candidates = {c: class_obj for c in importable_classes.keys()}
             else:
                 # else we just import it from the library.
                 library = importlib.import_module(library_name)

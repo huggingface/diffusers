@@ -226,6 +226,56 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 image_pil.save("test.png")
 ```
 
+#### **Example 1024x1024 image generation with SDE VE**
+
+See [paper](https://arxiv.org/abs/2011.13456) for more information on SDE VE.
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+import PIL.Image
+import numpy as np
+
+torch.manual_seed(32)
+
+score_sde_sv = DiffusionPipeline.from_pretrained("fusing/ffhq_ncsnpp")
+
+# Note this might take up to 3 minutes on a GPU
+image = score_sde_sv(num_inference_steps=2000)
+
+image = image.permute(0, 2, 3, 1).cpu().numpy()
+image = np.clip(image * 255, 0, 255).astype(np.uint8)
+image_pil = PIL.Image.fromarray(image[0])
+
+# save image
+image_pil.save("test.png")
+```
+#### **Example 32x32 image generation with SDE VP**
+	
+See [paper](https://arxiv.org/abs/2011.13456) for more information on SDE VE.
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+import PIL.Image
+import numpy as np
+
+torch.manual_seed(32)
+
+score_sde_sv = DiffusionPipeline.from_pretrained("fusing/cifar10-ddpmpp-deep-vp")
+
+# Note this might take up to 3 minutes on a GPU
+image = score_sde_sv(num_inference_steps=1000)
+
+image = image.permute(0, 2, 3, 1).cpu().numpy()
+image = np.clip(image * 255, 0, 255).astype(np.uint8)
+image_pil = PIL.Image.fromarray(image[0])
+
+# save image
+image_pil.save("test.png")
+```
+
+
 #### **Text to Image generation with Latent Diffusion**
 
 _Note: To use latent diffusion install transformers from [this branch](https://github.com/patil-suraj/transformers/tree/ldm-bert)._
@@ -249,24 +299,24 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 image_pil.save("test.png")
 ```
 
-#### **Text to speech with GradTTS and BDDM**
+#### **Text to speech with GradTTS and BDDMPipeline**
 
 ```python
 import torch
-from diffusers import BDDM, GradTTS
+from diffusers import BDDMPipeline, GradTTSPipeline
 
 torch_device = "cuda"
 
 # load grad tts and bddm pipelines
-grad_tts = GradTTS.from_pretrained("fusing/grad-tts-libri-tts")
-bddm = BDDM.from_pretrained("fusing/diffwave-vocoder-ljspeech")
+grad_tts = GradTTSPipeline.from_pretrained("fusing/grad-tts-libri-tts")
+bddm = BDDMPipeline.from_pretrained("fusing/diffwave-vocoder-ljspeech")
 
 text = "Hello world, I missed you so much."
 
 # generate mel spectograms using text
 mel_spec = grad_tts(text, torch_device=torch_device)
 
-#  generate the speech by passing mel spectograms to BDDM pipeline
+#  generate the speech by passing mel spectograms to BDDMPipeline pipeline
 generator = torch.manual_seed(42)
 audio = bddm(mel_spec, generator, torch_device=torch_device)
 
@@ -288,3 +338,4 @@ wavwrite("generated_audio.wav", sampling_rate, audio.squeeze().cpu().numpy())
 - [ ] Add more vision models
 - [ ] Add more speech models
 - [ ] Add RL model
+- [ ] Add FID and KID metrics

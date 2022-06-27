@@ -420,7 +420,7 @@ class TextEncoder(ModelMixin, ConfigMixin):
         return mu, logw, x_mask
 
 
-class GradTTS(DiffusionPipeline):
+class GradTTSPipeline(DiffusionPipeline):
     def __init__(self, unet, text_encoder, noise_scheduler, tokenizer):
         super().__init__()
         noise_scheduler = noise_scheduler.set_format("pt")
@@ -430,7 +430,14 @@ class GradTTS(DiffusionPipeline):
 
     @torch.no_grad()
     def __call__(
-        self, text, num_inference_steps=50, temperature=1.3, length_scale=0.91, speaker_id=15, torch_device=None
+        self,
+        text,
+        num_inference_steps=50,
+        temperature=1.3,
+        length_scale=0.91,
+        speaker_id=15,
+        torch_device=None,
+        generator=None,
     ):
         if torch_device is None:
             torch_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -464,17 +471,19 @@ class GradTTS(DiffusionPipeline):
         mu_y = mu_y.transpose(1, 2)
 
         # Sample latent representation from terminal distribution N(mu_y, I)
-        z = mu_y + torch.randn_like(mu_y, device=mu_y.device) / temperature
+        z = mu_y + torch.randn(mu_y.shape, generator=generator).to(mu_y.device)
 
         xt = z * y_mask
         h = 1.0 / num_inference_steps
+        # (Patrick: TODO)
         for t in tqdm.tqdm(range(num_inference_steps), total=num_inference_steps):
+            t_new = num_inference_steps - t - 1
             t = (1.0 - (t + 0.5) * h) * torch.ones(z.shape[0], dtype=z.dtype, device=z.device)
-            time = t.unsqueeze(-1).unsqueeze(-1)
 
             residual = self.unet(xt, t, mu_y, y_mask, speaker_id)
 
-            xt = self.noise_scheduler.step(xt, residual, mu_y, h, time)
+            scheduler_residual = residual - mu_y + xt
+            xt = self.noise_scheduler.step(scheduler_residual, xt, t_new, num_inference_steps)
             xt = xt * y_mask
 
         return xt[:, :, :y_max_length]
