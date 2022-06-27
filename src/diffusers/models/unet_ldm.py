@@ -16,6 +16,7 @@ except:
 
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
+from .embeddings import get_timestep_embedding
 
 
 def exists(val):
@@ -316,34 +317,25 @@ def normalization(channels, swish=0.0):
     return GroupNorm32(num_channels=channels, num_groups=32, swish=swish)
 
 
-def timestep_embedding(timesteps, dim, max_period=10000):
-    """
-    Create sinusoidal timestep embeddings.
-
-    :param timesteps: a 1-D Tensor of N indices, one per batch element.
-                      These may be fractional.
-    :param dim: the dimension of the output.
-    :param max_period: controls the minimum frequency of the embeddings.
-    :return: an [N x dim] Tensor of positional embeddings.
-    """
-    half = dim // 2
-    freqs = torch.exp(-math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half).to(
-        device=timesteps.device
-    )
-    args = timesteps[:, None].float() * freqs[None]
-    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
-    if dim % 2:
-        embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
-    return embedding
-
-
-def zero_module(module):
-    """
-    Zero out the parameters of a module and return it.
-    """
-    for p in module.parameters():
-        p.detach().zero_()
-    return module
+#def timestep_embedding(timesteps, dim, max_period=10000):
+#    """
+#    Create sinusoidal timestep embeddings.
+#
+#    :param timesteps: a 1-D Tensor of N indices, one per batch element.
+#                      These may be fractional.
+#    :param dim: the dimension of the output.
+#    :param max_period: controls the minimum frequency of the embeddings.
+#    :return: an [N x dim] Tensor of positional embeddings.
+#    """
+#    half = dim // 2
+#    freqs = torch.exp(-math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half).to(
+#        device=timesteps.device
+#    )
+#    args = timesteps[:, None].float() * freqs[None]
+#    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+#    if dim % 2:
+#        embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
+#    return embedding
 
 
 ## go
@@ -1026,7 +1018,7 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
         hs = []
         if not torch.is_tensor(timesteps):
             timesteps = torch.tensor([timesteps], dtype=torch.long, device=x.device)
-        t_emb = timestep_embedding(timesteps, self.model_channels)
+        t_emb = get_timestep_embedding(timesteps, self.model_channels, flip_sin_to_cos=True, downscale_freq_shift=0)
         emb = self.time_embed(t_emb)
 
         if self.num_classes is not None:
@@ -1240,7 +1232,7 @@ class EncoderUNetModel(nn.Module):
         :param timesteps: a 1-D batch of timesteps.
         :return: an [N x K] Tensor of outputs.
         """
-        emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
+        emb = self.time_embed(get_timestep_embedding(timesteps, self.model_channels, flip_sin_to_cos=True, downscale_freq_shift=0))
 
         results = []
         h = x.type(self.dtype)
