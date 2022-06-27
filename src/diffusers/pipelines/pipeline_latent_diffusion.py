@@ -554,11 +554,9 @@ class LDMBertModel(LDMBertPreTrainedModel):
 
 def get_timestep_embedding(timesteps, embedding_dim):
     """
-    This matches the implementation in Denoising Diffusion Probabilistic Models:
-    From Fairseq.
-    Build sinusoidal embeddings.
-    This matches the implementation in tensor2tensor, but differs slightly
-    from the description in Section 3.5 of "Attention Is All You Need".
+    This matches the implementation in Denoising Diffusion Probabilistic Models: From Fairseq. Build sinusoidal
+    embeddings. This matches the implementation in tensor2tensor, but differs slightly from the description in Section
+    3.5 of "Attention Is All You Need".
     """
     assert len(timesteps.shape) == 1
 
@@ -1055,8 +1053,8 @@ class Decoder(nn.Module):
 
 class VectorQuantizer(nn.Module):
     """
-    Improved version over VectorQuantizer, can be used as a drop-in replacement. Mostly
-    avoids costly matrix multiplications and allows for post-hoc remapping of indices.
+    Improved version over VectorQuantizer, can be used as a drop-in replacement. Mostly avoids costly matrix
+    multiplications and allows for post-hoc remapping of indices.
     """
 
     # NOTE: due to a bug the beta term was applied to the wrong term. for

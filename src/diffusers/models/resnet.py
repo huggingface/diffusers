@@ -58,9 +58,8 @@ class Upsample(nn.Module):
     """
     An upsampling layer with an optional convolution.
 
-    :param channels: channels in the inputs and outputs.
-    :param use_conv: a bool determining if a convolution is applied.
-    :param dims: determines if the signal is 1D, 2D, or 3D. If 3D, then
+    :param channels: channels in the inputs and outputs. :param use_conv: a bool determining if a convolution is
+    applied. :param dims: determines if the signal is 1D, 2D, or 3D. If 3D, then
                  upsampling occurs in the inner-two dimensions.
     """
 
@@ -97,9 +96,8 @@ class Downsample(nn.Module):
     """
     A downsampling layer with an optional convolution.
 
-    :param channels: channels in the inputs and outputs.
-    :param use_conv: a bool determining if a convolution is applied.
-    :param dims: determines if the signal is 1D, 2D, or 3D. If 3D, then
+    :param channels: channels in the inputs and outputs. :param use_conv: a bool determining if a convolution is
+    applied. :param dims: determines if the signal is 1D, 2D, or 3D. If 3D, then
                  downsampling occurs in the inner-two dimensions.
     """
 
@@ -143,9 +141,8 @@ class GlideUpsample(nn.Module):
     """
     An upsampling layer with an optional convolution.
 
-    :param channels: channels in the inputs and outputs.
-    :param use_conv: a bool determining if a convolution is applied.
-    :param dims: determines if the signal is 1D, 2D, or 3D. If 3D, then
+    :param channels: channels in the inputs and outputs. :param use_conv: a bool determining if a convolution is
+    applied. :param dims: determines if the signal is 1D, 2D, or 3D. If 3D, then
                  upsampling occurs in the inner-two dimensions.
     """
 
@@ -171,10 +168,9 @@ class GlideUpsample(nn.Module):
 
 class LDMUpsample(nn.Module):
     """
-    An upsampling layer with an optional convolution.
-    :param channels: channels in the inputs and outputs.
-    :param use_conv: a bool determining if a convolution is applied.
-    :param dims: determines if the signal is 1D, 2D, or 3D. If 3D, then
+    An upsampling layer with an optional convolution. :param channels: channels in the inputs and outputs. :param
+    use_conv: a bool determining if a convolution is applied. :param dims: determines if the signal is 1D, 2D, or 3D.
+    If 3D, then
                  upsampling occurs in the inner-two dimensions.
     """
 

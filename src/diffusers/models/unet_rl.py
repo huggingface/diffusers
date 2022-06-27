@@ -111,10 +111,8 @@ class ResidualTemporalBlock(nn.Module):
 
     def forward(self, x, t):
         """
-        x : [ batch_size x inp_channels x horizon ]
-        t : [ batch_size x embed_dim ]
-        returns:
-        out : [ batch_size x out_channels x horizon ]
+        x : [ batch_size x inp_channels x horizon ] t : [ batch_size x embed_dim ] returns: out : [ batch_size x
+        out_channels x horizon ]
         """
         out = self.blocks[0](x) + self.time_mlp(t)
         out = self.blocks[1](out)

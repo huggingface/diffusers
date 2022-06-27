@@ -34,13 +34,9 @@ autogenerate_code: deps_table_update
 # Check that the repo is in a good state
 
 repo-consistency:
-	python utils/check_copies.py
-	python utils/check_table.py
 	python utils/check_dummies.py
 	python utils/check_repo.py
 	python utils/check_inits.py
-	python utils/check_config_docstrings.py
-	python utils/tests_fetcher.py --sanity_check
 
 # this target runs checks on all files
 
@@ -48,14 +44,13 @@ quality:
 	black --check --preview $(check_dirs)
 	isort --check-only $(check_dirs)
 	flake8 $(check_dirs)
-	doc-builder style src/transformers docs/source --max_len 119 --check_only --path_to_docs docs/source
+	doc-builder style src/diffusers docs/source --max_len 119 --check_only --path_to_docs docs/source
 
 # Format source code automatically and check is there are any problems left that need manual fixing
 
 extra_style_checks:
 	python utils/custom_init_isort.py
-	python utils/sort_auto_mappings.py
-	doc-builder style src/transformers docs/source --max_len 119 --path_to_docs docs/source
+	doc-builder style src/diffusers docs/source --max_len 119 --path_to_docs docs/source
 
 # this target runs checks on all files and potentially modifies some of them
 
@@ -73,8 +68,6 @@ fixup: modified_only_fixup extra_style_checks autogenerate_code repo-consistency
 
 fix-copies:
 	python utils/check_dummies.py --fix_and_overwrite
-	python utils/check_table.py --fix_and_overwrite
-	python utils/check_copies.py --fix_and_overwrite
 
 # Run tests for the library
 

@@ -24,7 +24,7 @@ from doc_builder.style_doc import style_docstrings_in_code
 
 # All paths are set with the intent you should run this script from the root of the repo with the command
 # python utils/check_copies.py
-TRANSFORMERS_PATH = "src/transformers"
+TRANSFORMERS_PATH = "src/diffusers"
 PATH_TO_DOCS = "docs/source/en"
 REPO_PATH = "."
 
@@ -76,7 +76,7 @@ def _should_continue(line, indent):
     return line.startswith(indent) or len(line) <= 1 or re.search(r"^\s*\)(\s*->.*:|:)\s*$", line) is not None
 
 
-def find_code_in_transformers(object_name):
+def find_code_in_diffusers(object_name):
     """Find and return the code source code of `object_name`."""
     parts = object_name.split(".")
     i = 0
@@ -88,9 +88,7 @@ def find_code_in_transformers(object_name):
         if i < len(parts):
             module = os.path.join(module, parts[i])
     if i >= len(parts):
-        raise ValueError(
-            f"`object_name` should begin with the name of a module of transformers but got {object_name}."
-        )
+        raise ValueError(f"`object_name` should begin with the name of a module of diffusers but got {object_name}.")
 
     with open(os.path.join(TRANSFORMERS_PATH, f"{module}.py"), "r", encoding="utf-8", newline="\n") as f:
         lines = f.readlines()
@@ -121,7 +119,7 @@ def find_code_in_transformers(object_name):
     return "".join(code_lines)
 
 
-_re_copy_warning = re.compile(r"^(\s*)#\s*Copied from\s+transformers\.(\S+\.\S+)\s*($|\S.*$)")
+_re_copy_warning = re.compile(r"^(\s*)#\s*Copied from\s+diffusers\.(\S+\.\S+)\s*($|\S.*$)")
 _re_replace_pattern = re.compile(r"^\s*(\S+)->(\S+)(\s+.*|$)")
 
 
@@ -167,7 +165,7 @@ def is_copy_consistent(filename, overwrite=False):
 
         # There is some copied code here, let's retrieve the original.
         indent, object_name, replace_pattern = search.groups()
-        theoretical_code = find_code_in_transformers(object_name)
+        theoretical_code = find_code_in_diffusers(object_name)
         theoretical_indent = get_indent(theoretical_code)
 
         start_index = line_index + 1 if indent == theoretical_indent else line_index + 2
@@ -235,7 +233,9 @@ def check_copies(overwrite: bool = False):
             + diff
             + "\nRun `make fix-copies` or `python utils/check_copies.py --fix_and_overwrite` to fix them."
         )
-    check_model_list_copy(overwrite=overwrite)
+
+
+#    check_model_list_copy(overwrite=overwrite)
 
 
 def check_full_copies(overwrite: bool = False):
@@ -348,8 +348,8 @@ def convert_to_localized_md(model_list, localized_model_list, format_str):
 
 
 def convert_readme_to_index(model_list):
-    model_list = model_list.replace("https://huggingface.co/docs/transformers/main/", "")
-    return model_list.replace("https://huggingface.co/docs/transformers/", "")
+    model_list = model_list.replace("https://huggingface.co/docs/diffusers/main/", "")
+    return model_list.replace("https://huggingface.co/docs/diffusers/", "")
 
 
 def _find_text_in_file(filename, start_prompt, end_prompt):
@@ -383,9 +383,9 @@ def check_model_list_copy(overwrite=False, max_per_line=119):
     # Fix potential doc links in the README
     with open(os.path.join(REPO_PATH, "README.md"), "r", encoding="utf-8", newline="\n") as f:
         readme = f.read()
-    new_readme = readme.replace("https://huggingface.co/transformers", "https://huggingface.co/docs/transformers")
+    new_readme = readme.replace("https://huggingface.co/diffusers", "https://huggingface.co/docs/diffusers")
     new_readme = new_readme.replace(
-        "https://huggingface.co/docs/main/transformers", "https://huggingface.co/docs/transformers/main"
+        "https://huggingface.co/docs/main/diffusers", "https://huggingface.co/docs/diffusers/main"
     )
     if new_readme != readme:
         if overwrite:

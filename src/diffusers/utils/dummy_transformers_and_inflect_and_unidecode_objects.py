@@ -3,7 +3,7 @@
 from ..utils import DummyObject, requires_backends
 
 
-class GradTTS(metaclass=DummyObject):
+class GradTTSPipeline(metaclass=DummyObject):
     _backends = ["transformers", "inflect", "unidecode"]
 
     def __init__(self, *args, **kwargs):
