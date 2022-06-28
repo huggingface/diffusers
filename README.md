@@ -188,7 +188,7 @@ image_pil.save("test.png")
 
 #### **Examples for other modalities:**
 
-[Diffuser](https://diffusion-planning.github.io/) for planning in reinforcement learning: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1TmBmlYeKUZSkUZoJqfBmaicVTKx6nN1R?usp=sharing)
+[Diffuser](https://diffusion-planning.github.io/) for planning in reinforcement learning (currenlty only inference): [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1TmBmlYeKUZSkUZoJqfBmaicVTKx6nN1R?usp=sharing)
 
 ### 2. `diffusers` as a collection of popular Diffusion systems (Glide, Dalle, ...)
 

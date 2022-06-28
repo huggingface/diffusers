@@ -290,7 +290,7 @@ def normalize_numbers(text):
     return text
 
 
-""" from https://github.com/keithito/tacotron """
+""" from https://github.com/keithito/tacotron"""
 
 
 _pad = "_"
@@ -322,8 +322,8 @@ def get_arpabet(word, dictionary):
 def text_to_sequence(text, cleaner_names=[english_cleaners], dictionary=None):
     """Converts a string of text to a sequence of IDs corresponding to the symbols in the text.
 
-    The text can optionally have ARPAbet sequences enclosed in curly braces embedded
-    in it. For example, "Turn left on {HH AW1 S S T AH0 N} Street."
+    The text can optionally have ARPAbet sequences enclosed in curly braces embedded in it. For example, "Turn left on
+    {HH AW1 S S T AH0 N} Street."
 
     Args:
       text: string to convert to a sequence

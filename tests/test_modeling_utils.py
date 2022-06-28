@@ -21,7 +21,7 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import (  # GradTTSPipeline,
+from diffusers import (
     BDDMPipeline,
     DDIMPipeline,
     DDIMScheduler,
@@ -30,6 +30,7 @@ from diffusers import (  # GradTTSPipeline,
     GlidePipeline,
     GlideSuperResUNetModel,
     GlideTextToImageUNetModel,
+    GradTTSPipeline,
     GradTTSScheduler,
     LatentDiffusionPipeline,
     NCSNpp,
@@ -39,13 +40,14 @@ from diffusers import (  # GradTTSPipeline,
     ScoreSdeVeScheduler,
     ScoreSdeVpPipeline,
     ScoreSdeVpScheduler,
+    TemporalUNet,
     UNetGradTTSModel,
     UNetLDMModel,
     UNetModel,
 )
 from diffusers.configuration_utils import ConfigMixin
 from diffusers.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.pipeline_bddm import DiffWave
+from diffusers.pipelines.bddm.pipeline_bddm import DiffWave
 from diffusers.testing_utils import floats_tensor, slow, torch_device
 
 
@@ -188,7 +190,7 @@ class ModelTesterMixin:
         model.to(torch_device)
         model.train()
         output = model(**inputs_dict)
-        noise = torch.randn((inputs_dict["x"].shape[0],) + self.get_output_shape).to(torch_device)
+        noise = torch.randn((inputs_dict["x"].shape[0],) + self.output_shape).to(torch_device)
         loss = torch.nn.functional.mse_loss(output, noise)
         loss.backward()
 
@@ -208,11 +210,11 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
         return {"x": noise, "timesteps": time_step}
 
     @property
-    def get_input_shape(self):
+    def input_shape(self):
         return (3, 32, 32)
 
     @property
-    def get_output_shape(self):
+    def output_shape(self):
         return (3, 32, 32)
 
     def prepare_init_args_and_inputs_for_common(self):
@@ -274,11 +276,11 @@ class GlideSuperResUNetTests(ModelTesterMixin, unittest.TestCase):
         return {"x": noise, "timesteps": time_step, "low_res": low_res}
 
     @property
-    def get_input_shape(self):
+    def input_shape(self):
         return (3, 32, 32)
 
     @property
-    def get_output_shape(self):
+    def output_shape(self):
         return (6, 32, 32)
 
     def prepare_init_args_and_inputs_for_common(self):
@@ -365,11 +367,11 @@ class GlideTextToImageUNetModelTests(ModelTesterMixin, unittest.TestCase):
         return {"x": noise, "timesteps": time_step, "transformer_out": emb}
 
     @property
-    def get_input_shape(self):
+    def input_shape(self):
         return (3, 32, 32)
 
     @property
-    def get_output_shape(self):
+    def output_shape(self):
         return (6, 32, 32)
 
     def prepare_init_args_and_inputs_for_common(self):
@@ -457,11 +459,11 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         return {"x": noise, "timesteps": time_step}
 
     @property
-    def get_input_shape(self):
+    def input_shape(self):
         return (4, 32, 32)
 
     @property
-    def get_output_shape(self):
+    def output_shape(self):
         return (4, 32, 32)
 
     def prepare_init_args_and_inputs_for_common(self):
@@ -550,11 +552,11 @@ class UNetGradTTSModelTests(ModelTesterMixin, unittest.TestCase):
         return {"x": noise, "timesteps": time_step, "mu": condition, "mask": mask}
 
     @property
-    def get_input_shape(self):
+    def input_shape(self):
         return (4, 32, 16)
 
     @property
-    def get_output_shape(self):
+    def output_shape(self):
         return (4, 32, 16)
 
     def prepare_init_args_and_inputs_for_common(self):
@@ -600,6 +602,204 @@ class UNetGradTTSModelTests(ModelTesterMixin, unittest.TestCase):
         output_slice = output[0, -3:, -3:].flatten()
         # fmt: off
         expected_output_slice = torch.tensor([-0.0690, -0.0531, 0.0633, -0.0660, -0.0541, 0.0650, -0.0656, -0.0555, 0.0617])
+        # fmt: on
+
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+
+
+class TemporalUNetModelTests(ModelTesterMixin, unittest.TestCase):
+    model_class = TemporalUNet
+
+    @property
+    def dummy_input(self):
+        batch_size = 4
+        num_features = 14
+        seq_len = 16
+
+        noise = floats_tensor((batch_size, seq_len, num_features)).to(torch_device)
+        time_step = torch.tensor([10] * batch_size).to(torch_device)
+
+        return {"x": noise, "timesteps": time_step}
+
+    @property
+    def input_shape(self):
+        return (4, 16, 14)
+
+    @property
+    def output_shape(self):
+        return (4, 16, 14)
+
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = {
+            "training_horizon": 128,
+            "dim": 32,
+            "dim_mults": [1, 4, 8],
+            "predict_epsilon": False,
+            "clip_denoised": True,
+            "transition_dim": 14,
+            "cond_dim": 3,
+        }
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+
+    def test_from_pretrained_hub(self):
+        model, loading_info = TemporalUNet.from_pretrained(
+            "fusing/ddpm-unet-rl-hopper-hor128", output_loading_info=True
+        )
+        self.assertIsNotNone(model)
+        self.assertEqual(len(loading_info["missing_keys"]), 0)
+
+        model.to(torch_device)
+        image = model(**self.dummy_input)
+
+        assert image is not None, "Make sure output is not None"
+
+    def test_output_pretrained(self):
+        model = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor128")
+        model.eval()
+
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        num_features = model.transition_dim
+        seq_len = 16
+        noise = torch.randn((1, seq_len, num_features))
+        time_step = torch.full((num_features,), 0)
+
+        with torch.no_grad():
+            output = model(noise, time_step)
+
+        output_slice = output[0, -3:, -3:].flatten()
+        # fmt: off
+        expected_output_slice = torch.tensor([-0.2714, 0.1042, -0.0794, -0.2820, 0.0803, -0.0811, -0.2345, 0.0580, -0.0584])
+        # fmt: on
+
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+
+
+class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
+    model_class = NCSNpp
+
+    @property
+    def dummy_input(self):
+        batch_size = 4
+        num_channels = 3
+        sizes = (32, 32)
+
+        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        time_step = torch.tensor(batch_size * [10]).to(torch_device)
+
+        return {"x": noise, "timesteps": time_step}
+
+    @property
+    def input_shape(self):
+        return (3, 32, 32)
+
+    @property
+    def output_shape(self):
+        return (3, 32, 32)
+
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = {
+            "image_size": 32,
+            "ch_mult": [1, 2, 2, 2],
+            "nf": 32,
+            "fir": True,
+            "progressive": "output_skip",
+            "progressive_combine": "sum",
+            "progressive_input": "input_skip",
+            "scale_by_sigma": True,
+            "skip_rescale": True,
+            "embedding_type": "fourier",
+        }
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+
+    def test_from_pretrained_hub(self):
+        model, loading_info = NCSNpp.from_pretrained("fusing/cifar10-ncsnpp-ve", output_loading_info=True)
+        self.assertIsNotNone(model)
+        self.assertEqual(len(loading_info["missing_keys"]), 0)
+
+        model.to(torch_device)
+        image = model(**self.dummy_input)
+
+        assert image is not None, "Make sure output is not None"
+
+    def test_output_pretrained_ve_small(self):
+        model = NCSNpp.from_pretrained("fusing/ncsnpp-cifar10-ve-dummy")
+        model.eval()
+        model.to(torch_device)
+
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        batch_size = 4
+        num_channels = 3
+        sizes = (32, 32)
+
+        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        time_step = torch.tensor(batch_size * [10]).to(torch_device)
+
+        with torch.no_grad():
+            output = model(noise, time_step)
+
+        output_slice = output[0, -3:, -3:, -1].flatten().cpu()
+        # fmt: off
+        expected_output_slice = torch.tensor([3.1909e-07, -8.5393e-08, 4.8460e-07, -4.5550e-07, -1.3205e-06, -6.3475e-07, 9.7837e-07, 2.9974e-07, 1.2345e-06])
+        # fmt: on
+
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+
+    def test_output_pretrained_ve_large(self):
+        model = NCSNpp.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy")
+        model.eval()
+        model.to(torch_device)
+
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        batch_size = 4
+        num_channels = 3
+        sizes = (32, 32)
+
+        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        time_step = torch.tensor(batch_size * [10]).to(torch_device)
+
+        with torch.no_grad():
+            output = model(noise, time_step)
+
+        output_slice = output[0, -3:, -3:, -1].flatten().cpu()
+        # fmt: off
+        expected_output_slice = torch.tensor([-8.3299e-07, -9.0431e-07, 4.0585e-08, 9.7563e-07, 1.0280e-06, 1.0133e-06, 1.4979e-06, -2.9716e-07, -6.1817e-07])
+        # fmt: on
+
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+
+    def test_output_pretrained_vp(self):
+        model = NCSNpp.from_pretrained("fusing/ddpm-cifar10-vp-dummy")
+        model.eval()
+        model.to(torch_device)
+
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        batch_size = 4
+        num_channels = 3
+        sizes = (32, 32)
+
+        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        time_step = torch.tensor(batch_size * [10]).to(torch_device)
+
+        with torch.no_grad():
+            output = model(noise, time_step)
+
+        output_slice = output[0, -3:, -3:, -1].flatten().cpu()
+        # fmt: off
+        expected_output_slice = torch.tensor([-3.9086e-07, -1.1001e-05, 1.8881e-06, 1.1106e-05, 1.6629e-06, 2.9820e-06, 8.4978e-06, 8.0253e-07, 1.5435e-06])
         # fmt: on
 
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
@@ -805,11 +1005,13 @@ class PipelineTesterMixin(unittest.TestCase):
         bddm = BDDMPipeline(model, noise_scheduler)
 
         # check if the library name for the diffwave moduel is set to pipeline module
-        self.assertTrue(bddm.config["diffwave"][0] == "pipeline_bddm")
+        self.assertTrue(bddm.config["diffwave"][0] == "bddm")
 
         # check if we can save and load the pipeline
         with tempfile.TemporaryDirectory() as tmpdirname:
             bddm.save_pretrained(tmpdirname)
             _ = BDDMPipeline.from_pretrained(tmpdirname)
             # check if the same works using the DifusionPipeline class
-            _ = DiffusionPipeline.from_pretrained(tmpdirname)
+            bddm = DiffusionPipeline.from_pretrained(tmpdirname)
+
+        self.assertTrue(bddm.config["diffwave"][0] == "bddm")

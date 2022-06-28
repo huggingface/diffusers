@@ -1,20 +1,11 @@
 # model adapted from diffuser https://github.com/jannerm/diffuser/blob/main/diffuser/models/temporal.py
 
-import math
-
 import torch
 import torch.nn as nn
 
-
-try:
-    import einops
-    from einops.layers.torch import Rearrange
-except:
-    print("Einops is not installed")
-    pass
-
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
+from .embeddings import get_timestep_embedding
 
 
 class SinusoidalPosEmb(nn.Module):
@@ -23,13 +14,7 @@ class SinusoidalPosEmb(nn.Module):
         self.dim = dim
 
     def forward(self, x):
-        device = x.device
-        half_dim = self.dim // 2
-        emb = math.log(10000) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, device=device) * -emb)
-        emb = x[:, None] * emb[None, :]
-        emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
-        return emb
+        return get_timestep_embedding(x, self.dim)
 
 
 class Downsample1d(nn.Module):
@@ -50,6 +35,21 @@ class Upsample1d(nn.Module):
         return self.conv(x)
 
 
+class RearrangeDim(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, tensor):
+        if len(tensor.shape) == 2:
+            return tensor[:, :, None]
+        if len(tensor.shape) == 3:
+            return tensor[:, :, None, :]
+        elif len(tensor.shape) == 4:
+            return tensor[:, :, 0, :]
+        else:
+            raise ValueError(f"`len(tensor)`: {len(tensor)} has to be 2, 3 or 4.")
+
+
 class Conv1dBlock(nn.Module):
     """
     Conv1d --> GroupNorm --> Mish
@@ -60,9 +60,11 @@ class Conv1dBlock(nn.Module):
 
         self.block = nn.Sequential(
             nn.Conv1d(inp_channels, out_channels, kernel_size, padding=kernel_size // 2),
-            Rearrange("batch channels horizon -> batch channels 1 horizon"),
+            RearrangeDim(),
+            #            Rearrange("batch channels horizon -> batch channels 1 horizon"),
             nn.GroupNorm(n_groups, out_channels),
-            Rearrange("batch channels 1 horizon -> batch channels horizon"),
+            RearrangeDim(),
+            #            Rearrange("batch channels 1 horizon -> batch channels horizon"),
             nn.Mish(),
         )
 
@@ -84,7 +86,8 @@ class ResidualTemporalBlock(nn.Module):
         self.time_mlp = nn.Sequential(
             nn.Mish(),
             nn.Linear(embed_dim, out_channels),
-            Rearrange("batch t -> batch t 1"),
+            RearrangeDim(),
+            #            Rearrange("batch t -> batch t 1"),
         )
 
         self.residual_conv = (
@@ -93,10 +96,8 @@ class ResidualTemporalBlock(nn.Module):
 
     def forward(self, x, t):
         """
-        x : [ batch_size x inp_channels x horizon ]
-        t : [ batch_size x embed_dim ]
-        returns:
-        out : [ batch_size x out_channels x horizon ]
+        x : [ batch_size x inp_channels x horizon ] t : [ batch_size x embed_dim ] returns: out : [ batch_size x
+        out_channels x horizon ]
         """
         out = self.blocks[0](x) + self.time_mlp(t)
         out = self.blocks[1](out)
@@ -106,13 +107,13 @@ class ResidualTemporalBlock(nn.Module):
 class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
     def __init__(
         self,
-        training_horizon,
-        transition_dim,
-        cond_dim,
+        training_horizon=128,
+        transition_dim=14,
+        cond_dim=3,
         predict_epsilon=False,
         clip_denoised=True,
         dim=32,
-        dim_mults=(1, 2, 4, 8),
+        dim_mults=(1, 4, 8),
     ):
         super().__init__()
 
@@ -123,7 +124,6 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
 
         dims = [transition_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
-        # print(f'[ models/temporal ] Channel dimensions: {in_out}')
 
         time_dim = dim
         self.time_mlp = nn.Sequential(
@@ -137,7 +137,6 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
         self.ups = nn.ModuleList([])
         num_resolutions = len(in_out)
 
-        print(in_out)
         for ind, (dim_in, dim_out) in enumerate(in_out):
             is_last = ind >= (num_resolutions - 1)
 
@@ -179,14 +178,14 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
             nn.Conv1d(dim, transition_dim, 1),
         )
 
-    def forward(self, x, cond, time):
+    def forward(self, x, timesteps):
         """
         x : [ batch x horizon x transition ]
         """
 
-        x = einops.rearrange(x, "b h t -> b t h")
+        x = x.permute(0, 2, 1)
 
-        t = self.time_mlp(time)
+        t = self.time_mlp(timesteps)
         h = []
 
         for resnet, resnet2, downsample in self.downs:
@@ -206,7 +205,7 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
 
         x = self.final_conv(x)
 
-        x = einops.rearrange(x, "b t h -> b h t")
+        x = x.permute(0, 2, 1)
         return x
 
 
@@ -263,7 +262,7 @@ class TemporalValue(nn.Module):
         x : [ batch x horizon x transition ]
         """
 
-        x = einops.rearrange(x, "b h t -> b t h")
+        x = x.permute(0, 2, 1)
 
         t = self.time_mlp(time)
 

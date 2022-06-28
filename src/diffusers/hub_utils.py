@@ -47,12 +47,11 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 
 def init_git_repo(args, at_init: bool = False):
     """
-    Initializes a git repo in `args.hub_model_id`.
     Args:
+    Initializes a git repo in `args.hub_model_id`.
         at_init (`bool`, *optional*, defaults to `False`):
-            Whether this function is called before any training or not. If `self.args.overwrite_output_dir` is
-            `True` and `at_init` is `True`, the path to the repo (which is `self.args.output_dir`) might be wiped
-            out.
+            Whether this function is called before any training or not. If `self.args.overwrite_output_dir` is `True`
+            and `at_init` is `True`, the path to the repo (which is `self.args.output_dir`) might be wiped out.
     """
     if args.local_rank not in [-1, 0]:
         return
@@ -102,8 +101,8 @@ def push_to_hub(
     **kwargs,
 ) -> str:
     """
-    Upload *self.model* and *self.tokenizer* to the 🤗 model hub on the repo *self.args.hub_model_id*.
     Parameters:
+    Upload *self.model* and *self.tokenizer* to the 🤗 model hub on the repo *self.args.hub_model_id*.
         commit_message (`str`, *optional*, defaults to `"End of training"`):
             Message to commit while pushing.
         blocking (`bool`, *optional*, defaults to `True`):
@@ -111,8 +110,8 @@ def push_to_hub(
         kwargs:
             Additional keyword arguments passed along to [`create_model_card`].
     Returns:
-        The url of the commit of your model in the given repository if `blocking=False`, a tuple with the url of
-        the commit and an object to track the progress of the commit if `blocking=True`
+        The url of the commit of your model in the given repository if `blocking=False`, a tuple with the url of the
+        commit and an object to track the progress of the commit if `blocking=True`
     """
 
     if args.hub_model_id is None:
