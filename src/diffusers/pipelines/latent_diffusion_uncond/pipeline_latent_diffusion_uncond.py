@@ -533,6 +533,8 @@ class VQModel(ModelMixin, ConfigMixin):
             give_pre_end=give_pre_end,
         )
 
+        self.quant_conv = torch.nn.Conv2d(z_channels, embed_dim, 1)
+        self.post_quant_conv = torch.nn.Conv2d(embed_dim, z_channels, 1)
         self.quantize = VectorQuantizer(n_embed, embed_dim, beta=0.25, remap=remap, sane_index_shape=sane_index_shape)
 
         # pass init params to Decoder
@@ -624,9 +626,7 @@ class LatentDiffusionUncondPipeline(DiffusionPipeline):
             # 4. set current image to prev_image: x_t -> x_t-1
             image = pred_prev_image + variance
 
-        # scale and decode image with vae
-        image = 1 / 0.18215 * image
+        # decode image with vae
         image = self.vqvae.decode(image)
-        image = torch.clamp((image + 1.0) / 2.0, min=0.0, max=1.0)
 
         return image
