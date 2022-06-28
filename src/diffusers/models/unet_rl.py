@@ -1,12 +1,11 @@
 # model adapted from diffuser https://github.com/jannerm/diffuser/blob/main/diffuser/models/temporal.py
 
-import math
-
 import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
+from .embeddings import get_timestep_embedding
 
 
 class SinusoidalPosEmb(nn.Module):
@@ -15,13 +14,7 @@ class SinusoidalPosEmb(nn.Module):
         self.dim = dim
 
     def forward(self, x):
-        device = x.device
-        half_dim = self.dim // 2
-        emb = math.log(10000) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, device=device) * -emb)
-        emb = x[:, None] * emb[None, :]
-        emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
-        return emb
+        return get_timestep_embedding(x, self.dim)
 
 
 class Downsample1d(nn.Module):
