@@ -11,7 +11,7 @@ from diffusers import DDPMPipeline, DDPMScheduler, UNetModel
 from diffusers.hub_utils import init_git_repo, push_to_hub
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
-from diffusers.utils import logging
+from accelerate.logging import get_logger
 from torchvision.transforms import (
     CenterCrop,
     Compose,
@@ -24,11 +24,11 @@ from torchvision.transforms import (
 from tqdm.auto import tqdm
 
 
-logger = logging.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 def main(args):
-    accelerator = Accelerator(mixed_precision=args.mixed_precision)
+    accelerator = Accelerator(mixed_precision=args.mixed_precision, log_with="all", logging_dir=args.logging_dir)
 
     model = UNetModel(
         attn_resolutions=(16,),
@@ -76,6 +76,12 @@ def main(args):
     if args.push_to_hub:
         repo = init_git_repo(args, at_init=True)
 
+    if accelerator.is_main_process:
+        run = os.path.split(__file__)[-1].split(".")[0]
+        if args.logging_dir:
+            run = os.path.join(args.output_dir, args.logging_dir, run)
+        accelerator.init_trackers(run, args)
+
     # Train!
     is_distributed = torch.distributed.is_available() and torch.distributed.is_initialized()
     world_size = torch.distributed.get_world_size() if is_distributed else 1
@@ -92,41 +98,50 @@ def main(args):
     global_step = 0
     for epoch in range(args.num_epochs):
         model.train()
-        with tqdm(total=len(train_dataloader), unit="ba") as pbar:
-            pbar.set_description(f"Epoch {epoch}")
-            for step, batch in enumerate(train_dataloader):
-                clean_images = batch["input"]
-                noise_samples = torch.randn(clean_images.shape).to(clean_images.device)
-                bsz = clean_images.shape[0]
-                timesteps = torch.randint(0, noise_scheduler.timesteps, (bsz,), device=clean_images.device).long()
+        progress_bar = tqdm(total=len(train_dataloader), disable=not accelerator.is_local_main_process)
+        progress_bar.set_description(f"Epoch {epoch}")
+        for step, batch in enumerate(train_dataloader):
+            clean_images = batch["input"]
+            noise_samples = torch.randn(clean_images.shape).to(clean_images.device)
+            bsz = clean_images.shape[0]
+            timesteps = torch.randint(0, noise_scheduler.timesteps, (bsz,), device=clean_images.device).long()
 
-                # add noise onto the clean images according to the noise magnitude at each timestep
-                # (this is the forward diffusion process)
-                noisy_images = noise_scheduler.training_step(clean_images, noise_samples, timesteps)
+            # add noise onto the clean images according to the noise magnitude at each timestep
+            # (this is the forward diffusion process)
+            noisy_images = noise_scheduler.training_step(clean_images, noise_samples, timesteps)
 
-                if step % args.gradient_accumulation_steps != 0:
-                    with accelerator.no_sync(model):
-                        output = model(noisy_images, timesteps)
-                        # predict the noise residual
-                        loss = F.mse_loss(output, noise_samples)
-                        loss = loss / args.gradient_accumulation_steps
-                        accelerator.backward(loss)
-                else:
+            if step % args.gradient_accumulation_steps != 0:
+                 with accelerator.no_sync(model):
                     output = model(noisy_images, timesteps)
                     # predict the noise residual
                     loss = F.mse_loss(output, noise_samples)
                     loss = loss / args.gradient_accumulation_steps
                     accelerator.backward(loss)
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                    optimizer.step()
-                    lr_scheduler.step()
-                    ema_model.step(model, global_step)
-                    optimizer.zero_grad()
-                pbar.update(1)
-                pbar.set_postfix(
+            else:
+                output = model(noisy_images, timesteps)
+                # predict the noise residual
+                loss = F.mse_loss(output, noise_samples)
+                loss = loss / args.gradient_accumulation_steps
+                accelerator.backward(loss)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                optimizer.step()
+                lr_scheduler.step()
+                ema_model.step(model, global_step)
+                optimizer.zero_grad()
+            progress_bar.update(1)
+            progress_bar.set_postfix(
                     loss=loss.detach().item(), lr=optimizer.param_groups[0]["lr"], ema_decay=ema_model.decay
-                )
-                global_step += 1
+            )
+            accelerator.log(
+                    {
+                        "train_loss": loss.detach().item(),
+                        "epoch": epoch,
+                        "ema_decay": ema_model.decay,
+                    },
+                    step=epoch,
+            )
+            global_step += 1
+        progress_bar.close()
 
         accelerator.wait_for_everyone()
 
@@ -159,6 +174,8 @@ def main(args):
                 pipeline.save_pretrained(args.output_dir)
         accelerator.wait_for_everyone()
 
+    accelerator.end_training()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
@@ -179,6 +196,11 @@ if __name__ == "__main__":
     parser.add_argument("--hub_token", type=str, default=None)
     parser.add_argument("--hub_model_id", type=str, default=None)
     parser.add_argument("--hub_private_repo", action="store_true")
+    parser.add_argument(
+        "--logging_dir",
+        type=str,
+        default="logs",
+    )
     parser.add_argument(
         "--mixed_precision",
         type=str,
