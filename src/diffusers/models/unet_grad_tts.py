@@ -5,6 +5,7 @@ from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .embeddings import get_timestep_embedding
 from .resnet import Downsample, Upsample
+from .attention2d import LinearAttention
 
 
 class Mish(torch.nn.Module):
@@ -54,7 +55,7 @@ class ResnetBlock(torch.nn.Module):
         return output
 
 
-class LinearAttention(torch.nn.Module):
+class old_LinearAttention(torch.nn.Module):
     def __init__(self, dim, heads=4, dim_head=32):
         super(LinearAttention, self).__init__()
         self.heads = heads

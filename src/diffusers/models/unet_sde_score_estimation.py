@@ -22,10 +22,12 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .embeddings import GaussianFourierProjection, get_timestep_embedding
+from .attention2d import AttentionBlock
 
 
 def upfirdn2d(input, kernel, up=1, down=1, pad=(0, 0)):
@@ -414,37 +416,6 @@ class Combine(nn.Module):
             raise ValueError(f"Method {self.method} not recognized.")
 
 
-class AttnBlockpp(nn.Module):
-    """Channel-wise self-attention block. Modified from DDPM."""
-
-    def __init__(self, channels, skip_rescale=False, init_scale=0.0):
-        super().__init__()
-        self.GroupNorm_0 = nn.GroupNorm(num_groups=min(channels // 4, 32), num_channels=channels, eps=1e-6)
-        self.NIN_0 = NIN(channels, channels)
-        self.NIN_1 = NIN(channels, channels)
-        self.NIN_2 = NIN(channels, channels)
-        self.NIN_3 = NIN(channels, channels, init_scale=init_scale)
-        self.skip_rescale = skip_rescale
-
-    def forward(self, x):
-        B, C, H, W = x.shape
-        h = self.GroupNorm_0(x)
-        q = self.NIN_0(h)
-        k = self.NIN_1(h)
-        v = self.NIN_2(h)
-
-        w = torch.einsum("bchw,bcij->bhwij", q, k) * (int(C) ** (-0.5))
-        w = torch.reshape(w, (B, H, W, H * W))
-        w = F.softmax(w, dim=-1)
-        w = torch.reshape(w, (B, H, W, H, W))
-        h = torch.einsum("bhwij,bcij->bchw", w, v)
-        h = self.NIN_3(h)
-        if not self.skip_rescale:
-            return x + h
-        else:
-            return (x + h) / np.sqrt(2.0)
-
-
 class Upsample(nn.Module):
     def __init__(self, in_ch=None, out_ch=None, with_conv=False, fir=False, fir_kernel=(1, 3, 3, 1)):
         super().__init__()
@@ -756,7 +727,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
             modules[-1].weight.data = default_init()(modules[-1].weight.shape)
             nn.init.zeros_(modules[-1].bias)
 
-        AttnBlock = functools.partial(AttnBlockpp, init_scale=init_scale, skip_rescale=skip_rescale)
+        AttnBlock = functools.partial(AttentionBlock, overwrite_linear=True, rescale_output_factor=math.sqrt(2.0))
 
         Up_sample = functools.partial(Upsample, with_conv=resamp_with_conv, fir=fir, fir_kernel=fir_kernel)
 
