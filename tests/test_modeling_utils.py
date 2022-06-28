@@ -858,25 +858,26 @@ class PipelineTesterMixin(unittest.TestCase):
         image_slice = image[0, -1, -3:, -3:].cpu()
 
         assert image.shape == (1, 3, 32, 32)
-        expected_slice = torch.tensor([0.2250, 0.3375, 0.2360, 0.0930, 0.3440, 0.3156, 0.1937, 0.3585, 0.1761])
+        expected_slice = torch.tensor([0.2249, 0.3375, 0.2359, 0.0929, 0.3439, 0.3156, 0.1937, 0.3585, 0.1761])
         assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
 
     @slow
     def test_ddim_cifar10(self):
-        generator = torch.manual_seed(0)
         model_id = "fusing/ddpm-cifar10"
 
         unet = UNetModel.from_pretrained(model_id)
         noise_scheduler = DDIMScheduler(tensor_format="pt")
 
         ddim = DDIMPipeline(unet=unet, noise_scheduler=noise_scheduler)
+
+        generator = torch.manual_seed(0)
         image = ddim(generator=generator, eta=0.0)
 
         image_slice = image[0, -1, -3:, -3:].cpu()
 
         assert image.shape == (1, 3, 32, 32)
         expected_slice = torch.tensor(
-            [-0.7383, -0.7385, -0.7298, -0.7364, -0.7414, -0.7239, -0.6737, -0.6813, -0.7068]
+            [-0.6553, -0.6765, -0.6799, -0.6749, -0.7006, -0.6974, -0.6991, -0.7116, -0.7094]
         )
         assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
 
@@ -895,7 +896,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
         assert image.shape == (1, 3, 32, 32)
         expected_slice = torch.tensor(
-            [-0.7888, -0.7870, -0.7759, -0.7823, -0.8014, -0.7608, -0.6818, -0.7130, -0.7471]
+            [-0.7925, -0.7902, -0.7789, -0.7796, -0.8000, -0.7596, -0.6852, -0.7125, -0.7494]
         )
         assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
 
@@ -966,24 +967,22 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_score_sde_ve_pipeline(self):
-        torch.manual_seed(0)
-
         model = NCSNpp.from_pretrained("fusing/ffhq_ncsnpp")
         scheduler = ScoreSdeVeScheduler.from_config("fusing/ffhq_ncsnpp")
 
         sde_ve = ScoreSdeVePipeline(model=model, scheduler=scheduler)
 
+        torch.manual_seed(0)
         image = sde_ve(num_inference_steps=2)
 
-        expected_image_sum = 3382810112.0
-        expected_image_mean = 1075.366455078125
+        expected_image_sum = 3382849024.0
+        expected_image_mean = 1075.3788
 
         assert (image.abs().sum() - expected_image_sum).abs().cpu().item() < 1e-2
         assert (image.abs().mean() - expected_image_mean).abs().cpu().item() < 1e-4
 
     @slow
     def test_score_sde_vp_pipeline(self):
-
         model = NCSNpp.from_pretrained("fusing/cifar10-ddpmpp-vp")
         scheduler = ScoreSdeVpScheduler.from_config("fusing/cifar10-ddpmpp-vp")
 
