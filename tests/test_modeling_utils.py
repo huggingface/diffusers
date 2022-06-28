@@ -47,7 +47,7 @@ from diffusers import (
 )
 from diffusers.configuration_utils import ConfigMixin
 from diffusers.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.pipeline_bddm import DiffWave
+from diffusers.pipelines.bddm.pipeline_bddm import DiffWave
 from diffusers.testing_utils import floats_tensor, slow, torch_device
 
 
@@ -1005,11 +1005,13 @@ class PipelineTesterMixin(unittest.TestCase):
         bddm = BDDMPipeline(model, noise_scheduler)
 
         # check if the library name for the diffwave moduel is set to pipeline module
-        self.assertTrue(bddm.config["diffwave"][0] == "pipeline_bddm")
+        self.assertTrue(bddm.config["diffwave"][0] == "bddm")
 
         # check if we can save and load the pipeline
         with tempfile.TemporaryDirectory() as tmpdirname:
             bddm.save_pretrained(tmpdirname)
             _ = BDDMPipeline.from_pretrained(tmpdirname)
             # check if the same works using the DifusionPipeline class
-            _ = DiffusionPipeline.from_pretrained(tmpdirname)
+            bddm = DiffusionPipeline.from_pretrained(tmpdirname)
+
+        self.assertTrue(bddm.config["diffwave"][0] == "bddm")

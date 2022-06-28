@@ -21,9 +21,9 @@ import torch.nn.functional as F
 
 import tqdm
 
-from ..configuration_utils import ConfigMixin
-from ..modeling_utils import ModelMixin
-from ..pipeline_utils import DiffusionPipeline
+from ...configuration_utils import ConfigMixin
+from ...modeling_utils import ModelMixin
+from ...pipeline_utils import DiffusionPipeline
 
 
 def calc_diffusion_step_embedding(diffusion_steps, diffusion_step_embed_dim_in):

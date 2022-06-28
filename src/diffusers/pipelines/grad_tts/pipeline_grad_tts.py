@@ -6,10 +6,10 @@ import torch
 from torch import nn
 
 import tqdm
-from diffusers import DiffusionPipeline
-from diffusers.configuration_utils import ConfigMixin
-from diffusers.modeling_utils import ModelMixin
 
+from ...configuration_utils import ConfigMixin
+from ...modeling_utils import ModelMixin
+from ...pipeline_utils import DiffusionPipeline
 from .grad_tts_utils import GradTTSTokenizer  # flake8: noqa
 
 

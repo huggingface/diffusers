@@ -18,7 +18,6 @@ import math
 from dataclasses import dataclass
 from typing import Any, Optional, Tuple, Union
 
-import numpy as np
 import torch
 import torch.utils.checkpoint
 from torch import nn
@@ -30,10 +29,10 @@ from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPo
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import ModelOutput, add_start_docstrings_to_model_forward, replace_return_docstrings
 
-from ..models import GlideSuperResUNetModel, GlideTextToImageUNetModel
-from ..pipeline_utils import DiffusionPipeline
-from ..schedulers import DDIMScheduler, DDPMScheduler
-from ..utils import logging
+from ...models import GlideSuperResUNetModel, GlideTextToImageUNetModel
+from ...pipeline_utils import DiffusionPipeline
+from ...schedulers import DDIMScheduler, DDPMScheduler
+from ...utils import logging
 
 
 #####################
@@ -594,7 +593,7 @@ class CLIPTextTransformer(nn.Module):
         bsz, seq_len = input_shape
         # CLIP's text model uses causal mask, prepare it here.
         # https://github.com/openai/CLIP/blob/cfcffb90e69f37bf2ff1e988237a0fbe41f33c04/clip/model.py#L324
-        causal_attention_mask = self._build_causal_attention_mask(bsz, seq_len).to(hidden_states.device)
+        #        causal_attention_mask = self._build_causal_attention_mask(bsz, seq_len).to(hidden_states.device)
 
         # expand attention_mask
         if attention_mask is not None:

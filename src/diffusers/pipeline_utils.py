@@ -57,17 +57,19 @@ class DiffusionPipeline(ConfigMixin):
         from diffusers import pipelines
 
         for name, module in kwargs.items():
-            # check if the module is a pipeline module
-            is_pipeline_module = hasattr(pipelines, module.__module__.split(".")[-1])
-
             # retrive library
             library = module.__module__.split(".")[0]
 
+            # check if the module is a pipeline module
+            pipeline_file = module.__module__.split(".")[-1]
+            pipeline_dir = module.__module__.split(".")[-2]
+            is_pipeline_module = pipeline_file == "pipeline_" + pipeline_dir and hasattr(pipelines, pipeline_dir)
+
             # if library is not in LOADABLE_CLASSES, then it is a custom module.
             # Or if it's a pipeline module, then the module is inside the pipeline
-            # so we set the library to module name.
+            # folder so we set the library to module name.
             if library not in LOADABLE_CLASSES or is_pipeline_module:
-                library = module.__module__.split(".")[-1]
+                library = pipeline_dir
 
             # retrive class_name
             class_name = module.__class__.__name__

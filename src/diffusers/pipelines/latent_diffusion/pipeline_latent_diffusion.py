@@ -7,20 +7,15 @@ import torch.nn as nn
 import torch.utils.checkpoint
 
 import tqdm
+from transformers.activations import ACT2FN
+from transformers.configuration_utils import PretrainedConfig
+from transformers.modeling_outputs import BaseModelOutput
+from transformers.modeling_utils import PreTrainedModel
+from transformers.utils import logging
 
-
-try:
-    from transformers.activations import ACT2FN
-    from transformers.configuration_utils import PretrainedConfig
-    from transformers.modeling_outputs import BaseModelOutput
-    from transformers.modeling_utils import PreTrainedModel
-    from transformers.utils import logging
-except ImportError:
-    raise ImportError("Please install the transformers.")
-
-from ..configuration_utils import ConfigMixin
-from ..modeling_utils import ModelMixin
-from ..pipeline_utils import DiffusionPipeline
+from ...configuration_utils import ConfigMixin
+from ...modeling_utils import ModelMixin
+from ...pipeline_utils import DiffusionPipeline
 
 
 ################################################################################
