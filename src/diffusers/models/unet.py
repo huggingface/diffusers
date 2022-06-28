@@ -15,24 +15,14 @@
 
 # helpers functions
 
-import copy
-import math
-from pathlib import Path
-
 import torch
 from torch import nn
-from torch.cuda.amp import GradScaler, autocast
-from torch.optim import Adam
-from torch.utils import data
-
-from PIL import Image
-from tqdm import tqdm
 
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
+from .attention import AttentionBlock
 from .embeddings import get_timestep_embedding
 from .resnet import Downsample, Upsample
-from .attention2d import AttentionBlock
 
 
 def nonlinearity(x):
@@ -219,11 +209,7 @@ class UNetModel(ModelMixin, ConfigMixin):
             for i_block in range(self.num_res_blocks):
                 h = self.down[i_level].block[i_block](hs[-1], temb)
                 if len(self.down[i_level].attn) > 0:
-#                    self.down[i_level].attn_2[i_block].set_weights(self.down[i_level].attn[i_block])
-#                    h = self.down[i_level].attn_2[i_block](h)
-
                     h = self.down[i_level].attn[i_block](h)
-#                    print("Result", (h - h_2).abs().sum())
                 hs.append(h)
             if i_level != self.num_resolutions - 1:
                 hs.append(self.down[i_level].downsample(hs[-1]))

@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
-from .attention2d import AttentionBlock
+from .attention import AttentionBlock
 from .embeddings import get_timestep_embedding
 from .resnet import Downsample, Upsample
 

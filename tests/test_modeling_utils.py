@@ -859,7 +859,9 @@ class PipelineTesterMixin(unittest.TestCase):
         image_slice = image[0, -1, -3:, -3:].cpu()
 
         assert image.shape == (1, 3, 32, 32)
-        expected_slice = torch.tensor([-0.5712, -0.6215, -0.5953, -0.5438, -0.4775, -0.4539, -0.5172, -0.4872, -0.5105])
+        expected_slice = torch.tensor(
+            [-0.5712, -0.6215, -0.5953, -0.5438, -0.4775, -0.4539, -0.5172, -0.4872, -0.5105]
+        )
         assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
 
     @slow
