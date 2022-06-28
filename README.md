@@ -159,7 +159,7 @@ eta = 0.0  # <- deterministic sampling
 
 for t in tqdm.tqdm(reversed(range(num_inference_steps)), total=num_inference_steps):
     # 1. predict noise residual
-	orig_t = len(noise_scheduler) // num_inference_steps * t
+    orig_t = len(noise_scheduler) // num_inference_steps * t
 
     with torch.inference_mode():
         residual = unet(image, orig_t)
