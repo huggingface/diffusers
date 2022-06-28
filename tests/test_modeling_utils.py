@@ -190,7 +190,7 @@ class ModelTesterMixin:
         model.to(torch_device)
         model.train()
         output = model(**inputs_dict)
-        noise = torch.randn((inputs_dict["x"].shape[0],) + self.get_output_shape).to(torch_device)
+        noise = torch.randn((inputs_dict["x"].shape[0],) + self.output_shape).to(torch_device)
         loss = torch.nn.functional.mse_loss(output, noise)
         loss.backward()
 
@@ -210,11 +210,11 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
         return {"x": noise, "timesteps": time_step}
 
     @property
-    def get_input_shape(self):
+    def input_shape(self):
         return (3, 32, 32)
 
     @property
-    def get_output_shape(self):
+    def output_shape(self):
         return (3, 32, 32)
 
     def prepare_init_args_and_inputs_for_common(self):
@@ -276,11 +276,11 @@ class GlideSuperResUNetTests(ModelTesterMixin, unittest.TestCase):
         return {"x": noise, "timesteps": time_step, "low_res": low_res}
 
     @property
-    def get_input_shape(self):
+    def input_shape(self):
         return (3, 32, 32)
 
     @property
-    def get_output_shape(self):
+    def output_shape(self):
         return (6, 32, 32)
 
     def prepare_init_args_and_inputs_for_common(self):
@@ -367,11 +367,11 @@ class GlideTextToImageUNetModelTests(ModelTesterMixin, unittest.TestCase):
         return {"x": noise, "timesteps": time_step, "transformer_out": emb}
 
     @property
-    def get_input_shape(self):
+    def input_shape(self):
         return (3, 32, 32)
 
     @property
-    def get_output_shape(self):
+    def output_shape(self):
         return (6, 32, 32)
 
     def prepare_init_args_and_inputs_for_common(self):
@@ -459,11 +459,11 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         return {"x": noise, "timesteps": time_step}
 
     @property
-    def get_input_shape(self):
+    def input_shape(self):
         return (4, 32, 32)
 
     @property
-    def get_output_shape(self):
+    def output_shape(self):
         return (4, 32, 32)
 
     def prepare_init_args_and_inputs_for_common(self):
@@ -552,11 +552,11 @@ class UNetGradTTSModelTests(ModelTesterMixin, unittest.TestCase):
         return {"x": noise, "timesteps": time_step, "mu": condition, "mask": mask}
 
     @property
-    def get_input_shape(self):
+    def input_shape(self):
         return (4, 32, 16)
 
     @property
-    def get_output_shape(self):
+    def output_shape(self):
         return (4, 32, 16)
 
     def prepare_init_args_and_inputs_for_common(self):
@@ -610,6 +610,38 @@ class UNetGradTTSModelTests(ModelTesterMixin, unittest.TestCase):
 class TemporalUNetModelTests(ModelTesterMixin, unittest.TestCase):
     model_class = TemporalUNet
 
+    @property
+    def dummy_input(self):
+        batch_size = 4
+        num_features = 14
+        seq_len = 16
+
+        noise = floats_tensor((batch_size, seq_len, num_features)).to(torch_device)
+        time_step = torch.tensor([10] * batch_size).to(torch_device)
+
+        return {"x": noise, "timesteps": time_step}
+
+    @property
+    def input_shape(self):
+        return (4, 16, 14)
+
+    @property
+    def output_shape(self):
+        return (4, 16, 14)
+
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = {
+            "training_horizon": 128,
+            "dim": 32,
+            "dim_mults": [1, 4, 8],
+            "predict_epsilon": False,
+            "clip_denoised": True,
+            "transition_dim": 14,
+            "cond_dim": 3,
+        }
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+
     def test_from_pretrained_hub(self):
         model, loading_info = TemporalUNet.from_pretrained(
             "fusing/ddpm-unet-rl-hopper-hor128", output_loading_info=True
@@ -640,8 +672,7 @@ class TemporalUNetModelTests(ModelTesterMixin, unittest.TestCase):
 
         output_slice = output[0, -3:, -3:].flatten()
         # fmt: off
-        expected_output_slice = torch.tensor([-0.2714, 0.1042, -0.0794, -0.2820, 0.0803, -0.0811, -0.2345, 0.0580,
-                                              -0.0584])
+        expected_output_slice = torch.tensor([-0.2714, 0.1042, -0.0794, -0.2820, 0.0803, -0.0811, -0.2345, 0.0580, -0.0584])
         # fmt: on
 
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
@@ -662,11 +693,11 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         return {"x": noise, "timesteps": time_step}
 
     @property
-    def get_input_shape(self):
+    def input_shape(self):
         return (3, 32, 32)
 
     @property
-    def get_output_shape(self):
+    def output_shape(self):
         return (3, 32, 32)
 
     def prepare_init_args_and_inputs_for_common(self):

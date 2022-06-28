@@ -122,13 +122,13 @@ class ResidualTemporalBlock(nn.Module):
 class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
     def __init__(
         self,
-        training_horizon,
-        transition_dim,
-        cond_dim,
+        training_horizon=128,
+        transition_dim=14,
+        cond_dim=3,
         predict_epsilon=False,
         clip_denoised=True,
         dim=32,
-        dim_mults=(1, 2, 4, 8),
+        dim_mults=(1, 4, 8),
     ):
         super().__init__()
 
@@ -139,7 +139,6 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
 
         dims = [transition_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
-        # print(f'[ models/temporal ] Channel dimensions: {in_out}')
 
         time_dim = dim
         self.time_mlp = nn.Sequential(
@@ -153,7 +152,6 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
         self.ups = nn.ModuleList([])
         num_resolutions = len(in_out)
 
-        print(in_out)
         for ind, (dim_in, dim_out) in enumerate(in_out):
             is_last = ind >= (num_resolutions - 1)
 
@@ -195,7 +193,7 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
             nn.Conv1d(dim, transition_dim, 1),
         )
 
-    def forward(self, x, time):
+    def forward(self, x, timesteps):
         """
         x : [ batch x horizon x transition ]
         """
@@ -203,7 +201,7 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
         #        x = einops.rearrange(x, "b h t -> b t h")
         x = x.permute(0, 2, 1)
 
-        t = self.time_mlp(time)
+        t = self.time_mlp(timesteps)
         h = []
 
         for resnet, resnet2, downsample in self.downs:
