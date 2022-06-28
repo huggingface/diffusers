@@ -32,62 +32,6 @@ class LinearAttention(torch.nn.Module):
         return self.to_out(out)
 
 
-# unet.py
-class AttnBlock(nn.Module):
-    def __init__(self, in_channels):
-        super().__init__()
-        self.in_channels = in_channels
-
-        self.norm = normalization(in_channels, swish=None, eps=1e-6)
-        self.q = torch.nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
-        self.k = torch.nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
-        self.v = torch.nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
-        self.proj_out = torch.nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0)
-
-    def forward(self, x):
-        print("x", x.abs().sum())
-        h_ = x
-        h_ = self.norm(h_)
-
-        print("hid_states shape", h_.shape)
-        print("hid_states", h_.abs().sum())
-        print("hid_states - 3 - 3", h_.view(h_.shape[0], h_.shape[1], -1)[:, :3, -3:])
-
-        q = self.q(h_)
-        k = self.k(h_)
-        v = self.v(h_)
-
-        print(self.q)
-        print("q_shape", q.shape)
-        print("q", q.abs().sum())
-#        print("k_shape", k.shape)
-#        print("k", k.abs().sum())
-#        print("v_shape", v.shape)
-#        print("v", v.abs().sum())
-
-        # compute attention
-        b, c, h, w = q.shape
-        q = q.reshape(b, c, h * w)
-        q = q.permute(0, 2, 1)  # b,hw,c
-        k = k.reshape(b, c, h * w)  # b,c,hw
-
-        w_ = torch.bmm(q, k)  # b,hw,hw    w[b,i,j]=sum_c q[b,i,c]k[b,c,j]
-        w_ = w_ * (int(c) ** (-0.5))
-        w_ = torch.nn.functional.softmax(w_, dim=2)
-        w_ = w_.permute(0, 2, 1)  # b,hw,hw (first hw of k, second of q)
-
-        print("weight", w_.abs().sum())
-
-        # attend to values
-        v = v.reshape(b, c, h * w)
-        h_ = torch.bmm(v, w_)  # b, c,hw (hw of q) h_[b,c,j] = sum_i v[b,c,i] w_[b,i,j]
-        h_ = h_.reshape(b, c, h, w)
-
-        h_ = self.proj_out(h_)
-
-        return x + h_
-
-
 # unet_glide.py & unet_ldm.py
 class AttentionBlock(nn.Module):
     """
