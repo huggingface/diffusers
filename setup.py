@@ -87,6 +87,7 @@ _deps = [
     "regex!=2019.12.17",
     "requests",
     "torch>=1.4",
+    "tensorboard",
 ]
 
 # this is a lookup table with items like:
@@ -172,6 +173,7 @@ install_requires = [
     deps["requests"],
     deps["torch"],
     deps["Pillow"],
+    deps["tensorboard"],
 ]
 
 setup(

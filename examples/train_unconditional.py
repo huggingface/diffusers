@@ -4,14 +4,13 @@ import os
 import torch
 import torch.nn.functional as F
 
-import PIL.Image
 from accelerate import Accelerator
+from accelerate.logging import get_logger
 from datasets import load_dataset
-from diffusers import DDPMPipeline, DDPMScheduler, UNetModel
+from diffusers import DDIMPipeline, DDIMScheduler, UNetModel
 from diffusers.hub_utils import init_git_repo, push_to_hub
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
-from accelerate.logging import get_logger
 from torchvision.transforms import (
     CenterCrop,
     Compose,
@@ -28,7 +27,8 @@ logger = get_logger(__name__)
 
 
 def main(args):
-    accelerator = Accelerator(mixed_precision=args.mixed_precision, log_with="all", logging_dir=args.logging_dir)
+    logging_dir = os.path.join(args.output_dir, args.logging_dir)
+    accelerator = Accelerator(mixed_precision=args.mixed_precision, log_with="tensorboard", logging_dir=logging_dir)
 
     model = UNetModel(
         attn_resolutions=(16,),
@@ -39,7 +39,7 @@ def main(args):
         resamp_with_conv=True,
         resolution=args.resolution,
     )
-    noise_scheduler = DDPMScheduler(timesteps=1000, tensor_format="pt")
+    noise_scheduler = DDIMScheduler(timesteps=1000, tensor_format="pt")
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
     augmentations = Compose(
@@ -78,9 +78,7 @@ def main(args):
 
     if accelerator.is_main_process:
         run = os.path.split(__file__)[-1].split(".")[0]
-        if args.logging_dir:
-            run = os.path.join(args.output_dir, args.logging_dir, run)
-        accelerator.init_trackers(run, args)
+        accelerator.init_trackers(run, vars(args))
 
     # Train!
     is_distributed = torch.distributed.is_available() and torch.distributed.is_initialized()
@@ -108,10 +106,10 @@ def main(args):
 
             # add noise onto the clean images according to the noise magnitude at each timestep
             # (this is the forward diffusion process)
-            noisy_images = noise_scheduler.training_step(clean_images, noise_samples, timesteps)
+            noisy_images = noise_scheduler.add_noise(clean_images, noise_samples, timesteps)
 
             if step % args.gradient_accumulation_steps != 0:
-                 with accelerator.no_sync(model):
+                with accelerator.no_sync(model):
                     output = model(noisy_images, timesteps)
                     # predict the noise residual
                     loss = F.mse_loss(output, noise_samples)
@@ -130,15 +128,16 @@ def main(args):
                 optimizer.zero_grad()
             progress_bar.update(1)
             progress_bar.set_postfix(
-                    loss=loss.detach().item(), lr=optimizer.param_groups[0]["lr"], ema_decay=ema_model.decay
+                loss=loss.detach().item(), lr=optimizer.param_groups[0]["lr"], ema_decay=ema_model.decay
             )
             accelerator.log(
-                    {
-                        "train_loss": loss.detach().item(),
-                        "epoch": epoch,
-                        "ema_decay": ema_model.decay,
-                    },
-                    step=epoch,
+                {
+                    "train_loss": loss.detach().item(),
+                    "epoch": epoch,
+                    "ema_decay": ema_model.decay,
+                    "step": global_step,
+                },
+                step=global_step,
             )
             global_step += 1
         progress_bar.close()
@@ -148,24 +147,20 @@ def main(args):
         # Generate a sample image for visual inspection
         if accelerator.is_main_process:
             with torch.no_grad():
-                pipeline = DDPMPipeline(
-                    unet=accelerator.unwrap_model(ema_model.averaged_model), noise_scheduler=noise_scheduler
+                pipeline = DDIMPipeline(
+                    unet=accelerator.unwrap_model(ema_model.averaged_model),
+                    noise_scheduler=noise_scheduler,
                 )
 
                 generator = torch.manual_seed(0)
                 # run pipeline in inference (sample random noise and denoise)
-                image = pipeline(generator=generator)
+                images = pipeline(generator=generator, batch_size=args.batch_size, num_inference_steps=50)
 
-            # process image to PIL
-            image_processed = image.cpu().permute(0, 2, 3, 1)
-            image_processed = (image_processed + 1.0) * 127.5
-            image_processed = image_processed.type(torch.uint8).numpy()
-            image_pil = PIL.Image.fromarray(image_processed[0])
+            # denormalize the images and save to tensorboard
+            images_processed = (images.cpu() + 1.0) * 127.5
+            images_processed = images_processed.clamp(0, 255).type(torch.uint8).numpy()
 
-            # save image
-            test_dir = os.path.join(args.output_dir, "test_samples")
-            os.makedirs(test_dir, exist_ok=True)
-            image_pil.save(f"{test_dir}/{epoch:04d}.png")
+            accelerator.trackers[0].writer.add_images("test_samples", images_processed, epoch)
 
             # save the model
             if args.push_to_hub:
@@ -196,11 +191,7 @@ if __name__ == "__main__":
     parser.add_argument("--hub_token", type=str, default=None)
     parser.add_argument("--hub_model_id", type=str, default=None)
     parser.add_argument("--hub_private_repo", action="store_true")
-    parser.add_argument(
-        "--logging_dir",
-        type=str,
-        default="logs",
-    )
+    parser.add_argument("--logging_dir", type=str, default="logs")
     parser.add_argument(
         "--mixed_precision",
         type=str,
