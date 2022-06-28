@@ -16,18 +16,18 @@
 # helpers functions
 
 import functools
+import math
 import string
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
 
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
-from .embeddings import GaussianFourierProjection, get_timestep_embedding
 from .attention2d import AttentionBlock
+from .embeddings import GaussianFourierProjection, get_timestep_embedding
 
 
 def upfirdn2d(input, kernel, up=1, down=1, pad=(0, 0)):
@@ -728,7 +728,6 @@ class NCSNpp(ModelMixin, ConfigMixin):
             nn.init.zeros_(modules[-1].bias)
 
         AttnBlock = functools.partial(AttentionBlock, overwrite_linear=True, rescale_output_factor=math.sqrt(2.0))
-
         Up_sample = functools.partial(Upsample, with_conv=resamp_with_conv, fir=fir, fir_kernel=fir_kernel)
 
         if progressive == "output_skip":

@@ -3,9 +3,9 @@ from numpy import pad
 
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
+from .attention2d import LinearAttention
 from .embeddings import get_timestep_embedding
 from .resnet import Downsample, Upsample
-from .attention2d import LinearAttention
 
 
 class Mish(torch.nn.Module):

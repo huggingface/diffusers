@@ -91,11 +91,15 @@ class AttentionBlock(nn.Module):
             self.NIN_2 = NIN(channels, channels)
             self.NIN_3 = NIN(channels, channels)
 
+            self.GroupNorm_0 = nn.GroupNorm(num_groups=num_groups, num_channels=channels, eps=1e-6)
+
         self.is_overwritten = False
 
     def set_weights(self, module):
         if self.overwrite_qkv:
-            qkv_weight = torch.cat([module.q.weight.data, module.k.weight.data, module.v.weight.data], dim=0)[:, :, :, 0]
+            qkv_weight = torch.cat([module.q.weight.data, module.k.weight.data, module.v.weight.data], dim=0)[
+                :, :, :, 0
+            ]
             qkv_bias = torch.cat([module.q.bias.data, module.k.bias.data, module.v.bias.data], dim=0)
 
             self.qkv.weight.data = qkv_weight
@@ -107,14 +111,19 @@ class AttentionBlock(nn.Module):
 
             self.proj_out = proj_out
         elif self.overwrite_linear:
-            self.qkv.weight.data = torch.concat([self.NIN_0.W.data.T, self.NIN_1.W.data.T, self.NIN_2.W.data.T], dim=0)[:, :, None]
+            self.qkv.weight.data = torch.concat(
+                [self.NIN_0.W.data.T, self.NIN_1.W.data.T, self.NIN_2.W.data.T], dim=0
+            )[:, :, None]
             self.qkv.bias.data = torch.concat([self.NIN_0.b.data, self.NIN_1.b.data, self.NIN_2.b.data], dim=0)
 
             self.proj_out.weight.data = self.NIN_3.W.data.T[:, :, None]
             self.proj_out.bias.data = self.NIN_3.b.data
 
+            self.norm.weight.data = self.GroupNorm_0.weight.data
+            self.norm.bias.data = self.GroupNorm_0.bias.data
+
     def forward(self, x, encoder_out=None):
-        if self.overwrite_qkv and not self.is_overwritten:
+        if (self.overwrite_qkv or self.overwrite_linear) and not self.is_overwritten:
             self.set_weights(self)
             self.is_overwritten = True
 
@@ -152,7 +161,7 @@ class AttentionBlock(nn.Module):
 
 
 # unet_score_estimation.py
-#class AttnBlockpp(nn.Module):
+# class AttnBlockpp(nn.Module):
 #    """Channel-wise self-attention block. Modified from DDPM."""
 #
 #    def __init__(
@@ -187,14 +196,11 @@ class AttentionBlock(nn.Module):
 #            self.num_heads = channels // num_head_channels
 #
 #        self.use_checkpoint = use_checkpoint
-#        self.norm = normalization(channels, num_groups=num_groups, eps=1e-6, swish=None)
-#        self.qkv = conv_nd(1, channels, channels * 3, 1)
+#        self.norm = nn.GroupNorm(num_channels=channels, num_groups=num_groups, eps=1e-6)
+#        self.qkv = nn.Conv1d(channels, channels * 3, 1)
 #        self.n_heads = self.num_heads
 #
-#        if encoder_channels is not None:
-#            self.encoder_kv = conv_nd(1, encoder_channels, channels * 2, 1)
-#
-#        self.proj_out = zero_module(conv_nd(1, channels, channels, 1))
+#        self.proj_out = zero_module(nn.Conv1d(channels, channels, 1))
 #
 #        self.is_weight_set = False
 #
@@ -204,6 +210,9 @@ class AttentionBlock(nn.Module):
 #
 #        self.proj_out.weight.data = self.NIN_3.W.data.T[:, :, None]
 #        self.proj_out.bias.data = self.NIN_3.b.data
+#
+#        self.norm.weight.data = self.GroupNorm_0.weight.data
+#        self.norm.bias.data = self.GroupNorm_0.bias.data
 #
 #    def forward(self, x):
 #        if not self.is_weight_set:
@@ -260,6 +269,7 @@ class AttentionBlock(nn.Module):
 #        h = h.reshape(b, c, *spatial)
 #
 #        return (x + h) / np.sqrt(2.0)
+
 
 # TODO(Patrick) - this can and should be removed
 def zero_module(module):
