@@ -330,8 +330,8 @@ class ResBlock(TimestepBlock):
 
         result = self.skip_connection(x) + h
 
-# TODO(Patrick) Use for glide at later stage
-#        result = self.forward_2(x, emb)
+        # TODO(Patrick) Use for glide at later stage
+        #        result = self.forward_2(x, emb)
 
         return result
 
@@ -439,9 +439,9 @@ class ResnetBlock(nn.Module):
                 self.res_conv = torch.nn.Identity()
         elif self.overwrite_for_ldm:
             dims = 2
-#            eps = 1e-5
-#            non_linearity = "silu"
-#            overwrite_for_ldm
+            #            eps = 1e-5
+            #            non_linearity = "silu"
+            #            overwrite_for_ldm
             channels = in_channels
             emb_channels = temb_channels
             use_scale_shift_norm = False
@@ -466,8 +466,8 @@ class ResnetBlock(nn.Module):
             )
             if self.out_channels == in_channels:
                 self.skip_connection = nn.Identity()
-#            elif use_conv:
-#                self.skip_connection = conv_nd(dims, channels, self.out_channels, 3, padding=1)
+            #            elif use_conv:
+            #                self.skip_connection = conv_nd(dims, channels, self.out_channels, 3, padding=1)
             else:
                 self.skip_connection = conv_nd(dims, channels, self.out_channels, 1)
 

@@ -10,9 +10,10 @@ from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import get_timestep_embedding
-from .resnet import Downsample, TimestepBlock, Upsample
-from .resnet import ResnetBlock
-#from .resnet import ResBlock
+from .resnet import Downsample, ResnetBlock, TimestepBlock, Upsample
+
+
+# from .resnet import ResBlock
 
 
 def exists(val):
@@ -561,14 +562,14 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
         for level, mult in enumerate(channel_mult):
             for _ in range(num_res_blocks):
                 layers = [
-                     ResnetBlock(
-                         in_channels=ch,
-                         out_channels=mult * model_channels,
-                         dropout=dropout,
-                         temb_channels=time_embed_dim,
-                         eps=1e-5,
-                         non_linearity="silu",
-                         overwrite_for_ldm=True,
+                    ResnetBlock(
+                        in_channels=ch,
+                        out_channels=mult * model_channels,
+                        dropout=dropout,
+                        temb_channels=time_embed_dim,
+                        eps=1e-5,
+                        non_linearity="silu",
+                        overwrite_for_ldm=True,
                     )
                 ]
                 ch = mult * model_channels
@@ -601,16 +602,16 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
                 out_ch = ch
                 self.input_blocks.append(
                     TimestepEmbedSequential(
-#                        ResBlock(
-#                            ch,
-#                            time_embed_dim,
-#                            dropout,
-#                            out_channels=out_ch,
-#                            dims=dims,
-#                            use_checkpoint=use_checkpoint,
-#                            use_scale_shift_norm=use_scale_shift_norm,
-#                            down=True,
-#                        )
+                        #                        ResBlock(
+                        #                            ch,
+                        #                            time_embed_dim,
+                        #                            dropout,
+                        #                            out_channels=out_ch,
+                        #                            dims=dims,
+                        #                            use_checkpoint=use_checkpoint,
+                        #                            use_scale_shift_norm=use_scale_shift_norm,
+                        #                            down=True,
+                        #                        )
                         None
                         if resblock_updown
                         else Downsample(
@@ -703,16 +704,16 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
                 if level and i == num_res_blocks:
                     out_ch = ch
                     layers.append(
-#                        ResBlock(
-#                            ch,
-#                            time_embed_dim,
-#                            dropout,
-#                            out_channels=out_ch,
-#                            dims=dims,
-#                            use_checkpoint=use_checkpoint,
-#                            use_scale_shift_norm=use_scale_shift_norm,
-#                            up=True,
-#                        )
+                        #                        ResBlock(
+                        #                            ch,
+                        #                            time_embed_dim,
+                        #                            dropout,
+                        #                            out_channels=out_ch,
+                        #                            dims=dims,
+                        #                            use_checkpoint=use_checkpoint,
+                        #                            use_scale_shift_norm=use_scale_shift_norm,
+                        #                            up=True,
+                        #                        )
                         None
                         if resblock_updown
                         else Upsample(ch, use_conv=conv_resample, dims=dims, out_channels=out_ch)
@@ -876,16 +877,16 @@ class EncoderUNetModel(nn.Module):
                 out_ch = ch
                 self.input_blocks.append(
                     TimestepEmbedSequential(
-#                        ResBlock(
-#                            ch,
-#                            time_embed_dim,
-#                            dropout,
-#                            out_channels=out_ch,
-#                            dims=dims,
-#                            use_checkpoint=use_checkpoint,
-#                            use_scale_shift_norm=use_scale_shift_norm,
-#                            down=True,
-#                        )
+                        #                        ResBlock(
+                        #                            ch,
+                        #                            time_embed_dim,
+                        #                            dropout,
+                        #                            out_channels=out_ch,
+                        #                            dims=dims,
+                        #                            use_checkpoint=use_checkpoint,
+                        #                            use_scale_shift_norm=use_scale_shift_norm,
+                        #                            down=True,
+                        #                        )
                         None
                         if resblock_updown
                         else Downsample(
