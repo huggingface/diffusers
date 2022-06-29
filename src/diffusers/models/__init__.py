@@ -22,3 +22,4 @@ from .unet_grad_tts import UNetGradTTSModel
 from .unet_ldm import UNetLDMModel
 from .unet_rl import TemporalUNet
 from .unet_sde_score_estimation import NCSNpp
+from .vae import AutoencoderKL, VQModel

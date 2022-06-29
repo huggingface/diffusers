@@ -71,6 +71,9 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         if beta_schedule == "linear":
             self.betas = np.linspace(beta_start, beta_end, timesteps, dtype=np.float32)
+        elif beta_schedule == "scaled_linear":
+            # this schedule is very specific to the latent diffusion model.
+            self.betas = np.linspace(beta_start**0.5, beta_end**0.5, timesteps, dtype=np.float32) ** 2
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(timesteps)
@@ -141,6 +144,15 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         pred_prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
 
         return pred_prev_sample
+
+    def add_noise(self, original_samples, noise, timesteps):
+        sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
+        sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
+        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
+        sqrt_one_minus_alpha_prod = self.match_shape(sqrt_one_minus_alpha_prod, original_samples)
+
+        noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
+        return noisy_samples
 
     def __len__(self):
         return self.config.timesteps

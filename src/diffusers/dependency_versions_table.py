@@ -13,4 +13,5 @@ deps = {
     "regex": "regex!=2019.12.17",
     "requests": "requests",
     "torch": "torch>=1.4",
+    "tensorboard": "tensorboard",
 }

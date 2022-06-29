@@ -17,7 +17,6 @@
 import math
 
 import numpy as np
-import torch
 
 from ..configuration_utils import ConfigMixin
 from .scheduling_utils import SchedulerMixin
@@ -142,7 +141,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         return pred_prev_sample
 
-    def training_step(self, original_samples: torch.Tensor, noise: torch.Tensor, timesteps: torch.Tensor):
+    def add_noise(self, original_samples, noise, timesteps):
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
         sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
