@@ -534,6 +534,11 @@ class VQModel(ModelMixin, ConfigMixin):
         quant = self.post_quant_conv(quant)
         dec = self.decoder(quant)
         return dec
+    
+    def forward(self, x):
+        h = self.encode(x)
+        dec = self.decode(h)
+        return dec
 
 
 class AutoencoderKL(ModelMixin, ConfigMixin):
