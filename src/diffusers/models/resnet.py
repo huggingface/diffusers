@@ -167,8 +167,8 @@ class Downsample(nn.Module):
 # class GlideUpsample(nn.Module):
 #    """
 # An upsampling layer with an optional convolution. # # :param channels: channels in the inputs and outputs. :param
-use_conv: a bool determining if a convolution is # applied. :param dims: determines if the signal is 1D, 2D, or 3D. If
-3D, then # upsampling occurs in the inner-two dimensions. #"""
+# use_conv: a bool determining if a convolution is # applied. :param dims: determines if the signal is 1D, 2D, or 3D. If
+# 3D, then # upsampling occurs in the inner-two dimensions. #"""
 #
 #    def __init__(self, channels, use_conv, dims=2, out_channels=None):
 #        super().__init__()
@@ -193,8 +193,8 @@ use_conv: a bool determining if a convolution is # applied. :param dims: determi
 # class LDMUpsample(nn.Module):
 #    """
 # An upsampling layer with an optional convolution. :param channels: channels in the inputs and outputs. :param #
-use_conv: a bool determining if a convolution is applied. :param dims: determines if the signal is 1D, 2D, or 3D. # If
-3D, then # upsampling occurs in the inner-two dimensions. #"""
+# use_conv: a bool determining if a convolution is applied. :param dims: determines if the signal is 1D, 2D, or 3D. # If
+# 3D, then # upsampling occurs in the inner-two dimensions. #"""
 #
 #    def __init__(self, channels, use_conv, dims=2, out_channels=None, padding=1):
 #        super().__init__()
