@@ -10,7 +10,9 @@ from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import get_timestep_embedding
-from .resnet import Downsample, ResBlock, TimestepBlock, Upsample
+from .resnet import Downsample, TimestepBlock, Upsample
+from .resnet import ResnetBlock
+#from .resnet import ResBlock
 
 
 def exists(val):
@@ -364,7 +366,7 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
 
     def forward(self, x, emb, context=None):
         for layer in self:
-            if isinstance(layer, TimestepBlock):
+            if isinstance(layer, TimestepBlock) or isinstance(layer, ResnetBlock):
                 x = layer(x, emb)
             elif isinstance(layer, SpatialTransformer):
                 x = layer(x, context)
@@ -559,14 +561,14 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
         for level, mult in enumerate(channel_mult):
             for _ in range(num_res_blocks):
                 layers = [
-                    ResBlock(
-                        ch,
-                        time_embed_dim,
-                        dropout,
-                        out_channels=mult * model_channels,
-                        dims=dims,
-                        use_checkpoint=use_checkpoint,
-                        use_scale_shift_norm=use_scale_shift_norm,
+                     ResnetBlock(
+                         in_channels=ch,
+                         out_channels=mult * model_channels,
+                         dropout=dropout,
+                         temb_channels=time_embed_dim,
+                         eps=1e-5,
+                         non_linearity="silu",
+                         overwrite_for_ldm=True,
                     )
                 ]
                 ch = mult * model_channels
@@ -599,16 +601,17 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
                 out_ch = ch
                 self.input_blocks.append(
                     TimestepEmbedSequential(
-                        ResBlock(
-                            ch,
-                            time_embed_dim,
-                            dropout,
-                            out_channels=out_ch,
-                            dims=dims,
-                            use_checkpoint=use_checkpoint,
-                            use_scale_shift_norm=use_scale_shift_norm,
-                            down=True,
-                        )
+#                        ResBlock(
+#                            ch,
+#                            time_embed_dim,
+#                            dropout,
+#                            out_channels=out_ch,
+#                            dims=dims,
+#                            use_checkpoint=use_checkpoint,
+#                            use_scale_shift_norm=use_scale_shift_norm,
+#                            down=True,
+#                        )
+                        None
                         if resblock_updown
                         else Downsample(
                             ch, use_conv=conv_resample, dims=dims, out_channels=out_ch, padding=1, name="op"
@@ -629,13 +632,14 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
             # num_heads = 1
             dim_head = ch // num_heads if use_spatial_transformer else num_head_channels
         self.middle_block = TimestepEmbedSequential(
-            ResBlock(
-                ch,
-                time_embed_dim,
-                dropout,
-                dims=dims,
-                use_checkpoint=use_checkpoint,
-                use_scale_shift_norm=use_scale_shift_norm,
+            ResnetBlock(
+                in_channels=ch,
+                out_channels=None,
+                dropout=dropout,
+                temb_channels=time_embed_dim,
+                eps=1e-5,
+                non_linearity="silu",
+                overwrite_for_ldm=True,
             ),
             AttentionBlock(
                 ch,
@@ -646,13 +650,14 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
             )
             if not use_spatial_transformer
             else SpatialTransformer(ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim),
-            ResBlock(
-                ch,
-                time_embed_dim,
-                dropout,
-                dims=dims,
-                use_checkpoint=use_checkpoint,
-                use_scale_shift_norm=use_scale_shift_norm,
+            ResnetBlock(
+                in_channels=ch,
+                out_channels=None,
+                dropout=dropout,
+                temb_channels=time_embed_dim,
+                eps=1e-5,
+                non_linearity="silu",
+                overwrite_for_ldm=True,
             ),
         )
         self._feature_size += ch
@@ -662,15 +667,15 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
             for i in range(num_res_blocks + 1):
                 ich = input_block_chans.pop()
                 layers = [
-                    ResBlock(
-                        ch + ich,
-                        time_embed_dim,
-                        dropout,
+                    ResnetBlock(
+                        in_channels=ch + ich,
                         out_channels=model_channels * mult,
-                        dims=dims,
-                        use_checkpoint=use_checkpoint,
-                        use_scale_shift_norm=use_scale_shift_norm,
-                    )
+                        dropout=dropout,
+                        temb_channels=time_embed_dim,
+                        eps=1e-5,
+                        non_linearity="silu",
+                        overwrite_for_ldm=True,
+                    ),
                 ]
                 ch = model_channels * mult
                 if ds in attention_resolutions:
@@ -698,16 +703,17 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
                 if level and i == num_res_blocks:
                     out_ch = ch
                     layers.append(
-                        ResBlock(
-                            ch,
-                            time_embed_dim,
-                            dropout,
-                            out_channels=out_ch,
-                            dims=dims,
-                            use_checkpoint=use_checkpoint,
-                            use_scale_shift_norm=use_scale_shift_norm,
-                            up=True,
-                        )
+#                        ResBlock(
+#                            ch,
+#                            time_embed_dim,
+#                            dropout,
+#                            out_channels=out_ch,
+#                            dims=dims,
+#                            use_checkpoint=use_checkpoint,
+#                            use_scale_shift_norm=use_scale_shift_norm,
+#                            up=True,
+#                        )
+                        None
                         if resblock_updown
                         else Upsample(ch, use_conv=conv_resample, dims=dims, out_channels=out_ch)
                     )
@@ -842,15 +848,15 @@ class EncoderUNetModel(nn.Module):
         for level, mult in enumerate(channel_mult):
             for _ in range(num_res_blocks):
                 layers = [
-                    ResBlock(
-                        ch,
-                        time_embed_dim,
-                        dropout,
-                        out_channels=mult * model_channels,
-                        dims=dims,
-                        use_checkpoint=use_checkpoint,
-                        use_scale_shift_norm=use_scale_shift_norm,
-                    )
+                    ResnetBlock(
+                        in_channels=ch,
+                        out_channels=model_channels * mult,
+                        dropout=dropout,
+                        temb_channels=time_embed_dim,
+                        eps=1e-5,
+                        non_linearity="silu",
+                        overwrite_for_ldm=True,
+                    ),
                 ]
                 ch = mult * model_channels
                 if ds in attention_resolutions:
@@ -870,16 +876,17 @@ class EncoderUNetModel(nn.Module):
                 out_ch = ch
                 self.input_blocks.append(
                     TimestepEmbedSequential(
-                        ResBlock(
-                            ch,
-                            time_embed_dim,
-                            dropout,
-                            out_channels=out_ch,
-                            dims=dims,
-                            use_checkpoint=use_checkpoint,
-                            use_scale_shift_norm=use_scale_shift_norm,
-                            down=True,
-                        )
+#                        ResBlock(
+#                            ch,
+#                            time_embed_dim,
+#                            dropout,
+#                            out_channels=out_ch,
+#                            dims=dims,
+#                            use_checkpoint=use_checkpoint,
+#                            use_scale_shift_norm=use_scale_shift_norm,
+#                            down=True,
+#                        )
+                        None
                         if resblock_updown
                         else Downsample(
                             ch, use_conv=conv_resample, dims=dims, out_channels=out_ch, padding=1, name="op"
@@ -892,13 +899,14 @@ class EncoderUNetModel(nn.Module):
                 self._feature_size += ch
 
         self.middle_block = TimestepEmbedSequential(
-            ResBlock(
-                ch,
-                time_embed_dim,
-                dropout,
-                dims=dims,
-                use_checkpoint=use_checkpoint,
-                use_scale_shift_norm=use_scale_shift_norm,
+            ResnetBlock(
+                in_channels=ch,
+                out_channels=None,
+                dropout=dropout,
+                temb_channels=time_embed_dim,
+                eps=1e-5,
+                non_linearity="silu",
+                overwrite_for_ldm=True,
             ),
             AttentionBlock(
                 ch,
@@ -907,13 +915,14 @@ class EncoderUNetModel(nn.Module):
                 num_head_channels=num_head_channels,
                 use_new_attention_order=use_new_attention_order,
             ),
-            ResBlock(
-                ch,
-                time_embed_dim,
-                dropout,
-                dims=dims,
-                use_checkpoint=use_checkpoint,
-                use_scale_shift_norm=use_scale_shift_norm,
+            ResnetBlock(
+                in_channels=ch,
+                out_channels=None,
+                dropout=dropout,
+                temb_channels=time_embed_dim,
+                eps=1e-5,
+                non_linearity="silu",
+                overwrite_for_ldm=True,
             ),
         )
         self._feature_size += ch
