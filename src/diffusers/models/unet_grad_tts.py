@@ -36,26 +36,6 @@ class Block(torch.nn.Module):
         return output * mask
 
 
-# class ResnetBlock(torch.nn.Module):
-#    def __init__(self, dim, dim_out, time_emb_dim, groups=8):
-#        super(ResnetBlock, self).__init__()
-#        self.mlp = torch.nn.Sequential(Mish(), torch.nn.Linear(time_emb_dim, dim_out))
-#
-#        self.block1 = Block(dim, dim_out, groups=groups)
-#        self.block2 = Block(dim_out, dim_out, groups=groups)
-#        if dim != dim_out:
-#            self.res_conv = torch.nn.Conv2d(dim, dim_out, 1)
-#        else:
-#            self.res_conv = torch.nn.Identity()
-#
-#    def forward(self, x, mask, time_emb):
-#        h = self.block1(x, mask)
-#        h += self.mlp(time_emb).unsqueeze(-1).unsqueeze(-1)
-#        h = self.block2(h, mask)
-#        output = h + self.res_conv(x * mask)
-#        return output
-
-
 class Residual(torch.nn.Module):
     def __init__(self, fn):
         super(Residual, self).__init__()
