@@ -384,13 +384,13 @@ class OLD_ResnetBlock(nn.Module):
 
 
 class ResnetBlock(nn.Module):
-    def __init__(self, *, in_channels, out_channels=None, conv_shortcut=False, dropout=0.0, temb_channels=512, groups=32, pre_norm=True, eps=1e-6, non_linearity="swish", overwrite_for_grad_tts=False):
+    def __init__(self, *, in_channels, out_channels=None, conv_shortcut=False, dropout, temb_channels=512, groups=32, pre_norm=True, eps=1e-6):
         super().__init__()
-        self.pre_norm = pre_norm
         self.in_channels = in_channels
         out_channels = in_channels if out_channels is None else out_channels
         self.out_channels = out_channels
         self.use_conv_shortcut = conv_shortcut
+        self.pre_norm = pre_norm
 
         if self.pre_norm:
             self.norm1 = Normalize(in_channels, num_groups=groups, eps=eps)
@@ -402,10 +402,7 @@ class ResnetBlock(nn.Module):
         self.norm2 = Normalize(out_channels, num_groups=groups, eps=eps)
         self.dropout = torch.nn.Dropout(dropout)
         self.conv2 = torch.nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
-        if non_linearity == "swish":
-            self.nonlinearity = nonlinearity
-        elif non_linearity == "mish":
-            self.nonlinearity = Mish()
+        self.nonlinearity = nonlinearity
 
         if self.in_channels != self.out_channels:
             if self.use_conv_shortcut:
@@ -413,57 +410,18 @@ class ResnetBlock(nn.Module):
             else:
                 self.nin_shortcut = torch.nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
 
-        self.is_overwritten = False
-        self.overwrite_for_grad_tts = overwrite_for_grad_tts
-        if self.overwrite_for_grad_tts:
-            dim = in_channels
-            dim_out = out_channels
-            time_emb_dim = temb_channels
-            self.mlp = torch.nn.Sequential(Mish(), torch.nn.Linear(time_emb_dim, dim_out))
-            self.pre_norm = pre_norm
-
-            self.block1 = Block(dim, dim_out, groups=groups)
-            self.block2 = Block(dim_out, dim_out, groups=groups)
-            if dim != dim_out:
-                self.res_conv = torch.nn.Conv2d(dim, dim_out, 1)
-            else:
-                self.res_conv = torch.nn.Identity()
-
 #        num_groups = 8
 #        self.pre_norm = False
 #        eps = 1e-5
-#        non_linearity = "mish"
-
-    def set_weights_grad_tts(self):
-        self.conv1.weight.data = self.block1.block[0].weight.data
-        self.conv1.bias.data = self.block1.block[0].bias.data
-        self.norm1.weight.data = self.block1.block[1].weight.data
-        self.norm1.bias.data = self.block1.block[1].bias.data
-
-        self.conv2.weight.data = self.block2.block[0].weight.data
-        self.conv2.bias.data = self.block2.block[0].bias.data
-        self.norm2.weight.data = self.block2.block[1].weight.data
-        self.norm2.bias.data = self.block2.block[1].bias.data
-
-        self.temb_proj.weight.data = self.mlp[1].weight.data
-        self.temb_proj.bias.data = self.mlp[1].bias.data
-
-        if self.in_channels != self.out_channels:
-            self.nin_shortcut.weight.data = self.res_conv.weight.data
-            self.nin_shortcut.bias.data = self.res_conv.bias.data
+#        self.nonlinearity = Mish()
 
     def forward(self, x, temb, mask=None):
-        if not self.pre_norm:
-            temp = mask
-            mask = temb
-            temb = temp
-
-        if self.overwrite_for_grad_tts and not self.is_overwritten:
-            self.set_weights_grad_tts()
-            self.is_overwritten = True
+        if mask is None:
+            mask = torch.ones_like(x)
 
         h = x
-        h = h * mask if mask is not None else h
+
+        h = h * mask
         if self.pre_norm:
             h = self.norm1(h)
             h = self.nonlinearity(h)
@@ -473,24 +431,24 @@ class ResnetBlock(nn.Module):
         if not self.pre_norm:
             h = self.norm1(h)
             h = self.nonlinearity(h)
-        h = h * mask if mask is not None else h
+            h = h * mask
 
         h = h + self.temb_proj(self.nonlinearity(temb))[:, :, None, None]
 
-        h = h * mask if mask is not None else h
         if self.pre_norm:
             h = self.norm2(h)
             h = self.nonlinearity(h)
 
+        h = h * mask
         h = self.dropout(h)
         h = self.conv2(h)
 
         if not self.pre_norm:
             h = self.norm2(h)
             h = self.nonlinearity(h)
-        h = h * mask if mask is not None else h
+            h = h * mask
 
-        x = x * mask if mask is not None else x
+        x = x * mask
         if self.in_channels != self.out_channels:
             if self.use_conv_shortcut:
                 x = self.conv_shortcut(x)
@@ -574,7 +532,7 @@ class ResnetBlockGradTTS(torch.nn.Module):
         h = self.block2(h, mask)
         output = h + self.res_conv(x * mask)
 
-        output = self.forward_2(x, time_emb, mask=mask)
+        output_2 = self.forward_2(x, time_emb, mask=mask)
         return output
 
     def forward_2(self, x, temb, mask=None):
