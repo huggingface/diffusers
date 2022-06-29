@@ -135,8 +135,8 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
         masks = [mask]
         for resnet1, resnet2, attn, downsample in self.downs:
             mask_down = masks[-1]
-            x = resnet1(x, mask_down, t)
-            x = resnet2(x, mask_down, t)
+            x = resnet1(x, t, mask_down)
+            x = resnet2(x, t, mask_down)
             x = attn(x)
             hiddens.append(x)
             x = downsample(x * mask_down)
@@ -144,15 +144,15 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
 
         masks = masks[:-1]
         mask_mid = masks[-1]
-        x = self.mid_block1(x, mask_mid, t)
+        x = self.mid_block1(x, t, mask_mid)
         x = self.mid_attn(x)
-        x = self.mid_block2(x, mask_mid, t)
+        x = self.mid_block2(x, t, mask_mid)
 
         for resnet1, resnet2, attn, upsample in self.ups:
             mask_up = masks.pop()
             x = torch.cat((x, hiddens.pop()), dim=1)
-            x = resnet1(x, mask_up, t)
-            x = resnet2(x, mask_up, t)
+            x = resnet1(x, t, mask_up)
+            x = resnet2(x, t, mask_up)
             x = attn(x)
             x = upsample(x * mask_up)
 
