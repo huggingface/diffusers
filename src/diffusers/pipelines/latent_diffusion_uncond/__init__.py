@@ -1,1 +1,1 @@
-from .pipeline_latent_diffusion_uncond import LatentDiffusionUncondPipeline, VQModel
+from .pipeline_latent_diffusion_uncond import LatentDiffusionUncondPipeline
