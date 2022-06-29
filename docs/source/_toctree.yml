@@ -7,24 +7,34 @@
     title: Philosophy
   title: Get started
 - sections:
-  - local: examples/diffusers_for_vision
-    title: Diffusers for Vision
-  - local: examples/diffusers_for_audio
-    title: Diffusers for Audio
-  - local: examples/diffusers_for_other
-    title: Diffusers for Other Modalities
+  - sections:
+    - local: examples/diffusers_for_vision
+      title: Diffusers for Vision
+    - local: examples/diffusers_for_audio
+      title: Diffusers for Audio
+    - local: examples/diffusers_for_other
+      title: Diffusers for Other Modalities
+    title: Examples
   title: Using Diffusers
 - sections:
-  - local: pipelines
+  - sections:
+    - local: pipelines
+      title: Pipelines
+    - local: schedulers
+      title: Schedulers
+    - local: models
+      title: Models
+    title: Main Classes
+  - sections:
+    - local: pipelines/glide
+      title: "Glide"
     title: Pipelines
-  - local: pipelines/glide
-    title: "Glide"
-  - local: schedulers
+  - sections:
+    - local: schedulers/ddpm
+      title: "DDPM"
     title: Schedulers
-  - local: schedulers/ddpm
-    title: "DDPM"
-  - local: models
+  - sections:
+    - local: models/unet
+      title: "Unet"
     title: Models
-  - local: models/unet
-    title: "Unet"
   title: API
