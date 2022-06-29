@@ -6,6 +6,7 @@ import torch.nn as nn
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .embeddings import get_timestep_embedding
+from .resnet import ResidualTemporalBlock
 
 
 class SinusoidalPosEmb(nn.Module):
@@ -72,36 +73,35 @@ class Conv1dBlock(nn.Module):
         return self.block(x)
 
 
-class ResidualTemporalBlock(nn.Module):
-    def __init__(self, inp_channels, out_channels, embed_dim, horizon, kernel_size=5):
-        super().__init__()
-
-        self.blocks = nn.ModuleList(
-            [
-                Conv1dBlock(inp_channels, out_channels, kernel_size),
-                Conv1dBlock(out_channels, out_channels, kernel_size),
-            ]
-        )
-
-        self.time_mlp = nn.Sequential(
-            nn.Mish(),
-            nn.Linear(embed_dim, out_channels),
-            RearrangeDim(),
-            #            Rearrange("batch t -> batch t 1"),
-        )
-
-        self.residual_conv = (
-            nn.Conv1d(inp_channels, out_channels, 1) if inp_channels != out_channels else nn.Identity()
-        )
-
-    def forward(self, x, t):
-        """
-        x : [ batch_size x inp_channels x horizon ] t : [ batch_size x embed_dim ] returns: out : [ batch_size x
-        out_channels x horizon ]
-        """
-        out = self.blocks[0](x) + self.time_mlp(t)
-        out = self.blocks[1](out)
-        return out + self.residual_conv(x)
+# class ResidualTemporalBlock(nn.Module):
+#    def __init__(self, inp_channels, out_channels, embed_dim, horizon, kernel_size=5):
+#        super().__init__()
+#
+#        self.blocks = nn.ModuleList(
+#            [
+#                Conv1dBlock(inp_channels, out_channels, kernel_size),
+#                Conv1dBlock(out_channels, out_channels, kernel_size),
+#            ]
+#        )
+#
+#        self.time_mlp = nn.Sequential(
+#            nn.Mish(),
+#            nn.Linear(embed_dim, out_channels),
+#            RearrangeDim(),
+#            Rearrange("batch t -> batch t 1"),
+#        )
+#
+#        self.residual_conv = (
+#            nn.Conv1d(inp_channels, out_channels, 1) if inp_channels != out_channels else nn.Identity()
+#        )
+#
+#    def forward(self, x, t):
+#        """
+# x : [ batch_size x inp_channels x horizon ] t : [ batch_size x embed_dim ] returns: out : [ batch_size x #
+out_channels x horizon ] #"""
+#        out = self.blocks[0](x) + self.time_mlp(t)
+#        out = self.blocks[1](out)
+#        return out + self.residual_conv(x)
 
 
 class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
