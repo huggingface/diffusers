@@ -1,0 +1,30 @@
+- sections:
+  - local: index
+    title: 🧨 Diffusers
+  - local: quicktour
+    title: Quicktour
+  - local: philosophy
+    title: Philosophy
+  title: Get started
+- sections:
+  - local: examples/diffusers_for_vision
+    title: Diffusers for Vision
+  - local: examples/diffusers_for_audio
+    title: Diffusers for Audio
+  - local: examples/diffusers_for_other
+    title: Diffusers for Other Modalities
+  title: Using Diffusers
+- sections:
+  - local: pipelines
+    title: Pipelines
+  - local: pipelines/glide
+    title: "Glide"
+  - local: schedulers
+    title: Schedulers
+  - local: schedulers/ddpm
+    title: "DDPM"
+  - local: models
+    title: Models
+  - local: models/unet
+    title: "Unet"
+  title: API
