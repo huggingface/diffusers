@@ -88,6 +88,7 @@ _deps = [
     "requests",
     "torch>=1.4",
     "tensorboard",
+    "modelcards=0.1.4"
 ]
 
 # this is a lookup table with items like:
@@ -174,6 +175,7 @@ install_requires = [
     deps["torch"],
     deps["Pillow"],
     deps["tensorboard"],
+    deps["modelcards"],
 ]
 
 setup(

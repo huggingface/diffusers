@@ -40,7 +40,13 @@ def main(args):
         resolution=args.resolution,
     )
     noise_scheduler = DDIMScheduler(timesteps=1000, tensor_format="pt")
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=args.learning_rate,
+        betas=(args.adam_beta1, args.adam_beta2),
+        weight_decay=args.adam_weight_decay,
+        eps=args.adam_epsilon,
+    )
 
     augmentations = Compose(
         [
@@ -58,12 +64,12 @@ def main(args):
         return {"input": images}
 
     dataset.set_transform(transforms)
-    train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+    train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.train_batch_size, shuffle=True)
 
     lr_scheduler = get_scheduler(
-        "linear",
+        args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=args.warmup_steps,
+        num_warmup_steps=args.lr_warmup_steps,
         num_training_steps=(len(train_dataloader) * args.num_epochs) // args.gradient_accumulation_steps,
     )
 
@@ -78,17 +84,17 @@ def main(args):
 
     if accelerator.is_main_process:
         run = os.path.split(__file__)[-1].split(".")[0]
-        accelerator.init_trackers(run, vars(args))
+        accelerator.init_trackers(run)
 
     # Train!
     is_distributed = torch.distributed.is_available() and torch.distributed.is_initialized()
     world_size = torch.distributed.get_world_size() if is_distributed else 1
-    total_train_batch_size = args.batch_size * args.gradient_accumulation_steps * world_size
+    total_train_batch_size = args.train_batch_size * args.gradient_accumulation_steps * world_size
     max_steps = len(train_dataloader) // args.gradient_accumulation_steps * args.num_epochs
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataloader.dataset)}")
     logger.info(f"  Num Epochs = {args.num_epochs}")
-    logger.info(f"  Instantaneous batch size per device = {args.batch_size}")
+    logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_train_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {max_steps}")
@@ -154,7 +160,7 @@ def main(args):
 
                 generator = torch.manual_seed(0)
                 # run pipeline in inference (sample random noise and denoise)
-                images = pipeline(generator=generator, batch_size=args.batch_size, num_inference_steps=50)
+                images = pipeline(generator=generator, batch_size=args.eval_batch_size, num_inference_steps=50)
 
             # denormalize the images and save to tensorboard
             images_processed = (images.cpu() + 1.0) * 127.5
@@ -179,14 +185,20 @@ if __name__ == "__main__":
     parser.add_argument("--output_dir", type=str, default="ddpm-model")
     parser.add_argument("--overwrite_output_dir", action="store_true")
     parser.add_argument("--resolution", type=int, default=64)
-    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--train_batch_size", type=int, default=16)
+    parser.add_argument("--eval_batch_size", type=int, default=16)
     parser.add_argument("--num_epochs", type=int, default=100)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
-    parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--warmup_steps", type=int, default=500)
+    parser.add_argument("--learning_rate", type=float, default=1e-4)
+    parser.add_argument("--lr_scheduler", type=str, default="cosine")
+    parser.add_argument("--lr_warmup_steps", type=int, default=500)
+    parser.add_argument("--adam_beta1", type=float, default=0.95)
+    parser.add_argument("--adam_beta2", type=float, default=0.999)
+    parser.add_argument("--adam_weight_decay", type=float, default=1e-6)
+    parser.add_argument("--adam_epsilon", type=float, default=1e-3)
     parser.add_argument("--ema_inv_gamma", type=float, default=1.0)
     parser.add_argument("--ema_power", type=float, default=3 / 4)
-    parser.add_argument("--ema_max_decay", type=float, default=0.999)
+    parser.add_argument("--ema_max_decay", type=float, default=0.9999)
     parser.add_argument("--push_to_hub", action="store_true")
     parser.add_argument("--hub_token", type=str, default=None)
     parser.add_argument("--hub_model_id", type=str, default=None)
