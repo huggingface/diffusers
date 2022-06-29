@@ -4,9 +4,7 @@ from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .attention import LinearAttention
 from .embeddings import get_timestep_embedding
-from .resnet import Downsample
-from .resnet import ResnetBlock
-from .resnet import Upsample
+from .resnet import Downsample, ResnetBlock, Upsample
 
 
 class Mish(torch.nn.Module):
@@ -86,8 +84,26 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
             self.downs.append(
                 torch.nn.ModuleList(
                     [
-                        ResnetBlock(in_channels=dim_in, out_channels=dim_out, temb_channels=dim, groups=8, pre_norm=False, eps=1e-5, non_linearity="mish", overwrite_for_grad_tts=True),
-                        ResnetBlock(in_channels=dim_out, out_channels=dim_out, temb_channels=dim, groups=8, pre_norm=False, eps=1e-5, non_linearity="mish", overwrite_for_grad_tts=True),
+                        ResnetBlock(
+                            in_channels=dim_in,
+                            out_channels=dim_out,
+                            temb_channels=dim,
+                            groups=8,
+                            pre_norm=False,
+                            eps=1e-5,
+                            non_linearity="mish",
+                            overwrite_for_grad_tts=True,
+                        ),
+                        ResnetBlock(
+                            in_channels=dim_out,
+                            out_channels=dim_out,
+                            temb_channels=dim,
+                            groups=8,
+                            pre_norm=False,
+                            eps=1e-5,
+                            non_linearity="mish",
+                            overwrite_for_grad_tts=True,
+                        ),
                         Residual(Rezero(LinearAttention(dim_out))),
                         Downsample(dim_out, use_conv=True, padding=1) if not is_last else torch.nn.Identity(),
                     ]
@@ -95,16 +111,52 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
             )
 
         mid_dim = dims[-1]
-        self.mid_block1 = ResnetBlock(in_channels=mid_dim, out_channels=mid_dim, temb_channels=dim, groups=8, pre_norm=False, eps=1e-5, non_linearity="mish", overwrite_for_grad_tts=True)
+        self.mid_block1 = ResnetBlock(
+            in_channels=mid_dim,
+            out_channels=mid_dim,
+            temb_channels=dim,
+            groups=8,
+            pre_norm=False,
+            eps=1e-5,
+            non_linearity="mish",
+            overwrite_for_grad_tts=True,
+        )
         self.mid_attn = Residual(Rezero(LinearAttention(mid_dim)))
-        self.mid_block2 = ResnetBlock(in_channels=mid_dim, out_channels=mid_dim, temb_channels=dim, groups=8, pre_norm=False, eps=1e-5, non_linearity="mish", overwrite_for_grad_tts=True)
+        self.mid_block2 = ResnetBlock(
+            in_channels=mid_dim,
+            out_channels=mid_dim,
+            temb_channels=dim,
+            groups=8,
+            pre_norm=False,
+            eps=1e-5,
+            non_linearity="mish",
+            overwrite_for_grad_tts=True,
+        )
 
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
             self.ups.append(
                 torch.nn.ModuleList(
                     [
-                        ResnetBlock(in_channels=dim_out * 2, out_channels=dim_in, temb_channels=dim, groups=8, pre_norm=False, eps=1e-5, non_linearity="mish", overwrite_for_grad_tts=True),
-                        ResnetBlock(in_channels=dim_in, out_channels=dim_in, temb_channels=dim, groups=8, pre_norm=False, eps=1e-5, non_linearity="mish", overwrite_for_grad_tts=True),
+                        ResnetBlock(
+                            in_channels=dim_out * 2,
+                            out_channels=dim_in,
+                            temb_channels=dim,
+                            groups=8,
+                            pre_norm=False,
+                            eps=1e-5,
+                            non_linearity="mish",
+                            overwrite_for_grad_tts=True,
+                        ),
+                        ResnetBlock(
+                            in_channels=dim_in,
+                            out_channels=dim_in,
+                            temb_channels=dim,
+                            groups=8,
+                            pre_norm=False,
+                            eps=1e-5,
+                            non_linearity="mish",
+                            overwrite_for_grad_tts=True,
+                        ),
                         Residual(Rezero(LinearAttention(dim_in))),
                         Upsample(dim_in, use_conv_transpose=True),
                     ]

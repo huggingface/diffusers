@@ -166,8 +166,8 @@ class Downsample(nn.Module):
 #
 # class GlideUpsample(nn.Module):
 #    """
-# An upsampling layer with an optional convolution. # # :param channels: channels in the inputs and outputs. :param
-# use_conv: a bool determining if a convolution is # applied. :param dims: determines if the signal is 1D, 2D, or 3D. If
+# An upsampling layer with an optional convolution. # # :param channels: channels in the inputs and outputs. :param #
+use_conv: a bool determining if a convolution is # applied. :param dims: determines if the signal is 1D, 2D, or 3D. If
 # 3D, then # upsampling occurs in the inner-two dimensions. #"""
 #
 #    def __init__(self, channels, use_conv, dims=2, out_channels=None):
@@ -192,8 +192,8 @@ class Downsample(nn.Module):
 #
 # class LDMUpsample(nn.Module):
 #    """
-# An upsampling layer with an optional convolution. :param channels: channels in the inputs and outputs. :param #
-# use_conv: a bool determining if a convolution is applied. :param dims: determines if the signal is 1D, 2D, or 3D. # If
+# An upsampling layer with an optional convolution. :param channels: channels in the inputs and outputs. :param # #
+use_conv: a bool determining if a convolution is applied. :param dims: determines if the signal is 1D, 2D, or 3D. # If
 # 3D, then # upsampling occurs in the inner-two dimensions. #"""
 #
 #    def __init__(self, channels, use_conv, dims=2, out_channels=None, padding=1):
@@ -342,7 +342,20 @@ class ResBlock(TimestepBlock):
 
 # unet.py and unet_grad_tts.py
 class ResnetBlock(nn.Module):
-    def __init__(self, *, in_channels, out_channels=None, conv_shortcut=False, dropout=0.0, temb_channels=512, groups=32, pre_norm=True, eps=1e-6, non_linearity="swish", overwrite_for_grad_tts=False):
+    def __init__(
+        self,
+        *,
+        in_channels,
+        out_channels=None,
+        conv_shortcut=False,
+        dropout=0.0,
+        temb_channels=512,
+        groups=32,
+        pre_norm=True,
+        eps=1e-6,
+        non_linearity="swish",
+        overwrite_for_grad_tts=False,
+    ):
         super().__init__()
         self.pre_norm = pre_norm
         self.in_channels = in_channels
