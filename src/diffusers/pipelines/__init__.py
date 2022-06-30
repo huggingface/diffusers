@@ -2,6 +2,7 @@ from ..utils import is_inflect_available, is_transformers_available, is_unidecod
 from .bddm import BDDMPipeline
 from .ddim import DDIMPipeline
 from .ddpm import DDPMPipeline
+from .ext_analytic_dpm import SNDPMPipeline, NPRDPMPipeline
 from .latent_diffusion_uncond import LatentDiffusionUncondPipeline
 from .pndm import PNDMPipeline
 from .score_sde_ve import ScoreSdeVePipeline
