@@ -396,10 +396,8 @@ class NCSNpp(ModelMixin, ConfigMixin):
 
     def __init__(
         self,
-        centered=False,
         image_size=1024,
         num_channels=3,
-        attention_type="ddpm",
         attn_resolutions=(16,),
         ch_mult=(1, 2, 4, 8, 16, 32, 32, 32),
         conditional=True,
@@ -411,24 +409,19 @@ class NCSNpp(ModelMixin, ConfigMixin):
         fourier_scale=16,
         init_scale=0.0,
         nf=16,
-        nonlinearity="swish",
-        normalization="GroupNorm",
         num_res_blocks=1,
         progressive="output_skip",
         progressive_combine="sum",
         progressive_input="input_skip",
         resamp_with_conv=True,
-        resblock_type="biggan",
         scale_by_sigma=True,
         skip_rescale=True,
         continuous=True,
     ):
         super().__init__()
         self.register_to_config(
-            centered=centered,
             image_size=image_size,
             num_channels=num_channels,
-            attention_type=attention_type,
             attn_resolutions=attn_resolutions,
             ch_mult=ch_mult,
             conditional=conditional,
@@ -440,14 +433,11 @@ class NCSNpp(ModelMixin, ConfigMixin):
             fourier_scale=fourier_scale,
             init_scale=init_scale,
             nf=nf,
-            nonlinearity=nonlinearity,
-            normalization=normalization,
             num_res_blocks=num_res_blocks,
             progressive=progressive,
             progressive_combine=progressive_combine,
             progressive_input=progressive_input,
             resamp_with_conv=resamp_with_conv,
-            resblock_type=resblock_type,
             scale_by_sigma=scale_by_sigma,
             skip_rescale=skip_rescale,
             continuous=continuous,
@@ -462,7 +452,6 @@ class NCSNpp(ModelMixin, ConfigMixin):
 
         self.conditional = conditional
         self.skip_rescale = skip_rescale
-        self.resblock_type = resblock_type
         self.progressive = progressive
         self.progressive_input = progressive_input
         self.embedding_type = embedding_type
@@ -633,9 +622,8 @@ class NCSNpp(ModelMixin, ConfigMixin):
         else:
             temb = None
 
-        if not self.config.centered:
-            # If input data is in [0, 1]
-            x = 2 * x - 1.0
+        # If input data is in [0, 1]
+        x = 2 * x - 1.0
 
         # Downsampling block
         input_pyramid = None
