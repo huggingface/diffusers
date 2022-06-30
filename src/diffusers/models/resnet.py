@@ -378,10 +378,7 @@ class ResBlock(TimestepBlock):
         h = self.conv2(h)
 
         if self.in_channels != self.out_channels:
-            if self.use_conv_shortcut:
-                x = self.conv_shortcut(x)
-            else:
-                x = self.nin_shortcut(x)
+            x = self.nin_shortcut(x)
 
         return x + h
 
@@ -426,7 +423,7 @@ class ResnetBlock(nn.Module):
 
         if time_embedding_norm == "default":
             self.temb_proj = torch.nn.Linear(temb_channels, out_channels)
-        if time_embedding_norm == "scale_shift":
+        elif time_embedding_norm == "scale_shift":
             self.temb_proj = torch.nn.Linear(temb_channels, 2 * out_channels)
 
         self.norm2 = Normalize(out_channels, num_groups=groups, eps=eps)
@@ -489,7 +486,7 @@ class ResnetBlock(nn.Module):
                 nn.SiLU(),
                 linear(
                     emb_channels,
-                    2 * self.out_channels if use_scale_shift_norm else self.out_channels,
+                    2 * self.out_channels if self.time_embedding_norm == "scale_shift" else self.out_channels,
                 ),
             )
             self.out_layers = nn.Sequential(
@@ -551,9 +548,6 @@ class ResnetBlock(nn.Module):
             self.set_weights_ldm()
             self.is_overwritten = True
 
-        if self.up or self.down:
-            x = self.x_upd(x)
-
         h = x
         h = h * mask
         if self.pre_norm:
@@ -561,6 +555,7 @@ class ResnetBlock(nn.Module):
             h = self.nonlinearity(h)
 
         if self.up or self.down:
+            x = self.x_upd(x)
             h = self.h_upd(h)
 
         h = self.conv1(h)
@@ -571,7 +566,6 @@ class ResnetBlock(nn.Module):
         h = h * mask
 
         temb = self.temb_proj(self.nonlinearity(temb))[:, :, None, None]
-
         if self.time_embedding_norm == "scale_shift":
             scale, shift = torch.chunk(temb, 2, dim=1)
 
@@ -595,10 +589,10 @@ class ResnetBlock(nn.Module):
 
         x = x * mask
         if self.in_channels != self.out_channels:
-            if self.use_conv_shortcut:
-                x = self.conv_shortcut(x)
-            else:
-                x = self.nin_shortcut(x)
+#            if self.use_conv_shortcut:
+#                x = self.conv_shortcut(x)
+#            else:
+            x = self.nin_shortcut(x)
 
         return x + h
 
