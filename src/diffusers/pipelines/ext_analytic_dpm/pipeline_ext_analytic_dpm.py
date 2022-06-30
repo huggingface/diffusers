@@ -14,7 +14,7 @@ import torch
 
 import tqdm
 
-from ..pipeline_utils import DiffusionPipeline
+from ...pipeline_utils import DiffusionPipeline
 
 
 class SNDPMPipeline(DiffusionPipeline):
