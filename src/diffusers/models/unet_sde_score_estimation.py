@@ -28,7 +28,7 @@ from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import GaussianFourierProjection, get_timestep_embedding
-from .resnet import ResnetBlockBigGANpp, ResnetBlockDDPMpp
+from .resnet import ResnetBlockBigGANpp
 
 
 def upfirdn2d(input, kernel, up=1, down=1, pad=(0, 0)):
@@ -305,32 +305,6 @@ def conv3x3(in_planes, out_planes, stride=1, bias=True, dilation=1, init_scale=1
     return conv
 
 
-def _einsum(a, b, c, x, y):
-    einsum_str = "{},{}->{}".format("".join(a), "".join(b), "".join(c))
-    return torch.einsum(einsum_str, x, y)
-
-
-def contract_inner(x, y):
-    """tensordot(x, y, 1)."""
-    x_chars = list(string.ascii_lowercase[: len(x.shape)])
-    y_chars = list(string.ascii_lowercase[len(x.shape) : len(y.shape) + len(x.shape)])
-    y_chars[0] = x_chars[-1]  # first axis of y and last of x get summed
-    out_chars = x_chars[:-1] + y_chars[1:]
-    return _einsum(x_chars, y_chars, out_chars, x, y)
-
-
-class NIN(nn.Module):
-    def __init__(self, in_dim, num_units, init_scale=0.1):
-        super().__init__()
-        self.W = nn.Parameter(default_init(scale=init_scale)((in_dim, num_units)), requires_grad=True)
-        self.b = nn.Parameter(torch.zeros(num_units), requires_grad=True)
-
-    def forward(self, x):
-        x = x.permute(0, 2, 3, 1)
-        y = contract_inner(x, self.W) + self.b
-        return y.permute(0, 3, 1, 2)
-
-
 def get_act(nonlinearity):
     """Get activation functions from the config file."""
 
@@ -575,30 +549,16 @@ class NCSNpp(ModelMixin, ConfigMixin):
         elif progressive_input == "residual":
             pyramid_downsample = functools.partial(Down_sample, fir=fir, fir_kernel=fir_kernel, with_conv=True)
 
-        if resblock_type == "ddpm":
-            ResnetBlock = functools.partial(
-                ResnetBlockDDPMpp,
-                act=act,
-                dropout=dropout,
-                init_scale=init_scale,
-                skip_rescale=skip_rescale,
-                temb_dim=nf * 4,
-            )
-
-        elif resblock_type == "biggan":
-            ResnetBlock = functools.partial(
-                ResnetBlockBigGANpp,
-                act=act,
-                dropout=dropout,
-                fir=fir,
-                fir_kernel=fir_kernel,
-                init_scale=init_scale,
-                skip_rescale=skip_rescale,
-                temb_dim=nf * 4,
-            )
-
-        else:
-            raise ValueError(f"resblock type {resblock_type} unrecognized.")
+        ResnetBlock = functools.partial(
+            ResnetBlockBigGANpp,
+            act=act,
+            dropout=dropout,
+            fir=fir,
+            fir_kernel=fir_kernel,
+            init_scale=init_scale,
+            skip_rescale=skip_rescale,
+            temb_dim=nf * 4,
+        )
 
         # Downsampling block
 
@@ -622,10 +582,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
                 hs_c.append(in_ch)
 
             if i_level != self.num_resolutions - 1:
-                if resblock_type == "ddpm":
-                    modules.append(Downsample(in_ch=in_ch))
-                else:
-                    modules.append(ResnetBlock(down=True, in_ch=in_ch))
+                modules.append(ResnetBlock(down=True, in_ch=in_ch))
 
                 if progressive_input == "input_skip":
                     modules.append(combiner(dim1=input_pyramid_ch, dim2=in_ch))
@@ -678,10 +635,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
                         raise ValueError(f"{progressive} is not a valid name")
 
             if i_level != 0:
-                if resblock_type == "ddpm":
-                    modules.append(Upsample(in_ch=in_ch))
-                else:
-                    modules.append(ResnetBlock(in_ch=in_ch, up=True))
+                modules.append(ResnetBlock(in_ch=in_ch, up=True))
 
         assert not hs_c
 
@@ -741,12 +695,8 @@ class NCSNpp(ModelMixin, ConfigMixin):
                 hs.append(h)
 
             if i_level != self.num_resolutions - 1:
-                if self.resblock_type == "ddpm":
-                    h = modules[m_idx](hs[-1])
-                    m_idx += 1
-                else:
-                    h = modules[m_idx](hs[-1], temb)
-                    m_idx += 1
+                h = modules[m_idx](hs[-1], temb)
+                m_idx += 1
 
                 if self.progressive_input == "input_skip":
                     input_pyramid = self.pyramid_downsample(input_pyramid)
@@ -818,12 +768,8 @@ class NCSNpp(ModelMixin, ConfigMixin):
                         raise ValueError(f"{self.progressive} is not a valid name")
 
             if i_level != 0:
-                if self.resblock_type == "ddpm":
-                    h = modules[m_idx](h)
-                    m_idx += 1
-                else:
-                    h = modules[m_idx](h, temb)
-                    m_idx += 1
+                h = modules[m_idx](h, temb)
+                m_idx += 1
 
         assert not hs
 

@@ -637,62 +637,6 @@ class ResnetBlockBigGANpp(nn.Module):
             return (x + h) / np.sqrt(2.0)
 
 
-# unet_score_estimation.py
-class ResnetBlockDDPMpp(nn.Module):
-    """ResBlock adapted from DDPM."""
-
-    def __init__(
-        self,
-        act,
-        in_ch,
-        out_ch=None,
-        temb_dim=None,
-        conv_shortcut=False,
-        dropout=0.1,
-        skip_rescale=False,
-        init_scale=0.0,
-    ):
-        super().__init__()
-        out_ch = out_ch if out_ch else in_ch
-        self.GroupNorm_0 = nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6)
-        self.Conv_0 = conv3x3(in_ch, out_ch)
-        if temb_dim is not None:
-            self.Dense_0 = nn.Linear(temb_dim, out_ch)
-            self.Dense_0.weight.data = default_init()(self.Dense_0.weight.data.shape)
-            nn.init.zeros_(self.Dense_0.bias)
-        self.GroupNorm_1 = nn.GroupNorm(num_groups=min(out_ch // 4, 32), num_channels=out_ch, eps=1e-6)
-        self.Dropout_0 = nn.Dropout(dropout)
-        self.Conv_1 = conv3x3(out_ch, out_ch, init_scale=init_scale)
-        if in_ch != out_ch:
-            if conv_shortcut:
-                self.Conv_2 = conv3x3(in_ch, out_ch)
-            else:
-                self.NIN_0 = NIN(in_ch, out_ch)
-
-        self.skip_rescale = skip_rescale
-        self.act = act
-        self.out_ch = out_ch
-        self.conv_shortcut = conv_shortcut
-
-    def forward(self, x, temb=None):
-        h = self.act(self.GroupNorm_0(x))
-        h = self.Conv_0(h)
-        if temb is not None:
-            h += self.Dense_0(self.act(temb))[:, :, None, None]
-        h = self.act(self.GroupNorm_1(h))
-        h = self.Dropout_0(h)
-        h = self.Conv_1(h)
-        if x.shape[1] != self.out_ch:
-            if self.conv_shortcut:
-                x = self.Conv_2(x)
-            else:
-                x = self.NIN_0(x)
-        if not self.skip_rescale:
-            return x + h
-        else:
-            return (x + h) / np.sqrt(2.0)
-
-
 # unet_rl.py
 class ResidualTemporalBlock(nn.Module):
     def __init__(self, inp_channels, out_channels, embed_dim, horizon, kernel_size=5):
@@ -955,18 +899,6 @@ def downsample_2d(x, k=None, factor=2, gain=1):
     k = _setup_kernel(k) * gain
     p = k.shape[0] - factor
     return upfirdn2d(x, torch.tensor(k, device=x.device), down=factor, pad=((p + 1) // 2, p // 2))
-
-
-class NIN(nn.Module):
-    def __init__(self, in_dim, num_units, init_scale=0.1):
-        super().__init__()
-        self.W = nn.Parameter(default_init(scale=init_scale)((in_dim, num_units)), requires_grad=True)
-        self.b = nn.Parameter(torch.zeros(num_units), requires_grad=True)
-
-    def forward(self, x):
-        x = x.permute(0, 2, 3, 1)
-        y = contract_inner(x, self.W) + self.b
-        return y.permute(0, 3, 1, 2)
 
 
 def _setup_kernel(k):
