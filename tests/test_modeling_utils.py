@@ -880,7 +880,7 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
         # fmt: off
         expected_output_slice = torch.tensor([-1.1321, 0.1056, 0.3505, -0.6461, -0.2014, 0.0419, -0.5763, -0.8462, -0.4218])
         # fmt: on
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
 
 class AutoEncoderKLTests(ModelTesterMixin, unittest.TestCase):
@@ -951,7 +951,7 @@ class AutoEncoderKLTests(ModelTesterMixin, unittest.TestCase):
         # fmt: off
         expected_output_slice = torch.tensor([-0.0814, -0.0229, -0.1320, -0.4123, -0.0366, -0.3473, 0.0438, -0.1662, 0.1750])
         # fmt: on
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
 
 class PipelineTesterMixin(unittest.TestCase):
