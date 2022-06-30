@@ -795,7 +795,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         sizes = (32, 32)
 
         noise = torch.randn((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor(batch_size * [9.]).to(torch_device)
+        time_step = torch.tensor(batch_size * [9.0]).to(torch_device)
 
         with torch.no_grad():
             output = model(noise, time_step)
