@@ -26,6 +26,9 @@ import torch.nn.functional as F
 
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
+from .attention import AttentionBlock
+from .embeddings import GaussianFourierProjection, get_timestep_embedding
+from .resnet import ResnetBlockBigGANpp, ResnetBlockDDPMpp
 
 
 def upfirdn2d(input, kernel, up=1, down=1, pad=(0, 0)):
@@ -136,26 +139,21 @@ def naive_downsample_2d(x, factor=2):
 def upsample_conv_2d(x, w, k=None, factor=2, gain=1):
     """Fused `upsample_2d()` followed by `tf.nn.conv2d()`.
 
-    Padding is performed only once at the beginning, not between the
-    operations.
-    The fused op is considerably more efficient than performing the same
-    calculation
-    using standard TensorFlow ops. It supports gradients of arbitrary order.
     Args:
-      x:            Input tensor of the shape `[N, C, H, W]` or `[N, H, W,
+    Padding is performed only once at the beginning, not between the operations. The fused op is considerably more
+    efficient than performing the same calculation using standard TensorFlow ops. It supports gradients of arbitrary
+    order.
+      x: Input tensor of the shape `[N, C, H, W]` or `[N, H, W,
         C]`.
-      w:            Weight tensor of the shape `[filterH, filterW, inChannels,
-        outChannels]`. Grouped convolution can be performed by `inChannels =
-        x.shape[0] // numGroups`.
-      k:            FIR filter of the shape `[firH, firW]` or `[firN]`
-        (separable). The default is `[1] * factor`, which corresponds to
-        nearest-neighbor upsampling.
-      factor:       Integer upsampling factor (default: 2).
-      gain:         Scaling factor for signal magnitude (default: 1.0).
+      w: Weight tensor of the shape `[filterH, filterW, inChannels,
+        outChannels]`. Grouped convolution can be performed by `inChannels = x.shape[0] // numGroups`.
+      k: FIR filter of the shape `[firH, firW]` or `[firN]`
+        (separable). The default is `[1] * factor`, which corresponds to nearest-neighbor upsampling.
+      factor: Integer upsampling factor (default: 2). gain: Scaling factor for signal magnitude (default: 1.0).
 
     Returns:
-      Tensor of the shape `[N, C, H * factor, W * factor]` or
-      `[N, H * factor, W * factor, C]`, and same datatype as `x`.
+      Tensor of the shape `[N, C, H * factor, W * factor]` or `[N, H * factor, W * factor, C]`, and same datatype as
+      `x`.
     """
 
     assert isinstance(factor, int) and factor >= 1
@@ -208,25 +206,21 @@ def upsample_conv_2d(x, w, k=None, factor=2, gain=1):
 def conv_downsample_2d(x, w, k=None, factor=2, gain=1):
     """Fused `tf.nn.conv2d()` followed by `downsample_2d()`.
 
-    Padding is performed only once at the beginning, not between the operations.
-    The fused op is considerably more efficient than performing the same
-    calculation
-    using standard TensorFlow ops. It supports gradients of arbitrary order.
     Args:
-        x:            Input tensor of the shape `[N, C, H, W]` or `[N, H, W,
+    Padding is performed only once at the beginning, not between the operations. The fused op is considerably more
+    efficient than performing the same calculation using standard TensorFlow ops. It supports gradients of arbitrary
+    order.
+        x: Input tensor of the shape `[N, C, H, W]` or `[N, H, W,
           C]`.
-        w:            Weight tensor of the shape `[filterH, filterW, inChannels,
-          outChannels]`. Grouped convolution can be performed by `inChannels =
-          x.shape[0] // numGroups`.
-        k:            FIR filter of the shape `[firH, firW]` or `[firN]`
-          (separable). The default is `[1] * factor`, which corresponds to
-          average pooling.
-        factor:       Integer downsampling factor (default: 2).
-        gain:         Scaling factor for signal magnitude (default: 1.0).
+        w: Weight tensor of the shape `[filterH, filterW, inChannels,
+          outChannels]`. Grouped convolution can be performed by `inChannels = x.shape[0] // numGroups`.
+        k: FIR filter of the shape `[firH, firW]` or `[firN]`
+          (separable). The default is `[1] * factor`, which corresponds to average pooling.
+        factor: Integer downsampling factor (default: 2). gain: Scaling factor for signal magnitude (default: 1.0).
 
     Returns:
-        Tensor of the shape `[N, C, H // factor, W // factor]` or
-        `[N, H // factor, W // factor, C]`, and same datatype as `x`.
+        Tensor of the shape `[N, C, H // factor, W // factor]` or `[N, H // factor, W // factor, C]`, and same datatype
+        as `x`.
     """
 
     assert isinstance(factor, int) and factor >= 1
@@ -258,22 +252,16 @@ def _shape(x, dim):
 def upsample_2d(x, k=None, factor=2, gain=1):
     r"""Upsample a batch of 2D images with the given filter.
 
-    Accepts a batch of 2D images of the shape `[N, C, H, W]` or `[N, H, W, C]`
-    and upsamples each image with the given filter. The filter is normalized so
-    that
-    if the input pixels are constant, they will be scaled by the specified
-    `gain`.
-    Pixels outside the image are assumed to be zero, and the filter is padded
-    with
-    zeros so that its shape is a multiple of the upsampling factor.
     Args:
-        x:            Input tensor of the shape `[N, C, H, W]` or `[N, H, W,
+    Accepts a batch of 2D images of the shape `[N, C, H, W]` or `[N, H, W, C]` and upsamples each image with the given
+    filter. The filter is normalized so that if the input pixels are constant, they will be scaled by the specified
+    `gain`. Pixels outside the image are assumed to be zero, and the filter is padded with zeros so that its shape is a:
+    multiple of the upsampling factor.
+        x: Input tensor of the shape `[N, C, H, W]` or `[N, H, W,
           C]`.
-        k:            FIR filter of the shape `[firH, firW]` or `[firN]`
-          (separable). The default is `[1] * factor`, which corresponds to
-          nearest-neighbor upsampling.
-        factor:       Integer upsampling factor (default: 2).
-        gain:         Scaling factor for signal magnitude (default: 1.0).
+        k: FIR filter of the shape `[firH, firW]` or `[firN]`
+          (separable). The default is `[1] * factor`, which corresponds to nearest-neighbor upsampling.
+        factor: Integer upsampling factor (default: 2). gain: Scaling factor for signal magnitude (default: 1.0).
 
     Returns:
         Tensor of the shape `[N, C, H * factor, W * factor]`
@@ -289,22 +277,16 @@ def upsample_2d(x, k=None, factor=2, gain=1):
 def downsample_2d(x, k=None, factor=2, gain=1):
     r"""Downsample a batch of 2D images with the given filter.
 
-    Accepts a batch of 2D images of the shape `[N, C, H, W]` or `[N, H, W, C]`
-    and downsamples each image with the given filter. The filter is normalized
-    so that
-    if the input pixels are constant, they will be scaled by the specified
-    `gain`.
-    Pixels outside the image are assumed to be zero, and the filter is padded
-    with
-    zeros so that its shape is a multiple of the downsampling factor.
     Args:
-        x:            Input tensor of the shape `[N, C, H, W]` or `[N, H, W,
+    Accepts a batch of 2D images of the shape `[N, C, H, W]` or `[N, H, W, C]` and downsamples each image with the
+    given filter. The filter is normalized so that if the input pixels are constant, they will be scaled by the
+    specified `gain`. Pixels outside the image are assumed to be zero, and the filter is padded with zeros so that its
+    shape is a multiple of the downsampling factor.
+        x: Input tensor of the shape `[N, C, H, W]` or `[N, H, W,
           C]`.
-        k:            FIR filter of the shape `[firH, firW]` or `[firN]`
-          (separable). The default is `[1] * factor`, which corresponds to
-          average pooling.
-        factor:       Integer downsampling factor (default: 2).
-        gain:         Scaling factor for signal magnitude (default: 1.0).
+        k: FIR filter of the shape `[firH, firW]` or `[firN]`
+          (separable). The default is `[1] * factor`, which corresponds to average pooling.
+        factor: Integer downsampling factor (default: 2). gain: Scaling factor for signal magnitude (default: 1.0).
 
     Returns:
         Tensor of the shape `[N, C, H // factor, W // factor]`
@@ -318,7 +300,7 @@ def downsample_2d(x, k=None, factor=2, gain=1):
     return upfirdn2d(x, torch.tensor(k, device=x.device), down=factor, pad=((p + 1) // 2, p // 2))
 
 
-def ddpm_conv1x1(in_planes, out_planes, stride=1, bias=True, init_scale=1.0, padding=0):
+def conv1x1(in_planes, out_planes, stride=1, bias=True, init_scale=1.0, padding=0):
     """1x1 convolution with DDPM initialization."""
     conv = nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, padding=padding, bias=bias)
     conv.weight.data = default_init(init_scale)(conv.weight.data.shape)
@@ -326,7 +308,7 @@ def ddpm_conv1x1(in_planes, out_planes, stride=1, bias=True, init_scale=1.0, pad
     return conv
 
 
-def ddpm_conv3x3(in_planes, out_planes, stride=1, bias=True, dilation=1, init_scale=1.0, padding=1):
+def conv3x3(in_planes, out_planes, stride=1, bias=True, dilation=1, init_scale=1.0, padding=1):
     """3x3 convolution with DDPM initialization."""
     conv = nn.Conv2d(
         in_planes, out_planes, kernel_size=3, stride=stride, padding=padding, dilation=dilation, bias=bias
@@ -334,10 +316,6 @@ def ddpm_conv3x3(in_planes, out_planes, stride=1, bias=True, dilation=1, init_sc
     conv.weight.data = default_init(init_scale)(conv.weight.data.shape)
     nn.init.zeros_(conv.bias)
     return conv
-
-
-conv1x1 = ddpm_conv1x1
-conv3x3 = ddpm_conv3x3
 
 
 def _einsum(a, b, c, x, y):
@@ -381,23 +359,6 @@ def get_act(nonlinearity):
         raise NotImplementedError("activation function does not exist!")
 
 
-def get_timestep_embedding(timesteps, embedding_dim, max_positions=10000):
-    assert len(timesteps.shape) == 1  # and timesteps.dtype == tf.int32
-    half_dim = embedding_dim // 2
-    # magic number 10000 is from transformers
-    emb = math.log(max_positions) / (half_dim - 1)
-    # emb = math.log(2.) / (half_dim - 1)
-    emb = torch.exp(torch.arange(half_dim, dtype=torch.float32, device=timesteps.device) * -emb)
-    # emb = tf.range(num_embeddings, dtype=jnp.float32)[:, None] * emb[None, :]
-    # emb = tf.cast(timesteps, dtype=jnp.float32)[:, None] * emb[None, :]
-    emb = timesteps.float()[:, None] * emb[None, :]
-    emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1)
-    if embedding_dim % 2 == 1:  # zero pad
-        emb = F.pad(emb, (0, 1), mode="constant")
-    assert emb.shape == (timesteps.shape[0], embedding_dim)
-    return emb
-
-
 def default_init(scale=1.0):
     """The same initialization used in DDPM."""
     scale = 1e-10 if scale == 0 else scale
@@ -434,18 +395,6 @@ def variance_scaling(scale, mode, distribution, in_axis=1, out_axis=0, dtype=tor
     return init
 
 
-class GaussianFourierProjection(nn.Module):
-    """Gaussian Fourier embeddings for noise levels."""
-
-    def __init__(self, embedding_size=256, scale=1.0):
-        super().__init__()
-        self.W = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)
-
-    def forward(self, x):
-        x_proj = x[:, None] * self.W[None, :] * 2 * np.pi
-        return torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1)
-
-
 class Combine(nn.Module):
     """Combine information from skip connections."""
 
@@ -462,37 +411,6 @@ class Combine(nn.Module):
             return h + y
         else:
             raise ValueError(f"Method {self.method} not recognized.")
-
-
-class AttnBlockpp(nn.Module):
-    """Channel-wise self-attention block. Modified from DDPM."""
-
-    def __init__(self, channels, skip_rescale=False, init_scale=0.0):
-        super().__init__()
-        self.GroupNorm_0 = nn.GroupNorm(num_groups=min(channels // 4, 32), num_channels=channels, eps=1e-6)
-        self.NIN_0 = NIN(channels, channels)
-        self.NIN_1 = NIN(channels, channels)
-        self.NIN_2 = NIN(channels, channels)
-        self.NIN_3 = NIN(channels, channels, init_scale=init_scale)
-        self.skip_rescale = skip_rescale
-
-    def forward(self, x):
-        B, C, H, W = x.shape
-        h = self.GroupNorm_0(x)
-        q = self.NIN_0(h)
-        k = self.NIN_1(h)
-        v = self.NIN_2(h)
-
-        w = torch.einsum("bchw,bcij->bhwij", q, k) * (int(C) ** (-0.5))
-        w = torch.reshape(w, (B, H, W, H * W))
-        w = F.softmax(w, dim=-1)
-        w = torch.reshape(w, (B, H, W, H, W))
-        h = torch.einsum("bhwij,bcij->bchw", w, v)
-        h = self.NIN_3(h)
-        if not self.skip_rescale:
-            return x + h
-        else:
-            return (x + h) / np.sqrt(2.0)
 
 
 class Upsample(nn.Module):
@@ -571,137 +489,6 @@ class Downsample(nn.Module):
                 x = self.Conv2d_0(x)
 
         return x
-
-
-class ResnetBlockDDPMpp(nn.Module):
-    """ResBlock adapted from DDPM."""
-
-    def __init__(
-        self,
-        act,
-        in_ch,
-        out_ch=None,
-        temb_dim=None,
-        conv_shortcut=False,
-        dropout=0.1,
-        skip_rescale=False,
-        init_scale=0.0,
-    ):
-        super().__init__()
-        out_ch = out_ch if out_ch else in_ch
-        self.GroupNorm_0 = nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6)
-        self.Conv_0 = conv3x3(in_ch, out_ch)
-        if temb_dim is not None:
-            self.Dense_0 = nn.Linear(temb_dim, out_ch)
-            self.Dense_0.weight.data = default_init()(self.Dense_0.weight.data.shape)
-            nn.init.zeros_(self.Dense_0.bias)
-        self.GroupNorm_1 = nn.GroupNorm(num_groups=min(out_ch // 4, 32), num_channels=out_ch, eps=1e-6)
-        self.Dropout_0 = nn.Dropout(dropout)
-        self.Conv_1 = conv3x3(out_ch, out_ch, init_scale=init_scale)
-        if in_ch != out_ch:
-            if conv_shortcut:
-                self.Conv_2 = conv3x3(in_ch, out_ch)
-            else:
-                self.NIN_0 = NIN(in_ch, out_ch)
-
-        self.skip_rescale = skip_rescale
-        self.act = act
-        self.out_ch = out_ch
-        self.conv_shortcut = conv_shortcut
-
-    def forward(self, x, temb=None):
-        h = self.act(self.GroupNorm_0(x))
-        h = self.Conv_0(h)
-        if temb is not None:
-            h += self.Dense_0(self.act(temb))[:, :, None, None]
-        h = self.act(self.GroupNorm_1(h))
-        h = self.Dropout_0(h)
-        h = self.Conv_1(h)
-        if x.shape[1] != self.out_ch:
-            if self.conv_shortcut:
-                x = self.Conv_2(x)
-            else:
-                x = self.NIN_0(x)
-        if not self.skip_rescale:
-            return x + h
-        else:
-            return (x + h) / np.sqrt(2.0)
-
-
-class ResnetBlockBigGANpp(nn.Module):
-    def __init__(
-        self,
-        act,
-        in_ch,
-        out_ch=None,
-        temb_dim=None,
-        up=False,
-        down=False,
-        dropout=0.1,
-        fir=False,
-        fir_kernel=(1, 3, 3, 1),
-        skip_rescale=True,
-        init_scale=0.0,
-    ):
-        super().__init__()
-
-        out_ch = out_ch if out_ch else in_ch
-        self.GroupNorm_0 = nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6)
-        self.up = up
-        self.down = down
-        self.fir = fir
-        self.fir_kernel = fir_kernel
-
-        self.Conv_0 = conv3x3(in_ch, out_ch)
-        if temb_dim is not None:
-            self.Dense_0 = nn.Linear(temb_dim, out_ch)
-            self.Dense_0.weight.data = default_init()(self.Dense_0.weight.shape)
-            nn.init.zeros_(self.Dense_0.bias)
-
-        self.GroupNorm_1 = nn.GroupNorm(num_groups=min(out_ch // 4, 32), num_channels=out_ch, eps=1e-6)
-        self.Dropout_0 = nn.Dropout(dropout)
-        self.Conv_1 = conv3x3(out_ch, out_ch, init_scale=init_scale)
-        if in_ch != out_ch or up or down:
-            self.Conv_2 = conv1x1(in_ch, out_ch)
-
-        self.skip_rescale = skip_rescale
-        self.act = act
-        self.in_ch = in_ch
-        self.out_ch = out_ch
-
-    def forward(self, x, temb=None):
-        h = self.act(self.GroupNorm_0(x))
-
-        if self.up:
-            if self.fir:
-                h = upsample_2d(h, self.fir_kernel, factor=2)
-                x = upsample_2d(x, self.fir_kernel, factor=2)
-            else:
-                h = naive_upsample_2d(h, factor=2)
-                x = naive_upsample_2d(x, factor=2)
-        elif self.down:
-            if self.fir:
-                h = downsample_2d(h, self.fir_kernel, factor=2)
-                x = downsample_2d(x, self.fir_kernel, factor=2)
-            else:
-                h = naive_downsample_2d(h, factor=2)
-                x = naive_downsample_2d(x, factor=2)
-
-        h = self.Conv_0(h)
-        # Add bias to each feature map conditioned on the time embedding
-        if temb is not None:
-            h += self.Dense_0(self.act(temb))[:, :, None, None]
-        h = self.act(self.GroupNorm_1(h))
-        h = self.Dropout_0(h)
-        h = self.Conv_1(h)
-
-        if self.in_ch != self.out_ch or self.up or self.down:
-            x = self.Conv_2(x)
-
-        if not self.skip_rescale:
-            return x + h
-        else:
-            return (x + h) / np.sqrt(2.0)
 
 
 class NCSNpp(ModelMixin, ConfigMixin):
@@ -806,8 +593,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
             modules[-1].weight.data = default_init()(modules[-1].weight.shape)
             nn.init.zeros_(modules[-1].bias)
 
-        AttnBlock = functools.partial(AttnBlockpp, init_scale=init_scale, skip_rescale=skip_rescale)
-
+        AttnBlock = functools.partial(AttentionBlock, overwrite_linear=True, rescale_output_factor=math.sqrt(2.0))
         Up_sample = functools.partial(Upsample, with_conv=resamp_with_conv, fir=fir, fir_kernel=fir_kernel)
 
         if progressive == "output_skip":
@@ -938,19 +724,19 @@ class NCSNpp(ModelMixin, ConfigMixin):
 
         self.all_modules = nn.ModuleList(modules)
 
-    def forward(self, x, time_cond, sigmas=None):
+    def forward(self, x, timesteps, sigmas=None):
         # timestep/noise_level embedding; only for continuous training
         modules = self.all_modules
         m_idx = 0
         if self.embedding_type == "fourier":
             # Gaussian Fourier features embeddings.
-            used_sigmas = time_cond
+            used_sigmas = timesteps
             temb = modules[m_idx](torch.log(used_sigmas))
             m_idx += 1
 
         elif self.embedding_type == "positional":
             # Sinusoidal positional embeddings.
-            timesteps = time_cond
+            timesteps = timesteps
             used_sigmas = sigmas
             temb = get_timestep_embedding(timesteps, self.nf)
 

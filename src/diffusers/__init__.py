@@ -7,9 +7,17 @@ from .utils import is_inflect_available, is_transformers_available, is_unidecode
 __version__ = "0.0.4"
 
 from .modeling_utils import ModelMixin
-from .models import NCSNpp, TemporalUNet, UNetLDMModel, UNetModel
+from .models import AutoencoderKL, NCSNpp, TemporalUNet, UNetLDMModel, UNetModel, VQModel
 from .pipeline_utils import DiffusionPipeline
-from .pipelines import BDDMPipeline, DDIMPipeline, DDPMPipeline, PNDMPipeline, ScoreSdeVePipeline, ScoreSdeVpPipeline
+from .pipelines import (
+    BDDMPipeline,
+    DDIMPipeline,
+    DDPMPipeline,
+    LatentDiffusionUncondPipeline,
+    PNDMPipeline,
+    ScoreSdeVePipeline,
+    ScoreSdeVpPipeline,
+)
 from .schedulers import (
     DDIMScheduler,
     DDPMScheduler,

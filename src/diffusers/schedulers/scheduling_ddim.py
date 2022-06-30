@@ -25,13 +25,12 @@ from .scheduling_utils import SchedulerMixin
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     """
-    Create a beta schedule that discretizes the given alpha_t_bar function,
-    which defines the cumulative product of (1-beta) over time from t = [0,1].
+    Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
+    (1-beta) over time from t = [0,1].
 
-    :param num_diffusion_timesteps: the number of betas to produce.
-    :param alpha_bar: a lambda that takes an argument t from 0 to 1 and
-                      produces the cumulative product of (1-beta) up to that
-                      part of the diffusion process.
+    :param num_diffusion_timesteps: the number of betas to produce. :param alpha_bar: a lambda that takes an argument t
+    from 0 to 1 and
+                      produces the cumulative product of (1-beta) up to that part of the diffusion process.
     :param max_beta: the maximum beta to use; use values lower than 1 to
                      prevent singularities.
     """
@@ -72,6 +71,9 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         if beta_schedule == "linear":
             self.betas = np.linspace(beta_start, beta_end, timesteps, dtype=np.float32)
+        elif beta_schedule == "scaled_linear":
+            # this schedule is very specific to the latent diffusion model.
+            self.betas = np.linspace(beta_start**0.5, beta_end**0.5, timesteps, dtype=np.float32) ** 2
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(timesteps)
@@ -142,6 +144,15 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         pred_prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
 
         return pred_prev_sample
+
+    def add_noise(self, original_samples, noise, timesteps):
+        sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
+        sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
+        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
+        sqrt_one_minus_alpha_prod = self.match_shape(sqrt_one_minus_alpha_prod, original_samples)
+
+        noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
+        return noisy_samples
 
     def __len__(self):
         return self.config.timesteps

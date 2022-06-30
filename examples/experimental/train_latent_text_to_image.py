@@ -4,19 +4,19 @@ import os
 import torch
 import torch.nn.functional as F
 
+import bitsandbytes as bnb
 import PIL.Image
 from accelerate import Accelerator
 from datasets import load_dataset
-from diffusers import DDPM, DDPMScheduler, UNetLDMModel
+from diffusers import DDPMScheduler, LatentDiffusion, UNetLDMModel
 from diffusers.hub_utils import init_git_repo, push_to_hub
-from diffusers.modeling_utils import unwrap_model
 from diffusers.optimization import get_scheduler
 from diffusers.utils import logging
 from torchvision.transforms import (
     CenterCrop,
     Compose,
     InterpolationMode,
-    Lambda,
+    Normalize,
     RandomHorizontalFlip,
     Resize,
     ToTensor,
@@ -30,6 +30,8 @@ logger = logging.get_logger(__name__)
 def main(args):
     accelerator = Accelerator(mixed_precision=args.mixed_precision)
 
+    pipeline = LatentDiffusion.from_pretrained("fusing/latent-diffusion-text2im-large")
+    pipeline.unet = None  # this model will be trained from scratch now
     model = UNetLDMModel(
         attention_resolutions=[4, 2, 1],
         channel_mult=[1, 2, 4, 4],
@@ -37,7 +39,7 @@ def main(args):
         conv_resample=True,
         dims=2,
         dropout=0,
-        image_size=32,
+        image_size=8,
         in_channels=4,
         model_channels=320,
         num_heads=8,
@@ -51,7 +53,7 @@ def main(args):
         legacy=False,
     )
     noise_scheduler = DDPMScheduler(timesteps=1000, tensor_format="pt")
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = bnb.optim.Adam8bit(model.parameters(), lr=args.lr)
 
     augmentations = Compose(
         [
@@ -59,14 +61,22 @@ def main(args):
             CenterCrop(args.resolution),
             RandomHorizontalFlip(),
             ToTensor(),
-            Lambda(lambda x: x * 2 - 1),
+            Normalize([0.5], [0.5]),
         ]
     )
     dataset = load_dataset(args.dataset, split="train")
 
+    text_encoder = pipeline.bert.eval()
+    vqvae = pipeline.vqvae.eval()
+
     def transforms(examples):
         images = [augmentations(image.convert("RGB")) for image in examples["image"]]
-        return {"input": images}
+        text_inputs = pipeline.tokenizer(examples["caption"], padding="max_length", max_length=77, return_tensors="pt")
+        with torch.no_grad():
+            text_embeddings = accelerator.unwrap_model(text_encoder)(text_inputs.input_ids.cpu()).last_hidden_state
+            images = 1 / 0.18215 * torch.stack(images, dim=0)
+            latents = accelerator.unwrap_model(vqvae).encode(images.cpu()).mode()
+        return {"images": images, "text_embeddings": text_embeddings, "latents": latents}
 
     dataset.set_transform(transforms)
     train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
@@ -78,9 +88,11 @@ def main(args):
         num_training_steps=(len(train_dataloader) * args.num_epochs) // args.gradient_accumulation_steps,
     )
 
-    model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        model, optimizer, train_dataloader, lr_scheduler
+    model, text_encoder, vqvae, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        model, text_encoder, vqvae, optimizer, train_dataloader, lr_scheduler
     )
+    text_encoder = text_encoder.cpu()
+    vqvae = vqvae.cpu()
 
     if args.push_to_hub:
         repo = init_git_repo(args, at_init=True)
@@ -98,29 +110,31 @@ def main(args):
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {max_steps}")
 
+    global_step = 0
     for epoch in range(args.num_epochs):
         model.train()
         with tqdm(total=len(train_dataloader), unit="ba") as pbar:
             pbar.set_description(f"Epoch {epoch}")
             for step, batch in enumerate(train_dataloader):
-                clean_images = batch["input"]
-                noise_samples = torch.randn(clean_images.shape).to(clean_images.device)
-                bsz = clean_images.shape[0]
-                timesteps = torch.randint(0, noise_scheduler.timesteps, (bsz,), device=clean_images.device).long()
+                clean_latents = batch["latents"]
+                noise_samples = torch.randn(clean_latents.shape).to(clean_latents.device)
+                bsz = clean_latents.shape[0]
+                timesteps = torch.randint(0, noise_scheduler.timesteps, (bsz,), device=clean_latents.device).long()
 
-                # add noise onto the clean images according to the noise magnitude at each timestep
+                # add noise onto the clean latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                noisy_images = noise_scheduler.training_step(clean_images, noise_samples, timesteps)
+                noisy_latents = noise_scheduler.training_step(clean_latents, noise_samples, timesteps)
 
                 if step % args.gradient_accumulation_steps != 0:
                     with accelerator.no_sync(model):
-                        output = model(noisy_images, timesteps)
+                        output = model(noisy_latents, timesteps, context=batch["text_embeddings"])
                         # predict the noise residual
                         loss = F.mse_loss(output, noise_samples)
                         loss = loss / args.gradient_accumulation_steps
                         accelerator.backward(loss)
+                        optimizer.step()
                 else:
-                    output = model(noisy_images, timesteps)
+                    output = model(noisy_latents, timesteps, context=batch["text_embeddings"])
                     # predict the noise residual
                     loss = F.mse_loss(output, noise_samples)
                     loss = loss / args.gradient_accumulation_steps
@@ -131,24 +145,25 @@ def main(args):
                     optimizer.zero_grad()
                 pbar.update(1)
                 pbar.set_postfix(loss=loss.detach().item(), lr=optimizer.param_groups[0]["lr"])
+                global_step += 1
 
-                optimizer.step()
-        if is_distributed:
-            torch.distributed.barrier()
+        accelerator.wait_for_everyone()
 
         # Generate a sample image for visual inspection
-        if args.local_rank in [-1, 0]:
+        if accelerator.is_main_process:
             model.eval()
             with torch.no_grad():
-                pipeline = DDPM(unet=unwrap_model(model), noise_scheduler=noise_scheduler)
+                pipeline.unet = accelerator.unwrap_model(model)
 
                 generator = torch.manual_seed(0)
                 # run pipeline in inference (sample random noise and denoise)
-                image = pipeline(generator=generator)
+                image = pipeline(
+                    ["a clip art of a corgi"], generator=generator, eta=0.3, guidance_scale=6.0, num_inference_steps=50
+                )
 
             # process image to PIL
             image_processed = image.cpu().permute(0, 2, 3, 1)
-            image_processed = (image_processed + 1.0) * 127.5
+            image_processed = image_processed * 255.0
             image_processed = image_processed.type(torch.uint8).numpy()
             image_pil = PIL.Image.fromarray(image_processed[0])
 
@@ -162,20 +177,19 @@ def main(args):
                 push_to_hub(args, pipeline, repo, commit_message=f"Epoch {epoch}", blocking=False)
             else:
                 pipeline.save_pretrained(args.output_dir)
-        if is_distributed:
-            torch.distributed.barrier()
+        accelerator.wait_for_everyone()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument("--local_rank", type=int, default=-1)
-    parser.add_argument("--dataset", type=str, default="huggan/flowers-102-categories")
-    parser.add_argument("--output_dir", type=str, default="ddpm-model")
+    parser.add_argument("--dataset", type=str, default="fusing/dog_captions")
+    parser.add_argument("--output_dir", type=str, default="ldm-text2image")
     parser.add_argument("--overwrite_output_dir", action="store_true")
-    parser.add_argument("--resolution", type=int, default=64)
-    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--resolution", type=int, default=128)
+    parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--num_epochs", type=int, default=100)
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=16)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--warmup_steps", type=int, default=500)
     parser.add_argument("--push_to_hub", action="store_true")
