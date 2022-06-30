@@ -579,7 +579,6 @@ class ResnetBlockBigGANpp(nn.Module):
         up=False,
         down=False,
         dropout=0.1,
-        fir=False,
         fir_kernel=(1, 3, 3, 1),
         skip_rescale=True,
         init_scale=0.0,
@@ -590,7 +589,6 @@ class ResnetBlockBigGANpp(nn.Module):
         self.GroupNorm_0 = nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6)
         self.up = up
         self.down = down
-        self.fir = fir
         self.fir_kernel = fir_kernel
 
         self.Conv_0 = conv2d(in_ch, out_ch, kernel_size=3, padding=1)
