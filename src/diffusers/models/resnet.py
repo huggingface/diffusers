@@ -207,6 +207,9 @@ class ResBlock(TimestepBlock):
 
         self.updown = up or down
 
+#        if self.updown:
+#            import ipdb; ipdb.set_trace()
+
         if up:
             self.h_upd = Upsample(channels, use_conv=False, dims=dims)
             self.x_upd = Upsample(channels, use_conv=False, dims=dims)
