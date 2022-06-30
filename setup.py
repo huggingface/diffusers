@@ -88,7 +88,7 @@ _deps = [
     "requests",
     "torch>=1.4",
     "tensorboard",
-    "modelcards=0.1.4"
+    "modelcards==0.1.4"
 ]
 
 # this is a lookup table with items like:
