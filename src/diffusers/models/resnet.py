@@ -614,19 +614,11 @@ class ResnetBlockBigGANpp(nn.Module):
         h = self.act(self.GroupNorm_0(x))
 
         if self.up:
-            if self.fir:
-                h = upsample_2d(h, self.fir_kernel, factor=2)
-                x = upsample_2d(x, self.fir_kernel, factor=2)
-            else:
-                h = naive_upsample_2d(h, factor=2)
-                x = naive_upsample_2d(x, factor=2)
+            h = upsample_2d(h, self.fir_kernel, factor=2)
+            x = upsample_2d(x, self.fir_kernel, factor=2)
         elif self.down:
-            if self.fir:
-                h = downsample_2d(h, self.fir_kernel, factor=2)
-                x = downsample_2d(x, self.fir_kernel, factor=2)
-            else:
-                h = naive_downsample_2d(h, factor=2)
-                x = naive_downsample_2d(x, factor=2)
+            h = downsample_2d(h, self.fir_kernel, factor=2)
+            x = downsample_2d(x, self.fir_kernel, factor=2)
 
         h = self.Conv_0(h)
         # Add bias to each feature map conditioned on the time embedding
