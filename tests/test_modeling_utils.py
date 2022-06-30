@@ -259,7 +259,7 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
         # fmt: off
         expected_output_slice = torch.tensor([0.2891, -0.1899, 0.2595, -0.6214, 0.0968, -0.2622, 0.4688, 0.1311, 0.0053])
         # fmt: on
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
 
 class GlideSuperResUNetTests(ModelTesterMixin, unittest.TestCase):
@@ -795,7 +795,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         sizes = (32, 32)
 
         noise = torch.randn((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor(batch_size * [9.]).to(torch_device)
+        time_step = torch.tensor(batch_size * [9.0]).to(torch_device)
 
         with torch.no_grad():
             output = model(noise, time_step)
