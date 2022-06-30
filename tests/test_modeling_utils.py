@@ -742,18 +742,18 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         num_channels = 3
         sizes = (32, 32)
 
-        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor(batch_size * [10]).to(torch_device)
+        noise = torch.ones((batch_size, num_channels) + sizes).to(torch_device)
+        time_step = torch.tensor(batch_size * [1e-4]).to(torch_device)
 
         with torch.no_grad():
             output = model(noise, time_step)
 
         output_slice = output[0, -3:, -3:, -1].flatten().cpu()
         # fmt: off
-        expected_output_slice = torch.tensor([3.1909e-07, -8.5393e-08, 4.8460e-07, -4.5550e-07, -1.3205e-06, -6.3475e-07, 9.7837e-07, 2.9974e-07, 1.2345e-06])
+        expected_output_slice = torch.tensor([0.1315, 0.0741, 0.0393, 0.0455, 0.0556, 0.0180, -0.0832, -0.0644, -0.0856])
         # fmt: on
 
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
     def test_output_pretrained_ve_large(self):
         model = NCSNpp.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy")
@@ -768,21 +768,21 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         num_channels = 3
         sizes = (32, 32)
 
-        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor(batch_size * [10]).to(torch_device)
+        noise = torch.ones((batch_size, num_channels) + sizes).to(torch_device)
+        time_step = torch.tensor(batch_size * [1e-4]).to(torch_device)
 
         with torch.no_grad():
             output = model(noise, time_step)
 
         output_slice = output[0, -3:, -3:, -1].flatten().cpu()
         # fmt: off
-        expected_output_slice = torch.tensor([-8.3299e-07, -9.0431e-07, 4.0585e-08, 9.7563e-07, 1.0280e-06, 1.0133e-06, 1.4979e-06, -2.9716e-07, -6.1817e-07])
+        expected_output_slice = torch.tensor([-0.0325, -0.0900, -0.0869, -0.0332, -0.0725, -0.0270, -0.0101, 0.0227, 0.0256])
         # fmt: on
 
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
     def test_output_pretrained_vp(self):
-        model = NCSNpp.from_pretrained("fusing/ddpm-cifar10-vp-dummy")
+        model = NCSNpp.from_pretrained("fusing/cifar10-ddpmpp-vp")
         model.eval()
         model.to(torch_device)
 
@@ -794,18 +794,18 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         num_channels = 3
         sizes = (32, 32)
 
-        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor(batch_size * [10]).to(torch_device)
+        noise = torch.randn((batch_size, num_channels) + sizes).to(torch_device)
+        time_step = torch.tensor(batch_size * [9.]).to(torch_device)
 
         with torch.no_grad():
             output = model(noise, time_step)
 
         output_slice = output[0, -3:, -3:, -1].flatten().cpu()
         # fmt: off
-        expected_output_slice = torch.tensor([-3.9086e-07, -1.1001e-05, 1.8881e-06, 1.1106e-05, 1.6629e-06, 2.9820e-06, 8.4978e-06, 8.0253e-07, 1.5435e-06])
+        expected_output_slice = torch.tensor([0.3303, -0.2275, -2.8872, -0.1309, -1.2861, 3.4567, -1.0083, 2.5325, -1.3866])
         # fmt: on
 
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
 
 class VQModelTests(ModelTesterMixin, unittest.TestCase):
