@@ -603,7 +603,7 @@ class ResnetBlockBigGANpp(nn.Module):
         self.Dropout_0 = nn.Dropout(dropout)
         self.Conv_1 = conv2d(out_ch, out_ch, init_scale=init_scale, kernel_size=3, padding=1)
         if in_ch != out_ch or up or down:
-            #1x1 convolution with DDPM initialization.
+            # 1x1 convolution with DDPM initialization.
             self.Conv_2 = conv2d(in_ch, out_ch, kernel_size=1, padding=0)
 
         self.skip_rescale = skip_rescale
@@ -757,9 +757,7 @@ class RearrangeDim(nn.Module):
 
 def conv2d(in_planes, out_planes, kernel_size=3, stride=1, bias=True, init_scale=1.0, padding=1):
     """nXn convolution with DDPM initialization."""
-    conv = nn.Conv2d(
-        in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=padding, bias=bias
-    )
+    conv = nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=padding, bias=bias)
     conv.weight.data = variance_scaling(init_scale)(conv.weight.data.shape)
     nn.init.zeros_(conv.bias)
     return conv
