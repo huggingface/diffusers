@@ -404,9 +404,6 @@ class ResnetBlock(nn.Module):
         if groups_out is None:
             groups_out = groups
 
-        if use_nin_shortcut is None:
-            use_nin_shortcut = self.in_channels != self.out_channels
-
         if self.pre_norm:
             self.norm1 = Normalize(in_channels, num_groups=groups, eps=eps)
         else:
@@ -439,8 +436,11 @@ class ResnetBlock(nn.Module):
         self.upsample = Upsample(in_channels, use_conv=False, dims=2) if self.up else None
         self.downsample = Downsample(in_channels, use_conv=False, dims=2, padding=1, name="op") if self.down else None
 
-        self.nin_shortcut = None
-        if use_nin_shortcut:
+        self.nin_shortcut = use_nin_shortcut
+        if self.use_nin_shortcut is None:
+            self.use_nin_shortcut = self.in_channels != self.out_channels
+
+        if self.use_nin_shortcut:
             self.nin_shortcut = torch.nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
 
         # TODO(SURAJ, PATRICK): ALL OF THE FOLLOWING OF THE INIT METHOD CAN BE DELETED ONCE WEIGHTS ARE CONVERTED
@@ -613,10 +613,6 @@ class ResnetBlock(nn.Module):
             x = self.downsample(x)
             h = self.downsample(h)
 
-#        if self.up: or self.down:
-#            x = self.x_upd(x)
-#            h = self.h_upd(h)
-#
         h = self.conv1(h)
 
         if not self.pre_norm:
