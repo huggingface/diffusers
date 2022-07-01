@@ -229,6 +229,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
         self,
         image_size=1024,
         num_channels=3,
+        centered=False,
         attn_resolutions=(16,),
         ch_mult=(1, 2, 4, 8, 16, 32, 32, 32),
         conditional=True,
@@ -253,6 +254,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
         self.register_to_config(
             image_size=image_size,
             num_channels=num_channels,
+            centered=centered,
             attn_resolutions=attn_resolutions,
             ch_mult=ch_mult,
             conditional=conditional,
@@ -457,7 +459,8 @@ class NCSNpp(ModelMixin, ConfigMixin):
             temb = None
 
         # If input data is in [0, 1]
-        x = 2 * x - 1.0
+        if not self.config.centered:
+            x = 2 * x - 1.0
 
         # Downsampling block
         input_pyramid = None
