@@ -86,7 +86,7 @@ class Upsample(nn.Module):
         self.use_conv = use_conv
         self.dims = dims
         self.use_conv_transpose = use_conv_transpose
-        self.name = self.name
+        self.name = name
 
         if use_conv_transpose:
             conv = conv_transpose_nd(dims, channels, self.out_channels, 4, 2, 1)
