@@ -63,9 +63,6 @@ class LatentDiffusionUncondPipeline(DiffusionPipeline):
             # 4. set current image to prev_image: x_t -> x_t-1
             image = pred_prev_image + variance
 
-        # scale and decode image with vae
-        image = 1 / 0.18215 * image
+        # decode image with vae
         image = self.vqvae.decode(image)
-        image = torch.clamp((image + 1.0) / 2.0, min=0.0, max=1.0)
-
         return image
