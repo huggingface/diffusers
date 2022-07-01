@@ -373,7 +373,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
                         groups_out=min(out_ch // 4, 32),
                         overwrite_for_score_vde=True,
                         down=True,
-                        kernel="fir",  # TODO(Patrick) - it seems like both fir and non-fir kernels are fine
+                        kernel="fir" if self.fir else "sde_vp",
                         use_nin_shortcut=True,
                     )
                 )
@@ -473,7 +473,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
                         groups_out=min(out_ch // 4, 32),
                         overwrite_for_score_vde=True,
                         up=True,
-                        kernel="fir",  # TODO(Patrick) - it seems like both fir and non-fir kernels are fine
+                        kernel="fir" if self.fir else "sde_vp",
                         use_nin_shortcut=True,
                     )
                 )
