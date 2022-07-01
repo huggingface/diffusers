@@ -348,18 +348,16 @@ class NCSNpp(ModelMixin, ConfigMixin):
             for i_block in range(num_res_blocks):
                 out_ch = nf * ch_mult[i_level]
 #                modules.append(ResnetBlock(in_ch=in_ch, out_ch=out_ch))
-                modules.append(
-                    ResnetNew(
-                        in_channels=in_ch,
-                        out_channels=out_ch,
-                        temb_channels=4 * nf,
-                        output_scale_factor=np.sqrt(2.0),
-                        non_linearity="silu",
-                        groups=min(in_ch // 4, 32),
-                        groups_out=min(out_ch // 4, 32),
-                        overwrite_for_score_vde=True,
-                    )
-                )
+                modules.append(ResnetNew(
+                    in_channels=in_ch,
+                    out_channels=out_ch,
+                    temb_channels=4 * nf,
+                    output_scale_factor=np.sqrt(2.0),
+                    non_linearity="silu",
+                    groups=min(in_ch // 4, 32),
+                    groups_out=min(out_ch // 4, 32),
+                    overwrite_for_score_vde=True,
+                ))
                 in_ch = out_ch
 
                 if all_resolutions[i_level] in attn_resolutions:
