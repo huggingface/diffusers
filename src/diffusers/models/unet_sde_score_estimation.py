@@ -27,7 +27,8 @@ from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import GaussianFourierProjection, get_timestep_embedding
-from .resnet import ResnetBlockBigGANpp, downsample_2d, upfirdn2d, upsample_2d
+from .resnet import downsample_2d, upfirdn2d, upsample_2d
+from .resnet import ResnetBlockBigGANppNew as ResnetBlockBigGANpp
 
 
 def _setup_kernel(k):

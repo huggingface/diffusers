@@ -202,19 +202,15 @@ class ResnetBlockBigGANppNew(nn.Module):
         self.in_ch = in_ch
         self.out_ch = out_ch
 
-        self.is_overwritten = False
-        self.overwrite = overwrite
-        if overwrite:
-            self.output_scale_factor = np.sqrt(2.0)
-            self.in_channels = in_channels = in_ch
-            self.out_channels = out_channels = out_ch
+        if self.overwrite:
+            in_channels = in_ch
+            out_channels = out_ch
             groups = min(in_ch // 4, 32)
-            out_groups = min(out_ch // 4, 32)
             eps = 1e-6
             self.pre_norm = True
             temb_channels = temb_dim
             non_linearity = "silu"
-            self.time_embedding_norm = time_embedding_norm = "default"
+            time_embedding_norm = "default"
 
             if self.pre_norm:
                 self.norm1 = Normalize(in_channels, num_groups=groups, eps=eps)
@@ -228,7 +224,7 @@ class ResnetBlockBigGANppNew(nn.Module):
             elif time_embedding_norm == "scale_shift":
                 self.temb_proj = torch.nn.Linear(temb_channels, 2 * out_channels)
 
-            self.norm2 = Normalize(out_channels, num_groups=out_groups, eps=eps)
+            self.norm2 = Normalize(out_channels, num_groups=groups, eps=eps)
             self.dropout = torch.nn.Dropout(dropout)
             self.conv2 = torch.nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
@@ -246,33 +242,10 @@ class ResnetBlockBigGANppNew(nn.Module):
                 self.h_upd = Downsample(in_channels, use_conv=False, dims=2, padding=1, name="op")
                 self.x_upd = Downsample(in_channels, use_conv=False, dims=2, padding=1, name="op")
 
-            if self.in_channels != self.out_channels or self.up or self.down:
+            if self.in_channels != self.out_channels:
                 self.nin_shortcut = torch.nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
 
-    def set_weights(self):
-        self.conv1.weight.data = self.Conv_0.weight.data
-        self.conv1.bias.data = self.Conv_0.bias.data
-        self.norm1.weight.data = self.GroupNorm_0.weight.data
-        self.norm1.bias.data = self.GroupNorm_0.bias.data
-
-        self.conv2.weight.data = self.Conv_1.weight.data
-        self.conv2.bias.data = self.Conv_1.bias.data
-        self.norm2.weight.data = self.GroupNorm_1.weight.data
-        self.norm2.bias.data = self.GroupNorm_1.bias.data
-
-        self.temb_proj.weight.data = self.Dense_0.weight.data
-        self.temb_proj.bias.data = self.Dense_0.bias.data
-
-        if self.in_channels != self.out_channels or self.up or self.down:
-            self.nin_shortcut.weight.data = self.Conv_2.weight.data
-            self.nin_shortcut.bias.data = self.Conv_2.bias.data
-
     def forward(self, x, temb=None):
-        if self.overwrite and not self.is_overwritten:
-            self.set_weights()
-            self.is_overwritten = True
-
-        orig_x = x
         h = self.act(self.GroupNorm_0(x))
 
         if self.up:
@@ -294,32 +267,29 @@ class ResnetBlockBigGANppNew(nn.Module):
             x = self.Conv_2(x)
 
         if not self.skip_rescale:
-            raise ValueError("Is this branch run?!")
-#            import ipdb; ipdb.set_trace()
-            result = x + h
+            return x + h
         else:
-            result = (x + h) / np.sqrt(2.0)
-
-        result_2 = self.forward_2(orig_x, temb)
-
-        return result_2
+            return (x + h) / np.sqrt(2.0)
 
     def forward_2(self, x, temb, mask=1.0):
+        # TODO(Patrick) eventually this class should be split into multiple classes
+        # too many if else statements
+        if self.overwrite_for_grad_tts and not self.is_overwritten:
+            self.set_weights_grad_tts()
+            self.is_overwritten = True
+        elif self.overwrite_for_ldm and not self.is_overwritten:
+            self.set_weights_ldm()
+            self.is_overwritten = True
+
         h = x
         h = h * mask
         if self.pre_norm:
             h = self.norm1(h)
             h = self.nonlinearity(h)
 
-#        if self.up or self.down:
-#            x = self.x_upd(x)
-#            h = self.h_upd(h)
-        if self.up:
-            h = upsample_2d(h, self.fir_kernel, factor=2)
-            x = upsample_2d(x, self.fir_kernel, factor=2)
-        elif self.down:
-            h = downsample_2d(h, self.fir_kernel, factor=2)
-            x = downsample_2d(x, self.fir_kernel, factor=2)
+        if self.up or self.down:
+            x = self.x_upd(x)
+            h = self.h_upd(h)
 
         h = self.conv1(h)
 
@@ -342,8 +312,6 @@ class ResnetBlockBigGANppNew(nn.Module):
             if self.pre_norm:
                 h = self.norm2(h)
                 h = self.nonlinearity(h)
-        else:
-            raise ValueError("Nananan nanana - don't go here!")
 
         h = self.dropout(h)
         h = self.conv2(h)
@@ -354,13 +322,11 @@ class ResnetBlockBigGANppNew(nn.Module):
         h = h * mask
 
         x = x * mask
-#        if self.in_channels != self.out_channels:
-        if self.in_channels != self.out_channels or self.up or self.down:
+        if self.in_channels != self.out_channels:
             x = self.nin_shortcut(x)
 
-        result = x + h
+        return x + h
 
-        return result / self.output_scale_factor
 
 
 # unet.py, unet_grad_tts.py, unet_ldm.py, unet_glide.py
