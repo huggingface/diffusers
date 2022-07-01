@@ -276,6 +276,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
             skip_rescale=skip_rescale,
             continuous=continuous,
         )
+        self.act = nn.SiLU()
         self.nf = nf
         self.num_res_blocks = num_res_blocks
         self.attn_resolutions = attn_resolutions
