@@ -237,12 +237,12 @@ class ResnetBlock(nn.Module):
         elif non_linearity == "silu":
             self.nonlinearity = nn.SiLU()
 
-#        if up:
-#            self.h_upd = Upsample(in_channels, use_conv=False, dims=2)
-#            self.x_upd = Upsample(in_channels, use_conv=False, dims=2)
-#        elif down:
-#            self.h_upd = Downsample(in_channels, use_conv=False, dims=2, padding=1, name="op")
-#            self.x_upd = Downsample(in_channels, use_conv=False, dims=2, padding=1, name="op")
+        #        if up:
+        #            self.h_upd = Upsample(in_channels, use_conv=False, dims=2)
+        #            self.x_upd = Upsample(in_channels, use_conv=False, dims=2)
+        #        elif down:
+        #            self.h_upd = Downsample(in_channels, use_conv=False, dims=2, padding=1, name="op")
+        #            self.x_upd = Downsample(in_channels, use_conv=False, dims=2, padding=1, name="op")
 
         self.upsample = self.downsample = None
         if self.up and kernel == "fir":
@@ -318,9 +318,9 @@ class ResnetBlock(nn.Module):
             num_groups = min(in_ch // 4, 32)
             num_groups_out = min(out_ch // 4, 32)
             temb_dim = temb_channels
-#            output_scale_factor = np.sqrt(2.0)
-#            non_linearity = "silu"
-#            use_nin_shortcut = in_channels != out_channels or use_nin_shortcut = True
+            #            output_scale_factor = np.sqrt(2.0)
+            #            non_linearity = "silu"
+            #            use_nin_shortcut = in_channels != out_channels or use_nin_shortcut = True
 
             self.GroupNorm_0 = nn.GroupNorm(num_groups=num_groups, num_channels=in_ch, eps=eps)
             self.up = up
@@ -338,7 +338,7 @@ class ResnetBlock(nn.Module):
                 # 1x1 convolution with DDPM initialization.
                 self.Conv_2 = conv2d(in_ch, out_ch, kernel_size=1, padding=0)
 
-#            self.skip_rescale = skip_rescale
+            #            self.skip_rescale = skip_rescale
             self.in_ch = in_ch
             self.out_ch = out_ch
 

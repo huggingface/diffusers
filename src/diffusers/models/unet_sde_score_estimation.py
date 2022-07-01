@@ -27,8 +27,7 @@ from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import GaussianFourierProjection, get_timestep_embedding
-from .resnet import downsample_2d, upfirdn2d, upsample_2d, Downsample, Upsample
-from .resnet import ResnetBlock
+from .resnet import Downsample, ResnetBlock, Upsample, downsample_2d, upfirdn2d, upsample_2d
 
 
 def _setup_kernel(k):
@@ -277,8 +276,6 @@ class NCSNpp(ModelMixin, ConfigMixin):
             skip_rescale=skip_rescale,
             continuous=continuous,
         )
-        self.act = act = nn.SiLU()
-
         self.nf = nf
         self.num_res_blocks = num_res_blocks
         self.attn_resolutions = attn_resolutions
@@ -421,9 +418,10 @@ class NCSNpp(ModelMixin, ConfigMixin):
         for i_level in reversed(range(self.num_resolutions)):
             for i_block in range(num_res_blocks + 1):
                 out_ch = nf * ch_mult[i_level]
+                in_ch = in_ch + hs_c.pop()
                 modules.append(
                     ResnetBlock(
-                        in_channels=in_ch + hs_c.pop(),
+                        in_channels=in_ch,
                         out_channels=out_ch,
                         temb_channels=4 * nf,
                         output_scale_factor=np.sqrt(2.0),
