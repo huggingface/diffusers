@@ -28,7 +28,7 @@ from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import GaussianFourierProjection, get_timestep_embedding
 from .resnet import downsample_2d, upfirdn2d, upsample_2d
-from .resnet import ResnetBlock 
+from .resnet import ResnetBlock
 
 
 def _setup_kernel(k):
@@ -464,7 +464,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
                         groups_out=min(out_ch // 4, 32),
                         overwrite_for_score_vde=True,
                         up=True,
-                        kernel="fir",
+                        kernel="fir",  # TODO(Patrick) - it seems like both fir and non-fir kernels are fine
                         use_nin_shortcut=True,
                     )
                 )
