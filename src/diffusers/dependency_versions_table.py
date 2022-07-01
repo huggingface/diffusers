@@ -14,4 +14,5 @@ deps = {
     "requests": "requests",
     "torch": "torch>=1.4",
     "tensorboard": "tensorboard",
+    "modelcards": "modelcards==0.1.4",
 }
