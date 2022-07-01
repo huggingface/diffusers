@@ -380,7 +380,7 @@ class ResnetBlock(nn.Module):
         eps=1e-6,
         non_linearity="swish",
         time_embedding_norm="default",
-        fir_kernel=(1, 3, 3, 1),
+        kernel=None,
         output_scale_factor=1.0,
         use_nin_shortcut=None,
         up=False,
@@ -433,8 +433,18 @@ class ResnetBlock(nn.Module):
 #        elif down:
 #            self.h_upd = Downsample(in_channels, use_conv=False, dims=2, padding=1, name="op")
 #            self.x_upd = Downsample(in_channels, use_conv=False, dims=2, padding=1, name="op")
-        self.upsample = Upsample(in_channels, use_conv=False, dims=2) if self.up else None
-        self.downsample = Downsample(in_channels, use_conv=False, dims=2, padding=1, name="op") if self.down else None
+
+        self.upsample = self.downsample = None
+        if self.up and kernel == "fir":
+            fir_kernel = (1, 3, 3, 1)
+            self.upsample = lambda x: upsample_2d(x, k=fir_kernel)
+        elif self.up and kernel is None:
+            self.upsample = Upsample(in_channels, use_conv=False, dims=2)
+        elif self.down and kernel == "fir":
+            fir_kernel = (1, 3, 3, 1)
+            self.downsample = lambda x: downsample_2d(x, k=fir_kernel)
+        elif self.down and kernel is None:
+            self.downsample = Downsample(in_channels, use_conv=False, dims=2, padding=1, name="op")
 
         self.use_nin_shortcut = self.in_channels != self.out_channels if use_nin_shortcut is None else use_nin_shortcut
 
@@ -505,8 +515,6 @@ class ResnetBlock(nn.Module):
             self.GroupNorm_0 = nn.GroupNorm(num_groups=num_groups, num_channels=in_ch, eps=eps)
             self.up = up
             self.down = down
-            self.fir_kernel = fir_kernel
-
             self.Conv_0 = conv2d(in_ch, out_ch, kernel_size=3, padding=1)
             if temb_dim is not None:
                 self.Dense_0 = nn.Linear(temb_dim, out_ch)
@@ -525,11 +533,6 @@ class ResnetBlock(nn.Module):
             self.out_ch = out_ch
 
             # TODO(Patrick) - move to main init
-            if self.up:
-                self.upsample = functools.partial(upsample_2d, k=self.fir_kernel)
-            if self.down:
-                self.downsample = functools.partial(downsample_2d, k=self.fir_kernel)
-
             self.is_overwritten = False
 
     def set_weights_grad_tts(self):
