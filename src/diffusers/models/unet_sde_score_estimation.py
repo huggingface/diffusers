@@ -27,7 +27,7 @@ from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import GaussianFourierProjection, get_timestep_embedding
-from .resnet import Downsample, ResnetBlockBigGANpp, Upsample, downsample_2d, upfirdn2d, upsample_2d
+from .resnet import Downsample, ResnetBlock, Upsample, downsample_2d, upfirdn2d, upsample_2d
 
 
 def _setup_kernel(k):
@@ -276,8 +276,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
             skip_rescale=skip_rescale,
             continuous=continuous,
         )
-        self.act = act = nn.SiLU()
-
+        self.act = nn.SiLU()
         self.nf = nf
         self.num_res_blocks = num_res_blocks
         self.attn_resolutions = attn_resolutions
@@ -333,19 +332,6 @@ class NCSNpp(ModelMixin, ConfigMixin):
         elif progressive_input == "residual":
             pyramid_downsample = functools.partial(Down_sample, use_conv=True)
 
-        ResnetBlock = functools.partial(
-            ResnetBlockBigGANpp,
-            act=act,
-            dropout=dropout,
-            fir=fir,
-            fir_kernel=fir_kernel,
-            init_scale=init_scale,
-            skip_rescale=skip_rescale,
-            temb_dim=nf * 4,
-        )
-
-        # Downsampling block
-
         channels = num_channels
         if progressive_input != "none":
             input_pyramid_ch = channels
@@ -358,7 +344,18 @@ class NCSNpp(ModelMixin, ConfigMixin):
             # Residual blocks for this resolution
             for i_block in range(num_res_blocks):
                 out_ch = nf * ch_mult[i_level]
-                modules.append(ResnetBlock(in_ch=in_ch, out_ch=out_ch))
+                modules.append(
+                    ResnetBlock(
+                        in_channels=in_ch,
+                        out_channels=out_ch,
+                        temb_channels=4 * nf,
+                        output_scale_factor=np.sqrt(2.0),
+                        non_linearity="silu",
+                        groups=min(in_ch // 4, 32),
+                        groups_out=min(out_ch // 4, 32),
+                        overwrite_for_score_vde=True,
+                    )
+                )
                 in_ch = out_ch
 
                 if all_resolutions[i_level] in attn_resolutions:
@@ -366,7 +363,20 @@ class NCSNpp(ModelMixin, ConfigMixin):
                 hs_c.append(in_ch)
 
             if i_level != self.num_resolutions - 1:
-                modules.append(ResnetBlock(down=True, in_ch=in_ch))
+                modules.append(
+                    ResnetBlock(
+                        in_channels=in_ch,
+                        temb_channels=4 * nf,
+                        output_scale_factor=np.sqrt(2.0),
+                        non_linearity="silu",
+                        groups=min(in_ch // 4, 32),
+                        groups_out=min(out_ch // 4, 32),
+                        overwrite_for_score_vde=True,
+                        down=True,
+                        kernel="fir",  # TODO(Patrick) - it seems like both fir and non-fir kernels are fine
+                        use_nin_shortcut=True,
+                    )
+                )
 
                 if progressive_input == "input_skip":
                     modules.append(combiner(dim1=input_pyramid_ch, dim2=in_ch))
@@ -380,16 +390,48 @@ class NCSNpp(ModelMixin, ConfigMixin):
                 hs_c.append(in_ch)
 
         in_ch = hs_c[-1]
-        modules.append(ResnetBlock(in_ch=in_ch))
+        modules.append(
+            ResnetBlock(
+                in_channels=in_ch,
+                temb_channels=4 * nf,
+                output_scale_factor=np.sqrt(2.0),
+                non_linearity="silu",
+                groups=min(in_ch // 4, 32),
+                groups_out=min(out_ch // 4, 32),
+                overwrite_for_score_vde=True,
+            )
+        )
         modules.append(AttnBlock(channels=in_ch))
-        modules.append(ResnetBlock(in_ch=in_ch))
+        modules.append(
+            ResnetBlock(
+                in_channels=in_ch,
+                temb_channels=4 * nf,
+                output_scale_factor=np.sqrt(2.0),
+                non_linearity="silu",
+                groups=min(in_ch // 4, 32),
+                groups_out=min(out_ch // 4, 32),
+                overwrite_for_score_vde=True,
+            )
+        )
 
         pyramid_ch = 0
         # Upsampling block
         for i_level in reversed(range(self.num_resolutions)):
             for i_block in range(num_res_blocks + 1):
                 out_ch = nf * ch_mult[i_level]
-                modules.append(ResnetBlock(in_ch=in_ch + hs_c.pop(), out_ch=out_ch))
+                in_ch = in_ch + hs_c.pop()
+                modules.append(
+                    ResnetBlock(
+                        in_channels=in_ch,
+                        out_channels=out_ch,
+                        temb_channels=4 * nf,
+                        output_scale_factor=np.sqrt(2.0),
+                        non_linearity="silu",
+                        groups=min(in_ch // 4, 32),
+                        groups_out=min(out_ch // 4, 32),
+                        overwrite_for_score_vde=True,
+                    )
+                )
                 in_ch = out_ch
 
             if all_resolutions[i_level] in attn_resolutions:
@@ -421,7 +463,20 @@ class NCSNpp(ModelMixin, ConfigMixin):
                         raise ValueError(f"{progressive} is not a valid name")
 
             if i_level != 0:
-                modules.append(ResnetBlock(in_ch=in_ch, up=True))
+                modules.append(
+                    ResnetBlock(
+                        in_channels=in_ch,
+                        temb_channels=4 * nf,
+                        output_scale_factor=np.sqrt(2.0),
+                        non_linearity="silu",
+                        groups=min(in_ch // 4, 32),
+                        groups_out=min(out_ch // 4, 32),
+                        overwrite_for_score_vde=True,
+                        up=True,
+                        kernel="fir",  # TODO(Patrick) - it seems like both fir and non-fir kernels are fine
+                        use_nin_shortcut=True,
+                    )
+                )
 
         assert not hs_c
 
