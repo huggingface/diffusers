@@ -1,4 +1,5 @@
 from abc import abstractmethod
+from functools import partial
 
 import numpy as np
 import torch
@@ -78,18 +79,25 @@ class Upsample(nn.Module):
                  upsampling occurs in the inner-two dimensions.
     """
 
-    def __init__(self, channels, use_conv=False, use_conv_transpose=False, dims=2, out_channels=None):
+    def __init__(self, channels, use_conv=False, use_conv_transpose=False, dims=2, out_channels=None, name="conv"):
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
         self.use_conv = use_conv
         self.dims = dims
         self.use_conv_transpose = use_conv_transpose
+        self.name = name
 
+        conv = None
         if use_conv_transpose:
-            self.conv = conv_transpose_nd(dims, channels, self.out_channels, 4, 2, 1)
+            conv = conv_transpose_nd(dims, channels, self.out_channels, 4, 2, 1)
         elif use_conv:
-            self.conv = conv_nd(dims, self.channels, self.out_channels, 3, padding=1)
+            conv = conv_nd(dims, self.channels, self.out_channels, 3, padding=1)
+
+        if name == "conv":
+            self.conv = conv
+        else:
+            self.Conv2d_0 = conv
 
     def forward(self, x):
         assert x.shape[1] == self.channels
@@ -102,7 +110,10 @@ class Upsample(nn.Module):
             x = F.interpolate(x, scale_factor=2.0, mode="nearest")
 
         if self.use_conv:
-            x = self.conv(x)
+            if self.name == "conv":
+                x = self.conv(x)
+            else:
+                x = self.Conv2d_0(x)
 
         return x
 
@@ -134,6 +145,8 @@ class Downsample(nn.Module):
 
         if name == "conv":
             self.conv = conv
+        elif name == "Conv2d_0":
+            self.Conv2d_0 = conv
         else:
             self.op = conv
 
@@ -145,6 +158,8 @@ class Downsample(nn.Module):
 
         if self.name == "conv":
             return self.conv(x)
+        elif self.name == "Conv2d_0":
+            return self.Conv2d_0(x)
         else:
             return self.op(x)
 
@@ -469,6 +484,7 @@ class ResnetBlockBigGANpp(nn.Module):
         up=False,
         down=False,
         dropout=0.1,
+        fir=False,
         fir_kernel=(1, 3, 3, 1),
         skip_rescale=True,
         init_scale=0.0,
@@ -479,7 +495,19 @@ class ResnetBlockBigGANpp(nn.Module):
         self.GroupNorm_0 = nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6)
         self.up = up
         self.down = down
+        self.fir = fir
         self.fir_kernel = fir_kernel
+
+        if self.up:
+            if self.fir:
+                self.upsample = partial(upsample_2d, k=self.fir_kernel, factor=2)
+            else:
+                self.upsample = partial(F.interpolate, scale_factor=2.0, mode="nearest")
+        elif self.down:
+            if self.fir:
+                self.downsample = partial(downsample_2d, k=self.fir_kernel, factor=2)
+            else:
+                self.downsample = partial(F.avg_pool2d, kernel_size=2, stride=2)
 
         self.Conv_0 = conv2d(in_ch, out_ch, kernel_size=3, padding=1)
         if temb_dim is not None:
@@ -503,11 +531,11 @@ class ResnetBlockBigGANpp(nn.Module):
         h = self.act(self.GroupNorm_0(x))
 
         if self.up:
-            h = upsample_2d(h, self.fir_kernel, factor=2)
-            x = upsample_2d(x, self.fir_kernel, factor=2)
+            h = self.upsample(h)
+            x = self.upsample(x)
         elif self.down:
-            h = downsample_2d(h, self.fir_kernel, factor=2)
-            x = downsample_2d(x, self.fir_kernel, factor=2)
+            h = self.downsample(h)
+            x = self.downsample(x)
 
         h = self.Conv_0(h)
         # Add bias to each feature map conditioned on the time embedding
