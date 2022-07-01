@@ -1,18 +1,20 @@
 # Model adapted from GeoDiff https://github.com/MinkaiXu/GeoDiff
-import torch
-from torch import nn
-import torch.nn.functional as F
-from torch import Tensor
 from typing import Callable, Union
-from torch.nn import Module, Sequential, ModuleList, Linear, Embedding
-from torch_scatter import scatter_add, scatter_mean
-from torch_geometric.nn import MessagePassing, radius_graph, radius
-from torch_geometric.typing import OptPairTensor, Adj, OptTensor, Size
-from torch_geometric.utils import to_dense_adj, dense_to_sparse
-from torch_sparse import SparseTensor, coalesce
+
 import numpy as np
-from tqdm.auto import tqdm
+import torch
+import torch.nn.functional as F
+from torch import Tensor, nn
+from torch.nn import Embedding, Linear, Module, ModuleList, Sequential
+
 from rdkit.Chem.rdchem import BondType as BT
+from torch_geometric.nn import MessagePassing, radius, radius_graph
+from torch_geometric.typing import Adj, OptPairTensor, OptTensor, Size
+from torch_geometric.utils import dense_to_sparse, to_dense_adj
+from torch_scatter import scatter_add, scatter_mean
+from torch_sparse import SparseTensor, coalesce
+from tqdm.auto import tqdm
+
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 
@@ -22,9 +24,8 @@ BOND_TYPES = {t: i for i, t in enumerate(BT.names.values())}
 
 class MultiLayerPerceptron(nn.Module):
     """
-    Multi-layer Perceptron.
-    Note there is no activation or dropout in the last layer.
     Parameters:
+    Multi-layer Perceptron. Note there is no activation or dropout in the last layer.
         input_dim (int): input dimension
         hidden_dim (list of int): hidden dimensions
         activation (str or function, optional): activation function
@@ -228,12 +229,10 @@ class GINEncoder(torch.nn.Module):
     def forward(self, z, edge_index, edge_attr):
         """
         Input:
-            data: (torch_geometric.data.Data): batched graph
-            node_attr: node feature tensor with shape (num_node, hidden)
-            edge_attr: edge feature tensor with shape (num_edge, hidden)
+            data: (torch_geometric.data.Data): batched graph node_attr: node feature tensor with shape (num_node,
+            hidden) edge_attr: edge feature tensor with shape (num_edge, hidden)
         Output:
-            node_attr
-            graph feature
+            node_attr graph feature
         """
 
         node_attr = self.node_emb(z)  # (num_node, hidden)
@@ -274,10 +273,9 @@ class MLPEdgeEncoder(Module):
     def forward(self, edge_length, edge_type):
         """
         Input:
-            edge_length: The length of edges, shape=(E, 1).
-            edge_type: The type pf edges, shape=(E,)
+            edge_length: The length of edges, shape=(E, 1). edge_type: The type pf edges, shape=(E,)
         Returns:
-            edge_attr:  The representation of edges. (E, 2 * num_gaussians)
+            edge_attr: The representation of edges. (E, 2 * num_gaussians)
         """
         d_emb = self.mlp(edge_length)  # (num_edge, hidden_dim)
         edge_attr = self.bond_emb(edge_type)  # (num_edge, hidden_dim)
@@ -321,8 +319,7 @@ def _extend_graph_order(num_nodes, edge_index, edge_type, order=3):
         edge_type:  Bond types of the original graph.
         order:  Extension order.
     Returns:
-        new_edge_index: Extended edge indices.
-        new_edge_type:  Extended edge types.
+        new_edge_index: Extended edge indices. new_edge_type: Extended edge types.
     """
 
     def binarize(x):
@@ -338,7 +335,7 @@ def _extend_graph_order(num_nodes, edge_index, edge_type, order=3):
               - edge_index
               - edge_type
             Following attributes will be added to the data object:
-              - bond_edge_index:  Original edge_index.
+              - bond_edge_index: Original edge_index.
         """
         adj_mats = [
             torch.eye(adj.size(0), dtype=torch.long, device=adj.device),
@@ -506,14 +503,28 @@ def get_beta_schedule(beta_schedule, *, beta_start, beta_end, num_diffusion_time
 
 
 class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
-    def __init__(self, hidden_dim, num_convs, num_convs_local, cutoff, mlp_act, beta_schedule, beta_start, beta_end, num_diffusion_timesteps, edge_order, edge_encoder, smooth_conv):
+    def __init__(
+        self,
+        hidden_dim,
+        num_convs,
+        num_convs_local,
+        cutoff,
+        mlp_act,
+        beta_schedule,
+        beta_start,
+        beta_end,
+        num_diffusion_timesteps,
+        edge_order,
+        edge_encoder,
+        smooth_conv,
+    ):
         super().__init__()
         self.cutoff = cutoff
         self.edge_encoder = edge_encoder
 
         """
-        edge_encoder:  Takes both edge type and edge length as input and outputs a vector
-        [Note]: node embedding is done in SchNetEncoder
+        edge_encoder: Takes both edge type and edge length as input and outputs a vector [Note]: node embedding is done
+        in SchNetEncoder
         """
         self.edge_encoder_global = MLPEdgeEncoder(hidden_dim, mlp_act)  # get_edge_encoder(config)
         self.edge_encoder_local = MLPEdgeEncoder(hidden_dim, mlp_act)  # get_edge_encoder(config)
@@ -535,7 +546,7 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
         )
 
         """
-        `output_mlp` takes a mixture of two nodewise features and edge features as input and outputs 
+        `output_mlp` takes a mixture of two nodewise features and edge features as input and outputs
             gradients w.r.t. edge_length (out_dim = 1).
         """
         self.grad_global_dist_mlp = MultiLayerPerceptron(
