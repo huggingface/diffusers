@@ -43,6 +43,7 @@ class EMAModel:
             self.averaged_model = self.averaged_model.to(device=device)
 
         self.decay = 0.0
+        self.optimization_step = 0
 
     def get_decay(self, optimization_step):
         """
@@ -57,11 +58,11 @@ class EMAModel:
         return max(self.min_value, min(value, self.max_value))
 
     @torch.no_grad()
-    def step(self, new_model, optimization_step):
+    def step(self, new_model):
         ema_state_dict = {}
         ema_params = self.averaged_model.state_dict()
 
-        self.decay = self.get_decay(optimization_step)
+        self.decay = self.get_decay(self.optimization_step)
 
         for key, param in new_model.named_parameters():
             if isinstance(param, dict):
@@ -85,3 +86,4 @@ class EMAModel:
             ema_state_dict[key] = param
 
         self.averaged_model.load_state_dict(ema_state_dict, strict=False)
+        self.optimization_step += 1
