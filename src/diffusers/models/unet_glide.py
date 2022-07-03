@@ -6,7 +6,7 @@ from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import get_timestep_embedding
-from .resnet import Downsample, ResnetBlock2D, TimestepBlock, Upsample
+from .resnet import Downsample, ResnetBlock2D, Upsample
 
 
 def convert_module_to_f16(l):
@@ -81,14 +81,14 @@ def zero_module(module):
     return module
 
 
-class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
+class TimestepEmbedSequential(nn.Sequential):
     """
     A sequential module that passes timestep embeddings to the children that support it as an extra input.
     """
 
     def forward(self, x, emb, encoder_out=None):
         for layer in self:
-            if isinstance(layer, TimestepBlock) or isinstance(layer, ResnetBlock2D):
+            if isinstance(layer, ResnetBlock2D) or isinstance(layer, TimestepEmbedSequential):
                 x = layer(x, emb)
             elif isinstance(layer, AttentionBlock):
                 x = layer(x, encoder_out)
