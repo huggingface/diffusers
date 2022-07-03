@@ -27,7 +27,7 @@ from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import GaussianFourierProjection, get_timestep_embedding
-from .resnet import Downsample, ResnetBlock, Upsample, downsample_2d, upfirdn2d, upsample_2d
+from .resnet import Downsample, ResnetBlock2D, Upsample, downsample_2d, upfirdn2d, upsample_2d
 
 
 def _setup_kernel(k):
@@ -345,7 +345,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
             for i_block in range(num_res_blocks):
                 out_ch = nf * ch_mult[i_level]
                 modules.append(
-                    ResnetBlock(
+                    ResnetBlock2D(
                         in_channels=in_ch,
                         out_channels=out_ch,
                         temb_channels=4 * nf,
@@ -364,7 +364,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
 
             if i_level != self.num_resolutions - 1:
                 modules.append(
-                    ResnetBlock(
+                    ResnetBlock2D(
                         in_channels=in_ch,
                         temb_channels=4 * nf,
                         output_scale_factor=np.sqrt(2.0),
@@ -391,7 +391,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
 
         in_ch = hs_c[-1]
         modules.append(
-            ResnetBlock(
+            ResnetBlock2D(
                 in_channels=in_ch,
                 temb_channels=4 * nf,
                 output_scale_factor=np.sqrt(2.0),
@@ -403,7 +403,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
         )
         modules.append(AttnBlock(channels=in_ch))
         modules.append(
-            ResnetBlock(
+            ResnetBlock2D(
                 in_channels=in_ch,
                 temb_channels=4 * nf,
                 output_scale_factor=np.sqrt(2.0),
@@ -421,7 +421,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
                 out_ch = nf * ch_mult[i_level]
                 in_ch = in_ch + hs_c.pop()
                 modules.append(
-                    ResnetBlock(
+                    ResnetBlock2D(
                         in_channels=in_ch,
                         out_channels=out_ch,
                         temb_channels=4 * nf,
@@ -464,7 +464,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
 
             if i_level != 0:
                 modules.append(
-                    ResnetBlock(
+                    ResnetBlock2D(
                         in_channels=in_ch,
                         temb_channels=4 * nf,
                         output_scale_factor=np.sqrt(2.0),

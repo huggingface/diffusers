@@ -176,7 +176,7 @@ class Downsample(nn.Module):
 
 # unet.py, unet_grad_tts.py, unet_ldm.py, unet_glide.py, unet_score_vde.py
 # => All 2D-Resnets are included here now!
-class ResnetBlock(nn.Module):
+class ResnetBlock2D(nn.Module):
     def __init__(
         self,
         *,

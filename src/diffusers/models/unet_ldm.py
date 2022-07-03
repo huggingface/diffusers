@@ -10,7 +10,7 @@ from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import get_timestep_embedding
-from .resnet import Downsample, ResnetBlock, TimestepBlock, Upsample
+from .resnet import Downsample, ResnetBlock2D, TimestepBlock, Upsample
 
 
 # from .resnet import ResBlock
@@ -148,7 +148,7 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
 
     def forward(self, x, emb, context=None):
         for layer in self:
-            if isinstance(layer, TimestepBlock) or isinstance(layer, ResnetBlock):
+            if isinstance(layer, TimestepBlock) or isinstance(layer, ResnetBlock2D):
                 x = layer(x, emb)
             elif isinstance(layer, SpatialTransformer):
                 x = layer(x, context)
@@ -310,7 +310,7 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
         for level, mult in enumerate(channel_mult):
             for _ in range(num_res_blocks):
                 layers = [
-                    ResnetBlock(
+                    ResnetBlock2D(
                         in_channels=ch,
                         out_channels=mult * model_channels,
                         dropout=dropout,
@@ -367,7 +367,7 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
             # num_heads = 1
             dim_head = ch // num_heads if use_spatial_transformer else num_head_channels
         self.middle_block = TimestepEmbedSequential(
-            ResnetBlock(
+            ResnetBlock2D(
                 in_channels=ch,
                 out_channels=None,
                 dropout=dropout,
@@ -385,7 +385,7 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
             )
             if not use_spatial_transformer
             else SpatialTransformer(ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim),
-            ResnetBlock(
+            ResnetBlock2D(
                 in_channels=ch,
                 out_channels=None,
                 dropout=dropout,
@@ -402,7 +402,7 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
             for i in range(num_res_blocks + 1):
                 ich = input_block_chans.pop()
                 layers = [
-                    ResnetBlock(
+                    ResnetBlock2D(
                         in_channels=ch + ich,
                         out_channels=model_channels * mult,
                         dropout=dropout,

@@ -22,7 +22,7 @@ from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import get_timestep_embedding
-from .resnet import Downsample, ResnetBlock, Upsample
+from .resnet import Downsample, ResnetBlock2D, Upsample
 
 
 def nonlinearity(x):
@@ -89,7 +89,7 @@ class UNetModel(ModelMixin, ConfigMixin):
             block_out = ch * ch_mult[i_level]
             for i_block in range(self.num_res_blocks):
                 block.append(
-                    ResnetBlock(
+                    ResnetBlock2D(
                         in_channels=block_in, out_channels=block_out, temb_channels=self.temb_ch, dropout=dropout
                     )
                 )
@@ -106,11 +106,11 @@ class UNetModel(ModelMixin, ConfigMixin):
 
         # middle
         self.mid = nn.Module()
-        self.mid.block_1 = ResnetBlock(
+        self.mid.block_1 = ResnetBlock2D(
             in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
         )
         self.mid.attn_1 = AttentionBlock(block_in, overwrite_qkv=True)
-        self.mid.block_2 = ResnetBlock(
+        self.mid.block_2 = ResnetBlock2D(
             in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
         )
 
@@ -125,7 +125,7 @@ class UNetModel(ModelMixin, ConfigMixin):
                 if i_block == self.num_res_blocks:
                     skip_in = ch * in_ch_mult[i_level]
                 block.append(
-                    ResnetBlock(
+                    ResnetBlock2D(
                         in_channels=block_in + skip_in,
                         out_channels=block_out,
                         temb_channels=self.temb_ch,
