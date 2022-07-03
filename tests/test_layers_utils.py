@@ -22,7 +22,7 @@ import numpy as np
 import torch
 
 from diffusers.models.embeddings import get_timestep_embedding
-from diffusers.models.resnet import Downsample, Upsample
+from diffusers.models.resnet import Downsample2D, Upsample2D
 from diffusers.testing_utils import floats_tensor, slow, torch_device
 
 
@@ -116,11 +116,11 @@ class EmbeddingsTests(unittest.TestCase):
         )
 
 
-class UpsampleBlockTests(unittest.TestCase):
+class Upsample2DBlockTests(unittest.TestCase):
     def test_upsample_default(self):
         torch.manual_seed(0)
         sample = torch.randn(1, 32, 32, 32)
-        upsample = Upsample(channels=32, use_conv=False)
+        upsample = Upsample2D(channels=32, use_conv=False)
         with torch.no_grad():
             upsampled = upsample(sample)
 
@@ -132,7 +132,7 @@ class UpsampleBlockTests(unittest.TestCase):
     def test_upsample_with_conv(self):
         torch.manual_seed(0)
         sample = torch.randn(1, 32, 32, 32)
-        upsample = Upsample(channels=32, use_conv=True)
+        upsample = Upsample2D(channels=32, use_conv=True)
         with torch.no_grad():
             upsampled = upsample(sample)
 
@@ -144,7 +144,7 @@ class UpsampleBlockTests(unittest.TestCase):
     def test_upsample_with_conv_out_dim(self):
         torch.manual_seed(0)
         sample = torch.randn(1, 32, 32, 32)
-        upsample = Upsample(channels=32, use_conv=True, out_channels=64)
+        upsample = Upsample2D(channels=32, use_conv=True, out_channels=64)
         with torch.no_grad():
             upsampled = upsample(sample)
 
@@ -156,7 +156,7 @@ class UpsampleBlockTests(unittest.TestCase):
     def test_upsample_with_transpose(self):
         torch.manual_seed(0)
         sample = torch.randn(1, 32, 32, 32)
-        upsample = Upsample(channels=32, use_conv=False, use_conv_transpose=True)
+        upsample = Upsample2D(channels=32, use_conv=False, use_conv_transpose=True)
         with torch.no_grad():
             upsampled = upsample(sample)
 
@@ -166,11 +166,11 @@ class UpsampleBlockTests(unittest.TestCase):
         assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
 
 
-class DownsampleBlockTests(unittest.TestCase):
+class Downsample2DBlockTests(unittest.TestCase):
     def test_downsample_default(self):
         torch.manual_seed(0)
         sample = torch.randn(1, 32, 64, 64)
-        downsample = Downsample(channels=32, use_conv=False)
+        downsample = Downsample2D(channels=32, use_conv=False)
         with torch.no_grad():
             downsampled = downsample(sample)
 
@@ -184,7 +184,7 @@ class DownsampleBlockTests(unittest.TestCase):
     def test_downsample_with_conv(self):
         torch.manual_seed(0)
         sample = torch.randn(1, 32, 64, 64)
-        downsample = Downsample(channels=32, use_conv=True)
+        downsample = Downsample2D(channels=32, use_conv=True)
         with torch.no_grad():
             downsampled = downsample(sample)
 
@@ -199,7 +199,7 @@ class DownsampleBlockTests(unittest.TestCase):
     def test_downsample_with_conv_pad1(self):
         torch.manual_seed(0)
         sample = torch.randn(1, 32, 64, 64)
-        downsample = Downsample(channels=32, use_conv=True, padding=1)
+        downsample = Downsample2D(channels=32, use_conv=True, padding=1)
         with torch.no_grad():
             downsampled = downsample(sample)
 
@@ -211,7 +211,7 @@ class DownsampleBlockTests(unittest.TestCase):
     def test_downsample_with_conv_out_dim(self):
         torch.manual_seed(0)
         sample = torch.randn(1, 32, 64, 64)
-        downsample = Downsample(channels=32, use_conv=True, out_channels=16)
+        downsample = Downsample2D(channels=32, use_conv=True, out_channels=16)
         with torch.no_grad():
             downsampled = downsample(sample)
 

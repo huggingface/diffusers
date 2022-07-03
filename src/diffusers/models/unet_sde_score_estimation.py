@@ -27,7 +27,7 @@ from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import GaussianFourierProjection, get_timestep_embedding
-from .resnet import Downsample, ResnetBlock2D, Upsample, downsample_2d, upfirdn2d, upsample_2d
+from .resnet import Downsample2D, ResnetBlock2D, Upsample2D, downsample_2d, upfirdn2d, upsample_2d
 
 
 def _setup_kernel(k):
@@ -183,7 +183,7 @@ class Combine(nn.Module):
             raise ValueError(f"Method {self.method} not recognized.")
 
 
-class FirUpsample(nn.Module):
+class FirUpsample2D(nn.Module):
     def __init__(self, channels=None, out_channels=None, use_conv=False, fir_kernel=(1, 3, 3, 1)):
         super().__init__()
         out_channels = out_channels if out_channels else channels
@@ -203,7 +203,7 @@ class FirUpsample(nn.Module):
         return h
 
 
-class FirDownsample(nn.Module):
+class FirDownsample2D(nn.Module):
     def __init__(self, channels=None, out_channels=None, use_conv=False, fir_kernel=(1, 3, 3, 1)):
         super().__init__()
         out_channels = out_channels if out_channels else channels
@@ -313,9 +313,9 @@ class NCSNpp(ModelMixin, ConfigMixin):
         AttnBlock = functools.partial(AttentionBlock, overwrite_linear=True, rescale_output_factor=math.sqrt(2.0))
 
         if self.fir:
-            Up_sample = functools.partial(FirUpsample, fir_kernel=fir_kernel, use_conv=resamp_with_conv)
+            Up_sample = functools.partial(FirUpsample2D, fir_kernel=fir_kernel, use_conv=resamp_with_conv)
         else:
-            Up_sample = functools.partial(Upsample, name="Conv2d_0")
+            Up_sample = functools.partial(Upsample2D, name="Conv2d_0")
 
         if progressive == "output_skip":
             self.pyramid_upsample = Up_sample(channels=None, use_conv=False)
@@ -323,9 +323,9 @@ class NCSNpp(ModelMixin, ConfigMixin):
             pyramid_upsample = functools.partial(Up_sample, use_conv=True)
 
         if self.fir:
-            Down_sample = functools.partial(FirDownsample, fir_kernel=fir_kernel, use_conv=resamp_with_conv)
+            Down_sample = functools.partial(FirDownsample2D, fir_kernel=fir_kernel, use_conv=resamp_with_conv)
         else:
-            Down_sample = functools.partial(Downsample, padding=0, name="Conv2d_0")
+            Down_sample = functools.partial(Downsample2D, padding=0, name="Conv2d_0")
 
         if progressive_input == "input_skip":
             self.pyramid_downsample = Down_sample(channels=None, use_conv=False)

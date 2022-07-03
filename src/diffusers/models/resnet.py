@@ -45,7 +45,7 @@ def conv_transpose_nd(dims, *args, **kwargs):
     raise ValueError(f"unsupported dimensions: {dims}")
 
 
-class Upsample(nn.Module):
+class Upsample2D(nn.Module):
     """
     An upsampling layer with an optional convolution.
 
@@ -93,7 +93,44 @@ class Upsample(nn.Module):
         return x
 
 
-class Downsample(nn.Module):
+class Upsample1D(nn.Module):
+    """
+    An upsampling layer with an optional convolution.
+
+    :param channels: channels in the inputs and outputs. :param use_conv: a bool determining if a convolution is
+    applied. :param dims: determines if the signal is 1D, 2D, or 3D. If 3D, then
+                 upsampling occurs in the inner-two dimensions.
+    """
+
+    def __init__(self, channels, use_conv=False, use_conv_transpose=False, dims=2, out_channels=None, name="conv"):
+        super().__init__()
+        self.channels = channels
+        self.out_channels = out_channels or channels
+        self.use_conv = use_conv
+        self.dims = dims
+        self.use_conv_transpose = use_conv_transpose
+        self.name = name
+
+        self.conv = None
+        if use_conv_transpose:
+            self.conv = nn.ConvTranspose1d(channels, self.out_channels, 4, 2, 1)
+        elif use_conv:
+            self.conv = nn.Conv1d(self.channels, self.out_channels, 3, padding=1)
+
+    def forward(self, x):
+        assert x.shape[1] == self.channels
+        if self.use_conv_transpose:
+            return self.conv(x)
+
+        x = F.interpolate(x, scale_factor=2.0, mode="nearest")
+
+        if self.use_conv:
+            x = self.conv(x)
+
+        return x
+
+
+class Downsample2D(nn.Module):
     """
     A downsampling layer with an optional convolution.
 
@@ -139,8 +176,38 @@ class Downsample(nn.Module):
             return self.op(x)
 
 
+class Downsample1D(nn.Module):
+    """
+    A downsampling layer with an optional convolution.
+
+    :param channels: channels in the inputs and outputs. :param use_conv: a bool determining if a convolution is
+    applied. :param dims: determines if the signal is 1D, 2D, or 3D. If 3D, then
+                 downsampling occurs in the inner-two dimensions.
+    """
+
+    def __init__(self, channels, use_conv=False, dims=2, out_channels=None, padding=1, name="conv"):
+        super().__init__()
+        self.channels = channels
+        self.out_channels = out_channels or channels
+        self.use_conv = use_conv
+        self.dims = dims
+        self.padding = padding
+        stride = 2 if dims != 3 else (1, 2, 2)
+        self.name = name
+
+        if use_conv:
+            self.conv = conv_nd(dims, self.channels, self.out_channels, 3, stride=stride, padding=padding)
+        else:
+            assert self.channels == self.out_channels
+            self.conv = nn.AvgPool1d(kernel_size=stride, stride=stride)
+
+    def forward(self, x):
+        assert x.shape[1] == self.channels
+        return self.conv(x)
+
+
 # TODO (patil-suraj): needs test
-# class Upsample1d(nn.Module):
+# class Upsample2D1d(nn.Module):
 #    def __init__(self, dim):
 #        super().__init__()
 #        self.conv = nn.ConvTranspose1d(dim, dim, 4, 2, 1)
@@ -221,7 +288,7 @@ class ResnetBlock2D(nn.Module):
             elif kernel == "sde_vp":
                 self.upsample = partial(F.interpolate, scale_factor=2.0, mode="nearest")
             else:
-                self.upsample = Upsample(in_channels, use_conv=False, dims=2)
+                self.upsample = Upsample2D(in_channels, use_conv=False, dims=2)
         elif self.down:
             if kernel == "fir":
                 fir_kernel = (1, 3, 3, 1)
@@ -229,7 +296,7 @@ class ResnetBlock2D(nn.Module):
             elif kernel == "sde_vp":
                 self.downsample = partial(F.avg_pool2d, kernel_size=2, stride=2)
             else:
-                self.downsample = Downsample(in_channels, use_conv=False, dims=2, padding=1, name="op")
+                self.downsample = Downsample2D(in_channels, use_conv=False, dims=2, padding=1, name="op")
 
         self.use_nin_shortcut = self.in_channels != self.out_channels if use_nin_shortcut is None else use_nin_shortcut
 
@@ -631,7 +698,7 @@ def upfirdn2d_native(input, kernel, up_x, up_y, down_x, down_y, pad_x0, pad_x1, 
 
 
 def upsample_2d(x, k=None, factor=2, gain=1):
-    r"""Upsample a batch of 2D images with the given filter.
+    r"""Upsample2D a batch of 2D images with the given filter.
 
     Args:
     Accepts a batch of 2D images of the shape `[N, C, H, W]` or `[N, H, W, C]` and upsamples each image with the given
@@ -656,7 +723,7 @@ def upsample_2d(x, k=None, factor=2, gain=1):
 
 
 def downsample_2d(x, k=None, factor=2, gain=1):
-    r"""Downsample a batch of 2D images with the given filter.
+    r"""Downsample2D a batch of 2D images with the given filter.
 
     Args:
     Accepts a batch of 2D images of the shape `[N, C, H, W]` or `[N, H, W, C]` and downsamples each image with the

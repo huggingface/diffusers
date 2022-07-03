@@ -4,7 +4,7 @@ from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .attention import LinearAttention
 from .embeddings import get_timestep_embedding
-from .resnet import Downsample, ResnetBlock2D, Upsample
+from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
 
 
 class Mish(torch.nn.Module):
@@ -105,7 +105,7 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
                             overwrite_for_grad_tts=True,
                         ),
                         Residual(Rezero(LinearAttention(dim_out))),
-                        Downsample(dim_out, use_conv=True, padding=1) if not is_last else torch.nn.Identity(),
+                        Downsample2D(dim_out, use_conv=True, padding=1) if not is_last else torch.nn.Identity(),
                     ]
                 )
             )
@@ -158,7 +158,7 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
                             overwrite_for_grad_tts=True,
                         ),
                         Residual(Rezero(LinearAttention(dim_in))),
-                        Upsample(dim_in, use_conv_transpose=True),
+                        Upsample2D(dim_in, use_conv_transpose=True),
                     ]
                 )
             )
