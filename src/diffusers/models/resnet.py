@@ -222,9 +222,9 @@ class ResnetBlock(nn.Module):
 
         self.conv1 = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
-        if time_embedding_norm == "default":
+        if time_embedding_norm == "default" and temb_channels > 0:
             self.temb_proj = torch.nn.Linear(temb_channels, out_channels)
-        elif time_embedding_norm == "scale_shift":
+        elif time_embedding_norm == "scale_shift" and temb_channels > 0:
             self.temb_proj = torch.nn.Linear(temb_channels, 2 * out_channels)
 
         self.norm2 = Normalize(out_channels, num_groups=groups_out, eps=eps)
@@ -427,7 +427,10 @@ class ResnetBlock(nn.Module):
             h = self.nonlinearity(h)
         h = h * mask
 
-        temb = self.temb_proj(self.nonlinearity(temb))[:, :, None, None]
+        if temb is not None:
+            temb = self.temb_proj(self.nonlinearity(temb))[:, :, None, None]
+        else:
+            temb = 0
 
         if self.time_embedding_norm == "scale_shift":
             scale, shift = torch.chunk(temb, 2, dim=1)
