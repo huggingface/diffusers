@@ -6,7 +6,7 @@ from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import get_timestep_embedding
-from .resnet import Downsample, ResnetBlock, TimestepBlock, Upsample
+from .resnet import Downsample, ResnetBlock2D, TimestepBlock, Upsample
 
 
 def convert_module_to_f16(l):
@@ -88,7 +88,7 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
 
     def forward(self, x, emb, encoder_out=None):
         for layer in self:
-            if isinstance(layer, TimestepBlock) or isinstance(layer, ResnetBlock):
+            if isinstance(layer, TimestepBlock) or isinstance(layer, ResnetBlock2D):
                 x = layer(x, emb)
             elif isinstance(layer, AttentionBlock):
                 x = layer(x, encoder_out)
@@ -177,7 +177,7 @@ class GlideUNetModel(ModelMixin, ConfigMixin):
         for level, mult in enumerate(channel_mult):
             for _ in range(num_res_blocks):
                 layers = [
-                    ResnetBlock(
+                    ResnetBlock2D(
                         in_channels=ch,
                         out_channels=mult * model_channels,
                         dropout=dropout,
@@ -206,7 +206,7 @@ class GlideUNetModel(ModelMixin, ConfigMixin):
                 out_ch = ch
                 self.input_blocks.append(
                     TimestepEmbedSequential(
-                        ResnetBlock(
+                        ResnetBlock2D(
                             in_channels=ch,
                             out_channels=out_ch,
                             dropout=dropout,
@@ -229,7 +229,7 @@ class GlideUNetModel(ModelMixin, ConfigMixin):
                 self._feature_size += ch
 
         self.middle_block = TimestepEmbedSequential(
-            ResnetBlock(
+            ResnetBlock2D(
                 in_channels=ch,
                 dropout=dropout,
                 temb_channels=time_embed_dim,
@@ -245,7 +245,7 @@ class GlideUNetModel(ModelMixin, ConfigMixin):
                 num_head_channels=num_head_channels,
                 encoder_channels=transformer_dim,
             ),
-            ResnetBlock(
+            ResnetBlock2D(
                 in_channels=ch,
                 dropout=dropout,
                 temb_channels=time_embed_dim,
@@ -262,7 +262,7 @@ class GlideUNetModel(ModelMixin, ConfigMixin):
             for i in range(num_res_blocks + 1):
                 ich = input_block_chans.pop()
                 layers = [
-                    ResnetBlock(
+                    ResnetBlock2D(
                         in_channels=ch + ich,
                         out_channels=model_channels * mult,
                         dropout=dropout,
@@ -287,7 +287,7 @@ class GlideUNetModel(ModelMixin, ConfigMixin):
                 if level and i == num_res_blocks:
                     out_ch = ch
                     layers.append(
-                        ResnetBlock(
+                        ResnetBlock2D(
                             in_channels=ch,
                             out_channels=out_ch,
                             dropout=dropout,
