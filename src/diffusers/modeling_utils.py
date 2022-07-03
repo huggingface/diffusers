@@ -324,6 +324,9 @@ class ModelMixin(torch.nn.Module):
 
         user_agent = {"file_type": "model", "framework": "pytorch", "from_auto_class": from_auto_class}
 
+        # TODO(Patrick remove if have internet)
+        local_files_only = True
+
         # Load config if we don't provide a configuration
         config_path = pretrained_model_name_or_path
         model, unused_kwargs = cls.from_config(

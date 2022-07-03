@@ -96,7 +96,7 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
                     [
                         ResidualTemporalBlock(dim_in, dim_out, embed_dim=time_dim, horizon=training_horizon),
                         ResidualTemporalBlock(dim_out, dim_out, embed_dim=time_dim, horizon=training_horizon),
-                        Downsample1D(dim_out, use_conv=True, dims=1) if not is_last else nn.Identity(),
+                        Downsample1D(dim_out, use_conv=True) if not is_last else nn.Identity(),
                     ]
                 )
             )
@@ -116,7 +116,7 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
                     [
                         ResidualTemporalBlock(dim_out * 2, dim_in, embed_dim=time_dim, horizon=training_horizon),
                         ResidualTemporalBlock(dim_in, dim_in, embed_dim=time_dim, horizon=training_horizon),
-                        Upsample1D(dim_in, use_conv_transpose=True, dims=1) if not is_last else nn.Identity(),
+                        Upsample1D(dim_in, use_conv_transpose=True) if not is_last else nn.Identity(),
                     ]
                 )
             )

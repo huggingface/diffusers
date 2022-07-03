@@ -218,9 +218,7 @@ class GlideUNetModel(ModelMixin, ConfigMixin):
                             down=True,
                         )
                         if resblock_updown
-                        else Downsample2D(
-                            ch, use_conv=conv_resample, dims=dims, out_channels=out_ch, padding=1, name="op"
-                        )
+                        else Downsample2D(ch, use_conv=conv_resample, out_channels=out_ch, padding=1, name="op")
                     )
                 )
                 ch = out_ch
@@ -299,7 +297,7 @@ class GlideUNetModel(ModelMixin, ConfigMixin):
                             up=True,
                         )
                         if resblock_updown
-                        else Upsample2D(ch, use_conv=conv_resample, dims=dims, out_channels=out_ch)
+                        else Upsample2D(ch, use_conv=conv_resample, out_channels=out_ch)
                     )
                     ds //= 2
                 self.output_blocks.append(TimestepEmbedSequential(*layers))

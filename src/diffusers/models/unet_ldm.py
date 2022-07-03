@@ -350,7 +350,7 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
                 out_ch = ch
                 self.input_blocks.append(
                     TimestepEmbedSequential(
-                        Downsample2D(ch, use_conv=conv_resample, dims=dims, out_channels=out_ch, padding=1, name="op")
+                        Downsample2D(ch, use_conv=conv_resample, out_channels=out_ch, padding=1, name="op")
                     )
                 )
                 ch = out_ch
@@ -437,7 +437,7 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
                     )
                 if level and i == num_res_blocks:
                     out_ch = ch
-                    layers.append(Upsample2D(ch, use_conv=conv_resample, dims=dims, out_channels=out_ch))
+                    layers.append(Upsample2D(ch, use_conv=conv_resample, out_channels=out_ch))
                     ds //= 2
                 self.output_blocks.append(TimestepEmbedSequential(*layers))
                 self._feature_size += ch

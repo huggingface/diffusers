@@ -54,21 +54,21 @@ class Upsample2D(nn.Module):
                  upsampling occurs in the inner-two dimensions.
     """
 
-    def __init__(self, channels, use_conv=False, use_conv_transpose=False, dims=2, out_channels=None, name="conv"):
+    def __init__(self, channels, use_conv=False, use_conv_transpose=False, out_channels=None, name="conv"):
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
         self.use_conv = use_conv
-        self.dims = dims
         self.use_conv_transpose = use_conv_transpose
         self.name = name
 
         conv = None
         if use_conv_transpose:
-            conv = conv_transpose_nd(dims, channels, self.out_channels, 4, 2, 1)
+            conv = nn.ConvTranspose2d(channels, self.out_channels, 4, 2, 1)
         elif use_conv:
-            conv = conv_nd(dims, self.channels, self.out_channels, 3, padding=1)
+            conv = nn.Conv2d(self.channels, self.out_channels, 3, padding=1)
 
+        # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if name == "conv":
             self.conv = conv
         else:
@@ -79,11 +79,9 @@ class Upsample2D(nn.Module):
         if self.use_conv_transpose:
             return self.conv(x)
 
-        if self.dims == 3:
-            x = F.interpolate(x, (x.shape[2], x.shape[3] * 2, x.shape[4] * 2), mode="nearest")
-        else:
-            x = F.interpolate(x, scale_factor=2.0, mode="nearest")
+        x = F.interpolate(x, scale_factor=2.0, mode="nearest")
 
+        # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if self.use_conv:
             if self.name == "conv":
                 x = self.conv(x)
@@ -91,6 +89,53 @@ class Upsample2D(nn.Module):
                 x = self.Conv2d_0(x)
 
         return x
+
+
+class Downsample2D(nn.Module):
+    """
+    A downsampling layer with an optional convolution.
+
+    :param channels: channels in the inputs and outputs. :param use_conv: a bool determining if a convolution is
+    applied. :param dims: determines if the signal is 1D, 2D, or 3D. If 3D, then
+                 downsampling occurs in the inner-two dimensions.
+    """
+
+    def __init__(self, channels, use_conv=False, out_channels=None, padding=1, name="conv"):
+        super().__init__()
+        self.channels = channels
+        self.out_channels = out_channels or channels
+        self.use_conv = use_conv
+        self.padding = padding
+        stride = 2
+        self.name = name
+
+        if use_conv:
+            conv = nn.Conv2d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
+        else:
+            assert self.channels == self.out_channels
+            conv = nn.AvgPool2d(kernel_size=stride, stride=stride)
+
+        # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
+        if name == "conv":
+            self.conv = conv
+        elif name == "Conv2d_0":
+            self.Conv2d_0 = conv
+        else:
+            self.op = conv
+
+    def forward(self, x):
+        assert x.shape[1] == self.channels
+        if self.use_conv and self.padding == 0:
+            pad = (0, 1, 0, 1)
+            x = F.pad(x, pad, mode="constant", value=0)
+
+        # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
+        if self.name == "conv":
+            return self.conv(x)
+        elif self.name == "Conv2d_0":
+            return self.Conv2d_0(x)
+        else:
+            return self.op(x)
 
 
 class Upsample1D(nn.Module):
@@ -102,15 +147,15 @@ class Upsample1D(nn.Module):
                  upsampling occurs in the inner-two dimensions.
     """
 
-    def __init__(self, channels, use_conv=False, use_conv_transpose=False, dims=2, out_channels=None, name="conv"):
+    def __init__(self, channels, use_conv=False, use_conv_transpose=False, out_channels=None, name="conv"):
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
         self.use_conv = use_conv
-        self.dims = dims
         self.use_conv_transpose = use_conv_transpose
         self.name = name
 
+        # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         self.conv = None
         if use_conv_transpose:
             self.conv = nn.ConvTranspose1d(channels, self.out_channels, 4, 2, 1)
@@ -130,52 +175,6 @@ class Upsample1D(nn.Module):
         return x
 
 
-class Downsample2D(nn.Module):
-    """
-    A downsampling layer with an optional convolution.
-
-    :param channels: channels in the inputs and outputs. :param use_conv: a bool determining if a convolution is
-    applied. :param dims: determines if the signal is 1D, 2D, or 3D. If 3D, then
-                 downsampling occurs in the inner-two dimensions.
-    """
-
-    def __init__(self, channels, use_conv=False, dims=2, out_channels=None, padding=1, name="conv"):
-        super().__init__()
-        self.channels = channels
-        self.out_channels = out_channels or channels
-        self.use_conv = use_conv
-        self.dims = dims
-        self.padding = padding
-        stride = 2 if dims != 3 else (1, 2, 2)
-        self.name = name
-
-        if use_conv:
-            conv = conv_nd(dims, self.channels, self.out_channels, 3, stride=stride, padding=padding)
-        else:
-            assert self.channels == self.out_channels
-            conv = avg_pool_nd(dims, kernel_size=stride, stride=stride)
-
-        if name == "conv":
-            self.conv = conv
-        elif name == "Conv2d_0":
-            self.Conv2d_0 = conv
-        else:
-            self.op = conv
-
-    def forward(self, x):
-        assert x.shape[1] == self.channels
-        if self.use_conv and self.padding == 0 and self.dims == 2:
-            pad = (0, 1, 0, 1)
-            x = F.pad(x, pad, mode="constant", value=0)
-
-        if self.name == "conv":
-            return self.conv(x)
-        elif self.name == "Conv2d_0":
-            return self.Conv2d_0(x)
-        else:
-            return self.op(x)
-
-
 class Downsample1D(nn.Module):
     """
     A downsampling layer with an optional convolution.
@@ -185,18 +184,17 @@ class Downsample1D(nn.Module):
                  downsampling occurs in the inner-two dimensions.
     """
 
-    def __init__(self, channels, use_conv=False, dims=2, out_channels=None, padding=1, name="conv"):
+    def __init__(self, channels, use_conv=False, out_channels=None, padding=1, name="conv"):
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
         self.use_conv = use_conv
-        self.dims = dims
         self.padding = padding
-        stride = 2 if dims != 3 else (1, 2, 2)
+        stride = 2
         self.name = name
 
         if use_conv:
-            self.conv = conv_nd(dims, self.channels, self.out_channels, 3, stride=stride, padding=padding)
+            self.conv = nn.Conv1d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
         else:
             assert self.channels == self.out_channels
             self.conv = nn.AvgPool1d(kernel_size=stride, stride=stride)
@@ -288,7 +286,7 @@ class ResnetBlock2D(nn.Module):
             elif kernel == "sde_vp":
                 self.upsample = partial(F.interpolate, scale_factor=2.0, mode="nearest")
             else:
-                self.upsample = Upsample2D(in_channels, use_conv=False, dims=2)
+                self.upsample = Upsample2D(in_channels, use_conv=False)
         elif self.down:
             if kernel == "fir":
                 fir_kernel = (1, 3, 3, 1)
@@ -296,7 +294,7 @@ class ResnetBlock2D(nn.Module):
             elif kernel == "sde_vp":
                 self.downsample = partial(F.avg_pool2d, kernel_size=2, stride=2)
             else:
-                self.downsample = Downsample2D(in_channels, use_conv=False, dims=2, padding=1, name="op")
+                self.downsample = Downsample2D(in_channels, use_conv=False, padding=1, name="op")
 
         self.use_nin_shortcut = self.in_channels != self.out_channels if use_nin_shortcut is None else use_nin_shortcut
 
