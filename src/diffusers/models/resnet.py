@@ -6,45 +6,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def avg_pool_nd(dims, *args, **kwargs):
-    """
-    Create a 1D, 2D, or 3D average pooling module.
-    """
-    if dims == 1:
-        return nn.AvgPool1d(*args, **kwargs)
-    elif dims == 2:
-        return nn.AvgPool2d(*args, **kwargs)
-    elif dims == 3:
-        return nn.AvgPool3d(*args, **kwargs)
-    raise ValueError(f"unsupported dimensions: {dims}")
-
-
-def conv_nd(dims, *args, **kwargs):
-    """
-    Create a 1D, 2D, or 3D convolution module.
-    """
-    if dims == 1:
-        return nn.Conv1d(*args, **kwargs)
-    elif dims == 2:
-        return nn.Conv2d(*args, **kwargs)
-    elif dims == 3:
-        return nn.Conv3d(*args, **kwargs)
-    raise ValueError(f"unsupported dimensions: {dims}")
-
-
-def conv_transpose_nd(dims, *args, **kwargs):
-    """
-    Create a 1D, 2D, or 3D convolution module.
-    """
-    if dims == 1:
-        return nn.ConvTranspose1d(*args, **kwargs)
-    elif dims == 2:
-        return nn.ConvTranspose2d(*args, **kwargs)
-    elif dims == 3:
-        return nn.ConvTranspose3d(*args, **kwargs)
-    raise ValueError(f"unsupported dimensions: {dims}")
-
-
 class Upsample2D(nn.Module):
     """
     An upsampling layer with an optional convolution.
@@ -452,7 +413,6 @@ class ResnetBlock2D(nn.Module):
             else:
                 self.res_conv = torch.nn.Identity()
         elif self.overwrite_for_ldm:
-            dims = 2
             channels = in_channels
             emb_channels = temb_channels
             use_scale_shift_norm = False
@@ -461,7 +421,7 @@ class ResnetBlock2D(nn.Module):
             self.in_layers = nn.Sequential(
                 normalization(channels, swish=1.0),
                 nn.Identity(),
-                conv_nd(dims, channels, self.out_channels, 3, padding=1),
+                nn.Conv2d(channels, self.out_channels, 3, padding=1),
             )
             self.emb_layers = nn.Sequential(
                 nn.SiLU(),
@@ -474,12 +434,12 @@ class ResnetBlock2D(nn.Module):
                 normalization(self.out_channels, swish=0.0 if use_scale_shift_norm else 1.0),
                 nn.SiLU() if use_scale_shift_norm else nn.Identity(),
                 nn.Dropout(p=dropout),
-                zero_module(conv_nd(dims, self.out_channels, self.out_channels, 3, padding=1)),
+                zero_module(nn.Conv2d(self.out_channels, self.out_channels, 3, padding=1)),
             )
             if self.out_channels == in_channels:
                 self.skip_connection = nn.Identity()
             else:
-                self.skip_connection = conv_nd(dims, channels, self.out_channels, 1)
+                self.skip_connection = nn.Conv2d(channels, self.out_channels, 1)
         elif self.overwrite_for_score_vde:
             in_ch = in_channels
             out_ch = out_channels
