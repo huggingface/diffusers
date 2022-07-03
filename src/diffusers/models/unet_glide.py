@@ -6,7 +6,7 @@ from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import get_timestep_embedding
-from .resnet import Downsample, ResnetBlock2D, Upsample
+from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
 
 
 def convert_module_to_f16(l):
@@ -218,9 +218,7 @@ class GlideUNetModel(ModelMixin, ConfigMixin):
                             down=True,
                         )
                         if resblock_updown
-                        else Downsample(
-                            ch, use_conv=conv_resample, dims=dims, out_channels=out_ch, padding=1, name="op"
-                        )
+                        else Downsample2D(ch, use_conv=conv_resample, out_channels=out_ch, padding=1, name="op")
                     )
                 )
                 ch = out_ch
@@ -299,7 +297,7 @@ class GlideUNetModel(ModelMixin, ConfigMixin):
                             up=True,
                         )
                         if resblock_updown
-                        else Upsample(ch, use_conv=conv_resample, dims=dims, out_channels=out_ch)
+                        else Upsample2D(ch, use_conv=conv_resample, out_channels=out_ch)
                     )
                     ds //= 2
                 self.output_blocks.append(TimestepEmbedSequential(*layers))

@@ -5,7 +5,7 @@ import torch.nn as nn
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
-from .resnet import Downsample, ResnetBlock2D, Upsample
+from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
 
 
 def nonlinearity(x):
@@ -65,7 +65,7 @@ class Encoder(nn.Module):
             down.block = block
             down.attn = attn
             if i_level != self.num_resolutions - 1:
-                down.downsample = Downsample(block_in, use_conv=resamp_with_conv, padding=0)
+                down.downsample = Downsample2D(block_in, use_conv=resamp_with_conv, padding=0)
                 curr_res = curr_res // 2
             self.down.append(down)
 
@@ -179,7 +179,7 @@ class Decoder(nn.Module):
             up.block = block
             up.attn = attn
             if i_level != 0:
-                up.upsample = Upsample(block_in, use_conv=resamp_with_conv)
+                up.upsample = Upsample2D(block_in, use_conv=resamp_with_conv)
                 curr_res = curr_res * 2
             self.up.insert(0, up)  # prepend to get consistent order
 

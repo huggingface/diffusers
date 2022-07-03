@@ -137,7 +137,7 @@ class ResidualBlock(nn.Module):
         # Dilated conv layer
         h = self.dilated_conv_layer(h)
 
-        # Upsample spectrogram to size of audio
+        # Upsample2D spectrogram to size of audio
         mel_spec = torch.unsqueeze(mel_spec, dim=1)
         mel_spec = F.leaky_relu(self.upsample_conv2d[0](mel_spec), 0.4, inplace=False)
         mel_spec = F.leaky_relu(self.upsample_conv2d[1](mel_spec), 0.4, inplace=False)
