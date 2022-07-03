@@ -1,4 +1,3 @@
-from abc import abstractmethod
 from functools import partial
 
 import numpy as np
@@ -44,30 +43,6 @@ def conv_transpose_nd(dims, *args, **kwargs):
     elif dims == 3:
         return nn.ConvTranspose3d(*args, **kwargs)
     raise ValueError(f"unsupported dimensions: {dims}")
-
-
-def Normalize(in_channels, num_groups=32, eps=1e-6):
-    return torch.nn.GroupNorm(num_groups=num_groups, num_channels=in_channels, eps=eps, affine=True)
-
-
-def nonlinearity(x, swish=1.0):
-    # swish
-    if swish == 1.0:
-        return F.silu(x)
-    else:
-        return x * F.sigmoid(x * float(swish))
-
-
-class TimestepBlock(nn.Module):
-    """
-    Any module where forward() takes timestep embeddings as a second argument.
-    """
-
-    @abstractmethod
-    def forward(self, x, emb):
-        """
-        Apply the module to `x` given `emb` timestep embeddings.
-        """
 
 
 class Upsample(nn.Module):
@@ -216,9 +191,9 @@ class ResnetBlock2D(nn.Module):
             groups_out = groups
 
         if self.pre_norm:
-            self.norm1 = Normalize(in_channels, num_groups=groups, eps=eps)
+            self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
         else:
-            self.norm1 = Normalize(out_channels, num_groups=groups, eps=eps)
+            self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=out_channels, eps=eps, affine=True)
 
         self.conv1 = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
@@ -227,12 +202,12 @@ class ResnetBlock2D(nn.Module):
         elif time_embedding_norm == "scale_shift" and temb_channels > 0:
             self.temb_proj = torch.nn.Linear(temb_channels, 2 * out_channels)
 
-        self.norm2 = Normalize(out_channels, num_groups=groups_out, eps=eps)
+        self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
         self.dropout = torch.nn.Dropout(dropout)
         self.conv2 = torch.nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         if non_linearity == "swish":
-            self.nonlinearity = nonlinearity
+            self.nonlinearity = lambda x: F.silu(x)
         elif non_linearity == "mish":
             self.nonlinearity = Mish()
         elif non_linearity == "silu":
