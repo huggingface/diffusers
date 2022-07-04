@@ -23,6 +23,7 @@ from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import get_timestep_embedding
 from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
+from .unet_new import UNetMidBlock
 
 
 def nonlinearity(x):
@@ -105,13 +106,18 @@ class UNetModel(ModelMixin, ConfigMixin):
             self.down.append(down)
 
         # middle
-        self.mid = nn.Module()
-        self.mid.block_1 = ResnetBlock2D(
-            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
-        )
-        self.mid.attn_1 = AttentionBlock(block_in, overwrite_qkv=True)
-        self.mid.block_2 = ResnetBlock2D(
-            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
+        #        self.mid = nn.Module()
+        #        self.mid.block_1 = ResnetBlock2D(
+        #            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
+        #        )
+        #        self.mid.attn_1 = AttentionBlock(block_in, overwrite_qkv=True)
+        #        self.mid.block_2 = ResnetBlock2D(
+        #            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
+        #        )
+
+        # middle
+        self.mid = UNetMidBlock(
+            in_channels=block_in, temb_channels=self.temb_ch, dropout=dropout, overwrite_qkv=True, overwrite_unet=True
         )
 
         # upsampling
