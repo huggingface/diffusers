@@ -737,13 +737,6 @@ class RearrangeDim(nn.Module):
             raise ValueError(f"`len(tensor)`: {len(tensor)} has to be 2, 3 or 4.")
 
 
-def conv2d(in_planes, out_planes, kernel_size=3, stride=1, bias=True, init_scale=1.0, padding=1):
-    """nXn convolution with DDPM initialization."""
-    conv = nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=padding, bias=bias)
-    nn.init.zeros_(conv.bias)
-    return conv
-
-
 def upfirdn2d_native(input, kernel, up=1, down=1, pad=(0, 0)):
     up_x = up_y = up
     down_x = down_y = down
