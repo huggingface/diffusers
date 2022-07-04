@@ -175,12 +175,81 @@ class FirUpsample2D(nn.Module):
         self.fir_kernel = fir_kernel
         self.out_channels = out_channels
 
+    def _upsample_2d(self, x, w=None, k=None, factor=2, gain=1):
+        """Fused `upsample_2d()` followed by `Conv2d()`.
+
+        Args:
+        Padding is performed only once at the beginning, not between the operations. The fused op is considerably more
+        efficient than performing the same calculation using standard TensorFlow ops. It supports gradients of arbitrary:
+        order.
+        x: Input tensor of the shape `[N, C, H, W]` or `[N, H, W,
+            C]`.
+        w: Weight tensor of the shape `[filterH, filterW, inChannels,
+            outChannels]`. Grouped convolution can be performed by `inChannels = x.shape[0] // numGroups`.
+        k: FIR filter of the shape `[firH, firW]` or `[firN]`
+            (separable). The default is `[1] * factor`, which corresponds to nearest-neighbor upsampling.
+        factor: Integer upsampling factor (default: 2). gain: Scaling factor for signal magnitude (default: 1.0).
+
+        Returns:
+        Tensor of the shape `[N, C, H * factor, W * factor]` or `[N, H * factor, W * factor, C]`, and same datatype as
+        `x`.
+        """
+
+        assert isinstance(factor, int) and factor >= 1
+
+        # Setup filter kernel.
+        if k is None:
+            k = [1] * factor
+
+        # setup kernel
+        k = np.asarray(k, dtype=np.float32)
+        if k.ndim == 1:
+            k = np.outer(k, k)
+        k /= np.sum(k)
+
+        k = k * (gain * (factor**2))
+
+        if self.use_conv:
+            convH = w.shape[2]
+            convW = w.shape[3]
+            inC = w.shape[1]
+
+            p = (k.shape[0] - factor) - (convW - 1)
+
+            stride = (factor, factor)
+            # Determine data dimensions.
+            stride = [1, 1, factor, factor]
+            output_shape = ((x.shape[2] - 1) * factor + convH, (x.shape[3] - 1) * factor + convW)
+            output_padding = (
+                output_shape[0] - (x.shape[2] - 1) * stride[0] - convH,
+                output_shape[1] - (x.shape[3] - 1) * stride[1] - convW,
+            )
+            assert output_padding[0] >= 0 and output_padding[1] >= 0
+            inC = w.shape[1]
+            num_groups = x.shape[1] // inC
+
+            # Transpose weights.
+            w = torch.reshape(w, (num_groups, -1, inC, convH, convW))
+            w = w[..., ::-1, ::-1].permute(0, 2, 1, 3, 4)
+            w = torch.reshape(w, (num_groups * inC, -1, convH, convW))
+
+            x = F.conv_transpose2d(x, w, stride=stride, output_padding=output_padding, padding=0)
+
+            x = upfirdn2d_native(x, torch.tensor(k, device=x.device), pad=((p + 1) // 2 + factor - 1, p // 2 + 1))
+        else:
+            p = k.shape[0] - factor
+            x = upfirdn2d_native(
+                x, torch.tensor(k, device=x.device), up=factor, pad=((p + 1) // 2 + factor - 1, p // 2)
+            )
+
+        return x
+
     def forward(self, x):
         if self.use_conv:
-            h = _upsample_conv_2d(x, self.Conv2d_0.weight, k=self.fir_kernel)
+            h = self._upsample_2d(x, self.Conv2d_0.weight, k=self.fir_kernel)
             h = h + self.Conv2d_0.bias.reshape(1, -1, 1, 1)
         else:
-            h = upsample_2d(x, self.fir_kernel, factor=2)
+            h = self._upsample_2d(x, k=self.fir_kernel, factor=2)
 
         return h
 
@@ -190,109 +259,61 @@ class FirDownsample2D(nn.Module):
         super().__init__()
         out_channels = out_channels if out_channels else channels
         if use_conv:
-            self.Conv2d_0 = self.Conv2d_0 = nn.Conv2d(channels, out_channels, kernel_size=3, stride=1, padding=1)
+            self.Conv2d_0 = nn.Conv2d(channels, out_channels, kernel_size=3, stride=1, padding=1)
         self.fir_kernel = fir_kernel
         self.use_conv = use_conv
         self.out_channels = out_channels
 
-    def forward(self, x):
+    def _downsample_2d(self, x, w=None, k=None, factor=2, gain=1):
+        """Fused `Conv2d()` followed by `downsample_2d()`.
+
+        Args:
+        Padding is performed only once at the beginning, not between the operations. The fused op is considerably more
+        efficient than performing the same calculation using standard TensorFlow ops. It supports gradients of arbitrary:
+        order.
+            x: Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`. w: Weight tensor of the shape `[filterH,
+            filterW, inChannels, outChannels]`. Grouped convolution can be performed by `inChannels = x.shape[0] //
+            numGroups`. k: FIR filter of the shape `[firH, firW]` or `[firN]` (separable). The default is `[1] *
+            factor`, which corresponds to average pooling. factor: Integer downsampling factor (default: 2). gain:
+            Scaling factor for signal magnitude (default: 1.0).
+
+        Returns:
+            Tensor of the shape `[N, C, H // factor, W // factor]` or `[N, H // factor, W // factor, C]`, and same
+            datatype as `x`.
+        """
+
+        assert isinstance(factor, int) and factor >= 1
+        if k is None:
+            k = [1] * factor
+
+        # setup kernel
+        k = np.asarray(k, dtype=np.float32)
+        if k.ndim == 1:
+            k = np.outer(k, k)
+        k /= np.sum(k)
+
+        k = k * gain
+
         if self.use_conv:
-            x = _conv_downsample_2d(x, self.Conv2d_0.weight, k=self.fir_kernel)
-            x = x + self.Conv2d_0.bias.reshape(1, -1, 1, 1)
+            _, _, convH, convW = w.shape
+            p = (k.shape[0] - factor) + (convW - 1)
+            s = [factor, factor]
+            x = upfirdn2d_native(x, torch.tensor(k, device=x.device), pad=((p + 1) // 2, p // 2))
+            x = F.conv2d(x, w, stride=s, padding=0)
         else:
-            x = downsample_2d(x, self.fir_kernel, factor=2)
+            p = k.shape[0] - factor
+            x = upfirdn2d_native(x, torch.tensor(k, device=x.device), down=factor, pad=((p + 1) // 2, p // 2))
 
         return x
 
+    def forward(self, x):
+        if self.use_conv:
+            x = self._downsample_2d(x, w=self.Conv2d_0.weight, k=self.fir_kernel)
+            x = x + self.Conv2d_0.bias.reshape(1, -1, 1, 1)
+        else:
+            x = self._downsample_2d(x, k=self.fir_kernel, factor=2)
 
-def _conv_downsample_2d(x, w, k=None, factor=2, gain=1):
-    """Fused `Conv2d()` followed by `downsample_2d()`.
-
-    Args:
-    Padding is performed only once at the beginning, not between the operations. The fused op is considerably more
-    efficient than performing the same calculation using standard TensorFlow ops. It supports gradients of arbitrary
-    order.
-        x: Input tensor of the shape `[N, C, H, W]` or `[N, H, W,
-          C]`.
-        w: Weight tensor of the shape `[filterH, filterW, inChannels,
-          outChannels]`. Grouped convolution can be performed by `inChannels = x.shape[0] // numGroups`.
-        k: FIR filter of the shape `[firH, firW]` or `[firN]`
-          (separable). The default is `[1] * factor`, which corresponds to average pooling.
-        factor: Integer downsampling factor (default: 2). gain: Scaling factor for signal magnitude (default: 1.0).
-
-    Returns:
-        Tensor of the shape `[N, C, H // factor, W // factor]` or `[N, H // factor, W // factor, C]`, and same datatype
-        as `x`.
-    """
-
-    assert isinstance(factor, int) and factor >= 1
-    _outC, _inC, convH, convW = w.shape
-    assert convW == convH
-    if k is None:
-        k = [1] * factor
-    k = _setup_kernel(k) * gain
-    p = (k.shape[0] - factor) + (convW - 1)
-    s = [factor, factor]
-    x = upfirdn2d(x, torch.tensor(k, device=x.device), pad=((p + 1) // 2, p // 2))
-    return F.conv2d(x, w, stride=s, padding=0)
-
-
-def _upsample_conv_2d(x, w, k=None, factor=2, gain=1):
-    """Fused `upsample_2d()` followed by `Conv2d()`.
-
-    Args:
-    Padding is performed only once at the beginning, not between the operations. The fused op is considerably more
-    efficient than performing the same calculation using standard TensorFlow ops. It supports gradients of arbitrary
-    order.
-      x: Input tensor of the shape `[N, C, H, W]` or `[N, H, W,
-        C]`.
-      w: Weight tensor of the shape `[filterH, filterW, inChannels,
-        outChannels]`. Grouped convolution can be performed by `inChannels = x.shape[0] // numGroups`.
-      k: FIR filter of the shape `[firH, firW]` or `[firN]`
-        (separable). The default is `[1] * factor`, which corresponds to nearest-neighbor upsampling.
-      factor: Integer upsampling factor (default: 2). gain: Scaling factor for signal magnitude (default: 1.0).
-
-    Returns:
-      Tensor of the shape `[N, C, H * factor, W * factor]` or `[N, H * factor, W * factor, C]`, and same datatype as
-      `x`.
-    """
-
-    assert isinstance(factor, int) and factor >= 1
-
-    # Check weight shape.
-    assert len(w.shape) == 4
-    convH = w.shape[2]
-    convW = w.shape[3]
-    inC = w.shape[1]
-
-    assert convW == convH
-
-    # Setup filter kernel.
-    if k is None:
-        k = [1] * factor
-    k = _setup_kernel(k) * (gain * (factor**2))
-    p = (k.shape[0] - factor) - (convW - 1)
-
-    stride = (factor, factor)
-
-    # Determine data dimensions.
-    stride = [1, 1, factor, factor]
-    output_shape = ((x.shape[2] - 1) * factor + convH, (x.shape[3] - 1) * factor + convW)
-    output_padding = (
-        output_shape[0] - (x.shape[2] - 1) * stride[0] - convH,
-        output_shape[1] - (x.shape[3] - 1) * stride[1] - convW,
-    )
-    assert output_padding[0] >= 0 and output_padding[1] >= 0
-    num_groups = x.shape[1] // inC
-
-    # Transpose weights.
-    w = torch.reshape(w, (num_groups, -1, inC, convH, convW))
-    w = w[..., ::-1, ::-1].permute(0, 2, 1, 3, 4)
-    w = torch.reshape(w, (num_groups * inC, -1, convH, convW))
-
-    x = F.conv_transpose2d(x, w, stride=stride, output_padding=output_padding, padding=0)
-
-    return upfirdn2d(x, torch.tensor(k, device=x.device), pad=((p + 1) // 2 + factor - 1, p // 2 + 1))
+        return x
 
 
 # TODO (patil-suraj): needs test
@@ -452,18 +473,17 @@ class ResnetBlock2D(nn.Module):
             self.GroupNorm_0 = nn.GroupNorm(num_groups=num_groups, num_channels=in_ch, eps=eps)
             self.up = up
             self.down = down
-            self.Conv_0 = conv2d(in_ch, out_ch, kernel_size=3, padding=1)
+            self.Conv_0 = nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1)
             if temb_dim is not None:
                 self.Dense_0 = nn.Linear(temb_dim, out_ch)
-                self.Dense_0.weight.data = variance_scaling()(self.Dense_0.weight.shape)
                 nn.init.zeros_(self.Dense_0.bias)
 
             self.GroupNorm_1 = nn.GroupNorm(num_groups=num_groups_out, num_channels=out_ch, eps=eps)
             self.Dropout_0 = nn.Dropout(dropout)
-            self.Conv_1 = conv2d(out_ch, out_ch, init_scale=0.0, kernel_size=3, padding=1)
+            self.Conv_1 = nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1)
             if in_ch != out_ch or up or down:
                 # 1x1 convolution with DDPM initialization.
-                self.Conv_2 = conv2d(in_ch, out_ch, kernel_size=1, padding=0)
+                self.Conv_2 = nn.Conv2d(in_ch, out_ch, kernel_size=1, padding=0)
 
             self.in_ch = in_ch
             self.out_ch = out_ch
@@ -716,38 +736,75 @@ class RearrangeDim(nn.Module):
             raise ValueError(f"`len(tensor)`: {len(tensor)} has to be 2, 3 or 4.")
 
 
-def conv2d(in_planes, out_planes, kernel_size=3, stride=1, bias=True, init_scale=1.0, padding=1):
-    """nXn convolution with DDPM initialization."""
-    conv = nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=padding, bias=bias)
-    conv.weight.data = variance_scaling(init_scale)(conv.weight.data.shape)
-    nn.init.zeros_(conv.bias)
-    return conv
+def upsample_2d(x, k=None, factor=2, gain=1):
+    r"""Upsample2D a batch of 2D images with the given filter.
+
+    Args:
+    Accepts a batch of 2D images of the shape `[N, C, H, W]` or `[N, H, W, C]` and upsamples each image with the given
+    filter. The filter is normalized so that if the input pixels are constant, they will be scaled by the specified
+    `gain`. Pixels outside the image are assumed to be zero, and the filter is padded with zeros so that its shape is a:
+    multiple of the upsampling factor.
+        x: Input tensor of the shape `[N, C, H, W]` or `[N, H, W,
+          C]`.
+        k: FIR filter of the shape `[firH, firW]` or `[firN]`
+          (separable). The default is `[1] * factor`, which corresponds to nearest-neighbor upsampling.
+        factor: Integer upsampling factor (default: 2). gain: Scaling factor for signal magnitude (default: 1.0).
+
+    Returns:
+        Tensor of the shape `[N, C, H * factor, W * factor]`
+    """
+    assert isinstance(factor, int) and factor >= 1
+    if k is None:
+        k = [1] * factor
+
+    k = np.asarray(k, dtype=np.float32)
+    if k.ndim == 1:
+        k = np.outer(k, k)
+    k /= np.sum(k)
+
+    k = k * (gain * (factor**2))
+    p = k.shape[0] - factor
+    return upfirdn2d_native(x, torch.tensor(k, device=x.device), up=factor, pad=((p + 1) // 2 + factor - 1, p // 2))
 
 
-def variance_scaling(scale=1.0, in_axis=1, out_axis=0, dtype=torch.float32, device="cpu"):
-    """Ported from JAX."""
-    scale = 1e-10 if scale == 0 else scale
+def downsample_2d(x, k=None, factor=2, gain=1):
+    r"""Downsample2D a batch of 2D images with the given filter.
 
-    def _compute_fans(shape, in_axis=1, out_axis=0):
-        receptive_field_size = np.prod(shape) / shape[in_axis] / shape[out_axis]
-        fan_in = shape[in_axis] * receptive_field_size
-        fan_out = shape[out_axis] * receptive_field_size
-        return fan_in, fan_out
+    Args:
+    Accepts a batch of 2D images of the shape `[N, C, H, W]` or `[N, H, W, C]` and downsamples each image with the
+    given filter. The filter is normalized so that if the input pixels are constant, they will be scaled by the
+    specified `gain`. Pixels outside the image are assumed to be zero, and the filter is padded with zeros so that its
+    shape is a multiple of the downsampling factor.
+        x: Input tensor of the shape `[N, C, H, W]` or `[N, H, W,
+          C]`.
+        k: FIR filter of the shape `[firH, firW]` or `[firN]`
+          (separable). The default is `[1] * factor`, which corresponds to average pooling.
+        factor: Integer downsampling factor (default: 2). gain: Scaling factor for signal magnitude (default: 1.0).
 
-    def init(shape, dtype=dtype, device=device):
-        fan_in, fan_out = _compute_fans(shape, in_axis, out_axis)
-        denominator = (fan_in + fan_out) / 2
-        variance = scale / denominator
-        return (torch.rand(*shape, dtype=dtype, device=device) * 2.0 - 1.0) * np.sqrt(3 * variance)
+    Returns:
+        Tensor of the shape `[N, C, H // factor, W // factor]`
+    """
 
-    return init
+    assert isinstance(factor, int) and factor >= 1
+    if k is None:
+        k = [1] * factor
+
+    k = np.asarray(k, dtype=np.float32)
+    if k.ndim == 1:
+        k = np.outer(k, k)
+    k /= np.sum(k)
+
+    k = k * gain
+    p = k.shape[0] - factor
+    return upfirdn2d_native(x, torch.tensor(k, device=x.device), down=factor, pad=((p + 1) // 2, p // 2))
 
 
-def upfirdn2d(input, kernel, up=1, down=1, pad=(0, 0)):
-    return upfirdn2d_native(input, kernel, up, up, down, down, pad[0], pad[1], pad[0], pad[1])
+def upfirdn2d_native(input, kernel, up=1, down=1, pad=(0, 0)):
+    up_x = up_y = up
+    down_x = down_y = down
+    pad_x0 = pad_y0 = pad[0]
+    pad_x1 = pad_y1 = pad[1]
 
-
-def upfirdn2d_native(input, kernel, up_x, up_y, down_x, down_y, pad_x0, pad_x1, pad_y0, pad_y1):
     _, channel, in_h, in_w = input.shape
     input = input.reshape(-1, in_h, in_w, 1)
 
@@ -783,64 +840,3 @@ def upfirdn2d_native(input, kernel, up_x, up_y, down_x, down_y, pad_x0, pad_x1, 
     out_w = (in_w * up_x + pad_x0 + pad_x1 - kernel_w) // down_x + 1
 
     return out.view(-1, channel, out_h, out_w)
-
-
-def upsample_2d(x, k=None, factor=2, gain=1):
-    r"""Upsample2D a batch of 2D images with the given filter.
-
-    Args:
-    Accepts a batch of 2D images of the shape `[N, C, H, W]` or `[N, H, W, C]` and upsamples each image with the given
-    filter. The filter is normalized so that if the input pixels are constant, they will be scaled by the specified
-    `gain`. Pixels outside the image are assumed to be zero, and the filter is padded with zeros so that its shape is a:
-    multiple of the upsampling factor.
-        x: Input tensor of the shape `[N, C, H, W]` or `[N, H, W,
-          C]`.
-        k: FIR filter of the shape `[firH, firW]` or `[firN]`
-          (separable). The default is `[1] * factor`, which corresponds to nearest-neighbor upsampling.
-        factor: Integer upsampling factor (default: 2). gain: Scaling factor for signal magnitude (default: 1.0).
-
-    Returns:
-        Tensor of the shape `[N, C, H * factor, W * factor]`
-    """
-    assert isinstance(factor, int) and factor >= 1
-    if k is None:
-        k = [1] * factor
-    k = _setup_kernel(k) * (gain * (factor**2))
-    p = k.shape[0] - factor
-    return upfirdn2d(x, torch.tensor(k, device=x.device), up=factor, pad=((p + 1) // 2 + factor - 1, p // 2))
-
-
-def downsample_2d(x, k=None, factor=2, gain=1):
-    r"""Downsample2D a batch of 2D images with the given filter.
-
-    Args:
-    Accepts a batch of 2D images of the shape `[N, C, H, W]` or `[N, H, W, C]` and downsamples each image with the
-    given filter. The filter is normalized so that if the input pixels are constant, they will be scaled by the
-    specified `gain`. Pixels outside the image are assumed to be zero, and the filter is padded with zeros so that its
-    shape is a multiple of the downsampling factor.
-        x: Input tensor of the shape `[N, C, H, W]` or `[N, H, W,
-          C]`.
-        k: FIR filter of the shape `[firH, firW]` or `[firN]`
-          (separable). The default is `[1] * factor`, which corresponds to average pooling.
-        factor: Integer downsampling factor (default: 2). gain: Scaling factor for signal magnitude (default: 1.0).
-
-    Returns:
-        Tensor of the shape `[N, C, H // factor, W // factor]`
-    """
-
-    assert isinstance(factor, int) and factor >= 1
-    if k is None:
-        k = [1] * factor
-    k = _setup_kernel(k) * gain
-    p = k.shape[0] - factor
-    return upfirdn2d(x, torch.tensor(k, device=x.device), down=factor, pad=((p + 1) // 2, p // 2))
-
-
-def _setup_kernel(k):
-    k = np.asarray(k, dtype=np.float32)
-    if k.ndim == 1:
-        k = np.outer(k, k)
-    k /= np.sum(k)
-    assert k.ndim == 2
-    assert k.shape[0] == k.shape[1]
-    return k

@@ -29,57 +29,13 @@ from .embeddings import GaussianFourierProjection, get_timestep_embedding
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, ResnetBlock2D, Upsample2D
 
 
-def _setup_kernel(k):
-    k = np.asarray(k, dtype=np.float32)
-    if k.ndim == 1:
-        k = np.outer(k, k)
-    k /= np.sum(k)
-    assert k.ndim == 2
-    assert k.shape[0] == k.shape[1]
-    return k
-
-
-def _variance_scaling(scale=1.0, in_axis=1, out_axis=0, dtype=torch.float32, device="cpu"):
-    """Ported from JAX."""
-    scale = 1e-10 if scale == 0 else scale
-
-    def _compute_fans(shape, in_axis=1, out_axis=0):
-        receptive_field_size = np.prod(shape) / shape[in_axis] / shape[out_axis]
-        fan_in = shape[in_axis] * receptive_field_size
-        fan_out = shape[out_axis] * receptive_field_size
-        return fan_in, fan_out
-
-    def init(shape, dtype=dtype, device=device):
-        fan_in, fan_out = _compute_fans(shape, in_axis, out_axis)
-        denominator = (fan_in + fan_out) / 2
-        variance = scale / denominator
-        return (torch.rand(*shape, dtype=dtype, device=device) * 2.0 - 1.0) * np.sqrt(3 * variance)
-
-    return init
-
-
-def Conv2d(in_planes, out_planes, kernel_size=3, stride=1, bias=True, init_scale=1.0, padding=1):
-    """nXn convolution with DDPM initialization."""
-    conv = nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=padding, bias=bias)
-    conv.weight.data = _variance_scaling(init_scale)(conv.weight.data.shape)
-    nn.init.zeros_(conv.bias)
-    return conv
-
-
-def Linear(dim_in, dim_out):
-    linear = nn.Linear(dim_in, dim_out)
-    linear.weight.data = _variance_scaling()(linear.weight.shape)
-    nn.init.zeros_(linear.bias)
-    return linear
-
-
 class Combine(nn.Module):
     """Combine information from skip connections."""
 
     def __init__(self, dim1, dim2, method="cat"):
         super().__init__()
         # 1x1 convolution with DDPM initialization.
-        self.Conv_0 = Conv2d(dim1, dim2, kernel_size=1, padding=0)
+        self.Conv_0 = nn.Conv2d(dim1, dim2, kernel_size=1, padding=0)
         self.method = method
 
     def forward(self, x, y):
@@ -176,8 +132,8 @@ class NCSNpp(ModelMixin, ConfigMixin):
         else:
             raise ValueError(f"embedding type {embedding_type} unknown.")
 
-        modules.append(Linear(embed_dim, nf * 4))
-        modules.append(Linear(nf * 4, nf * 4))
+        modules.append(nn.Linear(embed_dim, nf * 4))
+        modules.append(nn.Linear(nf * 4, nf * 4))
 
         AttnBlock = functools.partial(AttentionBlock, overwrite_linear=True, rescale_output_factor=math.sqrt(2.0))
 
@@ -205,7 +161,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
         if progressive_input != "none":
             input_pyramid_ch = channels
 
-        modules.append(Conv2d(channels, nf, kernel_size=3, padding=1))
+        modules.append(nn.Conv2d(channels, nf, kernel_size=3, padding=1))
         hs_c = [nf]
 
         in_ch = nf
@@ -310,20 +266,18 @@ class NCSNpp(ModelMixin, ConfigMixin):
                 if i_level == self.num_resolutions - 1:
                     if progressive == "output_skip":
                         modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6))
-                        modules.append(Conv2d(in_ch, channels, init_scale=init_scale, kernel_size=3, padding=1))
+                        modules.append(nn.Conv2d(in_ch, channels, kernel_size=3, padding=1))
                         pyramid_ch = channels
                     elif progressive == "residual":
                         modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6))
-                        modules.append(Conv2d(in_ch, in_ch, bias=True, kernel_size=3, padding=1))
+                        modules.append(nn.Conv2d(in_ch, in_ch, bias=True, kernel_size=3, padding=1))
                         pyramid_ch = in_ch
                     else:
                         raise ValueError(f"{progressive} is not a valid name.")
                 else:
                     if progressive == "output_skip":
                         modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6))
-                        modules.append(
-                            Conv2d(in_ch, channels, bias=True, init_scale=init_scale, kernel_size=3, padding=1)
-                        )
+                        modules.append(nn.Conv2d(in_ch, channels, bias=True, kernel_size=3, padding=1))
                         pyramid_ch = channels
                     elif progressive == "residual":
                         modules.append(pyramid_upsample(channels=pyramid_ch, out_channels=in_ch))
@@ -351,7 +305,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
 
         if progressive != "output_skip":
             modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6))
-            modules.append(Conv2d(in_ch, channels, init_scale=init_scale))
+            modules.append(nn.Conv2d(in_ch, channels, kernel_size=3, padding=1))
 
         self.all_modules = nn.ModuleList(modules)
 
