@@ -70,7 +70,7 @@ class AttentionBlock(nn.Module):
         if encoder_channels is not None:
             self.encoder_kv = nn.Conv1d(encoder_channels, channels * 2, 1)
 
-        self.proj_out = zero_module(nn.Conv1d(channels, channels, 1))
+        self.proj = zero_module(nn.Conv1d(channels, channels, 1))
 
         self.overwrite_qkv = overwrite_qkv
         if overwrite_qkv:
@@ -108,15 +108,15 @@ class AttentionBlock(nn.Module):
             proj_out.weight.data = module.proj_out.weight.data[:, :, :, 0]
             proj_out.bias.data = module.proj_out.bias.data
 
-            self.proj_out = proj_out
+            self.proj = proj_out
         elif self.overwrite_linear:
             self.qkv.weight.data = torch.concat(
                 [self.NIN_0.W.data.T, self.NIN_1.W.data.T, self.NIN_2.W.data.T], dim=0
             )[:, :, None]
             self.qkv.bias.data = torch.concat([self.NIN_0.b.data, self.NIN_1.b.data, self.NIN_2.b.data], dim=0)
 
-            self.proj_out.weight.data = self.NIN_3.W.data.T[:, :, None]
-            self.proj_out.bias.data = self.NIN_3.b.data
+            self.proj.weight.data = self.NIN_3.W.data.T[:, :, None]
+            self.proj.bias.data = self.NIN_3.b.data
 
             self.norm.weight.data = self.GroupNorm_0.weight.data
             self.norm.bias.data = self.GroupNorm_0.bias.data
@@ -149,7 +149,7 @@ class AttentionBlock(nn.Module):
         a = torch.einsum("bts,bcs->bct", weight, v)
         h = a.reshape(bs, -1, length)
 
-        h = self.proj_out(h)
+        h = self.proj(h)
         h = h.reshape(b, c, *spatial)
 
         result = x + h

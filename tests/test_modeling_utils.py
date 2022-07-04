@@ -52,6 +52,7 @@ from diffusers.configuration_utils import ConfigMixin
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.bddm.pipeline_bddm import DiffWave
 from diffusers.testing_utils import floats_tensor, slow, torch_device
+from diffusers.training_utils import EMAModel
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -196,6 +197,20 @@ class ModelTesterMixin:
         noise = torch.randn((inputs_dict["x"].shape[0],) + self.output_shape).to(torch_device)
         loss = torch.nn.functional.mse_loss(output, noise)
         loss.backward()
+
+    def test_ema_training(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.train()
+        ema_model = EMAModel(model, device=torch_device)
+
+        output = model(**inputs_dict)
+        noise = torch.randn((inputs_dict["x"].shape[0],) + self.output_shape).to(torch_device)
+        loss = torch.nn.functional.mse_loss(output, noise)
+        loss.backward()
+        ema_model.step(model)
 
 
 class UnetModelTests(ModelTesterMixin, unittest.TestCase):

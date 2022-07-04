@@ -4,7 +4,7 @@ import os
 import torch
 import torch.nn.functional as F
 
-from accelerate import Accelerator
+from accelerate import Accelerator, DistributedDataParallelKwargs
 from accelerate.logging import get_logger
 from datasets import load_dataset
 from diffusers import DDIMPipeline, DDIMScheduler, UNetModel
@@ -27,8 +27,14 @@ logger = get_logger(__name__)
 
 
 def main(args):
+    ddp_unused_params = DistributedDataParallelKwargs(find_unused_parameters=True)
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
-    accelerator = Accelerator(mixed_precision=args.mixed_precision, log_with="tensorboard", logging_dir=logging_dir)
+    accelerator = Accelerator(
+        mixed_precision=args.mixed_precision,
+        log_with="tensorboard",
+        logging_dir=logging_dir,
+        kwargs_handlers=[ddp_unused_params],
+    )
 
     model = UNetModel(
         attn_resolutions=(16,),
