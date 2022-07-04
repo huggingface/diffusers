@@ -756,7 +756,7 @@ def upsample_2d(x, k=None, factor=2, gain=1):
     assert isinstance(factor, int) and factor >= 1
     if k is None:
         k = [1] * factor
-    
+
     k = np.asarray(k, dtype=np.float32)
     if k.ndim == 1:
         k = np.outer(k, k)
@@ -788,7 +788,7 @@ def downsample_2d(x, k=None, factor=2, gain=1):
     assert isinstance(factor, int) and factor >= 1
     if k is None:
         k = [1] * factor
-    
+
     k = np.asarray(k, dtype=np.float32)
     if k.ndim == 1:
         k = np.outer(k, k)
@@ -797,7 +797,6 @@ def downsample_2d(x, k=None, factor=2, gain=1):
     k = k * gain
     p = k.shape[0] - factor
     return upfirdn2d_native(x, torch.tensor(k, device=x.device), down=factor, pad=((p + 1) // 2, p // 2))
-
 
 
 def upfirdn2d_native(input, kernel, up=1, down=1, pad=(0, 0)):
