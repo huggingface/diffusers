@@ -4,7 +4,7 @@ from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .attention import LinearAttention
 from .embeddings import get_timestep_embedding
-from .resnet import Downsample, ResnetBlock, Upsample
+from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
 
 
 class Mish(torch.nn.Module):
@@ -84,7 +84,7 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
             self.downs.append(
                 torch.nn.ModuleList(
                     [
-                        ResnetBlock(
+                        ResnetBlock2D(
                             in_channels=dim_in,
                             out_channels=dim_out,
                             temb_channels=dim,
@@ -94,7 +94,7 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
                             non_linearity="mish",
                             overwrite_for_grad_tts=True,
                         ),
-                        ResnetBlock(
+                        ResnetBlock2D(
                             in_channels=dim_out,
                             out_channels=dim_out,
                             temb_channels=dim,
@@ -105,13 +105,13 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
                             overwrite_for_grad_tts=True,
                         ),
                         Residual(Rezero(LinearAttention(dim_out))),
-                        Downsample(dim_out, use_conv=True, padding=1) if not is_last else torch.nn.Identity(),
+                        Downsample2D(dim_out, use_conv=True, padding=1) if not is_last else torch.nn.Identity(),
                     ]
                 )
             )
 
         mid_dim = dims[-1]
-        self.mid_block1 = ResnetBlock(
+        self.mid_block1 = ResnetBlock2D(
             in_channels=mid_dim,
             out_channels=mid_dim,
             temb_channels=dim,
@@ -122,7 +122,7 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
             overwrite_for_grad_tts=True,
         )
         self.mid_attn = Residual(Rezero(LinearAttention(mid_dim)))
-        self.mid_block2 = ResnetBlock(
+        self.mid_block2 = ResnetBlock2D(
             in_channels=mid_dim,
             out_channels=mid_dim,
             temb_channels=dim,
@@ -133,11 +133,13 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
             overwrite_for_grad_tts=True,
         )
 
+#        self.mid = UNetMidBlock2D
+
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
             self.ups.append(
                 torch.nn.ModuleList(
                     [
-                        ResnetBlock(
+                        ResnetBlock2D(
                             in_channels=dim_out * 2,
                             out_channels=dim_in,
                             temb_channels=dim,
@@ -147,7 +149,7 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
                             non_linearity="mish",
                             overwrite_for_grad_tts=True,
                         ),
-                        ResnetBlock(
+                        ResnetBlock2D(
                             in_channels=dim_in,
                             out_channels=dim_in,
                             temb_channels=dim,
@@ -158,7 +160,7 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
                             overwrite_for_grad_tts=True,
                         ),
                         Residual(Rezero(LinearAttention(dim_in))),
-                        Upsample(dim_in, use_conv_transpose=True),
+                        Upsample2D(dim_in, use_conv_transpose=True),
                     ]
                 )
             )
