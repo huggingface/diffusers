@@ -14,7 +14,7 @@
 # limitations under the License.
 from torch import nn
 
-from .attention import AttentionBlock, SpatialTransformer
+from .attention import AttentionBlock, LinearAttention, SpatialTransformer
 from .resnet import ResnetBlock2D
 
 
@@ -23,11 +23,12 @@ class UNetMidBlock2D(nn.Module):
         self,
         in_channels: int,
         temb_channels: int,
-        dropout: float,
+        dropout: float = 0.0,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
+        resnet_pre_norm: bool = True,
         attention_layer_type: str = "self",
         attn_num_heads=1,
         attn_num_head_channels=None,
@@ -49,6 +50,7 @@ class UNetMidBlock2D(nn.Module):
             time_embedding_norm=resnet_time_scale_shift,
             non_linearity=resnet_act_fn,
             output_scale_factor=output_scale_factor,
+            pre_norm=resnet_pre_norm,
         )
 
         if attention_layer_type == "self":
@@ -61,15 +63,14 @@ class UNetMidBlock2D(nn.Module):
                 rescale_output_factor=output_scale_factor,
             )
         elif attention_layer_type == "spatial":
-            self.attn = (
-                SpatialTransformer(
-                    in_channels,
-                    attn_num_heads,
-                    attn_num_head_channels,
-                    depth=attn_depth,
-                    context_dim=attn_encoder_channels,
-                ),
+            self.attn = SpatialTransformer(
+                attn_num_heads,
+                attn_num_head_channels,
+                depth=attn_depth,
+                context_dim=attn_encoder_channels,
             )
+        elif attention_layer_type == "linear":
+            self.attn = LinearAttention(in_channels)
 
         self.resnet_2 = ResnetBlock2D(
             in_channels=in_channels,
@@ -80,6 +81,7 @@ class UNetMidBlock2D(nn.Module):
             time_embedding_norm=resnet_time_scale_shift,
             non_linearity=resnet_act_fn,
             output_scale_factor=output_scale_factor,
+            pre_norm=resnet_pre_norm,
         )
 
         # TODO(Patrick) - delete all of the following code
@@ -110,19 +112,20 @@ class UNetMidBlock2D(nn.Module):
                 eps=resnet_eps,
             )
 
-    def forward(self, hidden_states, temb=None, encoder_states=None):
+    def forward(self, hidden_states, temb=None, encoder_states=None, mask=1.0):
         if not self.is_overwritten and self.overwrite_unet:
             self.resnet_1 = self.block_1
             self.attn = self.attn_1
             self.resnet_2 = self.block_2
             self.is_overwritten = True
 
-        hidden_states = self.resnet_1(hidden_states, temb)
+        hidden_states = self.resnet_1(hidden_states, temb, mask=mask)
 
         if encoder_states is None:
             hidden_states = self.attn(hidden_states)
         else:
             hidden_states = self.attn(hidden_states, encoder_states)
 
-        hidden_states = self.resnet_2(hidden_states, temb)
+        hidden_states = self.resnet_2(hidden_states, temb, mask=mask)
+
         return hidden_states
