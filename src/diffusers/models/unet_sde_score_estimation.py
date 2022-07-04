@@ -27,6 +27,7 @@ from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import GaussianFourierProjection, get_timestep_embedding
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, ResnetBlock2D, Upsample2D
+from .unet_new import UNetMidBlock2D
 
 
 class Combine(nn.Module):
@@ -214,6 +215,16 @@ class NCSNpp(ModelMixin, ConfigMixin):
 
                 hs_c.append(in_ch)
 
+        # mid
+        self.mid = UNetMidBlock2D(
+            in_channels=in_ch,
+            temb_channels=4 * nf,
+            output_scale_factor=math.sqrt(2.0),
+            resnet_act_fn="silu",
+            resnet_groups=min(in_ch // 4, 32),
+            dropout=dropout,
+        )
+
         in_ch = hs_c[-1]
         modules.append(
             ResnetBlock2D(
@@ -238,6 +249,9 @@ class NCSNpp(ModelMixin, ConfigMixin):
                 overwrite_for_score_vde=True,
             )
         )
+        self.mid.resnet_1 = modules[len(modules) - 3]
+        self.mid.attn = modules[len(modules) - 2]
+        self.mid.resnet_2 = modules[len(modules) - 1]
 
         pyramid_ch = 0
         # Upsampling block
@@ -378,13 +392,16 @@ class NCSNpp(ModelMixin, ConfigMixin):
 
                 hs.append(h)
 
-        h = hs[-1]
-        h = modules[m_idx](h, temb)
-        m_idx += 1
-        h = modules[m_idx](h)
-        m_idx += 1
-        h = modules[m_idx](h, temb)
-        m_idx += 1
+        #        h = hs[-1]
+        #        h = modules[m_idx](h, temb)
+        #        m_idx += 1
+        #        h = modules[m_idx](h)
+        #        m_idx += 1
+        #        h = modules[m_idx](h, temb)
+        #        m_idx += 1
+
+        h = self.mid(h, temb)
+        m_idx += 3
 
         pyramid = None
 
