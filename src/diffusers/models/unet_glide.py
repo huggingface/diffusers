@@ -7,6 +7,7 @@ from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import get_timestep_embedding
 from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
+from .unet_new import UNetMidBlock2D
 
 
 def convert_module_to_f16(l):
@@ -193,7 +194,6 @@ class GlideUNetModel(ModelMixin, ConfigMixin):
                     layers.append(
                         AttentionBlock(
                             ch,
-                            use_checkpoint=use_checkpoint,
                             num_heads=num_heads,
                             num_head_channels=num_head_channels,
                             encoder_channels=transformer_dim,
@@ -226,6 +226,20 @@ class GlideUNetModel(ModelMixin, ConfigMixin):
                 ds *= 2
                 self._feature_size += ch
 
+        self.mid = UNetMidBlock2D(
+            in_channels=ch,
+            dropout=dropout,
+            temb_channels=time_embed_dim,
+            resnet_eps=1e-5,
+            resnet_act_fn="silu",
+            resnet_time_scale_shift="scale_shift" if use_scale_shift_norm else "default",
+            attn_num_heads=num_heads,
+            attn_num_head_channels=num_head_channels,
+            attn_encoder_channels=transformer_dim,
+        )
+
+        # TODO(Patrick) - delete after weight conversion
+        # init to be able to overwrite `self.mid`
         self.middle_block = TimestepEmbedSequential(
             ResnetBlock2D(
                 in_channels=ch,
@@ -238,7 +252,6 @@ class GlideUNetModel(ModelMixin, ConfigMixin):
             ),
             AttentionBlock(
                 ch,
-                use_checkpoint=use_checkpoint,
                 num_heads=num_heads,
                 num_head_channels=num_head_channels,
                 encoder_channels=transformer_dim,
@@ -253,6 +266,10 @@ class GlideUNetModel(ModelMixin, ConfigMixin):
                 overwrite_for_glide=True,
             ),
         )
+        self.mid.resnet_1 = self.middle_block[0]
+        self.mid.attn = self.middle_block[1]
+        self.mid.resnet_2 = self.middle_block[2]
+
         self._feature_size += ch
 
         self.output_blocks = nn.ModuleList([])
@@ -276,7 +293,6 @@ class GlideUNetModel(ModelMixin, ConfigMixin):
                     layers.append(
                         AttentionBlock(
                             ch,
-                            use_checkpoint=use_checkpoint,
                             num_heads=num_heads_upsample,
                             num_head_channels=num_head_channels,
                             encoder_channels=transformer_dim,
@@ -343,7 +359,7 @@ class GlideUNetModel(ModelMixin, ConfigMixin):
         for module in self.input_blocks:
             h = module(h, emb)
             hs.append(h)
-        h = self.middle_block(h, emb)
+        h = self.mid(h, emb)
         for module in self.output_blocks:
             h = torch.cat([h, hs.pop()], dim=1)
             h = module(h, emb)
@@ -438,7 +454,7 @@ class GlideTextToImageUNetModel(GlideUNetModel):
         for module in self.input_blocks:
             h = module(h, emb, transformer_out)
             hs.append(h)
-        h = self.middle_block(h, emb, transformer_out)
+        h = self.mid(h, emb, transformer_out)
         for module in self.output_blocks:
             other = hs.pop()
             h = torch.cat([h, other], dim=1)
