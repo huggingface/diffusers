@@ -5,6 +5,7 @@ from ..modeling_utils import ModelMixin
 from .attention import LinearAttention
 from .embeddings import get_timestep_embedding
 from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
+from .unet_new import UNetMidBlock2D
 
 
 class Mish(torch.nn.Module):
@@ -111,6 +112,17 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
             )
 
         mid_dim = dims[-1]
+
+        self.mid = UNetMidBlock2D(
+            in_channels=mid_dim,
+            temb_channels=dim,
+            resnet_groups=8,
+            resnet_pre_norm=False,
+            resnet_eps=1e-5,
+            resnet_act_fn="mish",
+            attention_layer_type="linear",
+        )
+
         self.mid_block1 = ResnetBlock2D(
             in_channels=mid_dim,
             out_channels=mid_dim,
@@ -132,8 +144,9 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
             non_linearity="mish",
             overwrite_for_grad_tts=True,
         )
-
-        #        self.mid = UNetMidBlock2D
+        self.mid.resnet_1 = self.mid_block1
+        self.mid.attn = self.mid_attn
+        self.mid.resnet_2 = self.mid_block2
 
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
             self.ups.append(
@@ -198,9 +211,8 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
 
         masks = masks[:-1]
         mask_mid = masks[-1]
-        x = self.mid_block1(x, t, mask_mid)
-        x = self.mid_attn(x)
-        x = self.mid_block2(x, t, mask_mid)
+
+        x = self.mid(x, t, mask=mask_mid)
 
         for resnet1, resnet2, attn, upsample in self.ups:
             mask_up = masks.pop()
