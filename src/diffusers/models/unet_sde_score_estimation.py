@@ -277,9 +277,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
                 else:
                     if progressive == "output_skip":
                         modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6))
-                        modules.append(
-                            nn.Conv2d(in_ch, channels, bias=True, kernel_size=3, padding=1)
-                        )
+                        modules.append(nn.Conv2d(in_ch, channels, bias=True, kernel_size=3, padding=1))
                         pyramid_ch = channels
                     elif progressive == "residual":
                         modules.append(pyramid_upsample(channels=pyramid_ch, out_channels=in_ch))
