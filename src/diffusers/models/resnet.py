@@ -476,7 +476,6 @@ class ResnetBlock2D(nn.Module):
             self.Conv_0 = nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1)
             if temb_dim is not None:
                 self.Dense_0 = nn.Linear(temb_dim, out_ch)
-                self.Dense_0.weight.data = variance_scaling()(self.Dense_0.weight.shape)
                 nn.init.zeros_(self.Dense_0.bias)
 
             self.GroupNorm_1 = nn.GroupNorm(num_groups=num_groups_out, num_channels=out_ch, eps=eps)
