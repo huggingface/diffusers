@@ -130,7 +130,7 @@ def main(args):
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 lr_scheduler.step()
-                ema_model.step(model, global_step)
+                ema_model.step(model)
                 optimizer.zero_grad()
             progress_bar.update(1)
             progress_bar.set_postfix(
