@@ -29,12 +29,6 @@ from .embeddings import GaussianFourierProjection, get_timestep_embedding
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, ResnetBlock2D, Upsample2D
 
 
-def Linear(dim_in, dim_out):
-    linear = nn.Linear(dim_in, dim_out)
-    nn.init.zeros_(linear.bias)
-    return linear
-
-
 class Combine(nn.Module):
     """Combine information from skip connections."""
 
@@ -138,8 +132,8 @@ class NCSNpp(ModelMixin, ConfigMixin):
         else:
             raise ValueError(f"embedding type {embedding_type} unknown.")
 
-        modules.append(Linear(embed_dim, nf * 4))
-        modules.append(Linear(nf * 4, nf * 4))
+        modules.append(nn.Linear(embed_dim, nf * 4))
+        modules.append(nn.Linear(nf * 4, nf * 4))
 
         AttnBlock = functools.partial(AttentionBlock, overwrite_linear=True, rescale_output_factor=math.sqrt(2.0))
 
