@@ -209,7 +209,7 @@ class FirUpsample2D(nn.Module):
 
         k = k * (gain * (factor**2))
 
-        if self.use_conv is not None:
+        if self.use_conv:
             convH = w.shape[2]
             convW = w.shape[3]
             inC = w.shape[1]
