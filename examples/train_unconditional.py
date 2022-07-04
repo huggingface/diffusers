@@ -33,7 +33,7 @@ def main(args):
         mixed_precision=args.mixed_precision,
         log_with="tensorboard",
         logging_dir=logging_dir,
-        kwargs_handlers=[ddp_unused_params]
+        kwargs_handlers=[ddp_unused_params],
     )
 
     model = UNetModel(

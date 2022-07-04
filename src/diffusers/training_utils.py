@@ -30,7 +30,7 @@ class EMAModel:
             min_value (float): The minimum EMA decay rate. Default: 0.
         """
 
-        self.averaged_model = copy.deepcopy(model)
+        self.averaged_model = copy.deepcopy(model).eval()
         self.averaged_model.requires_grad_(False)
 
         self.update_after_step = update_after_step
