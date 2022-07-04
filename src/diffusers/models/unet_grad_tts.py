@@ -133,7 +133,7 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
             overwrite_for_grad_tts=True,
         )
 
-#        self.mid = UNetMidBlock2D
+        #        self.mid = UNetMidBlock2D
 
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
             self.ups.append(
