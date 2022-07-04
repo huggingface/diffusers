@@ -11,7 +11,7 @@ from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import get_timestep_embedding
 from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
-from .unet_new import UNetMidBlock2D
+from .unet_new import UNet2D
 
 
 # from .resnet import ResBlock
@@ -365,7 +365,7 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
 
         if dim_head < 0:
             dim_head = None
-        self.mid = UNetMidBlock2D(
+        self.mid = UNet2D(
             in_channels=ch,
             dropout=dropout,
             temb_channels=time_embed_dim,

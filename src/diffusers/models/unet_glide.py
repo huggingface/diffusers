@@ -7,7 +7,7 @@ from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import get_timestep_embedding
 from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
-from .unet_new import UNetMidBlock2D
+from .unet_new import UNet2D
 
 
 def convert_module_to_f16(l):
@@ -226,7 +226,7 @@ class GlideUNetModel(ModelMixin, ConfigMixin):
                 ds *= 2
                 self._feature_size += ch
 
-        self.mid = UNetMidBlock2D(
+        self.mid = UNet2D(
             in_channels=ch,
             dropout=dropout,
             temb_channels=time_embed_dim,

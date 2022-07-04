@@ -27,7 +27,7 @@ from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import GaussianFourierProjection, get_timestep_embedding
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, ResnetBlock2D, Upsample2D
-from .unet_new import UNetMidBlock2D
+from .unet_new import UNet2D
 
 
 class Combine(nn.Module):
@@ -216,7 +216,7 @@ class NCSNpp(ModelMixin, ConfigMixin):
                 hs_c.append(in_ch)
 
         # mid
-        self.mid = UNetMidBlock2D(
+        self.mid = UNet2D(
             in_channels=in_ch,
             temb_channels=4 * nf,
             output_scale_factor=math.sqrt(2.0),

@@ -5,7 +5,7 @@ from ..modeling_utils import ModelMixin
 from .attention import LinearAttention
 from .embeddings import get_timestep_embedding
 from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
-from .unet_new import UNetMidBlock2D
+from .unet_new import UNet2D
 
 
 class Mish(torch.nn.Module):
@@ -113,7 +113,7 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
 
         mid_dim = dims[-1]
 
-        self.mid = UNetMidBlock2D(
+        self.mid = UNet2D(
             in_channels=mid_dim,
             temb_channels=dim,
             resnet_groups=8,
