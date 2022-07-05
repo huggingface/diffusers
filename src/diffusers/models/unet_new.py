@@ -15,7 +15,7 @@
 from torch import nn
 
 from .attention import AttentionBlock, LinearAttention, SpatialTransformer
-from .resnet import ResnetBlock2D
+from .resnet import ResnetBlock2D, Downsample2D
 
 
 class UNetMidBlock2D(nn.Module):
@@ -24,7 +24,7 @@ class UNetMidBlock2D(nn.Module):
         in_channels: int,
         temb_channels: int,
         dropout: float = 0.0,
-        num_blocks: int = 1,
+        num_layers: int = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
@@ -37,8 +37,6 @@ class UNetMidBlock2D(nn.Module):
         attn_dim_head=None,
         attn_depth=None,
         output_scale_factor=1.0,
-        overwrite_qkv=False,
-        overwrite_unet=False,
     ):
         super().__init__()
 
@@ -58,7 +56,7 @@ class UNetMidBlock2D(nn.Module):
         ]
         attentions = []
 
-        for _ in range(num_blocks):
+        for _ in range(num_layers):
             if attention_layer_type == "self":
                 attentions.append(
                     AttentionBlock(
@@ -66,7 +64,6 @@ class UNetMidBlock2D(nn.Module):
                         num_heads=attn_num_heads,
                         num_head_channels=attn_num_head_channels,
                         encoder_channels=attn_encoder_channels,
-                        overwrite_qkv=overwrite_qkv,
                         rescale_output_factor=output_scale_factor,
                     )
                 )
@@ -110,27 +107,151 @@ class UNetMidBlock2D(nn.Module):
         return hidden_states
 
 
-# class UNetResAttnDownBlock(nn.Module):
-#    def __init__(
-#        self,
-#        in_channels: int,
-#        out_channels: int,
-#        temb_channels: int,
-#        dropout: float = 0.0,
-#        resnet_eps: float = 1e-6,
-#        resnet_time_scale_shift: str = "default",
-#        resnet_act_fn: str = "swish",
-#        resnet_groups: int = 32,
-#        resnet_pre_norm: bool = True,
-#        attention_layer_type: str = "self",
-#        attn_num_heads=1,
-#        attn_num_head_channels=None,
-#        attn_encoder_channels=None,
-#        attn_dim_head=None,
-#        attn_depth=None,
-#        output_scale_factor=1.0,
-#        overwrite_qkv=False,
-#        overwrite_unet=False,
-#    ):
-#
-#        self.resents =
+class UNetResAttnDownBlock2D(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        temb_channels: int,
+        dropout: float = 0.0,
+        num_layers: int = 1,
+        resnet_eps: float = 1e-6,
+        resnet_time_scale_shift: str = "default",
+        resnet_act_fn: str = "swish",
+        resnet_groups: int = 32,
+        resnet_pre_norm: bool = True,
+        attention_layer_type: str = "self",
+        attn_num_heads=1,
+        attn_num_head_channels=None,
+        attn_encoder_channels=None,
+        attn_dim_head=None,
+        attn_depth=None,
+        output_scale_factor=1.0,
+        add_downsample=True,
+    ):
+        super().__init__()
+        resnets = []
+        attentions = []
+
+        for i in range(num_layers):
+            in_channels = in_channels if i == 0 else out_channels
+            resnets.append([
+                ResnetBlock2D(
+                    in_channels=in_channels,
+                    out_channels=out_channels,
+                    temb_channels=temb_channels,
+                    groups=resnet_groups,
+                    dropout=dropout,
+                    time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                    pre_norm=resnet_pre_norm,
+                )
+            ])
+            attentions.append(
+                AttentionBlock(
+                    in_channels,
+                    num_heads=attn_num_heads,
+                    num_head_channels=attn_num_head_channels,
+                    encoder_channels=attn_encoder_channels,
+                    rescale_output_factor=output_scale_factor,
+                )
+            )
+#            elif attention_layer_type == "spatial":
+#                attentions.append(
+#                    SpatialTransformer(
+#                        in_channels,
+#                        attn_num_heads,
+#                        attn_num_head_channels,
+#                        depth=attn_depth,
+#                        context_dim=attn_encoder_channels,
+#                    )
+#                )
+
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.ModuleList(resnets)
+
+        if add_downsample:
+            self.downsamplers = nn.ModuleList([Downsample2D(in_channels, use_conv=True, out_channels=out_channels, padding=1, name="op")])
+        else:
+            self.downsamplers = None
+
+    def forward(self, hidden_states, temb=None):
+        output_states = ()
+
+        for resnet, attn in zip(self.resnets, self.attentions):
+            hidden_states = resnet(hidden_states, temb)
+            hidden_states = attn(hidden_states)
+            output_states += (hidden_states,)
+
+        if self.downsamplers is not None:
+            for downsampler in self.downsamplers:
+                hidden_states = downsampler(hidden_states)
+
+            output_states += (hidden_states,)
+
+        return hidden_states, output_states
+
+
+class UNetResDownBlock2D(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        temb_channels: int,
+        dropout: float = 0.0,
+        num_layers: int = 1,
+        resnet_eps: float = 1e-6,
+        resnet_time_scale_shift: str = "default",
+        resnet_act_fn: str = "swish",
+        resnet_groups: int = 32,
+        resnet_pre_norm: bool = True,
+        attention_layer_type: str = "self",
+        attn_num_heads=1,
+        attn_num_head_channels=None,
+        attn_encoder_channels=None,
+        attn_dim_head=None,
+        attn_depth=None,
+        output_scale_factor=1.0,
+        add_downsample=True,
+    ):
+        super().__init__()
+        resnets = []
+
+        for i in range(num_layers):
+            in_channels = in_channels if i == 0 else out_channels
+            resnets.append(
+                ResnetBlock2D(
+                    in_channels=in_channels,
+                    out_channels=out_channels,
+                    temb_channels=temb_channels,
+                    groups=resnet_groups,
+                    dropout=dropout,
+                    time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                    pre_norm=resnet_pre_norm,
+                )
+            )
+
+        self.resnets = nn.ModuleList(resnets)
+
+        if add_downsample:
+            self.downsamplers = nn.ModuleList([Downsample2D(in_channels, use_conv=True, out_channels=out_channels, padding=1, name="op")])
+        else:
+            self.downsamplers = None
+
+    def forward(self, hidden_states, temb=None):
+        output_states = ()
+
+        for resnet in self.resnets:
+            hidden_states = resnet(hidden_states, temb)
+            output_states += (hidden_states,)
+
+        if self.downsamplers is not None:
+            for downsampler in self.downsamplers:
+                hidden_states = downsampler(hidden_states)
+
+            output_states += (hidden_states,)
+
+        return hidden_states, output_states

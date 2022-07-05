@@ -11,7 +11,7 @@ from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import get_timestep_embedding
 from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
-from .unet_new import UNetMidBlock2D
+from .unet_new import UNetMidBlock2D, UNetResAttnDownBlock2D, UNetResDownBlock2D
 
 
 # from .resnet import ResBlock
@@ -301,6 +301,11 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
         self.input_blocks = nn.ModuleList(
             [TimestepEmbedSequential(conv_nd(dims, in_channels, model_channels, 3, padding=1))]
         )
+
+        self.down_in_conv = self.input_blocks[0][0]
+        self.downsample_blocks = []
+
+        # ========================= Down =================== #
         self._feature_size = model_channels
         input_block_chans = [model_channels]
         ch = model_channels
@@ -354,6 +359,28 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
                 ds *= 2
                 self._feature_size += ch
 
+        input_channels = [model_channels * mult for mult in [1] + list(channel_mult[:-1])]
+        output_channels = [model_channels * mult for mult in channel_mult]
+
+        for i, (input_channel, output_channel) in enumerate(zip(input_channels, output_channels)):
+            is_final_block = (i == len(input_channels) - 1)
+
+            if ds in attention_resolutions:
+                self.downsample_blocks.append(UNetResAttnDownBlock2D(num_layers=num_res_blocks, in_channels=input_channel, out_channels=output_channel, temb_channels=time_embed_dim, add_downsample=not is_final_block))
+            else:
+                self.downsample_blocks.append(UNetResDownBlock2D(num_layers=num_res_blocks, in_channels=input_channel, out_channels=output_channel, temb_channels=time_embed_dim, add_downsample= not is_final_block))
+
+        self.downsample_blocks = nn.ModuleList(self.downsample_blocks)
+
+        # ================ TO DELETE AFTER HAVING CLEANED UP THE CODE ==================
+        for i, input_layer in enumerate(self.input_blocks[1:]):
+            block_id = i // (num_res_blocks + 1)
+            layer_in_block_id = i % (num_res_blocks + 1)
+            if layer_in_block_id == 2:
+                self.downsample_blocks[block_id].downsamplers[0] = input_layer[0]
+            else:
+                self.downsample_blocks[block_id].resnets[layer_in_block_id] = input_layer[0]
+
         if num_head_channels == -1:
             dim_head = ch // num_heads
         else:
@@ -365,6 +392,8 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
 
         if dim_head < 0:
             dim_head = None
+
+        # ========================= MID =================== #
         self.mid = UNetMidBlock2D(
             in_channels=ch,
             dropout=dropout,
@@ -505,14 +534,31 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
             emb = emb + self.label_emb(y)
 
         h = x.type(self.dtype_)
+        h_new = h
+
         for module in self.input_blocks:
             h = module(h, emb, context)
             hs.append(h)
+
+        h_new = self.down_in_conv(h_new)
+        hs_new = (h_new,)
+        for downsample_block in self.downsample_blocks:
+            h_new, states = downsample_block(h_new, emb)
+            hs_new += states
+
+        print("h diff", (h - h_new).abs().sum())
+        print("hs diff", sum([(hs[i] - hs_new[i]).abs().sum() for i in range(len(hs))]))
+
+        hs = list(hs_new)
+        h = h_new
+
         h = self.mid(h, emb, context)
+
         for module in self.output_blocks:
             h = torch.cat([h, hs.pop()], dim=1)
             h = module(h, emb, context)
         h = h.type(x.dtype)
+
         if self.predict_codebook_ids:
             return self.id_predictor(h)
         else:
