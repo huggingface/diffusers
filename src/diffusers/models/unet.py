@@ -106,9 +106,20 @@ class UNetModel(ModelMixin, ConfigMixin):
             self.down.append(down)
 
         # middle
-        self.mid = UNetMidBlock2D(
+        self.mid = nn.Module()
+        self.mid.block_1 = ResnetBlock2D(
+            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
+        )
+        self.mid.attn_1 = AttentionBlock(block_in, overwrite_qkv=True)
+        self.mid.block_2 = ResnetBlock2D(
+            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
+        )
+        self.mid_new = UNetMidBlock2D(
             in_channels=block_in, temb_channels=self.temb_ch, dropout=dropout, overwrite_qkv=True, overwrite_unet=True
         )
+        self.mid_new.resnets[0] = self.mid.block_1
+        self.mid_new.attentions[0] = self.mid.attn_1
+        self.mid_new.resnets[1] = self.mid.block_2
 
         # upsampling
         self.up = nn.ModuleList()
@@ -167,10 +178,7 @@ class UNetModel(ModelMixin, ConfigMixin):
                 hs.append(self.down[i_level].downsample(hs[-1]))
 
         # middle
-        h = self.mid(hs[-1], temb)
-        #        h = self.mid.block_1(h, temb)
-        #        h = self.mid.attn_1(h)
-        #        h = self.mid.block_2(h, temb)
+        h = self.mid_new(hs[-1], temb)
 
         # upsampling
         for i_level in reversed(range(self.num_resolutions)):

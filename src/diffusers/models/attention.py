@@ -17,7 +17,7 @@ class LinearAttention(torch.nn.Module):
         self.to_qkv = torch.nn.Conv2d(dim, hidden_dim * 3, 1, bias=False)
         self.to_out = torch.nn.Conv2d(hidden_dim, dim, 1)
 
-    def forward(self, x):
+    def forward(self, x, encoder_states=None):
         b, c, h, w = x.shape
         qkv = self.to_qkv(x)
         q, k, v = (

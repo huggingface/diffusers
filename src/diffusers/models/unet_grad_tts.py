@@ -19,8 +19,8 @@ class Rezero(torch.nn.Module):
         self.fn = fn
         self.g = torch.nn.Parameter(torch.zeros(1))
 
-    def forward(self, x):
-        return self.fn(x) * self.g
+    def forward(self, x, encoder_out=None):
+        return self.fn(x, encoder_out) * self.g
 
 
 class Block(torch.nn.Module):
@@ -144,9 +144,9 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
             non_linearity="mish",
             overwrite_for_grad_tts=True,
         )
-        self.mid.resnet_1 = self.mid_block1
-        self.mid.attn = self.mid_attn
-        self.mid.resnet_2 = self.mid_block2
+        self.mid.resnets[0] = self.mid_block1
+        self.mid.attentions[0] = self.mid_attn
+        self.mid.resnets[1] = self.mid_block2
 
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
             self.ups.append(
