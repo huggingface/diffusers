@@ -521,6 +521,7 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
         super().__init__()
         self.cutoff = cutoff
         self.edge_encoder = edge_encoder
+        self.edge_order = edge_order
 
         """
         edge_encoder: Takes both edge type and edge length as input and outputs a vector [Note]: node embedding is done
