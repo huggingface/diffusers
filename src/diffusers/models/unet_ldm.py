@@ -408,9 +408,9 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
                 overwrite_for_ldm=True,
             ),
         )
-        self.mid.resnet_1 = self.middle_block[0]
-        self.mid.attn = self.middle_block[1]
-        self.mid.resnet_2 = self.middle_block[2]
+        self.mid.resnets[0] = self.middle_block[0]
+        self.mid.attentions[0] = self.middle_block[1]
+        self.mid.resnets[1] = self.middle_block[2]
 
         self._feature_size += ch
 

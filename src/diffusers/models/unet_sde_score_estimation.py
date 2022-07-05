@@ -249,9 +249,9 @@ class NCSNpp(ModelMixin, ConfigMixin):
                 overwrite_for_score_vde=True,
             )
         )
-        self.mid.resnet_1 = modules[len(modules) - 3]
-        self.mid.attn = modules[len(modules) - 2]
-        self.mid.resnet_2 = modules[len(modules) - 1]
+        self.mid.resnets[0] = modules[len(modules) - 3]
+        self.mid.attentions[0] = modules[len(modules) - 2]
+        self.mid.resnets[1] = modules[len(modules) - 1]
 
         pyramid_ch = 0
         # Upsampling block
