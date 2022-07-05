@@ -129,3 +129,27 @@ class UNetMidBlock2D(nn.Module):
         hidden_states = self.resnet_2(hidden_states, temb, mask=mask)
 
         return hidden_states
+
+
+class UNetResAttnDownBlock(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        temb_channels: int,
+        dropout: float = 0.0,
+        resnet_eps: float = 1e-6,
+        resnet_time_scale_shift: str = "default",
+        resnet_act_fn: str = "swish",
+        resnet_groups: int = 32,
+        resnet_pre_norm: bool = True,
+        attention_layer_type: str = "self",
+        attn_num_heads=1,
+        attn_num_head_channels=None,
+        attn_encoder_channels=None,
+        attn_dim_head=None,
+        attn_depth=None,
+        output_scale_factor=1.0,
+        overwrite_qkv=False,
+        overwrite_unet=False,
+    ):
