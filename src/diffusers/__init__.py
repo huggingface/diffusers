@@ -36,6 +36,7 @@ from .schedulers import (
     ScoreSdeVeScheduler,
     ScoreSdeVpScheduler,
 )
+from .training_utils import EMAModel
 
 
 if is_transformers_available():
