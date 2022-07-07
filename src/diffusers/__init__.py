@@ -21,6 +21,7 @@ from .pipelines import (
 from .schedulers import (
     DDIMScheduler,
     DDPMScheduler,
+    DiscreteScheduler,
     GradTTSScheduler,
     PNDMScheduler,
     SchedulerMixin,

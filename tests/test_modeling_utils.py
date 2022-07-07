@@ -28,6 +28,7 @@ from diffusers import (
     DDIMScheduler,
     DDPMPipeline,
     DDPMScheduler,
+    DiscreteScheduler,
     GlidePipeline,
     GlideSuperResUNetModel,
     GlideTextToImageUNetModel,
@@ -1012,21 +1013,22 @@ class PipelineTesterMixin(unittest.TestCase):
         model_id = "fusing/ddpm-cifar10"
 
         unet = UNetModel.from_pretrained(model_id)
-        noise_scheduler = DDPMScheduler.from_config(model_id)
+        noise_scheduler = DiscreteScheduler.from_config(model_id)
         noise_scheduler = noise_scheduler.set_format("pt")
 
+        # TODO (Anton): move to the scheduler_config.json after refactoring
+        noise_scheduler.num_timesteps = 1000
+        noise_scheduler.beta_min = 0.0001
+        noise_scheduler.beta_max = 0.02
+
         ddpm = DDPMPipeline(unet=unet, noise_scheduler=noise_scheduler)
+        image = ddpm(seed=0)
 
-        generator = torch.manual_seed(0)
-        image = ddpm(generator=generator)
+        image_slice = image[0, -3:, -3:, -1]
 
-        image_slice = image[0, -1, -3:, -3:].cpu()
-
-        assert image.shape == (1, 3, 32, 32)
-        expected_slice = torch.tensor(
-            [-0.5712, -0.6215, -0.5953, -0.5438, -0.4775, -0.4539, -0.5172, -0.4872, -0.5105]
-        )
-        assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
+        assert image.shape == (1, 32, 32, 3)
+        expected_slice = np.array([0.2144, 0.1893, 0.2024, 0.2281, 0.2613, 0.2731, 0.2414, 0.2564, 0.2448])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
     def test_ddim_cifar10(self):

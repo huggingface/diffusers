@@ -18,6 +18,7 @@
 
 from .scheduling_ddim import DDIMScheduler
 from .scheduling_ddpm import DDPMScheduler
+from .scheduling_discrete import DiscreteScheduler
 from .scheduling_grad_tts import GradTTSScheduler
 from .scheduling_pndm import PNDMScheduler
 from .scheduling_sde_ve import ScoreSdeVeScheduler

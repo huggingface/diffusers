@@ -53,6 +53,9 @@ class SchedulerMixin:
 
         raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
 
+    def sqrt(self, value: Union[int, float, np.ndarray, torch.Tensor]):
+        return value**0.5
+
     def match_shape(self, values: Union[np.ndarray, torch.Tensor], broadcast_array: Union[np.ndarray, torch.Tensor]):
         """
         Turns a 1-D array into an array or tensor with len(broadcast_array.shape) dims.
