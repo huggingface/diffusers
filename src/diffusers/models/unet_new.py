@@ -135,7 +135,7 @@ class UNetResAttnDownBlock2D(nn.Module):
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
-            resnets.append([
+            resnets.append(
                 ResnetBlock2D(
                     in_channels=in_channels,
                     out_channels=out_channels,
@@ -147,10 +147,10 @@ class UNetResAttnDownBlock2D(nn.Module):
                     output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
                 )
-            ])
+            )
             attentions.append(
                 AttentionBlock(
-                    in_channels,
+                    out_channels,
                     num_heads=attn_num_heads,
                     num_head_channels=attn_num_head_channels,
                     encoder_channels=attn_encoder_channels,

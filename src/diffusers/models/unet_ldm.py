@@ -362,22 +362,28 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
         input_channels = [model_channels * mult for mult in [1] + list(channel_mult[:-1])]
         output_channels = [model_channels * mult for mult in channel_mult]
 
+        ds_new = 1
         for i, (input_channel, output_channel) in enumerate(zip(input_channels, output_channels)):
             is_final_block = (i == len(input_channels) - 1)
 
-            if ds in attention_resolutions:
+            if ds_new in attention_resolutions:
                 self.downsample_blocks.append(UNetResAttnDownBlock2D(num_layers=num_res_blocks, in_channels=input_channel, out_channels=output_channel, temb_channels=time_embed_dim, add_downsample=not is_final_block))
             else:
-                self.downsample_blocks.append(UNetResDownBlock2D(num_layers=num_res_blocks, in_channels=input_channel, out_channels=output_channel, temb_channels=time_embed_dim, add_downsample= not is_final_block))
+                self.downsample_blocks.append(UNetResDownBlock2D(num_layers=num_res_blocks, in_channels=input_channel, out_channels=output_channel, temb_channels=time_embed_dim, add_downsample=not is_final_block))
+            ds_new *= 2
 
         self.downsample_blocks = nn.ModuleList(self.downsample_blocks)
 
         # ================ TO DELETE AFTER HAVING CLEANED UP THE CODE ==================
         for i, input_layer in enumerate(self.input_blocks[1:]):
-            block_id = i // (num_res_blocks + 1)
+            block_id = (i // (num_res_blocks + 1))
             layer_in_block_id = i % (num_res_blocks + 1)
+
             if layer_in_block_id == 2:
                 self.downsample_blocks[block_id].downsamplers[0] = input_layer[0]
+            elif len(input_layer) > 1:
+                self.downsample_blocks[block_id].resnets[layer_in_block_id] = input_layer[0]
+                self.downsample_blocks[block_id].attentions[layer_in_block_id] = input_layer[1]
             else:
                 self.downsample_blocks[block_id].resnets[layer_in_block_id] = input_layer[0]
 
@@ -497,22 +503,6 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
                 conv_nd(dims, model_channels, n_embed, 1),
                 # nn.LogSoftmax(dim=1)  # change to cross_entropy and produce non-normalized logits
             )
-
-    def convert_to_fp16(self):
-        """
-        Convert the torso of the model to float16.
-        """
-        self.input_blocks.apply(convert_module_to_f16)
-        self.middle_block.apply(convert_module_to_f16)
-        self.output_blocks.apply(convert_module_to_f16)
-
-    def convert_to_fp32(self):
-        """
-        Convert the torso of the model to float32.
-        """
-        self.input_blocks.apply(convert_module_to_f32)
-        self.middle_block.apply(convert_module_to_f32)
-        self.output_blocks.apply(convert_module_to_f32)
 
     def forward(self, x, timesteps=None, context=None, y=None, **kwargs):
         """
