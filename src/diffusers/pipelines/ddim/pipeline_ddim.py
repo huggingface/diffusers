@@ -16,59 +16,43 @@
 
 import torch
 
-import tqdm
-
+from ...models import UNetModel
 from ...pipeline_utils import DiffusionPipeline
+from ...schedulers import DiscreteScheduler
 
 
 class DDIMPipeline(DiffusionPipeline):
+    unet: UNetModel
+    noise_scheduler: DiscreteScheduler
+
     def __init__(self, unet, noise_scheduler):
         super().__init__()
         noise_scheduler = noise_scheduler.set_format("pt")
         self.register_modules(unet=unet, noise_scheduler=noise_scheduler)
 
-    def __call__(self, batch_size=1, generator=None, torch_device=None, eta=0.0, num_inference_steps=50):
-        # eta corresponds to η in paper and should be between [0, 1]
-        if torch_device is None:
-            torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+    @torch.no_grad()
+    def __call__(self, batch_size: int = 1, num_inference_steps: int = None, seed: int = None, device: str = None):
+        if num_inference_steps is None:
+            num_inference_steps = self.noise_scheduler.num_timesteps
+        if device is None:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        random_generator = torch.manual_seed(seed)
+        self.unet.to(device)
 
-        num_trained_timesteps = self.noise_scheduler.config.timesteps
-        inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps)
-
-        self.unet.to(torch_device)
-
-        # Sample gaussian noise to begin loop
-        image = torch.randn(
+        sample = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.resolution, self.unet.resolution),
-            generator=generator,
+            generator=random_generator,
         )
-        image = image.to(torch_device)
+        sample = sample.to(device)
 
-        # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
-        # Ideally, read DDIM paper in-detail understanding
+        self.noise_scheduler.set_num_inference_steps(num_inference_steps)
 
-        # Notation (<variable name> -> <name in paper>
-        # - pred_noise_t -> e_theta(x_t, t)
-        # - pred_original_image -> f_theta(x_t, t) or x_0
-        # - std_dev_t -> sigma_t
-        # - eta -> η
-        # - pred_image_direction -> "direction pointingc to x_t"
-        # - pred_prev_image -> "x_t-1"
-        for t in tqdm.tqdm(reversed(range(num_inference_steps)), total=num_inference_steps):
-            # 1. predict noise residual
-            with torch.no_grad():
-                residual = self.unet(image, inference_step_times[t])
+        for t in reversed(range(num_inference_steps)):
+            # adjust the reduced timestep to the number of training timesteps
+            t = t * (self.noise_scheduler.num_timesteps // num_inference_steps)
+            noise_prediction = self.unet(sample, t)
+            sample = self.noise_scheduler.step(noise_prediction, sample, t)
 
-            # 2. predict previous mean of image x_t-1
-            pred_prev_image = self.noise_scheduler.step(residual, image, t, num_inference_steps, eta)
-
-            # 3. optionally sample variance
-            variance = 0
-            if eta > 0:
-                noise = torch.randn(image.shape, generator=generator).to(image.device)
-                variance = self.noise_scheduler.get_variance(t, num_inference_steps).sqrt() * eta * noise
-
-            # 4. set current image to prev_image: x_t -> x_t-1
-            image = pred_prev_image + variance
+        image = (sample / 2 + 0.5).cpu().permute(0, 2, 3, 1).numpy()
 
         return image

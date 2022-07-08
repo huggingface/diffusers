@@ -1027,7 +1027,7 @@ class PipelineTesterMixin(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.2144, 0.1893, 0.2024, 0.2281, 0.2613, 0.2731, 0.2414, 0.2564, 0.2448])
+        expected_slice = np.array([0.2409, 0.2244, 0.2327, 0.2642, 0.3029, 0.3143, 0.2815, 0.2979, 0.2917])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
@@ -1035,20 +1035,21 @@ class PipelineTesterMixin(unittest.TestCase):
         model_id = "fusing/ddpm-cifar10"
 
         unet = UNetModel.from_pretrained(model_id)
-        noise_scheduler = DDIMScheduler(tensor_format="pt")
+        noise_scheduler = DiscreteScheduler.from_config(model_id)
+
+        # TODO (Anton): move to the scheduler_config.json after refactoring
+        noise_scheduler.num_timesteps = 1000
+        noise_scheduler.beta_min = 0.0001
+        noise_scheduler.beta_max = 0.02
 
         ddim = DDIMPipeline(unet=unet, noise_scheduler=noise_scheduler)
+        image = ddim(num_inference_steps=50, seed=0)
 
-        generator = torch.manual_seed(0)
-        image = ddim(generator=generator, eta=0.0)
+        image_slice = image[0, -3:, -3:, -1]
 
-        image_slice = image[0, -1, -3:, -3:].cpu()
-
-        assert image.shape == (1, 3, 32, 32)
-        expected_slice = torch.tensor(
-            [-0.6553, -0.6765, -0.6799, -0.6749, -0.7006, -0.6974, -0.6991, -0.7116, -0.7094]
-        )
-        assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
+        assert image.shape == (1, 32, 32, 3)
+        expected_slice = np.array([0.1689, 0.1613, 0.1603, 0.1602, 0.1521, 0.1503, 0.1527, 0.1464, 0.1457])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
     def test_pndm_cifar10(self):

@@ -31,7 +31,6 @@ class DiscreteScheduler(SchedulerMixin, ConfigMixin):
         beta_max=0.02,
         beta_schedule="linear",
         clip_clean_sample=True,
-        variance_type=None,
         tensor_format="np",
     ):
         super().__init__()
@@ -41,12 +40,11 @@ class DiscreteScheduler(SchedulerMixin, ConfigMixin):
             beta_max=beta_max,
             beta_schedule=beta_schedule,
             clip_clean_sample=clip_clean_sample,
-            variance_type=variance_type,
         )
 
         self.num_timesteps = num_timesteps
-        self.clip_sample = clip_clean_sample
-        self.variance_type = variance_type
+        self.num_inference_steps = num_timesteps
+        self.clip_clean_sample = clip_clean_sample
 
         if beta_schedule == "linear":
             self.betas = np.linspace(beta_min, beta_max, num_timesteps, dtype=np.float32)
@@ -61,17 +59,12 @@ class DiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
 
-        if self.variance_type == "fixed_small":
-            alphas_cumprod_prev = np.concatenate(([1], self.alphas_cumprod[1:]))
-            self.variance = np.sqrt((1 - alphas_cumprod_prev) / (1 - self.alphas_cumprod) * self.betas)
-        elif self.variance_type == "fixed_large":
-            self.variance = np.sqrt(self.betas)
-        elif self.variance_type is None:
-            self.variance = np.zeros(num_timesteps)
-        else:
-            raise NotImplementedError(f"{self.variance_type} variance is not implemented for {self.__class__}")
-
+        alphas_cumprod_prev = np.concatenate(([1], self.alphas_cumprod[:-1]))
+        self.variance = (1 - alphas_cumprod_prev) / (1 - self.alphas_cumprod) * self.betas
         self.set_format(tensor_format=tensor_format)
+
+    def set_num_inference_steps(self, num_inference_steps):
+        self.num_inference_steps = num_inference_steps
 
     def step(self, noise_prediction, noisy_sample, t, noise=None):
         """
@@ -83,22 +76,24 @@ class DiscreteScheduler(SchedulerMixin, ConfigMixin):
             t: the current timestep
             noise: None for the deterministic DDIM, or a noise sample for the stochastic DDPM
         """
-        alpha = self.alphas[t]
-        beta = self.betas[t]
+        t_next = t - (self.num_timesteps // self.num_inference_steps)
+
         alpha_cumprod = self.alphas_cumprod[t]
-        alpha_cumprod_next = self.alphas_cumprod[t - 1] if t > 0 else 1
+        alpha_cumprod_next = self.alphas_cumprod[t_next] if t_next > 0 else 1
+        variance = 0 if noise is None else self.variance[t]
 
         pred_clean = (noisy_sample - self.sqrt(1 - alpha_cumprod) * noise_prediction) / self.sqrt(alpha_cumprod)
-        if self.clip_sample:
+        if self.clip_clean_sample:
             pred_clean = self.clip(pred_clean, -1, 1)
 
-        clean_sample_coeff = (self.sqrt(alpha_cumprod_next) * beta) / (1 - alpha_cumprod)
-        noisy_sample_coeff = self.sqrt(alpha) * (1 - alpha_cumprod_next) / (1 - alpha_cumprod)
+        clean_sample_coeff = self.sqrt(alpha_cumprod_next)
+        noise_pred_coeff = self.sqrt(1 - alpha_cumprod_next - variance) if t_next > 0 else 0
 
-        next_sample = clean_sample_coeff * pred_clean + noisy_sample_coeff * noisy_sample
+        next_sample = clean_sample_coeff * pred_clean + noise_pred_coeff * noise_prediction
 
         if t > 0 and noise is not None:
-            next_sample += self.variance[t] * noise
+            std_dev = self.sqrt(variance)
+            next_sample += std_dev * noise
 
         return next_sample
 

@@ -15,8 +15,6 @@
 
 import torch
 
-from tqdm.auto import tqdm
-
 from ...models import UNetModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DiscreteScheduler
@@ -44,7 +42,7 @@ class DDPMPipeline(DiffusionPipeline):
         )
         sample = sample.to(device)
 
-        for t in tqdm(reversed(range(self.noise_scheduler.num_timesteps))):
+        for t in reversed(range(self.noise_scheduler.num_timesteps)):
             noise_prediction = self.unet(sample, t)
 
             noise = torch.randn(sample.shape, generator=random_generator).to(device)
