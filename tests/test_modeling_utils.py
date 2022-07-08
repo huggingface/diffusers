@@ -1071,35 +1071,50 @@ class PipelineTesterMixin(unittest.TestCase):
         assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
 
     @slow
-    @unittest.skip("Skipping for now as it takes too long")
     def test_ldm_text2img(self):
         model_id = "fusing/latent-diffusion-text2im-large"
         ldm = LatentDiffusionPipeline.from_pretrained(model_id)
 
+        # TODO (Anton): move to the scheduler_config.json after refactoring
+        noise_scheduler = DiscreteScheduler(
+            num_timesteps=1000,
+            beta_min=0.00085,
+            beta_max=0.012,
+            clip_clean_sample=False,
+        )
+        ldm.noise_scheduler = noise_scheduler
+
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.manual_seed(0)
-        image = ldm([prompt], generator=generator, num_inference_steps=20)
+        image = ldm([prompt], seed=0, num_inference_steps=20)
 
-        image_slice = image[0, -1, -3:, -3:].cpu()
+        image_slice = image[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 3, 256, 256)
-        expected_slice = torch.tensor([0.7295, 0.7358, 0.7256, 0.7435, 0.7095, 0.6884, 0.7325, 0.6921, 0.6458])
-        assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
+        assert image.shape == (1, 256, 256, 3)
+        expected_slice = np.array([0.7295, 0.7358, 0.7256, 0.7435, 0.7095, 0.6884, 0.7325, 0.6921, 0.6458])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
     def test_ldm_text2img_fast(self):
         model_id = "fusing/latent-diffusion-text2im-large"
         ldm = LatentDiffusionPipeline.from_pretrained(model_id)
 
+        # TODO (Anton): move to the scheduler_config.json after refactoring
+        noise_scheduler = DiscreteScheduler(
+            num_timesteps=1000,
+            beta_min=0.00085,
+            beta_max=0.012,
+            clip_clean_sample=False,
+        )
+        ldm.noise_scheduler = noise_scheduler
+
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.manual_seed(0)
-        image = ldm([prompt], generator=generator, num_inference_steps=1)
+        image = ldm([prompt], seed=0, num_inference_steps=1)
 
-        image_slice = image[0, -1, -3:, -3:].cpu()
+        image_slice = image[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 3, 256, 256)
-        expected_slice = torch.tensor([0.3163, 0.8670, 0.6465, 0.1865, 0.6291, 0.5139, 0.2824, 0.3723, 0.4344])
-        assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
+        assert image.shape == (1, 256, 256, 3)
+        expected_slice = np.array([0.3163, 0.8670, 0.6465, 0.1865, 0.6291, 0.5139, 0.2824, 0.3723, 0.4344])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
     def test_glide_text2img(self):

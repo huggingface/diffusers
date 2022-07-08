@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -6,13 +6,16 @@ import torch.nn as nn
 import torch.utils.checkpoint
 
 import tqdm
+from transformers import PreTrainedTokenizer
 from transformers.activations import ACT2FN
 from transformers.configuration_utils import PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutput
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import logging
 
+from ...models import UNetLDMModel, VQModel
 from ...pipeline_utils import DiffusionPipeline
+from ...schedulers import DiscreteScheduler
 
 
 ################################################################################
@@ -545,6 +548,12 @@ class LDMBertModel(LDMBertPreTrainedModel):
 
 
 class LatentDiffusionPipeline(DiffusionPipeline):
+    unet: UNetLDMModel
+    vqvae: VQModel
+    bert: LDMBertModel
+    tokenizer: PreTrainedTokenizer
+    noise_scheduler: DiscreteScheduler
+
     def __init__(self, vqvae, bert, tokenizer, unet, noise_scheduler):
         super().__init__()
         noise_scheduler = noise_scheduler.set_format("pt")
@@ -553,89 +562,68 @@ class LatentDiffusionPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt,
-        batch_size=1,
-        generator=None,
-        torch_device=None,
-        eta=0.0,
-        guidance_scale=1.0,
-        num_inference_steps=50,
+        prompt: List[str],
+        eta: float = 0.0,
+        guidance_scale: float = 1.0,
+        num_inference_steps: int = None,
+        seed: int = None,
+        device: str = None,
     ):
-        # eta corresponds to η in paper and should be between [0, 1]
+        if num_inference_steps is None:
+            num_inference_steps = self.noise_scheduler.num_timesteps
+        if device is None:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        batch_size = len(prompt)
+        random_generator = torch.manual_seed(seed)
+        self.unet.to(device)
+        self.vqvae.to(device)
+        self.bert.to(device)
 
-        if torch_device is None:
-            torch_device = "cuda" if torch.cuda.is_available() else "cpu"
-
-        self.unet.to(torch_device)
-        self.vqvae.to(torch_device)
-        self.bert.to(torch_device)
-
-        # get unconditional embeddings for classifier free guidence
+        # get unconditional embeddings for classifier free guidance
         if guidance_scale != 1.0:
-            uncond_input = self.tokenizer([""], padding="max_length", max_length=77, return_tensors="pt").to(
-                torch_device
-            )
-            uncond_embeddings = self.bert(uncond_input.input_ids)
+            uncond_input = self.tokenizer([""] * batch_size, padding="max_length", max_length=77, return_tensors="pt")
+            uncond_embeddings = self.bert(uncond_input.input_ids.to(device))
 
-        # get text embedding
-        text_input = self.tokenizer(prompt, padding="max_length", max_length=77, return_tensors="pt").to(torch_device)
-        text_embedding = self.bert(text_input.input_ids)
+        # get prompt text embeddings
+        text_input = self.tokenizer(prompt, padding="max_length", max_length=77, return_tensors="pt")
+        text_embeddings = self.bert(text_input.input_ids.to(device))
 
-        num_trained_timesteps = self.noise_scheduler.config.timesteps
-        inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps)
-
-        image = torch.randn(
+        latents = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.image_size, self.unet.image_size),
-            generator=generator,
-        ).to(torch_device)
+            generator=random_generator,
+        )
+        latents = latents.to(device)
 
-        # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
-        # Ideally, read DDIM paper in-detail understanding
+        self.noise_scheduler.set_num_inference_steps(num_inference_steps)
 
-        # Notation (<variable name> -> <name in paper>
-        # - pred_noise_t -> e_theta(x_t, t)
-        # - pred_original_image -> f_theta(x_t, t) or x_0
-        # - std_dev_t -> sigma_t
-        # - eta -> η
-        # - pred_image_direction -> "direction pointingc to x_t"
-        # - pred_prev_image -> "x_t-1"
-        for t in tqdm.tqdm(reversed(range(num_inference_steps)), total=num_inference_steps):
-            # guidance_scale of 1 means no guidance
+        for t in reversed(range(num_inference_steps)):
+            # adjust the reduced timestep to the number of training timesteps
+            t = t * (self.noise_scheduler.num_timesteps // num_inference_steps)
+
             if guidance_scale == 1.0:
-                image_in = image
-                context = text_embedding
-                timesteps = torch.tensor([inference_step_times[t]] * image.shape[0], device=torch_device)
+                # Guidance_scale of 1 means no guidance
+                latents_input = latents
+                context = text_embeddings
             else:
-                # for classifier free guidance, we need to do two forward passes
-                # here we concanate embedding and unconditioned embedding in a single batch
+                # For classifier free guidance, we need to do two forward passes.
+                # Here we concatenate the unconditional and text embeddings into a single batch
                 # to avoid doing two forward passes
-                image_in = torch.cat([image] * 2)
-                context = torch.cat([uncond_embeddings, text_embedding])
-                timesteps = torch.tensor([inference_step_times[t]] * image.shape[0], device=torch_device)
+                latents_input = torch.cat([latents] * 2)
+                context = torch.cat([uncond_embeddings, text_embeddings])
 
-            # 1. predict noise residual
-            pred_noise_t = self.unet(image_in, timesteps, context=context)
-
+            # predict the noise residual
+            noise_pred = self.unet(latents_input, t, context=context)
             # perform guidance
             if guidance_scale != 1.0:
-                pred_noise_t_uncond, pred_noise_t = pred_noise_t.chunk(2)
-                pred_noise_t = pred_noise_t_uncond + guidance_scale * (pred_noise_t - pred_noise_t_uncond)
+                noise_pred_uncond, noise_prediction_text = noise_pred.chunk(2)
+                noise_pred = noise_pred_uncond + guidance_scale * (noise_prediction_text - noise_pred_uncond)
 
-            # 2. predict previous mean of image x_t-1
-            pred_prev_image = self.noise_scheduler.step(pred_noise_t, image, t, num_inference_steps, eta)
+            noise = torch.randn(latents.shape, generator=random_generator).to(device)
+            latents = self.noise_scheduler.step(noise_pred, latents, t, eta=eta, noise=noise)
 
-            # 3. optionally sample variance
-            variance = 0
-            if eta > 0:
-                noise = torch.randn(image.shape, generator=generator).to(image.device)
-                variance = self.noise_scheduler.get_variance(t, num_inference_steps).sqrt() * eta * noise
-
-            # 4. set current image to prev_image: x_t -> x_t-1
-            image = pred_prev_image + variance
-
-        # scale and decode image with vae
-        image = 1 / 0.18215 * image
-        image = self.vqvae.decode(image)
-        image = torch.clamp((image + 1.0) / 2.0, min=0.0, max=1.0)
+        # scale and decode the image latents with vae
+        latents = 1 / 0.18215 * latents
+        image = self.vqvae.decode(latents)
+        image = (image / 2 + 0.5).cpu().permute(0, 2, 3, 1).numpy()
 
         return image

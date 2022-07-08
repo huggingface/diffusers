@@ -31,7 +31,14 @@ class DDIMPipeline(DiffusionPipeline):
         self.register_modules(unet=unet, noise_scheduler=noise_scheduler)
 
     @torch.no_grad()
-    def __call__(self, batch_size: int = 1, num_inference_steps: int = None, seed: int = None, device: str = None):
+    def __call__(
+        self,
+        batch_size: int = 1,
+        eta: float = 0.0,
+        num_inference_steps: int = None,
+        seed: int = None,
+        device: str = None,
+    ):
         if num_inference_steps is None:
             num_inference_steps = self.noise_scheduler.num_timesteps
         if device is None:
@@ -39,20 +46,21 @@ class DDIMPipeline(DiffusionPipeline):
         random_generator = torch.manual_seed(seed)
         self.unet.to(device)
 
-        sample = torch.randn(
+        image = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.resolution, self.unet.resolution),
             generator=random_generator,
         )
-        sample = sample.to(device)
+        image = image.to(device)
 
         self.noise_scheduler.set_num_inference_steps(num_inference_steps)
 
         for t in reversed(range(num_inference_steps)):
             # adjust the reduced timestep to the number of training timesteps
             t = t * (self.noise_scheduler.num_timesteps // num_inference_steps)
-            noise_prediction = self.unet(sample, t)
-            sample = self.noise_scheduler.step(noise_prediction, sample, t)
+            noise_prediction = self.unet(image, t)
+            noise = torch.randn(image.shape, generator=random_generator).to(device)
+            image = self.noise_scheduler.step(noise_prediction, image, t, eta=eta, noise=noise)
 
-        image = (sample / 2 + 0.5).cpu().permute(0, 2, 3, 1).numpy()
+        image = (image / 2 + 0.5).cpu().permute(0, 2, 3, 1).numpy()
 
         return image

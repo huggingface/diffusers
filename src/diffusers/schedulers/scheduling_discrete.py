@@ -66,7 +66,7 @@ class DiscreteScheduler(SchedulerMixin, ConfigMixin):
     def set_num_inference_steps(self, num_inference_steps):
         self.num_inference_steps = num_inference_steps
 
-    def step(self, noise_prediction, noisy_sample, t, noise=None):
+    def step(self, noise_prediction, noisy_sample, t, eta=0.0, noise=None):
         """
         A single step of the denoising diffusion process.
 
@@ -74,6 +74,7 @@ class DiscreteScheduler(SchedulerMixin, ConfigMixin):
             noise_prediction: the noise residual predicted by the model
             noisy_sample: the noisy sample at the current timestep
             t: the current timestep
+            eta: the noise magnitude (1.0 for DDPM, 0.0 for DDIM)
             noise: None for the deterministic DDIM, or a noise sample for the stochastic DDPM
         """
         t_next = t - (self.num_timesteps // self.num_inference_steps)
@@ -86,13 +87,14 @@ class DiscreteScheduler(SchedulerMixin, ConfigMixin):
         if self.clip_clean_sample:
             pred_clean = self.clip(pred_clean, -1, 1)
 
+        std_dev = self.sqrt(eta * variance)
+
         clean_sample_coeff = self.sqrt(alpha_cumprod_next)
-        noise_pred_coeff = self.sqrt(1 - alpha_cumprod_next - variance) if t_next > 0 else 0
+        noise_pred_coeff = self.sqrt(1 - alpha_cumprod_next - std_dev**2) if t_next > 0 else 0
 
         next_sample = clean_sample_coeff * pred_clean + noise_pred_coeff * noise_prediction
 
-        if t > 0 and noise is not None:
-            std_dev = self.sqrt(variance)
+        if t > 0 and eta > 0:
             next_sample += std_dev * noise
 
         return next_sample
