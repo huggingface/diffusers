@@ -662,8 +662,12 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
             edge_attr=edge_attr_local[local_edge_mask],
         )  # (E_local, 2H)
         ## Invariant features of edges (bond graph, local)
-        edge_inv_local = self.grad_local_dist_mlp(h_pair_local) * (1.0 / sigma_edge[local_edge_mask])  # (E_local, 1)
-
+        if isinstance(sigma_edge, torch.Tensor):
+            edge_inv_local = self.grad_local_dist_mlp(h_pair_local) * (
+                        1.0 / sigma_edge[local_edge_mask])  # (E_local, 1)
+        else:
+            edge_inv_local = self.grad_local_dist_mlp(h_pair_local) * (1.0 / sigma_edge)  # (E_local, 1)
+            
         if return_edges:
             return edge_inv_global, edge_inv_local, edge_index, edge_type, edge_length, local_edge_mask
         else:
