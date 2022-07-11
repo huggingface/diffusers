@@ -1,11 +1,15 @@
 import torch
 
-import tqdm
-
+from ...models import UNetLDMModel, VQModel
 from ...pipeline_utils import DiffusionPipeline
+from ...schedulers import DiscreteScheduler
 
 
 class LatentDiffusionUncondPipeline(DiffusionPipeline):
+    unet: UNetLDMModel
+    vqvae: VQModel
+    noise_scheduler: DiscreteScheduler
+
     def __init__(self, vqvae, unet, noise_scheduler):
         super().__init__()
         noise_scheduler = noise_scheduler.set_format("pt")
@@ -14,55 +18,37 @@ class LatentDiffusionUncondPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        batch_size=1,
-        generator=None,
-        torch_device=None,
-        eta=0.0,
-        num_inference_steps=50,
+        batch_size: int = 1,
+        eta: float = 0.0,
+        num_inference_steps: int = None,
+        seed: int = None,
+        device: str = None,
     ):
-        # eta corresponds to η in paper and should be between [0, 1]
+        if num_inference_steps is None:
+            num_inference_steps = self.noise_scheduler.num_timesteps
+        if device is None:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        random_generator = torch.manual_seed(seed)
+        self.unet.to(device)
+        self.vqvae.to(device)
 
-        if torch_device is None:
-            torch_device = "cuda" if torch.cuda.is_available() else "cpu"
-
-        self.unet.to(torch_device)
-        self.vqvae.to(torch_device)
-
-        num_trained_timesteps = self.noise_scheduler.config.timesteps
-        inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps)
-
-        image = torch.randn(
+        latents = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.image_size, self.unet.image_size),
-            generator=generator,
-        ).to(torch_device)
+            generator=random_generator,
+        )
+        latents = latents.to(device)
 
-        # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
-        # Ideally, read DDIM paper in-detail understanding
+        self.noise_scheduler.set_num_inference_steps(num_inference_steps)
 
-        # Notation (<variable name> -> <name in paper>
-        # - pred_noise_t -> e_theta(x_t, t)
-        # - pred_original_image -> f_theta(x_t, t) or x_0
-        # - std_dev_t -> sigma_t
-        # - eta -> η
-        # - pred_image_direction -> "direction pointingc to x_t"
-        # - pred_prev_image -> "x_t-1"
-        for t in tqdm.tqdm(reversed(range(num_inference_steps)), total=num_inference_steps):
-            # 1. predict noise residual
-            timesteps = torch.tensor([inference_step_times[t]] * image.shape[0], device=torch_device)
-            pred_noise_t = self.unet(image, timesteps)
+        for t in reversed(range(num_inference_steps)):
+            # adjust the reduced timestep to the number of training timesteps
+            t = t * (self.noise_scheduler.num_timesteps // num_inference_steps)
+            noise_prediction = self.unet(latents, t)
+            noise = torch.randn(latents.shape, generator=random_generator).to(device)
+            latents = self.noise_scheduler.step(noise_prediction, latents, t, eta=eta, noise=noise)
 
-            # 2. predict previous mean of image x_t-1
-            pred_prev_image = self.noise_scheduler.step(pred_noise_t, image, t, num_inference_steps, eta)
+        # decode the image latents with the VAE
+        image = self.vqvae.decode(latents)
+        image = (image / 2 + 0.5).cpu().permute(0, 2, 3, 1).numpy()
 
-            # 3. optionally sample variance
-            variance = 0
-            if eta > 0:
-                noise = torch.randn(image.shape, generator=generator).to(image.device)
-                variance = self.noise_scheduler.get_variance(t, num_inference_steps).sqrt() * eta * noise
-
-            # 4. set current image to prev_image: x_t -> x_t-1
-            image = pred_prev_image + variance
-
-        # decode image with vae
-        image = self.vqvae.decode(image)
         return image

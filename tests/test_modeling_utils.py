@@ -1186,16 +1186,23 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_ldm_uncond(self):
         ldm = LatentDiffusionUncondPipeline.from_pretrained("fusing/latent-diffusion-celeba-256")
 
-        generator = torch.manual_seed(0)
-        image = ldm(generator=generator, num_inference_steps=5)
-
-        image_slice = image[0, -1, -3:, -3:].cpu()
-
-        assert image.shape == (1, 3, 256, 256)
-        expected_slice = torch.tensor(
-            [-0.1202, -0.1005, -0.0635, -0.0520, -0.1282, -0.0838, -0.0981, -0.1318, -0.1106]
+        # TODO (Anton): move to the scheduler_config.json after refactoring
+        noise_scheduler = DiscreteScheduler(
+            num_timesteps=1000,
+            beta_min=0.0015,
+            beta_max=0.0195,
+            beta_schedule="scaled_linear",
+            clip_clean_sample=False,
         )
-        assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
+        ldm.noise_scheduler = noise_scheduler
+
+        image = ldm(seed=0, num_inference_steps=5)
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 256, 256, 3)
+        expected_slice = np.array([0.4385, 0.4439, 0.4588, 0.4625, 0.4339, 0.4496, 0.4454, 0.4276, 0.4363])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_module_from_pipeline(self):
         model = DiffWave(num_res_layers=4)
