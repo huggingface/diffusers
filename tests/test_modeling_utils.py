@@ -490,10 +490,10 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
             "image_size": 32,
             "in_channels": 4,
             "out_channels": 4,
-            "model_channels": 32,
             "num_res_blocks": 2,
             "attention_resolutions": (16,),
-            "channel_mult": (1, 2),
+            "resnet_input_channels": [32, 32],
+            "resnet_output_channels": [32, 64],
             "num_head_channels": 32,
             "conv_resample": True,
         }
