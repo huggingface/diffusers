@@ -93,6 +93,7 @@ class AttentionBlock(nn.Module):
             self.GroupNorm_0 = nn.GroupNorm(num_groups=num_groups, num_channels=channels, eps=1e-6)
         else:
             self.proj_out = zero_module(nn.Conv1d(channels, channels, 1))
+            self.set_weights(self)
 
         self.is_overwritten = False
 
@@ -123,14 +124,85 @@ class AttentionBlock(nn.Module):
             self.norm.weight.data = self.GroupNorm_0.weight.data
             self.norm.bias.data = self.GroupNorm_0.bias.data
         else:
-            self.proj.weight.data = module.proj_out.weight.data
-            self.proj.bias.data = module.proj_out.bias.data
+            self.proj.weight.data = self.proj_out.weight.data
+            self.proj.bias.data = self.proj_out.bias.data
 
     def forward(self, x, encoder_out=None):
-        if not self.is_overwritten:
+        if not self.is_overwritten and (self.overwrite_qkv or self.overwrite_linear):
             self.set_weights(self)
             self.is_overwritten = True
 
+        b, c, *spatial = x.shape
+        hid_states = self.norm(x).view(b, c, -1)
+
+        qkv = self.qkv(hid_states)
+        bs, width, length = qkv.shape
+        assert width % (3 * self.n_heads) == 0
+        ch = width // (3 * self.n_heads)
+        q, k, v = qkv.reshape(bs * self.n_heads, ch * 3, length).split(ch, dim=1)
+
+        if encoder_out is not None:
+            encoder_kv = self.encoder_kv(encoder_out)
+            assert encoder_kv.shape[1] == self.n_heads * ch * 2
+            ek, ev = encoder_kv.reshape(bs * self.n_heads, ch * 2, -1).split(ch, dim=1)
+            k = torch.cat([ek, k], dim=-1)
+            v = torch.cat([ev, v], dim=-1)
+
+        scale = 1 / math.sqrt(math.sqrt(ch))
+        weight = torch.einsum("bct,bcs->bts", q * scale, k * scale)  # More stable with f16 than dividing afterwards
+        weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
+
+        a = torch.einsum("bts,bcs->bct", weight, v)
+        h = a.reshape(bs, -1, length)
+
+        h = self.proj(h)
+        h = h.reshape(b, c, *spatial)
+
+        result = x + h
+
+        result = result / self.rescale_output_factor
+
+        return result
+
+
+class AttentionBlockNew(nn.Module):
+    """
+    An attention block that allows spatial positions to attend to each other.
+
+    Originally ported from here, but adapted to the N-d case.
+    https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py#L66.
+    """
+
+    def __init__(
+        self,
+        channels,
+        num_head_channels=1,
+        num_groups=32,
+        encoder_channels=None,
+        rescale_output_factor=1.0,
+    ):
+        super().__init__()
+        self.norm = nn.GroupNorm(num_channels=channels, num_groups=num_groups, eps=1e-5, affine=True)
+        self.qkv = nn.Conv1d(channels, channels * 3, 1)
+        self.n_heads = channels // num_head_channels
+        self.rescale_output_factor = rescale_output_factor
+
+        if encoder_channels is not None:
+            self.encoder_kv = nn.Conv1d(encoder_channels, channels * 2, 1)
+
+        self.proj = zero_module(nn.Conv1d(channels, channels, 1))
+
+    def set_weight(self, attn_layer):
+        self.norm.weight.data = attn_layer.norm.weight.data
+        self.norm.bias.data = attn_layer.norm.bias.data
+
+        self.qkv.weight.data = attn_layer.qkv.weight.data
+        self.qkv.bias.data = attn_layer.qkv.bias.data
+
+        self.proj.weight.data = attn_layer.proj.weight.data
+        self.proj.bias.data = attn_layer.proj.bias.data
+
+    def forward(self, x, encoder_out=None):
         b, c, *spatial = x.shape
         hid_states = self.norm(x).view(b, c, -1)
 

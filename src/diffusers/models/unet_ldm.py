@@ -301,6 +301,12 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
         self.input_blocks = nn.ModuleList(
             [TimestepEmbedSequential(conv_nd(dims, in_channels, model_channels, 3, padding=1))]
         )
+
+        self.down_in_conv = self.input_blocks[0][0]
+        self.downsample_blocks = nn.ModuleList([])
+        self.upsample_blocks = nn.ModuleList([])
+
+        # ========================= Down (OLD) =================== #
         self._feature_size = model_channels
         input_block_chans = [model_channels]
         ch = model_channels
@@ -354,6 +360,9 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
                 ds *= 2
                 self._feature_size += ch
 
+        input_channels = [model_channels * mult for mult in [1] + list(channel_mult[:-1])]
+        output_channels = [model_channels * mult for mult in channel_mult]
+
         if num_head_channels == -1:
             dim_head = ch // num_heads
         else:
@@ -365,6 +374,8 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
 
         if dim_head < 0:
             dim_head = None
+
+        # ========================= MID (New) =================== #
         self.mid = UNetMidBlock2D(
             in_channels=ch,
             dropout=dropout,
@@ -414,6 +425,7 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
 
         self._feature_size += ch
 
+        # ========================= Up (Old) =================== #
         self.output_blocks = nn.ModuleList([])
         for level, mult in list(enumerate(channel_mult))[::-1]:
             for i in range(num_res_blocks + 1):
@@ -462,28 +474,6 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
             nn.SiLU(),
             zero_module(conv_nd(dims, model_channels, out_channels, 3, padding=1)),
         )
-        if self.predict_codebook_ids:
-            self.id_predictor = nn.Sequential(
-                normalization(ch),
-                conv_nd(dims, model_channels, n_embed, 1),
-                # nn.LogSoftmax(dim=1)  # change to cross_entropy and produce non-normalized logits
-            )
-
-    def convert_to_fp16(self):
-        """
-        Convert the torso of the model to float16.
-        """
-        self.input_blocks.apply(convert_module_to_f16)
-        self.middle_block.apply(convert_module_to_f16)
-        self.output_blocks.apply(convert_module_to_f16)
-
-    def convert_to_fp32(self):
-        """
-        Convert the torso of the model to float32.
-        """
-        self.input_blocks.apply(convert_module_to_f32)
-        self.middle_block.apply(convert_module_to_f32)
-        self.output_blocks.apply(convert_module_to_f32)
 
     def forward(self, x, timesteps=None, context=None, y=None, **kwargs):
         """
@@ -505,18 +495,18 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
             emb = emb + self.label_emb(y)
 
         h = x.type(self.dtype_)
+
         for module in self.input_blocks:
             h = module(h, emb, context)
             hs.append(h)
+
         h = self.mid(h, emb, context)
+
         for module in self.output_blocks:
             h = torch.cat([h, hs.pop()], dim=1)
             h = module(h, emb, context)
-        h = h.type(x.dtype)
-        if self.predict_codebook_ids:
-            return self.id_predictor(h)
-        else:
-            return self.out(h)
+
+        return self.out(h)
 
 
 class SpatialTransformer(nn.Module):

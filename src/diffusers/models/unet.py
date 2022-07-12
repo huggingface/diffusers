@@ -114,9 +114,7 @@ class UNetModel(ModelMixin, ConfigMixin):
         self.mid.block_2 = ResnetBlock2D(
             in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
         )
-        self.mid_new = UNetMidBlock2D(
-            in_channels=block_in, temb_channels=self.temb_ch, dropout=dropout, overwrite_qkv=True, overwrite_unet=True
-        )
+        self.mid_new = UNetMidBlock2D(in_channels=block_in, temb_channels=self.temb_ch, dropout=dropout)
         self.mid_new.resnets[0] = self.mid.block_1
         self.mid_new.attentions[0] = self.mid.attn_1
         self.mid_new.resnets[1] = self.mid.block_2
@@ -154,7 +152,8 @@ class UNetModel(ModelMixin, ConfigMixin):
         self.norm_out = Normalize(block_in)
         self.conv_out = torch.nn.Conv2d(block_in, out_ch, kernel_size=3, stride=1, padding=1)
 
-    def forward(self, x, timesteps):
+    def forward(self, sample, timesteps):
+        x = sample
         assert x.shape[2] == x.shape[3] == self.resolution
 
         if not torch.is_tensor(timesteps):
