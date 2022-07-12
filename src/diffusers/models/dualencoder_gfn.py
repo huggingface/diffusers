@@ -463,17 +463,6 @@ def eq_transform(score_d, pos, edge_index, edge_length):
     return score_pos
 
 
-def convert_cluster_score_d(cluster_score_d, cluster_pos, cluster_edge_index, cluster_edge_length, subgraph_index):
-    """
-    Args:
-        cluster_score_d:    (E_c, 1)
-        subgraph_index:     (N, )
-    """
-    cluster_score_pos = eq_transform(cluster_score_d, cluster_pos, cluster_edge_index, cluster_edge_length)  # (C, 3)
-    score_pos = cluster_score_pos[subgraph_index]
-    return score_pos
-
-
 def get_beta_schedule(beta_schedule, *, beta_start, beta_end, num_diffusion_timesteps):
     def sigmoid(x):
         return 1 / (np.exp(-x) + 1)
@@ -843,6 +832,75 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
             eta=kwargs.get("eta", 1.0),
         )
 
+    def get_residual_params(
+        self,
+        t,
+        batch,
+        extend_order=False,
+        extend_radius=True,
+        step_lr=0.0000010,
+        clip=1000,
+        clip_local=None,
+        clip_pos=None,
+        min_sigma=0,
+        is_sidechain=None,
+        global_start_sigma=0.5,
+        w_global=1.0,
+        **kwargs,
+    ):
+        atom_type = batch.atom_type
+        bond_index = batch.edge_index
+        bond_type = batch.edge_type
+        num_graphs = batch.num_graphs
+        pos = batch.pos
+
+        timesteps = torch.full(size=(num_graphs,), fill_value=t, dtype=torch.long, device=pos.device)
+
+        edge_inv_global, edge_inv_local, edge_index, edge_type, edge_length, local_edge_mask = self.forward(
+            atom_type=atom_type,
+            pos=batch.pos,
+            bond_index=bond_index,
+            bond_type=bond_type,
+            batch=batch.batch,
+            time_step=timesteps,
+            return_edges=True,
+            extend_order=extend_order,
+            extend_radius=extend_radius,
+        )  # (E_global, 1), (E_local, 1)
+
+        # Local
+        node_eq_local = eq_transform(edge_inv_local, pos, edge_index[:, local_edge_mask], edge_length[local_edge_mask])
+        if clip_local is not None:
+            node_eq_local = clip_norm(node_eq_local, limit=clip_local)
+
+        return edge_inv_global, edge_inv_local, edge_index, edge_type, edge_length, local_edge_mask, node_eq_local
+
+    def get_residual(
+        self,
+        pos,
+        sigma,
+        edge_inv_global,
+        local_edge_mask,
+        edge_index,
+        edge_length,
+        node_eq_local,
+        global_start_sigma=0.5,
+        w_global=1.0,
+        clip=1000.0,
+    ):
+
+        # Global
+        if sigma < global_start_sigma:
+            edge_inv_global = edge_inv_global * (1 - local_edge_mask.view(-1, 1).float())
+            node_eq_global = eq_transform(edge_inv_global, pos, edge_index, edge_length)
+            node_eq_global = clip_norm(node_eq_global, limit=clip)
+        else:
+            node_eq_global = 0
+
+        # Sum
+        eps_pos = node_eq_local + node_eq_global * w_global
+        return -eps_pos
+
     def langevin_dynamics_sample_diffusion(
         self,
         atom_type,
@@ -854,12 +912,9 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
         extend_order,
         extend_radius=True,
         n_steps=100,
-        step_lr=0.0000010,
         clip=1000,
         clip_local=None,
         clip_pos=None,
-        min_sigma=0,
-        is_sidechain=None,
         global_start_sigma=float("inf"),
         w_global=0.2,
         w_reg=1.0,
@@ -907,12 +962,12 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
                     edge_inv_local, pos, edge_index[:, local_edge_mask], edge_length[local_edge_mask]
                 )
                 if clip_local is not None:
-                    node_eq_local = self.clip_norm(node_eq_local, limit=clip_local)
+                    node_eq_local = clip_norm(node_eq_local, limit=clip_local)
                 # Global
                 if sigmas[i] < global_start_sigma:
                     edge_inv_global = edge_inv_global * (1 - local_edge_mask.view(-1, 1).float())
                     node_eq_global = eq_transform(edge_inv_global, pos, edge_index, edge_length)
-                    node_eq_global = self.clip_norm(node_eq_global, limit=clip)
+                    node_eq_global = clip_norm(node_eq_global, limit=clip)
                 else:
                     node_eq_global = 0
                 # Sum
@@ -991,10 +1046,11 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
 
         return pos, pos_traj
 
-    def clip_norm(vec, limit, p=2):
-        norm = torch.norm(vec, dim=-1, p=2, keepdim=True)
-        denom = torch.where(norm > limit, limit / norm, torch.ones_like(norm))
-        return vec * denom
+
+def clip_norm(vec, limit, p=2):
+    norm = torch.norm(vec, dim=-1, p=2, keepdim=True)
+    denom = torch.where(norm > limit, limit / norm, torch.ones_like(norm))
+    return vec * denom
 
 
 def is_bond(edge_type):

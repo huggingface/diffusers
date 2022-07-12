@@ -138,6 +138,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 =======
             self.betas = betas_for_alpha_bar(timesteps)
         elif beta_schedule == "sigmoid":
+
             def sigmoid(x):
                 return 1 / (np.exp(-x) + 1)
 
