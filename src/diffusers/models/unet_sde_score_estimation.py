@@ -323,7 +323,8 @@ class NCSNpp(ModelMixin, ConfigMixin):
 
         self.all_modules = nn.ModuleList(modules)
 
-    def forward(self, x, timesteps, sigmas=None):
+    def forward(self, sample, timesteps, sigmas=None):
+        x = sample
         # timestep/noise_level embedding; only for continuous training
         modules = self.all_modules
         m_idx = 0

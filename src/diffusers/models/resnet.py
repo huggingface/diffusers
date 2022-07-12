@@ -461,6 +461,7 @@ class ResnetBlock2D(nn.Module):
                 self.skip_connection = nn.Identity()
             else:
                 self.skip_connection = nn.Conv2d(channels, self.out_channels, 1)
+            self.set_weights_ldm()
         elif self.overwrite_for_score_vde:
             in_ch = in_channels
             out_ch = out_channels
@@ -550,9 +551,6 @@ class ResnetBlock2D(nn.Module):
         if self.overwrite_for_grad_tts and not self.is_overwritten:
             self.set_weights_grad_tts()
             self.is_overwritten = True
-        elif self.overwrite_for_ldm and not self.is_overwritten:
-            self.set_weights_ldm()
-            self.is_overwritten = True
         elif self.overwrite_for_score_vde and not self.is_overwritten:
             self.set_weights_score_vde()
             self.is_overwritten = True
@@ -608,6 +606,162 @@ class ResnetBlock2D(nn.Module):
             x = self.nin_shortcut(x)
 
         return (x + h) / self.output_scale_factor
+
+
+class ResnetBlock(nn.Module):
+    def __init__(
+        self,
+        *,
+        in_channels,
+        out_channels=None,
+        conv_shortcut=False,
+        dropout=0.0,
+        temb_channels=512,
+        groups=32,
+        groups_out=None,
+        pre_norm=True,
+        eps=1e-6,
+        non_linearity="swish",
+        time_embedding_norm="default",
+        kernel=None,
+        output_scale_factor=1.0,
+        use_nin_shortcut=None,
+        up=False,
+        down=False,
+        overwrite_for_grad_tts=False,
+        overwrite_for_ldm=False,
+        overwrite_for_glide=False,
+        overwrite_for_score_vde=False,
+    ):
+        super().__init__()
+        self.pre_norm = pre_norm
+        self.pre_norm = True
+        self.in_channels = in_channels
+        out_channels = in_channels if out_channels is None else out_channels
+        self.out_channels = out_channels
+        self.use_conv_shortcut = conv_shortcut
+        self.time_embedding_norm = time_embedding_norm
+        self.up = up
+        self.down = down
+        self.output_scale_factor = output_scale_factor
+
+        if groups_out is None:
+            groups_out = groups
+
+        if self.pre_norm:
+            self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
+        else:
+            self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=out_channels, eps=eps, affine=True)
+
+        self.conv1 = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+
+        if time_embedding_norm == "default" and temb_channels > 0:
+            self.temb_proj = torch.nn.Linear(temb_channels, out_channels)
+        elif time_embedding_norm == "scale_shift" and temb_channels > 0:
+            self.temb_proj = torch.nn.Linear(temb_channels, 2 * out_channels)
+
+        self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
+        self.dropout = torch.nn.Dropout(dropout)
+        self.conv2 = torch.nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
+
+        if non_linearity == "swish":
+            self.nonlinearity = lambda x: F.silu(x)
+        elif non_linearity == "mish":
+            self.nonlinearity = Mish()
+        elif non_linearity == "silu":
+            self.nonlinearity = nn.SiLU()
+
+        self.upsample = self.downsample = None
+        if self.up:
+            if kernel == "fir":
+                fir_kernel = (1, 3, 3, 1)
+                self.upsample = lambda x: upsample_2d(x, k=fir_kernel)
+            elif kernel == "sde_vp":
+                self.upsample = partial(F.interpolate, scale_factor=2.0, mode="nearest")
+            else:
+                self.upsample = Upsample2D(in_channels, use_conv=False)
+        elif self.down:
+            if kernel == "fir":
+                fir_kernel = (1, 3, 3, 1)
+                self.downsample = lambda x: downsample_2d(x, k=fir_kernel)
+            elif kernel == "sde_vp":
+                self.downsample = partial(F.avg_pool2d, kernel_size=2, stride=2)
+            else:
+                self.downsample = Downsample2D(in_channels, use_conv=False, padding=1, name="op")
+
+        self.use_nin_shortcut = self.in_channels != self.out_channels if use_nin_shortcut is None else use_nin_shortcut
+
+        self.nin_shortcut = None
+        if self.use_nin_shortcut:
+            self.nin_shortcut = torch.nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x, temb):
+        h = x
+        if self.pre_norm:
+            h = self.norm1(h)
+            h = self.nonlinearity(h)
+
+        if self.upsample is not None:
+            x = self.upsample(x)
+            h = self.upsample(h)
+        elif self.downsample is not None:
+            x = self.downsample(x)
+            h = self.downsample(h)
+
+        h = self.conv1(h)
+
+        if not self.pre_norm:
+            h = self.norm1(h)
+            h = self.nonlinearity(h)
+
+        if temb is not None:
+            temb = self.temb_proj(self.nonlinearity(temb))[:, :, None, None]
+        else:
+            temb = 0
+
+        if self.time_embedding_norm == "scale_shift":
+            scale, shift = torch.chunk(temb, 2, dim=1)
+
+            h = self.norm2(h)
+            h = h + h * scale + shift
+            h = self.nonlinearity(h)
+        elif self.time_embedding_norm == "default":
+            h = h + temb
+            if self.pre_norm:
+                h = self.norm2(h)
+                h = self.nonlinearity(h)
+
+        h = self.dropout(h)
+        h = self.conv2(h)
+
+        if not self.pre_norm:
+            h = self.norm2(h)
+            h = self.nonlinearity(h)
+
+        if self.nin_shortcut is not None:
+            x = self.nin_shortcut(x)
+
+        return (x + h) / self.output_scale_factor
+
+    def set_weight(self, resnet):
+        self.norm1.weight.data = resnet.norm1.weight.data
+        self.norm1.bias.data = resnet.norm1.bias.data
+
+        self.conv1.weight.data = resnet.conv1.weight.data
+        self.conv1.bias.data = resnet.conv1.bias.data
+
+        self.temb_proj.weight.data = resnet.temb_proj.weight.data
+        self.temb_proj.bias.data = resnet.temb_proj.bias.data
+
+        self.norm2.weight.data = resnet.norm2.weight.data
+        self.norm2.bias.data = resnet.norm2.bias.data
+
+        self.conv2.weight.data = resnet.conv2.weight.data
+        self.conv2.bias.data = resnet.conv2.bias.data
+
+        if self.use_nin_shortcut:
+            self.nin_shortcut.weight.data = resnet.nin_shortcut.weight.data
+            self.nin_shortcut.bias.data = resnet.nin_shortcut.bias.data
 
 
 # TODO(Patrick) - just there to convert the weights; can delete afterward

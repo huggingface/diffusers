@@ -438,7 +438,8 @@ class GlideTextToImageUNetModel(GlideUNetModel):
 
         self.transformer_proj = nn.Linear(transformer_dim, self.model_channels * 4)
 
-    def forward(self, x, timesteps, transformer_out=None):
+    def forward(self, sample, timesteps, transformer_out=None):
+        x = sample
         hs = []
         emb = self.time_embed(
             get_timestep_embedding(timesteps, self.model_channels, flip_sin_to_cos=True, downscale_freq_shift=0)
@@ -528,7 +529,8 @@ class GlideSuperResUNetModel(GlideUNetModel):
             resblock_updown=resblock_updown,
         )
 
-    def forward(self, x, timesteps, low_res=None):
+    def forward(self, sample, timesteps, low_res=None):
+        x = sample
         _, _, new_height, new_width = x.shape
         upsampled = F.interpolate(low_res, (new_height, new_width), mode="bilinear")
         x = torch.cat([x, upsampled], dim=1)

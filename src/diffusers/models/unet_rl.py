@@ -129,10 +129,11 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
             nn.Conv1d(dim, transition_dim, 1),
         )
 
-    def forward(self, x, timesteps):
+    def forward(self, sample, timesteps):
         """
         x : [ batch x horizon x transition ]
         """
+        x = sample
 
         x = x.permute(0, 2, 1)
 
@@ -212,7 +213,6 @@ class TemporalValue(nn.Module):
         """
         x : [ batch x horizon x transition ]
         """
-
         x = x.permute(0, 2, 1)
 
         t = self.time_mlp(time)

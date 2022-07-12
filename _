@@ -11,7 +11,7 @@ from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .embeddings import get_timestep_embedding
 from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
-from .unet_new import UNetMidBlock2D
+from .unet_new import UNetMidBlock2D, UNetResAttnDownBlock2D, UNetResDownBlock2D, UNetResAttnUpBlock2D, UNetResUpBlock2D
 
 
 # from .resnet import ResBlock
@@ -363,6 +363,35 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
         input_channels = [model_channels * mult for mult in [1] + list(channel_mult[:-1])]
         output_channels = [model_channels * mult for mult in channel_mult]
 
+        # ========================= Down (NEW) =================== #
+        ds_new = 1
+        for i, (input_channel, output_channel) in enumerate(zip(input_channels, output_channels)):
+            is_final_block = (i == len(input_channels) - 1)
+
+            if ds_new in attention_resolutions:
+                down_block = UNetResAttnDownBlock2D(num_layers=num_res_blocks, in_channels=input_channel, out_channels=output_channel, temb_channels=time_embed_dim, add_downsample=not is_final_block)
+            else:
+                down_block = UNetResDownBlock2D(num_layers=num_res_blocks, in_channels=input_channel, out_channels=output_channel, temb_channels=time_embed_dim, add_downsample=not is_final_block)
+
+            self.downsample_blocks.append(down_block)
+
+            ds_new *= 2
+
+        ds_new = ds_new / 2
+
+        # ================ TO DELETE AFTER HAVING CLEANED UP THE CODE ==================
+        for i, input_layer in enumerate(self.input_blocks[1:]):
+            block_id = (i // (num_res_blocks + 1))
+            layer_in_block_id = i % (num_res_blocks + 1)
+
+            if layer_in_block_id == 2:
+                self.downsample_blocks[block_id].downsamplers[0] = input_layer[0]
+            elif len(input_layer) > 1:
+                self.downsample_blocks[block_id].resnets[layer_in_block_id] = input_layer[0]
+                self.downsample_blocks[block_id].attentions[layer_in_block_id] = input_layer[1]
+            else:
+                self.downsample_blocks[block_id].resnets[layer_in_block_id] = input_layer[0]
+
         if num_head_channels == -1:
             dim_head = ch // num_heads
         else:
@@ -469,6 +498,52 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
                 self.output_blocks.append(TimestepEmbedSequential(*layers))
                 self._feature_size += ch
 
+        input_channels = [model_channels * mult for mult in channel_mult]
+        output_channels = [model_channels * mult for mult in channel_mult]
+
+        # ========================= Up (New) =================== #
+        for i, (input_channel, output_channel) in enumerate(zip(reversed(input_channels), reversed(output_channels))):
+            is_final_block = (i == len(input_channels) - 1)
+
+            if ds_new in attention_resolutions:
+                up_block = UNetResAttnUpBlock2D(num_layers=num_res_blocks + 1, in_channels=input_channel, out_channels=output_channel, temb_channels=time_embed_dim, add_upsample=not is_final_block)
+            else:
+                up_block = UNetResUpBlock2D(num_layers=num_res_blocks + 1, in_channels=output_channel, out_channels=input_channel, temb_channels=time_embed_dim, add_upsample=not is_final_block)
+
+            self.upsample_blocks.append(up_block)
+
+            ds_new /= 2
+
+        # ================ TO DELETE AFTER HAVING CLEANED UP THE CODE ==================
+        for i, input_layer in enumerate(self.output_blocks):
+            block_id = (i // (num_res_blocks + 1))
+            layer_in_block_id = i % (num_res_blocks + 1)
+
+            import ipdb; ipdb.set_trace()
+            if len(input_layer) > 2:
+                self.upsample_blocks[block_id].resnets[layer_in_block_id] = input_layer[0]
+                self.upsample_blocks[block_id].attentions[layer_in_block_id] = input_layer[1]
+                self.upsample_blocks[block_id].upsamplers[layer_in_block_id] = input_layer[2]
+            elif len(input_layer) > 1:
+                self.upsample_blocks[block_id].resnets.append(input_layer[0])
+                self.upsample_blocks[block_id].attentions.append(input_layer[1])
+            else:
+                self.upsample_blocks[block_id].resnets.append(input_layer[0])
+
+#        if num_head_channels == -1:
+#            dim_head = ch // num_heads
+#        else:
+#            num_heads = ch // num_head_channels
+#            dim_head = num_head_channels
+#        if legacy:
+            # num_heads = 1
+#            dim_head = ch // num_heads if use_spatial_transformer else num_head_channels
+#
+#        if dim_head < 0:
+#            dim_head = None
+
+        import ipdb; ipdb.set_trace()
+
         self.out = nn.Sequential(
             normalization(ch),
             nn.SiLU(),
@@ -495,18 +570,35 @@ class UNetLDMModel(ModelMixin, ConfigMixin):
             emb = emb + self.label_emb(y)
 
         h = x.type(self.dtype_)
+        h_new = h
 
         for module in self.input_blocks:
             h = module(h, emb, context)
             hs.append(h)
+
+        h_new = self.down_in_conv(h_new)
+        hs_new = (h_new,)
+        for downsample_block in self.downsample_blocks:
+            h_new, states = downsample_block(h_new, emb)
+            hs_new += states
+
+        print("h diff", (h - h_new).abs().sum())
+        print("hs diff", sum([(hs[i] - hs_new[i]).abs().sum() for i in range(len(hs))]))
+
+        hs = list(hs_new)
+        h = h_new
 
         h = self.mid(h, emb, context)
 
         for module in self.output_blocks:
             h = torch.cat([h, hs.pop()], dim=1)
             h = module(h, emb, context)
+        h = h.type(x.dtype)
 
-        return self.out(h)
+        if self.predict_codebook_ids:
+            return self.id_predictor(h)
+        else:
+            return self.out(h)
 
 
 class SpatialTransformer(nn.Module):

@@ -46,6 +46,7 @@ from diffusers import (
     UNetGradTTSModel,
     UNetLDMModel,
     UNetModel,
+    UNetUnconditionalModel,
     VQModel,
 )
 from diffusers.configuration_utils import ConfigMixin
@@ -146,7 +147,7 @@ class ModelTesterMixin:
             output = model(**inputs_dict)
 
         self.assertIsNotNone(output)
-        expected_shape = inputs_dict["x"].shape
+        expected_shape = inputs_dict["sample"].shape
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
     def test_forward_signature(self):
@@ -157,7 +158,7 @@ class ModelTesterMixin:
         # signature.parameters is an OrderedDict => so arg_names order is deterministic
         arg_names = [*signature.parameters.keys()]
 
-        expected_arg_names = ["x", "timesteps"]
+        expected_arg_names = ["sample", "timesteps"]
         self.assertListEqual(arg_names[:2], expected_arg_names)
 
     def test_model_from_config(self):
@@ -194,7 +195,7 @@ class ModelTesterMixin:
         model.to(torch_device)
         model.train()
         output = model(**inputs_dict)
-        noise = torch.randn((inputs_dict["x"].shape[0],) + self.output_shape).to(torch_device)
+        noise = torch.randn((inputs_dict["sample"].shape[0],) + self.output_shape).to(torch_device)
         loss = torch.nn.functional.mse_loss(output, noise)
         loss.backward()
 
@@ -207,7 +208,7 @@ class ModelTesterMixin:
         ema_model = EMAModel(model, device=torch_device)
 
         output = model(**inputs_dict)
-        noise = torch.randn((inputs_dict["x"].shape[0],) + self.output_shape).to(torch_device)
+        noise = torch.randn((inputs_dict["sample"].shape[0],) + self.output_shape).to(torch_device)
         loss = torch.nn.functional.mse_loss(output, noise)
         loss.backward()
         ema_model.step(model)
@@ -225,7 +226,7 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
         noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
         time_step = torch.tensor([10]).to(torch_device)
 
-        return {"x": noise, "timesteps": time_step}
+        return {"sample": noise, "timesteps": time_step}
 
     @property
     def input_shape(self):
@@ -291,7 +292,7 @@ class GlideSuperResUNetTests(ModelTesterMixin, unittest.TestCase):
         low_res = torch.randn((batch_size, 3) + low_res_size).to(torch_device)
         time_step = torch.tensor([10] * noise.shape[0], device=torch_device)
 
-        return {"x": noise, "timesteps": time_step, "low_res": low_res}
+        return {"sample": noise, "timesteps": time_step, "low_res": low_res}
 
     @property
     def input_shape(self):
@@ -330,7 +331,7 @@ class GlideSuperResUNetTests(ModelTesterMixin, unittest.TestCase):
         output, _ = torch.split(output, 3, dim=1)
 
         self.assertIsNotNone(output)
-        expected_shape = inputs_dict["x"].shape
+        expected_shape = inputs_dict["sample"].shape
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
     def test_from_pretrained_hub(self):
@@ -382,7 +383,7 @@ class GlideTextToImageUNetModelTests(ModelTesterMixin, unittest.TestCase):
         emb = torch.randn((batch_size, seq_len, transformer_dim)).to(torch_device)
         time_step = torch.tensor([10] * noise.shape[0], device=torch_device)
 
-        return {"x": noise, "timesteps": time_step, "transformer_out": emb}
+        return {"sample": noise, "timesteps": time_step, "transformer_out": emb}
 
     @property
     def input_shape(self):
@@ -422,7 +423,7 @@ class GlideTextToImageUNetModelTests(ModelTesterMixin, unittest.TestCase):
         output, _ = torch.split(output, 3, dim=1)
 
         self.assertIsNotNone(output)
-        expected_shape = inputs_dict["x"].shape
+        expected_shape = inputs_dict["sample"].shape
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
     def test_from_pretrained_hub(self):
@@ -463,7 +464,7 @@ class GlideTextToImageUNetModelTests(ModelTesterMixin, unittest.TestCase):
 
 
 class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
-    model_class = UNetLDMModel
+    model_class = UNetUnconditionalModel
 
     @property
     def dummy_input(self):
@@ -474,7 +475,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
         time_step = torch.tensor([10]).to(torch_device)
 
-        return {"x": noise, "timesteps": time_step}
+        return {"sample": noise, "timesteps": time_step}
 
     @property
     def input_shape(self):
@@ -493,14 +494,14 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
             "num_res_blocks": 2,
             "attention_resolutions": (16,),
             "channel_mult": (1, 2),
-            "num_heads": 2,
+            "num_head_channels": 32,
             "conv_resample": True,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
     def test_from_pretrained_hub(self):
-        model, loading_info = UNetLDMModel.from_pretrained("fusing/unet-ldm-dummy", output_loading_info=True)
+        model, loading_info = UNetUnconditionalModel.from_pretrained("fusing/unet-ldm-dummy", output_loading_info=True)
         self.assertIsNotNone(model)
         self.assertEqual(len(loading_info["missing_keys"]), 0)
 
@@ -510,7 +511,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained(self):
-        model = UNetLDMModel.from_pretrained("fusing/unet-ldm-dummy")
+        model = UNetUnconditionalModel.from_pretrained("fusing/unet-ldm-dummy")
         model.eval()
 
         torch.manual_seed(0)
@@ -567,7 +568,7 @@ class UNetGradTTSModelTests(ModelTesterMixin, unittest.TestCase):
         mask = floats_tensor((batch_size, 1, seq_len)).to(torch_device)
         time_step = torch.tensor([10] * batch_size).to(torch_device)
 
-        return {"x": noise, "timesteps": time_step, "mu": condition, "mask": mask}
+        return {"sample": noise, "timesteps": time_step, "mu": condition, "mask": mask}
 
     @property
     def input_shape(self):
@@ -637,7 +638,7 @@ class TemporalUNetModelTests(ModelTesterMixin, unittest.TestCase):
         noise = floats_tensor((batch_size, seq_len, num_features)).to(torch_device)
         time_step = torch.tensor([10] * batch_size).to(torch_device)
 
-        return {"x": noise, "timesteps": time_step}
+        return {"sample": noise, "timesteps": time_step}
 
     @property
     def input_shape(self):
@@ -708,7 +709,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
         time_step = torch.tensor(batch_size * [10]).to(torch_device)
 
-        return {"x": noise, "timesteps": time_step}
+        return {"sample": noise, "timesteps": time_step}
 
     @property
     def input_shape(self):
@@ -834,7 +835,7 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
 
         image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
 
-        return {"x": image}
+        return {"sample": image}
 
     @property
     def input_shape(self):
@@ -909,7 +910,7 @@ class AutoEncoderKLTests(ModelTesterMixin, unittest.TestCase):
 
         image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
 
-        return {"x": image}
+        return {"sample": image}
 
     @property
     def input_shape(self):

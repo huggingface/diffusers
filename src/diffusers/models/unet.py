@@ -152,7 +152,8 @@ class UNetModel(ModelMixin, ConfigMixin):
         self.norm_out = Normalize(block_in)
         self.conv_out = torch.nn.Conv2d(block_in, out_ch, kernel_size=3, stride=1, padding=1)
 
-    def forward(self, x, timesteps):
+    def forward(self, sample, timesteps):
+        x = sample
         assert x.shape[2] == x.shape[3] == self.resolution
 
         if not torch.is_tensor(timesteps):

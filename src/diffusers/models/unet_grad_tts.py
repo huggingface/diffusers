@@ -180,7 +180,8 @@ class UNetGradTTSModel(ModelMixin, ConfigMixin):
         self.final_block = Block(dim, dim)
         self.final_conv = torch.nn.Conv2d(dim, 1, 1)
 
-    def forward(self, x, timesteps, mu, mask, spk=None):
+    def forward(self, sample, timesteps, mu, mask, spk=None):
+        x = sample
         if self.n_spks > 1:
             # Get speaker embedding
             spk = self.spk_emb(spk)
