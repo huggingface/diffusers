@@ -491,11 +491,13 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
             "in_channels": 4,
             "out_channels": 4,
             "num_res_blocks": 2,
-            "attention_resolutions": (16,),
+#            "attention_resolutions": (16,),
             "resnet_input_channels": [32, 32],
             "resnet_output_channels": [32, 64],
             "num_head_channels": 32,
             "conv_resample": True,
+            "down_blocks": ("UNetResDownBlock2D", "UNetResDownBlock2D"),
+            "up_blocks": ("UNetResUpBlock2D", "UNetResUpBlock2D"),
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
