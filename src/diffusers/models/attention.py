@@ -213,7 +213,7 @@ class AttentionBlock(nn.Module):
         a = torch.einsum("bts,bcs->bct", weight, v)
         h = a.reshape(bs, -1, length)
 
-        # h = self.proj(h)
+        h = self.proj(h)
         h = h.reshape(b, c, *spatial)
 
         result = x + h
