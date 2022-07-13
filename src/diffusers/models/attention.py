@@ -31,7 +31,65 @@ class LinearAttention(torch.nn.Module):
         out = out.reshape(b, self.heads, self.dim_head, h, w).reshape(b, self.heads * self.dim_head, h, w)
         return self.to_out(out)
 
+class AttentionBlockLinearNew(nn.Module):
+    """
+    An attention block that allows spatial positions to attend to each other.
 
+    Originally ported from here, but adapted to the N-d case.
+    https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py#L66.
+    
+    Uses three q, k, v linear layers to compute attention
+    """
+
+    def __init__(
+        self,
+        channels,
+        num_heads=1,
+        num_head_channels=None,
+        num_groups=32,
+        rescale_output_factor=1.0,
+    ):
+        super().__init__()
+        self.channels = channels
+        if num_head_channels is None:
+            self.num_heads = num_heads
+        else:
+            assert (
+                channels % num_head_channels == 0
+            ), f"q,k,v channels {channels} is not divisible by num_head_channels {num_head_channels}"
+            self.num_heads = channels // num_head_channels
+
+        self.group_norm = nn.GroupNorm(num_channels=channels, num_groups=num_groups, eps=1e-5, affine=True)
+        
+        # define q,k,v as linear layers
+        self.query = nn.Linear(channels,channels)
+        self.key = nn.Linear(channels,channels)
+        self.value = nn.Linear(channels,channels)
+        
+        self.rescale_output_factor = rescale_output_factor
+        self.proj = zero_module(nn.Linear(channels, channels, 1))
+
+    def forward(self, hidden_states):
+        residual = hidden_states
+        batch,channel, *spatial = hidden_states.shape
+        hidden_states = self.group_norm(hidden_states)
+        hidden_states = hidden_states.view(batch, channel, -1).permute(0,2,1) 
+        
+        value_layer = self.value(hidden_states)
+        key_layer = self.key(hidden_states)
+        query_layer = self.query(hidden_states)
+        
+        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+        attention_scores = attention_scores / math.sqrt(self.channels)
+        attention_probs = nn.functional.softmax(attention_scores, dim=-1)
+        
+        hidden_states = torch.matmul(attention_probs, value_layer)
+        hidden_states = self.proj(hidden_states)
+        hidden_states = hidden_states.transpose(-1,-2).view(batch,channel,*spatial) + residual
+        hidden_states = hidden_states / self.rescale_output_factor
+        
+        return hidden_states
+    
 # the main attention block that is used for all models
 class AttentionBlock(nn.Module):
     """
@@ -155,7 +213,7 @@ class AttentionBlock(nn.Module):
         a = torch.einsum("bts,bcs->bct", weight, v)
         h = a.reshape(bs, -1, length)
 
-        h = self.proj(h)
+        # h = self.proj(h)
         h = h.reshape(b, c, *spatial)
 
         result = x + h
