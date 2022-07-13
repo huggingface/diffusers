@@ -783,7 +783,7 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
             extend_radius=extend_radius,
         )  # (E_global, 1), (E_local, 1)
 
-        # Local
+        # Important equation in the paper for equivariant features - eqns 5-7 of GeoDiff
         node_eq_local = eq_transform(edge_inv_local, pos, edge_index[:, local_edge_mask], edge_length[local_edge_mask])
         if clip_local is not None:
             node_eq_local = clip_norm(node_eq_local, limit=clip_local)
@@ -828,8 +828,6 @@ def clip_norm(vec, limit, p=2):
     return vec * denom
 
 
-
-
 def is_local_edge(edge_type):
     return edge_type > 0
 
@@ -840,4 +838,3 @@ def is_train_edge(edge_index, is_sidechain):
     else:
         is_sidechain = is_sidechain.bool()
         return torch.logical_or(is_sidechain[edge_index[0]], is_sidechain[edge_index[1]])
-
