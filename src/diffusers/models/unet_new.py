@@ -19,7 +19,17 @@ from .attention import AttentionBlockNew
 from .resnet import Downsample2D, ResnetBlock, Upsample2D
 
 
-def get_down_block(down_block_type, num_layers, in_channels, out_channels, temb_channels, add_downsample, resnet_eps, resnet_act_fn, attn_num_head_channels):
+def get_down_block(
+    down_block_type,
+    num_layers,
+    in_channels,
+    out_channels,
+    temb_channels,
+    add_downsample,
+    resnet_eps,
+    resnet_act_fn,
+    attn_num_head_channels,
+):
     if down_block_type == "UNetResDownBlock2D":
         return UNetResAttnDownBlock2D(
             num_layers=num_layers,
@@ -39,11 +49,21 @@ def get_down_block(down_block_type, num_layers, in_channels, out_channels, temb_
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
-            attn_num_head_channels=attn_num_head_channels
+            attn_num_head_channels=attn_num_head_channels,
         )
 
 
-def get_up_block(up_block_type, num_layers, in_channels, next_channels, temb_channels, add_upsample, resnet_eps, resnet_act_fn, attn_num_head_channels):
+def get_up_block(
+    up_block_type,
+    num_layers,
+    in_channels,
+    next_channels,
+    temb_channels,
+    add_upsample,
+    resnet_eps,
+    resnet_act_fn,
+    attn_num_head_channels,
+):
     if up_block_type == "UNetResUpBlock2D":
         return UNetResUpBlock2D(
             num_layers=num_layers,
@@ -63,7 +83,7 @@ def get_up_block(up_block_type, num_layers, in_channels, next_channels, temb_cha
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
-            attn_num_head_channels=attn_num_head_channels
+            attn_num_head_channels=attn_num_head_channels,
         )
 
 
