@@ -23,7 +23,6 @@ import torch
 
 from diffusers import (
     AutoencoderKL,
-    BDDMPipeline,
     DDIMPipeline,
     DDIMScheduler,
     DDPMPipeline,
@@ -31,8 +30,6 @@ from diffusers import (
     GlidePipeline,
     GlideSuperResUNetModel,
     GlideTextToImageUNetModel,
-    GradTTSPipeline,
-    GradTTSScheduler,
     LatentDiffusionPipeline,
     LatentDiffusionUncondPipeline,
     NCSNpp,
@@ -42,8 +39,6 @@ from diffusers import (
     ScoreSdeVeScheduler,
     ScoreSdeVpPipeline,
     ScoreSdeVpScheduler,
-    TemporalUNet,
-    UNetGradTTSModel,
     UNetLDMModel,
     UNetModel,
     UNetUnconditionalModel,
@@ -51,7 +46,6 @@ from diffusers import (
 )
 from diffusers.configuration_utils import ConfigMixin
 from diffusers.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.bddm.pipeline_bddm import DiffWave
 from diffusers.testing_utils import floats_tensor, slow, torch_device
 from diffusers.training_utils import EMAModel
 
@@ -556,149 +550,6 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
 
 
-class UNetGradTTSModelTests(ModelTesterMixin, unittest.TestCase):
-    model_class = UNetGradTTSModel
-
-    @property
-    def dummy_input(self):
-        batch_size = 4
-        num_features = 32
-        seq_len = 16
-
-        noise = floats_tensor((batch_size, num_features, seq_len)).to(torch_device)
-        condition = floats_tensor((batch_size, num_features, seq_len)).to(torch_device)
-        mask = floats_tensor((batch_size, 1, seq_len)).to(torch_device)
-        time_step = torch.tensor([10] * batch_size).to(torch_device)
-
-        return {"sample": noise, "timesteps": time_step, "mu": condition, "mask": mask}
-
-    @property
-    def input_shape(self):
-        return (4, 32, 16)
-
-    @property
-    def output_shape(self):
-        return (4, 32, 16)
-
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
-            "dim": 64,
-            "groups": 4,
-            "dim_mults": (1, 2),
-            "n_feats": 32,
-            "pe_scale": 1000,
-            "n_spks": 1,
-        }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
-
-    def test_from_pretrained_hub(self):
-        model, loading_info = UNetGradTTSModel.from_pretrained("fusing/unet-grad-tts-dummy", output_loading_info=True)
-        self.assertIsNotNone(model)
-        self.assertEqual(len(loading_info["missing_keys"]), 0)
-
-        model.to(torch_device)
-        image = model(**self.dummy_input)
-
-        assert image is not None, "Make sure output is not None"
-
-    def test_output_pretrained(self):
-        model = UNetGradTTSModel.from_pretrained("fusing/unet-grad-tts-dummy")
-        model.eval()
-
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
-
-        num_features = model.config.n_feats
-        seq_len = 16
-        noise = torch.randn((1, num_features, seq_len))
-        condition = torch.randn((1, num_features, seq_len))
-        mask = torch.randn((1, 1, seq_len))
-        time_step = torch.tensor([10])
-
-        with torch.no_grad():
-            output = model(noise, time_step, condition, mask)
-
-        output_slice = output[0, -3:, -3:].flatten()
-        # fmt: off
-        expected_output_slice = torch.tensor([-0.0690, -0.0531, 0.0633, -0.0660, -0.0541, 0.0650, -0.0656, -0.0555, 0.0617])
-        # fmt: on
-
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))
-
-
-class TemporalUNetModelTests(ModelTesterMixin, unittest.TestCase):
-    model_class = TemporalUNet
-
-    @property
-    def dummy_input(self):
-        batch_size = 4
-        num_features = 14
-        seq_len = 16
-
-        noise = floats_tensor((batch_size, seq_len, num_features)).to(torch_device)
-        time_step = torch.tensor([10] * batch_size).to(torch_device)
-
-        return {"sample": noise, "timesteps": time_step}
-
-    @property
-    def input_shape(self):
-        return (4, 16, 14)
-
-    @property
-    def output_shape(self):
-        return (4, 16, 14)
-
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
-            "training_horizon": 128,
-            "dim": 32,
-            "dim_mults": [1, 4, 8],
-            "predict_epsilon": False,
-            "clip_denoised": True,
-            "transition_dim": 14,
-            "cond_dim": 3,
-        }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
-
-    def test_from_pretrained_hub(self):
-        model, loading_info = TemporalUNet.from_pretrained(
-            "fusing/ddpm-unet-rl-hopper-hor128", output_loading_info=True
-        )
-        self.assertIsNotNone(model)
-        self.assertEqual(len(loading_info["missing_keys"]), 0)
-
-        model.to(torch_device)
-        image = model(**self.dummy_input)
-
-        assert image is not None, "Make sure output is not None"
-
-    def test_output_pretrained(self):
-        model = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor128")
-        model.eval()
-
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
-
-        num_features = model.transition_dim
-        seq_len = 16
-        noise = torch.randn((1, seq_len, num_features))
-        time_step = torch.full((num_features,), 0)
-
-        with torch.no_grad():
-            output = model(noise, time_step)
-
-        output_slice = output[0, -3:, -3:].flatten()
-        # fmt: off
-        expected_output_slice = torch.tensor([-0.2714, 0.1042, -0.0794, -0.2820, 0.0803, -0.0811, -0.2345, 0.0580, -0.0584])
-        # fmt: on
-
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))
-
-
 class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
     model_class = NCSNpp
 
@@ -1117,25 +968,6 @@ class PipelineTesterMixin(unittest.TestCase):
         assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
 
     @slow
-    def test_grad_tts(self):
-        model_id = "fusing/grad-tts-libri-tts"
-        grad_tts = GradTTSPipeline.from_pretrained(model_id)
-        noise_scheduler = GradTTSScheduler()
-        grad_tts.noise_scheduler = noise_scheduler
-
-        text = "Hello world, I missed you so much."
-        generator = torch.manual_seed(0)
-
-        # generate mel spectograms using text
-        mel_spec = grad_tts(text, generator=generator)
-
-        assert mel_spec.shape == (1, 80, 143)
-        expected_slice = torch.tensor(
-            [-6.7584, -6.8347, -6.3293, -6.6437, -6.7233, -6.4684, -6.1187, -6.3172, -6.6890]
-        )
-        assert (mel_spec[0, :3, :3].cpu().flatten() - expected_slice).abs().max() < 1e-2
-
-    @slow
     def test_score_sde_ve_pipeline(self):
         model = NCSNpp.from_pretrained("fusing/ffhq_ncsnpp")
         scheduler = ScoreSdeVeScheduler.from_config("fusing/ffhq_ncsnpp")
@@ -1181,21 +1013,3 @@ class PipelineTesterMixin(unittest.TestCase):
             [-0.1202, -0.1005, -0.0635, -0.0520, -0.1282, -0.0838, -0.0981, -0.1318, -0.1106]
         )
         assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
-
-    def test_module_from_pipeline(self):
-        model = DiffWave(num_res_layers=4)
-        noise_scheduler = DDPMScheduler(timesteps=12)
-
-        bddm = BDDMPipeline(model, noise_scheduler)
-
-        # check if the library name for the diffwave moduel is set to pipeline module
-        self.assertTrue(bddm.config["diffwave"][0] == "bddm")
-
-        # check if we can save and load the pipeline
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            bddm.save_pretrained(tmpdirname)
-            _ = BDDMPipeline.from_pretrained(tmpdirname)
-            # check if the same works using the DifusionPipeline class
-            bddm = DiffusionPipeline.from_pretrained(tmpdirname)
-
-        self.assertTrue(bddm.config["diffwave"][0] == "bddm")
