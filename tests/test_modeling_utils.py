@@ -493,7 +493,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
             "num_res_blocks": 2,
             "attention_resolutions": (16,),
             "block_input_channels": [32, 32],
-            "resnet_output_channels": [32, 64],
+            "block_output_channels": [32, 64],
             "num_head_channels": 32,
             "conv_resample": True,
             "down_blocks": ("UNetResDownBlock2D", "UNetResDownBlock2D"),
