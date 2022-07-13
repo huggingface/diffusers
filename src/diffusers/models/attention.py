@@ -51,6 +51,7 @@ class AttentionBlock(nn.Module):
         overwrite_qkv=False,
         overwrite_linear=False,
         rescale_output_factor=1.0,
+        eps=1e-5,
     ):
         super().__init__()
         self.channels = channels
@@ -62,7 +63,7 @@ class AttentionBlock(nn.Module):
             ), f"q,k,v channels {channels} is not divisible by num_head_channels {num_head_channels}"
             self.num_heads = channels // num_head_channels
 
-        self.norm = nn.GroupNorm(num_channels=channels, num_groups=num_groups, eps=1e-5, affine=True)
+        self.norm = nn.GroupNorm(num_channels=channels, num_groups=num_groups, eps=eps, affine=True)
         self.qkv = nn.Conv1d(channels, channels * 3, 1)
         self.n_heads = self.num_heads
         self.rescale_output_factor = rescale_output_factor
@@ -180,9 +181,11 @@ class AttentionBlockNew(nn.Module):
         num_groups=32,
         encoder_channels=None,
         rescale_output_factor=1.0,
+        eps=1e-5,
     ):
         super().__init__()
-        self.norm = nn.GroupNorm(num_channels=channels, num_groups=num_groups, eps=1e-5, affine=True)
+        self.channels = channels
+        self.norm = nn.GroupNorm(num_channels=channels, num_groups=num_groups, eps=eps, affine=True)
         self.qkv = nn.Conv1d(channels, channels * 3, 1)
         self.n_heads = channels // num_head_channels
         self.rescale_output_factor = rescale_output_factor
@@ -201,6 +204,22 @@ class AttentionBlockNew(nn.Module):
 
         self.proj.weight.data = attn_layer.proj.weight.data
         self.proj.bias.data = attn_layer.proj.bias.data
+
+        if hasattr(attn_layer, "q"):
+            module = attn_layer
+            qkv_weight = torch.cat([module.q.weight.data, module.k.weight.data, module.v.weight.data], dim=0)[
+                :, :, :, 0
+            ]
+            qkv_bias = torch.cat([module.q.bias.data, module.k.bias.data, module.v.bias.data], dim=0)
+
+            self.qkv.weight.data = qkv_weight
+            self.qkv.bias.data = qkv_bias
+
+            proj_out = zero_module(nn.Conv1d(self.channels, self.channels, 1))
+            proj_out.weight.data = module.proj_out.weight.data[:, :, :, 0]
+            proj_out.bias.data = module.proj_out.bias.data
+
+            self.proj = proj_out
 
     def forward(self, x, encoder_out=None):
         b, c, *spatial = x.shape

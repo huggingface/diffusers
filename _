@@ -238,17 +238,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 out_channels,
             )
         if ddpm:
-            self.init_for_ddpm(
-                ch_mult,
-                ch,
-                num_res_blocks,
-                resolution,
-                in_channels,
-                resamp_with_conv,
-                attn_resolutions,
-                out_ch,
-                dropout=0.1,
-            )
+            self.init_for_ddpm(ch_mult, ch, num_res_blocks, resolution, in_channels, resamp_with_conv, attn_resolutions, out_ch, dropout=0.1)
 
     def forward(self, sample, timesteps=None):
         # TODO(PVP) - to delete later
@@ -260,10 +250,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             timesteps = torch.tensor([timesteps], dtype=torch.long, device=sample.device)
 
         t_emb = get_timestep_embedding(
-            timesteps,
-            self.config.down_block_input_channels[0],
-            flip_sin_to_cos=self.config.flip_sin_to_cos,
-            downscale_freq_shift=self.config.downscale_freq_shift,
+            timesteps, self.config.down_block_input_channels[0], flip_sin_to_cos=self.config.flip_sin_to_cos, downscale_freq_shift=self.config.downscale_freq_shift,
         )
         emb = self.time_embed(t_emb)
 
@@ -364,18 +351,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             self.mid_new_2.resnets[1].set_weight(self.mid.block_2)
             self.mid_new_2.attentions[0].set_weight(self.mid.attn_1)
 
-    def init_for_ddpm(
-        self,
-        ch_mult,
-        ch,
-        num_res_blocks,
-        resolution,
-        in_channels,
-        resamp_with_conv,
-        attn_resolutions,
-        out_ch,
-        dropout=0.1,
-    ):
+    def init_for_ddpm(self, ch_mult, ch, num_res_blocks, resolution, in_channels, resamp_with_conv, attn_resolutions, out_ch, dropout=0.1):
         ch_mult = tuple(ch_mult)
         self.ch = ch
         self.temb_ch = self.ch * 4
