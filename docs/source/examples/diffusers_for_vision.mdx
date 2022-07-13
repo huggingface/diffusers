@@ -1,0 +1,149 @@
+<!--Copyright 2022 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
+# Diffusers for vision
+
+## Direct image generation
+
+#### **Example image generation with PNDM**
+
+```python
+from diffusers import PNDM, UNetModel, PNDMScheduler
+import PIL.Image
+import numpy as np
+import torch
+
+model_id = "fusing/ddim-celeba-hq"
+
+model = UNetModel.from_pretrained(model_id)
+scheduler = PNDMScheduler()
+
+# load model and scheduler
+pndm = PNDM(unet=model, noise_scheduler=scheduler)
+
+# run pipeline in inference (sample random noise and denoise)
+with torch.no_grad():
+    image = pndm()
+
+# process image to PIL
+image_processed = image.cpu().permute(0, 2, 3, 1)
+image_processed = (image_processed + 1.0) / 2
+image_processed = torch.clamp(image_processed, 0.0, 1.0)
+image_processed = image_processed * 255
+image_processed = image_processed.numpy().astype(np.uint8)
+image_pil = PIL.Image.fromarray(image_processed[0])
+
+# save image
+image_pil.save("test.png")
+```
+
+#### **Example 1024x1024 image generation with SDE VE**
+
+See [paper](https://arxiv.org/abs/2011.13456) for more information on SDE VE.
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+import PIL.Image
+import numpy as np
+
+torch.manual_seed(32)
+
+score_sde_sv = DiffusionPipeline.from_pretrained("fusing/ffhq_ncsnpp")
+
+# Note this might take up to 3 minutes on a GPU
+image = score_sde_sv(num_inference_steps=2000)
+
+image = image.permute(0, 2, 3, 1).cpu().numpy()
+image = np.clip(image * 255, 0, 255).astype(np.uint8)
+image_pil = PIL.Image.fromarray(image[0])
+
+# save image
+image_pil.save("test.png")
+```
+#### **Example 32x32 image generation with SDE VP**
+
+See [paper](https://arxiv.org/abs/2011.13456) for more information on SDE VE.
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+import PIL.Image
+import numpy as np
+
+torch.manual_seed(32)
+
+score_sde_sv = DiffusionPipeline.from_pretrained("fusing/cifar10-ddpmpp-deep-vp")
+
+# Note this might take up to 3 minutes on a GPU
+image = score_sde_sv(num_inference_steps=1000)
+
+image = image.permute(0, 2, 3, 1).cpu().numpy()
+image = np.clip(image * 255, 0, 255).astype(np.uint8)
+image_pil = PIL.Image.fromarray(image[0])
+
+# save image
+image_pil.save("test.png")
+```
+
+
+#### **Text to Image generation with Latent Diffusion**
+
+_Note: To use latent diffusion install transformers from [this branch](https://github.com/patil-suraj/transformers/tree/ldm-bert)._
+
+```python
+from diffusers import DiffusionPipeline
+
+ldm = DiffusionPipeline.from_pretrained("fusing/latent-diffusion-text2im-large")
+
+generator = torch.manual_seed(42)
+
+prompt = "A painting of a squirrel eating a burger"
+image = ldm([prompt], generator=generator, eta=0.3, guidance_scale=6.0, num_inference_steps=50)
+
+image_processed = image.cpu().permute(0, 2, 3, 1)
+image_processed = image_processed  * 255.
+image_processed = image_processed.numpy().astype(np.uint8)
+image_pil = PIL.Image.fromarray(image_processed[0])
+
+# save image
+image_pil.save("test.png")
+```
+
+
+## Text to image generation
+
+```python
+import torch
+from diffusers import BDDMPipeline, GradTTSPipeline
+
+torch_device = "cuda"
+
+# load grad tts and bddm pipelines
+grad_tts = GradTTSPipeline.from_pretrained("fusing/grad-tts-libri-tts")
+bddm = BDDMPipeline.from_pretrained("fusing/diffwave-vocoder-ljspeech")
+
+text = "Hello world, I missed you so much."
+
+# generate mel spectograms using text
+mel_spec = grad_tts(text, torch_device=torch_device)
+
+#  generate the speech by passing mel spectograms to BDDMPipeline pipeline
+generator = torch.manual_seed(42)
+audio = bddm(mel_spec, generator, torch_device=torch_device)
+
+# save generated audio
+from scipy.io.wavfile import write as wavwrite
+sampling_rate = 22050
+wavwrite("generated_audio.wav", sampling_rate, audio.squeeze().cpu().numpy())
+```
+
