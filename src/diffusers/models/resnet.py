@@ -87,12 +87,21 @@ class Downsample2D(nn.Module):
             self.conv = conv
 
     def forward(self, x):
+        #        print("use_conv", self.use_conv)
+        #        print("padding", self.padding)
         assert x.shape[1] == self.channels
         if self.use_conv and self.padding == 0:
             pad = (0, 1, 0, 1)
             x = F.pad(x, pad, mode="constant", value=0)
 
-        return self.conv(x)
+        #        print("x", x.abs().sum())
+        self.hey = x
+        assert x.shape[1] == self.channels
+        x = self.conv(x)
+        self.yas = x
+        #        print("x", x.abs().sum())
+
+        return x
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
 
 

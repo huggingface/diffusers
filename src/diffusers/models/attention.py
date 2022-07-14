@@ -205,7 +205,7 @@ class AttentionBlockNew(nn.Module):
         self.proj_attn = zero_module(nn.Linear(channels, channels, 1))
 
     def transpose_for_scores(self, projection: torch.Tensor) -> torch.Tensor:
-        new_projection_shape = projection.size()[:-1] + (self.num_heads, self.num_head_size)
+        new_projection_shape = projection.size()[:-1] + (self.num_heads, -1)
         # move heads to 2nd position (B, T, H * D) -> (B, T, H, D) -> (B, H, T, D)
         new_projection = projection.view(new_projection_shape).permute(0, 2, 1, 3)
         return new_projection

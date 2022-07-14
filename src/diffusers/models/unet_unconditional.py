@@ -94,25 +94,6 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
     ):
         super().__init__()
 
-        # DELETE if statements if not necessary anymore
-        # DDPM
-        if ddpm:
-            out_channels = out_ch
-            image_size = resolution
-            block_channels = [x * ch for x in ch_mult]
-            conv_resample = resamp_with_conv
-            flip_sin_to_cos = False
-            downscale_freq_shift = 1
-            resnet_eps = 1e-6
-            block_channels = (32, 64)
-            down_blocks = (
-                "UNetResDownBlock2D",
-                "UNetResAttnDownBlock2D",
-            )
-            up_blocks = ("UNetResAttnUpBlock2D", "UNetResUpBlock2D")
-            downsample_padding = 0
-            num_head_channels = 64
-
         # register all __init__ params with self.register
         self.register_to_config(
             image_size=image_size,
@@ -250,6 +231,10 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 out_channels,
             )
         if ddpm:
+            out_channels = out_ch
+            image_size = resolution
+            block_channels = [x * ch for x in ch_mult]
+            conv_resample = resamp_with_conv
             self.init_for_ddpm(
                 ch_mult,
                 ch,
