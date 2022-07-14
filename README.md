@@ -252,7 +252,7 @@ image_pil.save("test.png")
 ```
 #### **Example 32x32 image generation with SDE VP**
 	
-See [paper](https://arxiv.org/abs/2011.13456) for more information on SDE VE.
+See [paper](https://arxiv.org/abs/2011.13456) for more information on SDE VP.
 
 ```python
 from diffusers import DiffusionPipeline
