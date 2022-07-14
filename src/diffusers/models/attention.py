@@ -50,33 +50,58 @@ class AttentionBlockLinearNew(nn.Module):
     ):
         super().__init__()
         self.hidden_size = hidden_size
-
+        self.num_heads = num_heads
+        self.attention_head_size = int(hidden_size / num_heads)
+        self.out_size = self.num_heads * self.attention_head_size
+        
         self.group_norm = nn.GroupNorm(num_channels=hidden_size, num_groups=num_groups, eps=1e-5, affine=True)
         
         # define q,k,v as linear layers
-        self.query = nn.Linear(hidden_size,hidden_size)
-        self.key = nn.Linear(hidden_size,hidden_size)
-        self.value = nn.Linear(hidden_size,hidden_size)
+        self.query = nn.Linear(hidden_size,self.out_size)
+        self.key = nn.Linear(hidden_size,self.out_size)
+        self.value = nn.Linear(hidden_size,self.out_size)
         
         self.rescale_output_factor = rescale_output_factor
-        self.proj = zero_module(nn.Linear(hidden_size, hidden_size, 1))
-
+        self.proj = zero_module(nn.Linear(self.out_size, hidden_size, 1))
+        
+    def transpose_for_scores(self, x: torch.Tensor) -> torch.Tensor:
+        new_x_shape = x.size()[:-1] + (self.num_heads, self.attention_head_size)
+        x = x.view(new_x_shape)
+        return x.permute(0, 2, 1, 3)
+    
     def forward(self, hidden_states):
+        """
+            The input dimension is [batch_size, hidden_size, height, width]. 
+            The hidden_states will first be converted to [batch_size,  hidden_size, height*width]. 
+            Then it has to be permutated in order to be compatible with the linear layers. 
+            It thus becomes [batch_size, height*width, hidden_size].
+            Each q,k,v linear layer will then be applied to the permuted hidden_states.
+            The output dimension are [batch_size, height*width, self.out_size].
+            
+            The hidden states will be reshaped to [batch_size,  height*width, self.num_heads, self.attention_head_size].
+            Finally, a permutation wil be applied to obtain [batch_size, self.num_heads, self.attention_head_size, height*width]
+            In order to compute the attention score, the key layer has to be transposed. 
+            The contextual layer 
+        """
         residual = hidden_states
         batch,hidden_size, *spatial = hidden_states.shape
         hidden_states = self.group_norm(hidden_states)
         hidden_states = hidden_states.view(batch, hidden_size, -1).permute(0,2,1) 
         
-        value_layer = self.value(hidden_states)
-        key_layer = self.key(hidden_states)
-        query_layer = self.query(hidden_states)
+        value_layer = self.transpose_for_scores(self.value(hidden_states))
+        key_layer = self.transpose_for_scores(self.key(hidden_states))
+        query_layer = self.transpose_for_scores(self.query(hidden_states))
         
         attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
         attention_scores = attention_scores / math.sqrt(self.hidden_size)
         attention_probs = nn.functional.softmax(attention_scores, dim=-1)
         
-        hidden_states = torch.matmul(attention_probs, value_layer)
-        hidden_states = self.proj(hidden_states)
+        context_layer = torch.matmul(attention_probs, value_layer)
+        context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
+        new_context_layer_shape = context_layer.size()[:-2] + (self.out_size,)
+        context_layer = context_layer.view(new_context_layer_shape)
+        
+        hidden_states = self.proj(context_layer)
         hidden_states = hidden_states.transpose(-1,-2).view(batch,hidden_size,*spatial) + residual
         hidden_states = hidden_states / self.rescale_output_factor
         
