@@ -51,6 +51,7 @@ def get_down_block(
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
+            downsample_padding=downsample_padding,
             attn_num_head_channels=attn_num_head_channels,
         )
 
@@ -186,6 +187,7 @@ class UNetResAttnDownBlock2D(nn.Module):
         attn_num_head_channels=1,
         attention_type="default",
         output_scale_factor=1.0,
+        downsample_padding=1,
         add_downsample=True,
     ):
         super().__init__()
@@ -224,7 +226,11 @@ class UNetResAttnDownBlock2D(nn.Module):
 
         if add_downsample:
             self.downsamplers = nn.ModuleList(
-                [Downsample2D(in_channels, use_conv=True, out_channels=out_channels, padding=1, name="op")]
+                [
+                    Downsample2D(
+                        in_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                    )
+                ]
             )
         else:
             self.downsamplers = None

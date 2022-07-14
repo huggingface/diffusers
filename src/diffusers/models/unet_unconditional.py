@@ -94,25 +94,6 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
     ):
         super().__init__()
 
-        # DELETE if statements if not necessary anymore
-        # DDPM
-        if ddpm:
-            out_channels = out_ch
-            image_size = resolution
-            block_channels = [x * ch for x in ch_mult]
-            conv_resample = resamp_with_conv
-            flip_sin_to_cos = False
-            downscale_freq_shift = 1
-            resnet_eps = 1e-6
-            block_channels = (32, 64)
-            down_blocks = (
-                "UNetResDownBlock2D",
-                "UNetResAttnDownBlock2D",
-            )
-            up_blocks = ("UNetResUpBlock2D", "UNetResAttnUpBlock2D")
-            downsample_padding = 0
-            num_head_channels = 64
-
         # register all __init__ params with self.register
         self.register_to_config(
             image_size=image_size,
@@ -250,6 +231,10 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 out_channels,
             )
         if ddpm:
+            out_channels = out_ch
+            image_size = resolution
+            block_channels = [x * ch for x in ch_mult]
+            conv_resample = resamp_with_conv
             self.init_for_ddpm(
                 ch_mult,
                 ch,
@@ -290,13 +275,11 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             # append to tuple
             down_block_res_samples += res_samples
 
-        print("sample", sample.abs().sum())
         # 4. mid block
         if self.config.ddpm:
             sample = self.mid_new_2(sample, emb)
         else:
             sample = self.mid(sample, emb)
-        print("sample", sample.abs().sum())
 
         # 5. up blocks
         for upsample_block in self.upsample_blocks:
@@ -373,8 +356,10 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         elif self.config.ddpm:
             # =============== SET WEIGHTS ===============
             # =============== TIME ======================
-            self.time_embed[0] = self.temb.dense[0]
-            self.time_embed[2] = self.temb.dense[1]
+            self.time_embedding.linear_1.weight.data = self.temb.dense[0].weight.data
+            self.time_embedding.linear_1.bias.data = self.temb.dense[0].bias.data
+            self.time_embedding.linear_2.weight.data = self.temb.dense[1].weight.data
+            self.time_embedding.linear_2.bias.data = self.temb.dense[1].bias.data
 
             for i, block in enumerate(self.down):
                 if hasattr(block, "downsample"):
@@ -390,6 +375,23 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             self.mid_new_2.resnets[0].set_weight(self.mid.block_1)
             self.mid_new_2.resnets[1].set_weight(self.mid.block_2)
             self.mid_new_2.attentions[0].set_weight(self.mid.attn_1)
+
+            for i, block in enumerate(self.up):
+                k = len(self.up) - 1 - i
+                if hasattr(block, "upsample"):
+                    self.upsample_blocks[k].upsamplers[0].conv.weight.data = block.upsample.conv.weight.data
+                    self.upsample_blocks[k].upsamplers[0].conv.bias.data = block.upsample.conv.bias.data
+                if hasattr(block, "block") and len(block.block) > 0:
+                    for j in range(self.num_res_blocks + 1):
+                        self.upsample_blocks[k].resnets[j].set_weight(block.block[j])
+                if hasattr(block, "attn") and len(block.attn) > 0:
+                    for j in range(self.num_res_blocks + 1):
+                        self.upsample_blocks[k].attentions[j].set_weight(block.attn[j])
+
+            self.conv_norm_out.weight.data = self.norm_out.weight.data
+            self.conv_norm_out.bias.data = self.norm_out.bias.data
+
+            self.remove_ddpm()
 
     def init_for_ddpm(
         self,
@@ -685,3 +687,10 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         del self.middle_block
         del self.output_blocks
         del self.out
+
+    def remove_ddpm(self):
+        del self.temb
+        del self.down
+        del self.mid_new
+        del self.up
+        del self.norm_out

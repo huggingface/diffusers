@@ -50,6 +50,8 @@ from diffusers.testing_utils import floats_tensor, slow, torch_device
 from diffusers.training_utils import EMAModel
 
 
+# 1. LDM
+
 def test_output_pretrained_ldm_dummy():
     model = UNetUnconditionalModel.from_pretrained("fusing/unet-ldm-dummy", ldm=True)
     model.eval()
@@ -86,9 +88,38 @@ def test_output_pretrained_ldm():
     import ipdb; ipdb.set_trace()
 
 # To see the how the final model should look like
-test_output_pretrained_ldm_dummy()
-test_output_pretrained_ldm()
 # => this is the architecture in which the model should be saved in the new format
 # -> verify new repo with the following tests (in `test_modeling_utils.py`)
 # - test_ldm_uncond (in PipelineTesterMixin)
 # - test_output_pretrained  ( in UNetLDMModelTests)
+
+#test_output_pretrained_ldm_dummy()
+#test_output_pretrained_ldm()
+
+
+# 2. DDPM
+
+def get_model(model_id):
+    model = UNetUnconditionalModel.from_pretrained("fusing/unet-ldm-dummy", ldm=True)
+
+    noise = torch.randn(1, model.config.in_channels, model.config.image_size, model.config.image_size)
+    time_step = torch.tensor([10] * noise.shape[0])
+
+    with torch.no_grad():
+        output = model(noise, time_step)
+
+    print(model)
+
+# Repos to convert and port to google (part of https://github.com/hojonathanho/diffusion)
+# - fusing/ddpm_dummy
+# - fusing/ddpm-cifar10
+# - https://huggingface.co/fusing/ddpm-lsun-church-ema
+# - https://huggingface.co/fusing/ddpm-lsun-bedroom-ema
+# - https://huggingface.co/fusing/ddpm-celeba-hq
+
+# tests to make sure to pass
+# - test_ddim_cifar10, test_ddim_lsun, test_ddpm_cifar10, test_ddim_cifar10 (in PipelineTesterMixin)
+# - test_output_pretrained  ( in UNetModelTests)
+
+# e.g.
+get_model("fusing/ddpm-cifar10")

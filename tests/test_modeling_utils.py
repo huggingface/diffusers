@@ -40,7 +40,6 @@ from diffusers import (
     ScoreSdeVpPipeline,
     ScoreSdeVpScheduler,
     UNetLDMModel,
-    UNetModel,
     UNetUnconditionalModel,
     VQModel,
 )
@@ -209,7 +208,7 @@ class ModelTesterMixin:
 
 
 class UnetModelTests(ModelTesterMixin, unittest.TestCase):
-    model_class = UNetModel
+    model_class = UNetUnconditionalModel
 
     @property
     def dummy_input(self):
@@ -234,15 +233,24 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
         init_dict = {
             "ch": 32,
             "ch_mult": (1, 2),
+            "block_channels": (32, 64),
+            "down_blocks": ("UNetResDownBlock2D", "UNetResAttnDownBlock2D"),
+            "up_blocks": ("UNetResAttnUpBlock2D", "UNetResUpBlock2D"),
+            "num_head_channels": None,
+            "out_channels": 3,
+            "in_channels": 3,
             "num_res_blocks": 2,
             "attn_resolutions": (16,),
             "resolution": 32,
+            "image_size": 32,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
     def test_from_pretrained_hub(self):
-        model, loading_info = UNetModel.from_pretrained("fusing/ddpm_dummy", output_loading_info=True)
+        model, loading_info = UNetUnconditionalModel.from_pretrained(
+            "fusing/ddpm_dummy", output_loading_info=True, ddpm=True
+        )
         self.assertIsNotNone(model)
         self.assertEqual(len(loading_info["missing_keys"]), 0)
 
@@ -252,27 +260,6 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained(self):
-        model = UNetModel.from_pretrained("fusing/ddpm_dummy")
-        model.eval()
-
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
-
-        noise = torch.randn(1, model.config.in_channels, model.config.resolution, model.config.resolution)
-        time_step = torch.tensor([10])
-
-        with torch.no_grad():
-            output = model(noise, time_step)
-
-        output_slice = output[0, -1, -3:, -3:].flatten()
-        # fmt: off
-        expected_output_slice = torch.tensor([0.2891, -0.1899, 0.2595, -0.6214, 0.0968, -0.2622, 0.4688, 0.1311, 0.0053])
-        # fmt: on
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
-
-        print("Original success!!!")
-
         model = UNetUnconditionalModel.from_pretrained("fusing/ddpm_dummy", ddpm=True)
         model.eval()
 
@@ -849,7 +836,9 @@ class AutoEncoderKLTests(ModelTesterMixin, unittest.TestCase):
 class PipelineTesterMixin(unittest.TestCase):
     def test_from_pretrained_save_pretrained(self):
         # 1. Load models
-        model = UNetModel(ch=32, ch_mult=(1, 2), num_res_blocks=2, attn_resolutions=(16,), resolution=32)
+        model = UNetUnconditionalModel(
+            ch=32, ch_mult=(1, 2), num_res_blocks=2, attn_resolutions=(16,), resolution=32, ddpm=True
+        )
         schedular = DDPMScheduler(timesteps=10)
 
         ddpm = DDPMPipeline(model, schedular)
@@ -888,7 +877,7 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_ddpm_cifar10(self):
         model_id = "fusing/ddpm-cifar10"
 
-        unet = UNetModel.from_pretrained(model_id)
+        unet = UNetUnconditionalModel.from_pretrained(model_id, ddpm=True)
         noise_scheduler = DDPMScheduler.from_config(model_id)
         noise_scheduler = noise_scheduler.set_format("pt")
 
@@ -901,7 +890,28 @@ class PipelineTesterMixin(unittest.TestCase):
 
         assert image.shape == (1, 3, 32, 32)
         expected_slice = torch.tensor(
-            [-0.5712, -0.6215, -0.5953, -0.5438, -0.4775, -0.4539, -0.5172, -0.4872, -0.5105]
+            [-0.1601, -0.2823, -0.6123, -0.2305, -0.3236, -0.4706, -0.1691, -0.2836, -0.3231]
+        )
+        assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
+
+    @slow
+    def test_ddim_lsun(self):
+        model_id = "fusing/ddpm-lsun-bedroom-ema"
+
+        unet = UNetUnconditionalModel.from_pretrained(model_id, ddpm=True)
+        noise_scheduler = DDIMScheduler.from_config(model_id)
+        noise_scheduler = noise_scheduler.set_format("pt")
+
+        ddpm = DDIMPipeline(unet=unet, noise_scheduler=noise_scheduler)
+
+        generator = torch.manual_seed(0)
+        image = ddpm(generator=generator)
+
+        image_slice = image[0, -1, -3:, -3:].cpu()
+
+        assert image.shape == (1, 3, 256, 256)
+        expected_slice = torch.tensor(
+            [-0.9879, -0.9598, -0.9312, -0.9953, -0.9963, -0.9995, -0.9957, -1.0000, -0.9863]
         )
         assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
 
@@ -909,7 +919,7 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_ddim_cifar10(self):
         model_id = "fusing/ddpm-cifar10"
 
-        unet = UNetModel.from_pretrained(model_id)
+        unet = UNetUnconditionalModel.from_pretrained(model_id, ddpm=True)
         noise_scheduler = DDIMScheduler(tensor_format="pt")
 
         ddim = DDIMPipeline(unet=unet, noise_scheduler=noise_scheduler)
@@ -929,7 +939,7 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_pndm_cifar10(self):
         model_id = "fusing/ddpm-cifar10"
 
-        unet = UNetModel.from_pretrained(model_id)
+        unet = UNetUnconditionalModel.from_pretrained(model_id, ddpm=True)
         noise_scheduler = PNDMScheduler(tensor_format="pt")
 
         pndm = PNDMPipeline(unet=unet, noise_scheduler=noise_scheduler)
