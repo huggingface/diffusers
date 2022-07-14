@@ -43,49 +43,41 @@ class AttentionBlockLinearNew(nn.Module):
 
     def __init__(
         self,
-        channels,
-        num_heads=1,
-        num_head_channels=None,
+        hidden_size,
+        num_heads,
         num_groups=32,
         rescale_output_factor=1.0,
     ):
         super().__init__()
-        self.channels = channels
-        if num_head_channels is None:
-            self.num_heads = num_heads
-        else:
-            assert (
-                channels % num_head_channels == 0
-            ), f"q,k,v channels {channels} is not divisible by num_head_channels {num_head_channels}"
-            self.num_heads = channels // num_head_channels
+        self.hidden_size = hidden_size
 
-        self.group_norm = nn.GroupNorm(num_channels=channels, num_groups=num_groups, eps=1e-5, affine=True)
+        self.group_norm = nn.GroupNorm(num_channels=hidden_size, num_groups=num_groups, eps=1e-5, affine=True)
         
         # define q,k,v as linear layers
-        self.query = nn.Linear(channels,channels)
-        self.key = nn.Linear(channels,channels)
-        self.value = nn.Linear(channels,channels)
+        self.query = nn.Linear(hidden_size,hidden_size)
+        self.key = nn.Linear(hidden_size,hidden_size)
+        self.value = nn.Linear(hidden_size,hidden_size)
         
         self.rescale_output_factor = rescale_output_factor
-        self.proj = zero_module(nn.Linear(channels, channels, 1))
+        self.proj = zero_module(nn.Linear(hidden_size, hidden_size, 1))
 
     def forward(self, hidden_states):
         residual = hidden_states
-        batch,channel, *spatial = hidden_states.shape
+        batch,hidden_size, *spatial = hidden_states.shape
         hidden_states = self.group_norm(hidden_states)
-        hidden_states = hidden_states.view(batch, channel, -1).permute(0,2,1) 
+        hidden_states = hidden_states.view(batch, hidden_size, -1).permute(0,2,1) 
         
         value_layer = self.value(hidden_states)
         key_layer = self.key(hidden_states)
         query_layer = self.query(hidden_states)
         
         attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
-        attention_scores = attention_scores / math.sqrt(self.channels)
+        attention_scores = attention_scores / math.sqrt(self.hidden_size)
         attention_probs = nn.functional.softmax(attention_scores, dim=-1)
         
         hidden_states = torch.matmul(attention_probs, value_layer)
         hidden_states = self.proj(hidden_states)
-        hidden_states = hidden_states.transpose(-1,-2).view(batch,channel,*spatial) + residual
+        hidden_states = hidden_states.transpose(-1,-2).view(batch,hidden_size,*spatial) + residual
         hidden_states = hidden_states / self.rescale_output_factor
         
         return hidden_states
