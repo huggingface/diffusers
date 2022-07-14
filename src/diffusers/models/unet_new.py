@@ -29,9 +29,10 @@ def get_down_block(
     resnet_eps,
     resnet_act_fn,
     attn_num_head_channels,
+    downsample_padding=None,
 ):
     if down_block_type == "UNetResDownBlock2D":
-        return UNetResAttnDownBlock2D(
+        return UNetResDownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
@@ -39,6 +40,7 @@ def get_down_block(
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
+            downsample_padding=downsample_padding,
         )
     elif down_block_type == "UNetResAttnDownBlock2D":
         return UNetResAttnDownBlock2D(
@@ -57,7 +59,8 @@ def get_up_block(
     up_block_type,
     num_layers,
     in_channels,
-    next_channels,
+    out_channels,
+    prev_output_channel,
     temb_channels,
     add_upsample,
     resnet_eps,
@@ -68,7 +71,8 @@ def get_up_block(
         return UNetResUpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
-            next_channels=next_channels,
+            out_channels=out_channels,
+            prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -78,7 +82,8 @@ def get_up_block(
         return UNetResAttnUpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
-            next_channels=next_channels,
+            out_channels=out_channels,
+            prev_output_channel=prev_output_channel,
             temb_channels=temb_channels,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
@@ -100,10 +105,13 @@ class UNetMidBlock2D(nn.Module):
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         attn_num_head_channels=1,
+        attention_type="default",
         output_scale_factor=1.0,
         **kwargs,
     ):
         super().__init__()
+
+        self.attention_type = attention_type
 
         # there is always at least one resnet
         resnets = [
@@ -128,6 +136,7 @@ class UNetMidBlock2D(nn.Module):
                     in_channels,
                     num_head_channels=attn_num_head_channels,
                     rescale_output_factor=output_scale_factor,
+                    eps=resnet_eps,
                 )
             )
             resnets.append(
@@ -148,18 +157,15 @@ class UNetMidBlock2D(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
-    def forward(self, hidden_states, temb=None, encoder_states=None, mask=None):
-        if mask is not None:
-            hidden_states = self.resnets[0](hidden_states, temb, mask=mask)
-        else:
-            hidden_states = self.resnets[0](hidden_states, temb)
+    def forward(self, hidden_states, temb=None, encoder_states=None):
+        hidden_states = self.resnets[0](hidden_states, temb)
 
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
-            hidden_states = attn(hidden_states, encoder_states)
-            if mask is not None:
-                hidden_states = resnet(hidden_states, temb, mask=mask)
+            if self.attention_type == "default":
+                hidden_states = attn(hidden_states)
             else:
-                hidden_states = resnet(hidden_states, temb)
+                hidden_states = attn(hidden_states, encoder_states)
+            hidden_states = resnet(hidden_states, temb)
 
         return hidden_states
 
@@ -178,12 +184,15 @@ class UNetResAttnDownBlock2D(nn.Module):
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         attn_num_head_channels=1,
+        attention_type="default",
         output_scale_factor=1.0,
         add_downsample=True,
     ):
         super().__init__()
         resnets = []
         attentions = []
+
+        self.attention_type = attention_type
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -206,6 +215,7 @@ class UNetResAttnDownBlock2D(nn.Module):
                     out_channels,
                     num_head_channels=attn_num_head_channels,
                     rescale_output_factor=output_scale_factor,
+                    eps=resnet_eps,
                 )
             )
 
@@ -251,6 +261,7 @@ class UNetResDownBlock2D(nn.Module):
         resnet_pre_norm: bool = True,
         output_scale_factor=1.0,
         add_downsample=True,
+        downsample_padding=1,
     ):
         super().__init__()
         resnets = []
@@ -276,7 +287,11 @@ class UNetResDownBlock2D(nn.Module):
 
         if add_downsample:
             self.downsamplers = nn.ModuleList(
-                [Downsample2D(in_channels, use_conv=True, out_channels=out_channels, padding=1, name="op")]
+                [
+                    Downsample2D(
+                        in_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                    )
+                ]
             )
         else:
             self.downsamplers = None
@@ -301,7 +316,8 @@ class UNetResAttnUpBlock2D(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        next_channels: int,
+        prev_output_channel: int,
+        out_channels: int,
         temb_channels: int,
         dropout: float = 0.0,
         num_layers: int = 1,
@@ -310,7 +326,7 @@ class UNetResAttnUpBlock2D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attention_layer_type: str = "self",
+        attention_type="default",
         attn_num_head_channels=1,
         output_scale_factor=1.0,
         add_upsample=True,
@@ -319,12 +335,16 @@ class UNetResAttnUpBlock2D(nn.Module):
         resnets = []
         attentions = []
 
+        self.attention_type = attention_type
+
         for i in range(num_layers):
-            resnet_channels = in_channels if i < num_layers - 1 else next_channels
+            res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
+            resnet_in_channels = prev_output_channel if i == 0 else out_channels
+
             resnets.append(
                 ResnetBlock(
-                    in_channels=in_channels + resnet_channels,
-                    out_channels=in_channels,
+                    in_channels=resnet_in_channels + res_skip_channels,
+                    out_channels=out_channels,
                     temb_channels=temb_channels,
                     eps=resnet_eps,
                     groups=resnet_groups,
@@ -337,9 +357,10 @@ class UNetResAttnUpBlock2D(nn.Module):
             )
             attentions.append(
                 AttentionBlockNew(
-                    in_channels,
+                    out_channels,
                     num_head_channels=attn_num_head_channels,
                     rescale_output_factor=output_scale_factor,
+                    eps=resnet_eps,
                 )
             )
 
@@ -347,7 +368,7 @@ class UNetResAttnUpBlock2D(nn.Module):
         self.resnets = nn.ModuleList(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample2D(in_channels, use_conv=True, out_channels=in_channels)])
+            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -373,7 +394,8 @@ class UNetResUpBlock2D(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        next_channels: int,
+        prev_output_channel: int,
+        out_channels: int,
         temb_channels: int,
         dropout: float = 0.0,
         num_layers: int = 1,
@@ -382,7 +404,6 @@ class UNetResUpBlock2D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attention_layer_type: str = "self",
         output_scale_factor=1.0,
         add_upsample=True,
     ):
@@ -390,11 +411,13 @@ class UNetResUpBlock2D(nn.Module):
         resnets = []
 
         for i in range(num_layers):
-            resnet_channels = in_channels if i < num_layers - 1 else next_channels
+            res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
+            resnet_in_channels = prev_output_channel if i == 0 else out_channels
+
             resnets.append(
                 ResnetBlock(
-                    in_channels=in_channels + resnet_channels,
-                    out_channels=in_channels,
+                    in_channels=resnet_in_channels + res_skip_channels,
+                    out_channels=out_channels,
                     temb_channels=temb_channels,
                     eps=resnet_eps,
                     groups=resnet_groups,
@@ -409,7 +432,7 @@ class UNetResUpBlock2D(nn.Module):
         self.resnets = nn.ModuleList(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([Upsample2D(in_channels, use_conv=True, out_channels=in_channels)])
+            self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 

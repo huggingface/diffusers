@@ -116,6 +116,7 @@ class ConfigMixin:
         use_auth_token = kwargs.pop("use_auth_token", None)
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
 
         user_agent = {"file_type": "config"}
 
@@ -150,6 +151,7 @@ class ConfigMixin:
                     local_files_only=local_files_only,
                     use_auth_token=use_auth_token,
                     user_agent=user_agent,
+                    subfolder=subfolder,
                 )
 
             except RepositoryNotFoundError:

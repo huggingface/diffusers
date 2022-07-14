@@ -321,6 +321,7 @@ class ModelMixin(torch.nn.Module):
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
         from_auto_class = kwargs.pop("_from_auto", False)
+        subfolder = kwargs.pop("subfolder", None)
 
         user_agent = {"file_type": "model", "framework": "pytorch", "from_auto_class": from_auto_class}
 
@@ -336,6 +337,7 @@ class ModelMixin(torch.nn.Module):
             local_files_only=local_files_only,
             use_auth_token=use_auth_token,
             revision=revision,
+            subfolder=subfolder,
             **kwargs,
         )
         model.register_to_config(name_or_path=pretrained_model_name_or_path)
@@ -363,6 +365,7 @@ class ModelMixin(torch.nn.Module):
                     local_files_only=local_files_only,
                     use_auth_token=use_auth_token,
                     user_agent=user_agent,
+                    subfolder=subfolder,
                 )
 
             except RepositoryNotFoundError:

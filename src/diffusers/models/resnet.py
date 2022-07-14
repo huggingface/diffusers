@@ -81,8 +81,10 @@ class Downsample2D(nn.Module):
             self.conv = conv
         elif name == "Conv2d_0":
             self.Conv2d_0 = conv
+            self.conv = conv
         else:
             self.op = conv
+            self.conv = conv
 
     def forward(self, x):
         assert x.shape[1] == self.channels
@@ -90,13 +92,16 @@ class Downsample2D(nn.Module):
             pad = (0, 1, 0, 1)
             x = F.pad(x, pad, mode="constant", value=0)
 
+        return self.conv(x)
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
-        if self.name == "conv":
-            return self.conv(x)
-        elif self.name == "Conv2d_0":
-            return self.Conv2d_0(x)
-        else:
-            return self.op(x)
+
+
+#        if self.name == "conv":
+#            return self.conv(x)
+#        elif self.name == "Conv2d_0":
+#            return self.Conv2d_0(x)
+#        else:
+#            return self.op(x)
 
 
 class Upsample1D(nn.Module):
@@ -656,9 +661,9 @@ class ResnetBlock(nn.Module):
         self.conv1 = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         if time_embedding_norm == "default" and temb_channels > 0:
-            self.temb_proj = torch.nn.Linear(temb_channels, out_channels)
+            self.time_emb_proj = torch.nn.Linear(temb_channels, out_channels)
         elif time_embedding_norm == "scale_shift" and temb_channels > 0:
-            self.temb_proj = torch.nn.Linear(temb_channels, 2 * out_channels)
+            self.time_emb_proj = torch.nn.Linear(temb_channels, 2 * out_channels)
 
         self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
         self.dropout = torch.nn.Dropout(dropout)
@@ -691,9 +696,9 @@ class ResnetBlock(nn.Module):
 
         self.use_nin_shortcut = self.in_channels != self.out_channels if use_nin_shortcut is None else use_nin_shortcut
 
-        self.nin_shortcut = None
+        self.conv_shortcut = None
         if self.use_nin_shortcut:
-            self.nin_shortcut = torch.nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
+            self.conv_shortcut = torch.nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x, temb):
         h = x
@@ -715,7 +720,7 @@ class ResnetBlock(nn.Module):
             h = self.nonlinearity(h)
 
         if temb is not None:
-            temb = self.temb_proj(self.nonlinearity(temb))[:, :, None, None]
+            temb = self.time_emb_proj(self.nonlinearity(temb))[:, :, None, None]
         else:
             temb = 0
 
@@ -738,8 +743,8 @@ class ResnetBlock(nn.Module):
             h = self.norm2(h)
             h = self.nonlinearity(h)
 
-        if self.nin_shortcut is not None:
-            x = self.nin_shortcut(x)
+        if self.conv_shortcut is not None:
+            x = self.conv_shortcut(x)
 
         return (x + h) / self.output_scale_factor
 
@@ -750,8 +755,8 @@ class ResnetBlock(nn.Module):
         self.conv1.weight.data = resnet.conv1.weight.data
         self.conv1.bias.data = resnet.conv1.bias.data
 
-        self.temb_proj.weight.data = resnet.temb_proj.weight.data
-        self.temb_proj.bias.data = resnet.temb_proj.bias.data
+        self.time_emb_proj.weight.data = resnet.temb_proj.weight.data
+        self.time_emb_proj.bias.data = resnet.temb_proj.bias.data
 
         self.norm2.weight.data = resnet.norm2.weight.data
         self.norm2.bias.data = resnet.norm2.bias.data
@@ -760,8 +765,8 @@ class ResnetBlock(nn.Module):
         self.conv2.bias.data = resnet.conv2.bias.data
 
         if self.use_nin_shortcut:
-            self.nin_shortcut.weight.data = resnet.nin_shortcut.weight.data
-            self.nin_shortcut.bias.data = resnet.nin_shortcut.bias.data
+            self.conv_shortcut.weight.data = resnet.nin_shortcut.weight.data
+            self.conv_shortcut.bias.data = resnet.nin_shortcut.bias.data
 
 
 # TODO(Patrick) - just there to convert the weights; can delete afterward

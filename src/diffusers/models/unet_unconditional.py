@@ -9,6 +9,30 @@ from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
 from .unet_new import UNetMidBlock2D, get_down_block, get_up_block
 
 
+def nonlinearity(x):
+    # swish
+    return x * torch.sigmoid(x)
+
+
+def Normalize(in_channels):
+    return torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
+
+
+class TimestepEmbedding(nn.Module):
+    def __init__(self, channel, time_embed_dim):
+        super().__init__()
+
+        self.linear_1 = nn.Linear(channel, time_embed_dim)
+        self.act = nn.SiLU()
+        self.linear_2 = nn.Linear(time_embed_dim, time_embed_dim)
+
+    def forward(self, sample):
+        sample = self.linear_1(sample)
+        sample = self.act(sample)
+        sample = self.linear_2(sample)
+        return sample
+
+
 class UNetUnconditionalModel(ModelMixin, ConfigMixin):
     """
     The full UNet model with attention and timestep embedding. :param in_channels: channels in the input Tensor. :param
@@ -35,35 +59,66 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
 
     def __init__(
         self,
-        image_size,
-        in_channels,
-        out_channels,
-        num_res_blocks,
+        image_size=None,
+        in_channels=None,
+        out_channels=None,
+        num_res_blocks=None,
         dropout=0,
-        block_input_channels=(224, 224, 448, 672),
-        block_output_channels=(224, 448, 672, 896),
+        block_channels=(224, 448, 672, 896),
         down_blocks=(
             "UNetResDownBlock2D",
             "UNetResAttnDownBlock2D",
             "UNetResAttnDownBlock2D",
             "UNetResAttnDownBlock2D",
         ),
+        downsample_padding=1,
         up_blocks=("UNetResAttnUpBlock2D", "UNetResAttnUpBlock2D", "UNetResAttnUpBlock2D", "UNetResUpBlock2D"),
         resnet_act_fn="silu",
         resnet_eps=1e-5,
         conv_resample=True,
         num_head_channels=32,
+        flip_sin_to_cos=True,
+        downscale_freq_shift=0,
         # To delete once weights are converted
+        # LDM
         attention_resolutions=(8, 4, 2),
+        ldm=False,
+        # DDPM
+        out_ch=None,
+        resolution=None,
+        attn_resolutions=None,
+        resamp_with_conv=None,
+        ch_mult=None,
+        ch=None,
+        ddpm=False,
     ):
         super().__init__()
+
+        # DELETE if statements if not necessary anymore
+        # DDPM
+        if ddpm:
+            out_channels = out_ch
+            image_size = resolution
+            block_channels = [x * ch for x in ch_mult]
+            conv_resample = resamp_with_conv
+            flip_sin_to_cos = False
+            downscale_freq_shift = 1
+            resnet_eps = 1e-6
+            block_channels = (32, 64)
+            down_blocks = (
+                "UNetResDownBlock2D",
+                "UNetResAttnDownBlock2D",
+            )
+            up_blocks = ("UNetResUpBlock2D", "UNetResAttnUpBlock2D")
+            downsample_padding = 0
+            num_head_channels = 64
 
         # register all __init__ params with self.register
         self.register_to_config(
             image_size=image_size,
             in_channels=in_channels,
-            block_input_channels=block_input_channels,
-            block_output_channels=block_output_channels,
+            block_channels=block_channels,
+            downsample_padding=downsample_padding,
             out_channels=out_channels,
             num_res_blocks=num_res_blocks,
             down_blocks=down_blocks,
@@ -71,37 +126,34 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             dropout=dropout,
             conv_resample=conv_resample,
             num_head_channels=num_head_channels,
+            flip_sin_to_cos=flip_sin_to_cos,
+            downscale_freq_shift=downscale_freq_shift,
             # (TODO(PVP) - To delete once weights are converted
             attention_resolutions=attention_resolutions,
+            ldm=ldm,
+            ddpm=ddpm,
         )
 
         # To delete - replace with config values
         self.image_size = image_size
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.num_res_blocks = num_res_blocks
-        self.dropout = dropout
+        time_embed_dim = block_channels[0] * 4
 
-        time_embed_dim = block_input_channels[0] * 4
+        # # input
+        self.conv_in = nn.Conv2d(in_channels, block_channels[0], kernel_size=3, padding=(1, 1))
 
-        # ======================== Input ===================
-        self.conv_in = nn.Conv2d(in_channels, block_input_channels[0], kernel_size=3, padding=(1, 1))
-
-        # ======================== Time ====================
-        self.time_embed = nn.Sequential(
-            nn.Linear(block_input_channels[0], time_embed_dim),
-            nn.SiLU(),
-            nn.Linear(time_embed_dim, time_embed_dim),
-        )
-
-        # ======================== Down ====================
-        input_channels = list(block_input_channels)
-        output_channels = list(block_output_channels)
+        # # time
+        self.time_embedding = TimestepEmbedding(block_channels[0], time_embed_dim)
 
         self.downsample_blocks = nn.ModuleList([])
-        for i, (input_channel, output_channel) in enumerate(zip(input_channels, output_channels)):
-            down_block_type = down_blocks[i]
-            is_final_block = i == len(input_channels) - 1
+        self.mid = None
+        self.upsample_blocks = nn.ModuleList([])
+
+        # down
+        output_channel = block_channels[0]
+        for i, down_block_type in enumerate(down_blocks):
+            input_channel = output_channel
+            output_channel = block_channels[i]
+            is_final_block = i == len(block_channels) - 1
 
             down_block = get_down_block(
                 down_block_type,
@@ -113,30 +165,48 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 resnet_eps=resnet_eps,
                 resnet_act_fn=resnet_act_fn,
                 attn_num_head_channels=num_head_channels,
+                downsample_padding=downsample_padding,
             )
             self.downsample_blocks.append(down_block)
 
-        # ======================== Mid ====================
-        self.mid = UNetMidBlock2D(
-            in_channels=output_channels[-1],
-            dropout=dropout,
-            temb_channels=time_embed_dim,
-            resnet_eps=resnet_eps,
-            resnet_act_fn=resnet_act_fn,
-            resnet_time_scale_shift="default",
-            attn_num_head_channels=num_head_channels,
-        )
+        # mid
+        if self.config.ddpm:
+            self.mid_new_2 = UNetMidBlock2D(
+                in_channels=block_channels[-1],
+                dropout=dropout,
+                temb_channels=time_embed_dim,
+                resnet_eps=resnet_eps,
+                resnet_act_fn=resnet_act_fn,
+                resnet_time_scale_shift="default",
+                attn_num_head_channels=num_head_channels,
+            )
+        else:
+            self.mid = UNetMidBlock2D(
+                in_channels=block_channels[-1],
+                dropout=dropout,
+                temb_channels=time_embed_dim,
+                resnet_eps=resnet_eps,
+                resnet_act_fn=resnet_act_fn,
+                resnet_time_scale_shift="default",
+                attn_num_head_channels=num_head_channels,
+            )
 
-        self.upsample_blocks = nn.ModuleList([])
-        for i, (input_channel, output_channel) in enumerate(zip(reversed(input_channels), reversed(output_channels))):
-            up_block_type = up_blocks[i]
-            is_final_block = i == len(input_channels) - 1
+        # up
+        reversed_block_channels = list(reversed(block_channels))
+        output_channel = reversed_block_channels[0]
+        for i, up_block_type in enumerate(up_blocks):
+            prev_output_channel = output_channel
+            output_channel = reversed_block_channels[i]
+            input_channel = reversed_block_channels[min(i + 1, len(block_channels) - 1)]
+
+            is_final_block = i == len(block_channels) - 1
 
             up_block = get_up_block(
                 up_block_type,
                 num_layers=num_res_blocks + 1,
-                in_channels=output_channel,
-                next_channels=input_channel,
+                in_channels=input_channel,
+                out_channels=output_channel,
+                prev_output_channel=prev_output_channel,
                 temb_channels=time_embed_dim,
                 add_upsample=not is_final_block,
                 resnet_eps=resnet_eps,
@@ -144,50 +214,72 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 attn_num_head_channels=num_head_channels,
             )
             self.upsample_blocks.append(up_block)
+            prev_output_channel = output_channel
+
+        # out
+        self.conv_norm_out = nn.GroupNorm(num_channels=block_channels[0], num_groups=32, eps=1e-5)
+        self.conv_act = nn.SiLU()
+        self.conv_out = nn.Conv2d(block_channels[0], out_channels, 3, padding=1)
 
         # ======================== Out ====================
-        self.out = nn.Sequential(
-            nn.GroupNorm(num_channels=output_channels[0], num_groups=32, eps=1e-5),
-            nn.SiLU(),
-            nn.Conv2d(block_input_channels[0], out_channels, 3, padding=1),
-        )
 
-        # =========== TO DELETE AFTER CONVERSION ==========
-        transformer_depth = 1
-        context_dim = None
-        legacy = True
-        num_heads = -1
-        model_channels = block_input_channels[0]
-        channel_mult = tuple([x // model_channels for x in block_output_channels])
-        self.init_for_ldm(
-            in_channels,
-            model_channels,
-            channel_mult,
-            num_res_blocks,
-            dropout,
-            time_embed_dim,
-            attention_resolutions,
-            num_head_channels,
-            num_heads,
-            legacy,
-            False,
-            transformer_depth,
-            context_dim,
-            conv_resample,
-            out_channels,
-        )
+        self.is_overwritten = False
+        if ldm:
+            # =========== TO DELETE AFTER CONVERSION ==========
+            transformer_depth = 1
+            context_dim = None
+            legacy = True
+            num_heads = -1
+            model_channels = block_channels[0]
+            channel_mult = tuple([x // model_channels for x in block_channels])
+            self.init_for_ldm(
+                in_channels,
+                model_channels,
+                channel_mult,
+                num_res_blocks,
+                dropout,
+                time_embed_dim,
+                attention_resolutions,
+                num_head_channels,
+                num_heads,
+                legacy,
+                False,
+                transformer_depth,
+                context_dim,
+                conv_resample,
+                out_channels,
+            )
+        if ddpm:
+            self.init_for_ddpm(
+                ch_mult,
+                ch,
+                num_res_blocks,
+                resolution,
+                in_channels,
+                resamp_with_conv,
+                attn_resolutions,
+                out_ch,
+                dropout=0.1,
+            )
 
     def forward(self, sample, timesteps=None):
+        # TODO(PVP) - to delete later
+        if not self.is_overwritten:
+            self.set_weights()
+
         # 1. time step embeddings
         if not torch.is_tensor(timesteps):
             timesteps = torch.tensor([timesteps], dtype=torch.long, device=sample.device)
+
         t_emb = get_timestep_embedding(
-            timesteps, self.config.block_input_channels[0], flip_sin_to_cos=True, downscale_freq_shift=0
+            timesteps,
+            self.config.block_channels[0],
+            flip_sin_to_cos=self.config.flip_sin_to_cos,
+            downscale_freq_shift=self.config.downscale_freq_shift,
         )
-        emb = self.time_embed(t_emb)
+        emb = self.time_embedding(t_emb)
 
         # 2. pre-process sample
-        #        sample = sample.type(self.dtype_)
         sample = self.conv_in(sample)
 
         # 3. down blocks
@@ -198,8 +290,13 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             # append to tuple
             down_block_res_samples += res_samples
 
+        print("sample", sample.abs().sum())
         # 4. mid block
-        sample = self.mid(sample, emb)
+        if self.config.ddpm:
+            sample = self.mid_new_2(sample, emb)
+        else:
+            sample = self.mid(sample, emb)
+        print("sample", sample.abs().sum())
 
         # 5. up blocks
         for upsample_block in self.upsample_blocks:
@@ -211,9 +308,191 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             sample = upsample_block(sample, res_samples, emb)
 
         # 6. post-process sample
-        sample = self.out(sample)
+        sample = self.conv_norm_out(sample)
+        sample = self.conv_act(sample)
+        sample = self.conv_out(sample)
 
         return sample
+
+    def set_weights(self):
+        self.is_overwritten = True
+        if self.config.ldm:
+
+            self.time_embedding.linear_1.weight.data = self.time_embed[0].weight.data
+            self.time_embedding.linear_1.bias.data = self.time_embed[0].bias.data
+            self.time_embedding.linear_2.weight.data = self.time_embed[2].weight.data
+            self.time_embedding.linear_2.bias.data = self.time_embed[2].bias.data
+
+            # ================ SET WEIGHTS OF ALL WEIGHTS ==================
+            for i, input_layer in enumerate(self.input_blocks[1:]):
+                block_id = i // (self.config.num_res_blocks + 1)
+                layer_in_block_id = i % (self.config.num_res_blocks + 1)
+
+                if layer_in_block_id == 2:
+                    self.downsample_blocks[block_id].downsamplers[0].conv.weight.data = input_layer[0].op.weight.data
+                    self.downsample_blocks[block_id].downsamplers[0].conv.bias.data = input_layer[0].op.bias.data
+                elif len(input_layer) > 1:
+                    self.downsample_blocks[block_id].resnets[layer_in_block_id].set_weight(input_layer[0])
+                    self.downsample_blocks[block_id].attentions[layer_in_block_id].set_weight(input_layer[1])
+                else:
+                    self.downsample_blocks[block_id].resnets[layer_in_block_id].set_weight(input_layer[0])
+
+            self.mid.resnets[0].set_weight(self.middle_block[0])
+            self.mid.resnets[1].set_weight(self.middle_block[2])
+            self.mid.attentions[0].set_weight(self.middle_block[1])
+
+            for i, input_layer in enumerate(self.output_blocks):
+                block_id = i // (self.config.num_res_blocks + 1)
+                layer_in_block_id = i % (self.config.num_res_blocks + 1)
+
+                if len(input_layer) > 2:
+                    self.upsample_blocks[block_id].resnets[layer_in_block_id].set_weight(input_layer[0])
+                    self.upsample_blocks[block_id].attentions[layer_in_block_id].set_weight(input_layer[1])
+                    self.upsample_blocks[block_id].upsamplers[0].conv.weight.data = input_layer[2].conv.weight.data
+                    self.upsample_blocks[block_id].upsamplers[0].conv.bias.data = input_layer[2].conv.bias.data
+                elif len(input_layer) > 1 and "Upsample2D" in input_layer[1].__class__.__name__:
+                    self.upsample_blocks[block_id].resnets[layer_in_block_id].set_weight(input_layer[0])
+                    self.upsample_blocks[block_id].upsamplers[0].conv.weight.data = input_layer[1].conv.weight.data
+                    self.upsample_blocks[block_id].upsamplers[0].conv.bias.data = input_layer[1].conv.bias.data
+                elif len(input_layer) > 1:
+                    self.upsample_blocks[block_id].resnets[layer_in_block_id].set_weight(input_layer[0])
+                    self.upsample_blocks[block_id].attentions[layer_in_block_id].set_weight(input_layer[1])
+                else:
+                    self.upsample_blocks[block_id].resnets[layer_in_block_id].set_weight(input_layer[0])
+
+            self.conv_in.weight.data = self.input_blocks[0][0].weight.data
+            self.conv_in.bias.data = self.input_blocks[0][0].bias.data
+
+            self.conv_norm_out.weight.data = self.out[0].weight.data
+            self.conv_norm_out.bias.data = self.out[0].bias.data
+            self.conv_out.weight.data = self.out[2].weight.data
+            self.conv_out.bias.data = self.out[2].bias.data
+
+            self.remove_ldm()
+
+        elif self.config.ddpm:
+            # =============== SET WEIGHTS ===============
+            # =============== TIME ======================
+            self.time_embed[0] = self.temb.dense[0]
+            self.time_embed[2] = self.temb.dense[1]
+
+            for i, block in enumerate(self.down):
+                if hasattr(block, "downsample"):
+                    self.downsample_blocks[i].downsamplers[0].conv.weight.data = block.downsample.conv.weight.data
+                    self.downsample_blocks[i].downsamplers[0].conv.bias.data = block.downsample.conv.bias.data
+                if hasattr(block, "block") and len(block.block) > 0:
+                    for j in range(self.num_res_blocks):
+                        self.downsample_blocks[i].resnets[j].set_weight(block.block[j])
+                if hasattr(block, "attn") and len(block.attn) > 0:
+                    for j in range(self.num_res_blocks):
+                        self.downsample_blocks[i].attentions[j].set_weight(block.attn[j])
+
+            self.mid_new_2.resnets[0].set_weight(self.mid.block_1)
+            self.mid_new_2.resnets[1].set_weight(self.mid.block_2)
+            self.mid_new_2.attentions[0].set_weight(self.mid.attn_1)
+
+    def init_for_ddpm(
+        self,
+        ch_mult,
+        ch,
+        num_res_blocks,
+        resolution,
+        in_channels,
+        resamp_with_conv,
+        attn_resolutions,
+        out_ch,
+        dropout=0.1,
+    ):
+        ch_mult = tuple(ch_mult)
+        self.ch = ch
+        self.temb_ch = self.ch * 4
+        self.num_resolutions = len(ch_mult)
+        self.num_res_blocks = num_res_blocks
+        self.resolution = resolution
+
+        # timestep embedding
+        self.temb = nn.Module()
+        self.temb.dense = nn.ModuleList(
+            [
+                torch.nn.Linear(self.ch, self.temb_ch),
+                torch.nn.Linear(self.temb_ch, self.temb_ch),
+            ]
+        )
+
+        # downsampling
+        self.conv_in = torch.nn.Conv2d(in_channels, self.ch, kernel_size=3, stride=1, padding=1)
+
+        curr_res = resolution
+        in_ch_mult = (1,) + ch_mult
+        self.down = nn.ModuleList()
+        for i_level in range(self.num_resolutions):
+            block = nn.ModuleList()
+            attn = nn.ModuleList()
+            block_in = ch * in_ch_mult[i_level]
+            block_out = ch * ch_mult[i_level]
+            for i_block in range(self.num_res_blocks):
+                block.append(
+                    ResnetBlock2D(
+                        in_channels=block_in, out_channels=block_out, temb_channels=self.temb_ch, dropout=dropout
+                    )
+                )
+                block_in = block_out
+                if curr_res in attn_resolutions:
+                    attn.append(AttentionBlock(block_in, overwrite_qkv=True))
+            down = nn.Module()
+            down.block = block
+            down.attn = attn
+            if i_level != self.num_resolutions - 1:
+                down.downsample = Downsample2D(block_in, use_conv=resamp_with_conv, padding=0)
+                curr_res = curr_res // 2
+            self.down.append(down)
+
+        # middle
+        self.mid = nn.Module()
+        self.mid.block_1 = ResnetBlock2D(
+            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
+        )
+        self.mid.attn_1 = AttentionBlock(block_in, overwrite_qkv=True)
+        self.mid.block_2 = ResnetBlock2D(
+            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
+        )
+        self.mid_new = UNetMidBlock2D(in_channels=block_in, temb_channels=self.temb_ch, dropout=dropout)
+        self.mid_new.resnets[0] = self.mid.block_1
+        self.mid_new.attentions[0] = self.mid.attn_1
+        self.mid_new.resnets[1] = self.mid.block_2
+
+        # upsampling
+        self.up = nn.ModuleList()
+        for i_level in reversed(range(self.num_resolutions)):
+            block = nn.ModuleList()
+            attn = nn.ModuleList()
+            block_out = ch * ch_mult[i_level]
+            skip_in = ch * ch_mult[i_level]
+            for i_block in range(self.num_res_blocks + 1):
+                if i_block == self.num_res_blocks:
+                    skip_in = ch * in_ch_mult[i_level]
+                block.append(
+                    ResnetBlock2D(
+                        in_channels=block_in + skip_in,
+                        out_channels=block_out,
+                        temb_channels=self.temb_ch,
+                        dropout=dropout,
+                    )
+                )
+                block_in = block_out
+                if curr_res in attn_resolutions:
+                    attn.append(AttentionBlock(block_in, overwrite_qkv=True))
+            up = nn.Module()
+            up.block = block
+            up.attn = attn
+            if i_level != 0:
+                up.upsample = Upsample2D(block_in, use_conv=resamp_with_conv)
+                curr_res = curr_res * 2
+            self.up.insert(0, up)  # prepend to get consistent order
+
+        # end
+        self.norm_out = Normalize(block_in)
+        self.conv_out = torch.nn.Conv2d(block_in, out_ch, kernel_size=3, stride=1, padding=1)
 
     def init_for_ldm(
         self,
@@ -234,7 +513,6 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         out_channels,
     ):
         # TODO(PVP) - delete after weight conversion
-
         class TimestepEmbedSequential(nn.Sequential):
             """
             A sequential module that passes timestep embeddings to the children that support it as an extra input.
@@ -254,6 +532,12 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             elif dims == 3:
                 return nn.Conv3d(*args, **kwargs)
             raise ValueError(f"unsupported dimensions: {dims}")
+
+        self.time_embed = nn.Sequential(
+            nn.Linear(model_channels, time_embed_dim),
+            nn.SiLU(),
+            nn.Linear(time_embed_dim, time_embed_dim),
+        )
 
         dims = 2
         self.input_blocks = nn.ModuleList(
@@ -389,42 +673,15 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 self.output_blocks.append(TimestepEmbedSequential(*layers))
                 self._feature_size += ch
 
-        # ================ SET WEIGHTS OF ALL WEIGHTS ==================
-        for i, input_layer in enumerate(self.input_blocks[1:]):
-            block_id = i // (num_res_blocks + 1)
-            layer_in_block_id = i % (num_res_blocks + 1)
+        self.out = nn.Sequential(
+            nn.GroupNorm(num_channels=model_channels, num_groups=32, eps=1e-5),
+            nn.SiLU(),
+            nn.Conv2d(model_channels, out_channels, 3, padding=1),
+        )
 
-            if layer_in_block_id == 2:
-                self.downsample_blocks[block_id].downsamplers[0].op.weight.data = input_layer[0].op.weight.data
-                self.downsample_blocks[block_id].downsamplers[0].op.bias.data = input_layer[0].op.bias.data
-            elif len(input_layer) > 1:
-                self.downsample_blocks[block_id].resnets[layer_in_block_id].set_weight(input_layer[0])
-                self.downsample_blocks[block_id].attentions[layer_in_block_id].set_weight(input_layer[1])
-            else:
-                self.downsample_blocks[block_id].resnets[layer_in_block_id].set_weight(input_layer[0])
-
-        self.mid.resnets[0].set_weight(self.middle_block[0])
-        self.mid.resnets[1].set_weight(self.middle_block[2])
-        self.mid.attentions[0].set_weight(self.middle_block[1])
-
-        for i, input_layer in enumerate(self.output_blocks):
-            block_id = i // (num_res_blocks + 1)
-            layer_in_block_id = i % (num_res_blocks + 1)
-
-            if len(input_layer) > 2:
-                self.upsample_blocks[block_id].resnets[layer_in_block_id].set_weight(input_layer[0])
-                self.upsample_blocks[block_id].attentions[layer_in_block_id].set_weight(input_layer[1])
-                self.upsample_blocks[block_id].upsamplers[0].conv.weight.data = input_layer[2].conv.weight.data
-                self.upsample_blocks[block_id].upsamplers[0].conv.bias.data = input_layer[2].conv.bias.data
-            elif len(input_layer) > 1 and "Upsample2D" in input_layer[1].__class__.__name__:
-                self.upsample_blocks[block_id].resnets[layer_in_block_id].set_weight(input_layer[0])
-                self.upsample_blocks[block_id].upsamplers[0].conv.weight.data = input_layer[1].conv.weight.data
-                self.upsample_blocks[block_id].upsamplers[0].conv.bias.data = input_layer[1].conv.bias.data
-            elif len(input_layer) > 1:
-                self.upsample_blocks[block_id].resnets[layer_in_block_id].set_weight(input_layer[0])
-                self.upsample_blocks[block_id].attentions[layer_in_block_id].set_weight(input_layer[1])
-            else:
-                self.upsample_blocks[block_id].resnets[layer_in_block_id].set_weight(input_layer[0])
-
-        self.conv_in.weight.data = self.input_blocks[0][0].weight.data
-        self.conv_in.bias.data = self.input_blocks[0][0].bias.data
+    def remove_ldm(self):
+        del self.time_embed
+        del self.input_blocks
+        del self.middle_block
+        del self.output_blocks
+        del self.out

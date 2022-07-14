@@ -177,7 +177,9 @@ class UNetModel(ModelMixin, ConfigMixin):
                 hs.append(self.down[i_level].downsample(hs[-1]))
 
         # middle
+        print("hs", hs[-1].abs().sum())
         h = self.mid_new(hs[-1], temb)
+        print("h", h.abs().sum())
 
         # upsampling
         for i_level in reversed(range(self.num_resolutions)):

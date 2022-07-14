@@ -271,6 +271,27 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
         # fmt: on
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
+        print("Original success!!!")
+
+        model = UNetUnconditionalModel.from_pretrained("fusing/ddpm_dummy", ddpm=True)
+        model.eval()
+
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        noise = torch.randn(1, model.config.in_channels, model.config.image_size, model.config.image_size)
+        time_step = torch.tensor([10])
+
+        with torch.no_grad():
+            output = model(noise, time_step)
+
+        output_slice = output[0, -1, -3:, -3:].flatten()
+        # fmt: off
+        expected_output_slice = torch.tensor([0.2891, -0.1899, 0.2595, -0.6214, 0.0968, -0.2622, 0.4688, 0.1311, 0.0053])
+        # fmt: on
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
+
 
 class GlideSuperResUNetTests(ModelTesterMixin, unittest.TestCase):
     model_class = GlideSuperResUNetModel
@@ -486,18 +507,20 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
             "out_channels": 4,
             "num_res_blocks": 2,
             "attention_resolutions": (16,),
-            "block_input_channels": [32, 32],
-            "block_output_channels": [32, 64],
+            "block_channels": (32, 64),
             "num_head_channels": 32,
             "conv_resample": True,
             "down_blocks": ("UNetResDownBlock2D", "UNetResDownBlock2D"),
             "up_blocks": ("UNetResUpBlock2D", "UNetResUpBlock2D"),
+            "ldm": True,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
     def test_from_pretrained_hub(self):
-        model, loading_info = UNetUnconditionalModel.from_pretrained("fusing/unet-ldm-dummy", output_loading_info=True)
+        model, loading_info = UNetUnconditionalModel.from_pretrained(
+            "fusing/unet-ldm-dummy", output_loading_info=True, ldm=True
+        )
         self.assertIsNotNone(model)
         self.assertEqual(len(loading_info["missing_keys"]), 0)
 
@@ -507,7 +530,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained(self):
-        model = UNetUnconditionalModel.from_pretrained("fusing/unet-ldm-dummy")
+        model = UNetUnconditionalModel.from_pretrained("fusing/unet-ldm-dummy", ldm=True)
         model.eval()
 
         torch.manual_seed(0)

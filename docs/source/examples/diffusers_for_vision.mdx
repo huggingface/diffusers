@@ -111,7 +111,7 @@ prompt = "A painting of a squirrel eating a burger"
 image = ldm([prompt], generator=generator, eta=0.3, guidance_scale=6.0, num_inference_steps=50)
 
 image_processed = image.cpu().permute(0, 2, 3, 1)
-image_processed = image_processed  * 255.
+image_processed = image_processed * 255.0
 image_processed = image_processed.numpy().astype(np.uint8)
 image_pil = PIL.Image.fromarray(image_processed[0])
 
@@ -143,6 +143,7 @@ audio = bddm(mel_spec, generator, torch_device=torch_device)
 
 # save generated audio
 from scipy.io.wavfile import write as wavwrite
+
 sampling_rate = 22050
 wavwrite("generated_audio.wav", sampling_rate, audio.squeeze().cpu().numpy())
 ```
