@@ -18,6 +18,21 @@ def Normalize(in_channels):
     return torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
 
 
+class TimestepEmbedding(nn.Module):
+    def __init__(self, channel, time_embed_dim):
+        super().__init__()
+
+        self.linear_1 = nn.Linear(channel, time_embed_dim)
+        self.act = nn.SiLU()
+        self.linear_2 = nn.Linear(time_embed_dim, time_embed_dim)
+
+    def forward(self, sample):
+        sample = self.linear_1(sample)
+        sample = self.act(sample)
+        sample = self.linear_2(sample)
+        return sample
+
+
 class UNetUnconditionalModel(ModelMixin, ConfigMixin):
     """
     The full UNet model with attention and timestep embedding. :param in_channels: channels in the input Tensor. :param
@@ -49,8 +64,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         out_channels=None,
         num_res_blocks=None,
         dropout=0,
-        down_block_input_channels=(224, 224, 448, 672),
-        down_block_output_channels=(224, 448, 672, 896),
+        block_channels=(224, 448, 672, 896),
         down_blocks=(
             "UNetResDownBlock2D",
             "UNetResAttnDownBlock2D",
@@ -58,8 +72,6 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             "UNetResAttnDownBlock2D",
         ),
         downsample_padding=1,
-        up_down_block_input_channels=None,
-        up_down_block_output_channels=None,
         up_blocks=("UNetResAttnUpBlock2D", "UNetResAttnUpBlock2D", "UNetResAttnUpBlock2D", "UNetResUpBlock2D"),
         resnet_act_fn="silu",
         resnet_eps=1e-5,
@@ -87,13 +99,12 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         if ddpm:
             out_channels = out_ch
             image_size = resolution
-            down_block_input_channels = [x * ch for x in ch_mult]
+            block_channels = [x * ch for x in ch_mult]
             conv_resample = resamp_with_conv
             flip_sin_to_cos = False
             downscale_freq_shift = 1
             resnet_eps = 1e-6
-            down_block_input_channels = (32, 32)
-            down_block_output_channels = (32, 64)
+            block_channels = (32, 64)
             down_blocks = (
                 "UNetResDownBlock2D",
                 "UNetResAttnDownBlock2D",
@@ -106,8 +117,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         self.register_to_config(
             image_size=image_size,
             in_channels=in_channels,
-            down_block_input_channels=down_block_input_channels,
-            down_block_output_channels=down_block_output_channels,
+            block_channels=block_channels,
             downsample_padding=downsample_padding,
             out_channels=out_channels,
             num_res_blocks=num_res_blocks,
@@ -126,26 +136,24 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
 
         # To delete - replace with config values
         self.image_size = image_size
-        time_embed_dim = down_block_input_channels[0] * 4
+        time_embed_dim = block_channels[0] * 4
 
-        # ======================== Input ===================
-        self.conv_in = nn.Conv2d(in_channels, down_block_input_channels[0], kernel_size=3, padding=(1, 1))
+        # # input
+        self.conv_in = nn.Conv2d(in_channels, block_channels[0], kernel_size=3, padding=(1, 1))
 
-        # ======================== Time ====================
-        self.time_embed = nn.Sequential(
-            nn.Linear(down_block_input_channels[0], time_embed_dim),
-            nn.SiLU(),
-            nn.Linear(time_embed_dim, time_embed_dim),
-        )
-
-        # ======================== Down ====================
-        input_channels = list(down_block_input_channels)
-        output_channels = list(down_block_output_channels)
+        # # time
+        self.time_embedding = TimestepEmbedding(block_channels[0], time_embed_dim)
 
         self.downsample_blocks = nn.ModuleList([])
-        for i, (input_channel, output_channel) in enumerate(zip(input_channels, output_channels)):
-            down_block_type = down_blocks[i]
-            is_final_block = i == len(input_channels) - 1
+        self.mid = None
+        self.upsample_blocks = nn.ModuleList([])
+
+        # down
+        output_channel = block_channels[0]
+        for i, down_block_type in enumerate(down_blocks):
+            input_channel = output_channel
+            output_channel = block_channels[i]
+            is_final_block = i == len(block_channels) - 1
 
             down_block = get_down_block(
                 down_block_type,
@@ -161,10 +169,10 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             )
             self.downsample_blocks.append(down_block)
 
-        # ======================== Mid ====================
+        # mid
         if self.config.ddpm:
             self.mid_new_2 = UNetMidBlock2D(
-                in_channels=output_channels[-1],
+                in_channels=block_channels[-1],
                 dropout=dropout,
                 temb_channels=time_embed_dim,
                 resnet_eps=resnet_eps,
@@ -174,7 +182,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             )
         else:
             self.mid = UNetMidBlock2D(
-                in_channels=output_channels[-1],
+                in_channels=block_channels[-1],
                 dropout=dropout,
                 temb_channels=time_embed_dim,
                 resnet_eps=resnet_eps,
@@ -183,11 +191,15 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 attn_num_head_channels=num_head_channels,
             )
 
-        self.upsample_blocks = nn.ModuleList([])
-        prev_output_channel = output_channels[-1]
-        for i, (input_channel, output_channel) in enumerate(zip(reversed(input_channels), reversed(output_channels))):
-            up_block_type = up_blocks[i]
-            is_final_block = i == len(input_channels) - 1
+        # up
+        reversed_block_channels = list(reversed(block_channels))
+        output_channel = reversed_block_channels[0]
+        for i, up_block_type in enumerate(up_blocks):
+            prev_output_channel = output_channel
+            output_channel = reversed_block_channels[i]
+            input_channel = reversed_block_channels[min(i + 1, len(block_channels) - 1)]
+
+            is_final_block = i == len(block_channels) - 1
 
             up_block = get_up_block(
                 up_block_type,
@@ -204,12 +216,12 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             self.upsample_blocks.append(up_block)
             prev_output_channel = output_channel
 
+        # out
+        self.conv_norm_out = nn.GroupNorm(num_channels=block_channels[0], num_groups=32, eps=1e-5)
+        self.conv_act = nn.SiLU()
+        self.conv_out = nn.Conv2d(block_channels[0], out_channels, 3, padding=1)
+
         # ======================== Out ====================
-        self.out = nn.Sequential(
-            nn.GroupNorm(num_channels=output_channels[0], num_groups=32, eps=1e-5),
-            nn.SiLU(),
-            nn.Conv2d(down_block_input_channels[0], out_channels, 3, padding=1),
-        )
 
         self.is_overwritten = False
         if ldm:
@@ -218,8 +230,8 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             context_dim = None
             legacy = True
             num_heads = -1
-            model_channels = down_block_input_channels[0]
-            channel_mult = tuple([x // model_channels for x in down_block_output_channels])
+            model_channels = block_channels[0]
+            channel_mult = tuple([x // model_channels for x in block_channels])
             self.init_for_ldm(
                 in_channels,
                 model_channels,
@@ -261,11 +273,11 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
 
         t_emb = get_timestep_embedding(
             timesteps,
-            self.config.down_block_input_channels[0],
+            self.config.block_channels[0],
             flip_sin_to_cos=self.config.flip_sin_to_cos,
             downscale_freq_shift=self.config.downscale_freq_shift,
         )
-        emb = self.time_embed(t_emb)
+        emb = self.time_embedding(t_emb)
 
         # 2. pre-process sample
         sample = self.conv_in(sample)
@@ -296,21 +308,29 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             sample = upsample_block(sample, res_samples, emb)
 
         # 6. post-process sample
-        sample = self.out(sample)
+        sample = self.conv_norm_out(sample)
+        sample = self.conv_act(sample)
+        sample = self.conv_out(sample)
 
         return sample
 
     def set_weights(self):
         self.is_overwritten = True
         if self.config.ldm:
+
+            self.time_embedding.linear_1.weight.data = self.time_embed[0].weight.data
+            self.time_embedding.linear_1.bias.data = self.time_embed[0].bias.data
+            self.time_embedding.linear_2.weight.data = self.time_embed[2].weight.data
+            self.time_embedding.linear_2.bias.data = self.time_embed[2].bias.data
+
             # ================ SET WEIGHTS OF ALL WEIGHTS ==================
             for i, input_layer in enumerate(self.input_blocks[1:]):
                 block_id = i // (self.config.num_res_blocks + 1)
                 layer_in_block_id = i % (self.config.num_res_blocks + 1)
 
                 if layer_in_block_id == 2:
-                    self.downsample_blocks[block_id].downsamplers[0].op.weight.data = input_layer[0].op.weight.data
-                    self.downsample_blocks[block_id].downsamplers[0].op.bias.data = input_layer[0].op.bias.data
+                    self.downsample_blocks[block_id].downsamplers[0].conv.weight.data = input_layer[0].op.weight.data
+                    self.downsample_blocks[block_id].downsamplers[0].conv.bias.data = input_layer[0].op.bias.data
                 elif len(input_layer) > 1:
                     self.downsample_blocks[block_id].resnets[layer_in_block_id].set_weight(input_layer[0])
                     self.downsample_blocks[block_id].attentions[layer_in_block_id].set_weight(input_layer[1])
@@ -343,6 +363,13 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             self.conv_in.weight.data = self.input_blocks[0][0].weight.data
             self.conv_in.bias.data = self.input_blocks[0][0].bias.data
 
+            self.conv_norm_out.weight.data = self.out[0].weight.data
+            self.conv_norm_out.bias.data = self.out[0].bias.data
+            self.conv_out.weight.data = self.out[2].weight.data
+            self.conv_out.bias.data = self.out[2].bias.data
+
+            self.remove_ldm()
+
         elif self.config.ddpm:
             # =============== SET WEIGHTS ===============
             # =============== TIME ======================
@@ -351,8 +378,8 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
 
             for i, block in enumerate(self.down):
                 if hasattr(block, "downsample"):
-                    self.downsample_blocks[i].downsamplers[0].op.weight.data = block.downsample.conv.weight.data
-                    self.downsample_blocks[i].downsamplers[0].op.bias.data = block.downsample.conv.bias.data
+                    self.downsample_blocks[i].downsamplers[0].conv.weight.data = block.downsample.conv.weight.data
+                    self.downsample_blocks[i].downsamplers[0].conv.bias.data = block.downsample.conv.bias.data
                 if hasattr(block, "block") and len(block.block) > 0:
                     for j in range(self.num_res_blocks):
                         self.downsample_blocks[i].resnets[j].set_weight(block.block[j])
@@ -506,6 +533,12 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 return nn.Conv3d(*args, **kwargs)
             raise ValueError(f"unsupported dimensions: {dims}")
 
+        self.time_embed = nn.Sequential(
+            nn.Linear(model_channels, time_embed_dim),
+            nn.SiLU(),
+            nn.Linear(time_embed_dim, time_embed_dim),
+        )
+
         dims = 2
         self.input_blocks = nn.ModuleList(
             [TimestepEmbedSequential(conv_nd(dims, in_channels, model_channels, 3, padding=1))]
@@ -639,3 +672,16 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                     ds //= 2
                 self.output_blocks.append(TimestepEmbedSequential(*layers))
                 self._feature_size += ch
+
+        self.out = nn.Sequential(
+            nn.GroupNorm(num_channels=model_channels, num_groups=32, eps=1e-5),
+            nn.SiLU(),
+            nn.Conv2d(model_channels, out_channels, 3, padding=1),
+        )
+
+    def remove_ldm(self):
+        del self.time_embed
+        del self.input_blocks
+        del self.middle_block
+        del self.output_blocks
+        del self.out

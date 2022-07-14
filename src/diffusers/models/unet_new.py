@@ -105,10 +105,13 @@ class UNetMidBlock2D(nn.Module):
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         attn_num_head_channels=1,
+        attention_type="default",
         output_scale_factor=1.0,
         **kwargs,
     ):
         super().__init__()
+
+        self.attention_type = attention_type
 
         # there is always at least one resnet
         resnets = [
@@ -154,18 +157,15 @@ class UNetMidBlock2D(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
-    def forward(self, hidden_states, temb=None, encoder_states=None, mask=None):
-        if mask is not None:
-            hidden_states = self.resnets[0](hidden_states, temb, mask=mask)
-        else:
-            hidden_states = self.resnets[0](hidden_states, temb)
+    def forward(self, hidden_states, temb=None, encoder_states=None):
+        hidden_states = self.resnets[0](hidden_states, temb)
 
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
-            hidden_states = attn(hidden_states, encoder_states)
-            if mask is not None:
-                hidden_states = resnet(hidden_states, temb, mask=mask)
+            if self.attention_type == "default":
+                hidden_states = attn(hidden_states)
             else:
-                hidden_states = resnet(hidden_states, temb)
+                hidden_states = attn(hidden_states, encoder_states)
+            hidden_states = resnet(hidden_states, temb)
 
         return hidden_states
 
@@ -184,12 +184,15 @@ class UNetResAttnDownBlock2D(nn.Module):
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         attn_num_head_channels=1,
+        attention_type="default",
         output_scale_factor=1.0,
         add_downsample=True,
     ):
         super().__init__()
         resnets = []
         attentions = []
+
+        self.attention_type = attention_type
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -323,7 +326,7 @@ class UNetResAttnUpBlock2D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attention_layer_type: str = "self",
+        attention_type="default",
         attn_num_head_channels=1,
         output_scale_factor=1.0,
         add_upsample=True,
@@ -331,6 +334,8 @@ class UNetResAttnUpBlock2D(nn.Module):
         super().__init__()
         resnets = []
         attentions = []
+
+        self.attention_type = attention_type
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -399,7 +404,6 @@ class UNetResUpBlock2D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attention_layer_type: str = "self",
         output_scale_factor=1.0,
         add_upsample=True,
     ):
