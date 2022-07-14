@@ -20,7 +20,7 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import DDIMScheduler, DDPMScheduler, PNDMScheduler
+from diffusers import DDIMScheduler, DDPMScheduler, PNDMScheduler, ScoreSdeVeScheduler
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -446,6 +446,66 @@ class PNDMSchedulerTest(SchedulerCommonTest):
             scheduler.set_plms_mode()
 
             scheduler.step(self.dummy_sample, self.dummy_sample, 1, 50)
+
+    def test_full_loop_no_noise(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        num_inference_steps = 10
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter
+
+        prk_time_steps = scheduler.get_prk_time_steps(num_inference_steps)
+        for t in range(len(prk_time_steps)):
+            t_orig = prk_time_steps[t]
+            residual = model(sample, t_orig)
+
+            sample = scheduler.step_prk(residual, sample, t, num_inference_steps)
+
+        timesteps = scheduler.get_time_steps(num_inference_steps)
+        for t in range(len(timesteps)):
+            t_orig = timesteps[t]
+            residual = model(sample, t_orig)
+
+            sample = scheduler.step_plms(residual, sample, t, num_inference_steps)
+
+        result_sum = np.sum(np.abs(sample))
+        result_mean = np.mean(np.abs(sample))
+
+        assert abs(result_sum.item() - 199.1169) < 1e-2
+        assert abs(result_mean.item() - 0.2593) < 1e-3
+
+
+class ScoreSdeVeSchedulerTest(SchedulerCommonTest):
+    scheduler_classes = (ScoreSdeVeScheduler,)
+
+    def get_scheduler_config(self, **kwargs):
+        config = {
+            "snr": 0.15,
+            "sigma_min": 0.01,
+            "sigma_max": 1348,
+            "sampling_eps": 1e-5,
+        }
+
+        config.update(**kwargs)
+        return config
+
+    def test_timesteps(self):
+        for timesteps in [100, 1000]:
+            self.check_over_configs(timesteps=timesteps)
+
+    def test_sigmas(self):
+        for sigma_min, sigma_max in zip([0.0001, 0.001, 0.01], [1, 100, 1000]):
+            self.check_over_configs(sigma_min=sigma_min, sigma_max=sigma_max)
+
+    def test_time_indices(self):
+        for t in [1, 5, 10]:
+            self.check_over_forward(time_step=t)
+
+    def test_inference_steps(self):
+        for t, num_inference_steps in zip([1, 5, 10], [10, 50, 100]):
+            self.check_over_forward(time_step=t, num_inference_steps=num_inference_steps)
 
     def test_full_loop_no_noise(self):
         scheduler_class = self.scheduler_classes[0]
