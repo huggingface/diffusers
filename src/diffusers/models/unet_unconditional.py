@@ -1,12 +1,35 @@
+import functools
+import math
+
+import numpy as np
 import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
-from .embeddings import get_timestep_embedding
-from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
+from .embeddings import GaussianFourierProjection, get_timestep_embedding
+from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, ResnetBlock2D, Upsample2D
 from .unet_new import UNetMidBlock2D, get_down_block, get_up_block
+
+
+class Combine(nn.Module):
+    """Combine information from skip connections."""
+
+    def __init__(self, dim1, dim2, method="cat"):
+        super().__init__()
+        # 1x1 convolution with DDPM initialization.
+        self.Conv_0 = nn.Conv2d(dim1, dim2, kernel_size=1, padding=0)
+        self.method = method
+
+    def forward(self, x, y):
+        h = self.Conv_0(x)
+        if self.method == "cat":
+            return torch.cat([h, y], dim=1)
+        elif self.method == "sum":
+            return h + y
+        else:
+            raise ValueError(f"Method {self.method} not recognized.")
 
 
 def nonlinearity(x):
@@ -16,6 +39,23 @@ def nonlinearity(x):
 
 def Normalize(in_channels):
     return torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
+
+
+class Timesteps(nn.Module):
+    def __init__(self, num_channels, flip_sin_to_cos, downscale_freq_shift):
+        super().__init__()
+        self.num_channels = num_channels
+        self.flip_sin_to_cos = flip_sin_to_cos
+        self.downscale_freq_shift = downscale_freq_shift
+
+    def forward(self, timesteps):
+        t_emb = get_timestep_embedding(
+            timesteps,
+            self.num_channels,
+            flip_sin_to_cos=self.flip_sin_to_cos,
+            downscale_freq_shift=self.downscale_freq_shift,
+        )
+        return t_emb
 
 
 class TimestepEmbedding(nn.Module):
@@ -79,6 +119,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         num_head_channels=32,
         flip_sin_to_cos=True,
         downscale_freq_shift=0,
+        time_embedding_type="positional",
         # To delete once weights are converted
         # LDM
         attention_resolutions=(8, 4, 2),
@@ -91,6 +132,23 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         ch_mult=None,
         ch=None,
         ddpm=False,
+        # SDE
+        sde=False,
+        nf=None,
+        fir=None,
+        progressive=None,
+        progressive_combine=None,
+        scale_by_sigma=None,
+        skip_rescale=None,
+        num_channels=None,
+        centered=False,
+        conditional=True,
+        conv_size=3,
+        fir_kernel=(1, 3, 3, 1),
+        fourier_scale=16,
+        init_scale=0.0,
+        progressive_input="input_skip",
+        continuous=True,
     ):
         super().__init__()
 
@@ -111,18 +169,31 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             downscale_freq_shift=downscale_freq_shift,
             # (TODO(PVP) - To delete once weights are converted
             attention_resolutions=attention_resolutions,
+            time_embedding_type=time_embedding_type,
             ldm=ldm,
             ddpm=ddpm,
         )
+
+        if sde:
+            sampling_filter = "fir" if fir else "default"
+            block_channels = [nf * x for x in ch_mult]
+            in_channels = out_channels = num_channels
+            conv_resample = resamp_with_conv
+            time_embedding_type = "fourier"
 
         # To delete - replace with config values
         self.image_size = image_size
         time_embed_dim = block_channels[0] * 4
 
-        # # input
+        # input
         self.conv_in = nn.Conv2d(in_channels, block_channels[0], kernel_size=3, padding=(1, 1))
 
-        # # time
+        # time
+        if self.config.time_embedding_type == "fourier":
+            self.time_steps = GaussianFourierProjection(embedding_size=nf, scale=fourier_scale)
+        elif self.config.time_embedding_type == "positional":
+            self.time_steps = Timesteps(self.config.block_channels[0], flip_sin_to_cos, downscale_freq_shift)
+
         self.time_embedding = TimestepEmbedding(block_channels[0], time_embed_dim)
 
         self.downsample_blocks = nn.ModuleList([])
@@ -204,9 +275,9 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
 
         # ======================== Out ====================
 
+        # =========== TO DELETE AFTER CONVERSION ==========
         self.is_overwritten = False
         if ldm:
-            # =========== TO DELETE AFTER CONVERSION ==========
             transformer_depth = 1
             context_dim = None
             legacy = True
@@ -230,7 +301,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 conv_resample,
                 out_channels,
             )
-        if ddpm:
+        elif ddpm:
             out_channels = out_ch
             image_size = resolution
             block_channels = [x * ch for x in ch_mult]
@@ -246,6 +317,31 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 out_ch,
                 dropout=0.1,
             )
+        elif sde:
+            self.init_for_sde(
+                image_size,
+                num_channels,
+                centered,
+                attn_resolutions,
+                ch_mult,
+                conditional,
+                conv_size,
+                dropout,
+                time_embedding_type,
+                fir,
+                fir_kernel,
+                fourier_scale,
+                init_scale,
+                nf,
+                num_res_blocks,
+                progressive,
+                progressive_combine,
+                progressive_input,
+                resamp_with_conv,
+                scale_by_sigma,
+                skip_rescale,
+                continuous,
+            )
 
     def forward(self, sample, timesteps=None):
         # TODO(PVP) - to delete later
@@ -256,13 +352,15 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         if not torch.is_tensor(timesteps):
             timesteps = torch.tensor([timesteps], dtype=torch.long, device=sample.device)
 
-        t_emb = get_timestep_embedding(
-            timesteps,
-            self.config.block_channels[0],
-            flip_sin_to_cos=self.config.flip_sin_to_cos,
-            downscale_freq_shift=self.config.downscale_freq_shift,
-        )
+        t_emb = self.time_steps(timesteps)
         emb = self.time_embedding(t_emb)
+
+        #        t_emb = get_timestep_embedding(
+        #            timesteps,
+        #            self.config.block_channels[0],
+        #            flip_sin_to_cos=self.config.flip_sin_to_cos,
+        #            downscale_freq_shift=self.config.downscale_freq_shift,
+        #        )
 
         # 2. pre-process sample
         sample = self.conv_in(sample)
@@ -680,6 +778,256 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             nn.SiLU(),
             nn.Conv2d(model_channels, out_channels, 3, padding=1),
         )
+
+    def init_for_sde(
+        self,
+        image_size,
+        num_channels,
+        centered,
+        attn_resolutions,
+        ch_mult,
+        conditional,
+        conv_size,
+        dropout,
+        embedding_type,
+        fir,
+        fir_kernel,
+        fourier_scale,
+        init_scale,
+        nf,
+        num_res_blocks,
+        progressive,
+        progressive_combine,
+        progressive_input,
+        resamp_with_conv,
+        scale_by_sigma,
+        skip_rescale,
+        continuous,
+    ):
+        self.act = nn.SiLU()
+        self.nf = nf
+        self.num_res_blocks = num_res_blocks
+        self.attn_resolutions = attn_resolutions
+        self.num_resolutions = len(ch_mult)
+        self.all_resolutions = all_resolutions = [image_size // (2**i) for i in range(self.num_resolutions)]
+
+        self.conditional = conditional
+        self.skip_rescale = skip_rescale
+        self.progressive = progressive
+        self.progressive_input = progressive_input
+        self.embedding_type = embedding_type
+        assert progressive in ["none", "output_skip", "residual"]
+        assert progressive_input in ["none", "input_skip", "residual"]
+        assert embedding_type in ["fourier", "positional"]
+        combine_method = progressive_combine.lower()
+        combiner = functools.partial(Combine, method=combine_method)
+
+        modules = []
+        # timestep/noise_level embedding; only for continuous training
+        if embedding_type == "fourier":
+            # Gaussian Fourier features embeddings.
+            modules.append(GaussianFourierProjection(embedding_size=nf, scale=fourier_scale))
+            embed_dim = 2 * nf
+
+        elif embedding_type == "positional":
+            embed_dim = nf
+
+        else:
+            raise ValueError(f"embedding type {embedding_type} unknown.")
+
+        modules.append(nn.Linear(embed_dim, nf * 4))
+        modules.append(nn.Linear(nf * 4, nf * 4))
+
+        AttnBlock = functools.partial(AttentionBlock, overwrite_linear=True, rescale_output_factor=math.sqrt(2.0))
+
+        if fir:
+            Up_sample = functools.partial(FirUpsample2D, fir_kernel=fir_kernel, use_conv=resamp_with_conv)
+        else:
+            Up_sample = functools.partial(Upsample2D, name="Conv2d_0")
+
+        if progressive == "output_skip":
+            self.pyramid_upsample = Up_sample(channels=None, use_conv=False)
+        elif progressive == "residual":
+            pyramid_upsample = functools.partial(Up_sample, use_conv=True)
+
+        if fir:
+            Down_sample = functools.partial(FirDownsample2D, fir_kernel=fir_kernel, use_conv=resamp_with_conv)
+        else:
+            Down_sample = functools.partial(Downsample2D, padding=0, name="Conv2d_0")
+
+        if progressive_input == "input_skip":
+            self.pyramid_downsample = Down_sample(channels=None, use_conv=False)
+        elif progressive_input == "residual":
+            pyramid_downsample = functools.partial(Down_sample, use_conv=True)
+
+        channels = num_channels
+        if progressive_input != "none":
+            input_pyramid_ch = channels
+
+        modules.append(nn.Conv2d(channels, nf, kernel_size=3, padding=1))
+        hs_c = [nf]
+
+        in_ch = nf
+        for i_level in range(self.num_resolutions):
+            # Residual blocks for this resolution
+            for i_block in range(num_res_blocks):
+                out_ch = nf * ch_mult[i_level]
+                modules.append(
+                    ResnetBlock2D(
+                        in_channels=in_ch,
+                        out_channels=out_ch,
+                        temb_channels=4 * nf,
+                        output_scale_factor=np.sqrt(2.0),
+                        non_linearity="silu",
+                        groups=min(in_ch // 4, 32),
+                        groups_out=min(out_ch // 4, 32),
+                        overwrite_for_score_vde=True,
+                    )
+                )
+                in_ch = out_ch
+
+                if all_resolutions[i_level] in attn_resolutions:
+                    modules.append(AttnBlock(channels=in_ch))
+                hs_c.append(in_ch)
+
+            if i_level != self.num_resolutions - 1:
+                modules.append(
+                    ResnetBlock2D(
+                        in_channels=in_ch,
+                        temb_channels=4 * nf,
+                        output_scale_factor=np.sqrt(2.0),
+                        non_linearity="silu",
+                        groups=min(in_ch // 4, 32),
+                        groups_out=min(out_ch // 4, 32),
+                        overwrite_for_score_vde=True,
+                        down=True,
+                        kernel="fir" if fir else "sde_vp",
+                        use_nin_shortcut=True,
+                    )
+                )
+
+                if progressive_input == "input_skip":
+                    modules.append(combiner(dim1=input_pyramid_ch, dim2=in_ch))
+                    if combine_method == "cat":
+                        in_ch *= 2
+
+                elif progressive_input == "residual":
+                    modules.append(pyramid_downsample(channels=input_pyramid_ch, out_channels=in_ch))
+                    input_pyramid_ch = in_ch
+
+                hs_c.append(in_ch)
+
+        # mid
+        self.mid = UNetMidBlock2D(
+            in_channels=in_ch,
+            temb_channels=4 * nf,
+            output_scale_factor=math.sqrt(2.0),
+            resnet_act_fn="silu",
+            resnet_groups=min(in_ch // 4, 32),
+            dropout=dropout,
+        )
+
+        in_ch = hs_c[-1]
+        modules.append(
+            ResnetBlock2D(
+                in_channels=in_ch,
+                temb_channels=4 * nf,
+                output_scale_factor=np.sqrt(2.0),
+                non_linearity="silu",
+                groups=min(in_ch // 4, 32),
+                groups_out=min(out_ch // 4, 32),
+                overwrite_for_score_vde=True,
+            )
+        )
+        modules.append(AttnBlock(channels=in_ch))
+        modules.append(
+            ResnetBlock2D(
+                in_channels=in_ch,
+                temb_channels=4 * nf,
+                output_scale_factor=np.sqrt(2.0),
+                non_linearity="silu",
+                groups=min(in_ch // 4, 32),
+                groups_out=min(out_ch // 4, 32),
+                overwrite_for_score_vde=True,
+            )
+        )
+        self.mid.resnets[0] = modules[len(modules) - 3]
+        self.mid.attentions[0] = modules[len(modules) - 2]
+        self.mid.resnets[1] = modules[len(modules) - 1]
+
+        pyramid_ch = 0
+        # Upsampling block
+        for i_level in reversed(range(self.num_resolutions)):
+            for i_block in range(num_res_blocks + 1):
+                out_ch = nf * ch_mult[i_level]
+                in_ch = in_ch + hs_c.pop()
+                modules.append(
+                    ResnetBlock2D(
+                        in_channels=in_ch,
+                        out_channels=out_ch,
+                        temb_channels=4 * nf,
+                        output_scale_factor=np.sqrt(2.0),
+                        non_linearity="silu",
+                        groups=min(in_ch // 4, 32),
+                        groups_out=min(out_ch // 4, 32),
+                        overwrite_for_score_vde=True,
+                    )
+                )
+                in_ch = out_ch
+
+            if all_resolutions[i_level] in attn_resolutions:
+                modules.append(AttnBlock(channels=in_ch))
+
+            if progressive != "none":
+                if i_level == self.num_resolutions - 1:
+                    if progressive == "output_skip":
+                        modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6))
+                        modules.append(nn.Conv2d(in_ch, channels, kernel_size=3, padding=1))
+                        pyramid_ch = channels
+                    elif progressive == "residual":
+                        modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6))
+                        modules.append(nn.Conv2d(in_ch, in_ch, bias=True, kernel_size=3, padding=1))
+                        pyramid_ch = in_ch
+                    else:
+                        raise ValueError(f"{progressive} is not a valid name.")
+                else:
+                    if progressive == "output_skip":
+                        modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6))
+                        modules.append(nn.Conv2d(in_ch, channels, bias=True, kernel_size=3, padding=1))
+                        pyramid_ch = channels
+                    elif progressive == "residual":
+                        modules.append(pyramid_upsample(channels=pyramid_ch, out_channels=in_ch))
+                        pyramid_ch = in_ch
+                    else:
+                        raise ValueError(f"{progressive} is not a valid name")
+
+            if i_level != 0:
+                modules.append(
+                    ResnetBlock2D(
+                        in_channels=in_ch,
+                        temb_channels=4 * nf,
+                        output_scale_factor=np.sqrt(2.0),
+                        non_linearity="silu",
+                        groups=min(in_ch // 4, 32),
+                        groups_out=min(out_ch // 4, 32),
+                        overwrite_for_score_vde=True,
+                        up=True,
+                        kernel="fir" if fir else "sde_vp",
+                        use_nin_shortcut=True,
+                    )
+                )
+
+        assert not hs_c
+
+        if progressive != "output_skip":
+            modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6))
+            modules.append(nn.Conv2d(in_ch, channels, kernel_size=3, padding=1))
+
+        self.all_modules = nn.ModuleList(modules)
+
+        import ipdb
+
+        ipdb.set_trace()
 
     def remove_ldm(self):
         del self.time_embed

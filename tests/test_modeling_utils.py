@@ -561,7 +561,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
 
 
 class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
-    model_class = NCSNpp
+    model_class = UNetUnconditionalModel
 
     @property
     def dummy_input(self):
@@ -593,13 +593,16 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
             "progressive_input": "input_skip",
             "scale_by_sigma": True,
             "skip_rescale": True,
+            "sde": True,
             "embedding_type": "fourier",
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
     def test_from_pretrained_hub(self):
-        model, loading_info = NCSNpp.from_pretrained("fusing/cifar10-ncsnpp-ve", output_loading_info=True)
+        model, loading_info = UNetUnconditionalModel.from_pretrained(
+            "fusing/cifar10-ncsnpp-ve", output_loading_info=True
+        )
         self.assertIsNotNone(model)
         self.assertEqual(len(loading_info["missing_keys"]), 0)
 
@@ -609,7 +612,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained_ve_small(self):
-        model = NCSNpp.from_pretrained("fusing/ncsnpp-cifar10-ve-dummy")
+        model = UNetUnconditionalModel.from_pretrained("fusing/ncsnpp-cifar10-ve-dummy")
         model.eval()
         model.to(torch_device)
 
@@ -635,7 +638,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
     def test_output_pretrained_ve_large(self):
-        model = NCSNpp.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy")
+        model = UNetUnconditionalModel.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy")
         model.eval()
         model.to(torch_device)
 
@@ -661,7 +664,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
     def test_output_pretrained_vp(self):
-        model = NCSNpp.from_pretrained("fusing/cifar10-ddpmpp-vp")
+        model = UNetUnconditionalModel.from_pretrained("fusing/cifar10-ddpmpp-vp")
         model.eval()
         model.to(torch_device)
 
