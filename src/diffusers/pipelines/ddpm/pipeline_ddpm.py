@@ -50,7 +50,7 @@ class DDPMPipeline(DiffusionPipeline):
                     residual = residual["sample"]
 
             # 2. predict previous mean of image x_t-1
-            pred_prev_image = self.scheduler.step(residual, image, t)
+            pred_prev_image = self.scheduler.step(residual, t, image)["prev_sample"]
 
             # 3. optionally sample variance
             variance = 0

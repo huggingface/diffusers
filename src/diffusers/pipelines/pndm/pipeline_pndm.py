@@ -50,7 +50,7 @@ class PNDMPipeline(DiffusionPipeline):
             if isinstance(residual, dict):
                 residual = residual["sample"]
 
-            image = self.scheduler.step_prk(residual, image, t, num_inference_steps)
+            image = self.scheduler.step_prk(residual, t, image, num_inference_steps)["prev_sample"]
 
         timesteps = self.scheduler.get_time_steps(num_inference_steps)
         for t in tqdm.tqdm(range(len(timesteps))):
@@ -60,6 +60,6 @@ class PNDMPipeline(DiffusionPipeline):
             if isinstance(residual, dict):
                 residual = residual["sample"]
 
-            image = self.scheduler.step_plms(residual, image, t, num_inference_steps)
+            image = self.scheduler.step_plms(residual, t, image, num_inference_steps)["prev_sample"]
 
         return image
