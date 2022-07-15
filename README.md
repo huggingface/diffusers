@@ -78,7 +78,7 @@ Both models and schedulers should be load- and saveable from the Hub.
 
 For more examples see [schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers) and [models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models)
 
-#### **Example for [DDPM](https://arxiv.org/abs/2006.11239):**
+#### **Example for Unconditonal Image generation [DDPM](https://arxiv.org/abs/2006.11239):**
 
 ```python
 import torch
@@ -128,9 +128,8 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 
 # 6. save image
 image_pil.save("test.png")
-```
-
-#### **Example for [DDIM](https://arxiv.org/abs/2010.02502):**
+``` 
+#### **Example for Unconditonal Image generation [LDM](https://github.com/CompVis/latent-diffusion):**
 
 ```python
 import torch
@@ -185,157 +184,3 @@ image_pil = PIL.Image.fromarray(image_processed[0])
 # 6. save image
 image_pil.save("test.png")
 ```
-
-#### **Examples for other modalities:**
-
-[Diffuser](https://diffusion-planning.github.io/) for planning in reinforcement learning (currenlty only inference): [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1TmBmlYeKUZSkUZoJqfBmaicVTKx6nN1R?usp=sharing)
-
-### 2. `diffusers` as a collection of popular Diffusion systems (Glide, Dalle, ...)
-
-For more examples see [pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines).
-
-#### **Example image generation with PNDM**
-
-```python
-from diffusers import PNDM, UNetModel, PNDMScheduler
-import PIL.Image
-import numpy as np
-import torch
-
-model_id = "fusing/ddim-celeba-hq"
-
-model = UNetModel.from_pretrained(model_id)
-scheduler = PNDMScheduler()
-
-# load model and scheduler
-pndm = PNDM(unet=model, noise_scheduler=scheduler)
-
-# run pipeline in inference (sample random noise and denoise)
-with torch.no_grad():
-    image = pndm()
-
-# process image to PIL
-image_processed = image.cpu().permute(0, 2, 3, 1)
-image_processed = (image_processed + 1.0) / 2
-image_processed = torch.clamp(image_processed, 0.0, 1.0)
-image_processed = image_processed * 255
-image_processed = image_processed.numpy().astype(np.uint8)
-image_pil = PIL.Image.fromarray(image_processed[0])
-
-# save image
-image_pil.save("test.png")
-```
-
-#### **Example 1024x1024 image generation with SDE VE**
-
-See [paper](https://arxiv.org/abs/2011.13456) for more information on SDE VE.
-
-```python
-from diffusers import DiffusionPipeline
-import torch
-import PIL.Image
-import numpy as np
-
-torch.manual_seed(32)
-
-score_sde_sv = DiffusionPipeline.from_pretrained("fusing/ffhq_ncsnpp")
-
-# Note this might take up to 3 minutes on a GPU
-image = score_sde_sv(num_inference_steps=2000)
-
-image = image.permute(0, 2, 3, 1).cpu().numpy()
-image = np.clip(image * 255, 0, 255).astype(np.uint8)
-image_pil = PIL.Image.fromarray(image[0])
-
-# save image
-image_pil.save("test.png")
-```
-#### **Example 32x32 image generation with SDE VP**
-	
-See [paper](https://arxiv.org/abs/2011.13456) for more information on SDE VP.
-
-```python
-from diffusers import DiffusionPipeline
-import torch
-import PIL.Image
-import numpy as np
-
-torch.manual_seed(32)
-
-score_sde_sv = DiffusionPipeline.from_pretrained("fusing/cifar10-ddpmpp-deep-vp")
-
-# Note this might take up to 3 minutes on a GPU
-image = score_sde_sv(num_inference_steps=1000)
-
-image = image.permute(0, 2, 3, 1).cpu().numpy()
-image = np.clip(image * 255, 0, 255).astype(np.uint8)
-image_pil = PIL.Image.fromarray(image[0])
-
-# save image
-image_pil.save("test.png")
-```
-
-
-#### **Text to Image generation with Latent Diffusion**
-
-_Note: To use latent diffusion install transformers from [this branch](https://github.com/patil-suraj/transformers/tree/ldm-bert)._
-
-```python
-from diffusers import DiffusionPipeline
-
-ldm = DiffusionPipeline.from_pretrained("fusing/latent-diffusion-text2im-large")
-
-generator = torch.manual_seed(42)
-
-prompt = "A painting of a squirrel eating a burger"
-image = ldm([prompt], generator=generator, eta=0.3, guidance_scale=6.0, num_inference_steps=50)
-
-image_processed = image.cpu().permute(0, 2, 3, 1)
-image_processed = image_processed  * 255.
-image_processed = image_processed.numpy().astype(np.uint8)
-image_pil = PIL.Image.fromarray(image_processed[0])
-
-# save image
-image_pil.save("test.png")
-```
-
-#### **Text to speech with GradTTS and BDDMPipeline**
-
-```python
-import torch
-from diffusers import BDDMPipeline, GradTTSPipeline
-
-torch_device = "cuda"
-
-# load grad tts and bddm pipelines
-grad_tts = GradTTSPipeline.from_pretrained("fusing/grad-tts-libri-tts")
-bddm = BDDMPipeline.from_pretrained("fusing/diffwave-vocoder-ljspeech")
-
-text = "Hello world, I missed you so much."
-
-# generate mel spectograms using text
-mel_spec = grad_tts(text, torch_device=torch_device)
-
-#  generate the speech by passing mel spectograms to BDDMPipeline pipeline
-generator = torch.manual_seed(42)
-audio = bddm(mel_spec, generator, torch_device=torch_device)
-
-# save generated audio
-from scipy.io.wavfile import write as wavwrite
-sampling_rate = 22050
-wavwrite("generated_audio.wav", sampling_rate, audio.squeeze().cpu().numpy())
-```
-
-## TODO
-
-- [ ] Create common API for models
-- [ ] Add tests for models
-- [ ] Adapt schedulers for training
-- [ ] Write google colab for training
-- [ ] Write docs / Think about how to structure docs
-- [ ] Add tests to circle ci
-- [ ] Add [Diffusion LM models](https://arxiv.org/pdf/2205.14217.pdf)
-- [ ] Add more vision models
-- [ ] Add more speech models
-- [ ] Add RL model
-- [ ] Add FID and KID metrics
