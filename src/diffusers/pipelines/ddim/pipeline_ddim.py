@@ -45,15 +45,15 @@ class DDIMPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps)
 
         for t in tqdm.tqdm(self.scheduler.timesteps):
-            # 1. predict noise residual
+            # 1. predict noise model_output
             with torch.no_grad():
-                residual = self.unet(image, t)
+                model_output = self.unet(image, t)
 
-                if isinstance(residual, dict):
-                    residual = residual["sample"]
+                if isinstance(model_output, dict):
+                    model_output = model_output["sample"]
 
             # 2. predict previous mean of image x_t-1 and add variance depending on eta
             # do x_t -> x_t-1
-            image = self.scheduler.step(residual, t, image, eta)["prev_sample"]
+            image = self.scheduler.step(model_output, t, image, eta)["prev_sample"]
 
         return {"sample": image}

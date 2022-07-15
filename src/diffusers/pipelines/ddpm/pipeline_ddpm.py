@@ -42,15 +42,15 @@ class DDPMPipeline(DiffusionPipeline):
 
         num_prediction_steps = len(self.scheduler)
         for t in tqdm.tqdm(reversed(range(num_prediction_steps)), total=num_prediction_steps):
-            # 1. predict noise residual
+            # 1. predict noise model_output
             with torch.no_grad():
-                residual = self.unet(image, t)
+                model_output = self.unet(image, t)
 
-                if isinstance(residual, dict):
-                    residual = residual["sample"]
+                if isinstance(model_output, dict):
+                    model_output = model_output["sample"]
 
             # 2. predict previous mean of image x_t-1
-            pred_prev_image = self.scheduler.step(residual, t, image)["prev_sample"]
+            pred_prev_image = self.scheduler.step(model_output, t, image)["prev_sample"]
 
             # 3. optionally sample variance
             variance = 0

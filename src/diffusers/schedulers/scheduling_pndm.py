@@ -85,7 +85,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         self.pndm_order = 4
 
         # running values
-        self.cur_residual = 0
+        self.cur_model_output = 0
         self.cur_sample = None
         self.ets = []
         self.prk_time_steps = {}
@@ -130,7 +130,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
     def step_prk(
         self,
-        residual: Union[torch.FloatTensor, np.ndarray],
+        model_output: Union[torch.FloatTensor, np.ndarray],
         timestep: int,
         sample: Union[torch.FloatTensor, np.ndarray],
         num_inference_steps,
@@ -142,25 +142,25 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         t_orig_prev = prk_time_steps[min(t + 1, len(prk_time_steps) - 1)]
 
         if t % 4 == 0:
-            self.cur_residual += 1 / 6 * residual
-            self.ets.append(residual)
+            self.cur_model_output += 1 / 6 * model_output
+            self.ets.append(model_output)
             self.cur_sample = sample
         elif (t - 1) % 4 == 0:
-            self.cur_residual += 1 / 3 * residual
+            self.cur_model_output += 1 / 3 * model_output
         elif (t - 2) % 4 == 0:
-            self.cur_residual += 1 / 3 * residual
+            self.cur_model_output += 1 / 3 * model_output
         elif (t - 3) % 4 == 0:
-            residual = self.cur_residual + 1 / 6 * residual
-            self.cur_residual = 0
+            model_output = self.cur_model_output + 1 / 6 * model_output
+            self.cur_model_output = 0
 
         # cur_sample should not be `None`
         cur_sample = self.cur_sample if self.cur_sample is not None else sample
 
-        return {"prev_sample": self.get_prev_sample(cur_sample, t_orig, t_orig_prev, residual)}
+        return {"prev_sample": self.get_prev_sample(cur_sample, t_orig, t_orig_prev, model_output)}
 
     def step_plms(
         self,
-        residual: Union[torch.FloatTensor, np.ndarray],
+        model_output: Union[torch.FloatTensor, np.ndarray],
         timestep: int,
         sample: Union[torch.FloatTensor, np.ndarray],
         num_inference_steps,
@@ -178,13 +178,13 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         t_orig = timesteps[t]
         t_orig_prev = timesteps[min(t + 1, len(timesteps) - 1)]
-        self.ets.append(residual)
+        self.ets.append(model_output)
 
-        residual = (1 / 24) * (55 * self.ets[-1] - 59 * self.ets[-2] + 37 * self.ets[-3] - 9 * self.ets[-4])
+        model_output = (1 / 24) * (55 * self.ets[-1] - 59 * self.ets[-2] + 37 * self.ets[-3] - 9 * self.ets[-4])
 
-        return {"prev_sample": self.get_prev_sample(sample, t_orig, t_orig_prev, residual)}
+        return {"prev_sample": self.get_prev_sample(sample, t_orig, t_orig_prev, model_output)}
 
-    def get_prev_sample(self, sample, t_orig, t_orig_prev, residual):
+    def get_prev_sample(self, sample, t_orig, t_orig_prev, model_output):
         # See formula (9) of PNDM paper https://arxiv.org/pdf/2202.09778.pdf
         # this function computes x_(t−δ) using the formula of (9)
         # Note that x_t needs to be added to both sides of the equation
@@ -195,7 +195,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         # beta_prod_t -> (1 - α_t)
         # beta_prod_t_prev -> (1 - α_(t−δ))
         # sample -> x_t
-        # residual -> e_θ(x_t, t)
+        # model_output -> e_θ(x_t, t)
         # prev_sample -> x_(t−δ)
         alpha_prod_t = self.alphas_cumprod[t_orig + 1]
         alpha_prod_t_prev = self.alphas_cumprod[t_orig_prev + 1]
@@ -209,12 +209,12 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         sample_coeff = (alpha_prod_t_prev / alpha_prod_t) ** (0.5)
 
         # corresponds to denominator of e_θ(x_t, t) in formula (9)
-        residual_denom_coeff = alpha_prod_t * beta_prod_t_prev ** (0.5) + (
+        model_output_denom_coeff = alpha_prod_t * beta_prod_t_prev ** (0.5) + (
             alpha_prod_t * beta_prod_t * alpha_prod_t_prev
         ) ** (0.5)
 
         # full formula (9)
-        prev_sample = sample_coeff * sample - (alpha_prod_t_prev - alpha_prod_t) * residual / residual_denom_coeff
+        prev_sample = sample_coeff * sample - (alpha_prod_t_prev - alpha_prod_t) * model_output / model_output_denom_coeff
 
         return prev_sample
 

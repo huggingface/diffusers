@@ -36,14 +36,14 @@ class LatentDiffusionUncondPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps)
 
         for t in tqdm.tqdm(self.scheduler.timesteps):
-            residual = self.unet(image, t)
+            model_output = self.unet(image, t)
 
-            if isinstance(residual, dict):
-                residual = residual["sample"]
+            if isinstance(model_output, dict):
+                model_output = model_output["sample"]
 
             # 2. predict previous mean of image x_t-1 and add variance depending on eta
             # do x_t -> x_t-1
-            image = self.scheduler.step(residual, t, image, eta)["prev_sample"]
+            image = self.scheduler.step(model_output, t, image, eta)["prev_sample"]
 
         # decode image with vae
         image = self.vqvae.decode(image)

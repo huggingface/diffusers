@@ -112,11 +112,11 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        residual: Union[torch.FloatTensor, np.ndarray],
+        model_output: Union[torch.FloatTensor, np.ndarray],
         timestep: int,
         sample: Union[torch.FloatTensor, np.ndarray],
         eta,
-        use_clipped_residual=False,
+        use_clipped_model_output=False,
         generator=None,
     ):
         # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
@@ -140,7 +140,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         # 3. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        pred_original_sample = (sample - beta_prod_t ** (0.5) * residual) / alpha_prod_t ** (0.5)
+        pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
 
         # 4. Clip "predicted x_0"
         if self.config.clip_sample:
@@ -151,22 +151,22 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         variance = self._get_variance(timestep, prev_timestep)
         std_dev_t = eta * variance ** (0.5)
 
-        if use_clipped_residual:
-            # the residual is always re-derived from the clipped x_0 in Glide
-            residual = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
+        if use_clipped_model_output:
+            # the model_output is always re-derived from the clipped x_0 in Glide
+            model_output = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
 
         # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * residual
+        pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * model_output
 
         # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
         prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
 
         if eta > 0:
-            device = residual.device if torch.is_tensor(residual) else "cpu"
-            noise = torch.randn(residual.shape, generator=generator).to(device)
+            device = model_output.device if torch.is_tensor(model_output) else "cpu"
+            noise = torch.randn(model_output.shape, generator=generator).to(device)
             variance = self._get_variance(timestep, prev_timestep) ** (0.5) * eta * noise
 
-            if not torch.is_tensor(residual):
+            if not torch.is_tensor(model_output):
                 variance = variance.numpy()
 
             prev_sample = prev_sample + variance
