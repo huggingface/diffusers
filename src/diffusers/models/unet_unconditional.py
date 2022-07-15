@@ -2,6 +2,8 @@ import functools
 import math
 
 import numpy as np
+from typing import Dict, Union
+
 import torch
 import torch.nn as nn
 
@@ -32,32 +34,6 @@ class Combine(nn.Module):
             raise ValueError(f"Method {self.method} not recognized.")
 
 
-def nonlinearity(x):
-    # swish
-    return x * torch.sigmoid(x)
-
-
-def Normalize(in_channels):
-    return torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
-
-
-class Timesteps(nn.Module):
-    def __init__(self, num_channels, flip_sin_to_cos, downscale_freq_shift):
-        super().__init__()
-        self.num_channels = num_channels
-        self.flip_sin_to_cos = flip_sin_to_cos
-        self.downscale_freq_shift = downscale_freq_shift
-
-    def forward(self, timesteps):
-        t_emb = get_timestep_embedding(
-            timesteps,
-            self.num_channels,
-            flip_sin_to_cos=self.flip_sin_to_cos,
-            downscale_freq_shift=self.downscale_freq_shift,
-        )
-        return t_emb
-
-
 class TimestepEmbedding(nn.Module):
     def __init__(self, channel, time_embed_dim, act_fn="silu"):
         super().__init__()
@@ -76,6 +52,23 @@ class TimestepEmbedding(nn.Module):
 
         sample = self.linear_2(sample)
         return sample
+
+
+class Timesteps(nn.Module):
+    def __init__(self, num_channels, flip_sin_to_cos, downscale_freq_shift):
+        super().__init__()
+        self.num_channels = num_channels
+        self.flip_sin_to_cos = flip_sin_to_cos
+        self.downscale_freq_shift = downscale_freq_shift
+
+    def forward(self, timesteps):
+        t_emb = get_timestep_embedding(
+            timesteps,
+            self.num_channels,
+            flip_sin_to_cos=self.flip_sin_to_cos,
+            downscale_freq_shift=self.downscale_freq_shift,
+        )
+        return t_emb
 
 
 class UNetUnconditionalModel(ModelMixin, ConfigMixin):
@@ -126,7 +119,9 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         downscale_freq_shift=0,
         time_embedding_type="positional",
         time_embedding_act_fn="silu",
-        # To delete once weights are converted
+        # TODO(PVP) - to delete later at release
+        # IMPORTANT: NOT RELEVANT WHEN REVIEWING API
+        # ======================================
         # LDM
         attention_resolutions=(8, 4, 2),
         ldm=False,
@@ -157,8 +152,8 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         continuous=True,
     ):
         super().__init__()
-
-        # register all __init__ params with self.register
+        # register all __init__ params to be accessible via `self.config.<...>`
+        # should probably be automated down the road as this is pure boiler plate code
         self.register_to_config(
             image_size=image_size,
             in_channels=in_channels,
@@ -175,12 +170,11 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             downscale_freq_shift=downscale_freq_shift,
             time_embedding_type=time_embedding_type,
             time_embedding_act_fn=time_embedding_act_fn,
-            # (TODO(PVP) - To delete once weights are converted
             attention_resolutions=attention_resolutions,
+            attn_resolutions=attn_resolutions,
             ldm=ldm,
             ddpm=ddpm,
         )
-
         if sde:
             sampling_filter = "fir" if fir else "default"
             block_channels = [nf * x for x in ch_mult]
@@ -189,9 +183,12 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             time_embedding_type = "fourier"
             time_embedding_act_fn = None
 
-        # To delete - replace with config values
+        # TODO(PVP) - to delete later at release
+        # IMPORTANT: NOT RELEVANT WHEN REVIEWING API
+        # ======================================
         self.image_size = image_size
         time_embed_dim = block_channels[0] * 4
+        # ======================================
 
         # input
         self.conv_in = nn.Conv2d(in_channels, block_channels[0], kernel_size=3, padding=(1, 1))
@@ -204,7 +201,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             self.time_steps = Timesteps(self.config.block_channels[0], flip_sin_to_cos, downscale_freq_shift)
             timestep_input_dim = block_channels[0]
 
-        self.time_embedding = TimestepEmbedding(block_channels[0], time_embed_dim, act_fn=self.config.time_embedding_act_fn)
+        self.time_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim, act_fn=self.config.time_embedding_act_fn)
 
         self.downsample_blocks = nn.ModuleList([])
         self.mid = None
@@ -279,13 +276,16 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             prev_output_channel = output_channel
 
         # out
-        self.conv_norm_out = nn.GroupNorm(num_channels=block_channels[0], num_groups=32, eps=1e-5)
+        self.conv_norm_out = nn.GroupNorm(num_channels=block_channels[0], num_groups=32, eps=resnet_eps)
         self.conv_act = nn.SiLU()
         self.conv_out = nn.Conv2d(block_channels[0], out_channels, 3, padding=1)
 
         # ======================== Out ====================
 
         # =========== TO DELETE AFTER CONVERSION ==========
+        # TODO(PVP) - to delete later at release
+        # IMPORTANT: NOT RELEVANT WHEN REVIEWING API
+        # ======================================
         self.is_overwritten = False
         if ldm:
             transformer_depth = 1
@@ -316,6 +316,11 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             image_size = resolution
             block_channels = [x * ch for x in ch_mult]
             conv_resample = resamp_with_conv
+            out_ch = out_channels
+            resolution = image_size
+            ch = block_channels[0]
+            ch_mult = [b // ch for b in block_channels]
+            resamp_with_conv = conv_resample
             self.init_for_ddpm(
                 ch_mult,
                 ch,
@@ -353,14 +358,21 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 continuous,
             )
 
-    def forward(self, sample, timesteps=None):
-        # TODO(PVP) - to delete later
+    def forward(
+        self, sample: torch.FloatTensor, timestep: Union[torch.Tensor, float, int]
+    ) -> Dict[str, torch.FloatTensor]:
+        # TODO(PVP) - to delete later at release
+        # IMPORTANT: NOT RELEVANT WHEN REVIEWING API
+        # ======================================
         if not self.is_overwritten:
             self.set_weights()
 
-        # 1. time step embeddings
+        # 1. time step embeddings -> make correct tensor
+        timesteps = timestep
         if not torch.is_tensor(timesteps):
             timesteps = torch.tensor([timesteps], dtype=torch.long, device=sample.device)
+        elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
+            timesteps = timesteps[None].to(sample.device)
 
         t_emb = self.time_steps(timesteps)
         emb = self.time_embedding(t_emb)
@@ -396,7 +408,12 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         sample = self.conv_act(sample)
         sample = self.conv_out(sample)
 
-        return sample
+        output = {"sample": sample}
+
+        return output
+
+    # !!!IMPORTANT - ALL OF THE FOLLOWING CODE WILL BE DELETED AT RELEASE TIME AND SHOULD NOT BE TAKEN INTO CONSIDERATION WHEN EVALUATING THE API ###
+    # =================================================================================================================================================
 
     def set_weights(self):
         self.is_overwritten = True
@@ -1045,3 +1062,12 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         del self.mid_new
         del self.up
         del self.norm_out
+
+
+def nonlinearity(x):
+    # swish
+    return x * torch.sigmoid(x)
+
+
+def Normalize(in_channels):
+    return torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)

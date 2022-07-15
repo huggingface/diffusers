@@ -16,8 +16,10 @@
 # and https://github.com/hojonathanho/diffusion
 
 import math
+from typing import Union
 
 import numpy as np
+import torch
 
 from ..configuration_utils import ConfigMixin
 from .scheduling_utils import SchedulerMixin
@@ -84,14 +86,16 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
         self.one = np.array(1.0)
 
+        # setable values
+        self.num_inference_steps = None
+        self.timesteps = np.arange(0, self.config.timesteps)[::-1].copy()
+
+        self.tensor_format = tensor_format
         self.set_format(tensor_format=tensor_format)
 
-    def get_variance(self, t, num_inference_steps):
-        orig_t = self.config.timesteps // num_inference_steps * t
-        orig_prev_t = self.config.timesteps // num_inference_steps * (t - 1) if t > 0 else -1
-
-        alpha_prod_t = self.alphas_cumprod[orig_t]
-        alpha_prod_t_prev = self.alphas_cumprod[orig_prev_t] if orig_prev_t >= 0 else self.one
+    def _get_variance(self, timestep, prev_timestep):
+        alpha_prod_t = self.alphas_cumprod[timestep]
+        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.one
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
@@ -99,7 +103,22 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
-    def step(self, residual, sample, t, num_inference_steps, eta, use_clipped_residual=False):
+    def set_timesteps(self, num_inference_steps):
+        self.num_inference_steps = num_inference_steps
+        self.timesteps = np.arange(0, self.config.timesteps, self.config.timesteps // self.num_inference_steps)[
+            ::-1
+        ].copy()
+        self.set_format(tensor_format=self.tensor_format)
+
+    def step(
+        self,
+        model_output: Union[torch.FloatTensor, np.ndarray],
+        timestep: int,
+        sample: Union[torch.FloatTensor, np.ndarray],
+        eta,
+        use_clipped_model_output=False,
+        generator=None,
+    ):
         # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
         # Ideally, read DDIM paper in-detail understanding
 
@@ -111,18 +130,17 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # - pred_sample_direction -> "direction pointingc to x_t"
         # - pred_prev_sample -> "x_t-1"
 
-        # 1. get actual t and t-1
-        orig_t = self.config.timesteps // num_inference_steps * t
-        orig_prev_t = self.config.timesteps // num_inference_steps * (t - 1) if t > 0 else -1
+        # 1. get previous step value (=t-1)
+        prev_timestep = timestep - self.config.timesteps // self.num_inference_steps
 
         # 2. compute alphas, betas
-        alpha_prod_t = self.alphas_cumprod[orig_t]
-        alpha_prod_t_prev = self.alphas_cumprod[orig_prev_t] if orig_prev_t >= 0 else self.one
+        alpha_prod_t = self.alphas_cumprod[timestep]
+        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.one
         beta_prod_t = 1 - alpha_prod_t
 
         # 3. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        pred_original_sample = (sample - beta_prod_t ** (0.5) * residual) / alpha_prod_t ** (0.5)
+        pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
 
         # 4. Clip "predicted x_0"
         if self.config.clip_sample:
@@ -130,20 +148,30 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         # 5. compute variance: "sigma_t(η)" -> see formula (16)
         # σ_t = sqrt((1 − α_t−1)/(1 − α_t)) * sqrt(1 − α_t/α_t−1)
-        variance = self.get_variance(t, num_inference_steps)
+        variance = self._get_variance(timestep, prev_timestep)
         std_dev_t = eta * variance ** (0.5)
 
-        if use_clipped_residual:
-            # the residual is always re-derived from the clipped x_0 in Glide
-            residual = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
+        if use_clipped_model_output:
+            # the model_output is always re-derived from the clipped x_0 in Glide
+            model_output = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
 
         # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * residual
+        pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * model_output
 
         # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        pred_prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
+        prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
 
-        return pred_prev_sample
+        if eta > 0:
+            device = model_output.device if torch.is_tensor(model_output) else "cpu"
+            noise = torch.randn(model_output.shape, generator=generator).to(device)
+            variance = self._get_variance(timestep, prev_timestep) ** (0.5) * eta * noise
+
+            if not torch.is_tensor(model_output):
+                variance = variance.numpy()
+
+            prev_sample = prev_sample + variance
+
+        return {"prev_sample": prev_sample}
 
     def add_noise(self, original_samples, noise, timesteps):
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
