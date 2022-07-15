@@ -134,6 +134,10 @@ class ConfigMixin:
             if os.path.isfile(os.path.join(pretrained_model_name_or_path, cls.config_name)):
                 # Load from a PyTorch checkpoint
                 config_file = os.path.join(pretrained_model_name_or_path, cls.config_name)
+            elif subfolder is not None and os.path.isfile(
+                os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name)
+            ):
+                config_file = os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name)
             else:
                 raise EnvironmentError(
                     f"Error no file named {cls.config_name} found in directory {pretrained_model_name_or_path}."

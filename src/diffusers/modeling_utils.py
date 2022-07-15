@@ -348,6 +348,10 @@ class ModelMixin(torch.nn.Module):
             if os.path.isfile(os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)):
                 # Load from a PyTorch checkpoint
                 model_file = os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)
+            elif subfolder is not None and os.path.isfile(
+                os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)
+            ):
+                model_file = os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)
             else:
                 raise EnvironmentError(
                     f"Error no file named {WEIGHTS_NAME} found in directory {pretrained_model_name_or_path}."
