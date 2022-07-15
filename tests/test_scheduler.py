@@ -167,7 +167,7 @@ class DDPMSchedulerTest(SchedulerCommonTest):
 
     def get_scheduler_config(self, **kwargs):
         config = {
-            "timesteps": 1000,
+            "num_train_timesteps": 1000,
             "beta_start": 0.0001,
             "beta_end": 0.02,
             "beta_schedule": "linear",
@@ -180,7 +180,7 @@ class DDPMSchedulerTest(SchedulerCommonTest):
 
     def test_timesteps(self):
         for timesteps in [1, 5, 100, 1000]:
-            self.check_over_configs(timesteps=timesteps)
+            self.check_over_configs(num_train_timesteps=timesteps)
 
     def test_betas(self):
         for beta_start, beta_end in zip([0.0001, 0.001, 0.01, 0.1], [0.002, 0.02, 0.2, 2]):
@@ -247,7 +247,7 @@ class DDIMSchedulerTest(SchedulerCommonTest):
 
     def get_scheduler_config(self, **kwargs):
         config = {
-            "timesteps": 1000,
+            "num_train_timesteps": 1000,
             "beta_start": 0.0001,
             "beta_end": 0.02,
             "beta_schedule": "linear",
@@ -259,7 +259,7 @@ class DDIMSchedulerTest(SchedulerCommonTest):
 
     def test_timesteps(self):
         for timesteps in [1, 5, 100, 1000]:
-            self.check_over_configs(timesteps=timesteps)
+            self.check_over_configs(num_train_timesteps=timesteps)
 
     def test_betas(self):
         for beta_start, beta_end in zip([0.0001, 0.001, 0.01, 0.1], [0.002, 0.02, 0.2, 2]):
@@ -335,7 +335,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
     def get_scheduler_config(self, **kwargs):
         config = {
-            "timesteps": 1000,
+            "num_train_timesteps": 1000,
             "beta_start": 0.0001,
             "beta_end": 0.02,
             "beta_schedule": "linear",
@@ -399,11 +399,11 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
     def test_timesteps(self):
         for timesteps in [100, 1000]:
-            self.check_over_configs(timesteps=timesteps)
+            self.check_over_configs(num_train_timesteps=timesteps)
 
     def test_timesteps_pmls(self):
         for timesteps in [100, 1000]:
-            self.check_over_configs_pmls(timesteps=timesteps)
+            self.check_over_configs_pmls(num_train_timesteps=timesteps)
 
     def test_betas(self):
         for beta_start, beta_end in zip([0.0001, 0.001, 0.01], [0.002, 0.02, 0.2]):
@@ -482,6 +482,7 @@ class ScoreSdeVeSchedulerTest(SchedulerCommonTest):
 
     def get_scheduler_config(self, **kwargs):
         config = {
+            "num_train_timesteps": 2000,
             "snr": 0.15,
             "sigma_min": 0.01,
             "sigma_max": 1348,
@@ -492,8 +493,8 @@ class ScoreSdeVeSchedulerTest(SchedulerCommonTest):
         return config
 
     def test_timesteps(self):
-        for timesteps in [100, 1000]:
-            self.check_over_configs(timesteps=timesteps)
+        for timesteps in [10, 100, 1000]:
+            self.check_over_configs(num_train_timesteps=timesteps)
 
     def test_sigmas(self):
         for sigma_min, sigma_max in zip([0.0001, 0.001, 0.01], [1, 100, 1000]):

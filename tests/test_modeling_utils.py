@@ -1011,8 +1011,13 @@ class PipelineTesterMixin(unittest.TestCase):
         image = sde_ve(num_inference_steps=2)
 
         if model.device.type == "cpu":
-            expected_image_sum = 3384805888.0  # on m1 mbp 3384805376.0
-            expected_image_mean = 1076.00085  # on m1 mbp 1076.0006103515625
+            # patrick's cpu
+            # expected_image_sum = 3384805888.0
+            # expected_image_mean = 1076.00085
+
+            # m1 mbp
+            expected_image_sum = 3384805376.0
+            expected_image_mean = 1076.000610351562
         else:
             expected_image_sum = 3382849024.0
             expected_image_mean = 1075.3788
@@ -1030,8 +1035,13 @@ class PipelineTesterMixin(unittest.TestCase):
         torch.manual_seed(0)
         image = sde_vp(num_inference_steps=10)
 
-        expected_image_sum = 4183.2012  # on m1 mbp 4318.6729
-        expected_image_mean = 1.3617  # on m1 mbp 1.4058
+        # expected_image_sum = 4183.2012
+        # expected_image_mean = 1.3617
+
+        # on m1 mbp
+        expected_image_sum = 4318.6729
+        expected_image_mean = 1.4058
+
 
         assert (image.abs().sum() - expected_image_sum).abs().cpu().item() < 1e-2
         assert (image.abs().mean() - expected_image_mean).abs().cpu().item() < 1e-4
