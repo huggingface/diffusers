@@ -713,20 +713,20 @@ class GlidePipeline(DiffusionPipeline):
     def __init__(
         self,
         text_unet: GlideTextToImageUNetModel,
-        text_noise_scheduler: DDPMScheduler,
+        text_scheduler: DDPMScheduler,
         text_encoder: CLIPTextModel,
         tokenizer: GPT2Tokenizer,
         upscale_unet: GlideSuperResUNetModel,
-        upscale_noise_scheduler: DDIMScheduler,
+        upscale_scheduler: DDIMScheduler,
     ):
         super().__init__()
         self.register_modules(
             text_unet=text_unet,
-            text_noise_scheduler=text_noise_scheduler,
+            text_scheduler=text_scheduler,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             upscale_unet=upscale_unet,
-            upscale_noise_scheduler=upscale_noise_scheduler,
+            upscale_scheduler=upscale_scheduler,
         )
 
     @torch.no_grad()
@@ -777,20 +777,20 @@ class GlidePipeline(DiffusionPipeline):
         transformer_out = self.text_encoder(input_ids, attention_mask).last_hidden_state
 
         # 3. Run the text2image generation step
-        num_prediction_steps = len(self.text_noise_scheduler)
+        num_prediction_steps = len(self.text_scheduler)
         for t in tqdm.tqdm(reversed(range(num_prediction_steps)), total=num_prediction_steps):
             with torch.no_grad():
                 time_input = torch.tensor([t] * image.shape[0], device=torch_device)
                 model_output = text_model_fn(image, time_input, transformer_out)
                 noise_residual, model_var_values = torch.split(model_output, 3, dim=1)
 
-            min_log = self.text_noise_scheduler.get_variance(t, "fixed_small_log")
-            max_log = self.text_noise_scheduler.get_variance(t, "fixed_large_log")
+            min_log = self.text_scheduler.get_variance(t, "fixed_small_log")
+            max_log = self.text_scheduler.get_variance(t, "fixed_large_log")
             # The model_var_values is [-1, 1] for [min_var, max_var].
             frac = (model_var_values + 1) / 2
             model_log_variance = frac * max_log + (1 - frac) * min_log
 
-            pred_prev_image = self.text_noise_scheduler.step(noise_residual, image, t)
+            pred_prev_image = self.text_scheduler.step(noise_residual, image, t)
             noise = torch.randn(image.shape, generator=generator).to(torch_device)
             variance = torch.exp(0.5 * model_log_variance) * noise
 
@@ -814,7 +814,7 @@ class GlidePipeline(DiffusionPipeline):
         ).to(torch_device)
         image = image * upsample_temp
 
-        num_trained_timesteps = self.upscale_noise_scheduler.timesteps
+        num_trained_timesteps = self.upscale_scheduler.timesteps
         inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps_upscale)
 
         for t in tqdm.tqdm(reversed(range(num_inference_steps_upscale)), total=num_inference_steps_upscale):
@@ -825,7 +825,7 @@ class GlidePipeline(DiffusionPipeline):
                 noise_residual, pred_variance = torch.split(model_output, 3, dim=1)
 
             # 2. predict previous mean of image x_t-1
-            pred_prev_image = self.upscale_noise_scheduler.step(
+            pred_prev_image = self.upscale_scheduler.step(
                 noise_residual, image, t, num_inference_steps_upscale, eta, use_clipped_residual=True
             )
 
@@ -833,9 +833,7 @@ class GlidePipeline(DiffusionPipeline):
             variance = 0
             if eta > 0:
                 noise = torch.randn(image.shape, generator=generator).to(torch_device)
-                variance = (
-                    self.upscale_noise_scheduler.get_variance(t, num_inference_steps_upscale).sqrt() * eta * noise
-                )
+                variance = self.upscale_scheduler.get_variance(t, num_inference_steps_upscale).sqrt() * eta * noise
 
             # 4. set current image to prev_image: x_t -> x_t-1
             image = pred_prev_image + variance
