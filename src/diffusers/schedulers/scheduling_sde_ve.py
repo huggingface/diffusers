@@ -1,4 +1,4 @@
-# Copyright 2022 Google Brain and The HuggingFace Team. All rights reserved.
+# Copyright 2022 diffusionoogle Brain and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,14 +27,18 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
     """
     The variance exploding stochastic differential equation (SDE) scheduler.
 
-    :param snr:
-    :param sigma_min:
+    :param snr: coefficient weighting the step from the score sample (from the network) to the random noise.
+    :param sigma_min: initial noise scale for sigma sequence in sampling procedure. The minimum sigma should mirror the
+            distribution of the data.
     :param sigma_max:
-    :param sampling_eps:
-    :param correct_steps:
-    :param tensor_format:
+    :param sampling_eps: the end value of sampling, where timesteps decrease progessively from 1 to epsilon.
+    :param correct_steps: number of correction steps performed on a produced sample.
+    :param tensor_format: "np" or "pt" for the expected format of samples passed to the Scheduler.
     """
-    def __init__(self, snr=0.15, sigma_min=0.01, sigma_max=1348, sampling_eps=1e-5, correct_steps=1, tensor_format="np"):
+
+    def __init__(
+        self, snr=0.15, sigma_min=0.01, sigma_max=1348, sampling_eps=1e-5, correct_steps=1, tensor_format="np"
+    ):
         super().__init__()
         self.register_to_config(
             snr=snr,
@@ -77,33 +81,39 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         adjacent_sigma = torch.where(
             timestep == 0, torch.zeros_like(t), self.discrete_sigmas[timestep - 1].to(timestep.device)
         )
-        f = torch.zeros_like(x)
-        G = torch.sqrt(sigma**2 - adjacent_sigma**2)
+        drift = torch.zeros_like(x)
+        diffusion = torch.sqrt(sigma**2 - adjacent_sigma**2)
 
         # equation 6 in the paper: the score modeled by the network is grad_x log pt(x)
-        f = f - G[:, None, None, None] ** 2 * score
+        # also equation 47 shows the analog from SDE models to ancestral sampling methods
+        drift = drift - diffusion[:, None, None, None] ** 2 * score
 
         #  equation 6: sample noise for the diffusion term of
-        z = torch.randn_like(x)
-        x_mean = x - f                              # substract because `dt` is a small negative timestep
-        x = x_mean + G[:, None, None, None] * z     # add impact of diffusion field g
+        noise = torch.randn_like(x)
+        x_mean = x - drift  # subtract because `dt` is a small negative timestep
+        # TODO is the variable diffusion the correct scaling term for the noise?
+        x = x_mean + diffusion[:, None, None, None] * noise  # add impact of diffusion field g
         return x, x_mean
 
-    def step_correct(self, result, x):
+    def step_correct(self, score, x):
         """
-        Correct the predicted sample based on the output of the network.
-        This is often run repeatedly after making the prediction for the previous timestep.
+        Correct the predicted sample based on the output score of the network. This is often run repeatedly after
+        making the prediction for the previous timestep.
         """
-        # TODO(Patrick) better comments + non-PyTorch
+        # TODO(Patrick) non-PyTorch
 
-        # TODO for small batch sizes, the paper "suggest replacing nomr(z) with sqrt(d), where d is the dim. of z".
+        # For small batch sizes, the paper "suggest replacing norm(z) with sqrt(d), where d is the dim. of z" 
+        # sample noise for correction
         noise = torch.randn_like(x)
-        grad_norm = torch.norm(result.reshape(result.shape[0], -1), dim=-1).mean()
+
+        # compute step size from the score, the noise, and the snr
+        grad_norm = torch.norm(score.reshape(score.shape[0], -1), dim=-1).mean()
         noise_norm = torch.norm(noise.reshape(noise.shape[0], -1), dim=-1).mean()
         step_size = (self.config.snr * noise_norm / grad_norm) ** 2 * 2
         step_size = step_size * torch.ones(x.shape[0], device=x.device)
-        x_mean = x + step_size[:, None, None, None] * result
 
+        # compute corrected sample: score term and noise term
+        sample_mean = x + step_size[:, None, None, None] * score
         x = x_mean + torch.sqrt(step_size * 2)[:, None, None, None] * noise
 
         return x

@@ -27,6 +27,7 @@ class ScoreSdeVpPipeline(DiffusionPipeline):
             t = t * torch.ones(shape[0], device=device)
             scaled_t = t * (num_inference_steps - 1)
 
+            # TODO add corrector
             with torch.no_grad():
                 result = model(x, scaled_t)
 
