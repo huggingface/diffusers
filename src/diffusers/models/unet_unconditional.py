@@ -59,16 +59,21 @@ class Timesteps(nn.Module):
 
 
 class TimestepEmbedding(nn.Module):
-    def __init__(self, channel, time_embed_dim):
+    def __init__(self, channel, time_embed_dim, act_fn="silu"):
         super().__init__()
 
         self.linear_1 = nn.Linear(channel, time_embed_dim)
-        self.act = nn.SiLU()
+        self.act = None
+        if act_fn == "silu":
+            self.act = nn.SiLU()
         self.linear_2 = nn.Linear(time_embed_dim, time_embed_dim)
 
     def forward(self, sample):
         sample = self.linear_1(sample)
-        sample = self.act(sample)
+
+        if self.act is not None:
+            sample = self.act(sample)
+
         sample = self.linear_2(sample)
         return sample
 
@@ -120,6 +125,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         flip_sin_to_cos=True,
         downscale_freq_shift=0,
         time_embedding_type="positional",
+        time_embedding_act_fn="silu",
         # To delete once weights are converted
         # LDM
         attention_resolutions=(8, 4, 2),
@@ -167,9 +173,10 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             num_head_channels=num_head_channels,
             flip_sin_to_cos=flip_sin_to_cos,
             downscale_freq_shift=downscale_freq_shift,
+            time_embedding_type=time_embedding_type,
+            time_embedding_act_fn=time_embedding_act_fn,
             # (TODO(PVP) - To delete once weights are converted
             attention_resolutions=attention_resolutions,
-            time_embedding_type=time_embedding_type,
             ldm=ldm,
             ddpm=ddpm,
         )
@@ -180,6 +187,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             in_channels = out_channels = num_channels
             conv_resample = resamp_with_conv
             time_embedding_type = "fourier"
+            time_embedding_act_fn = None
 
         # To delete - replace with config values
         self.image_size = image_size
@@ -191,10 +199,12 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         # time
         if self.config.time_embedding_type == "fourier":
             self.time_steps = GaussianFourierProjection(embedding_size=nf, scale=fourier_scale)
+            timestep_input_dim = 2 * block_channels[0]
         elif self.config.time_embedding_type == "positional":
             self.time_steps = Timesteps(self.config.block_channels[0], flip_sin_to_cos, downscale_freq_shift)
+            timestep_input_dim = block_channels[0]
 
-        self.time_embedding = TimestepEmbedding(block_channels[0], time_embed_dim)
+        self.time_embedding = TimestepEmbedding(block_channels[0], time_embed_dim, act_fn=self.config.time_embedding_act_fn)
 
         self.downsample_blocks = nn.ModuleList([])
         self.mid = None
@@ -354,13 +364,6 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
 
         t_emb = self.time_steps(timesteps)
         emb = self.time_embedding(t_emb)
-
-        #        t_emb = get_timestep_embedding(
-        #            timesteps,
-        #            self.config.block_channels[0],
-        #            flip_sin_to_cos=self.config.flip_sin_to_cos,
-        #            downscale_freq_shift=self.config.downscale_freq_shift,
-        #        )
 
         # 2. pre-process sample
         sample = self.conv_in(sample)

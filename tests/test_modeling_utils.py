@@ -612,7 +612,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained_ve_small(self):
-        model = UNetUnconditionalModel.from_pretrained("fusing/ncsnpp-cifar10-ve-dummy")
+        model = UNetUnconditionalModel.from_pretrained("fusing/ncsnpp-cifar10-ve-dummy", sde=True)
         model.eval()
         model.to(torch_device)
 
@@ -638,7 +638,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
     def test_output_pretrained_ve_large(self):
-        model = UNetUnconditionalModel.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy")
+        model = UNetUnconditionalModel.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy", sde=True)
         model.eval()
         model.to(torch_device)
 
