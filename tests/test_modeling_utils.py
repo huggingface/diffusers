@@ -1070,7 +1070,6 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_ldm_uncond(self):
-#        ldm = LatentDiffusionUncondPipeline.from_pretrained("fusing/latent-diffusion-celeba-256", ldm=True)
         ldm = LatentDiffusionUncondPipeline.from_pretrained("CompVis/latent-diffusion-celeba-256")
 
         generator = torch.manual_seed(0)

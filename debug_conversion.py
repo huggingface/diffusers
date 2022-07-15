@@ -45,7 +45,6 @@ def current_codebase_conversion():
 
 
 currently_converted_checkpoint = current_codebase_conversion()
-torch.save(currently_converted_checkpoint, 'currently_converted_checkpoint.pt')
 
 
 def diff_between_checkpoints(ch_0, ch_1):
@@ -84,3 +83,4 @@ def diff_between_checkpoints(ch_0, ch_1):
 
 
 diff_between_checkpoints(currently_converted_checkpoint, checkpoint)
+torch.save(checkpoint, "/path/to/checkpoint/")
