@@ -72,7 +72,7 @@ def renew_attention_paths(old_list, n_shave_prefix_segments=0):
     return mapping
 
 
-def assign_to_checkpoint(paths, checkpoint, old_checkpoint, attention_paths_to_split=None, additional_replacements=None):
+def assign_to_checkpoint(paths, checkpoint, old_checkpoint, attention_paths_to_split=None, additional_replacements=None, config=None):
     """
     This does the final conversion step: take locally converted weights and apply a global renaming
     to them. It splits attention layers, and takes into account additional replacements
@@ -85,11 +85,19 @@ def assign_to_checkpoint(paths, checkpoint, old_checkpoint, attention_paths_to_s
     # Splits the attention layers into three variables.
     if attention_paths_to_split is not None:
         for path, path_map in attention_paths_to_split.items():
-            query, key, value = torch.split(old_checkpoint[path], int(old_checkpoint[path].shape[0] / 3))
+            old_tensor = old_checkpoint[path]
+            channels = old_tensor.shape[0] // 3
 
-            checkpoint[path_map['query']] = query
-            checkpoint[path_map['key']] = key
-            checkpoint[path_map['value']] = value
+            target_shape = (-1, channels) if len(old_tensor.shape) == 3 else (-1)
+
+            num_heads = old_tensor.shape[0] // config["num_head_channels"] // 3
+
+            old_tensor = old_tensor.reshape((num_heads, 3 * channels // num_heads) + old_tensor.shape[1:])
+            query, key, value = old_tensor.split(channels // num_heads, dim=1)
+
+            checkpoint[path_map['query']] = query.reshape(target_shape)
+            checkpoint[path_map['key']] = key.reshape(target_shape)
+            checkpoint[path_map['value']] = value.reshape(target_shape)
 
     for path in paths:
         new_path = path['new']
@@ -107,7 +115,11 @@ def assign_to_checkpoint(paths, checkpoint, old_checkpoint, attention_paths_to_s
             for replacement in additional_replacements:
                 new_path = new_path.replace(replacement['old'], replacement['new'])
 
-        checkpoint[new_path] = old_checkpoint[path['old']]
+        # proj_attn.weight has to be converted from conv 1D to linear
+        if "proj_attn.weight" in new_path:
+            checkpoint[new_path] = old_checkpoint[path['old']][:, :, 0]
+        else:
+            checkpoint[new_path] = old_checkpoint[path['old']]
 
 
 def convert_ldm_checkpoint(checkpoint, config):
@@ -155,7 +167,7 @@ def convert_ldm_checkpoint(checkpoint, config):
         paths = renew_resnet_paths(resnets)
         meta_path = {'old': f'input_blocks.{i}.0', 'new': f'downsample_blocks.{block_id}.resnets.{layer_in_block_id}'}
         resnet_op = {'old': 'resnets.2.op', 'new': 'downsamplers.0.op'}
-        assign_to_checkpoint(paths, new_checkpoint, checkpoint, additional_replacements=[meta_path, resnet_op])
+        assign_to_checkpoint(paths, new_checkpoint, checkpoint, additional_replacements=[meta_path, resnet_op], config=config)
 
         if len(attentions):
             paths = renew_attention_paths(attentions)
@@ -177,19 +189,19 @@ def convert_ldm_checkpoint(checkpoint, config):
                 new_checkpoint,
                 checkpoint,
                 additional_replacements=[meta_path],
-                attention_paths_to_split=to_split
+                attention_paths_to_split=to_split,
+                config=config
             )
-
 
     resnet_0 = middle_blocks[0]
     attentions = middle_blocks[1]
     resnet_1 = middle_blocks[2]
 
     resnet_0_paths = renew_resnet_paths(resnet_0)
-    assign_to_checkpoint(resnet_0_paths, new_checkpoint, checkpoint)
+    assign_to_checkpoint(resnet_0_paths, new_checkpoint, checkpoint, config=config)
 
     resnet_1_paths = renew_resnet_paths(resnet_1)
-    assign_to_checkpoint(resnet_1_paths, new_checkpoint, checkpoint)
+    assign_to_checkpoint(resnet_1_paths, new_checkpoint, checkpoint, config=config)
 
     attentions_paths = renew_attention_paths(attentions)
     to_split = {
@@ -204,7 +216,7 @@ def convert_ldm_checkpoint(checkpoint, config):
             'value': 'mid.attentions.0.value.weight',
         },
     }
-    assign_to_checkpoint(attentions_paths, new_checkpoint, checkpoint, attention_paths_to_split=to_split)
+    assign_to_checkpoint(attentions_paths, new_checkpoint, checkpoint, attention_paths_to_split=to_split, config=config)
 
     for i in range(num_output_blocks):
         block_id = i // (config['num_res_blocks'] + 1)
@@ -227,7 +239,7 @@ def convert_ldm_checkpoint(checkpoint, config):
             paths = renew_resnet_paths(resnets)
 
             meta_path = {'old': f'output_blocks.{i}.0', 'new': f'upsample_blocks.{block_id}.resnets.{layer_in_block_id}'}
-            assign_to_checkpoint(paths, new_checkpoint, checkpoint, additional_replacements=[meta_path])
+            assign_to_checkpoint(paths, new_checkpoint, checkpoint, additional_replacements=[meta_path], config=config)
 
             if ['conv.weight', 'conv.bias'] in output_block_list.values():
                 index = list(output_block_list.values()).index(['conv.weight', 'conv.bias'])
@@ -237,7 +249,6 @@ def convert_ldm_checkpoint(checkpoint, config):
                 # Clear attentions as they have been attributed above.
                 if len(attentions) == 2:
                     attentions = []
-
 
             if len(attentions):
                 paths = renew_attention_paths(attentions)
@@ -262,7 +273,8 @@ def convert_ldm_checkpoint(checkpoint, config):
                     new_checkpoint,
                     checkpoint,
                     additional_replacements=[meta_path],
-                    attention_paths_to_split=to_split if any('qkv' in key for key in attentions) else None
+                    attention_paths_to_split=to_split if any('qkv' in key for key in attentions) else None,
+                    config=config,
                 )
         else:
             resnet_0_paths = renew_resnet_paths(output_block_layers, n_shave_prefix_segments=1)
@@ -296,7 +308,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-
     checkpoint = torch.load(args.checkpoint_path)
 
     with open(args.config_file) as f:
@@ -304,6 +315,3 @@ if __name__ == "__main__":
 
     converted_checkpoint = convert_ldm_checkpoint(checkpoint, config)
     torch.save(checkpoint, args.dump_path)
-
-
-
