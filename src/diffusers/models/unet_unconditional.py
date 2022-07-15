@@ -254,7 +254,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         # ======================================
 
     def forward(
-        self, sample: torch.FloatTensor, step_value: Union[torch.Tensor, float, int]
+        self, sample: torch.FloatTensor, timestep: Union[torch.Tensor, float, int]
     ) -> Dict[str, torch.FloatTensor]:
         # TODO(PVP) - to delete later at release
         # IMPORTANT: NOT RELEVANT WHEN REVIEWING API
@@ -263,10 +263,12 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             self.set_weights()
         # ======================================
 
-        # 1. time step embeddings
-        timesteps = step_value
+        # 1. time step embeddings -> make correct tensor
+        timesteps = timestep
         if not torch.is_tensor(timesteps):
             timesteps = torch.tensor([timesteps], dtype=torch.long, device=sample.device)
+        elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
+            timesteps = timesteps[None].to(sample.device)
 
         t_emb = get_timestep_embedding(
             timesteps,

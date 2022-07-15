@@ -15,8 +15,10 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 import math
+from typing import Union
 
 import numpy as np
+import torch
 
 from ..configuration_utils import ConfigMixin
 from .scheduling_utils import SchedulerMixin
@@ -126,7 +128,14 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         raise ValueError(f"mode {self.mode} does not exist.")
 
-    def step_prk(self, residual, sample, t, num_inference_steps):
+    def step_prk(
+        self,
+        residual: Union[torch.FloatTensor, np.ndarray],
+        timestep: int,
+        sample: Union[torch.FloatTensor, np.ndarray],
+        num_inference_steps,
+    ):
+        t = timestep
         prk_time_steps = self.get_prk_time_steps(num_inference_steps)
 
         t_orig = prk_time_steps[t // 4 * 4]
@@ -147,9 +156,16 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         # cur_sample should not be `None`
         cur_sample = self.cur_sample if self.cur_sample is not None else sample
 
-        return self.get_prev_sample(cur_sample, t_orig, t_orig_prev, residual)
+        return {"prev_sample": self.get_prev_sample(cur_sample, t_orig, t_orig_prev, residual)}
 
-    def step_plms(self, residual, sample, t, num_inference_steps):
+    def step_plms(
+        self,
+        residual: Union[torch.FloatTensor, np.ndarray],
+        timestep: int,
+        sample: Union[torch.FloatTensor, np.ndarray],
+        num_inference_steps,
+    ):
+        t = timestep
         if len(self.ets) < 3:
             raise ValueError(
                 f"{self.__class__} can only be run AFTER scheduler has been run "
@@ -166,7 +182,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         residual = (1 / 24) * (55 * self.ets[-1] - 59 * self.ets[-2] + 37 * self.ets[-3] - 9 * self.ets[-4])
 
-        return self.get_prev_sample(sample, t_orig, t_orig_prev, residual)
+        return {"prev_sample": self.get_prev_sample(sample, t_orig, t_orig_prev, residual)}
 
     def get_prev_sample(self, sample, t_orig, t_orig_prev, residual):
         # See formula (9) of PNDM paper https://arxiv.org/pdf/2202.09778.pdf

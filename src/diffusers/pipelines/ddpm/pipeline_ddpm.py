@@ -22,10 +22,10 @@ from ...pipeline_utils import DiffusionPipeline
 
 
 class DDPMPipeline(DiffusionPipeline):
-    def __init__(self, unet, noise_scheduler):
+    def __init__(self, unet, scheduler):
         super().__init__()
-        noise_scheduler = noise_scheduler.set_format("pt")
-        self.register_modules(unet=unet, noise_scheduler=noise_scheduler)
+        scheduler = scheduler.set_format("pt")
+        self.register_modules(unet=unet, scheduler=scheduler)
 
     def __call__(self, batch_size=1, generator=None, torch_device=None):
         if torch_device is None:
@@ -40,7 +40,7 @@ class DDPMPipeline(DiffusionPipeline):
         )
         image = image.to(torch_device)
 
-        num_prediction_steps = len(self.noise_scheduler)
+        num_prediction_steps = len(self.scheduler)
         for t in tqdm.tqdm(reversed(range(num_prediction_steps)), total=num_prediction_steps):
             # 1. predict noise residual
             with torch.no_grad():
@@ -50,13 +50,13 @@ class DDPMPipeline(DiffusionPipeline):
                     residual = residual["sample"]
 
             # 2. predict previous mean of image x_t-1
-            pred_prev_image = self.noise_scheduler.step(residual, image, t)
+            pred_prev_image = self.scheduler.step(residual, t, image)["prev_sample"]
 
             # 3. optionally sample variance
             variance = 0
             if t > 0:
                 noise = torch.randn(image.shape, generator=generator).to(image.device)
-                variance = self.noise_scheduler.get_variance(t).sqrt() * noise
+                variance = self.scheduler.get_variance(t).sqrt() * noise
 
             # 4. set current image to prev_image: x_t -> x_t-1
             image = pred_prev_image + variance

@@ -165,7 +165,7 @@ class ModelTesterMixin:
         # signature.parameters is an OrderedDict => so arg_names order is deterministic
         arg_names = [*signature.parameters.keys()]
 
-        expected_arg_names = ["sample", "step_value"]
+        expected_arg_names = ["sample", "timestep"]
         self.assertListEqual(arg_names[:2], expected_arg_names)
 
     def test_model_from_config(self):
@@ -248,7 +248,7 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
         noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
         time_step = torch.tensor([10]).to(torch_device)
 
-        return {"sample": noise, "step_value": time_step}
+        return {"sample": noise, "timestep": time_step}
 
     @property
     def input_shape(self):
@@ -323,7 +323,7 @@ class GlideSuperResUNetTests(ModelTesterMixin, unittest.TestCase):
         low_res = torch.randn((batch_size, 3) + low_res_size).to(torch_device)
         time_step = torch.tensor([10] * noise.shape[0], device=torch_device)
 
-        return {"sample": noise, "step_value": time_step, "low_res": low_res}
+        return {"sample": noise, "timestep": time_step, "low_res": low_res}
 
     @property
     def input_shape(self):
@@ -414,7 +414,7 @@ class GlideTextToImageUNetModelTests(ModelTesterMixin, unittest.TestCase):
         emb = torch.randn((batch_size, seq_len, transformer_dim)).to(torch_device)
         time_step = torch.tensor([10] * noise.shape[0], device=torch_device)
 
-        return {"sample": noise, "step_value": time_step, "transformer_out": emb}
+        return {"sample": noise, "timestep": time_step, "transformer_out": emb}
 
     @property
     def input_shape(self):
@@ -506,7 +506,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
         time_step = torch.tensor([10]).to(torch_device)
 
-        return {"sample": noise, "step_value": time_step}
+        return {"sample": noise, "timestep": time_step}
 
     @property
     def input_shape(self):
@@ -601,7 +601,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
         time_step = torch.tensor(batch_size * [10]).to(torch_device)
 
-        return {"sample": noise, "step_value": time_step}
+        return {"sample": noise, "timestep": time_step}
 
     @property
     def input_shape(self):
@@ -899,8 +899,8 @@ class PipelineTesterMixin(unittest.TestCase):
         ddpm = DDPMPipeline.from_pretrained(model_path)
         ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path)
 
-        ddpm.noise_scheduler.num_timesteps = 10
-        ddpm_from_hub.noise_scheduler.num_timesteps = 10
+        ddpm.scheduler.num_timesteps = 10
+        ddpm_from_hub.scheduler.num_timesteps = 10
 
         generator = torch.manual_seed(0)
 
@@ -915,10 +915,10 @@ class PipelineTesterMixin(unittest.TestCase):
         model_id = "fusing/ddpm-cifar10"
 
         unet = UNetUnconditionalModel.from_pretrained(model_id, ddpm=True)
-        noise_scheduler = DDPMScheduler.from_config(model_id)
-        noise_scheduler = noise_scheduler.set_format("pt")
+        scheduler = DDPMScheduler.from_config(model_id)
+        scheduler = scheduler.set_format("pt")
 
-        ddpm = DDPMPipeline(unet=unet, noise_scheduler=noise_scheduler)
+        ddpm = DDPMPipeline(unet=unet, scheduler=scheduler)
 
         generator = torch.manual_seed(0)
         image = ddpm(generator=generator)
@@ -936,13 +936,12 @@ class PipelineTesterMixin(unittest.TestCase):
         model_id = "fusing/ddpm-lsun-bedroom-ema"
 
         unet = UNetUnconditionalModel.from_pretrained(model_id, ddpm=True)
-        noise_scheduler = DDIMScheduler.from_config(model_id)
-        noise_scheduler = noise_scheduler.set_format("pt")
+        scheduler = DDIMScheduler.from_config(model_id)
 
-        ddpm = DDIMPipeline(unet=unet, noise_scheduler=noise_scheduler)
+        ddpm = DDIMPipeline(unet=unet, scheduler=scheduler)
 
         generator = torch.manual_seed(0)
-        image = ddpm(generator=generator)
+        image = ddpm(generator=generator)["sample"]
 
         image_slice = image[0, -1, -3:, -3:].cpu()
 
@@ -957,12 +956,12 @@ class PipelineTesterMixin(unittest.TestCase):
         model_id = "fusing/ddpm-cifar10"
 
         unet = UNetUnconditionalModel.from_pretrained(model_id, ddpm=True)
-        noise_scheduler = DDIMScheduler(tensor_format="pt")
+        scheduler = DDIMScheduler(tensor_format="pt")
 
-        ddim = DDIMPipeline(unet=unet, noise_scheduler=noise_scheduler)
+        ddim = DDIMPipeline(unet=unet, scheduler=scheduler)
 
         generator = torch.manual_seed(0)
-        image = ddim(generator=generator, eta=0.0)
+        image = ddim(generator=generator, eta=0.0)["sample"]
 
         image_slice = image[0, -1, -3:, -3:].cpu()
 
@@ -977,9 +976,9 @@ class PipelineTesterMixin(unittest.TestCase):
         model_id = "fusing/ddpm-cifar10"
 
         unet = UNetUnconditionalModel.from_pretrained(model_id, ddpm=True)
-        noise_scheduler = PNDMScheduler(tensor_format="pt")
+        scheduler = PNDMScheduler(tensor_format="pt")
 
-        pndm = PNDMPipeline(unet=unet, noise_scheduler=noise_scheduler)
+        pndm = PNDMPipeline(unet=unet, scheduler=scheduler)
         generator = torch.manual_seed(0)
         image = pndm(generator=generator)
 
@@ -1074,7 +1073,7 @@ class PipelineTesterMixin(unittest.TestCase):
         ldm = LatentDiffusionUncondPipeline.from_pretrained("fusing/latent-diffusion-celeba-256", ldm=True)
 
         generator = torch.manual_seed(0)
-        image = ldm(generator=generator, num_inference_steps=5)
+        image = ldm(generator=generator, num_inference_steps=5)["sample"]
 
         image_slice = image[0, -1, -3:, -3:].cpu()
 

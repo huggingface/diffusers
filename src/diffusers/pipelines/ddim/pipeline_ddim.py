@@ -22,18 +22,15 @@ from ...pipeline_utils import DiffusionPipeline
 
 
 class DDIMPipeline(DiffusionPipeline):
-    def __init__(self, unet, noise_scheduler):
+    def __init__(self, unet, scheduler):
         super().__init__()
-        noise_scheduler = noise_scheduler.set_format("pt")
-        self.register_modules(unet=unet, noise_scheduler=noise_scheduler)
+        scheduler = scheduler.set_format("pt")
+        self.register_modules(unet=unet, scheduler=scheduler)
 
     def __call__(self, batch_size=1, generator=None, torch_device=None, eta=0.0, num_inference_steps=50):
         # eta corresponds to η in paper and should be between [0, 1]
         if torch_device is None:
             torch_device = "cuda" if torch.cuda.is_available() else "cpu"
-
-        num_trained_timesteps = self.noise_scheduler.config.timesteps
-        inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps)
 
         self.unet.to(torch_device)
 
@@ -44,34 +41,19 @@ class DDIMPipeline(DiffusionPipeline):
         )
         image = image.to(torch_device)
 
-        # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
-        # Ideally, read DDIM paper in-detail understanding
+        # set step values
+        self.scheduler.set_timesteps(num_inference_steps)
 
-        # Notation (<variable name> -> <name in paper>
-        # - pred_noise_t -> e_theta(x_t, t)
-        # - pred_original_image -> f_theta(x_t, t) or x_0
-        # - std_dev_t -> sigma_t
-        # - eta -> η
-        # - pred_image_direction -> "direction pointingc to x_t"
-        # - pred_prev_image -> "x_t-1"
-        for t in tqdm.tqdm(reversed(range(num_inference_steps)), total=num_inference_steps):
+        for t in tqdm.tqdm(self.scheduler.timesteps):
             # 1. predict noise residual
             with torch.no_grad():
-                residual = self.unet(image, inference_step_times[t])
+                residual = self.unet(image, t)
 
                 if isinstance(residual, dict):
                     residual = residual["sample"]
 
-            # 2. predict previous mean of image x_t-1
-            pred_prev_image = self.noise_scheduler.step(residual, image, t, num_inference_steps, eta)
+            # 2. predict previous mean of image x_t-1 and add variance depending on eta
+            # do x_t -> x_t-1
+            image = self.scheduler.step(residual, t, image, eta)["prev_sample"]
 
-            # 3. optionally sample variance
-            variance = 0
-            if eta > 0:
-                noise = torch.randn(image.shape, generator=generator).to(image.device)
-                variance = self.noise_scheduler.get_variance(t, num_inference_steps).sqrt() * eta * noise
-
-            # 4. set current image to prev_image: x_t -> x_t-1
-            image = pred_prev_image + variance
-
-        return image
+        return {"sample": image}

@@ -15,8 +15,10 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 import math
+from typing import Union
 
 import numpy as np
+import torch
 
 from ..configuration_utils import ConfigMixin
 from .scheduling_utils import SchedulerMixin
@@ -112,7 +114,14 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
-    def step(self, residual, sample, t, predict_epsilon=True):
+    def step(
+        self,
+        residual: Union[torch.FloatTensor, np.ndarray],
+        timestep: int,
+        sample: Union[torch.FloatTensor, np.ndarray],
+        predict_epsilon=True,
+    ):
+        t = timestep
         # 1. compute alphas, betas
         alpha_prod_t = self.alphas_cumprod[t]
         alpha_prod_t_prev = self.alphas_cumprod[t - 1] if t > 0 else self.one
@@ -139,7 +148,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
         pred_prev_sample = pred_original_sample_coeff * pred_original_sample + current_sample_coeff * sample
 
-        return pred_prev_sample
+        return {"prev_sample": pred_prev_sample}
 
     def add_noise(self, original_samples, noise, timesteps):
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5

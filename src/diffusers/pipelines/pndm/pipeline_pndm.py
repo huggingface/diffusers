@@ -22,10 +22,10 @@ from ...pipeline_utils import DiffusionPipeline
 
 
 class PNDMPipeline(DiffusionPipeline):
-    def __init__(self, unet, noise_scheduler):
+    def __init__(self, unet, scheduler):
         super().__init__()
-        noise_scheduler = noise_scheduler.set_format("pt")
-        self.register_modules(unet=unet, noise_scheduler=noise_scheduler)
+        scheduler = scheduler.set_format("pt")
+        self.register_modules(unet=unet, scheduler=scheduler)
 
     def __call__(self, batch_size=1, generator=None, torch_device=None, num_inference_steps=50):
         # For more information on the sampling method you can take a look at Algorithm 2 of
@@ -42,7 +42,7 @@ class PNDMPipeline(DiffusionPipeline):
         )
         image = image.to(torch_device)
 
-        prk_time_steps = self.noise_scheduler.get_prk_time_steps(num_inference_steps)
+        prk_time_steps = self.scheduler.get_prk_time_steps(num_inference_steps)
         for t in tqdm.tqdm(range(len(prk_time_steps))):
             t_orig = prk_time_steps[t]
             residual = self.unet(image, t_orig)
@@ -50,9 +50,9 @@ class PNDMPipeline(DiffusionPipeline):
             if isinstance(residual, dict):
                 residual = residual["sample"]
 
-            image = self.noise_scheduler.step_prk(residual, image, t, num_inference_steps)
+            image = self.scheduler.step_prk(residual, t, image, num_inference_steps)["prev_sample"]
 
-        timesteps = self.noise_scheduler.get_time_steps(num_inference_steps)
+        timesteps = self.scheduler.get_time_steps(num_inference_steps)
         for t in tqdm.tqdm(range(len(timesteps))):
             t_orig = timesteps[t]
             residual = self.unet(image, t_orig)
@@ -60,6 +60,6 @@ class PNDMPipeline(DiffusionPipeline):
             if isinstance(residual, dict):
                 residual = residual["sample"]
 
-            image = self.noise_scheduler.step_plms(residual, image, t, num_inference_steps)
+            image = self.scheduler.step_plms(residual, t, image, num_inference_steps)["prev_sample"]
 
         return image
