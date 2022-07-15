@@ -46,6 +46,9 @@ class DDPMPipeline(DiffusionPipeline):
             with torch.no_grad():
                 residual = self.unet(image, t)
 
+                if isinstance(residual, dict):
+                    residual = residual["sample"]
+
             # 2. predict previous mean of image x_t-1
             pred_prev_image = self.noise_scheduler.step(residual, image, t)
 

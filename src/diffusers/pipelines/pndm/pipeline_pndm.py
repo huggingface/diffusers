@@ -47,12 +47,18 @@ class PNDMPipeline(DiffusionPipeline):
             t_orig = prk_time_steps[t]
             residual = self.unet(image, t_orig)
 
+            if isinstance(residual, dict):
+                residual = residual["sample"]
+
             image = self.noise_scheduler.step_prk(residual, image, t, num_inference_steps)
 
         timesteps = self.noise_scheduler.get_time_steps(num_inference_steps)
         for t in tqdm.tqdm(range(len(timesteps))):
             t_orig = timesteps[t]
             residual = self.unet(image, t_orig)
+
+            if isinstance(residual, dict):
+                residual = residual["sample"]
 
             image = self.noise_scheduler.step_plms(residual, image, t, num_inference_steps)
 

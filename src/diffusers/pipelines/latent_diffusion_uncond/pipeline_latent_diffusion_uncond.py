@@ -51,6 +51,9 @@ class LatentDiffusionUncondPipeline(DiffusionPipeline):
             timesteps = torch.tensor([inference_step_times[t]] * image.shape[0], device=torch_device)
             pred_noise_t = self.unet(image, timesteps)
 
+            if isinstance(pred_noise_t, dict):
+                pred_noise_t = pred_noise_t["sample"]
+
             # 2. predict previous mean of image x_t-1
             pred_prev_image = self.noise_scheduler.step(pred_noise_t, image, t, num_inference_steps, eta)
 

@@ -1,3 +1,5 @@
+from typing import Dict, Union
+
 import torch
 import torch.nn as nn
 
@@ -7,15 +9,6 @@ from .attention import AttentionBlock
 from .embeddings import get_timestep_embedding
 from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
 from .unet_new import UNetMidBlock2D, get_down_block, get_up_block
-
-
-def nonlinearity(x):
-    # swish
-    return x * torch.sigmoid(x)
-
-
-def Normalize(in_channels):
-    return torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
 
 
 class TimestepEmbedding(nn.Module):
@@ -79,7 +72,9 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         num_head_channels=32,
         flip_sin_to_cos=True,
         downscale_freq_shift=0,
-        # To delete once weights are converted
+        # TODO(PVP) - to delete later at release
+        # IMPORTANT: NOT RELEVANT WHEN REVIEWING API
+        # ======================================
         # LDM
         attention_resolutions=(8, 4, 2),
         ldm=False,
@@ -91,10 +86,11 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         ch_mult=None,
         ch=None,
         ddpm=False,
+        # ======================================
     ):
         super().__init__()
-
-        # register all __init__ params with self.register
+        # register all __init__ params to be accessible via `self.config.<...>`
+        # should probably be automated down the road as this is pure boiler plate code
         self.register_to_config(
             image_size=image_size,
             in_channels=in_channels,
@@ -109,15 +105,22 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             num_head_channels=num_head_channels,
             flip_sin_to_cos=flip_sin_to_cos,
             downscale_freq_shift=downscale_freq_shift,
-            # (TODO(PVP) - To delete once weights are converted
+            # TODO(PVP) - to delete later at release
+            # IMPORTANT: NOT RELEVANT WHEN REVIEWING API
+            # ======================================
             attention_resolutions=attention_resolutions,
+            attn_resolutions=attn_resolutions,
             ldm=ldm,
             ddpm=ddpm,
+            # ======================================
         )
 
-        # To delete - replace with config values
+        # TODO(PVP) - to delete later at release
+        # IMPORTANT: NOT RELEVANT WHEN REVIEWING API
+        # ======================================
         self.image_size = image_size
         time_embed_dim = block_channels[0] * 4
+        # ======================================
 
         # # input
         self.conv_in = nn.Conv2d(in_channels, block_channels[0], kernel_size=3, padding=(1, 1))
@@ -202,8 +205,9 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         self.conv_act = nn.SiLU()
         self.conv_out = nn.Conv2d(block_channels[0], out_channels, 3, padding=1)
 
-        # ======================== Out ====================
-
+        # TODO(PVP) - to delete later at release
+        # IMPORTANT: NOT RELEVANT WHEN REVIEWING API
+        # ======================================
         self.is_overwritten = False
         if ldm:
             # =========== TO DELETE AFTER CONVERSION ==========
@@ -231,10 +235,11 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 out_channels,
             )
         if ddpm:
-            out_channels = out_ch
-            image_size = resolution
-            block_channels = [x * ch for x in ch_mult]
-            conv_resample = resamp_with_conv
+            out_ch = out_channels
+            resolution = image_size
+            ch = block_channels[0]
+            ch_mult = [b // ch for b in block_channels]
+            resamp_with_conv = conv_resample
             self.init_for_ddpm(
                 ch_mult,
                 ch,
@@ -246,13 +251,20 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 out_ch,
                 dropout=0.1,
             )
+        # ======================================
 
-    def forward(self, sample, timesteps=None):
-        # TODO(PVP) - to delete later
+    def forward(
+        self, sample: torch.FloatTensor, step_value: Union[torch.Tensor, float, int]
+    ) -> Dict[str, torch.FloatTensor]:
+        # TODO(PVP) - to delete later at release
+        # IMPORTANT: NOT RELEVANT WHEN REVIEWING API
+        # ======================================
         if not self.is_overwritten:
             self.set_weights()
+        # ======================================
 
         # 1. time step embeddings
+        timesteps = step_value
         if not torch.is_tensor(timesteps):
             timesteps = torch.tensor([timesteps], dtype=torch.long, device=sample.device)
 
@@ -295,7 +307,12 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         sample = self.conv_act(sample)
         sample = self.conv_out(sample)
 
-        return sample
+        output = {"sample": sample}
+
+        return output
+
+    # !!!IMPORTANT - ALL OF THE FOLLOWING CODE WILL BE DELETED AT RELEASE TIME AND SHOULD NOT BE TAKEN INTO CONSIDERATION WHEN EVALUATING THE API ###
+    # =================================================================================================================================================
 
     def set_weights(self):
         self.is_overwritten = True
@@ -694,3 +711,12 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         del self.mid_new
         del self.up
         del self.norm_out
+
+
+def nonlinearity(x):
+    # swish
+    return x * torch.sigmoid(x)
+
+
+def Normalize(in_channels):
+    return torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
