@@ -711,9 +711,9 @@ class ResnetBlock(nn.Module):
 
     def forward(self, x, temb):
         h = x
-        if self.pre_norm:
-            h = self.norm1(h)
-            h = self.nonlinearity(h)
+
+        h = self.norm1(h)
+        h = self.nonlinearity(h)
 
         if self.upsample is not None:
             x = self.upsample(x)
@@ -723,10 +723,6 @@ class ResnetBlock(nn.Module):
             h = self.downsample(h)
 
         h = self.conv1(h)
-
-        if not self.pre_norm:
-            h = self.norm1(h)
-            h = self.nonlinearity(h)
 
         if temb is not None:
             temb = self.time_emb_proj(self.nonlinearity(temb))[:, :, None, None]
@@ -741,16 +737,11 @@ class ResnetBlock(nn.Module):
             h = self.nonlinearity(h)
         elif self.time_embedding_norm == "default":
             h = h + temb
-            if self.pre_norm:
-                h = self.norm2(h)
-                h = self.nonlinearity(h)
+            h = self.norm2(h)
+            h = self.nonlinearity(h)
 
         h = self.dropout(h)
         h = self.conv2(h)
-
-        if not self.pre_norm:
-            h = self.norm2(h)
-            h = self.nonlinearity(h)
 
         if self.conv_shortcut is not None:
             x = self.conv_shortcut(x)
