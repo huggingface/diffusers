@@ -667,6 +667,34 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
     def test_output_pretrained_ve_large(self):
+        model = NCSNpp.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy")
+        model.eval()
+        model.to(torch_device)
+
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        batch_size = 4
+        num_channels = 3
+        sizes = (32, 32)
+
+        noise = torch.ones((batch_size, num_channels) + sizes).to(torch_device)
+        time_step = torch.tensor(batch_size * [1e-4]).to(torch_device)
+
+        with torch.no_grad():
+            output = model(noise, time_step)
+
+        output_slice = output[0, -3:, -3:, -1].flatten().cpu()
+        # fmt: off
+        expected_output_slice = torch.tensor([-0.0325, -0.0900, -0.0869, -0.0332, -0.0725, -0.0270, -0.0101, 0.0227, 0.0256])
+        # fmt: on
+
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
+
+        print("Youuuuuuuu it worked at first")
+        print(40 * "=")
+
         model = UNetUnconditionalModel.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy", sde=True)
         model.eval()
         model.to(torch_device)

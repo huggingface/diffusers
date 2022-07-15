@@ -134,7 +134,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         ch=None,
         ddpm=False,
         # SDE
-        sde=False,
+        sde=True,
         nf=None,
         fir=None,
         progressive=None,
@@ -174,6 +174,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             attn_resolutions=attn_resolutions,
             ldm=ldm,
             ddpm=ddpm,
+            sde=sde,
         )
         if sde:
             sampling_filter = "fir" if fir else "default"
@@ -181,7 +182,14 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             in_channels = out_channels = num_channels
             conv_resample = resamp_with_conv
             time_embedding_type = "fourier"
-            time_embedding_act_fn = None
+            self.config.time_embedding_type = time_embedding_type
+            self.config.time_embedding_act_fn = None
+            down_blocks=(
+                "UNetResSkipDownBlock2D",
+                "UNetResAttnSkipDownBlock2D",
+                "UNetResSkipDownBlock2D",
+                "UNetResSkipDownBlock2D",
+            )
 
         # TODO(PVP) - to delete later at release
         # IMPORTANT: NOT RELEVANT WHEN REVIEWING API
@@ -378,12 +386,18 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         emb = self.time_embedding(t_emb)
 
         # 2. pre-process sample
+        skip_sample = sample
         sample = self.conv_in(sample)
+
+        print("Sample before up", sample.abs().sum())
 
         # 3. down blocks
         down_block_res_samples = (sample,)
         for downsample_block in self.downsample_blocks:
-            sample, res_samples = downsample_block(sample, emb)
+            if hasattr(downsample_block, "skip_conv") and downsample_block.skip_connection is not None:
+                sample, res_samples, skip_sample = downsample_block(hidden_states=sample, temb=emb, skip_sample=skip_sample)
+            else:
+                sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
 
             # append to tuple
             down_block_res_samples += res_samples
@@ -418,7 +432,6 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
     def set_weights(self):
         self.is_overwritten = True
         if self.config.ldm:
-
             self.time_embedding.linear_1.weight.data = self.time_embed[0].weight.data
             self.time_embedding.linear_1.bias.data = self.time_embed[0].bias.data
             self.time_embedding.linear_2.weight.data = self.time_embed[2].weight.data
@@ -472,8 +485,6 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             self.remove_ldm()
 
         elif self.config.ddpm:
-            # =============== SET WEIGHTS ===============
-            # =============== TIME ======================
             self.time_embedding.linear_1.weight.data = self.temb.dense[0].weight.data
             self.time_embedding.linear_1.bias.data = self.temb.dense[0].bias.data
             self.time_embedding.linear_2.weight.data = self.temb.dense[1].weight.data
@@ -510,6 +521,17 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             self.conv_norm_out.bias.data = self.norm_out.bias.data
 
             self.remove_ddpm()
+        elif self.config.sde:
+            self.time_steps.weight = self.all_modules[0].weight
+            self.time_embedding.linear_1.weight.data = self.all_modules[1].weight.data
+            self.time_embedding.linear_1.bias.data = self.all_modules[1].bias.data
+            self.time_embedding.linear_2.weight.data = self.all_modules[2].weight.data
+            self.time_embedding.linear_2.bias.data = self.all_modules[2].bias.data
+
+            self.conv_in.weight.data = self.all_modules[3].weight.data
+            self.conv_in.bias.data = self.all_modules[3].bias.data
+
+            import ipdb; ipdb.set_trace()
 
     def init_for_ddpm(
         self,
@@ -1044,10 +1066,6 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             modules.append(nn.Conv2d(in_ch, channels, kernel_size=3, padding=1))
 
         self.all_modules = nn.ModuleList(modules)
-
-        import ipdb
-
-        ipdb.set_trace()
 
     def remove_ldm(self):
         del self.time_embed

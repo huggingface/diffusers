@@ -363,6 +363,8 @@ class NCSNpp(ModelMixin, ConfigMixin):
 
         hs = [modules[m_idx](x)]
         m_idx += 1
+
+        print("h", hs[-1].abs().sum())
         for i_level in range(self.num_resolutions):
             # Residual blocks for this resolution
             for i_block in range(self.num_res_blocks):
