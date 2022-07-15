@@ -64,6 +64,8 @@ The class provides functionality to compute previous image according to alpha, b
 
 ## Quickstart
 
+**Check out this notebook: https://colab.research.google.com/drive/1nMfF04cIxg6FujxsNYi9kiTRrzj4_eZU?usp=sharing**
+
 ### Installation
 
 ```
