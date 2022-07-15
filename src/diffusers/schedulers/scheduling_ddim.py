@@ -49,7 +49,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
 class DDIMScheduler(SchedulerMixin, ConfigMixin):
     def __init__(
         self,
-        timesteps=1000,
+        num_train_timesteps=1000,
         beta_start=0.0001,
         beta_end=0.02,
         beta_schedule="linear",
@@ -60,7 +60,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
     ):
         super().__init__()
         self.register_to_config(
-            timesteps=timesteps,
+            num_train_timesteps=num_train_timesteps,
             beta_start=beta_start,
             beta_end=beta_end,
             beta_schedule=beta_schedule,
@@ -70,13 +70,13 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         )
 
         if beta_schedule == "linear":
-            self.betas = np.linspace(beta_start, beta_end, timesteps, dtype=np.float32)
+            self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = np.linspace(beta_start**0.5, beta_end**0.5, timesteps, dtype=np.float32) ** 2
+            self.betas = np.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=np.float32) ** 2
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
-            self.betas = betas_for_alpha_bar(timesteps)
+            self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
@@ -87,8 +87,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         self.set_format(tensor_format=tensor_format)
 
     def get_variance(self, t, num_inference_steps):
-        orig_t = self.config.timesteps // num_inference_steps * t
-        orig_prev_t = self.config.timesteps // num_inference_steps * (t - 1) if t > 0 else -1
+        orig_t = self.config.num_train_timesteps // num_inference_steps * t
+        orig_prev_t = self.config.num_train_timesteps // num_inference_steps * (t - 1) if t > 0 else -1
 
         alpha_prod_t = self.alphas_cumprod[orig_t]
         alpha_prod_t_prev = self.alphas_cumprod[orig_prev_t] if orig_prev_t >= 0 else self.one
@@ -112,8 +112,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # - pred_prev_sample -> "x_t-1"
 
         # 1. get actual t and t-1
-        orig_t = self.config.timesteps // num_inference_steps * t
-        orig_prev_t = self.config.timesteps // num_inference_steps * (t - 1) if t > 0 else -1
+        orig_t = self.config.num_train_timesteps // num_inference_steps * t
+        orig_prev_t = self.config.num_train_timesteps // num_inference_steps * (t - 1) if t > 0 else -1
 
         # 2. compute alphas, betas
         alpha_prod_t = self.alphas_cumprod[orig_t]
@@ -155,4 +155,4 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         return noisy_samples
 
     def __len__(self):
-        return self.config.timesteps
+        return self.config.num_train_timesteps

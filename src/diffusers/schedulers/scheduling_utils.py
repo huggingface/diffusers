@@ -58,7 +58,7 @@ class SchedulerMixin:
         Turns a 1-D array into an array or tensor with len(broadcast_array.shape) dims.
 
         Args:
-            timesteps: an array or tensor of values to extract.
+            values: an array or tensor of values to extract.
             broadcast_array: an array with a larger shape of K dimensions with the batch
                 dimension equal to the length of timesteps.
         Returns:

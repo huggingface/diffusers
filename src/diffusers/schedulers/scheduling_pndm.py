@@ -48,7 +48,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
 class PNDMScheduler(SchedulerMixin, ConfigMixin):
     def __init__(
         self,
-        timesteps=1000,
+        num_train_timesteps=1000,
         beta_start=0.0001,
         beta_end=0.02,
         beta_schedule="linear",
@@ -56,17 +56,17 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
     ):
         super().__init__()
         self.register_to_config(
-            timesteps=timesteps,
+            timesteps=num_train_timesteps,
             beta_start=beta_start,
             beta_end=beta_end,
             beta_schedule=beta_schedule,
         )
 
         if beta_schedule == "linear":
-            self.betas = np.linspace(beta_start, beta_end, timesteps, dtype=np.float32)
+            self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
-            self.betas = betas_for_alpha_bar(timesteps)
+            self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
@@ -127,6 +127,9 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         raise ValueError(f"mode {self.mode} does not exist.")
 
     def step_prk(self, residual, sample, t, num_inference_steps):
+        """
+        Step function propagating the sample with the Runge-Kutta method. RK takes 4 forward passes to approximate the solution to the differential equation.
+        """
         prk_time_steps = self.get_prk_time_steps(num_inference_steps)
 
         t_orig = prk_time_steps[t // 4 * 4]
@@ -150,6 +153,9 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         return self.get_prev_sample(cur_sample, t_orig, t_orig_prev, residual)
 
     def step_plms(self, residual, sample, t, num_inference_steps):
+        """
+        Step function propagating the sample with the linear multi-step method. This has one forward pass with multiple times to approximate the solution.
+        """
         if len(self.ets) < 3:
             raise ValueError(
                 f"{self.__class__} can only be run AFTER scheduler has been run "
@@ -203,4 +209,4 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         return prev_sample
 
     def __len__(self):
-        return self.config.timesteps
+        return self.config.num_train_timesteps

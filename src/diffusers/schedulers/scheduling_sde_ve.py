@@ -1,4 +1,4 @@
-# Copyright 2022 diffusionoogle Brain and The HuggingFace Team. All rights reserved.
+# Copyright 2022 Google Brain and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -37,10 +37,11 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
     """
 
     def __init__(
-        self, snr=0.15, sigma_min=0.01, sigma_max=1348, sampling_eps=1e-5, correct_steps=1, tensor_format="np"
+        self, num_train_timesteps=2000, snr=0.15, sigma_min=0.01, sigma_max=1348, sampling_eps=1e-5, correct_steps=1, tensor_format="np"
     ):
         super().__init__()
         self.register_to_config(
+            num_train_timesteps=num_train_timesteps,
             snr=snr,
             sigma_min=sigma_min,
             sigma_max=sigma_max,
@@ -82,7 +83,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             timestep == 0, torch.zeros_like(t), self.discrete_sigmas[timestep - 1].to(timestep.device)
         )
         drift = torch.zeros_like(x)
-        diffusion = torch.sqrt(sigma**2 - adjacent_sigma**2)
+        diffusion = (sigma**2 - adjacent_sigma**2) ** 0.5
 
         # equation 6 in the paper: the score modeled by the network is grad_x log pt(x)
         # also equation 47 shows the analog from SDE models to ancestral sampling methods
@@ -92,7 +93,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         noise = torch.randn_like(x)
         x_mean = x - drift  # subtract because `dt` is a small negative timestep
         # TODO is the variable diffusion the correct scaling term for the noise?
-        x = x_mean + diffusion[:, None, None, None] * noise  # add impact of diffusion field g
+        x = x_mean + diffusion[:, None, None, None] * noise # add impact of diffusion field g
         return x, x_mean
 
     def step_correct(self, score, x):
@@ -113,7 +114,10 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         step_size = step_size * torch.ones(x.shape[0], device=x.device)
 
         # compute corrected sample: score term and noise term
-        sample_mean = x + step_size[:, None, None, None] * score
-        x = x_mean + torch.sqrt(step_size * 2)[:, None, None, None] * noise
+        x_mean = x + step_size[:, None, None, None] * score
+        x = x_mean + ((step_size * 2) ** 0.5)[:, None, None, None] * noise
 
         return x
+
+    def __len__(self):
+        return self.config.num_train_timesteps

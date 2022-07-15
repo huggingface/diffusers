@@ -24,9 +24,10 @@ from .scheduling_utils import SchedulerMixin
 
 
 class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
-    def __init__(self, beta_min=0.1, beta_max=20, sampling_eps=1e-3, tensor_format="np"):
+    def __init__(self,  num_train_timesteps=2000, beta_min=0.1, beta_max=20, sampling_eps=1e-3, tensor_format="np"):
         super().__init__()
         self.register_to_config(
+            num_train_timesteps=num_train_timesteps,
             beta_min=beta_min,
             beta_max=beta_max,
             sampling_eps=sampling_eps,
@@ -62,3 +63,6 @@ class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
         x = x_mean + diffusion[:, None, None, None] * np.sqrt(-dt) * noise
 
         return x, x_mean
+
+    def __len__(self):
+        return self.config.num_train_timesteps
