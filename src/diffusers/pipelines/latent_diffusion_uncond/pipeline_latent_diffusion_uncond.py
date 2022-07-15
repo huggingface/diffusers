@@ -36,7 +36,8 @@ class LatentDiffusionUncondPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps)
 
         for t in tqdm.tqdm(self.scheduler.timesteps):
-            model_output = self.unet(image, t)
+            with torch.no_grad():
+                model_output = self.unet(image, t)
 
             if isinstance(model_output, dict):
                 model_output = model_output["sample"]
@@ -46,5 +47,6 @@ class LatentDiffusionUncondPipeline(DiffusionPipeline):
             image = self.scheduler.step(model_output, t, image, eta)["prev_sample"]
 
         # decode image with vae
-        image = self.vqvae.decode(image)
+        with torch.no_grad():
+            image = self.vqvae.decode(image)
         return {"sample": image}
