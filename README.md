@@ -82,105 +82,52 @@ For more examples see [schedulers](https://github.com/huggingface/diffusers/tree
 
 ```python
 import torch
-from diffusers import UNetModel, DDPMScheduler
-import PIL
+from diffusers import UNetUnconditionalModel, DDIMScheduler
+import PIL.Image
 import numpy as np
 import tqdm
 
-generator = torch.manual_seed(0)
 torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # 1. Load models
-noise_scheduler = DDPMScheduler.from_config("fusing/ddpm-lsun-church", tensor_format="pt")
-unet = UNetModel.from_pretrained("fusing/ddpm-lsun-church").to(torch_device)
+scheduler = DDIMScheduler.from_config("fusing/ddpm-celeba-hq", tensor_format="pt")
+unet = UNetUnconditionalModel.from_pretrained("fusing/ddpm-celeba-hq", ddpm=True).to(torch_device)
 
 # 2. Sample gaussian noise
+generator = torch.manual_seed(23)
+unet.image_size = unet.resolution
 image = torch.randn(
-    (1, unet.in_channels, unet.resolution, unet.resolution),
-    generator=generator,
-)
-image = image.to(torch_device)
-
-# 3. Denoise
-num_prediction_steps = len(noise_scheduler)
-for t in tqdm.tqdm(reversed(range(num_prediction_steps)), total=num_prediction_steps):
-    # predict noise residual
-    with torch.no_grad():
-        residual = unet(image, t)
-
-    # predict previous mean of image x_t-1
-    pred_prev_image = noise_scheduler.step(residual, image, t)
-
-    # optionally sample variance
-    variance = 0
-    if t > 0:
-        noise = torch.randn(image.shape, generator=generator).to(image.device)
-        variance = noise_scheduler.get_variance(t).sqrt() * noise
-
-    # set current image to prev_image: x_t -> x_t-1
-    image = pred_prev_image + variance
-
-# 5. process image to PIL
-image_processed = image.cpu().permute(0, 2, 3, 1)
-image_processed = (image_processed + 1.0) * 127.5
-image_processed = image_processed.numpy().astype(np.uint8)
-image_pil = PIL.Image.fromarray(image_processed[0])
-
-# 6. save image
-image_pil.save("test.png")
-``` 
-#### **Example for Unconditonal Image generation [LDM](https://github.com/CompVis/latent-diffusion):**
-
-```python
-import torch
-from diffusers import UNetModel, DDIMScheduler
-import PIL
-import numpy as np
-import tqdm
-
-generator = torch.manual_seed(0)
-torch_device = "cuda" if torch.cuda.is_available() else "cpu"
-
-# 1. Load models
-noise_scheduler = DDIMScheduler.from_config("fusing/ddpm-celeba-hq", tensor_format="pt")
-unet = UNetModel.from_pretrained("fusing/ddpm-celeba-hq").to(torch_device)
-
-# 2. Sample gaussian noise
-image = torch.randn(
-   (1, unet.in_channels, unet.resolution, unet.resolution),
+   (1, unet.in_channels, unet.image_size, unet.image_size),
    generator=generator,
 )
 image = image.to(torch_device)
 
-# 3. Denoise                                                                                                                                           
+# 3. Denoise
 num_inference_steps = 50
 eta = 0.0  # <- deterministic sampling
+scheduler.set_timesteps(num_inference_steps)
 
-for t in tqdm.tqdm(reversed(range(num_inference_steps)), total=num_inference_steps):
+for t in tqdm.tqdm(scheduler.timesteps):
     # 1. predict noise residual
-    orig_t = len(noise_scheduler) // num_inference_steps * t
-
     with torch.no_grad():
-        residual = unet(image, orig_t)
+        residual = unet(image, t)["sample"]
 
-    # 2. predict previous mean of image x_t-1
-    pred_prev_image = noise_scheduler.step(residual, image, t, num_inference_steps, eta)
+    prev_image = scheduler.step(residual, t, image, eta)["prev_sample"]
 
-    # 3. optionally sample variance
-    variance = 0
-    if eta > 0:
-        noise = torch.randn(image.shape, generator=generator).to(image.device)
-        variance = noise_scheduler.get_variance(t).sqrt() * eta * noise
+    # 3. set current image to prev_image: x_t -> x_t-1
+    image = prev_image
 
-    # 4. set current image to prev_image: x_t -> x_t-1
-    image = pred_prev_image + variance
-
-# 5. process image to PIL
+# 4. process image to PIL
 image_processed = image.cpu().permute(0, 2, 3, 1)
 image_processed = (image_processed + 1.0) * 127.5
 image_processed = image_processed.numpy().astype(np.uint8)
 image_pil = PIL.Image.fromarray(image_processed[0])
 
-# 6. save image
-image_pil.save("test.png")
+# 5. save image
+image_pil.save("generated_image.png")
+``` 
+
+#### **Example for Unconditonal Image generation [LDM](https://github.com/CompVis/latent-diffusion):**
+
+```python
 ```
