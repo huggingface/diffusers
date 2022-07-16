@@ -1042,7 +1042,6 @@ class PipelineTesterMixin(unittest.TestCase):
         expected_image_sum = 4318.6729
         expected_image_mean = 1.4058
 
-
         assert (image.abs().sum() - expected_image_sum).abs().cpu().item() < 1e-2
         assert (image.abs().mean() - expected_image_mean).abs().cpu().item() < 1e-4
 

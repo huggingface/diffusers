@@ -94,7 +94,9 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         if num_inference_steps in self.prk_time_steps:
             return self.prk_time_steps[num_inference_steps]
 
-        inference_step_times = list(range(0, self.config.num_train_timesteps, self.config.num_train_timesteps // num_inference_steps))
+        inference_step_times = list(
+            range(0, self.config.num_train_timesteps, self.config.num_train_timesteps // num_inference_steps)
+        )
 
         prk_time_steps = np.array(inference_step_times[-self.pndm_order :]).repeat(2) + np.tile(
             np.array([0, self.config.num_train_timesteps // num_inference_steps // 2]), self.pndm_order
@@ -107,7 +109,9 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         if num_inference_steps in self.time_steps:
             return self.time_steps[num_inference_steps]
 
-        inference_step_times = list(range(0, self.config.num_train_timesteps, self.config.num_train_timesteps // num_inference_steps))
+        inference_step_times = list(
+            range(0, self.config.num_train_timesteps, self.config.num_train_timesteps // num_inference_steps)
+        )
         self.time_steps[num_inference_steps] = list(reversed(inference_step_times[:-3]))
 
         return self.time_steps[num_inference_steps]
@@ -128,7 +132,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
     def step_prk(self, residual, sample, t, num_inference_steps):
         """
-        Step function propagating the sample with the Runge-Kutta method. RK takes 4 forward passes to approximate the solution to the differential equation.
+        Step function propagating the sample with the Runge-Kutta method. RK takes 4 forward passes to approximate the
+        solution to the differential equation.
         """
         prk_time_steps = self.get_prk_time_steps(num_inference_steps)
 
@@ -154,7 +159,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
     def step_plms(self, residual, sample, t, num_inference_steps):
         """
-        Step function propagating the sample with the linear multi-step method. This has one forward pass with multiple times to approximate the solution.
+        Step function propagating the sample with the linear multi-step method. This has one forward pass with multiple
+        times to approximate the solution.
         """
         if len(self.ets) < 3:
             raise ValueError(

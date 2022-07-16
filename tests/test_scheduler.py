@@ -486,7 +486,7 @@ class ScoreSdeVeSchedulerTest(SchedulerCommonTest):
             "sigma_min": 0.01,
             "sigma_max": 1348,
             "sampling_eps": 1e-5,
-            "tensor_format": "np", # TODO add test for tensor formats
+            "tensor_format": "np",  # TODO add test for tensor formats
         }
 
         config.update(**kwargs)
@@ -516,7 +516,6 @@ class ScoreSdeVeSchedulerTest(SchedulerCommonTest):
             new_output = new_scheduler.step_correct(residual, sample, **kwargs)
 
             assert np.sum(np.abs(output - new_output)) < 1e-5, "Scheduler correction are not identical"
-
 
     def check_over_forward(self, time_step=0, **forward_kwargs):
         kwargs = dict(self.forward_default_kwargs)
@@ -581,7 +580,6 @@ class ScoreSdeVeSchedulerTest(SchedulerCommonTest):
                 result = model(sample, sigma_t)
 
             sample, sample_mean = scheduler.step_pred(result, sample, t)
-
 
         result_sum = np.sum(np.abs(sample))
         result_mean = np.mean(np.abs(sample))

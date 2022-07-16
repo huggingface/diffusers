@@ -28,17 +28,23 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
     """
     The variance exploding stochastic differential equation (SDE) scheduler.
 
-    :param snr: coefficient weighting the step from the score sample (from the network) to the random noise.
-    :param sigma_min: initial noise scale for sigma sequence in sampling procedure. The minimum sigma should mirror the
+    :param snr: coefficient weighting the step from the score sample (from the network) to the random noise. :param
+    sigma_min: initial noise scale for sigma sequence in sampling procedure. The minimum sigma should mirror the
             distribution of the data.
-    :param sigma_max:
-    :param sampling_eps: the end value of sampling, where timesteps decrease progessively from 1 to epsilon.
-    :param correct_steps: number of correction steps performed on a produced sample.
-    :param tensor_format: "np" or "pt" for the expected format of samples passed to the Scheduler.
+    :param sigma_max: :param sampling_eps: the end value of sampling, where timesteps decrease progessively from 1 to
+    epsilon. :param correct_steps: number of correction steps performed on a produced sample. :param tensor_format:
+    "np" or "pt" for the expected format of samples passed to the Scheduler.
     """
 
     def __init__(
-        self, num_train_timesteps=2000, snr=0.15, sigma_min=0.01, sigma_max=1348, sampling_eps=1e-5, correct_steps=1, tensor_format="pt"
+        self,
+        num_train_timesteps=2000,
+        snr=0.15,
+        sigma_min=0.01,
+        sigma_max=1348,
+        sampling_eps=1e-5,
+        correct_steps=1,
+        tensor_format="pt",
     ):
         super().__init__()
         self.register_to_config(
@@ -93,10 +99,11 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         if tensor_format == "np":
             return np.where(timesteps == 0, np.zeros_like(t), self.discrete_sigmas[timesteps - 1])
         elif tensor_format == "pt":
-            return torch.where(timesteps == 0, torch.zeros_like(t), self.discrete_sigmas[timesteps - 1].to(timesteps.device))
+            return torch.where(
+                timesteps == 0, torch.zeros_like(t), self.discrete_sigmas[timesteps - 1].to(timesteps.device)
+            )
 
         raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
-
 
     def step_pred(self, score, x, t):
         """
@@ -119,7 +126,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         noise = self.randn_like(x)
         x_mean = x - drift  # subtract because `dt` is a small negative timestep
         # TODO is the variable diffusion the correct scaling term for the noise?
-        x = x_mean + diffusion[:, None, None, None] * noise # add impact of diffusion field g
+        x = x_mean + diffusion[:, None, None, None] * noise  # add impact of diffusion field g
         return x, x_mean
 
     def step_correct(self, score, x):
@@ -129,7 +136,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         """
         # TODO(Patrick) non-PyTorch
 
-        # For small batch sizes, the paper "suggest replacing norm(z) with sqrt(d), where d is the dim. of z" 
+        # For small batch sizes, the paper "suggest replacing norm(z) with sqrt(d), where d is the dim. of z"
         # sample noise for correction
         noise = self.randn_like(x)
 
@@ -137,7 +144,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         grad_norm = self.norm(score)
         noise_norm = self.norm(noise)
         step_size = (self.config.snr * noise_norm / grad_norm) ** 2 * 2
-        step_size = self.repeat_scalar(step_size, x.shape[0]) # * self.ones(x.shape[0], device=x.device)
+        step_size = self.repeat_scalar(step_size, x.shape[0])  # * self.ones(x.shape[0], device=x.device)
 
         # compute corrected sample: score term and noise term
         x_mean = x + step_size[:, None, None, None] * score
