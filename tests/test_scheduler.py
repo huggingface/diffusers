@@ -12,8 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
+import pdb
 import tempfile
 import unittest
 
@@ -487,10 +486,63 @@ class ScoreSdeVeSchedulerTest(SchedulerCommonTest):
             "sigma_min": 0.01,
             "sigma_max": 1348,
             "sampling_eps": 1e-5,
+            "tensor_format": "np", # TODO add test for tensor formats
         }
 
         config.update(**kwargs)
         return config
+
+    def check_over_configs(self, time_step=0, **config):
+        kwargs = dict(self.forward_default_kwargs)
+
+        for scheduler_class in self.scheduler_classes:
+            scheduler_class = self.scheduler_classes[0]
+            sample = self.dummy_sample
+            residual = 0.1 * sample
+
+            scheduler_config = self.get_scheduler_config(**config)
+            scheduler = scheduler_class(**scheduler_config)
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                scheduler.save_config(tmpdirname)
+                new_scheduler = scheduler_class.from_config(tmpdirname)
+
+            output = scheduler.step_pred(residual, sample, time_step, **kwargs)
+            new_output = new_scheduler.step_pred(residual, sample, time_step, **kwargs)
+
+            assert np.sum(np.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
+
+            output = scheduler.step_correct(residual, sample, **kwargs)
+            new_output = new_scheduler.step_correct(residual, sample, **kwargs)
+
+            assert np.sum(np.abs(output - new_output)) < 1e-5, "Scheduler correction are not identical"
+
+
+    def check_over_forward(self, time_step=0, **forward_kwargs):
+        kwargs = dict(self.forward_default_kwargs)
+        kwargs.update(forward_kwargs)
+
+        for scheduler_class in self.scheduler_classes:
+            sample = self.dummy_sample
+            residual = 0.1 * sample
+
+            scheduler_class = self.scheduler_classes[0]
+            scheduler_config = self.get_scheduler_config()
+            scheduler = scheduler_class(**scheduler_config)
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                scheduler.save_config(tmpdirname)
+                new_scheduler = scheduler_class.from_config(tmpdirname)
+
+            output = scheduler.step_pred(residual, sample, time_step, **kwargs)
+            new_output = new_scheduler.step_pred(residual, sample, time_step, **kwargs)
+
+            assert np.sum(np.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
+
+            output = scheduler.step_correct(residual, sample, **kwargs)
+            new_output = new_scheduler.step_correct(residual, sample, **kwargs)
+
+            assert np.sum(np.abs(output - new_output)) < 1e-5, "Scheduler correction are not identical"
 
     def test_timesteps(self):
         for timesteps in [10, 100, 1000]:
@@ -504,35 +556,35 @@ class ScoreSdeVeSchedulerTest(SchedulerCommonTest):
         for t in [1, 5, 10]:
             self.check_over_forward(time_step=t)
 
-    def test_inference_steps(self):
-        for t, num_inference_steps in zip([1, 5, 10], [10, 50, 100]):
-            self.check_over_forward(time_step=t, num_inference_steps=num_inference_steps)
-
     def test_full_loop_no_noise(self):
+        np.random.seed(0)
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
         scheduler = scheduler_class(**scheduler_config)
 
-        num_inference_steps = 10
+        num_inference_steps = 3
+
         model = self.dummy_model()
         sample = self.dummy_sample_deter
 
-        prk_time_steps = scheduler.get_prk_time_steps(num_inference_steps)
-        for t in range(len(prk_time_steps)):
-            t_orig = prk_time_steps[t]
-            residual = model(sample, t_orig)
+        scheduler.set_sigmas(num_inference_steps)
 
-            sample = scheduler.step_prk(residual, sample, t, num_inference_steps)
+        for i, t in enumerate(scheduler.timesteps):
+            sigma_t = scheduler.sigmas[i]
 
-        timesteps = scheduler.get_time_steps(num_inference_steps)
-        for t in range(len(timesteps)):
-            t_orig = timesteps[t]
-            residual = model(sample, t_orig)
+            for _ in range(scheduler.correct_steps):
+                with torch.no_grad():
+                    result = model(sample, sigma_t)
+                sample = scheduler.step_correct(result, sample)
 
-            sample = scheduler.step_plms(residual, sample, t, num_inference_steps)
+            with torch.no_grad():
+                result = model(sample, sigma_t)
+
+            sample, sample_mean = scheduler.step_pred(result, sample, t)
+
 
         result_sum = np.sum(np.abs(sample))
         result_mean = np.mean(np.abs(sample))
 
-        assert abs(result_sum.item() - 199.1169) < 1e-2
-        assert abs(result_mean.item() - 0.2593) < 1e-3
+        assert abs(result_sum.item() - 10629923278.7104) < 1e-2
+        assert abs(result_mean.item() - 13841045.9358) < 1e-3

@@ -15,6 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/yang-song/score_sde_pytorch
 
 # TODO(Patrick, Anton, Suraj) - make scheduler framework indepedent and clean-up a bit
+import pdb
 
 import numpy as np
 import torch
@@ -37,7 +38,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
     """
 
     def __init__(
-        self, num_train_timesteps=2000, snr=0.15, sigma_min=0.01, sigma_max=1348, sampling_eps=1e-5, correct_steps=1, tensor_format="np"
+        self, num_train_timesteps=2000, snr=0.15, sigma_min=0.01, sigma_max=1348, sampling_eps=1e-5, correct_steps=1, tensor_format="pt"
     ):
         super().__init__()
         self.register_to_config(
@@ -57,32 +58,57 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         self.set_format(tensor_format=tensor_format)
 
     def set_timesteps(self, num_inference_steps):
-        self.timesteps = torch.linspace(1, self.config.sampling_eps, num_inference_steps)
+        tensor_format = getattr(self, "tensor_format", "pt")
+        if tensor_format == "np":
+            self.timesteps = np.linspace(1, self.config.sampling_eps, num_inference_steps)
+        elif tensor_format == "pt":
+            self.timesteps = torch.linspace(1, self.config.sampling_eps, num_inference_steps)
+        else:
+            raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
 
     def set_sigmas(self, num_inference_steps):
         if self.timesteps is None:
             self.set_timesteps(num_inference_steps)
 
-        self.discrete_sigmas = torch.exp(
-            torch.linspace(np.log(self.config.sigma_min), np.log(self.config.sigma_max), num_inference_steps)
-        )
-        self.sigmas = torch.tensor(
-            [self.config.sigma_min * (self.config.sigma_max / self.sigma_min) ** t for t in self.timesteps]
-        )
+        tensor_format = getattr(self, "tensor_format", "pt")
+        if tensor_format == "np":
+            self.discrete_sigmas = np.exp(
+                np.linspace(np.log(self.config.sigma_min), np.log(self.config.sigma_max), num_inference_steps)
+            )
+            self.sigmas = np.array(
+                [self.config.sigma_min * (self.config.sigma_max / self.sigma_min) ** t for t in self.timesteps]
+            )
+        elif tensor_format == "pt":
+            self.discrete_sigmas = torch.exp(
+                torch.linspace(np.log(self.config.sigma_min), np.log(self.config.sigma_max), num_inference_steps)
+            )
+            self.sigmas = torch.tensor(
+                [self.config.sigma_min * (self.config.sigma_max / self.sigma_min) ** t for t in self.timesteps]
+            )
+        else:
+            raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
+
+    def get_adjacent_sigma(self, timesteps, t):
+        tensor_format = getattr(self, "tensor_format", "pt")
+        if tensor_format == "np":
+            return np.where(timesteps == 0, np.zeros_like(t), self.discrete_sigmas[timesteps - 1])
+        elif tensor_format == "pt":
+            return torch.where(timesteps == 0, torch.zeros_like(t), self.discrete_sigmas[timesteps - 1].to(timesteps.device))
+
+        raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
+
 
     def step_pred(self, score, x, t):
         """
         Predict the sample at the previous timestep by reversing the SDE.
         """
         # TODO(Patrick) better comments + non-PyTorch
-        t = t * torch.ones(x.shape[0], device=x.device)
-        timestep = (t * (len(self.timesteps) - 1)).long()
+        t = self.repeat_scalar(t, x.shape[0])
+        timesteps = self.long((t * (len(self.timesteps) - 1)))
 
-        sigma = self.discrete_sigmas.to(t.device)[timestep]
-        adjacent_sigma = torch.where(
-            timestep == 0, torch.zeros_like(t), self.discrete_sigmas[timestep - 1].to(timestep.device)
-        )
-        drift = torch.zeros_like(x)
+        sigma = self.discrete_sigmas[timesteps]
+        adjacent_sigma = self.get_adjacent_sigma(timesteps, t)
+        drift = self.zeros_like(x)
         diffusion = (sigma**2 - adjacent_sigma**2) ** 0.5
 
         # equation 6 in the paper: the score modeled by the network is grad_x log pt(x)
@@ -90,7 +116,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         drift = drift - diffusion[:, None, None, None] ** 2 * score
 
         #  equation 6: sample noise for the diffusion term of
-        noise = torch.randn_like(x)
+        noise = self.randn_like(x)
         x_mean = x - drift  # subtract because `dt` is a small negative timestep
         # TODO is the variable diffusion the correct scaling term for the noise?
         x = x_mean + diffusion[:, None, None, None] * noise # add impact of diffusion field g
@@ -105,13 +131,13 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
 
         # For small batch sizes, the paper "suggest replacing norm(z) with sqrt(d), where d is the dim. of z" 
         # sample noise for correction
-        noise = torch.randn_like(x)
+        noise = self.randn_like(x)
 
         # compute step size from the score, the noise, and the snr
-        grad_norm = torch.norm(score.reshape(score.shape[0], -1), dim=-1).mean()
-        noise_norm = torch.norm(noise.reshape(noise.shape[0], -1), dim=-1).mean()
+        grad_norm = self.norm(score)
+        noise_norm = self.norm(noise)
         step_size = (self.config.snr * noise_norm / grad_norm) ** 2 * 2
-        step_size = step_size * torch.ones(x.shape[0], device=x.device)
+        step_size = self.repeat_scalar(step_size, x.shape[0]) # * self.ones(x.shape[0], device=x.device)
 
         # compute corrected sample: score term and noise term
         x_mean = x + step_size[:, None, None, None] * score
