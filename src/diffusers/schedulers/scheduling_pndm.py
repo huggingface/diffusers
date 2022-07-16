@@ -56,7 +56,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
     ):
         super().__init__()
         self.register_to_config(
-            timesteps=num_train_timesteps,
+            num_train_timesteps=num_train_timesteps,
             beta_start=beta_start,
             beta_end=beta_end,
             beta_schedule=beta_schedule,
@@ -94,10 +94,10 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         if num_inference_steps in self.prk_time_steps:
             return self.prk_time_steps[num_inference_steps]
 
-        inference_step_times = list(range(0, self.config.timesteps, self.config.timesteps // num_inference_steps))
+        inference_step_times = list(range(0, self.config.num_train_timesteps, self.config.num_train_timesteps // num_inference_steps))
 
         prk_time_steps = np.array(inference_step_times[-self.pndm_order :]).repeat(2) + np.tile(
-            np.array([0, self.config.timesteps // num_inference_steps // 2]), self.pndm_order
+            np.array([0, self.config.num_train_timesteps // num_inference_steps // 2]), self.pndm_order
         )
         self.prk_time_steps[num_inference_steps] = list(reversed(prk_time_steps[:-1].repeat(2)[1:-1]))
 
@@ -107,7 +107,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         if num_inference_steps in self.time_steps:
             return self.time_steps[num_inference_steps]
 
-        inference_step_times = list(range(0, self.config.timesteps, self.config.timesteps // num_inference_steps))
+        inference_step_times = list(range(0, self.config.num_train_timesteps, self.config.num_train_timesteps // num_inference_steps))
         self.time_steps[num_inference_steps] = list(reversed(inference_step_times[:-3]))
 
         return self.time_steps[num_inference_steps]
