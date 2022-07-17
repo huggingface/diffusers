@@ -35,17 +35,27 @@ class Combine(nn.Module):
 
 
 class TimestepEmbedding(nn.Module):
-    def __init__(self, channel, time_embed_dim, act_fn="silu"):
+    def __init__(self, channel, time_embed_dim, act_fn="silu", flip_sin_to_cos=False, downscale_freq_shift=1):
         super().__init__()
+        self.num_channels = channel
+        self.flip_sin_to_cos = flip_sin_to_cos
+        self.downscale_freq_shift = downscale_freq_shift
 
-        self.linear_1 = nn.Linear(channel, time_embed_dim)
+        self.linear_1 = nn.Linear(self.num_channels, time_embed_dim)
         self.act = None
         if act_fn == "silu":
             self.act = nn.SiLU()
         self.linear_2 = nn.Linear(time_embed_dim, time_embed_dim)
 
-    def forward(self, sample):
-        sample = self.linear_1(sample)
+#    def forward(self, sample):
+    def forward(self, timesteps):
+        t_emb = get_timestep_embedding(
+            timesteps,
+            self.num_channels,
+            flip_sin_to_cos=self.flip_sin_to_cos,
+            downscale_freq_shift=self.downscale_freq_shift,
+        )
+        sample = self.linear_1(t_emb)
 
         if self.act is not None:
             sample = self.act(sample)
@@ -118,7 +128,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         flip_sin_to_cos=True,
         downscale_freq_shift=0,
         time_embedding_type="positional",
-        mid_block_scale_factor=1,
+        time_embedding_act_fn="silu",
         # TODO(PVP) - to delete later at release
         # IMPORTANT: NOT RELEVANT WHEN REVIEWING API
         # ======================================
@@ -149,7 +159,6 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         fourier_scale=16,
         init_scale=0.0,
         progressive_input="input_skip",
-        resnet_num_groups=32,
         continuous=True,
     ):
         super().__init__()
@@ -171,35 +180,28 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             flip_sin_to_cos=flip_sin_to_cos,
             downscale_freq_shift=downscale_freq_shift,
             time_embedding_type=time_embedding_type,
+            time_embedding_act_fn=time_embedding_act_fn,
             attention_resolutions=attention_resolutions,
             attn_resolutions=attn_resolutions,
-            mid_block_scale_factor=mid_block_scale_factor,
-            resnet_num_groups=resnet_num_groups,
             # to delete later
             ldm=ldm,
             ddpm=ddpm,
             sde=sde,
         )
         if sde:
+            sampling_filter = "fir" if fir else "default"
             block_channels = [nf * x for x in ch_mult]
             in_channels = out_channels = num_channels
             conv_resample = resamp_with_conv
             time_embedding_type = "fourier"
             self.config.time_embedding_type = time_embedding_type
+            self.config.time_embedding_act_fn = None
             self.config.resnet_eps = 1e-6
-            self.config.mid_block_scale_factor = math.sqrt(2.0)
-            self.config.resnet_num_groups = None
             down_blocks = (
                 "UNetResSkipDownBlock2D",
                 "UNetResAttnSkipDownBlock2D",
                 "UNetResSkipDownBlock2D",
                 "UNetResSkipDownBlock2D",
-            )
-            up_blocks = (
-                "UNetResSkipUpBlock2D",
-                "UNetResSkipUpBlock2D",
-                "UNetResAttnSkipUpBlock2D",
-                "UNetResSkipUpBlock2D",
             )
 
         # TODO(PVP) - to delete later at release
@@ -220,7 +222,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             self.time_steps = Timesteps(self.config.block_channels[0], flip_sin_to_cos, downscale_freq_shift)
             timestep_input_dim = block_channels[0]
 
-        self.time_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
+        self.time_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim, act_fn=self.config.time_embedding_act_fn)
 
         self.downsample_blocks = nn.ModuleList([])
         self.mid = None
@@ -255,10 +257,8 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 temb_channels=time_embed_dim,
                 resnet_eps=self.config.resnet_eps,
                 resnet_act_fn=resnet_act_fn,
-                output_scale_factor=self.config.mid_block_scale_factor,
                 resnet_time_scale_shift="default",
                 attn_num_head_channels=num_head_channels,
-                resnet_groups=self.config.resnet_num_groups,
             )
         else:
             self.mid = UNetMidBlock2D(
@@ -267,10 +267,8 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 temb_channels=time_embed_dim,
                 resnet_eps=self.config.resnet_eps,
                 resnet_act_fn=resnet_act_fn,
-                output_scale_factor=self.config.mid_block_scale_factor,
                 resnet_time_scale_shift="default",
                 attn_num_head_channels=num_head_channels,
-                resnet_groups=self.config.resnet_num_groups,
             )
 
         # up
@@ -299,8 +297,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             prev_output_channel = output_channel
 
         # out
-        num_groups_out = self.config.resnet_num_groups if self.config.resnet_num_groups is not None else min(block_channels[0] // 4, 32)
-        self.conv_norm_out = nn.GroupNorm(num_channels=block_channels[0], num_groups=num_groups_out, eps=self.config.resnet_eps)
+        self.conv_norm_out = nn.GroupNorm(num_channels=block_channels[0], num_groups=32, eps=self.config.resnet_eps)
         self.conv_act = nn.SiLU()
         self.conv_out = nn.Conv2d(block_channels[0], out_channels, 3, padding=1)
 
@@ -401,9 +398,13 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         t_emb = self.time_steps(timesteps)
         emb = self.time_embedding(t_emb)
 
+        print("t", emb.abs().sum())
+
         # 2. pre-process
         skip_sample = sample
         sample = self.conv_in(sample)
+
+        print("Sample before up", sample.abs().sum())
 
         # 3. down
         down_block_res_samples = (sample,)
@@ -413,49 +414,27 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
 
+            print("sample after", sample.abs().sum())
             down_block_res_samples += res_samples
 
         # 4. mid
-        print("before mid sample", sample.abs().sum())
         if self.config.ddpm:
             sample = self.mid_new_2(sample, emb)
         else:
             sample = self.mid(sample, emb)
-        print("after mid sample", sample.abs().sum())
 
         # 5. up
-        skip_sample = None
         for upsample_block in self.upsample_blocks:
 
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
             down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
 
-            if hasattr(upsample_block, "upsampler") and upsample_block.upsampler is not None:
-                sample, skip_sample = upsample_block(sample, res_samples, emb, skip_sample)
-            else:
-                sample, skip_sample = upsample_block(sample, res_samples, emb)
-
-            print("sample up", sample.abs().sum())
+            sample = upsample_block(sample, res_samples, emb)
 
         # 6. post-process
-
-        print("sample h", sample.abs().sum())
         sample = self.conv_norm_out(sample)
         sample = self.conv_act(sample)
-        print("sample act", sample.abs().sum())
         sample = self.conv_out(sample)
-
-        print("sample out 1", sample.abs().sum())
-        print("skip sample", skip_sample.abs().sum())
-
-        if hasattr(self.upsample_blocks[-1], "upsampler") and self.upsample_blocks[-1].upsampler is not None:
-            sample += skip_sample
-
-        print("sample out final", sample.abs().sum())
-
-        if self.config.time_embedding_type == "fourier" or self.time_steps.__class__.__name__ == "GaussianFourierProjection":
-            timesteps = timesteps.reshape((sample.shape[0], *([1] * len(sample.shape[1:]))))
-            sample = sample / timesteps
 
         output = {"sample": sample}
 
@@ -557,6 +536,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
 
             self.remove_ddpm()
         elif self.config.sde:
+            self.time_steps.W = self.all_modules[0].W
             self.time_steps.weight = self.all_modules[0].weight
             self.time_embedding.linear_1.weight.data = self.all_modules[1].weight.data
             self.time_embedding.linear_1.bias.data = self.all_modules[1].bias.data
@@ -592,35 +572,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                         block.skip_conv.bias.data = self.all_modules[module_index].Conv_0.bias.data
                         module_index += 1
 
-            self.mid.resnets[0].set_weight(self.all_modules[module_index])
-            module_index += 1
-            self.mid.attentions[0].set_weight(self.all_modules[module_index])
-            module_index += 1
-            self.mid.resnets[1].set_weight(self.all_modules[module_index])
-            module_index += 1
-
-            for i, block in enumerate(self.upsample_blocks):
-                for j in range(len(block.resnets)):
-                    block.resnets[j].set_weight(self.all_modules[module_index])
-                    module_index += 1
-                if hasattr(block, "attentions") and block.attentions is not None:
-                    block.attentions[0].set_weight(self.all_modules[module_index])
-                    module_index += 1
-                if hasattr(block, "resnet_up") and block.resnet_up is not None:
-                    block.skip_norm.weight.data = self.all_modules[module_index].weight.data
-                    block.skip_norm.bias.data = self.all_modules[module_index].bias.data
-                    module_index += 1
-                    block.skip_conv.weight.data = self.all_modules[module_index].weight.data
-                    block.skip_conv.bias.data = self.all_modules[module_index].bias.data
-                    module_index += 1
-                    block.resnet_up.set_weight(self.all_modules[module_index])
-                    module_index += 1
-
-            self.conv_norm_out.weight.data = self.all_modules[module_index].weight.data
-            self.conv_norm_out.bias.data = self.all_modules[module_index].bias.data
-            module_index += 1
-            self.conv_out.weight.data = self.all_modules[module_index].weight.data
-            self.conv_out.bias.data = self.all_modules[module_index].bias.data
+            import ipdb; ipdb.set_trace()
 
     def init_for_ddpm(
         self,
@@ -1049,6 +1001,15 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 hs_c.append(in_ch)
 
         # mid
+        self.mid = UNetMidBlock2D(
+            in_channels=in_ch,
+            temb_channels=4 * nf,
+            output_scale_factor=math.sqrt(2.0),
+            resnet_act_fn="silu",
+            resnet_groups=min(in_ch // 4, 32),
+            dropout=dropout,
+        )
+
         in_ch = hs_c[-1]
         modules.append(
             ResnetBlock2D(
@@ -1073,6 +1034,9 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 overwrite_for_score_vde=True,
             )
         )
+        self.mid.resnets[0] = modules[len(modules) - 3]
+        self.mid.attentions[0] = modules[len(modules) - 2]
+        self.mid.resnets[1] = modules[len(modules) - 1]
 
         pyramid_ch = 0
         # Upsampling block

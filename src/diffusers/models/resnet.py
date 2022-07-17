@@ -87,30 +87,15 @@ class Downsample2D(nn.Module):
             self.conv = conv
 
     def forward(self, x):
-        #        print("use_conv", self.use_conv)
-        #        print("padding", self.padding)
         assert x.shape[1] == self.channels
         if self.use_conv and self.padding == 0:
             pad = (0, 1, 0, 1)
             x = F.pad(x, pad, mode="constant", value=0)
 
-        #        print("x", x.abs().sum())
-        self.hey = x
         assert x.shape[1] == self.channels
         x = self.conv(x)
-        self.yas = x
-        #        print("x", x.abs().sum())
 
         return x
-        # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
-
-
-#        if self.name == "conv":
-#            return self.conv(x)
-#        elif self.name == "Conv2d_0":
-#            return self.Conv2d_0(x)
-#        else:
-#            return self.op(x)
 
 
 class Upsample1D(nn.Module):
@@ -148,35 +133,6 @@ class Upsample1D(nn.Module):
             x = self.conv(x)
 
         return x
-
-
-class Downsample1D(nn.Module):
-    """
-    A downsampling layer with an optional convolution.
-
-    :param channels: channels in the inputs and outputs. :param use_conv: a bool determining if a convolution is
-    applied. :param dims: determines if the signal is 1D, 2D, or 3D. If 3D, then
-                 downsampling occurs in the inner-two dimensions.
-    """
-
-    def __init__(self, channels, use_conv=False, out_channels=None, padding=1, name="conv"):
-        super().__init__()
-        self.channels = channels
-        self.out_channels = out_channels or channels
-        self.use_conv = use_conv
-        self.padding = padding
-        stride = 2
-        self.name = name
-
-        if use_conv:
-            self.conv = nn.Conv1d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
-        else:
-            assert self.channels == self.out_channels
-            self.conv = nn.AvgPool1d(kernel_size=stride, stride=stride)
-
-    def forward(self, x):
-        assert x.shape[1] == self.channels
-        return self.conv(x)
 
 
 class FirUpsample2D(nn.Module):
@@ -502,6 +458,7 @@ class ResnetBlock2D(nn.Module):
 
             self.in_ch = in_ch
             self.out_ch = out_ch
+            self.set_weights_score_vde()
 
     def set_weights_grad_tts(self):
         self.conv1.weight.data = self.block1.block[0].weight.data
@@ -565,9 +522,9 @@ class ResnetBlock2D(nn.Module):
         if self.overwrite_for_grad_tts and not self.is_overwritten:
             self.set_weights_grad_tts()
             self.is_overwritten = True
-        elif self.overwrite_for_score_vde and not self.is_overwritten:
-            self.set_weights_score_vde()
-            self.is_overwritten = True
+#        elif self.overwrite_for_score_vde and not self.is_overwritten:
+#            self.set_weights_score_vde()
+#            self.is_overwritten = True
 
         h = x
         h = h * mask
@@ -662,17 +619,11 @@ class ResnetBlock(nn.Module):
         if groups_out is None:
             groups_out = groups
 
-        if self.pre_norm:
-            self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
-        else:
-            self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=out_channels, eps=eps, affine=True)
+        self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
 
         self.conv1 = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
-        if time_embedding_norm == "default" and temb_channels > 0:
-            self.time_emb_proj = torch.nn.Linear(temb_channels, out_channels)
-        elif time_embedding_norm == "scale_shift" and temb_channels > 0:
-            self.time_emb_proj = torch.nn.Linear(temb_channels, 2 * out_channels)
+        self.time_emb_proj = torch.nn.Linear(temb_channels, out_channels)
 
         self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
         self.dropout = torch.nn.Dropout(dropout)
@@ -729,16 +680,16 @@ class ResnetBlock(nn.Module):
         else:
             temb = 0
 
-        if self.time_embedding_norm == "scale_shift":
-            scale, shift = torch.chunk(temb, 2, dim=1)
-
-            h = self.norm2(h)
-            h = h + h * scale + shift
-            h = self.nonlinearity(h)
-        elif self.time_embedding_norm == "default":
-            h = h + temb
-            h = self.norm2(h)
-            h = self.nonlinearity(h)
+#        if self.time_embedding_norm == "scale_shift":
+#            scale, shift = torch.chunk(temb, 2, dim=1)
+#
+#            h = self.norm2(h)
+#            h = h + h * scale + shift
+#            h = self.nonlinearity(h)
+#        elif self.time_embedding_norm == "default":
+        h = h + temb
+        h = self.norm2(h)
+        h = self.nonlinearity(h)
 
         h = self.dropout(h)
         h = self.conv2(h)

@@ -711,7 +711,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         time_step = torch.tensor(batch_size * [1e-4]).to(torch_device)
 
         with torch.no_grad():
-            output = model(noise, time_step)
+            output = model(noise, time_step)["sample"]
 
         output_slice = output[0, -3:, -3:, -1].flatten().cpu()
         # fmt: off
