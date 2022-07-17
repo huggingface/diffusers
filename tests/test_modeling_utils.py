@@ -20,6 +20,7 @@ import unittest
 
 import numpy as np
 import torch
+import math
 
 from diffusers import (
     AutoencoderKL,
@@ -613,25 +614,32 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "image_size": 32,
-            "ch_mult": [1, 2, 2, 2],
-            "nf": 32,
-            "fir": True,
-            "progressive": "output_skip",
-            "progressive_combine": "sum",
-            "progressive_input": "input_skip",
-            "scale_by_sigma": True,
-            "skip_rescale": True,
-            "sde": True,
-            "embedding_type": "fourier",
+            "block_channels": [32, 64, 64, 64],
+            "in_channels": 3,
+            "num_res_blocks": 1,
+            "out_channels": 3,
+            "time_embedding_type": "fourier",
+            "resnet_eps": 1e-6,
+            "mid_block_scale_factor": math.sqrt(2.0),
+            "resnet_num_groups": None,
+            "down_blocks": [
+                "UNetResSkipDownBlock2D",
+                "UNetResAttnSkipDownBlock2D",
+                "UNetResSkipDownBlock2D",
+                "UNetResSkipDownBlock2D",
+            ],
+            "up_blocks": [
+                "UNetResSkipUpBlock2D",
+                "UNetResSkipUpBlock2D",
+                "UNetResAttnSkipUpBlock2D",
+                "UNetResSkipUpBlock2D",
+            ]
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
     def test_from_pretrained_hub(self):
-        model, loading_info = UNetUnconditionalModel.from_pretrained(
-            "fusing/cifar10-ncsnpp-ve", output_loading_info=True
-        )
+        model, loading_info = UNetUnconditionalModel.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy", sde=True, output_loading_info=True)
         self.assertIsNotNone(model)
         # self.assertEqual(len(loading_info["missing_keys"]), 0)
 
@@ -641,7 +649,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained_ve_small(self):
-        model = UNetUnconditionalModel.from_pretrained("fusing/ncsnpp-cifar10-ve-dummy", sde=True)
+        model = NCSNpp.from_pretrained("fusing/ncsnpp-cifar10-ve-dummy")
         model.eval()
         model.to(torch_device)
 
@@ -667,36 +675,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
     def test_output_pretrained_ve_large(self):
-        model = NCSNpp.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy")
-        model.eval()
-        model.to(torch_device)
-
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
-
-        batch_size = 4
-        num_channels = 3
-        sizes = (32, 32)
-
-        noise = torch.ones((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor(batch_size * [1e-4]).to(torch_device)
-
-        with torch.no_grad():
-            output = model(noise, time_step)
-
-        output_slice = output[0, -3:, -3:, -1].flatten().cpu()
-        # fmt: off
-        expected_output_slice = torch.tensor([-0.0325, -0.0900, -0.0869, -0.0332, -0.0725, -0.0270, -0.0101, 0.0227, 0.0256])
-        # fmt: on
-
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
-
-        print("Youuuuuuuu it worked at first")
-        print(40 * "=")
-
         model = UNetUnconditionalModel.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy", sde=True)
-        model.eval()
         model.to(torch_device)
 
         torch.manual_seed(0)
@@ -721,8 +700,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
     def test_output_pretrained_vp(self):
-        model = UNetUnconditionalModel.from_pretrained("fusing/cifar10-ddpmpp-vp")
-        model.eval()
+        model = NCSNpp.from_pretrained("fusing/cifar10-ddpmpp-vp")
         model.to(torch_device)
 
         torch.manual_seed(0)
@@ -1070,12 +1048,28 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     def test_score_sde_ve_pipeline(self):
         model = NCSNpp.from_pretrained("fusing/ffhq_ncsnpp")
+        model_2 = UNetUnconditionalModel.from_pretrained("fusing/ffhq_ncsnpp", sde=True)
+
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        model_2.set_weights()
+
         scheduler = ScoreSdeVeScheduler.from_config("fusing/ffhq_ncsnpp")
 
         sde_ve = ScoreSdeVePipeline(model=model, scheduler=scheduler)
+        sde_ve_2 = ScoreSdeVePipeline(model=model_2, scheduler=scheduler)
 
         torch.manual_seed(0)
         image = sde_ve(num_inference_steps=2)
+        torch.manual_seed(0)
+        image_2 = sde_ve_2(num_inference_steps=2)
+
+        print("Sum diff", (image - image_2).abs().sum())
+        print("Max diff", (image - image_2).abs().max())
+
+        import ipdb; ipdb.set_trace()
 
         if model.device.type == "cpu":
             expected_image_sum = 3384805888.0

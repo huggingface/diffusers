@@ -211,16 +211,12 @@ class UNetMidBlock2D(nn.Module):
 
     def forward(self, hidden_states, temb=None, encoder_states=None):
         hidden_states = self.resnets[0](hidden_states, temb)
-        print("mid hid", hidden_states.abs().sum())
-
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if self.attention_type == "default":
                 hidden_states = attn(hidden_states)
             else:
                 hidden_states = attn(hidden_states, encoder_states)
-            print("mid hid", hidden_states.abs().sum())
             hidden_states = resnet(hidden_states, temb)
-            print("mid hid", hidden_states.abs().sum())
 
         return hidden_states
 
@@ -468,9 +464,7 @@ class UNetResAttnSkipDownBlock2D(nn.Module):
 
             output_states += (hidden_states,)
 
-            return hidden_states, output_states, skip_sample
-
-        return hidden_states, output_states
+        return hidden_states, output_states, skip_sample
 
 
 class UNetResSkipDownBlock2D(nn.Module):
@@ -555,9 +549,7 @@ class UNetResSkipDownBlock2D(nn.Module):
 
             output_states += (hidden_states,)
 
-            return hidden_states, output_states, skip_sample
-
-        return hidden_states, output_states
+        return hidden_states, output_states, skip_sample
 
 
 class UNetResAttnUpBlock2D(nn.Module):
@@ -842,7 +834,7 @@ class UNetResSkipUpBlock2D(nn.Module):
                     out_channels=out_channels,
                     temb_channels=temb_channels,
                     eps=resnet_eps,
-                    groups=min(resnet_in_channels + res_skip_channels // 4, 32),
+                    groups=min((resnet_in_channels + res_skip_channels) // 4, 32),
                     groups_out=min(out_channels // 4, 32),
                     dropout=dropout,
                     time_embedding_norm=resnet_time_scale_shift,

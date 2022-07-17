@@ -14,8 +14,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
         device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
         img_size = self.model.config.image_size
-        channels = self.model.config.num_channels
-        shape = (1, channels, img_size, img_size)
+        shape = (1, 3, img_size, img_size)
 
         model = self.model.to(device)
 
@@ -34,10 +33,17 @@ class ScoreSdeVePipeline(DiffusionPipeline):
             for _ in range(n_steps):
                 with torch.no_grad():
                     result = self.model(x, sigma_t)
+
+                if isinstance(result, dict):
+                    result = result["sample"]
+
                 x = self.scheduler.step_correct(result, x)
 
             with torch.no_grad():
                 result = model(x, sigma_t)
+
+                if isinstance(result, dict):
+                    result = result["sample"]
 
             x, x_mean = self.scheduler.step_pred(result, x, t)
 

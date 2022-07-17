@@ -395,20 +395,14 @@ class NCSNpp(ModelMixin, ConfigMixin):
 
                 hs.append(h)
 
-        print("before mid h", h.abs().sum())
+
         h = hs[-1]
         h = modules[m_idx](h, temb)
-        print("mid hid tensor", h.abs().sum())
         m_idx += 1
         h = modules[m_idx](h)
-        print("mid hid tensor", h.abs().sum())
         m_idx += 1
         h = modules[m_idx](h, temb)
         m_idx += 1
-
-#        h = self.mid(h, temb)
-        print("after mid h", h.abs().sum())
-#        m_idx += 3
 
         pyramid = None
 
@@ -438,16 +432,12 @@ class NCSNpp(ModelMixin, ConfigMixin):
 #                        raise ValueError(f"{self.progressive} is not a valid name.")
                 else:
                     if self.progressive == "output_skip":
-                        print("sample out h", h.abs().sum())
                         pyramid_h = self.act(modules[m_idx](h))
-                        print("sample out act", pyramid_h.abs().sum())
                         m_idx += 1
                         pyramid_h = modules[m_idx](pyramid_h)
-                        print("sample out 1", pyramid_h.abs().sum())
                         m_idx += 1
 
                         skip_sample = self.pyramid_upsample(pyramid)
-                        print("skip sample", skip_sample.abs().sum())
                         pyramid = skip_sample + pyramid_h
 #                    elif self.progressive == "residual":
 #                        pyramid = modules[m_idx](pyramid)
@@ -464,8 +454,6 @@ class NCSNpp(ModelMixin, ConfigMixin):
                 h = modules[m_idx](h, temb)
                 m_idx += 1
 
-            print(f"h up {i_level}", h.abs().sum())
-
         assert not hs
 
         if self.progressive == "output_skip":
@@ -475,8 +463,6 @@ class NCSNpp(ModelMixin, ConfigMixin):
             m_idx += 1
             h = modules[m_idx](h)
             m_idx += 1
-
-        print("h final", h.abs().sum())
 
         assert m_idx == len(modules)
         if self.config.scale_by_sigma:

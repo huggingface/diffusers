@@ -516,7 +516,7 @@ class ResnetBlock2D(nn.Module):
             self.nin_shortcut.weight.data = self.Conv_2.weight.data
             self.nin_shortcut.bias.data = self.Conv_2.bias.data
 
-    def forward(self, x, temb, mask=1.0):
+    def forward(self, x, temb, hey=False, mask=1.0):
         # TODO(Patrick) eventually this class should be split into multiple classes
         # too many if else statements
         if self.overwrite_for_grad_tts and not self.is_overwritten:
@@ -526,7 +526,11 @@ class ResnetBlock2D(nn.Module):
 #            self.set_weights_score_vde()
 #            self.is_overwritten = True
 
+#h2 tensor(110029.2109)
+#h3 tensor(49596.9492)
+
         h = x
+
         h = h * mask
         if self.pre_norm:
             h = self.norm1(h)
@@ -576,7 +580,9 @@ class ResnetBlock2D(nn.Module):
         if self.nin_shortcut is not None:
             x = self.nin_shortcut(x)
 
-        return (x + h) / self.output_scale_factor
+        out = (x + h) / self.output_scale_factor
+
+        return out
 
 
 class ResnetBlock(nn.Module):
@@ -660,7 +666,7 @@ class ResnetBlock(nn.Module):
         if self.use_nin_shortcut:
             self.conv_shortcut = torch.nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
 
-    def forward(self, x, temb):
+    def forward(self, x, temb, hey=False):
         h = x
 
         h = self.norm1(h)
@@ -697,7 +703,9 @@ class ResnetBlock(nn.Module):
         if self.conv_shortcut is not None:
             x = self.conv_shortcut(x)
 
-        return (x + h) / self.output_scale_factor
+        out = (x + h) / self.output_scale_factor
+
+        return out
 
     def set_weight(self, resnet):
         self.norm1.weight.data = resnet.norm1.weight.data

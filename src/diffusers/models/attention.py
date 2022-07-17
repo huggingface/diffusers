@@ -216,6 +216,7 @@ class AttentionBlockNew(nn.Module):
 
         # norm
         hidden_states = self.group_norm(hidden_states)
+
         hidden_states = hidden_states.view(batch, channel, height * width).transpose(1, 2)
 
         # proj to q, k, v
@@ -229,9 +230,9 @@ class AttentionBlockNew(nn.Module):
         value_states = self.transpose_for_scores(value_proj)
 
         # get scores
-        attention_scores = torch.matmul(query_states, key_states.transpose(-1, -2))
-        attention_scores = attention_scores / math.sqrt(self.channels // self.num_heads)
-        attention_probs = nn.functional.softmax(attention_scores, dim=-1)
+        scale = 1 / math.sqrt(math.sqrt(self.channels / self.num_heads))
+        attention_scores = torch.matmul(query_states * scale, key_states.transpose(-1, -2) * scale)
+        attention_probs = torch.softmax(attention_scores.float(), dim=-1).type(attention_scores.dtype)
 
         # compute attention output
         context_states = torch.matmul(attention_probs, value_states)
@@ -263,6 +264,20 @@ class AttentionBlockNew(nn.Module):
 
             self.proj_attn.weight.data = attn_layer.proj_out.weight.data[:, :, 0, 0]
             self.proj_attn.bias.data = attn_layer.proj_out.bias.data
+        elif hasattr(attn_layer, "NIN_0"):
+            self.query.weight.data = attn_layer.NIN_0.W.data.T
+            self.key.weight.data = attn_layer.NIN_1.W.data.T
+            self.value.weight.data = attn_layer.NIN_2.W.data.T
+
+            self.query.bias.data = attn_layer.NIN_0.b.data
+            self.key.bias.data = attn_layer.NIN_1.b.data
+            self.value.bias.data = attn_layer.NIN_2.b.data
+
+            self.proj_attn.weight.data = attn_layer.NIN_3.W.data.T
+            self.proj_attn.bias.data = attn_layer.NIN_3.b.data
+
+            self.group_norm.weight.data = attn_layer.GroupNorm_0.weight.data
+            self.group_norm.bias.data = attn_layer.GroupNorm_0.bias.data
         else:
             qkv_weight = attn_layer.qkv.weight.data.reshape(
                 self.num_heads, 3 * self.channels // self.num_heads, self.channels
