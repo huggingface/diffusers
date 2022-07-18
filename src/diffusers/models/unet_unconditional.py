@@ -1,9 +1,8 @@
 import functools
 import math
-
-import numpy as np
 from typing import Dict, Union
 
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -23,6 +22,7 @@ class Combine(nn.Module):
         # 1x1 convolution with DDPM initialization.
         self.Conv_0 = nn.Conv2d(dim1, dim2, kernel_size=1, padding=0)
         self.method = method
+
 
 #    def forward(self, x, y):
 #        h = self.Conv_0(x)
@@ -182,27 +182,27 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             ddpm=ddpm,
             sde=sde,
         )
-#        if sde:
-#            block_channels = [nf * x for x in ch_mult]
-#            in_channels = out_channels = num_channels
-#            conv_resample = resamp_with_conv
-#            time_embedding_type = "fourier"
-#            self.config.time_embedding_type = time_embedding_type
-#            self.config.resnet_eps = 1e-6
-#            self.config.mid_block_scale_factor = math.sqrt(2.0)
-#            self.config.resnet_num_groups = None
-#            down_blocks = (
-#                "UNetResSkipDownBlock2D",
-#                "UNetResAttnSkipDownBlock2D",
-#                "UNetResSkipDownBlock2D",
-#                "UNetResSkipDownBlock2D",
-#            )
-#            up_blocks = (
-#                "UNetResSkipUpBlock2D",
-#                "UNetResSkipUpBlock2D",
-#                "UNetResAttnSkipUpBlock2D",
-#                "UNetResSkipUpBlock2D",
-#            )
+        #        if sde:
+        #            block_channels = [nf * x for x in ch_mult]
+        #            in_channels = out_channels = num_channels
+        #            conv_resample = resamp_with_conv
+        #            time_embedding_type = "fourier"
+        #            self.config.time_embedding_type = time_embedding_type
+        #            self.config.resnet_eps = 1e-6
+        #            self.config.mid_block_scale_factor = math.sqrt(2.0)
+        #            self.config.resnet_num_groups = None
+        #            down_blocks = (
+        #                "UNetResSkipDownBlock2D",
+        #                "UNetResAttnSkipDownBlock2D",
+        #                "UNetResSkipDownBlock2D",
+        #                "UNetResSkipDownBlock2D",
+        #            )
+        #            up_blocks = (
+        #                "UNetResSkipUpBlock2D",
+        #                "UNetResSkipUpBlock2D",
+        #                "UNetResAttnSkipUpBlock2D",
+        #                "UNetResSkipUpBlock2D",
+        #            )
 
         # TODO(PVP) - to delete later at release
         # IMPORTANT: NOT RELEVANT WHEN REVIEWING API
@@ -362,13 +362,13 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             nf = block_channels[0]
             ch_mult = [x // nf for x in block_channels]
             num_channels = in_channels
-#            in_channels = out_channels = num_channels = in_channels
-#            block_channels = [nf * x for x in ch_mult]
-#            conv_resample = resamp_with_conv
+            #            in_channels = out_channels = num_channels = in_channels
+            #            block_channels = [nf * x for x in ch_mult]
+            #            conv_resample = resamp_with_conv
             resamp_with_conv = conv_resample
             time_embedding_type = self.config.time_embedding_type
-#            time_embedding_type = "fourier"
-#            self.config.time_embedding_type = time_embedding_type
+            #            time_embedding_type = "fourier"
+            #            self.config.time_embedding_type = time_embedding_type
             fir = True
             progressive = "output_skip"
             progressive_combine = "sum"
@@ -437,7 +437,9 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         down_block_res_samples = (sample,)
         for downsample_block in self.downsample_blocks:
             if hasattr(downsample_block, "skip_conv"):
-                sample, res_samples, skip_sample = downsample_block(hidden_states=sample, temb=emb, skip_sample=skip_sample)
+                sample, res_samples, skip_sample = downsample_block(
+                    hidden_states=sample, temb=emb, skip_sample=skip_sample
+                )
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
 
@@ -470,7 +472,10 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         if skip_sample is not None:
             sample += skip_sample
 
-        if self.config.time_embedding_type == "fourier" or self.time_steps.__class__.__name__ == "GaussianFourierProjection":
+        if (
+            self.config.time_embedding_type == "fourier"
+            or self.time_steps.__class__.__name__ == "GaussianFourierProjection"
+        ):
             timesteps = timesteps.reshape((sample.shape[0], *([1] * len(sample.shape[1:]))))
             sample = sample / timesteps
 

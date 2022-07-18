@@ -11,13 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 
+import numpy as np
+
 # limitations under the License.
 import torch
 from torch import nn
-import numpy as np
 
 from .attention import AttentionBlockNew
-from .resnet import Downsample2D, ResnetBlock, Upsample2D, FirDownsample2D, FirUpsample2D
+from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, ResnetBlock, Upsample2D
 
 
 def get_down_block(
@@ -188,7 +189,6 @@ class UNetMidBlock2D(nn.Module):
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
                     num_groups=resnet_groups,
-
                 )
             )
             resnets.append(
@@ -420,27 +420,21 @@ class UNetResAttnSkipDownBlock2D(nn.Module):
 
         if add_downsample:
             self.resnet_down = ResnetBlock(
-                    in_channels=out_channels,
-                    out_channels=out_channels,
-                    temb_channels=temb_channels,
-                    eps=resnet_eps,
-                    groups=min(out_channels // 4, 32),
-                    dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
-                    non_linearity=resnet_act_fn,
-                    output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
-                    use_nin_shortcut=True,
-                    down=True,
-                    kernel="fir",
+                in_channels=out_channels,
+                out_channels=out_channels,
+                temb_channels=temb_channels,
+                eps=resnet_eps,
+                groups=min(out_channels // 4, 32),
+                dropout=dropout,
+                time_embedding_norm=resnet_time_scale_shift,
+                non_linearity=resnet_act_fn,
+                output_scale_factor=output_scale_factor,
+                pre_norm=resnet_pre_norm,
+                use_nin_shortcut=True,
+                down=True,
+                kernel="fir",
             )
-            self.downsamplers = nn.ModuleList(
-                [
-                     FirDownsample2D(
-                        in_channels, out_channels=out_channels
-                    )
-                ]
-            )
+            self.downsamplers = nn.ModuleList([FirDownsample2D(in_channels, out_channels=out_channels)])
             self.skip_conv = nn.Conv2d(3, out_channels, kernel_size=(1, 1), stride=(1, 1))
         else:
             self.resnet_down = None
@@ -506,27 +500,21 @@ class UNetResSkipDownBlock2D(nn.Module):
 
         if add_downsample:
             self.resnet_down = ResnetBlock(
-                    in_channels=out_channels,
-                    out_channels=out_channels,
-                    temb_channels=temb_channels,
-                    eps=resnet_eps,
-                    groups=min(out_channels // 4, 32),
-                    dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
-                    non_linearity=resnet_act_fn,
-                    output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
-                    use_nin_shortcut=True,
-                    down=True,
-                    kernel="fir",
+                in_channels=out_channels,
+                out_channels=out_channels,
+                temb_channels=temb_channels,
+                eps=resnet_eps,
+                groups=min(out_channels // 4, 32),
+                dropout=dropout,
+                time_embedding_norm=resnet_time_scale_shift,
+                non_linearity=resnet_act_fn,
+                output_scale_factor=output_scale_factor,
+                pre_norm=resnet_pre_norm,
+                use_nin_shortcut=True,
+                down=True,
+                kernel="fir",
             )
-            self.downsamplers = nn.ModuleList(
-                [
-                     FirDownsample2D(
-                        in_channels, out_channels=out_channels
-                    )
-                ]
-            )
+            self.downsamplers = nn.ModuleList([FirDownsample2D(in_channels, out_channels=out_channels)])
             self.skip_conv = nn.Conv2d(3, out_channels, kernel_size=(1, 1), stride=(1, 1))
         else:
             self.resnet_down = None
@@ -750,23 +738,25 @@ class UNetResAttnSkipUpBlock2D(nn.Module):
         self.upsampler = FirUpsample2D(in_channels, out_channels=out_channels)
         if add_upsample:
             self.resnet_up = ResnetBlock(
-                    in_channels=out_channels,
-                    out_channels=out_channels,
-                    temb_channels=temb_channels,
-                    eps=resnet_eps,
-                    groups=min(out_channels // 4, 32),
-                    groups_out=min(out_channels // 4, 32),
-                    dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
-                    non_linearity=resnet_act_fn,
-                    output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
-                    use_nin_shortcut=True,
-                    up=True,
-                    kernel="fir",
+                in_channels=out_channels,
+                out_channels=out_channels,
+                temb_channels=temb_channels,
+                eps=resnet_eps,
+                groups=min(out_channels // 4, 32),
+                groups_out=min(out_channels // 4, 32),
+                dropout=dropout,
+                time_embedding_norm=resnet_time_scale_shift,
+                non_linearity=resnet_act_fn,
+                output_scale_factor=output_scale_factor,
+                pre_norm=resnet_pre_norm,
+                use_nin_shortcut=True,
+                up=True,
+                kernel="fir",
             )
             self.skip_conv = nn.Conv2d(out_channels, 3, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
-            self.skip_norm = torch.nn.GroupNorm(num_groups=min(out_channels // 4, 32), num_channels=out_channels, eps=resnet_eps, affine=True)
+            self.skip_norm = torch.nn.GroupNorm(
+                num_groups=min(out_channels // 4, 32), num_channels=out_channels, eps=resnet_eps, affine=True
+            )
             self.act = nn.SiLU()
         else:
             self.resnet_up = None
@@ -785,7 +775,7 @@ class UNetResAttnSkipUpBlock2D(nn.Module):
 
             hidden_states = resnet(hidden_states, temb)
 
-        hidden_states =self.attentions[0](hidden_states)
+        hidden_states = self.attentions[0](hidden_states)
 
         if skip_sample is not None:
             skip_sample = self.upsampler(skip_sample)
@@ -795,7 +785,7 @@ class UNetResAttnSkipUpBlock2D(nn.Module):
         if self.resnet_up is not None:
             skip_sample_states = self.skip_norm(hidden_states)
             skip_sample_states = self.act(skip_sample_states)
-            skip_sample_states  = self.skip_conv(skip_sample_states)
+            skip_sample_states = self.skip_conv(skip_sample_states)
 
             skip_sample = skip_sample + skip_sample_states
 
@@ -847,23 +837,25 @@ class UNetResSkipUpBlock2D(nn.Module):
         self.upsampler = FirUpsample2D(in_channels, out_channels=out_channels)
         if add_upsample:
             self.resnet_up = ResnetBlock(
-                    in_channels=out_channels,
-                    out_channels=out_channels,
-                    temb_channels=temb_channels,
-                    eps=resnet_eps,
-                    groups=min(out_channels // 4, 32),
-                    groups_out=min(out_channels // 4, 32),
-                    dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
-                    non_linearity=resnet_act_fn,
-                    output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
-                    use_nin_shortcut=True,
-                    up=True,
-                    kernel="fir",
+                in_channels=out_channels,
+                out_channels=out_channels,
+                temb_channels=temb_channels,
+                eps=resnet_eps,
+                groups=min(out_channels // 4, 32),
+                groups_out=min(out_channels // 4, 32),
+                dropout=dropout,
+                time_embedding_norm=resnet_time_scale_shift,
+                non_linearity=resnet_act_fn,
+                output_scale_factor=output_scale_factor,
+                pre_norm=resnet_pre_norm,
+                use_nin_shortcut=True,
+                up=True,
+                kernel="fir",
             )
             self.skip_conv = nn.Conv2d(out_channels, 3, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
-            self.skip_norm = torch.nn.GroupNorm(num_groups=min(out_channels // 4, 32), num_channels=out_channels, eps=resnet_eps, affine=True)
+            self.skip_norm = torch.nn.GroupNorm(
+                num_groups=min(out_channels // 4, 32), num_channels=out_channels, eps=resnet_eps, affine=True
+            )
             self.act = nn.SiLU()
         else:
             self.resnet_up = None
@@ -890,7 +882,7 @@ class UNetResSkipUpBlock2D(nn.Module):
         if self.resnet_up is not None:
             skip_sample_states = self.skip_norm(hidden_states)
             skip_sample_states = self.act(skip_sample_states)
-            skip_sample_states  = self.skip_conv(skip_sample_states)
+            skip_sample_states = self.skip_conv(skip_sample_states)
 
             skip_sample = skip_sample + skip_sample_states
 

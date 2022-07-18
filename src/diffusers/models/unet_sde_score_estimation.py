@@ -249,9 +249,9 @@ class NCSNpp(ModelMixin, ConfigMixin):
                 overwrite_for_score_vde=True,
             )
         )
-#        self.mid.resnets[0] = modules[len(modules) - 3]
-#        self.mid.attentions[0] = modules[len(modules) - 2]
-#        self.mid.resnets[1] = modules[len(modules) - 1]
+        #        self.mid.resnets[0] = modules[len(modules) - 3]
+        #        self.mid.attentions[0] = modules[len(modules) - 2]
+        #        self.mid.resnets[1] = modules[len(modules) - 1]
 
         pyramid_ch = 0
         # Upsampling block
@@ -282,22 +282,22 @@ class NCSNpp(ModelMixin, ConfigMixin):
                         modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6))
                         modules.append(nn.Conv2d(in_ch, channels, kernel_size=3, padding=1))
                         pyramid_ch = channels
-#                    elif progressive == "residual":
-#                        modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6))
-#                        modules.append(nn.Conv2d(in_ch, in_ch, bias=True, kernel_size=3, padding=1))
-#                        pyramid_ch = in_ch
-#                    else:
-#                        raise ValueError(f"{progressive} is not a valid name.")
+                #                    elif progressive == "residual":
+                #                        modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6))
+                #                        modules.append(nn.Conv2d(in_ch, in_ch, bias=True, kernel_size=3, padding=1))
+                #                        pyramid_ch = in_ch
+                #                    else:
+                #                        raise ValueError(f"{progressive} is not a valid name.")
                 else:
                     if progressive == "output_skip":
                         modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6))
                         modules.append(nn.Conv2d(in_ch, channels, bias=True, kernel_size=3, padding=1))
                         pyramid_ch = channels
-#                    elif progressive == "residual":
-#                        modules.append(pyramid_upsample(channels=pyramid_ch, out_channels=in_ch))
-#                        pyramid_ch = in_ch
-#                    else:
-#                        raise ValueError(f"{progressive} is not a valid name")
+            #                    elif progressive == "residual":
+            #                        modules.append(pyramid_upsample(channels=pyramid_ch, out_channels=in_ch))
+            #                        pyramid_ch = in_ch
+            #                    else:
+            #                        raise ValueError(f"{progressive} is not a valid name")
 
             if i_level != 0:
                 modules.append(
@@ -395,7 +395,6 @@ class NCSNpp(ModelMixin, ConfigMixin):
 
                 hs.append(h)
 
-
         h = hs[-1]
         h = modules[m_idx](h, temb)
         m_idx += 1
@@ -423,13 +422,13 @@ class NCSNpp(ModelMixin, ConfigMixin):
                         m_idx += 1
                         pyramid = modules[m_idx](pyramid)
                         m_idx += 1
-#                    elif self.progressive == "residual":
-#                        pyramid = self.act(modules[m_idx](h))
-#                        m_idx += 1
-#                        pyramid = modules[m_idx](pyramid)
-#                        m_idx += 1
-#                    else:
-#                        raise ValueError(f"{self.progressive} is not a valid name.")
+                #                    elif self.progressive == "residual":
+                #                        pyramid = self.act(modules[m_idx](h))
+                #                        m_idx += 1
+                #                        pyramid = modules[m_idx](pyramid)
+                #                        m_idx += 1
+                #                    else:
+                #                        raise ValueError(f"{self.progressive} is not a valid name.")
                 else:
                     if self.progressive == "output_skip":
                         pyramid_h = self.act(modules[m_idx](h))
@@ -439,16 +438,16 @@ class NCSNpp(ModelMixin, ConfigMixin):
 
                         skip_sample = self.pyramid_upsample(pyramid)
                         pyramid = skip_sample + pyramid_h
-#                    elif self.progressive == "residual":
-#                        pyramid = modules[m_idx](pyramid)
-#                        m_idx += 1
-#                        if self.skip_rescale:
-#                            pyramid = (pyramid + h) / np.sqrt(2.0)
-#                        else:
-#                            pyramid = pyramid + h
-#                        h = pyramid
-#                    else:
-#                        raise ValueError(f"{self.progressive} is not a valid name")
+            #                    elif self.progressive == "residual":
+            #                        pyramid = modules[m_idx](pyramid)
+            #                        m_idx += 1
+            #                        if self.skip_rescale:
+            #                            pyramid = (pyramid + h) / np.sqrt(2.0)
+            #                        else:
+            #                            pyramid = pyramid + h
+            #                        h = pyramid
+            #                    else:
+            #                        raise ValueError(f"{self.progressive} is not a valid name")
 
             if i_level != 0:
                 h = modules[m_idx](h, temb)

@@ -522,12 +522,12 @@ class ResnetBlock2D(nn.Module):
         if self.overwrite_for_grad_tts and not self.is_overwritten:
             self.set_weights_grad_tts()
             self.is_overwritten = True
-#        elif self.overwrite_for_score_vde and not self.is_overwritten:
-#            self.set_weights_score_vde()
-#            self.is_overwritten = True
+        #        elif self.overwrite_for_score_vde and not self.is_overwritten:
+        #            self.set_weights_score_vde()
+        #            self.is_overwritten = True
 
-#h2 tensor(110029.2109)
-#h3 tensor(49596.9492)
+        # h2 tensor(110029.2109)
+        # h3 tensor(49596.9492)
 
         h = x
 
@@ -686,13 +686,13 @@ class ResnetBlock(nn.Module):
         else:
             temb = 0
 
-#        if self.time_embedding_norm == "scale_shift":
-#            scale, shift = torch.chunk(temb, 2, dim=1)
-#
-#            h = self.norm2(h)
-#            h = h + h * scale + shift
-#            h = self.nonlinearity(h)
-#        elif self.time_embedding_norm == "default":
+        #        if self.time_embedding_norm == "scale_shift":
+        #            scale, shift = torch.chunk(temb, 2, dim=1)
+        #
+        #            h = self.norm2(h)
+        #            h = h + h * scale + shift
+        #            h = self.nonlinearity(h)
+        #        elif self.time_embedding_norm == "default":
         h = h + temb
         h = self.norm2(h)
         h = self.nonlinearity(h)
