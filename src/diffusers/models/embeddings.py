@@ -54,14 +54,20 @@ def get_timestep_embedding(
     return emb
 
 
-# unet_sde_score_estimation.py
 class GaussianFourierProjection(nn.Module):
     """Gaussian Fourier embeddings for noise levels."""
 
     def __init__(self, embedding_size=256, scale=1.0):
         super().__init__()
+        self.weight = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)
+
+        # to delete later
         self.W = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)
 
+        self.weight = self.W
+
     def forward(self, x):
-        x_proj = x[:, None] * self.W[None, :] * 2 * np.pi
-        return torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1)
+        x = torch.log(x)
+        x_proj = x[:, None] * self.weight[None, :] * 2 * np.pi
+        out = torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1)
+        return out

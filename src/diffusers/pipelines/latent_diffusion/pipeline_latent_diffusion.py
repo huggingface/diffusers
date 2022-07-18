@@ -545,10 +545,10 @@ class LDMBertModel(LDMBertPreTrainedModel):
 
 
 class LatentDiffusionPipeline(DiffusionPipeline):
-    def __init__(self, vqvae, bert, tokenizer, unet, noise_scheduler):
+    def __init__(self, vqvae, bert, tokenizer, unet, scheduler):
         super().__init__()
-        noise_scheduler = noise_scheduler.set_format("pt")
-        self.register_modules(vqvae=vqvae, bert=bert, tokenizer=tokenizer, unet=unet, noise_scheduler=noise_scheduler)
+        scheduler = scheduler.set_format("pt")
+        self.register_modules(vqvae=vqvae, bert=bert, tokenizer=tokenizer, unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
     def __call__(
@@ -581,7 +581,7 @@ class LatentDiffusionPipeline(DiffusionPipeline):
         text_input = self.tokenizer(prompt, padding="max_length", max_length=77, return_tensors="pt").to(torch_device)
         text_embedding = self.bert(text_input.input_ids)
 
-        num_trained_timesteps = self.noise_scheduler.config.timesteps
+        num_trained_timesteps = self.scheduler.config.timesteps
         inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps)
 
         image = torch.randn(
@@ -622,13 +622,13 @@ class LatentDiffusionPipeline(DiffusionPipeline):
                 pred_noise_t = pred_noise_t_uncond + guidance_scale * (pred_noise_t - pred_noise_t_uncond)
 
             # 2. predict previous mean of image x_t-1
-            pred_prev_image = self.noise_scheduler.step(pred_noise_t, image, t, num_inference_steps, eta)
+            pred_prev_image = self.scheduler.step(pred_noise_t, image, t, num_inference_steps, eta)
 
             # 3. optionally sample variance
             variance = 0
             if eta > 0:
                 noise = torch.randn(image.shape, generator=generator).to(image.device)
-                variance = self.noise_scheduler.get_variance(t, num_inference_steps).sqrt() * eta * noise
+                variance = self.scheduler.get_variance(t, num_inference_steps).sqrt() * eta * noise
 
             # 4. set current image to prev_image: x_t -> x_t-1
             image = pred_prev_image + variance

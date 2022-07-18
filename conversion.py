@@ -100,7 +100,7 @@ def test_output_pretrained_ldm():
 # 2. DDPM
 
 def get_model(model_id):
-    model = UNetUnconditionalModel.from_pretrained("fusing/unet-ldm-dummy", ldm=True)
+    model = UNetUnconditionalModel.from_pretrained(model_id, ldm=True)
 
     noise = torch.randn(1, model.config.in_channels, model.config.image_size, model.config.image_size)
     time_step = torch.tensor([10] * noise.shape[0])
@@ -123,3 +123,16 @@ def get_model(model_id):
 
 # e.g.
 get_model("fusing/ddpm-cifar10")
+
+# 3. NCSNpp
+
+# Repos to convert and port to google (part of https://github.com/yang-song/score_sde)
+# - https://huggingface.co/fusing/ffhq_ncsnpp
+# - https://huggingface.co/fusing/church_256-ncsnpp-ve
+# - https://huggingface.co/fusing/celebahq_256-ncsnpp-ve
+# - https://huggingface.co/fusing/bedroom_256-ncsnpp-ve
+# - https://huggingface.co/fusing/ffhq_256-ncsnpp-ve
+
+# tests to make sure to pass
+# - test_score_sde_ve_pipeline (in PipelineTesterMixin)
+# - test_output_pretrained_ve_mid, test_output_pretrained_ve_large (in NCSNppModelTests)
