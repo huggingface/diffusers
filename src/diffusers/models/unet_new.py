@@ -66,6 +66,7 @@ def get_down_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             downsample_padding=downsample_padding,
+            attn_num_head_channels=attn_num_head_channels,
         )
     elif down_block_type == "UNetResSkipDownBlock2D":
         return UNetResSkipDownBlock2D(

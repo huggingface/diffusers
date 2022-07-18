@@ -110,12 +110,16 @@ class UNetConditionalModel(ModelMixin, ConfigMixin):
             "UNetResDownBlock2D",
         ),
         downsample_padding=1,
-        up_blocks=("UNetResUpBlock2D", "UNetResCrossAttnUpBlock2D", "UNetResCrossAttnUpBlock2D", "UNetResCrossAttnUpBlock2D"),
+        up_blocks=(
+            "UNetResUpBlock2D",
+            "UNetResCrossAttnUpBlock2D",
+            "UNetResCrossAttnUpBlock2D",
+            "UNetResCrossAttnUpBlock2D",
+        ),
         resnet_act_fn="silu",
         resnet_eps=1e-5,
         conv_resample=True,
-        num_head_channels=None,
-        num_attention_heads=8,
+        num_head_channels=8,
         flip_sin_to_cos=True,
         downscale_freq_shift=0,
         mid_block_scale_factor=1,
@@ -125,7 +129,6 @@ class UNetConditionalModel(ModelMixin, ConfigMixin):
         # ======================================
         # LDM
         attention_resolutions=(4, 2, 1),
-        ldm=True,
         # DDPM
         out_ch=None,
         resolution=None,
@@ -152,6 +155,7 @@ class UNetConditionalModel(ModelMixin, ConfigMixin):
         progressive_input="input_skip",
         resnet_num_groups=32,
         continuous=True,
+        ldm=False,
     ):
         super().__init__()
         # register all __init__ params to be accessible via `self.config.<...>`
@@ -176,9 +180,9 @@ class UNetConditionalModel(ModelMixin, ConfigMixin):
             mid_block_scale_factor=mid_block_scale_factor,
             resnet_num_groups=resnet_num_groups,
             center_input_sample=center_input_sample,
-            # to delete later
-            ldm=ldm,
         )
+
+        self.ldm = ldm
 
         # TODO(PVP) - to delete later at release
         # IMPORTANT: NOT RELEVANT WHEN REVIEWING API
@@ -273,8 +277,8 @@ class UNetConditionalModel(ModelMixin, ConfigMixin):
         # ======================================
         self.is_overwritten = False
         if ldm:
-            num_heads = num_attention_heads
-            num_head_channels = num_head_channels if num_head_channels is not None else -1
+            num_heads = 8
+            num_head_channels = -1
             transformer_depth = 1
             use_spatial_transformer = True
             context_dim = 1280
@@ -300,7 +304,10 @@ class UNetConditionalModel(ModelMixin, ConfigMixin):
             )
 
     def forward(
-        self, sample: torch.FloatTensor, timestep: Union[torch.Tensor, float, int], encoder_hidden_states: torch.Tensor,
+        self,
+        sample: torch.FloatTensor,
+        timestep: Union[torch.Tensor, float, int],
+        encoder_hidden_states: torch.Tensor,
     ) -> Dict[str, torch.FloatTensor]:
         # TODO(PVP) - to delete later at release
         # IMPORTANT: NOT RELEVANT WHEN REVIEWING API
@@ -330,7 +337,9 @@ class UNetConditionalModel(ModelMixin, ConfigMixin):
         for downsample_block in self.downsample_blocks:
 
             if hasattr(downsample_block, "attentions") and downsample_block.attentions is not None:
-                sample, res_samples = downsample_block(hidden_states=sample, temb=emb, encoder_hidden_states=encoder_hidden_states)
+                sample, res_samples = downsample_block(
+                    hidden_states=sample, temb=emb, encoder_hidden_states=encoder_hidden_states
+                )
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
 
@@ -347,7 +356,12 @@ class UNetConditionalModel(ModelMixin, ConfigMixin):
             down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
 
             if hasattr(upsample_block, "attentions") and upsample_block.attentions is not None:
-                sample = upsample_block(hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, encoder_hidden_states=encoder_hidden_states)
+                sample = upsample_block(
+                    hidden_states=sample,
+                    temb=emb,
+                    res_hidden_states_tuple=res_samples,
+                    encoder_hidden_states=encoder_hidden_states,
+                )
             else:
                 sample = upsample_block(hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples)
 
@@ -366,7 +380,7 @@ class UNetConditionalModel(ModelMixin, ConfigMixin):
 
     def set_weights(self):
         self.is_overwritten = True
-        if self.config.ldm:
+        if self.ldm:
             self.time_embedding.linear_1.weight.data = self.time_embed[0].weight.data
             self.time_embedding.linear_1.bias.data = self.time_embed[0].bias.data
             self.time_embedding.linear_2.weight.data = self.time_embed[2].weight.data
