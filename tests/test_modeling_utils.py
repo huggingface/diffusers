@@ -929,7 +929,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_from_pretrained_hub(self):
-        model_path = "fusing/ddpm-cifar10"
+        model_path = "google/ddpm-cifar10"
 
         ddpm = DDPMPipeline.from_pretrained(model_path)
         ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path)
@@ -947,9 +947,9 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_ddpm_cifar10(self):
-        model_id = "fusing/ddpm-cifar10"
+        model_id = "google/ddpm-cifar10"
 
-        unet = UNetUnconditionalModel.from_pretrained(model_id, ddpm=True)
+        unet = UNetUnconditionalModel.from_pretrained(model_id)
         scheduler = DDPMScheduler.from_config(model_id)
         scheduler = scheduler.set_format("pt")
 
@@ -968,9 +968,9 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_ddim_lsun(self):
-        model_id = "fusing/ddpm-lsun-bedroom-ema"
+        model_id = "google/ddpm-lsun-bedroom-ema"
 
-        unet = UNetUnconditionalModel.from_pretrained(model_id, ddpm=True)
+        unet = UNetUnconditionalModel.from_pretrained(model_id)
         scheduler = DDIMScheduler.from_config(model_id)
 
         ddpm = DDIMPipeline(unet=unet, scheduler=scheduler)
@@ -988,9 +988,9 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_ddim_cifar10(self):
-        model_id = "fusing/ddpm-cifar10"
+        model_id = "google/ddpm-cifar10"
 
-        unet = UNetUnconditionalModel.from_pretrained(model_id, ddpm=True)
+        unet = UNetUnconditionalModel.from_pretrained(model_id)
         scheduler = DDIMScheduler(tensor_format="pt")
 
         ddim = DDIMPipeline(unet=unet, scheduler=scheduler)
@@ -1008,7 +1008,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_pndm_cifar10(self):
-        model_id = "fusing/ddpm-cifar10"
+        model_id = "google/ddpm-cifar10"
 
         unet = UNetUnconditionalModel.from_pretrained(model_id, ddpm=True)
         scheduler = PNDMScheduler(tensor_format="pt")
