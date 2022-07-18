@@ -87,96 +87,15 @@ class Downsample2D(nn.Module):
             self.conv = conv
 
     def forward(self, x):
-        #        print("use_conv", self.use_conv)
-        #        print("padding", self.padding)
         assert x.shape[1] == self.channels
         if self.use_conv and self.padding == 0:
             pad = (0, 1, 0, 1)
             x = F.pad(x, pad, mode="constant", value=0)
 
-        #        print("x", x.abs().sum())
-        self.hey = x
         assert x.shape[1] == self.channels
         x = self.conv(x)
-        self.yas = x
-        #        print("x", x.abs().sum())
 
         return x
-        # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
-
-
-#        if self.name == "conv":
-#            return self.conv(x)
-#        elif self.name == "Conv2d_0":
-#            return self.Conv2d_0(x)
-#        else:
-#            return self.op(x)
-
-
-class Upsample1D(nn.Module):
-    """
-    An upsampling layer with an optional convolution.
-
-    :param channels: channels in the inputs and outputs. :param use_conv: a bool determining if a convolution is
-    applied. :param dims: determines if the signal is 1D, 2D, or 3D. If 3D, then
-                 upsampling occurs in the inner-two dimensions.
-    """
-
-    def __init__(self, channels, use_conv=False, use_conv_transpose=False, out_channels=None, name="conv"):
-        super().__init__()
-        self.channels = channels
-        self.out_channels = out_channels or channels
-        self.use_conv = use_conv
-        self.use_conv_transpose = use_conv_transpose
-        self.name = name
-
-        # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
-        self.conv = None
-        if use_conv_transpose:
-            self.conv = nn.ConvTranspose1d(channels, self.out_channels, 4, 2, 1)
-        elif use_conv:
-            self.conv = nn.Conv1d(self.channels, self.out_channels, 3, padding=1)
-
-    def forward(self, x):
-        assert x.shape[1] == self.channels
-        if self.use_conv_transpose:
-            return self.conv(x)
-
-        x = F.interpolate(x, scale_factor=2.0, mode="nearest")
-
-        if self.use_conv:
-            x = self.conv(x)
-
-        return x
-
-
-class Downsample1D(nn.Module):
-    """
-    A downsampling layer with an optional convolution.
-
-    :param channels: channels in the inputs and outputs. :param use_conv: a bool determining if a convolution is
-    applied. :param dims: determines if the signal is 1D, 2D, or 3D. If 3D, then
-                 downsampling occurs in the inner-two dimensions.
-    """
-
-    def __init__(self, channels, use_conv=False, out_channels=None, padding=1, name="conv"):
-        super().__init__()
-        self.channels = channels
-        self.out_channels = out_channels or channels
-        self.use_conv = use_conv
-        self.padding = padding
-        stride = 2
-        self.name = name
-
-        if use_conv:
-            self.conv = nn.Conv1d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
-        else:
-            assert self.channels == self.out_channels
-            self.conv = nn.AvgPool1d(kernel_size=stride, stride=stride)
-
-    def forward(self, x):
-        assert x.shape[1] == self.channels
-        return self.conv(x)
 
 
 class FirUpsample2D(nn.Module):
@@ -330,15 +249,137 @@ class FirDownsample2D(nn.Module):
         return x
 
 
-# TODO (patil-suraj): needs test
-# class Upsample2D1d(nn.Module):
-#    def __init__(self, dim):
-#        super().__init__()
-#        self.conv = nn.ConvTranspose1d(dim, dim, 4, 2, 1)
-#
-#    def forward(self, x):
-#        return self.conv(x)
+class ResnetBlock(nn.Module):
+    def __init__(
+        self,
+        *,
+        in_channels,
+        out_channels=None,
+        conv_shortcut=False,
+        dropout=0.0,
+        temb_channels=512,
+        groups=32,
+        groups_out=None,
+        pre_norm=True,
+        eps=1e-6,
+        non_linearity="swish",
+        time_embedding_norm="default",
+        kernel=None,
+        output_scale_factor=1.0,
+        use_nin_shortcut=None,
+        up=False,
+        down=False,
+    ):
+        super().__init__()
+        self.pre_norm = pre_norm
+        self.pre_norm = True
+        self.in_channels = in_channels
+        out_channels = in_channels if out_channels is None else out_channels
+        self.out_channels = out_channels
+        self.use_conv_shortcut = conv_shortcut
+        self.time_embedding_norm = time_embedding_norm
+        self.up = up
+        self.down = down
+        self.output_scale_factor = output_scale_factor
 
+        if groups_out is None:
+            groups_out = groups
+
+        self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
+
+        self.conv1 = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+
+        self.time_emb_proj = torch.nn.Linear(temb_channels, out_channels)
+
+        self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
+        self.dropout = torch.nn.Dropout(dropout)
+        self.conv2 = torch.nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
+
+        if non_linearity == "swish":
+            self.nonlinearity = lambda x: F.silu(x)
+        elif non_linearity == "mish":
+            self.nonlinearity = Mish()
+        elif non_linearity == "silu":
+            self.nonlinearity = nn.SiLU()
+
+        self.upsample = self.downsample = None
+        if self.up:
+            if kernel == "fir":
+                fir_kernel = (1, 3, 3, 1)
+                self.upsample = lambda x: upsample_2d(x, k=fir_kernel)
+            elif kernel == "sde_vp":
+                self.upsample = partial(F.interpolate, scale_factor=2.0, mode="nearest")
+            else:
+                self.upsample = Upsample2D(in_channels, use_conv=False)
+        elif self.down:
+            if kernel == "fir":
+                fir_kernel = (1, 3, 3, 1)
+                self.downsample = lambda x: downsample_2d(x, k=fir_kernel)
+            elif kernel == "sde_vp":
+                self.downsample = partial(F.avg_pool2d, kernel_size=2, stride=2)
+            else:
+                self.downsample = Downsample2D(in_channels, use_conv=False, padding=1, name="op")
+
+        self.use_nin_shortcut = self.in_channels != self.out_channels if use_nin_shortcut is None else use_nin_shortcut
+
+        self.conv_shortcut = None
+        if self.use_nin_shortcut:
+            self.conv_shortcut = torch.nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x, temb, hey=False):
+        h = x
+
+        h = self.norm1(h)
+        h = self.nonlinearity(h)
+
+        if self.upsample is not None:
+            x = self.upsample(x)
+            h = self.upsample(h)
+        elif self.downsample is not None:
+            x = self.downsample(x)
+            h = self.downsample(h)
+
+        h = self.conv1(h)
+
+        if temb is not None:
+            temb = self.time_emb_proj(self.nonlinearity(temb))[:, :, None, None]
+            h = h + temb
+
+        h = self.norm2(h)
+        h = self.nonlinearity(h)
+
+        h = self.dropout(h)
+        h = self.conv2(h)
+
+        if self.conv_shortcut is not None:
+            x = self.conv_shortcut(x)
+
+        out = (x + h) / self.output_scale_factor
+
+        return out
+
+    def set_weight(self, resnet):
+        self.norm1.weight.data = resnet.norm1.weight.data
+        self.norm1.bias.data = resnet.norm1.bias.data
+
+        self.conv1.weight.data = resnet.conv1.weight.data
+        self.conv1.bias.data = resnet.conv1.bias.data
+
+        self.time_emb_proj.weight.data = resnet.temb_proj.weight.data
+        self.time_emb_proj.bias.data = resnet.temb_proj.bias.data
+
+        self.norm2.weight.data = resnet.norm2.weight.data
+        self.norm2.bias.data = resnet.norm2.bias.data
+
+        self.conv2.weight.data = resnet.conv2.weight.data
+        self.conv2.bias.data = resnet.conv2.bias.data
+
+        if self.use_nin_shortcut:
+            self.conv_shortcut.weight.data = resnet.nin_shortcut.weight.data
+            self.conv_shortcut.bias.data = resnet.nin_shortcut.bias.data
+
+
+# THE FOLLOWING SHOULD BE DELETED ONCE ALL CHECKPOITNS ARE CONVERTED
 
 # unet.py, unet_grad_tts.py, unet_ldm.py, unet_glide.py, unet_score_vde.py
 # => All 2D-Resnets are included here now!
@@ -502,6 +543,7 @@ class ResnetBlock2D(nn.Module):
 
             self.in_ch = in_ch
             self.out_ch = out_ch
+            self.set_weights_score_vde()
 
     def set_weights_grad_tts(self):
         self.conv1.weight.data = self.block1.block[0].weight.data
@@ -559,17 +601,21 @@ class ResnetBlock2D(nn.Module):
             self.nin_shortcut.weight.data = self.Conv_2.weight.data
             self.nin_shortcut.bias.data = self.Conv_2.bias.data
 
-    def forward(self, x, temb, mask=1.0):
+    def forward(self, x, temb, hey=False, mask=1.0):
         # TODO(Patrick) eventually this class should be split into multiple classes
         # too many if else statements
         if self.overwrite_for_grad_tts and not self.is_overwritten:
             self.set_weights_grad_tts()
             self.is_overwritten = True
-        elif self.overwrite_for_score_vde and not self.is_overwritten:
-            self.set_weights_score_vde()
-            self.is_overwritten = True
+        #        elif self.overwrite_for_score_vde and not self.is_overwritten:
+        #            self.set_weights_score_vde()
+        #            self.is_overwritten = True
+
+        # h2 tensor(110029.2109)
+        # h3 tensor(49596.9492)
 
         h = x
+
         h = h * mask
         if self.pre_norm:
             h = self.norm1(h)
@@ -619,154 +665,9 @@ class ResnetBlock2D(nn.Module):
         if self.nin_shortcut is not None:
             x = self.nin_shortcut(x)
 
-        return (x + h) / self.output_scale_factor
+        out = (x + h) / self.output_scale_factor
 
-
-class ResnetBlock(nn.Module):
-    def __init__(
-        self,
-        *,
-        in_channels,
-        out_channels=None,
-        conv_shortcut=False,
-        dropout=0.0,
-        temb_channels=512,
-        groups=32,
-        groups_out=None,
-        pre_norm=True,
-        eps=1e-6,
-        non_linearity="swish",
-        time_embedding_norm="default",
-        kernel=None,
-        output_scale_factor=1.0,
-        use_nin_shortcut=None,
-        up=False,
-        down=False,
-        overwrite_for_grad_tts=False,
-        overwrite_for_ldm=False,
-        overwrite_for_glide=False,
-        overwrite_for_score_vde=False,
-    ):
-        super().__init__()
-        self.pre_norm = pre_norm
-        self.pre_norm = True
-        self.in_channels = in_channels
-        out_channels = in_channels if out_channels is None else out_channels
-        self.out_channels = out_channels
-        self.use_conv_shortcut = conv_shortcut
-        self.time_embedding_norm = time_embedding_norm
-        self.up = up
-        self.down = down
-        self.output_scale_factor = output_scale_factor
-
-        if groups_out is None:
-            groups_out = groups
-
-        if self.pre_norm:
-            self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
-        else:
-            self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=out_channels, eps=eps, affine=True)
-
-        self.conv1 = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
-
-        if time_embedding_norm == "default" and temb_channels > 0:
-            self.time_emb_proj = torch.nn.Linear(temb_channels, out_channels)
-        elif time_embedding_norm == "scale_shift" and temb_channels > 0:
-            self.time_emb_proj = torch.nn.Linear(temb_channels, 2 * out_channels)
-
-        self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
-        self.dropout = torch.nn.Dropout(dropout)
-        self.conv2 = torch.nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
-
-        if non_linearity == "swish":
-            self.nonlinearity = lambda x: F.silu(x)
-        elif non_linearity == "mish":
-            self.nonlinearity = Mish()
-        elif non_linearity == "silu":
-            self.nonlinearity = nn.SiLU()
-
-        self.upsample = self.downsample = None
-        if self.up:
-            if kernel == "fir":
-                fir_kernel = (1, 3, 3, 1)
-                self.upsample = lambda x: upsample_2d(x, k=fir_kernel)
-            elif kernel == "sde_vp":
-                self.upsample = partial(F.interpolate, scale_factor=2.0, mode="nearest")
-            else:
-                self.upsample = Upsample2D(in_channels, use_conv=False)
-        elif self.down:
-            if kernel == "fir":
-                fir_kernel = (1, 3, 3, 1)
-                self.downsample = lambda x: downsample_2d(x, k=fir_kernel)
-            elif kernel == "sde_vp":
-                self.downsample = partial(F.avg_pool2d, kernel_size=2, stride=2)
-            else:
-                self.downsample = Downsample2D(in_channels, use_conv=False, padding=1, name="op")
-
-        self.use_nin_shortcut = self.in_channels != self.out_channels if use_nin_shortcut is None else use_nin_shortcut
-
-        self.conv_shortcut = None
-        if self.use_nin_shortcut:
-            self.conv_shortcut = torch.nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
-
-    def forward(self, x, temb):
-        h = x
-
-        h = self.norm1(h)
-        h = self.nonlinearity(h)
-
-        if self.upsample is not None:
-            x = self.upsample(x)
-            h = self.upsample(h)
-        elif self.downsample is not None:
-            x = self.downsample(x)
-            h = self.downsample(h)
-
-        h = self.conv1(h)
-
-        if temb is not None:
-            temb = self.time_emb_proj(self.nonlinearity(temb))[:, :, None, None]
-        else:
-            temb = 0
-
-        if self.time_embedding_norm == "scale_shift":
-            scale, shift = torch.chunk(temb, 2, dim=1)
-
-            h = self.norm2(h)
-            h = h + h * scale + shift
-            h = self.nonlinearity(h)
-        elif self.time_embedding_norm == "default":
-            h = h + temb
-            h = self.norm2(h)
-            h = self.nonlinearity(h)
-
-        h = self.dropout(h)
-        h = self.conv2(h)
-
-        if self.conv_shortcut is not None:
-            x = self.conv_shortcut(x)
-
-        return (x + h) / self.output_scale_factor
-
-    def set_weight(self, resnet):
-        self.norm1.weight.data = resnet.norm1.weight.data
-        self.norm1.bias.data = resnet.norm1.bias.data
-
-        self.conv1.weight.data = resnet.conv1.weight.data
-        self.conv1.bias.data = resnet.conv1.bias.data
-
-        self.time_emb_proj.weight.data = resnet.temb_proj.weight.data
-        self.time_emb_proj.bias.data = resnet.temb_proj.bias.data
-
-        self.norm2.weight.data = resnet.norm2.weight.data
-        self.norm2.bias.data = resnet.norm2.bias.data
-
-        self.conv2.weight.data = resnet.conv2.weight.data
-        self.conv2.bias.data = resnet.conv2.bias.data
-
-        if self.use_nin_shortcut:
-            self.conv_shortcut.weight.data = resnet.nin_shortcut.weight.data
-            self.conv_shortcut.bias.data = resnet.nin_shortcut.bias.data
+        return out
 
 
 # TODO(Patrick) - just there to convert the weights; can delete afterward
@@ -776,39 +677,6 @@ class Block(torch.nn.Module):
         self.block = torch.nn.Sequential(
             torch.nn.Conv2d(dim, dim_out, 3, padding=1), torch.nn.GroupNorm(groups, dim_out), Mish()
         )
-
-
-# unet_rl.py
-class ResidualTemporalBlock(nn.Module):
-    def __init__(self, inp_channels, out_channels, embed_dim, horizon, kernel_size=5):
-        super().__init__()
-
-        self.blocks = nn.ModuleList(
-            [
-                Conv1dBlock(inp_channels, out_channels, kernel_size),
-                Conv1dBlock(out_channels, out_channels, kernel_size),
-            ]
-        )
-
-        self.time_mlp = nn.Sequential(
-            nn.Mish(),
-            nn.Linear(embed_dim, out_channels),
-            RearrangeDim(),
-            #            Rearrange("batch t -> batch t 1"),
-        )
-
-        self.residual_conv = (
-            nn.Conv1d(inp_channels, out_channels, 1) if inp_channels != out_channels else nn.Identity()
-        )
-
-    def forward(self, x, t):
-        """
-        x : [ batch_size x inp_channels x horizon ] t : [ batch_size x embed_dim ] returns: out : [ batch_size x
-        out_channels x horizon ]
-        """
-        out = self.blocks[0](x) + self.time_mlp(t)
-        out = self.blocks[1](out)
-        return out + self.residual_conv(x)
 
 
 # HELPER Modules

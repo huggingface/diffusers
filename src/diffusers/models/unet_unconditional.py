@@ -1,29 +1,74 @@
+import functools
+import math
 from typing import Dict, Union
 
+import numpy as np
 import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
-from .embeddings import get_timestep_embedding
-from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
+from .embeddings import GaussianFourierProjection, get_timestep_embedding
+from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, ResnetBlock2D, Upsample2D
 from .unet_new import UNetMidBlock2D, get_down_block, get_up_block
 
 
+class Combine(nn.Module):
+    """Combine information from skip connections."""
+
+    def __init__(self, dim1, dim2, method="cat"):
+        super().__init__()
+        # 1x1 convolution with DDPM initialization.
+        self.Conv_0 = nn.Conv2d(dim1, dim2, kernel_size=1, padding=0)
+        self.method = method
+
+
+#    def forward(self, x, y):
+#        h = self.Conv_0(x)
+#        if self.method == "cat":
+#            return torch.cat([h, y], dim=1)
+#        elif self.method == "sum":
+#            return h + y
+#        else:
+#            raise ValueError(f"Method {self.method} not recognized.")
+
+
 class TimestepEmbedding(nn.Module):
-    def __init__(self, channel, time_embed_dim):
+    def __init__(self, channel, time_embed_dim, act_fn="silu"):
         super().__init__()
 
         self.linear_1 = nn.Linear(channel, time_embed_dim)
-        self.act = nn.SiLU()
+        self.act = None
+        if act_fn == "silu":
+            self.act = nn.SiLU()
         self.linear_2 = nn.Linear(time_embed_dim, time_embed_dim)
 
     def forward(self, sample):
         sample = self.linear_1(sample)
-        sample = self.act(sample)
+
+        if self.act is not None:
+            sample = self.act(sample)
+
         sample = self.linear_2(sample)
         return sample
+
+
+class Timesteps(nn.Module):
+    def __init__(self, num_channels, flip_sin_to_cos, downscale_freq_shift):
+        super().__init__()
+        self.num_channels = num_channels
+        self.flip_sin_to_cos = flip_sin_to_cos
+        self.downscale_freq_shift = downscale_freq_shift
+
+    def forward(self, timesteps):
+        t_emb = get_timestep_embedding(
+            timesteps,
+            self.num_channels,
+            flip_sin_to_cos=self.flip_sin_to_cos,
+            downscale_freq_shift=self.downscale_freq_shift,
+        )
+        return t_emb
 
 
 class UNetUnconditionalModel(ModelMixin, ConfigMixin):
@@ -72,6 +117,9 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         num_head_channels=32,
         flip_sin_to_cos=True,
         downscale_freq_shift=0,
+        time_embedding_type="positional",
+        mid_block_scale_factor=1,
+        center_input_sample=False,
         # TODO(PVP) - to delete later at release
         # IMPORTANT: NOT RELEVANT WHEN REVIEWING API
         # ======================================
@@ -86,7 +134,24 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         ch_mult=None,
         ch=None,
         ddpm=False,
-        # ======================================
+        # SDE
+        sde=False,
+        nf=None,
+        fir=None,
+        progressive=None,
+        progressive_combine=None,
+        scale_by_sigma=None,
+        skip_rescale=None,
+        num_channels=None,
+        centered=False,
+        conditional=True,
+        conv_size=3,
+        fir_kernel=(1, 3, 3, 1),
+        fourier_scale=16,
+        init_scale=0.0,
+        progressive_input="input_skip",
+        resnet_num_groups=32,
+        continuous=True,
     ):
         super().__init__()
         # register all __init__ params to be accessible via `self.config.<...>`
@@ -101,19 +166,43 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             down_blocks=down_blocks,
             up_blocks=up_blocks,
             dropout=dropout,
+            resnet_eps=resnet_eps,
             conv_resample=conv_resample,
             num_head_channels=num_head_channels,
             flip_sin_to_cos=flip_sin_to_cos,
             downscale_freq_shift=downscale_freq_shift,
-            # TODO(PVP) - to delete later at release
-            # IMPORTANT: NOT RELEVANT WHEN REVIEWING API
-            # ======================================
+            time_embedding_type=time_embedding_type,
             attention_resolutions=attention_resolutions,
             attn_resolutions=attn_resolutions,
+            mid_block_scale_factor=mid_block_scale_factor,
+            resnet_num_groups=resnet_num_groups,
+            center_input_sample=center_input_sample,
+            # to delete later
             ldm=ldm,
             ddpm=ddpm,
-            # ======================================
+            sde=sde,
         )
+        #        if sde:
+        #            block_channels = [nf * x for x in ch_mult]
+        #            in_channels = out_channels = num_channels
+        #            conv_resample = resamp_with_conv
+        #            time_embedding_type = "fourier"
+        #            self.config.time_embedding_type = time_embedding_type
+        #            self.config.resnet_eps = 1e-6
+        #            self.config.mid_block_scale_factor = math.sqrt(2.0)
+        #            self.config.resnet_num_groups = None
+        #            down_blocks = (
+        #                "UNetResSkipDownBlock2D",
+        #                "UNetResAttnSkipDownBlock2D",
+        #                "UNetResSkipDownBlock2D",
+        #                "UNetResSkipDownBlock2D",
+        #            )
+        #            up_blocks = (
+        #                "UNetResSkipUpBlock2D",
+        #                "UNetResSkipUpBlock2D",
+        #                "UNetResAttnSkipUpBlock2D",
+        #                "UNetResSkipUpBlock2D",
+        #            )
 
         # TODO(PVP) - to delete later at release
         # IMPORTANT: NOT RELEVANT WHEN REVIEWING API
@@ -122,11 +211,18 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         time_embed_dim = block_channels[0] * 4
         # ======================================
 
-        # # input
+        # input
         self.conv_in = nn.Conv2d(in_channels, block_channels[0], kernel_size=3, padding=(1, 1))
 
-        # # time
-        self.time_embedding = TimestepEmbedding(block_channels[0], time_embed_dim)
+        # time
+        if time_embedding_type == "fourier":
+            self.time_steps = GaussianFourierProjection(embedding_size=block_channels[0], scale=fourier_scale)
+            timestep_input_dim = 2 * block_channels[0]
+        elif time_embedding_type == "positional":
+            self.time_steps = Timesteps(block_channels[0], flip_sin_to_cos, downscale_freq_shift)
+            timestep_input_dim = block_channels[0]
+
+        self.time_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
 
         self.downsample_blocks = nn.ModuleList([])
         self.mid = None
@@ -154,15 +250,17 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             self.downsample_blocks.append(down_block)
 
         # mid
-        if self.config.ddpm:
+        if ddpm:
             self.mid_new_2 = UNetMidBlock2D(
                 in_channels=block_channels[-1],
                 dropout=dropout,
                 temb_channels=time_embed_dim,
                 resnet_eps=resnet_eps,
                 resnet_act_fn=resnet_act_fn,
+                output_scale_factor=mid_block_scale_factor,
                 resnet_time_scale_shift="default",
                 attn_num_head_channels=num_head_channels,
+                resnet_groups=resnet_num_groups,
             )
         else:
             self.mid = UNetMidBlock2D(
@@ -171,8 +269,10 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 temb_channels=time_embed_dim,
                 resnet_eps=resnet_eps,
                 resnet_act_fn=resnet_act_fn,
+                output_scale_factor=mid_block_scale_factor,
                 resnet_time_scale_shift="default",
                 attn_num_head_channels=num_head_channels,
+                resnet_groups=resnet_num_groups,
             )
 
         # up
@@ -201,16 +301,19 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             prev_output_channel = output_channel
 
         # out
-        self.conv_norm_out = nn.GroupNorm(num_channels=block_channels[0], num_groups=32, eps=resnet_eps)
+        num_groups_out = resnet_num_groups if resnet_num_groups is not None else min(block_channels[0] // 4, 32)
+        self.conv_norm_out = nn.GroupNorm(num_channels=block_channels[0], num_groups=num_groups_out, eps=resnet_eps)
         self.conv_act = nn.SiLU()
         self.conv_out = nn.Conv2d(block_channels[0], out_channels, 3, padding=1)
 
+        # ======================== Out ====================
+
+        # =========== TO DELETE AFTER CONVERSION ==========
         # TODO(PVP) - to delete later at release
         # IMPORTANT: NOT RELEVANT WHEN REVIEWING API
         # ======================================
         self.is_overwritten = False
         if ldm:
-            # =========== TO DELETE AFTER CONVERSION ==========
             transformer_depth = 1
             context_dim = None
             legacy = True
@@ -234,7 +337,11 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 conv_resample,
                 out_channels,
             )
-        if ddpm:
+        elif ddpm:
+            out_channels = out_ch
+            image_size = resolution
+            block_channels = [x * ch for x in ch_mult]
+            conv_resample = resamp_with_conv
             out_ch = out_channels
             resolution = image_size
             ch = block_channels[0]
@@ -251,7 +358,54 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 out_ch,
                 dropout=0.1,
             )
-        # ======================================
+        elif sde:
+            nf = block_channels[0]
+            ch_mult = [x // nf for x in block_channels]
+            num_channels = in_channels
+            #            in_channels = out_channels = num_channels = in_channels
+            #            block_channels = [nf * x for x in ch_mult]
+            #            conv_resample = resamp_with_conv
+            resamp_with_conv = conv_resample
+            time_embedding_type = self.config.time_embedding_type
+            #            time_embedding_type = "fourier"
+            #            self.config.time_embedding_type = time_embedding_type
+            fir = True
+            progressive = "output_skip"
+            progressive_combine = "sum"
+            scale_by_sigma = True
+            skip_rescale = True
+            centered = False
+            conditional = True
+            conv_size = 3
+            fir_kernel = (1, 3, 3, 1)
+            fourier_scale = 16
+            init_scale = 0.0
+            progressive_input = "input_skip"
+            continuous = True
+            self.init_for_sde(
+                image_size,
+                num_channels,
+                centered,
+                attn_resolutions,
+                ch_mult,
+                conditional,
+                conv_size,
+                dropout,
+                time_embedding_type,
+                fir,
+                fir_kernel,
+                fourier_scale,
+                init_scale,
+                nf,
+                num_res_blocks,
+                progressive,
+                progressive_combine,
+                progressive_input,
+                resamp_with_conv,
+                scale_by_sigma,
+                skip_rescale,
+                continuous,
+            )
 
     def forward(
         self, sample: torch.FloatTensor, timestep: Union[torch.Tensor, float, int]
@@ -261,53 +415,69 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         # ======================================
         if not self.is_overwritten:
             self.set_weights()
-        # ======================================
 
-        # 1. time step embeddings -> make correct tensor
+        if self.config.center_input_sample:
+            sample = 2 * sample - 1.0
+
+        # 1. time
         timesteps = timestep
         if not torch.is_tensor(timesteps):
             timesteps = torch.tensor([timesteps], dtype=torch.long, device=sample.device)
         elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)
 
-        t_emb = get_timestep_embedding(
-            timesteps,
-            self.config.block_channels[0],
-            flip_sin_to_cos=self.config.flip_sin_to_cos,
-            downscale_freq_shift=self.config.downscale_freq_shift,
-        )
+        t_emb = self.time_steps(timesteps)
         emb = self.time_embedding(t_emb)
 
-        # 2. pre-process sample
+        # 2. pre-process
+        skip_sample = sample
         sample = self.conv_in(sample)
 
-        # 3. down blocks
+        # 3. down
         down_block_res_samples = (sample,)
         for downsample_block in self.downsample_blocks:
-            sample, res_samples = downsample_block(sample, emb)
+            if hasattr(downsample_block, "skip_conv"):
+                sample, res_samples, skip_sample = downsample_block(
+                    hidden_states=sample, temb=emb, skip_sample=skip_sample
+                )
+            else:
+                sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
 
-            # append to tuple
             down_block_res_samples += res_samples
 
-        # 4. mid block
+        # 4. mid
         if self.config.ddpm:
             sample = self.mid_new_2(sample, emb)
         else:
             sample = self.mid(sample, emb)
 
-        # 5. up blocks
+        # 5. up
+        skip_sample = None
         for upsample_block in self.upsample_blocks:
 
-            # pop from tuple
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
             down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
 
-            sample = upsample_block(sample, res_samples, emb)
+            if hasattr(upsample_block, "skip_conv"):
+                sample, skip_sample = upsample_block(sample, res_samples, emb, skip_sample)
+            else:
+                sample = upsample_block(sample, res_samples, emb)
 
-        # 6. post-process sample
+        # 6. post-process
+
         sample = self.conv_norm_out(sample)
         sample = self.conv_act(sample)
         sample = self.conv_out(sample)
+
+        if skip_sample is not None:
+            sample += skip_sample
+
+        if (
+            self.config.time_embedding_type == "fourier"
+            or self.time_steps.__class__.__name__ == "GaussianFourierProjection"
+        ):
+            timesteps = timesteps.reshape((sample.shape[0], *([1] * len(sample.shape[1:]))))
+            sample = sample / timesteps
 
         output = {"sample": sample}
 
@@ -319,7 +489,6 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
     def set_weights(self):
         self.is_overwritten = True
         if self.config.ldm:
-
             self.time_embedding.linear_1.weight.data = self.time_embed[0].weight.data
             self.time_embedding.linear_1.bias.data = self.time_embed[0].bias.data
             self.time_embedding.linear_2.weight.data = self.time_embed[2].weight.data
@@ -373,8 +542,6 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             self.remove_ldm()
 
         elif self.config.ddpm:
-            # =============== SET WEIGHTS ===============
-            # =============== TIME ======================
             self.time_embedding.linear_1.weight.data = self.temb.dense[0].weight.data
             self.time_embedding.linear_1.bias.data = self.temb.dense[0].bias.data
             self.time_embedding.linear_2.weight.data = self.temb.dense[1].weight.data
@@ -411,6 +578,73 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             self.conv_norm_out.bias.data = self.norm_out.bias.data
 
             self.remove_ddpm()
+        elif self.config.sde:
+            self.time_steps.weight = self.all_modules[0].weight
+            self.time_embedding.linear_1.weight.data = self.all_modules[1].weight.data
+            self.time_embedding.linear_1.bias.data = self.all_modules[1].bias.data
+            self.time_embedding.linear_2.weight.data = self.all_modules[2].weight.data
+            self.time_embedding.linear_2.bias.data = self.all_modules[2].bias.data
+
+            self.conv_in.weight.data = self.all_modules[3].weight.data
+            self.conv_in.bias.data = self.all_modules[3].bias.data
+
+            module_index = 4
+            for i, block in enumerate(self.downsample_blocks):
+                has_attentios = hasattr(block, "attentions")
+                if has_attentios:
+                    for j in range(len(block.attentions)):
+                        block.resnets[j].set_weight(self.all_modules[module_index])
+                        module_index += 1
+                        block.attentions[j].set_weight(self.all_modules[module_index])
+                        module_index += 1
+                    if hasattr(block, "downsamplers") and block.downsamplers is not None:
+                        block.resnet_down.set_weight(self.all_modules[module_index])
+                        module_index += 1
+                        block.skip_conv.weight.data = self.all_modules[module_index].Conv_0.weight.data
+                        block.skip_conv.bias.data = self.all_modules[module_index].Conv_0.bias.data
+                        module_index += 1
+                else:
+                    for j in range(len(block.resnets)):
+                        block.resnets[j].set_weight(self.all_modules[module_index])
+                        module_index += 1
+                    if hasattr(block, "downsamplers") and block.downsamplers is not None:
+                        block.resnet_down.set_weight(self.all_modules[module_index])
+                        module_index += 1
+                        block.skip_conv.weight.data = self.all_modules[module_index].Conv_0.weight.data
+                        block.skip_conv.bias.data = self.all_modules[module_index].Conv_0.bias.data
+                        module_index += 1
+
+            self.mid.resnets[0].set_weight(self.all_modules[module_index])
+            module_index += 1
+            self.mid.attentions[0].set_weight(self.all_modules[module_index])
+            module_index += 1
+            self.mid.resnets[1].set_weight(self.all_modules[module_index])
+            module_index += 1
+
+            for i, block in enumerate(self.upsample_blocks):
+                for j in range(len(block.resnets)):
+                    block.resnets[j].set_weight(self.all_modules[module_index])
+                    module_index += 1
+                if hasattr(block, "attentions") and block.attentions is not None:
+                    block.attentions[0].set_weight(self.all_modules[module_index])
+                    module_index += 1
+                if hasattr(block, "resnet_up") and block.resnet_up is not None:
+                    block.skip_norm.weight.data = self.all_modules[module_index].weight.data
+                    block.skip_norm.bias.data = self.all_modules[module_index].bias.data
+                    module_index += 1
+                    block.skip_conv.weight.data = self.all_modules[module_index].weight.data
+                    block.skip_conv.bias.data = self.all_modules[module_index].bias.data
+                    module_index += 1
+                    block.resnet_up.set_weight(self.all_modules[module_index])
+                    module_index += 1
+
+            self.conv_norm_out.weight.data = self.all_modules[module_index].weight.data
+            self.conv_norm_out.bias.data = self.all_modules[module_index].bias.data
+            module_index += 1
+            self.conv_out.weight.data = self.all_modules[module_index].weight.data
+            self.conv_out.bias.data = self.all_modules[module_index].bias.data
+
+            self.remove_sde()
 
     def init_for_ddpm(
         self,
@@ -700,6 +934,240 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             nn.Conv2d(model_channels, out_channels, 3, padding=1),
         )
 
+    def init_for_sde(
+        self,
+        image_size,
+        num_channels,
+        centered,
+        attn_resolutions,
+        ch_mult,
+        conditional,
+        conv_size,
+        dropout,
+        embedding_type,
+        fir,
+        fir_kernel,
+        fourier_scale,
+        init_scale,
+        nf,
+        num_res_blocks,
+        progressive,
+        progressive_combine,
+        progressive_input,
+        resamp_with_conv,
+        scale_by_sigma,
+        skip_rescale,
+        continuous,
+    ):
+        self.act = nn.SiLU()
+        self.nf = nf
+        self.num_res_blocks = num_res_blocks
+        self.attn_resolutions = attn_resolutions
+        self.num_resolutions = len(ch_mult)
+        self.all_resolutions = all_resolutions = [image_size // (2**i) for i in range(self.num_resolutions)]
+
+        self.conditional = conditional
+        self.skip_rescale = skip_rescale
+        self.progressive = progressive
+        self.progressive_input = progressive_input
+        self.embedding_type = embedding_type
+        assert progressive in ["none", "output_skip", "residual"]
+        assert progressive_input in ["none", "input_skip", "residual"]
+        assert embedding_type in ["fourier", "positional"]
+        combine_method = progressive_combine.lower()
+        combiner = functools.partial(Combine, method=combine_method)
+
+        modules = []
+        # timestep/noise_level embedding; only for continuous training
+        if embedding_type == "fourier":
+            # Gaussian Fourier features embeddings.
+            modules.append(GaussianFourierProjection(embedding_size=nf, scale=fourier_scale))
+            embed_dim = 2 * nf
+
+        elif embedding_type == "positional":
+            embed_dim = nf
+
+        else:
+            raise ValueError(f"embedding type {embedding_type} unknown.")
+
+        modules.append(nn.Linear(embed_dim, nf * 4))
+        modules.append(nn.Linear(nf * 4, nf * 4))
+
+        AttnBlock = functools.partial(AttentionBlock, overwrite_linear=True, rescale_output_factor=math.sqrt(2.0))
+
+        if fir:
+            Up_sample = functools.partial(FirUpsample2D, fir_kernel=fir_kernel, use_conv=resamp_with_conv)
+        else:
+            Up_sample = functools.partial(Upsample2D, name="Conv2d_0")
+
+        if progressive == "output_skip":
+            self.pyramid_upsample = Up_sample(channels=None, use_conv=False)
+        elif progressive == "residual":
+            pyramid_upsample = functools.partial(Up_sample, use_conv=True)
+
+        if fir:
+            Down_sample = functools.partial(FirDownsample2D, fir_kernel=fir_kernel, use_conv=resamp_with_conv)
+        else:
+            Down_sample = functools.partial(Downsample2D, padding=0, name="Conv2d_0")
+
+        if progressive_input == "input_skip":
+            self.pyramid_downsample = Down_sample(channels=None, use_conv=False)
+        elif progressive_input == "residual":
+            pyramid_downsample = functools.partial(Down_sample, use_conv=True)
+
+        channels = num_channels
+        if progressive_input != "none":
+            input_pyramid_ch = channels
+
+        modules.append(nn.Conv2d(channels, nf, kernel_size=3, padding=1))
+        hs_c = [nf]
+
+        in_ch = nf
+        for i_level in range(self.num_resolutions):
+            # Residual blocks for this resolution
+            for i_block in range(num_res_blocks):
+                out_ch = nf * ch_mult[i_level]
+                modules.append(
+                    ResnetBlock2D(
+                        in_channels=in_ch,
+                        out_channels=out_ch,
+                        temb_channels=4 * nf,
+                        output_scale_factor=np.sqrt(2.0),
+                        non_linearity="silu",
+                        groups=min(in_ch // 4, 32),
+                        groups_out=min(out_ch // 4, 32),
+                        overwrite_for_score_vde=True,
+                    )
+                )
+                in_ch = out_ch
+
+                if all_resolutions[i_level] in attn_resolutions:
+                    modules.append(AttnBlock(channels=in_ch))
+                hs_c.append(in_ch)
+
+            if i_level != self.num_resolutions - 1:
+                modules.append(
+                    ResnetBlock2D(
+                        in_channels=in_ch,
+                        temb_channels=4 * nf,
+                        output_scale_factor=np.sqrt(2.0),
+                        non_linearity="silu",
+                        groups=min(in_ch // 4, 32),
+                        groups_out=min(out_ch // 4, 32),
+                        overwrite_for_score_vde=True,
+                        down=True,
+                        kernel="fir" if fir else "sde_vp",
+                        use_nin_shortcut=True,
+                    )
+                )
+
+                if progressive_input == "input_skip":
+                    modules.append(combiner(dim1=input_pyramid_ch, dim2=in_ch))
+                    if combine_method == "cat":
+                        in_ch *= 2
+
+                elif progressive_input == "residual":
+                    modules.append(pyramid_downsample(channels=input_pyramid_ch, out_channels=in_ch))
+                    input_pyramid_ch = in_ch
+
+                hs_c.append(in_ch)
+
+        # mid
+        in_ch = hs_c[-1]
+        modules.append(
+            ResnetBlock2D(
+                in_channels=in_ch,
+                temb_channels=4 * nf,
+                output_scale_factor=np.sqrt(2.0),
+                non_linearity="silu",
+                groups=min(in_ch // 4, 32),
+                groups_out=min(out_ch // 4, 32),
+                overwrite_for_score_vde=True,
+            )
+        )
+        modules.append(AttnBlock(channels=in_ch))
+        modules.append(
+            ResnetBlock2D(
+                in_channels=in_ch,
+                temb_channels=4 * nf,
+                output_scale_factor=np.sqrt(2.0),
+                non_linearity="silu",
+                groups=min(in_ch // 4, 32),
+                groups_out=min(out_ch // 4, 32),
+                overwrite_for_score_vde=True,
+            )
+        )
+
+        pyramid_ch = 0
+        # Upsampling block
+        for i_level in reversed(range(self.num_resolutions)):
+            for i_block in range(num_res_blocks + 1):
+                out_ch = nf * ch_mult[i_level]
+                in_ch = in_ch + hs_c.pop()
+                modules.append(
+                    ResnetBlock2D(
+                        in_channels=in_ch,
+                        out_channels=out_ch,
+                        temb_channels=4 * nf,
+                        output_scale_factor=np.sqrt(2.0),
+                        non_linearity="silu",
+                        groups=min(in_ch // 4, 32),
+                        groups_out=min(out_ch // 4, 32),
+                        overwrite_for_score_vde=True,
+                    )
+                )
+                in_ch = out_ch
+
+            if all_resolutions[i_level] in attn_resolutions:
+                modules.append(AttnBlock(channels=in_ch))
+
+            if progressive != "none":
+                if i_level == self.num_resolutions - 1:
+                    if progressive == "output_skip":
+                        modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6))
+                        modules.append(nn.Conv2d(in_ch, channels, kernel_size=3, padding=1))
+                        pyramid_ch = channels
+                    elif progressive == "residual":
+                        modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6))
+                        modules.append(nn.Conv2d(in_ch, in_ch, bias=True, kernel_size=3, padding=1))
+                        pyramid_ch = in_ch
+                    else:
+                        raise ValueError(f"{progressive} is not a valid name.")
+                else:
+                    if progressive == "output_skip":
+                        modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6))
+                        modules.append(nn.Conv2d(in_ch, channels, bias=True, kernel_size=3, padding=1))
+                        pyramid_ch = channels
+                    elif progressive == "residual":
+                        modules.append(pyramid_upsample(channels=pyramid_ch, out_channels=in_ch))
+                        pyramid_ch = in_ch
+                    else:
+                        raise ValueError(f"{progressive} is not a valid name")
+
+            if i_level != 0:
+                modules.append(
+                    ResnetBlock2D(
+                        in_channels=in_ch,
+                        temb_channels=4 * nf,
+                        output_scale_factor=np.sqrt(2.0),
+                        non_linearity="silu",
+                        groups=min(in_ch // 4, 32),
+                        groups_out=min(out_ch // 4, 32),
+                        overwrite_for_score_vde=True,
+                        up=True,
+                        kernel="fir" if fir else "sde_vp",
+                        use_nin_shortcut=True,
+                    )
+                )
+
+        assert not hs_c
+
+        if progressive != "output_skip":
+            modules.append(nn.GroupNorm(num_groups=min(in_ch // 4, 32), num_channels=in_ch, eps=1e-6))
+            modules.append(nn.Conv2d(in_ch, channels, kernel_size=3, padding=1))
+
+        self.all_modules = nn.ModuleList(modules)
+
     def remove_ldm(self):
         del self.time_embed
         del self.input_blocks
@@ -713,6 +1181,9 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         del self.mid_new
         del self.up
         del self.norm_out
+
+    def remove_sde(self):
+        del self.all_modules
 
 
 def nonlinearity(x):
