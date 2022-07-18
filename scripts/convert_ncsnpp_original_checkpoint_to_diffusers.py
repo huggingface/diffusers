@@ -143,41 +143,23 @@ def convert_ncsnpp_checkpoint(checkpoint, config):
     new_checkpoint['conv_out.bias'] = checkpoint[list(checkpoint.keys())[-1]]
 
 
-    new_model_architecture  = UNetUnconditionalModel(config,sde=True)
+    new_model_architecture  = UNetUnconditionalModel(**config)
+    get_block = lambda index: [k for k in checkpoint.keys() if k.startswith('all_modules.{}.'.format(index))]
     # compared to the `set_weights`function, all_modules are not available. `
     
     module_index = 4
     for i, block in enumerate(new_model_architecture.downsample_blocks):
-        has_attentios = hasattr(block, "attentions")
-        if has_attentios:
-            for j in range(len(block.attentions)):
-                block.resnets[j].set_weight(checkpoint[f"all_modules.{module_index}.weight"])
-                module_index += 1
-                block.attentions[j].set_weight(new_model_architecture.all_modules[module_index])
-                module_index += 1
-            if hasattr(block, "downsamplers") and block.downsamplers is not None:
-                block.resnet_down.set_weight(new_model_architecture.all_modules[module_index])
-                module_index += 1
-                block.skip_conv.weight.data = new_model_architecture.all_modules[module_index].Conv_0.weight.data
-                block.skip_conv.bias.data = new_model_architecture.all_modules[module_index].Conv_0.bias.data
-                module_index += 1
-        else:
-            for j in range(len(block.resnets)):
-                block.resnets[j].set_weight(new_model_architecture.all_modules[module_index])
-                module_index += 1
-            if hasattr(block, "downsamplers") and block.downsamplers is not None:
-                block.resnet_down.set_weight(new_model_architecture.all_modules[module_index])
-                module_index += 1
-                block.skip_conv.weight.data = new_model_architecture.all_modules[module_index].Conv_0.weight.data
-                block.skip_conv.bias.data = new_model_architecture.all_modules[module_index].Conv_0.bias.data
-                module_index += 1
-
-    new_model_architecture.mid.resnets[0].set_weight(new_model_architecture.all_modules[module_index])
-    module_index += 1
-    new_model_architecture.mid.attentions[0].set_weight(new_model_architecture.all_modules[module_index])
-    module_index += 1
-    new_model_architecture.mid.resnets[1].set_weight(new_model_architecture.all_modules[module_index])
-    module_index += 1
+        blocks_to_convert = []
+        while len(blocks_to_convert) < len(block.state_dict()): 
+            blocks_to_convert += get_block(module_index)
+            module_index += 1
+            
+        for index in range(len(blocks_to_convert)):
+            new_checkpoint[list(block.state_dict().keys())[index]] = checkpoint[blocks_to_convert[index]]
+        
+    # TODO convert the attentions in the mid to the diffusers format. Overall just concatenate the 3 query weight matrices into one.
+    # if the block has am attention layer should look for it in the checkpoints? 
+    
 
     for i, block in enumerate(new_model_architecture.upsample_blocks):
         for j in range(len(block.resnets)):
