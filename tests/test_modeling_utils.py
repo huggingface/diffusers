@@ -15,12 +15,12 @@
 
 
 import inspect
+import math
 import tempfile
 import unittest
 
 import numpy as np
 import torch
-import math
 
 from diffusers import (
     AutoencoderKL,
@@ -633,13 +633,15 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
                 "UNetResSkipUpBlock2D",
                 "UNetResAttnSkipUpBlock2D",
                 "UNetResSkipUpBlock2D",
-            ]
+            ],
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
     def test_from_pretrained_hub(self):
-        model, loading_info = UNetUnconditionalModel.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy", sde=True, output_loading_info=True)
+        model, loading_info = UNetUnconditionalModel.from_pretrained(
+            "fusing/ncsnpp-ffhq-ve-dummy", sde=True, output_loading_info=True
+        )
         self.assertIsNotNone(model)
         # self.assertEqual(len(loading_info["missing_keys"]), 0)
 
@@ -675,9 +677,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
     def test_output_pretrained_ve_mid(self):
-#        model = UNetUnconditionalModel.from_pretrained("fusing/celebahq_256-ncsnpp-ve", sde=True)
-        model = NCSNpp.from_pretrained("fusing/ffhq_256-ncsnpp-ve")
-        import ipdb; ipdb.set_trace()
+        model = UNetUnconditionalModel.from_pretrained("fusing/celebahq_256-ncsnpp-ve", sde=True)
         model.to(torch_device)
 
         torch.manual_seed(0)
@@ -693,14 +693,12 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
 
         with torch.no_grad():
             output = model(noise, time_step)["sample"]
-#            output = model(noise, time_step)
 
         output_slice = output[0, -3:, -3:, -1].flatten().cpu()
         # fmt: off
         expected_output_slice = torch.tensor([-4836.2231, -6487.1387, -3816.7969, -7964.9253, -10966.2842, -20043.6016, 8137.0571, 2340.3499, 544.6114])
         # fmt: on
 
-        import ipdb; ipdb.set_trace()
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
     def test_output_pretrained_ve_large(self):
@@ -1076,33 +1074,25 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_score_sde_ve_pipeline(self):
-        model = NCSNpp.from_pretrained("fusing/ffhq_ncsnpp")
-        model_2 = UNetUnconditionalModel.from_pretrained("fusing/ffhq_ncsnpp", sde=True)
+        model = UNetUnconditionalModel.from_pretrained("fusing/ffhq_ncsnpp", sde=True)
 
         torch.manual_seed(0)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(0)
 
-        model_2.set_weights()
-
         scheduler = ScoreSdeVeScheduler.from_config("fusing/ffhq_ncsnpp")
 
         sde_ve = ScoreSdeVePipeline(model=model, scheduler=scheduler)
-        sde_ve_2 = ScoreSdeVePipeline(model=model_2, scheduler=scheduler)
 
         torch.manual_seed(0)
         image = sde_ve(num_inference_steps=2)
-        torch.manual_seed(0)
-        image_2 = sde_ve_2(num_inference_steps=2)
-
-        import ipdb; ipdb.set_trace()
 
         if model.device.type == "cpu":
-            expected_image_sum = 3384805888.0
-            expected_image_mean = 1076.00085
+            expected_image_sum = 3384805632.0
+            expected_image_mean = 1076.000732421875
         else:
             expected_image_sum = 3382849024.0
-            expected_image_mean = 1075.3788
+            expected_image_mean = 1075.3787841796875
 
         assert (image.abs().sum() - expected_image_sum).abs().cpu().item() < 1e-2
         assert (image.abs().mean() - expected_image_mean).abs().cpu().item() < 1e-4
