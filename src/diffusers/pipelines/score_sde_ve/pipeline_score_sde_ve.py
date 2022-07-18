@@ -18,9 +18,6 @@ class ScoreSdeVePipeline(DiffusionPipeline):
 
         model = self.model.to(device)
 
-        # TODO(Patrick) move to scheduler config
-        n_steps = 1
-
         x = torch.randn(*shape) * self.scheduler.config.sigma_max
         x = x.to(device)
 
@@ -30,7 +27,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
         for i, t in enumerate(self.scheduler.timesteps):
             sigma_t = self.scheduler.sigmas[i] * torch.ones(shape[0], device=device)
 
-            for _ in range(n_steps):
+            for _ in range(self.scheduler.correct_steps):
                 with torch.no_grad():
                     result = self.model(x, sigma_t)
 

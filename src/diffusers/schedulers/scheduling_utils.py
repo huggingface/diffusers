@@ -53,12 +53,22 @@ class SchedulerMixin:
 
         raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
 
+    def long(self, tensor):
+        tensor_format = getattr(self, "tensor_format", "pt")
+
+        if tensor_format == "np":
+            return np.int64(tensor)
+        elif tensor_format == "pt":
+            return tensor.long()
+
+        raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
+
     def match_shape(self, values: Union[np.ndarray, torch.Tensor], broadcast_array: Union[np.ndarray, torch.Tensor]):
         """
         Turns a 1-D array into an array or tensor with len(broadcast_array.shape) dims.
 
         Args:
-            timesteps: an array or tensor of values to extract.
+            values: an array or tensor of values to extract.
             broadcast_array: an array with a larger shape of K dimensions with the batch
                 dimension equal to the length of timesteps.
         Returns:
@@ -74,3 +84,39 @@ class SchedulerMixin:
             values = values.to(broadcast_array.device)
 
         return values
+
+    def norm(self, tensor):
+        tensor_format = getattr(self, "tensor_format", "pt")
+        if tensor_format == "np":
+            return np.linalg.norm(tensor)
+        elif tensor_format == "pt":
+            return torch.norm(tensor.reshape(tensor.shape[0], -1), dim=-1).mean()
+
+        raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
+
+    def randn_like(self, tensor):
+        tensor_format = getattr(self, "tensor_format", "pt")
+        if tensor_format == "np":
+            return np.random.randn(*np.shape(tensor))
+        elif tensor_format == "pt":
+            return torch.randn_like(tensor)
+
+        raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
+
+    def repeat_scalar(self, tensor, count):
+        tensor_format = getattr(self, "tensor_format", "pt")
+        if tensor_format == "np":
+            return np.repeat(tensor, count)
+        elif tensor_format == "pt":
+            return torch.repeat_interleave(tensor, count)
+
+        raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
+
+    def zeros_like(self, tensor):
+        tensor_format = getattr(self, "tensor_format", "pt")
+        if tensor_format == "np":
+            return np.zeros_like(tensor)
+        elif tensor_format == "pt":
+            return torch.zeros_like(tensor)
+
+        raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")

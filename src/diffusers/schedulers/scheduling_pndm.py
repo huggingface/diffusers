@@ -50,7 +50,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
 class PNDMScheduler(SchedulerMixin, ConfigMixin):
     def __init__(
         self,
-        timesteps=1000,
+        num_train_timesteps=1000,
         beta_start=0.0001,
         beta_end=0.02,
         beta_schedule="linear",
@@ -58,17 +58,17 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
     ):
         super().__init__()
         self.register_to_config(
-            timesteps=timesteps,
+            num_train_timesteps=num_train_timesteps,
             beta_start=beta_start,
             beta_end=beta_end,
             beta_schedule=beta_schedule,
         )
 
         if beta_schedule == "linear":
-            self.betas = np.linspace(beta_start, beta_end, timesteps, dtype=np.float32)
+            self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
-            self.betas = betas_for_alpha_bar(timesteps)
+            self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
@@ -96,10 +96,12 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         if num_inference_steps in self.prk_time_steps:
             return self.prk_time_steps[num_inference_steps]
 
-        inference_step_times = list(range(0, self.config.timesteps, self.config.timesteps // num_inference_steps))
+        inference_step_times = list(
+            range(0, self.config.num_train_timesteps, self.config.num_train_timesteps // num_inference_steps)
+        )
 
         prk_time_steps = np.array(inference_step_times[-self.pndm_order :]).repeat(2) + np.tile(
-            np.array([0, self.config.timesteps // num_inference_steps // 2]), self.pndm_order
+            np.array([0, self.config.num_train_timesteps // num_inference_steps // 2]), self.pndm_order
         )
         self.prk_time_steps[num_inference_steps] = list(reversed(prk_time_steps[:-1].repeat(2)[1:-1]))
 
@@ -109,7 +111,9 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         if num_inference_steps in self.time_steps:
             return self.time_steps[num_inference_steps]
 
-        inference_step_times = list(range(0, self.config.timesteps, self.config.timesteps // num_inference_steps))
+        inference_step_times = list(
+            range(0, self.config.num_train_timesteps, self.config.num_train_timesteps // num_inference_steps)
+        )
         self.time_steps[num_inference_steps] = list(reversed(inference_step_times[:-3]))
 
         return self.time_steps[num_inference_steps]
@@ -135,6 +139,10 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         sample: Union[torch.FloatTensor, np.ndarray],
         num_inference_steps,
     ):
+        """
+        Step function propagating the sample with the Runge-Kutta method. RK takes 4 forward passes to approximate the
+        solution to the differential equation.
+        """
         t = timestep
         prk_time_steps = self.get_prk_time_steps(num_inference_steps)
 
@@ -165,6 +173,10 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         sample: Union[torch.FloatTensor, np.ndarray],
         num_inference_steps,
     ):
+        """
+        Step function propagating the sample with the linear multi-step method. This has one forward pass with multiple
+        times to approximate the solution.
+        """
         t = timestep
         if len(self.ets) < 3:
             raise ValueError(
@@ -221,4 +233,4 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         return prev_sample
 
     def __len__(self):
-        return self.config.timesteps
+        return self.config.num_train_timesteps

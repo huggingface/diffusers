@@ -12,15 +12,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
+import pdb
 import tempfile
 import unittest
 
 import numpy as np
 import torch
 
-from diffusers import DDIMScheduler, DDPMScheduler, PNDMScheduler
+from diffusers import DDIMScheduler, DDPMScheduler, PNDMScheduler, ScoreSdeVeScheduler
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -208,7 +207,7 @@ class DDPMSchedulerTest(SchedulerCommonTest):
 
     def get_scheduler_config(self, **kwargs):
         config = {
-            "timesteps": 1000,
+            "num_train_timesteps": 1000,
             "beta_start": 0.0001,
             "beta_end": 0.02,
             "beta_schedule": "linear",
@@ -221,7 +220,7 @@ class DDPMSchedulerTest(SchedulerCommonTest):
 
     def test_timesteps(self):
         for timesteps in [1, 5, 100, 1000]:
-            self.check_over_configs(timesteps=timesteps)
+            self.check_over_configs(num_train_timesteps=timesteps)
 
     def test_betas(self):
         for beta_start, beta_end in zip([0.0001, 0.001, 0.01, 0.1], [0.002, 0.02, 0.2, 2]):
@@ -288,7 +287,7 @@ class DDIMSchedulerTest(SchedulerCommonTest):
 
     def get_scheduler_config(self, **kwargs):
         config = {
-            "timesteps": 1000,
+            "num_train_timesteps": 1000,
             "beta_start": 0.0001,
             "beta_end": 0.02,
             "beta_schedule": "linear",
@@ -300,7 +299,7 @@ class DDIMSchedulerTest(SchedulerCommonTest):
 
     def test_timesteps(self):
         for timesteps in [100, 500, 1000]:
-            self.check_over_configs(timesteps=timesteps)
+            self.check_over_configs(num_train_timesteps=timesteps)
 
     def test_betas(self):
         for beta_start, beta_end in zip([0.0001, 0.001, 0.01, 0.1], [0.002, 0.02, 0.2, 2]):
@@ -367,7 +366,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
     def get_scheduler_config(self, **kwargs):
         config = {
-            "timesteps": 1000,
+            "num_train_timesteps": 1000,
             "beta_start": 0.0001,
             "beta_end": 0.02,
             "beta_schedule": "linear",
@@ -431,11 +430,11 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
     def test_timesteps(self):
         for timesteps in [100, 1000]:
-            self.check_over_configs(timesteps=timesteps)
+            self.check_over_configs(num_train_timesteps=timesteps)
 
     def test_timesteps_pmls(self):
         for timesteps in [100, 1000]:
-            self.check_over_configs_pmls(timesteps=timesteps)
+            self.check_over_configs_pmls(num_train_timesteps=timesteps)
 
     def test_betas(self):
         for beta_start, beta_end in zip([0.0001, 0.001, 0.01], [0.002, 0.02, 0.2]):
@@ -507,3 +506,115 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 199.1169) < 1e-2
         assert abs(result_mean.item() - 0.2593) < 1e-3
+
+
+class ScoreSdeVeSchedulerTest(SchedulerCommonTest):
+    scheduler_classes = (ScoreSdeVeScheduler,)
+
+    def get_scheduler_config(self, **kwargs):
+        config = {
+            "num_train_timesteps": 2000,
+            "snr": 0.15,
+            "sigma_min": 0.01,
+            "sigma_max": 1348,
+            "sampling_eps": 1e-5,
+            "tensor_format": "np",  # TODO add test for tensor formats
+        }
+
+        config.update(**kwargs)
+        return config
+
+    def check_over_configs(self, time_step=0, **config):
+        kwargs = dict(self.forward_default_kwargs)
+
+        for scheduler_class in self.scheduler_classes:
+            scheduler_class = self.scheduler_classes[0]
+            sample = self.dummy_sample
+            residual = 0.1 * sample
+
+            scheduler_config = self.get_scheduler_config(**config)
+            scheduler = scheduler_class(**scheduler_config)
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                scheduler.save_config(tmpdirname)
+                new_scheduler = scheduler_class.from_config(tmpdirname)
+
+            output = scheduler.step_pred(residual, sample, time_step, **kwargs)
+            new_output = new_scheduler.step_pred(residual, sample, time_step, **kwargs)
+
+            assert np.sum(np.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
+
+            output = scheduler.step_correct(residual, sample, **kwargs)
+            new_output = new_scheduler.step_correct(residual, sample, **kwargs)
+
+            assert np.sum(np.abs(output - new_output)) < 1e-5, "Scheduler correction are not identical"
+
+    def check_over_forward(self, time_step=0, **forward_kwargs):
+        kwargs = dict(self.forward_default_kwargs)
+        kwargs.update(forward_kwargs)
+
+        for scheduler_class in self.scheduler_classes:
+            sample = self.dummy_sample
+            residual = 0.1 * sample
+
+            scheduler_class = self.scheduler_classes[0]
+            scheduler_config = self.get_scheduler_config()
+            scheduler = scheduler_class(**scheduler_config)
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                scheduler.save_config(tmpdirname)
+                new_scheduler = scheduler_class.from_config(tmpdirname)
+
+            output = scheduler.step_pred(residual, sample, time_step, **kwargs)
+            new_output = new_scheduler.step_pred(residual, sample, time_step, **kwargs)
+
+            assert np.sum(np.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
+
+            output = scheduler.step_correct(residual, sample, **kwargs)
+            new_output = new_scheduler.step_correct(residual, sample, **kwargs)
+
+            assert np.sum(np.abs(output - new_output)) < 1e-5, "Scheduler correction are not identical"
+
+    def test_timesteps(self):
+        for timesteps in [10, 100, 1000]:
+            self.check_over_configs(num_train_timesteps=timesteps)
+
+    def test_sigmas(self):
+        for sigma_min, sigma_max in zip([0.0001, 0.001, 0.01], [1, 100, 1000]):
+            self.check_over_configs(sigma_min=sigma_min, sigma_max=sigma_max)
+
+    def test_time_indices(self):
+        for t in [1, 5, 10]:
+            self.check_over_forward(time_step=t)
+
+    def test_full_loop_no_noise(self):
+        np.random.seed(0)
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        num_inference_steps = 3
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter
+
+        scheduler.set_sigmas(num_inference_steps)
+
+        for i, t in enumerate(scheduler.timesteps):
+            sigma_t = scheduler.sigmas[i]
+
+            for _ in range(scheduler.correct_steps):
+                with torch.no_grad():
+                    result = model(sample, sigma_t)
+                sample = scheduler.step_correct(result, sample)
+
+            with torch.no_grad():
+                result = model(sample, sigma_t)
+
+            sample, sample_mean = scheduler.step_pred(result, sample, t)
+
+        result_sum = np.sum(np.abs(sample))
+        result_mean = np.mean(np.abs(sample))
+
+        assert abs(result_sum.item() - 10629923278.7104) < 1e-2
+        assert abs(result_mean.item() - 13841045.9358) < 1e-3
