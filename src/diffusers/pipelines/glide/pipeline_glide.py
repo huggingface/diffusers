@@ -22,7 +22,7 @@ import torch
 import torch.utils.checkpoint
 from torch import nn
 
-import tqdm
+from tqdm.auto import tqdm
 from transformers import CLIPConfig, CLIPModel, CLIPTextConfig, CLIPVisionConfig, GPT2Tokenizer
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
@@ -778,7 +778,7 @@ class GlidePipeline(DiffusionPipeline):
 
         # 3. Run the text2image generation step
         num_prediction_steps = len(self.text_scheduler)
-        for t in tqdm.tqdm(reversed(range(num_prediction_steps)), total=num_prediction_steps):
+        for t in tqdm(reversed(range(num_prediction_steps)), total=num_prediction_steps):
             with torch.no_grad():
                 time_input = torch.tensor([t] * image.shape[0], device=torch_device)
                 model_output = text_model_fn(image, time_input, transformer_out)

@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint
 
-import tqdm
+from tqdm.auto import tqdm
 from transformers.activations import ACT2FN
 from transformers.configuration_utils import PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutput
@@ -599,7 +599,7 @@ class LatentDiffusionPipeline(DiffusionPipeline):
         # - eta -> η
         # - pred_image_direction -> "direction pointingc to x_t"
         # - pred_prev_image -> "x_t-1"
-        for t in tqdm.tqdm(reversed(range(num_inference_steps)), total=num_inference_steps):
+        for t in tqdm(reversed(range(num_inference_steps)), total=num_inference_steps):
             # guidance_scale of 1 means no guidance
             if guidance_scale == 1.0:
                 image_in = image
