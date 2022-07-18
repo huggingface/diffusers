@@ -86,7 +86,19 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
         self.one = np.array(1.0)
 
+        # setable values
+        self.num_inference_steps = None
+        self.timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
+
+        self.tensor_format = tensor_format
         self.set_format(tensor_format=tensor_format)
+
+    def set_timesteps(self, num_inference_steps):
+        self.num_inference_steps = num_inference_steps
+        self.timesteps = np.arange(
+            0, self.config.num_train_timesteps, self.config.num_train_timesteps // self.num_inference_steps
+        )[::-1].copy()
+        self.set_format(tensor_format=self.tensor_format)
 
     def get_variance(self, t, variance_type=None):
         alpha_prod_t = self.alphas_cumprod[t]
