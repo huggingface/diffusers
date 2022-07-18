@@ -152,6 +152,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         progressive_input="input_skip",
         resnet_num_groups=32,
         continuous=True,
+        **kwargs
     ):
         super().__init__()
         # register all __init__ params to be accessible via `self.config.<...>`
