@@ -59,26 +59,11 @@ class LatentDiffusionPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps)
 
         for t in tqdm.tqdm(self.scheduler.timesteps):
-            # guidance_scale of 1 means no guidance
-            if guidance_scale == 1.0:
-                image_in = image
-                context = text_embedding
-                timesteps = torch.tensor([t] * image.shape[0], device=torch_device)
-            else:
-                # for classifier free guidance, we need to do two forward passes
-                # here we concanate embedding and unconditioned embedding in a single batch
-                # to avoid doing two forward passes
-                image_in = torch.cat([image] * 2)
-                context = torch.cat([uncond_embeddings, text_embedding])
-                timesteps = torch.tensor([t] * image.shape[0], device=torch_device)
-
             # 1. predict noise residual
-            pred_noise_t = self.unet(image_in, timesteps, context=context)
+            pred_noise_t = self.unet(image, t, encoder_hidden_states=text_embedding)
 
-            # perform guidance
-            if guidance_scale != 1.0:
-                pred_noise_t_uncond, pred_noise_t = pred_noise_t.chunk(2)
-                pred_noise_t = pred_noise_t_uncond + guidance_scale * (pred_noise_t - pred_noise_t_uncond)
+            if isinstance(pred_noise_t, dict):
+                pred_noise_t = pred_noise_t["sample"]
 
             # 2. predict previous mean of image x_t-1 and add variance depending on eta
             # do x_t -> x_t-1

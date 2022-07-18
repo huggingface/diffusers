@@ -23,27 +23,30 @@ import numpy as np
 import torch
 
 from diffusers import (
-    AutoencoderKL,
-    DDIMPipeline,
-    DDIMScheduler,
-    DDPMPipeline,
-    DDPMScheduler,
-    GlidePipeline,
-    GlideSuperResUNetModel,
-    GlideTextToImageUNetModel,
-    LatentDiffusionPipeline,
-    LatentDiffusionUncondPipeline,
-    NCSNpp,
-    PNDMPipeline,
-    PNDMScheduler,
-    ScoreSdeVePipeline,
-    ScoreSdeVeScheduler,
-    ScoreSdeVpPipeline,
-    ScoreSdeVpScheduler,
-    UNetLDMModel,
-    UNetUnconditionalModel,
-    VQModel,
+        AutoencoderKL,
+        DDIMPipeline,
+        DDIMScheduler,
+        DDPMPipeline,
+        DDPMScheduler,
+        GlidePipeline,
+        GlideSuperResUNetModel,
+        GlideTextToImageUNetModel,
+        LatentDiffusionPipeline,
+        LatentDiffusionUncondPipeline,
+        NCSNpp,
+        PNDMPipeline,
+        PNDMScheduler,
+        ScoreSdeVePipeline,
+        ScoreSdeVeScheduler,
+        ScoreSdeVpPipeline,
+        ScoreSdeVpScheduler,
+        UNetLDMModel,
+        UNetUnconditionalModel,
+        UNetConditionalModel,
+        VQModel,
 )
+from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertModel
+from transformers import BertTokenizer
 from diffusers.configuration_utils import ConfigMixin
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.testing_utils import floats_tensor, slow, torch_device
@@ -63,13 +66,13 @@ class ConfigTester(unittest.TestCase):
             config_name = "config.json"
 
             def __init__(
-                self,
-                a=2,
-                b=5,
-                c=(2, 5),
-                d="for diffusion",
-                e=[1, 3],
-            ):
+                    self,
+                    a=2,
+                    b=5,
+                    c=(2, 5),
+                    d="for diffusion",
+                    e=[1, 3],
+                    ):
                 self.register_to_config(a=a, b=b, c=c, d=d, e=e)
 
         obj = SampleObject()
@@ -261,26 +264,24 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "ch": 32,
-            "ch_mult": (1, 2),
-            "block_channels": (32, 64),
-            "down_blocks": ("UNetResDownBlock2D", "UNetResAttnDownBlock2D"),
-            "up_blocks": ("UNetResAttnUpBlock2D", "UNetResUpBlock2D"),
-            "num_head_channels": None,
-            "out_channels": 3,
-            "in_channels": 3,
-            "num_res_blocks": 2,
-            "attn_resolutions": (16,),
-            "resolution": 32,
-            "image_size": 32,
+                "ch": 32,
+                "ch_mult": (1, 2),
+                "block_channels": (32, 64),
+                "down_blocks": ("UNetResDownBlock2D", "UNetResAttnDownBlock2D"),
+                "up_blocks": ("UNetResAttnUpBlock2D", "UNetResUpBlock2D"),
+                "num_head_channels": None,
+                "out_channels": 3,
+                "in_channels": 3,
+                "num_res_blocks": 2,
+                "attn_resolutions": (16,),
+                "resolution": 32,
+                "image_size": 32,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
     def test_from_pretrained_hub(self):
-        model, loading_info = UNetUnconditionalModel.from_pretrained(
-            "fusing/ddpm_dummy", output_loading_info=True, ddpm=True
-        )
+        model, loading_info = UNetUnconditionalModel.from_pretrained("fusing/ddpm_dummy", output_loading_info=True, ddpm=True)
         self.assertIsNotNone(model)
         # self.assertEqual(len(loading_info["missing_keys"]), 0)
 
@@ -827,7 +828,7 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
 
-class AutoEncoderKLTests(ModelTesterMixin, unittest.TestCase):
+class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
     model_class = AutoencoderKL
 
     @property
@@ -1026,10 +1027,15 @@ class PipelineTesterMixin(unittest.TestCase):
         assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
 
     @slow
-    @unittest.skip("Skipping for now as it takes too long")
+#    @unittest.skip("Skipping for now as it takes too long")
     def test_ldm_text2img(self):
-        model_id = "fusing/latent-diffusion-text2im-large"
-        ldm = LatentDiffusionPipeline.from_pretrained(model_id)
+        unet = UNetConditionalModel.from_pretrained("fusing/latent-diffusion-text2im-large", ldm=True, subfolder="unet")
+        vqvae = AutoencoderKL.from_pretrained("fusing/latent-diffusion-text2im-large", subfolder="vqvae")
+        tokenizer = BertTokenizer.from_pretrained("fusing/latent-diffusion-text2im-large", subfolder="tokenizer")
+        scheduler = DDIMScheduler.from_config("fusing/latent-diffusion-text2im-large", subfolder="scheduler")
+        bert = LDMBertModel.from_pretrained("fusing/latent-diffusion-text2im-large")
+
+        ldm = LatentDiffusionPipeline(unet=unet, vqvae=vqvae, tokenizer=tokenizer, bert=bert, scheduler=scheduler)
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
@@ -1041,11 +1047,19 @@ class PipelineTesterMixin(unittest.TestCase):
         expected_slice = torch.tensor([0.7295, 0.7358, 0.7256, 0.7435, 0.7095, 0.6884, 0.7325, 0.6921, 0.6458])
         assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
 
+
     @slow
     def test_ldm_text2img_fast(self):
         model_id = "fusing/latent-diffusion-text2im-large"
 
-        ldm = LatentDiffusionPipeline.from_pretrained(model_id)
+#        unet = UNetConditionalModel.from_pretrained("fusing/latent-diffusion-text2im-large", ldm=True, subfolder="unet")
+        unet = UNetConditionalModel.from_pretrained("/home/patrick/latent-diffusion-text2im-large")
+        vqvae = AutoencoderKL.from_pretrained("fusing/latent-diffusion-text2im-large", subfolder="vqvae")
+        tokenizer = BertTokenizer.from_pretrained("fusing/latent-diffusion-text2im-large", subfolder="tokenizer")
+        scheduler = DDIMScheduler.from_config("fusing/latent-diffusion-text2im-large", subfolder="scheduler")
+        bert = LDMBertModel.from_pretrained("fusing/latent-diffusion-text2im-large")
+
+        ldm = LatentDiffusionPipeline(unet=unet, vqvae=vqvae, tokenizer=tokenizer, bert=bert, scheduler=scheduler)
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
@@ -1075,6 +1089,7 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     def test_score_sde_ve_pipeline(self):
         model = UNetUnconditionalModel.from_pretrained("fusing/ffhq_ncsnpp", sde=True)
+        model = UNetUnconditionalModel.from_pretrained("google/ffhq_ncsnpp")
 
         torch.manual_seed(0)
         if torch.cuda.is_available():

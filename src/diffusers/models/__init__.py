@@ -21,4 +21,5 @@ from .unet_glide import GlideSuperResUNetModel, GlideTextToImageUNetModel, Glide
 from .unet_ldm import UNetLDMModel
 from .unet_sde_score_estimation import NCSNpp
 from .unet_unconditional import UNetUnconditionalModel
+from .unet_conditional import UNetConditionalModel
 from .vae import AutoencoderKL, VQModel

@@ -8,10 +8,10 @@ import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
-from .attention import AttentionBlock
+from .attention import AttentionBlock, SpatialTransformer
 from .embeddings import GaussianFourierProjection, get_timestep_embedding
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, ResnetBlock2D, Upsample2D
-from .unet_new import UNetMidBlock2D, get_down_block, get_up_block
+from .unet_new import UNetMidBlock2DCrossAttn, get_down_block, get_up_block
 
 
 class Combine(nn.Module):
@@ -71,7 +71,7 @@ class Timesteps(nn.Module):
         return t_emb
 
 
-class UNetUnconditionalModel(ModelMixin, ConfigMixin):
+class UNetConditionalModel(ModelMixin, ConfigMixin):
     """
     The full UNet model with attention and timestep embedding. :param in_channels: channels in the input Tensor. :param
     model_channels: base channel count for the model. :param out_channels: channels in the output Tensor. :param
@@ -104,17 +104,18 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         dropout=0,
         block_channels=(320, 640, 1280, 1280),
         down_blocks=(
-            "UNetResAttnDownBlock2D",
-            "UNetResAttnDownBlock2D",
-            "UNetResAttnDownBlock2D",
+            "UNetResCrossAttnDownBlock2D",
+            "UNetResCrossAttnDownBlock2D",
+            "UNetResCrossAttnDownBlock2D",
             "UNetResDownBlock2D",
         ),
         downsample_padding=1,
-        up_blocks=("UNetResUpBlock2D", "UNetResAttnUpBlock2D", "UNetResAttnUpBlock2D", "UNetResAttnUpBlock2D"),
+        up_blocks=("UNetResUpBlock2D", "UNetResCrossAttnUpBlock2D", "UNetResCrossAttnUpBlock2D", "UNetResCrossAttnUpBlock2D"),
         resnet_act_fn="silu",
         resnet_eps=1e-5,
         conv_resample=True,
-        num_head_channels=32,
+        num_head_channels=None,
+        num_attention_heads=8,
         flip_sin_to_cos=True,
         downscale_freq_shift=0,
         mid_block_scale_factor=1,
@@ -170,7 +171,6 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             num_head_channels=num_head_channels,
             flip_sin_to_cos=flip_sin_to_cos,
             downscale_freq_shift=downscale_freq_shift,
-            time_embedding_type=time_embedding_type,
             attention_resolutions=attention_resolutions,
             attn_resolutions=attn_resolutions,
             mid_block_scale_factor=mid_block_scale_factor,
@@ -222,30 +222,17 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             self.downsample_blocks.append(down_block)
 
         # mid
-        if ddpm:
-            self.mid_new_2 = UNetMidBlock2D(
-                in_channels=block_channels[-1],
-                dropout=dropout,
-                temb_channels=time_embed_dim,
-                resnet_eps=resnet_eps,
-                resnet_act_fn=resnet_act_fn,
-                output_scale_factor=mid_block_scale_factor,
-                resnet_time_scale_shift="default",
-                attn_num_head_channels=num_head_channels,
-                resnet_groups=resnet_num_groups,
-            )
-        else:
-            self.mid = UNetMidBlock2D(
-                in_channels=block_channels[-1],
-                dropout=dropout,
-                temb_channels=time_embed_dim,
-                resnet_eps=resnet_eps,
-                resnet_act_fn=resnet_act_fn,
-                output_scale_factor=mid_block_scale_factor,
-                resnet_time_scale_shift="default",
-                attn_num_head_channels=num_head_channels,
-                resnet_groups=resnet_num_groups,
-            )
+        self.mid = UNetMidBlock2DCrossAttn(
+            in_channels=block_channels[-1],
+            dropout=dropout,
+            temb_channels=time_embed_dim,
+            resnet_eps=resnet_eps,
+            resnet_act_fn=resnet_act_fn,
+            output_scale_factor=mid_block_scale_factor,
+            resnet_time_scale_shift="default",
+            attn_num_head_channels=num_head_channels,
+            resnet_groups=resnet_num_groups,
+        )
 
         # up
         reversed_block_channels = list(reversed(block_channels))
@@ -286,12 +273,12 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         # ======================================
         self.is_overwritten = False
         if ldm:
+            num_heads = num_attention_heads
+            num_head_channels = num_head_channels if num_head_channels is not None else -1
             transformer_depth = 1
             use_spatial_transformer = True
             context_dim = 1280
-            context_dim = None
-            legacy = True
-            num_heads = -1
+            legacy = False
             model_channels = block_channels[0]
             channel_mult = tuple([x // model_channels for x in block_channels])
             self.init_for_ldm(
@@ -313,7 +300,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             )
 
     def forward(
-        self, sample: torch.FloatTensor, timestep: Union[torch.Tensor, float, int]
+        self, sample: torch.FloatTensor, timestep: Union[torch.Tensor, float, int], encoder_hidden_states: torch.Tensor,
     ) -> Dict[str, torch.FloatTensor]:
         # TODO(PVP) - to delete later at release
         # IMPORTANT: NOT RELEVANT WHEN REVIEWING API
@@ -341,20 +328,16 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         # 3. down
         down_block_res_samples = (sample,)
         for downsample_block in self.downsample_blocks:
-            if hasattr(downsample_block, "skip_conv"):
-                sample, res_samples, skip_sample = downsample_block(
-                    hidden_states=sample, temb=emb, skip_sample=skip_sample
-                )
+
+            if hasattr(downsample_block, "attentions") and downsample_block.attentions is not None:
+                sample, res_samples = downsample_block(hidden_states=sample, temb=emb, encoder_hidden_states=encoder_hidden_states)
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
 
             down_block_res_samples += res_samples
 
         # 4. mid
-        if self.config.ddpm:
-            sample = self.mid_new_2(sample, emb)
-        else:
-            sample = self.mid(sample, emb)
+        sample = self.mid(sample, emb, encoder_hidden_states=encoder_hidden_states)
 
         # 5. up
         skip_sample = None
@@ -363,26 +346,16 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
             down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
 
-            if hasattr(upsample_block, "skip_conv"):
-                sample, skip_sample = upsample_block(sample, res_samples, emb, skip_sample)
+            if hasattr(upsample_block, "attentions") and upsample_block.attentions is not None:
+                sample = upsample_block(hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, encoder_hidden_states=encoder_hidden_states)
             else:
-                sample = upsample_block(sample, res_samples, emb)
+                sample = upsample_block(hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples)
 
         # 6. post-process
 
         sample = self.conv_norm_out(sample)
         sample = self.conv_act(sample)
         sample = self.conv_out(sample)
-
-        if skip_sample is not None:
-            sample += skip_sample
-
-        if (
-            self.config.time_embedding_type == "fourier"
-            or self.time_steps.__class__.__name__ == "GaussianFourierProjection"
-        ):
-            timesteps = timesteps.reshape((sample.shape[0], *([1] * len(sample.shape[1:]))))
-            sample = sample / timesteps
 
         output = {"sample": sample}
 
@@ -398,6 +371,9 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             self.time_embedding.linear_1.bias.data = self.time_embed[0].bias.data
             self.time_embedding.linear_2.weight.data = self.time_embed[2].weight.data
             self.time_embedding.linear_2.bias.data = self.time_embed[2].bias.data
+
+            self.conv_in.weight.data = self.input_blocks[0][0].weight.data
+            self.conv_in.bias.data = self.input_blocks[0][0].bias.data
 
             # ================ SET WEIGHTS OF ALL WEIGHTS ==================
             for i, input_layer in enumerate(self.input_blocks[1:]):
@@ -435,9 +411,6 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                     self.upsample_blocks[block_id].attentions[layer_in_block_id].set_weight(input_layer[1])
                 else:
                     self.upsample_blocks[block_id].resnets[layer_in_block_id].set_weight(input_layer[0])
-
-            self.conv_in.weight.data = self.input_blocks[0][0].weight.data
-            self.conv_in.bias.data = self.input_blocks[0][0].bias.data
 
             self.conv_norm_out.weight.data = self.out[0].weight.data
             self.conv_norm_out.bias.data = self.out[0].bias.data
@@ -524,10 +497,12 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                         # num_heads = 1
                         dim_head = num_head_channels
                     layers.append(
-                        AttentionBlock(
+                        SpatialTransformer(
                             ch,
-                            num_heads=num_heads,
-                            num_head_channels=dim_head,
+                            num_heads,
+                            dim_head,
+                            depth=transformer_depth,
+                            context_dim=context_dim,
                         ),
                     )
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
@@ -569,10 +544,12 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                 non_linearity="silu",
                 overwrite_for_ldm=True,
             ),
-            AttentionBlock(
+            SpatialTransformer(
                 ch,
-                num_heads=num_heads,
-                num_head_channels=dim_head,
+                num_heads,
+                dim_head,
+                depth=transformer_depth,
+                context_dim=context_dim,
             ),
             ResnetBlock2D(
                 in_channels=ch,
@@ -612,11 +589,13 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                         # num_heads = 1
                         dim_head = num_head_channels
                     layers.append(
-                        AttentionBlock(
+                        SpatialTransformer(
                             ch,
-                            num_heads=-1,
-                            num_head_channels=dim_head,
-                        ),
+                            num_heads,
+                            dim_head,
+                            depth=transformer_depth,
+                            context_dim=context_dim,
+                        )
                     )
                 if level and i == num_res_blocks:
                     out_ch = ch
