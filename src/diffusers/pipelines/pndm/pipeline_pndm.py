@@ -53,7 +53,7 @@ class PNDMPipeline(DiffusionPipeline):
             image = self.scheduler.step_prk(model_output, t, image, num_inference_steps)["prev_sample"]
 
         timesteps = self.scheduler.get_time_steps(num_inference_steps)
-        for t in tqdm.tqdm(range(len(timesteps))):
+        for t in tqdm(range(len(timesteps))):
             t_orig = timesteps[t]
             model_output = self.unet(image, t_orig)
 

@@ -817,7 +817,7 @@ class GlidePipeline(DiffusionPipeline):
         num_trained_timesteps = self.upscale_scheduler.timesteps
         inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps_upscale)
 
-        for t in tqdm.tqdm(reversed(range(num_inference_steps_upscale)), total=num_inference_steps_upscale):
+        for t in tqdm(reversed(range(num_inference_steps_upscale)), total=num_inference_steps_upscale):
             # 1. predict noise residual
             with torch.no_grad():
                 time_input = torch.tensor([inference_step_times[t]] * image.shape[0], device=torch_device)
