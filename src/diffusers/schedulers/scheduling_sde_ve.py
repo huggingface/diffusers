@@ -16,10 +16,10 @@
 
 # TODO(Patrick, Anton, Suraj) - make scheduler framework indepedent and clean-up a bit
 import pdb
+from typing import Union
 
 import numpy as np
 import torch
-from typing import Union
 
 from ..configuration_utils import ConfigMixin
 from .scheduling_utils import SchedulerMixin
@@ -29,8 +29,8 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
     """
     The variance exploding stochastic differential equation (SDE) scheduler.
 
-    :param snr: coefficient weighting the step from the model_output sample (from the network) to the random noise. :param
-    sigma_min: initial noise scale for sigma sequence in sampling procedure. The minimum sigma should mirror the
+    :param snr: coefficient weighting the step from the model_output sample (from the network) to the random noise.
+    :param sigma_min: initial noise scale for sigma sequence in sampling procedure. The minimum sigma should mirror the
             distribution of the data.
     :param sigma_max: :param sampling_eps: the end value of sampling, where timesteps decrease progessively from 1 to
     epsilon. :param correct_steps: number of correction steps performed on a produced sample. :param tensor_format:
@@ -119,21 +119,23 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
 
-
     def step_pred(
-            self,
-            model_output: Union[torch.FloatTensor, np.ndarray],
-            timestep: int,
-            sample: Union[torch.FloatTensor, np.ndarray],
-            seed=None,
-        ):
+        self,
+        model_output: Union[torch.FloatTensor, np.ndarray],
+        timestep: int,
+        sample: Union[torch.FloatTensor, np.ndarray],
+        seed=None,
+    ):
         """
         Predict the sample at the previous timestep by reversing the SDE.
         """
-        if seed is not None: self.set_seed(seed)
+        if seed is not None:
+            self.set_seed(seed)
         # TODO(Patrick) non-PyTorch
 
-        timestep = timestep*torch.ones(sample.shape[0], device=sample.device) #torch.repeat_interleave(timestep, sample.shape[0])
+        timestep = timestep * torch.ones(
+            sample.shape[0], device=sample.device
+        )  # torch.repeat_interleave(timestep, sample.shape[0])
         timesteps = (timestep * (len(self.timesteps) - 1)).long()
 
         sigma = self.discrete_sigmas[timesteps].to(sample.device)
@@ -154,17 +156,17 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         return {"prev_sample": prev_sample, "prev_sample_mean": prev_sample_mean}
 
     def step_correct(
-            self,
-            model_output: Union[torch.FloatTensor, np.ndarray],
-            sample: Union[torch.FloatTensor, np.ndarray],
-            seed=None,
-
+        self,
+        model_output: Union[torch.FloatTensor, np.ndarray],
+        sample: Union[torch.FloatTensor, np.ndarray],
+        seed=None,
     ):
         """
-        Correct the predicted sample based on the output model_output of the network. This is often run repeatedly after
-        making the prediction for the previous timestep.
+        Correct the predicted sample based on the output model_output of the network. This is often run repeatedly
+        after making the prediction for the previous timestep.
         """
-        if seed is not None: self.set_seed(seed)
+        if seed is not None:
+            self.set_seed(seed)
 
         # For small batch sizes, the paper "suggest replacing norm(z) with sqrt(d), where d is the dim. of z"
         # sample noise for correction
@@ -174,7 +176,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         grad_norm = self.norm(model_output)
         noise_norm = self.norm(noise)
         step_size = (self.config.snr * noise_norm / grad_norm) ** 2 * 2
-        step_size = step_size*torch.ones(sample.shape[0]).to(sample.device)
+        step_size = step_size * torch.ones(sample.shape[0]).to(sample.device)
         # self.repeat_scalar(step_size, sample.shape[0])
 
         # compute corrected sample: model_output term and noise term
