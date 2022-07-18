@@ -910,7 +910,6 @@ class PipelineTesterMixin(unittest.TestCase):
             out_channels=3,
             down_blocks=("UNetResDownBlock2D", "UNetResAttnDownBlock2D"),
             up_blocks=("UNetResAttnUpBlock2D", "UNetResUpBlock2D"),
-            ddpm=True,
         )
         schedular = DDPMScheduler(timesteps=10)
 
