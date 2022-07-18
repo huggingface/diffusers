@@ -22,7 +22,7 @@ def renew_resnet_paths(old_list, n_shave_prefix_segments=0):
         new_item = new_item.replace('conv_shorcut', 'conv1')
         new_item = new_item.replace('nin_shortcut', 'conv_shortcut')
         new_item = new_item.replace('temb_proj', 'time_emb_proj')
-        
+
         new_item = shave_segments(new_item, n_shave_prefix_segments=n_shave_prefix_segments)
 
         mapping.append({'old': old_item, 'new': new_item})
@@ -69,9 +69,9 @@ def assign_to_checkpoint(paths, checkpoint, old_checkpoint, attention_paths_to_s
             old_tensor = old_tensor.reshape((num_heads, 3 * channels // num_heads) + old_tensor.shape[1:])
             query, key, value = old_tensor.split(channels // num_heads, dim=1)
 
-            checkpoint[path_map['query']] = query.reshape(target_shape)
-            checkpoint[path_map['key']] = key.reshape(target_shape)
-            checkpoint[path_map['value']] = value.reshape(target_shape)
+            checkpoint[path_map['query']] = query.reshape(target_shape).squeeze()
+            checkpoint[path_map['key']] = key.reshape(target_shape).squeeze()
+            checkpoint[path_map['value']] = value.reshape(target_shape).squeeze()
 
     for path in paths:
         new_path = path['new']
@@ -87,7 +87,10 @@ def assign_to_checkpoint(paths, checkpoint, old_checkpoint, attention_paths_to_s
                 new_path = new_path.replace(replacement['old'], replacement['new'])
 
 
-        checkpoint[new_path] = old_checkpoint[path['old']]
+        if 'attentions' in new_path:
+            checkpoint[new_path] = old_checkpoint[path['old']].squeeze()
+        else:
+            checkpoint[new_path] = old_checkpoint[path['old']]
 
 
 def convert_ddpm_checkpoint(checkpoint, config):
@@ -194,6 +197,7 @@ def convert_ddpm_checkpoint(checkpoint, config):
                     paths = renew_attention_paths(attns[j])
                     assign_to_checkpoint(paths, new_checkpoint, checkpoint, additional_replacements=[replace_indices])
 
+    new_checkpoint = {k.replace('mid_new_2', 'mid'): v for k, v in new_checkpoint.items()}
     return new_checkpoint
 
 
