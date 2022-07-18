@@ -90,6 +90,9 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = None
         self.timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
 
+        self.tensor_format = tensor_format
+        self.set_format(tensor_format=tensor_format)
+
     def _get_variance(self, timestep, prev_timestep):
         alpha_prod_t = self.alphas_cumprod[timestep]
         alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.one
@@ -102,9 +105,9 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(self, num_inference_steps):
         self.num_inference_steps = num_inference_steps
-        self.timesteps = np.arange(0, self.config.timesteps, self.config.timesteps // self.num_inference_steps)[
-            ::-1
-        ].copy()
+        self.timesteps = np.arange(
+            0, self.config.num_train_timesteps, self.config.num_train_timesteps // self.num_inference_steps
+        )[::-1].copy()
         self.set_format(tensor_format=self.tensor_format)
 
     def step(

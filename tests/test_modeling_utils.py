@@ -911,7 +911,7 @@ class PipelineTesterMixin(unittest.TestCase):
             down_blocks=("UNetResDownBlock2D", "UNetResAttnDownBlock2D"),
             up_blocks=("UNetResAttnUpBlock2D", "UNetResUpBlock2D"),
         )
-        schedular = DDPMScheduler(timesteps=10)
+        schedular = DDPMScheduler(num_train_timesteps=10)
 
         ddpm = DDPMPipeline(model, schedular)
 

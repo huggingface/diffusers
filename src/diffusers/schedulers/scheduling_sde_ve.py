@@ -15,7 +15,6 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/yang-song/score_sde_pytorch
 
 # TODO(Patrick, Anton, Suraj) - make scheduler framework indepedent and clean-up a bit
-import pdb
 
 import numpy as np
 import torch
@@ -110,10 +109,10 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         Predict the sample at the previous timestep by reversing the SDE.
         """
         # TODO(Patrick) better comments + non-PyTorch
-        t = self.repeat_scalar(t, x.shape[0])
-        timesteps = self.long((t * (len(self.timesteps) - 1)))
+        t = self.repeat_scalar(t, x.shape[0]).to(x.device)
+        timesteps = self.long((t * (len(self.timesteps) - 1))).to(x.device)
 
-        sigma = self.discrete_sigmas[timesteps]
+        sigma = self.discrete_sigmas[timesteps].to(x.device)
         adjacent_sigma = self.get_adjacent_sigma(timesteps, t)
         drift = self.zeros_like(x)
         diffusion = (sigma**2 - adjacent_sigma**2) ** 0.5
