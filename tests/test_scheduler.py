@@ -641,20 +641,20 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
 
             for _ in range(scheduler.correct_steps):
                 with torch.no_grad():
-                    result = model(sample, sigma_t)
-                sample = scheduler.step_correct(result, sample, **kwargs)["prev_sample"]
+                    model_output = model(sample, sigma_t)
+                sample = scheduler.step_correct(model_output, sample, **kwargs)["prev_sample"]
 
             with torch.no_grad():
-                result = model(sample, sigma_t)
+                model_output = model(sample, sigma_t)
 
-            output = scheduler.step_pred(result, t, sample, **kwargs)
+            output = scheduler.step_pred(model_output, t, sample, **kwargs)
             sample, sample_mean = output["prev_sample"], output["prev_sample_mean"]
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 10629923278.7104) < 1e-2
-        assert abs(result_mean.item() - 13841045.9358) < 1e-3
+        assert abs(result_sum.item() - 14224664576.0) < 1e-2
+        assert abs(result_mean.item() - 18521698.0) < 1e-3
 
     def test_step_shape(self):
         kwargs = dict(self.forward_default_kwargs)

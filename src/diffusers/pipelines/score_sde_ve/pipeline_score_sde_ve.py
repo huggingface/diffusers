@@ -18,8 +18,8 @@ class ScoreSdeVePipeline(DiffusionPipeline):
 
         model = self.model.to(device)
 
-        x = torch.randn(*shape) * self.scheduler.config.sigma_max
-        x = x.to(device)
+        sample = torch.randn(*shape) * self.scheduler.config.sigma_max
+        sample = sample.to(device)
 
         self.scheduler.set_timesteps(num_inference_steps)
         self.scheduler.set_sigmas(num_inference_steps)
@@ -29,19 +29,20 @@ class ScoreSdeVePipeline(DiffusionPipeline):
 
             for _ in range(self.scheduler.correct_steps):
                 with torch.no_grad():
-                    result = self.model(x, sigma_t)
+                    model_output = self.model(sample, sigma_t)
 
-                if isinstance(result, dict):
-                    result = result["sample"]
+                if isinstance(model_output, dict):
+                    model_output = model_output["sample"]
 
-                x = self.scheduler.step_correct(result, x)
+                sample = self.scheduler.step_correct(model_output, sample)["prev_sample"]
 
             with torch.no_grad():
-                result = model(x, sigma_t)
+                model_output = model(sample, sigma_t)
 
-                if isinstance(result, dict):
-                    result = result["sample"]
+                if isinstance(model_output, dict):
+                    model_output = model_output["sample"]
 
-            x, x_mean = self.scheduler.step_pred(result, x, t)
+            output = self.scheduler.step_pred(model_output, t, sample)
+            sample, sample_mean = output["prev_sample"], output["prev_sample_mean"]
 
-        return x_mean
+        return sample_mean

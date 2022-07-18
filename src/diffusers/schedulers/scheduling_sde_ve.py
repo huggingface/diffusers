@@ -125,7 +125,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             model_output: Union[torch.FloatTensor, np.ndarray],
             timestep: int,
             sample: Union[torch.FloatTensor, np.ndarray],
-            seed: None,
+            seed=None,
         ):
         """
         Predict the sample at the previous timestep by reversing the SDE.
@@ -157,7 +157,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             self,
             model_output: Union[torch.FloatTensor, np.ndarray],
             sample: Union[torch.FloatTensor, np.ndarray],
-            seed: None,
+            seed=None,
 
     ):
         """
