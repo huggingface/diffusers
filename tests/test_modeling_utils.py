@@ -676,7 +676,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
 
     def test_output_pretrained_ve_mid(self):
 #        model = UNetUnconditionalModel.from_pretrained("fusing/celebahq_256-ncsnpp-ve", sde=True)
-        model = NCSNpp.from_pretrained("fusing/celebahq_256-ncsnpp-ve")
+        model = NCSNpp.from_pretrained("fusing/ffhq_256-ncsnpp-ve")
         import ipdb; ipdb.set_trace()
         model.to(torch_device)
 
