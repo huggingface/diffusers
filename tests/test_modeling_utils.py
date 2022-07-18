@@ -674,6 +674,35 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
 
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
+    def test_output_pretrained_ve_mid(self):
+#        model = UNetUnconditionalModel.from_pretrained("fusing/celebahq_256-ncsnpp-ve", sde=True)
+        model = NCSNpp.from_pretrained("fusing/celebahq_256-ncsnpp-ve")
+        import ipdb; ipdb.set_trace()
+        model.to(torch_device)
+
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        batch_size = 4
+        num_channels = 3
+        sizes = (256, 256)
+
+        noise = torch.ones((batch_size, num_channels) + sizes).to(torch_device)
+        time_step = torch.tensor(batch_size * [1e-4]).to(torch_device)
+
+        with torch.no_grad():
+            output = model(noise, time_step)["sample"]
+#            output = model(noise, time_step)
+
+        output_slice = output[0, -3:, -3:, -1].flatten().cpu()
+        # fmt: off
+        expected_output_slice = torch.tensor([-4836.2231, -6487.1387, -3816.7969, -7964.9253, -10966.2842, -20043.6016, 8137.0571, 2340.3499, 544.6114])
+        # fmt: on
+
+        import ipdb; ipdb.set_trace()
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
+
     def test_output_pretrained_ve_large(self):
         model = UNetUnconditionalModel.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy", sde=True)
         model.to(torch_device)
@@ -1065,9 +1094,6 @@ class PipelineTesterMixin(unittest.TestCase):
         image = sde_ve(num_inference_steps=2)
         torch.manual_seed(0)
         image_2 = sde_ve_2(num_inference_steps=2)
-
-        print("Sum diff", (image - image_2).abs().sum())
-        print("Max diff", (image - image_2).abs().max())
 
         import ipdb; ipdb.set_trace()
 
