@@ -1044,6 +1044,7 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     def test_ldm_text2img_fast(self):
         model_id = "fusing/latent-diffusion-text2im-large"
+
         ldm = LatentDiffusionPipeline.from_pretrained(model_id)
 
         prompt = "A painting of a squirrel eating a burger"
