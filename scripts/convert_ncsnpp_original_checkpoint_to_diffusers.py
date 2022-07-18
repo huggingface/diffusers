@@ -127,25 +127,22 @@ def convert_ncsnpp_checkpoint(checkpoint, config):
     """
     Takes a state dict and the path to
     """
-    new_checkpoint = {}
-    new_checkpoint['time_steps.weight'] = checkpoint['all_modules.0.W']
-    
-    new_checkpoint['time_embedding.linear_1.weight'] = checkpoint['all_modules.0.W']
-    new_checkpoint['time_embedding.linear_1.bias'] = checkpoint['all_modules.1.bias']
-    new_checkpoint['time_embedding.linear_2.weight'] = checkpoint['all_modules.2.weight']
-    new_checkpoint['time_embedding.linear_2.bias'] = checkpoint['all_modules.2.bias']
-
-    new_checkpoint['conv_in.weight'] = checkpoint['all_modules.3.weight']
-    new_checkpoint['conv_in.bias'] = checkpoint['all_modules.3.bias']
-
-    new_checkpoint['conv_norm_out.weight'] = checkpoint[list(checkpoint.keys())[-4]]
-    new_checkpoint['conv_norm_out.bias'] = checkpoint[list(checkpoint.keys())[-3]]
-    new_checkpoint['conv_out.weight'] = checkpoint[list(checkpoint.keys())[-2]]
-    new_checkpoint['conv_out.bias'] = checkpoint[list(checkpoint.keys())[-1]]
-
-
     new_model_architecture  = UNetUnconditionalModel(**config)
-    # compared to the `set_weights`function, all_modules are not available. `
+    new_model_architecture.time_steps.W.data= checkpoint['all_modules.0.W'].data
+    new_model_architecture.time_steps.weight.data = checkpoint['all_modules.0.W'].data
+    new_model_architecture.time_embedding.linear_1.weight.data = checkpoint['all_modules.1.weight'].data
+    new_model_architecture.time_embedding.linear_1.bias.data = checkpoint['all_modules.1.bias'].data
+    
+    new_model_architecture.time_embedding.linear_2.weight.data = checkpoint['all_modules.2.weight'].data
+    new_model_architecture.time_embedding.linear_2.bias.data= checkpoint['all_modules.2.bias'].data
+
+    new_model_architecture.conv_in.weight.data = checkpoint['all_modules.3.weight'].data
+    new_model_architecture.conv_in.bias.data = checkpoint['all_modules.3.bias'].data
+
+    new_model_architecture.conv_norm_out.weight.data = checkpoint[list(checkpoint.keys())[-4]].data
+    new_model_architecture.conv_norm_out.bias.data = checkpoint[list(checkpoint.keys())[-3]].data
+    new_model_architecture.conv_out.weight.data = checkpoint[list(checkpoint.keys())[-2]].data
+    new_model_architecture.conv_out.bias.data = checkpoint[list(checkpoint.keys())[-1]].data
 
     module_index = 4
 
@@ -180,34 +177,35 @@ def convert_ncsnpp_checkpoint(checkpoint, config):
         new_layer.time_emb_proj.bias.data = old_checkpoint[f"all_modules.{index}.Dense_0.bias"].data
 
         if new_layer.in_channels != new_layer.out_channels or new_layer.up or new_layer.down:
-            new_layer.nin_shortcut.weight.data = old_checkpoint[f"all_modules.{index}.Conv_2.weight"].data
-            new_layer.nin_shortcut.bias.data = old_checkpoint[f"all_modules.{index}.Conv_2.bias"].data
+            new_layer.conv_shortcut.weight.data = old_checkpoint[f"all_modules.{index}.Conv_2.weight"].data
+            new_layer.conv_shortcut.bias.data = old_checkpoint[f"all_modules.{index}.Conv_2.bias"].data
 
     for i, block in enumerate(new_model_architecture.downsample_blocks):
         has_attentions = hasattr(block, "attentions")
-        if hasattr(block, "downsamplers") and block.downsamplers is not None:
-            set_resnet_weights(block.resnets_down,checkpoint, module_index)
-            module_index += 1
-            block.skip_conv.weight.data = checkpoint[f"all_modules.{module_index}.Conv_0.weight"].data
-            block.skip_conv.bias.data = checkpoint[f"all_modules.{module_index}.Conv_0.bias"].data
-            module_index += 1
-        
         for j in range(len(block.resnets)):
             set_resnet_weights(block.resnets[j],checkpoint, module_index)
             module_index += 1
             if has_attentions:
                 set_attention_weights(block.attentions[j],checkpoint, module_index)
                 module_index += 1
+                
+        if hasattr(block, "downsamplers") and block.downsamplers is not None:
+            set_resnet_weights(block.resnet_down,checkpoint, module_index)
+            module_index += 1
+            block.skip_conv.weight.data = checkpoint[f"all_modules.{module_index}.Conv_0.weight"].data
+            block.skip_conv.bias.data = checkpoint[f"all_modules.{module_index}.Conv_0.bias"].data
+            module_index += 1
+        
+
                     
     set_resnet_weights(new_model_architecture.mid.resnets[0],checkpoint,module_index)
     module_index += 1
     set_attention_weights(new_model_architecture.mid.attentions[0],checkpoint, module_index)
     module_index += 1
     set_resnet_weights(new_model_architecture.mid.resnets[1],checkpoint,module_index)
-
     module_index += 1
 
-    for i, block in enumerate(new_model_architecture.downsample_blocks):
+    for i, block in enumerate(new_model_architecture.upsample_blocks):
         has_attentions = hasattr(block, "attentions")
         for j in range(len(block.resnets)):
             set_resnet_weights(block.resnets[j],checkpoint, module_index)
@@ -218,12 +216,11 @@ def convert_ncsnpp_checkpoint(checkpoint, config):
             
         if hasattr(block, "resnet_up") and block.resnet_up is not None:
             block.skip_norm.weight.data = checkpoint[f"all_modules.{module_index}.weight"].data
-            block.skip_norm.bias.data = checkpoint[f"all_modules.{module_index}"].data
+            block.skip_norm.bias.data = checkpoint[f"all_modules.{module_index}.bias"].data
             module_index += 1
             block.skip_conv.weight.data = checkpoint[f"all_modules.{module_index}.weight"].data
             block.skip_conv.bias.data = checkpoint[f"all_modules.{module_index}.bias"].data
             module_index += 1
-            
             set_resnet_weights(block.resnet_up,checkpoint, module_index)
             module_index += 1
                     
@@ -232,155 +229,8 @@ def convert_ncsnpp_checkpoint(checkpoint, config):
     module_index += 1
     new_model_architecture.conv_out.weight.data = checkpoint[f"all_modules.{module_index}.weight"].data
     new_model_architecture.conv_out.bias.data = checkpoint[f"all_modules.{module_index}.bias"].data
-    
-    get_block = lambda index: {k for k in checkpoint.keys() if k.split('.')[1]==str(index)  }
 
-
-    # Retrieves the keys for the input blocks only
-    num_input_blocks = len({shave_segments(layer, -2) for layer in checkpoint if 'input_blocks' in layer})
-    input_blocks = {layer_id: [key for key in checkpoint if f'input_blocks.{layer_id}' in key] for layer_id in range(num_input_blocks)}
-
-    # Retrieves the keys for the middle blocks only
-    num_middle_blocks = len({shave_segments(layer, -2) for layer in checkpoint if 'middle_block' in layer})
-    middle_blocks = {layer_id: [key for key in checkpoint if f'middle_block.{layer_id}' in key] for layer_id in range(num_middle_blocks)}
-
-    # Retrieves the keys for the output blocks only
-    num_output_blocks = len({shave_segments(layer, -2) for layer in checkpoint if 'output_blocks' in layer})
-    output_blocks = {layer_id: [key for key in checkpoint if f'output_blocks.{layer_id}' in key] for layer_id in range(num_output_blocks)}
-
-    for i in range(1, num_input_blocks):
-        block_id = (i - 1) // (config['num_res_blocks'] + 1)
-        layer_in_block_id = (i - 1) % (config['num_res_blocks'] + 1)
-
-        resnets = [key for key in input_blocks[i] if f'input_blocks.{i}.0' in key]
-        attentions = [key for key in input_blocks[i] if f'input_blocks.{i}.1' in key]
-
-        if f'input_blocks.{i}.0.op.weight' in checkpoint:
-            new_checkpoint[f'downsample_blocks.{block_id}.downsamplers.0.conv.weight'] = checkpoint[f'input_blocks.{i}.0.op.weight']
-            new_checkpoint[f'downsample_blocks.{block_id}.downsamplers.0.conv.bias'] = checkpoint[f'input_blocks.{i}.0.op.bias']
-
-        paths = renew_resnet_paths(resnets)
-        meta_path = {'old': f'input_blocks.{i}.0', 'new': f'downsample_blocks.{block_id}.resnets.{layer_in_block_id}'}
-        resnet_op = {'old': 'resnets.2.op', 'new': 'downsamplers.0.op'}
-        assign_to_checkpoint(paths, new_checkpoint, checkpoint, additional_replacements=[meta_path, resnet_op], config=config)
-
-        if len(attentions):
-            paths = renew_attention_paths(attentions)
-            meta_path = {'old': f'input_blocks.{i}.1', 'new': f'downsample_blocks.{block_id}.attentions.{layer_in_block_id}'}
-            to_split = {
-                f'input_blocks.{i}.1.qkv.bias': {
-                    'key': f'downsample_blocks.{block_id}.attentions.{layer_in_block_id}.key.bias',
-                    'query': f'downsample_blocks.{block_id}.attentions.{layer_in_block_id}.query.bias',
-                    'value': f'downsample_blocks.{block_id}.attentions.{layer_in_block_id}.value.bias',
-                },
-                f'input_blocks.{i}.1.qkv.weight': {
-                    'key': f'downsample_blocks.{block_id}.attentions.{layer_in_block_id}.key.weight',
-                    'query': f'downsample_blocks.{block_id}.attentions.{layer_in_block_id}.query.weight',
-                    'value': f'downsample_blocks.{block_id}.attentions.{layer_in_block_id}.value.weight',
-                },
-            }
-            assign_to_checkpoint(
-                paths,
-                new_checkpoint,
-                checkpoint,
-                additional_replacements=[meta_path],
-                attention_paths_to_split=to_split,
-                config=config
-            )
-
-    resnet_0 = middle_blocks[0]
-    attentions = middle_blocks[1]
-    resnet_1 = middle_blocks[2]
-
-    resnet_0_paths = renew_resnet_paths(resnet_0)
-    assign_to_checkpoint(resnet_0_paths, new_checkpoint, checkpoint, config=config)
-
-    resnet_1_paths = renew_resnet_paths(resnet_1)
-    assign_to_checkpoint(resnet_1_paths, new_checkpoint, checkpoint, config=config)
-
-    attentions_paths = renew_attention_paths(attentions)
-    to_split = {
-        'middle_block.1.qkv.bias': {
-            'key': 'mid.attentions.0.key.bias',
-            'query': 'mid.attentions.0.query.bias',
-            'value': 'mid.attentions.0.value.bias',
-        },
-        'middle_block.1.qkv.weight': {
-            'key': 'mid.attentions.0.key.weight',
-            'query': 'mid.attentions.0.query.weight',
-            'value': 'mid.attentions.0.value.weight',
-        },
-    }
-    assign_to_checkpoint(attentions_paths, new_checkpoint, checkpoint, attention_paths_to_split=to_split, config=config)
-
-    for i in range(num_output_blocks):
-        block_id = i // (config['num_res_blocks'] + 1)
-        layer_in_block_id = i % (config['num_res_blocks'] + 1)
-        output_block_layers = [shave_segments(name, 2) for name in output_blocks[i]]
-        output_block_list = {}
-
-        for layer in output_block_layers:
-            layer_id, layer_name = layer.split('.')[0], shave_segments(layer, 1)
-            if layer_id in output_block_list:
-                output_block_list[layer_id].append(layer_name)
-            else:
-                output_block_list[layer_id] = [layer_name]
-
-        if len(output_block_list) > 1:
-            resnets = [key for key in output_blocks[i] if f'output_blocks.{i}.0' in key]
-            attentions = [key for key in output_blocks[i] if f'output_blocks.{i}.1' in key]
-
-            resnet_0_paths = renew_resnet_paths(resnets)
-            paths = renew_resnet_paths(resnets)
-
-            meta_path = {'old': f'output_blocks.{i}.0', 'new': f'upsample_blocks.{block_id}.resnets.{layer_in_block_id}'}
-            assign_to_checkpoint(paths, new_checkpoint, checkpoint, additional_replacements=[meta_path], config=config)
-
-            if ['conv.weight', 'conv.bias'] in output_block_list.values():
-                index = list(output_block_list.values()).index(['conv.weight', 'conv.bias'])
-                new_checkpoint[f'upsample_blocks.{block_id}.upsamplers.0.conv.weight'] = checkpoint[f'output_blocks.{i}.{index}.conv.weight']
-                new_checkpoint[f'upsample_blocks.{block_id}.upsamplers.0.conv.bias'] = checkpoint[f'output_blocks.{i}.{index}.conv.bias']
-
-                # Clear attentions as they have been attributed above.
-                if len(attentions) == 2:
-                    attentions = []
-
-            if len(attentions):
-                paths = renew_attention_paths(attentions)
-                meta_path = {
-                    'old': f'output_blocks.{i}.1',
-                    'new': f'upsample_blocks.{block_id}.attentions.{layer_in_block_id}'
-                }
-                to_split = {
-                    f'output_blocks.{i}.1.qkv.bias': {
-                        'key': f'upsample_blocks.{block_id}.attentions.{layer_in_block_id}.key.bias',
-                        'query': f'upsample_blocks.{block_id}.attentions.{layer_in_block_id}.query.bias',
-                        'value': f'upsample_blocks.{block_id}.attentions.{layer_in_block_id}.value.bias',
-                    },
-                    f'output_blocks.{i}.1.qkv.weight': {
-                        'key': f'upsample_blocks.{block_id}.attentions.{layer_in_block_id}.key.weight',
-                        'query': f'upsample_blocks.{block_id}.attentions.{layer_in_block_id}.query.weight',
-                        'value': f'upsample_blocks.{block_id}.attentions.{layer_in_block_id}.value.weight',
-                    },
-                }
-                assign_to_checkpoint(
-                    paths,
-                    new_checkpoint,
-                    checkpoint,
-                    additional_replacements=[meta_path],
-                    attention_paths_to_split=to_split if any('qkv' in key for key in attentions) else None,
-                    config=config,
-                )
-        else:
-            resnet_0_paths = renew_resnet_paths(output_block_layers, n_shave_prefix_segments=1)
-            for path in resnet_0_paths:
-                old_path = '.'.join(['output_blocks', str(i), path['old']])
-                new_path = '.'.join(['upsample_blocks', str(block_id), 'resnets', str(layer_in_block_id), path['new']])
-
-                new_checkpoint[new_path] = checkpoint[old_path]
-
-    return new_checkpoint
-
+    return new_model_architecture.state_dict()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -413,4 +263,4 @@ if __name__ == "__main__":
 
 
     converted_checkpoint = convert_ncsnpp_checkpoint(checkpoint, config,)
-    torch.save(checkpoint, args.dump_path)
+    torch.save(converted_checkpoint, args.dump_path)

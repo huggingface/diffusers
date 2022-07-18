@@ -18,7 +18,7 @@ if subfolder is not None:
     checkpoint = os.path.join(subfolder, checkpoint)
     config = os.path.join(subfolder, config)
 
-original_checkpoint = torch.load(hf_hub_download(model_id, checkpoint))
+original_checkpoint = torch.load(hf_hub_download(model_id, checkpoint),map_location='cpu')
 config_path = hf_hub_download(model_id, config)
 
 with open(config_path) as f:
@@ -28,7 +28,7 @@ checkpoint = convert_ncsnpp_checkpoint(original_checkpoint, config)
 
 
 def current_codebase_conversion():
-    model = UNetUnconditionalModel.from_pretrained(model_id, subfolder=subfolder, ldm=True)
+    model = UNetUnconditionalModel.from_pretrained(model_id, subfolder=subfolder, sde=True)
     model.eval()
 
     torch.manual_seed(0)
@@ -83,4 +83,4 @@ def diff_between_checkpoints(ch_0, ch_1):
 
 
 diff_between_checkpoints(currently_converted_checkpoint, checkpoint)
-torch.save(checkpoint, "/path/to/checkpoint/")
+torch.save(checkpoint, "/Users/arthurzucker/Work/diffusers/test")
