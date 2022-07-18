@@ -2,12 +2,12 @@
 import json
 import os
 from diffusers import UNetUnconditionalModel
-from scripts.convert_ldm_original_checkpoint_to_diffusers import convert_ldm_checkpoint
+from scripts.convert_ncsnpp_original_checkpoint_to_diffusers import convert_ncsnpp_checkpoint
 from huggingface_hub import hf_hub_download
 import torch
 
-model_id = "fusing/latent-diffusion-celeba-256"
-subfolder = "unet"
+model_id = "fusing/ffhq_ncsnpp"
+subfolder = None
 #model_id = "fusing/unet-ldm-dummy"
 #subfolder = None
 
@@ -24,7 +24,7 @@ config_path = hf_hub_download(model_id, config)
 with open(config_path) as f:
     config = json.load(f)
 
-checkpoint = convert_ldm_checkpoint(original_checkpoint, config)
+checkpoint = convert_ncsnpp_checkpoint(original_checkpoint, config)
 
 
 def current_codebase_conversion():
