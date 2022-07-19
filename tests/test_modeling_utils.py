@@ -22,26 +22,19 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import UNetConditionalModel  # TODO(Patrick) - need to write tests with it
+from diffusers import UNetConditionalModel  # noqa: F401 TODO(Patrick) - need to write tests with it
 from diffusers import (
     AutoencoderKL,
     DDIMPipeline,
     DDIMScheduler,
     DDPMPipeline,
     DDPMScheduler,
-    GlidePipeline,
-    GlideSuperResUNetModel,
-    GlideTextToImageUNetModel,
     LatentDiffusionPipeline,
     LatentDiffusionUncondPipeline,
-    NCSNpp,
     PNDMPipeline,
     PNDMScheduler,
     ScoreSdeVePipeline,
     ScoreSdeVeScheduler,
-    ScoreSdeVpPipeline,
-    ScoreSdeVpScheduler,
-    UNetLDMModel,
     UNetUnconditionalModel,
     VQModel,
 )
@@ -278,222 +271,27 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
-    def test_from_pretrained_hub(self):
-        model, loading_info = UNetUnconditionalModel.from_pretrained(
-            "fusing/ddpm_dummy", output_loading_info=True, ddpm=True
-        )
-        self.assertIsNotNone(model)
-        # self.assertEqual(len(loading_info["missing_keys"]), 0)
 
-        model.to(torch_device)
-        image = model(**self.dummy_input)["sample"]
-
-        assert image is not None, "Make sure output is not None"
-
-    def test_output_pretrained(self):
-        model = UNetUnconditionalModel.from_pretrained("fusing/ddpm_dummy", ddpm=True)
-        model.eval()
-
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
-
-        noise = torch.randn(1, model.config.in_channels, model.config.image_size, model.config.image_size)
-        time_step = torch.tensor([10])
-
-        with torch.no_grad():
-            output = model(noise, time_step)["sample"]
-
-        output_slice = output[0, -1, -3:, -3:].flatten()
-        # fmt: off
-        expected_output_slice = torch.tensor([0.2891, -0.1899, 0.2595, -0.6214, 0.0968, -0.2622, 0.4688, 0.1311, 0.0053])
-        # fmt: on
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
-
-
-class GlideSuperResUNetTests(ModelTesterMixin, unittest.TestCase):
-    model_class = GlideSuperResUNetModel
-
-    @property
-    def dummy_input(self):
-        batch_size = 4
-        num_channels = 6
-        sizes = (32, 32)
-        low_res_size = (4, 4)
-
-        noise = torch.randn((batch_size, num_channels // 2) + sizes).to(torch_device)
-        low_res = torch.randn((batch_size, 3) + low_res_size).to(torch_device)
-        time_step = torch.tensor([10] * noise.shape[0], device=torch_device)
-
-        return {"sample": noise, "timestep": time_step, "low_res": low_res}
-
-    @property
-    def input_shape(self):
-        return (3, 32, 32)
-
-    @property
-    def output_shape(self):
-        return (6, 32, 32)
-
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
-            "attention_resolutions": (2,),
-            "channel_mult": (1, 2),
-            "in_channels": 6,
-            "out_channels": 6,
-            "model_channels": 32,
-            "num_head_channels": 8,
-            "num_heads_upsample": 1,
-            "num_res_blocks": 2,
-            "resblock_updown": True,
-            "resolution": 32,
-            "use_scale_shift_norm": True,
-        }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
-
-    def test_output(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-        model.eval()
-
-        with torch.no_grad():
-            output = model(**inputs_dict)
-
-        output, _ = torch.split(output, 3, dim=1)
-
-        self.assertIsNotNone(output)
-        expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
-
-    def test_from_pretrained_hub(self):
-        model, loading_info = GlideSuperResUNetModel.from_pretrained(
-            "fusing/glide-super-res-dummy", output_loading_info=True
-        )
-        self.assertIsNotNone(model)
-        # self.assertEqual(len(loading_info["missing_keys"]), 0)
-
-        model.to(torch_device)
-        image = model(**self.dummy_input)
-
-        assert image is not None, "Make sure output is not None"
-
-    def test_output_pretrained(self):
-        model = GlideSuperResUNetModel.from_pretrained("fusing/glide-super-res-dummy")
-
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
-
-        noise = torch.randn(1, 3, 64, 64)
-        low_res = torch.randn(1, 3, 4, 4)
-        time_step = torch.tensor([42] * noise.shape[0])
-
-        with torch.no_grad():
-            output = model(noise, time_step, low_res)
-
-        output, _ = torch.split(output, 3, dim=1)
-        output_slice = output[0, -1, -3:, -3:].flatten()
-        # fmt: off
-        expected_output_slice = torch.tensor([-22.8782, -23.2652, -15.3966, -22.8034, -23.3159, -15.5640, -15.3970, -15.4614, - 10.4370])
-        # fmt: on
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
-
-
-class GlideTextToImageUNetModelTests(ModelTesterMixin, unittest.TestCase):
-    model_class = GlideTextToImageUNetModel
-
-    @property
-    def dummy_input(self):
-        batch_size = 4
-        num_channels = 3
-        sizes = (32, 32)
-        transformer_dim = 32
-        seq_len = 16
-
-        noise = torch.randn((batch_size, num_channels) + sizes).to(torch_device)
-        emb = torch.randn((batch_size, seq_len, transformer_dim)).to(torch_device)
-        time_step = torch.tensor([10] * noise.shape[0], device=torch_device)
-
-        return {"sample": noise, "timestep": time_step, "transformer_out": emb}
-
-    @property
-    def input_shape(self):
-        return (3, 32, 32)
-
-    @property
-    def output_shape(self):
-        return (6, 32, 32)
-
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
-            "attention_resolutions": (2,),
-            "channel_mult": (1, 2),
-            "in_channels": 3,
-            "out_channels": 6,
-            "model_channels": 32,
-            "num_head_channels": 8,
-            "num_heads_upsample": 1,
-            "num_res_blocks": 2,
-            "resblock_updown": True,
-            "resolution": 32,
-            "use_scale_shift_norm": True,
-            "transformer_dim": 32,
-        }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
-
-    def test_output(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-        model.eval()
-
-        with torch.no_grad():
-            output = model(**inputs_dict)
-
-        output, _ = torch.split(output, 3, dim=1)
-
-        self.assertIsNotNone(output)
-        expected_shape = inputs_dict["sample"].shape
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
-
-    def test_from_pretrained_hub(self):
-        model, loading_info = GlideTextToImageUNetModel.from_pretrained(
-            "fusing/unet-glide-text2im-dummy", output_loading_info=True
-        )
-        self.assertIsNotNone(model)
-        # self.assertEqual(len(loading_info["missing_keys"]), 0)
-
-        model.to(torch_device)
-        image = model(**self.dummy_input)
-
-        assert image is not None, "Make sure output is not None"
-
-    def test_output_pretrained(self):
-        model = GlideTextToImageUNetModel.from_pretrained("fusing/unet-glide-text2im-dummy")
-
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
-
-        noise = torch.randn((1, model.config.in_channels, model.config.resolution, model.config.resolution)).to(
-            torch_device
-        )
-        emb = torch.randn((1, 16, model.config.transformer_dim)).to(torch_device)
-        time_step = torch.tensor([10] * noise.shape[0], device=torch_device)
-
-        model.to(torch_device)
-        with torch.no_grad():
-            output = model(noise, time_step, emb)
-
-        output, _ = torch.split(output, 3, dim=1)
-        output_slice = output[0, -1, -3:, -3:].cpu().flatten()
-        # fmt: off
-        expected_output_slice = torch.tensor([2.7766, -10.3558, -14.9149, -0.9376, -14.9175, -17.7679, -5.5565, -12.9521, -12.9845])
-        # fmt: on
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+#    TODO(Patrick) - Re-add this test after having correctly added the final VE checkpoints
+#    def test_output_pretrained(self):
+#        model = UNetUnconditionalModel.from_pretrained("fusing/ddpm_dummy_update", subfolder="unet")
+#        model.eval()
+#
+#        torch.manual_seed(0)
+#        if torch.cuda.is_available():
+#            torch.cuda.manual_seed_all(0)
+#
+#        noise = torch.randn(1, model.config.in_channels, model.config.image_size, model.config.image_size)
+#        time_step = torch.tensor([10])
+#
+#        with torch.no_grad():
+#            output = model(noise, time_step)["sample"]
+#
+#        output_slice = output[0, -1, -3:, -3:].flatten()
+# fmt: off
+#        expected_output_slice = torch.tensor([0.2891, -0.1899, 0.2595, -0.6214, 0.0968, -0.2622, 0.4688, 0.1311, 0.0053])
+# fmt: on
+#        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
 
 class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
@@ -537,10 +335,10 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
 
     def test_from_pretrained_hub(self):
         model, loading_info = UNetUnconditionalModel.from_pretrained(
-            "fusing/unet-ldm-dummy", output_loading_info=True, ldm=True
+            "fusing/unet-ldm-dummy-update", output_loading_info=True
         )
         self.assertIsNotNone(model)
-        # self.assertEqual(len(loading_info["missing_keys"]), 0)
+        self.assertEqual(len(loading_info["missing_keys"]), 0)
 
         model.to(torch_device)
         image = model(**self.dummy_input)["sample"]
@@ -548,7 +346,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained(self):
-        model = UNetUnconditionalModel.from_pretrained("fusing/unet-ldm-dummy", ldm=True)
+        model = UNetUnconditionalModel.from_pretrained("fusing/unet-ldm-dummy-update")
         model.eval()
 
         torch.manual_seed(0)
@@ -568,27 +366,30 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
 
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
 
-    def test_output_pretrained_spatial_transformer(self):
-        model = UNetLDMModel.from_pretrained("fusing/unet-ldm-dummy-spatial")
-        model.eval()
 
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
-
-        noise = torch.randn(1, model.config.in_channels, model.config.image_size, model.config.image_size)
-        context = torch.ones((1, 16, 64), dtype=torch.float32)
-        time_step = torch.tensor([10] * noise.shape[0])
-
-        with torch.no_grad():
-            output = model(noise, time_step, context=context)
-
-        output_slice = output[0, -1, -3:, -3:].flatten()
-        # fmt: off
-        expected_output_slice = torch.tensor([61.3445, 56.9005, 29.4339, 59.5497, 60.7375, 34.1719, 48.1951, 42.6569, 25.0890])
-        # fmt: on
-
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+#    TODO(Patrick) - Re-add this test after having cleaned up LDM
+#    def test_output_pretrained_spatial_transformer(self):
+#        model = UNetLDMModel.from_pretrained("fusing/unet-ldm-dummy-spatial")
+#        model.eval()
+#
+#        torch.manual_seed(0)
+#        if torch.cuda.is_available():
+#            torch.cuda.manual_seed_all(0)
+#
+#        noise = torch.randn(1, model.config.in_channels, model.config.image_size, model.config.image_size)
+#        context = torch.ones((1, 16, 64), dtype=torch.float32)
+#        time_step = torch.tensor([10] * noise.shape[0])
+#
+#        with torch.no_grad():
+#            output = model(noise, time_step, context=context)
+#
+#        output_slice = output[0, -1, -3:, -3:].flatten()
+# fmt: off
+#        expected_output_slice = torch.tensor([61.3445, 56.9005, 29.4339, 59.5497, 60.7375, 34.1719, 48.1951, 42.6569, 25.0890])
+# fmt: on
+#
+#        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+#
 
 
 class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
@@ -641,44 +442,18 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
 
     def test_from_pretrained_hub(self):
         model, loading_info = UNetUnconditionalModel.from_pretrained(
-            "fusing/ncsnpp-ffhq-ve-dummy", sde=True, output_loading_info=True
+            "fusing/ncsnpp-ffhq-ve-dummy-update", output_loading_info=True
         )
         self.assertIsNotNone(model)
-        # self.assertEqual(len(loading_info["missing_keys"]), 0)
+        self.assertEqual(len(loading_info["missing_keys"]), 0)
 
         model.to(torch_device)
         image = model(**self.dummy_input)
 
         assert image is not None, "Make sure output is not None"
 
-    def test_output_pretrained_ve_small(self):
-        model = NCSNpp.from_pretrained("fusing/ncsnpp-cifar10-ve-dummy")
-        model.eval()
-        model.to(torch_device)
-
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
-
-        batch_size = 4
-        num_channels = 3
-        sizes = (32, 32)
-
-        noise = torch.ones((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor(batch_size * [1e-4]).to(torch_device)
-
-        with torch.no_grad():
-            output = model(noise, time_step)
-
-        output_slice = output[0, -3:, -3:, -1].flatten().cpu()
-        # fmt: off
-        expected_output_slice = torch.tensor([0.1315, 0.0741, 0.0393, 0.0455, 0.0556, 0.0180, -0.0832, -0.0644, -0.0856])
-        # fmt: on
-
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
-
     def test_output_pretrained_ve_mid(self):
-        model = UNetUnconditionalModel.from_pretrained("fusing/celebahq_256-ncsnpp-ve", sde=True)
+        model = UNetUnconditionalModel.from_pretrained("google/ncsnpp-celebahq-256")
         model.to(torch_device)
 
         torch.manual_seed(0)
@@ -703,7 +478,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
     def test_output_pretrained_ve_large(self):
-        model = UNetUnconditionalModel.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy", sde=True)
+        model = UNetUnconditionalModel.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy-update")
         model.to(torch_device)
 
         torch.manual_seed(0)
@@ -723,31 +498,6 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         output_slice = output[0, -3:, -3:, -1].flatten().cpu()
         # fmt: off
         expected_output_slice = torch.tensor([-0.0325, -0.0900, -0.0869, -0.0332, -0.0725, -0.0270, -0.0101, 0.0227, 0.0256])
-        # fmt: on
-
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
-
-    def test_output_pretrained_vp(self):
-        model = NCSNpp.from_pretrained("fusing/cifar10-ddpmpp-vp")
-        model.to(torch_device)
-
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
-
-        batch_size = 4
-        num_channels = 3
-        sizes = (32, 32)
-
-        noise = torch.randn((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor(batch_size * [9.0]).to(torch_device)
-
-        with torch.no_grad():
-            output = model(noise, time_step)
-
-        output_slice = output[0, -3:, -3:, -1].flatten().cpu()
-        # fmt: off
-        expected_output_slice = torch.tensor([0.3303, -0.2275, -2.8872, -0.1309, -1.2861, 3.4567, -1.0083, 2.5325, -1.3866])
         # fmt: on
 
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
@@ -802,7 +552,7 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
     def test_from_pretrained_hub(self):
         model, loading_info = VQModel.from_pretrained("fusing/vqgan-dummy", output_loading_info=True)
         self.assertIsNotNone(model)
-        # self.assertEqual(len(loading_info["missing_keys"]), 0)
+        self.assertEqual(len(loading_info["missing_keys"]), 0)
 
         model.to(torch_device)
         image = model(**self.dummy_input)
@@ -873,7 +623,7 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
     def test_from_pretrained_hub(self):
         model, loading_info = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy", output_loading_info=True)
         self.assertIsNotNone(model)
-        # self.assertEqual(len(loading_info["missing_keys"]), 0)
+        self.assertEqual(len(loading_info["missing_keys"]), 0)
 
         model.to(torch_device)
         image = model(**self.dummy_input)
@@ -930,7 +680,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_from_pretrained_hub(self):
-        model_path = "google/ddpm-cifar10"
+        model_path = "google/ddpm-cifar10-32"
 
         ddpm = DDPMPipeline.from_pretrained(model_path)
         ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path)
@@ -948,7 +698,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_ddpm_cifar10(self):
-        model_id = "google/ddpm-cifar10"
+        model_id = "google/ddpm-cifar10-32"
 
         unet = UNetUnconditionalModel.from_pretrained(model_id)
         scheduler = DDPMScheduler.from_config(model_id)
@@ -989,7 +739,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_ddim_cifar10(self):
-        model_id = "google/ddpm-cifar10"
+        model_id = "google/ddpm-cifar10-32"
 
         unet = UNetUnconditionalModel.from_pretrained(model_id)
         scheduler = DDIMScheduler(tensor_format="pt")
@@ -1009,7 +759,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_pndm_cifar10(self):
-        model_id = "google/ddpm-cifar10"
+        model_id = "google/ddpm-cifar10-32"
 
         unet = UNetUnconditionalModel.from_pretrained(model_id)
         scheduler = PNDMScheduler(tensor_format="pt")
@@ -1028,7 +778,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_ldm_text2img(self):
-        ldm = LatentDiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large")
+        ldm = LatentDiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large-256")
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
@@ -1042,7 +792,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_ldm_text2img_fast(self):
-        ldm = LatentDiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large")
+        ldm = LatentDiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large-256")
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
@@ -1055,29 +805,14 @@ class PipelineTesterMixin(unittest.TestCase):
         assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
 
     @slow
-    def test_glide_text2img(self):
-        model_id = "fusing/glide-base"
-        glide = GlidePipeline.from_pretrained(model_id)
-
-        prompt = "a pencil sketch of a corgi"
-        generator = torch.manual_seed(0)
-        image = glide(prompt, generator=generator, num_inference_steps_upscale=20)
-
-        image_slice = image[0, :3, :3, -1].cpu()
-
-        assert image.shape == (1, 256, 256, 3)
-        expected_slice = torch.tensor([0.7119, 0.7073, 0.6460, 0.7780, 0.7423, 0.6926, 0.7378, 0.7189, 0.7784])
-        assert (image_slice.flatten() - expected_slice).abs().max() < 1e-2
-
-    @slow
     def test_score_sde_ve_pipeline(self):
-        model = UNetUnconditionalModel.from_pretrained("fusing/ffhq_ncsnpp", sde=True)
+        model = UNetUnconditionalModel.from_pretrained("google/ncsnpp-ffhq-1024")
 
         torch.manual_seed(0)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(0)
 
-        scheduler = ScoreSdeVeScheduler.from_config("fusing/ffhq_ncsnpp")
+        scheduler = ScoreSdeVeScheduler.from_config("google/ncsnpp-ffhq-1024")
 
         sde_ve = ScoreSdeVePipeline(model=model, scheduler=scheduler)
 
@@ -1095,26 +830,6 @@ class PipelineTesterMixin(unittest.TestCase):
         else:
             expected_image_sum = 3382849024.0
             expected_image_mean = 1075.3788
-
-        assert (image.abs().sum() - expected_image_sum).abs().cpu().item() < 1e-2
-        assert (image.abs().mean() - expected_image_mean).abs().cpu().item() < 1e-4
-
-    @slow
-    def test_score_sde_vp_pipeline(self):
-        model = NCSNpp.from_pretrained("fusing/cifar10-ddpmpp-vp")
-        scheduler = ScoreSdeVpScheduler.from_config("fusing/cifar10-ddpmpp-vp")
-
-        sde_vp = ScoreSdeVpPipeline(model=model, scheduler=scheduler)
-
-        torch.manual_seed(0)
-        image = sde_vp(num_inference_steps=10)
-
-        expected_image_sum = 4183.2012
-        expected_image_mean = 1.3617
-
-        # on m1 mbp
-        # expected_image_sum = 4318.6729
-        # expected_image_mean = 1.4058
 
         assert (image.abs().sum() - expected_image_sum).abs().cpu().item() < 1e-2
         assert (image.abs().mean() - expected_image_mean).abs().cpu().item() < 1e-4
