@@ -43,18 +43,15 @@ class PNDMPipeline(DiffusionPipeline):
         )
         image = image.to(torch_device)
 
-        prk_time_steps = self.scheduler.get_timesteps(num_inference_steps, step_mode="prk")
-        for t in tqdm(range(len(prk_time_steps))):
-            t_orig = prk_time_steps[t]
-            model_output = self.unet(image, t_orig)["sample"]
+        self.scheduler.set_timesteps(num_inference_steps)
+        for i, t in enumerate(tqdm(self.scheduler.prk_timesteps)):
+            model_output = self.unet(image, t)["sample"]
 
-            image = self.scheduler.step_prk(model_output, t, image, num_inference_steps)["prev_sample"]
+            image = self.scheduler.step_prk(model_output, i, image, num_inference_steps)["prev_sample"]
 
-        timesteps = self.scheduler.get_timesteps(num_inference_steps, step_mode="plms")
-        for t in tqdm(range(len(timesteps))):
-            t_orig = timesteps[t]
-            model_output = self.unet(image, t_orig)["sample"]
+        for i, t in enumerate(tqdm(self.scheduler.plms_timesteps)):
+            model_output = self.unet(image, t)["sample"]
 
-            image = self.scheduler.step_plms(model_output, t, image, num_inference_steps)["prev_sample"]
+            image = self.scheduler.step_plms(model_output, i, image, num_inference_steps)["prev_sample"]
 
         return {"sample": image}

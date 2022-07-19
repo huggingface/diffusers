@@ -87,12 +87,12 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         self.cur_model_output = 0
         self.cur_sample = None
         self.ets = []
-        self.prk_time_steps = {}
-        self.time_steps = {}
 
         # setable values
         self.num_inference_steps = None
         self.timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
+        self.prk_timesteps = None
+        self.plms_timesteps = None
 
         self.tensor_format = tensor_format
         self.set_format(tensor_format=tensor_format)
@@ -102,27 +102,14 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = list(
             range(0, self.config.num_train_timesteps, self.config.num_train_timesteps // num_inference_steps)
         )
+
+        prk_time_steps = np.array(self.timesteps[-self.pndm_order :]).repeat(2) + np.tile(
+            np.array([0, self.config.num_train_timesteps // num_inference_steps // 2]), self.pndm_order
+        )
+        self.prk_timesteps = list(reversed(prk_time_steps[:-1].repeat(2)[1:-1]))
+        self.plms_timesteps = list(reversed(self.timesteps[:-3]))
+
         self.set_format(tensor_format=self.tensor_format)
-
-    def get_timesteps(self, num_inference_steps=None, step_mode="prk"):
-        if self.num_inference_steps is None and num_inference_steps is None:
-            raise ValueError("Must run set_timeteps() or provide a number of inference steps")
-        elif self.num_inference_steps != num_inference_steps:
-            self.set_timesteps(num_inference_steps)
-
-        inference_step_times = self.timesteps
-        num_inference_steps = self.num_inference_steps
-        if step_mode == "prk":
-            prk_time_steps = np.array(inference_step_times[-self.pndm_order :]).repeat(2) + np.tile(
-                np.array([0, self.config.num_train_timesteps // num_inference_steps // 2]), self.pndm_order
-            )
-            return list(reversed(prk_time_steps[:-1].repeat(2)[1:-1]))
-
-        elif step_mode == "plms":
-            return list(reversed(inference_step_times[:-3]))
-
-        else:
-            raise ValueError("PNDM Scheduler only accepts prk and plms step options")
 
     def step_prk(
         self,
@@ -136,7 +123,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         solution to the differential equation.
         """
         t = timestep
-        prk_time_steps = self.get_timesteps(num_inference_steps, step_mode="prk")
+        prk_time_steps = self.prk_timesteps
 
         t_orig = prk_time_steps[t // 4 * 4]
         t_orig_prev = prk_time_steps[min(t + 1, len(prk_time_steps) - 1)]
@@ -178,7 +165,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
                 "for more information."
             )
 
-        timesteps = self.get_timesteps(num_inference_steps, step_mode="plms")
+        timesteps = self.plms_timesteps
 
         t_orig = timesteps[t]
         t_orig_prev = timesteps[min(t + 1, len(timesteps) - 1)]

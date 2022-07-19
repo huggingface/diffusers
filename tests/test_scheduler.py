@@ -385,12 +385,14 @@ class PNDMSchedulerTest(SchedulerCommonTest):
             scheduler_class = self.scheduler_classes[0]
             scheduler_config = self.get_scheduler_config(**config)
             scheduler = scheduler_class(**scheduler_config)
+            scheduler.set_timesteps(kwargs["num_inference_steps"])
             # copy over dummy past residuals
             scheduler.ets = dummy_past_residuals[:]
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler.set_timesteps(kwargs["num_inference_steps"])
                 # copy over dummy past residuals
                 new_scheduler.ets = dummy_past_residuals[:]
 
@@ -418,6 +420,8 @@ class PNDMSchedulerTest(SchedulerCommonTest):
             scheduler_class = self.scheduler_classes[0]
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
+            scheduler.set_timesteps(kwargs["num_inference_steps"])
+
             # copy over dummy past residuals
             scheduler.ets = dummy_past_residuals[:]
 
@@ -426,6 +430,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
                 new_scheduler = scheduler_class.from_config(tmpdirname)
                 # copy over dummy past residuals
                 new_scheduler.ets = dummy_past_residuals[:]
+                new_scheduler.set_timesteps(kwargs["num_inference_steps"])
 
             output = scheduler.step_prk(residual, time_step, sample, **kwargs)["prev_sample"]
             new_output = new_scheduler.step_prk(residual, time_step, sample, **kwargs)["prev_sample"]
@@ -452,9 +457,11 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
+            # copy over dummy past residuals
             scheduler.ets = dummy_past_residuals[:]
 
             scheduler_pt = scheduler_class(tensor_format="pt", **scheduler_config)
+            # copy over dummy past residuals
             scheduler_pt.ets = dummy_past_residuals_pt[:]
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
@@ -484,6 +491,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
             sample = self.dummy_sample
             residual = 0.1 * sample
+            # copy over dummy past residuals
             dummy_past_residuals = [residual + 0.2, residual + 0.15, residual + 0.1, residual + 0.05]
             scheduler.ets = dummy_past_residuals[:]
 
@@ -540,20 +548,15 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         num_inference_steps = 10
         model = self.dummy_model()
         sample = self.dummy_sample_deter
+        scheduler.set_timesteps(num_inference_steps)
 
-        prk_time_steps = scheduler.get_timesteps(num_inference_steps, step_mode="prk")
-        for t in range(len(prk_time_steps)):
-            t_orig = prk_time_steps[t]
-            residual = model(sample, t_orig)
+        for i, t in enumerate(scheduler.prk_timesteps):
+            residual = model(sample, t)
+            sample = scheduler.step_prk(residual, i, sample, num_inference_steps)["prev_sample"]
 
-            sample = scheduler.step_prk(residual, t, sample, num_inference_steps)["prev_sample"]
-
-        timesteps = scheduler.get_timesteps(num_inference_steps, step_mode="plms")
-        for t in range(len(timesteps)):
-            t_orig = timesteps[t]
-            residual = model(sample, t_orig)
-
-            sample = scheduler.step_plms(residual, t, sample, num_inference_steps)["prev_sample"]
+        for i, t in enumerate(scheduler.plms_timesteps):
+            residual = model(sample, t)
+            sample = scheduler.step_plms(residual, i, sample, num_inference_steps)["prev_sample"]
 
         result_sum = np.sum(np.abs(sample))
         result_mean = np.mean(np.abs(sample))
