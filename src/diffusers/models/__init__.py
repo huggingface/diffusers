@@ -17,6 +17,7 @@
 # limitations under the License.
 
 from .unet import UNetModel
+from .unet_conditional import UNetConditionalModel
 from .unet_glide import GlideSuperResUNetModel, GlideTextToImageUNetModel, GlideUNetModel
 from .unet_ldm import UNetLDMModel
 from .unet_sde_score_estimation import NCSNpp

@@ -7,7 +7,15 @@ from .utils import is_inflect_available, is_transformers_available, is_unidecode
 __version__ = "0.0.4"
 
 from .modeling_utils import ModelMixin
-from .models import AutoencoderKL, NCSNpp, UNetLDMModel, UNetModel, UNetUnconditionalModel, VQModel
+from .models import (
+    AutoencoderKL,
+    NCSNpp,
+    UNetConditionalModel,
+    UNetLDMModel,
+    UNetModel,
+    UNetUnconditionalModel,
+    VQModel,
+)
 from .pipeline_utils import DiffusionPipeline
 from .pipelines import (
     DDIMPipeline,

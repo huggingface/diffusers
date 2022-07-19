@@ -42,7 +42,7 @@ class AttentionBlockNew(nn.Module):
         self.value = nn.Linear(channels, channels)
 
         self.rescale_output_factor = rescale_output_factor
-        self.proj_attn = zero_module(nn.Linear(channels, channels, 1))
+        self.proj_attn = nn.Linear(channels, channels, 1)
 
     def transpose_for_scores(self, projection: torch.Tensor) -> torch.Tensor:
         new_projection_shape = projection.size()[:-1] + (self.num_heads, -1)
@@ -147,6 +147,8 @@ class SpatialTransformer(nn.Module):
 
     def __init__(self, in_channels, n_heads, d_head, depth=1, dropout=0.0, context_dim=None):
         super().__init__()
+        self.n_heads = n_heads
+        self.d_head = d_head
         self.in_channels = in_channels
         inner_dim = n_heads * d_head
         self.norm = torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
@@ -160,7 +162,7 @@ class SpatialTransformer(nn.Module):
             ]
         )
 
-        self.proj_out = zero_module(nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0))
+        self.proj_out = nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x, context=None):
         # note: if no context is given, cross-attention defaults to self-attention
@@ -174,6 +176,12 @@ class SpatialTransformer(nn.Module):
         x = x.reshape(b, h, w, c).permute(0, 3, 1, 2)
         x = self.proj_out(x)
         return x + x_in
+
+    def set_weight(self, layer):
+        self.norm = layer.norm
+        self.proj_in = layer.proj_in
+        self.transformer_blocks = layer.transformer_blocks
+        self.proj_out = layer.proj_out
 
 
 class BasicTransformerBlock(nn.Module):
@@ -270,14 +278,15 @@ class FeedForward(nn.Module):
         return self.net(x)
 
 
-# TODO(Patrick) - this can and should be removed
-def zero_module(module):
-    """
-    Zero out the parameters of a module and return it.
-    """
-    for p in module.parameters():
-        p.detach().zero_()
-    return module
+# feedforward
+class GEGLU(nn.Module):
+    def __init__(self, dim_in, dim_out):
+        super().__init__()
+        self.proj = nn.Linear(dim_in, dim_out * 2)
+
+    def forward(self, x):
+        x, gate = self.proj(x).chunk(2, dim=-1)
+        return x * F.gelu(gate)
 
 
 # TODO(Patrick) - remove once all weights have been converted -> not needed anymore then
@@ -296,17 +305,6 @@ def default(val, d):
     if exists(val):
         return val
     return d() if isfunction(d) else d
-
-
-# feedforward
-class GEGLU(nn.Module):
-    def __init__(self, dim_in, dim_out):
-        super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out * 2)
-
-    def forward(self, x):
-        x, gate = self.proj(x).chunk(2, dim=-1)
-        return x * F.gelu(gate)
 
 
 # the main attention block that is used for all models
@@ -348,7 +346,7 @@ class AttentionBlock(nn.Module):
         if encoder_channels is not None:
             self.encoder_kv = nn.Conv1d(encoder_channels, channels * 2, 1)
 
-        self.proj = zero_module(nn.Conv1d(channels, channels, 1))
+        self.proj = nn.Conv1d(channels, channels, 1)
 
         self.overwrite_qkv = overwrite_qkv
         self.overwrite_linear = overwrite_linear
@@ -370,7 +368,7 @@ class AttentionBlock(nn.Module):
 
             self.GroupNorm_0 = nn.GroupNorm(num_groups=num_groups, num_channels=channels, eps=1e-6)
         else:
-            self.proj_out = zero_module(nn.Conv1d(channels, channels, 1))
+            self.proj_out = nn.Conv1d(channels, channels, 1)
             self.set_weights(self)
 
         self.is_overwritten = False
@@ -385,7 +383,7 @@ class AttentionBlock(nn.Module):
             self.qkv.weight.data = qkv_weight
             self.qkv.bias.data = qkv_bias
 
-            proj_out = zero_module(nn.Conv1d(self.channels, self.channels, 1))
+            proj_out = nn.Conv1d(self.channels, self.channels, 1)
             proj_out.weight.data = module.proj_out.weight.data[:, :, :, 0]
             proj_out.bias.data = module.proj_out.bias.data
 
