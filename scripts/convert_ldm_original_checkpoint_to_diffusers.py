@@ -17,6 +17,7 @@
 import argparse
 import json
 import torch
+from diffusers import VQModel, DDPMScheduler, UNetUnconditionalModel, LatentDiffusionUncondPipeline
 
 
 def shave_segments(path, n_shave_prefix_segments=1):
@@ -314,4 +315,18 @@ if __name__ == "__main__":
         config = json.loads(f.read())
 
     converted_checkpoint = convert_ldm_checkpoint(checkpoint, config)
-    torch.save(checkpoint, args.dump_path)
+
+    if "ldm" in config:
+        del config["ldm"]
+
+    model = UNetUnconditionalModel(**config)
+    model.load_state_dict(converted_checkpoint)
+
+    try:
+        scheduler = DDPMScheduler.from_config("/".join(args.checkpoint_path.split("/")[:-1]))
+        vqvae = VQModel.from_pretrained("/".join(args.checkpoint_path.split("/")[:-1]))
+
+        pipe = LatentDiffusionUncondPipeline(unet=model, scheduler=scheduler, vae=vqvae)
+        pipe.save_pretrained(args.dump_path)
+    except:
+        model.save_pretrained(args.dump_path)
