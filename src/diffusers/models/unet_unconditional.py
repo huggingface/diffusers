@@ -152,6 +152,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         progressive_input="input_skip",
         resnet_num_groups=32,
         continuous=True,
+        **kwargs,
     ):
         super().__init__()
         # register all __init__ params to be accessible via `self.config.<...>`
@@ -454,7 +455,6 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         # 5. up
         skip_sample = None
         for upsample_block in self.upsample_blocks:
-
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
             down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
 
