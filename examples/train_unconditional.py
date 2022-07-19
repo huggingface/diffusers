@@ -27,13 +27,11 @@ logger = get_logger(__name__)
 
 
 def main(args):
-    ddp_unused_params = DistributedDataParallelKwargs(find_unused_parameters=True)
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     accelerator = Accelerator(
         mixed_precision=args.mixed_precision,
         log_with="tensorboard",
         logging_dir=logging_dir,
-        kwargs_handlers=[ddp_unused_params],
     )
 
     model = UNetUnconditionalModel(
