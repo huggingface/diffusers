@@ -5,8 +5,8 @@ import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
-from .embeddings import Timesteps, TimestepEmbedding
-from .unet_new import UNetMidBlock2DCrossAttn, get_down_block, get_up_block
+from .embeddings import TimestepEmbedding, Timesteps
+from .unet_blocks import UNetMidBlock2DCrossAttn, get_down_block, get_up_block
 
 
 class UNetConditionalModel(ModelMixin, ConfigMixin):
