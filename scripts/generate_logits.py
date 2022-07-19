@@ -6,8 +6,9 @@ import torch
 api = HfApi()
 models = api.list_models(filter="diffusers")
 for mod in models:
-    if "google" in mod.author or "CompVis/latent-diffusion-celeba-256" in mod.modelId : 
-        if mod.modelId ==  "CompVis/latent-diffusion-celeba-256" or not has_file(mod.modelId, "config.json"):
+    if "google" in mod.author or mod.modelId == "CompVis/ldm-celebahq-256": 
+            
+        if mod.modelId == "CompVis/ldm-celebahq-256" or not has_file(mod.modelId, "config.json"):
             model = UNetUnconditionalModel.from_pretrained(mod.modelId, subfolder = "unet")
         else: 
             model = UNetUnconditionalModel.from_pretrained(mod.modelId)
@@ -29,6 +30,10 @@ google_ddpm_ema_bedroom_256 = torch.tensor([-2.3639, -2.5344,  0.0054, -0.6674, 
          1.8795, -2.5429, -0.1566, -0.3973,  1.2490,  2.6447,  1.2283, -0.5208,
         -2.8154, -3.5119,  2.3838,  1.2033,  1.7201, -2.1256, -1.4576,  2.7948,
          2.4204, -0.9752, -1.2546,  0.8027,  3.2758,  3.1365])
+CompVis_ldm_celebahq_256 = torch.tensor([-0.6531, -0.6891, -0.3172, -0.5375, -0.9140, -0.5367, -0.1175, -0.7869,
+        -0.3808, -0.4513, -0.2098, -0.0083,  0.3183,  0.5140,  0.2247, -0.1304,
+        -0.1302, -0.2802, -0.2084, -0.2025, -0.4967, -0.4873, -0.0861,  0.6925,
+         0.0250,  0.1290, -0.1543,  0.6316,  1.0460,  1.4943])
 google_ncsnpp_ffhq_1024 = torch.tensor([ 0.0911,  0.1107,  0.0182,  0.0435, -0.0805, -0.0608,  0.0381,  0.2172,
         -0.0280,  0.1327, -0.0299, -0.0255, -0.0050, -0.1170, -0.1046,  0.0309,
          0.1367,  0.1728, -0.0533, -0.0748, -0.0534,  0.1624,  0.0384, -0.1805,
