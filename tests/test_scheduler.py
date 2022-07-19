@@ -541,14 +541,14 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         model = self.dummy_model()
         sample = self.dummy_sample_deter
 
-        prk_time_steps = scheduler.get_prk_time_steps(num_inference_steps)
+        prk_time_steps = scheduler.get_timesteps(num_inference_steps, step_mode="prk")
         for t in range(len(prk_time_steps)):
             t_orig = prk_time_steps[t]
             residual = model(sample, t_orig)
 
             sample = scheduler.step_prk(residual, t, sample, num_inference_steps)["prev_sample"]
 
-        timesteps = scheduler.get_time_steps(num_inference_steps)
+        timesteps = scheduler.get_timesteps(num_inference_steps, step_mode="plms")
         for t in range(len(timesteps)):
             t_orig = timesteps[t]
             residual = model(sample, t_orig)
