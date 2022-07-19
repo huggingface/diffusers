@@ -15,7 +15,11 @@ import importlib
 import os
 from collections import OrderedDict
 
-import importlib_metadata
+try:
+    import importlib.metadata as importlib_metadata
+except:
+    import importlib_metadata
+    
 from requests.exceptions import HTTPError
 
 from .logging import get_logger
