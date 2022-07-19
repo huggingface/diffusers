@@ -191,6 +191,7 @@ setup(
     url="https://github.com/huggingface/diffusers",
     package_dir={"": "src"},
     packages=find_packages("src"),
+    include_package_data=True,
     python_requires=">=3.6.0",
     install_requires=install_requires,
     extras_require=extras,
