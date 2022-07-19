@@ -50,7 +50,7 @@ def init_git_repo(args, at_init: bool = False):
             Whether this function is called before any training or not. If `self.args.overwrite_output_dir` is `True`
             and `at_init` is `True`, the path to the repo (which is `self.args.output_dir`) might be wiped out.
     """
-    if not hasattr(args, "local_rank") or args.local_rank not in [-1, 0]:
+    if hasattr(args, "local_rank") and args.local_rank not in [-1, 0]:
         return
     hub_token = args.hub_token if hasattr(args, "hub_token") else None
     use_auth_token = True if hub_token is None else hub_token
@@ -112,7 +112,7 @@ def push_to_hub(
         commit and an object to track the progress of the commit if `blocking=True`
     """
 
-    if args.hub_model_id is None:
+    if not hasattr(args, "hub_model_id") or args.hub_model_id is None:
         model_name = Path(args.output_dir).name
     else:
         model_name = args.hub_model_id.split("/")[-1]
@@ -123,7 +123,7 @@ def push_to_hub(
     pipeline.save_pretrained(output_dir)
 
     # Only push from one node.
-    if not hasattr(args, "local_rank") or args.local_rank not in [-1, 0]:
+    if hasattr(args, "local_rank") and args.local_rank not in [-1, 0]:
         return
 
     # Cancel any async push in progress if blocking=True. The commits will all be pushed together.
