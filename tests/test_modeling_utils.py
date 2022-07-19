@@ -585,7 +585,7 @@ class TemporalUNetModelTests(ModelTesterMixin, unittest.TestCase):
         noise = floats_tensor((batch_size, seq_len, num_features)).to(torch_device)
         time_step = torch.tensor([10] * batch_size).to(torch_device)
 
-        return {"sample": noise, "timesteps": time_step}
+        return {"sample": noise, "timestep": time_step}
 
     @property
     def input_shape(self):

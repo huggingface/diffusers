@@ -130,7 +130,7 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
             nn.Conv1d(dim, transition_dim, 1),
         )
 
-    def forward(self, sample, timesteps):
+    def forward(self, sample, timestep):
         """
         x : [ batch x horizon x transition ]
         """
@@ -138,7 +138,7 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
 
         x = x.permute(0, 2, 1)
 
-        t = self.time_mlp(timesteps)
+        t = self.time_mlp(timestep)
         h = []
 
         for resnet, resnet2, downsample in self.downs:
