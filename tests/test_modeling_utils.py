@@ -22,6 +22,7 @@ import unittest
 import numpy as np
 import torch
 
+from diffusers import UNetConditionalModel  # TODO(Patrick) - need to write tests with it
 from diffusers import (
     AutoencoderKL,
     DDIMPipeline,
@@ -40,17 +41,14 @@ from diffusers import (
     ScoreSdeVeScheduler,
     ScoreSdeVpPipeline,
     ScoreSdeVpScheduler,
-    UNetConditionalModel,
     UNetLDMModel,
     UNetUnconditionalModel,
     VQModel,
 )
 from diffusers.configuration_utils import ConfigMixin
 from diffusers.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertModel
 from diffusers.testing_utils import floats_tensor, slow, torch_device
 from diffusers.training_utils import EMAModel
-from transformers import BertTokenizer
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -1030,7 +1028,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_ldm_text2img(self):
-        ldm = LatentDiffusionPipeline.from_pretrained("/home/patrick/latent-diffusion-text2im-large")
+        ldm = LatentDiffusionPipeline.from_pretrained("CompVis/latent-diffusion-text2im-large")
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
@@ -1044,7 +1042,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_ldm_text2img_fast(self):
-        ldm = LatentDiffusionPipeline.from_pretrained("/home/patrick/latent-diffusion-text2im-large")
+        ldm = LatentDiffusionPipeline.from_pretrained("CompVis/latent-diffusion-text2im-large")
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
