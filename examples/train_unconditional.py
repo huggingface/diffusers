@@ -117,7 +117,7 @@ def main(args):
             noise = torch.randn(clean_images.shape).to(clean_images.device)
             bsz = clean_images.shape[0]
             # Sample a random timestep for each image
-            timesteps = torch.randint(0, noise_scheduler.timesteps, (bsz,), device=clean_images.device).long()
+            timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (bsz,), device=clean_images.device).long()
 
             # Add noise to the clean images according to the noise magnitude at each timestep
             # (this is the forward diffusion process)
@@ -157,7 +157,7 @@ def main(args):
 
                 generator = torch.manual_seed(0)
                 # run pipeline in inference (sample random noise and denoise)
-                images = pipeline(generator=generator, batch_size=args.eval_batch_size, num_inference_steps=50)
+                images = pipeline(generator=generator, batch_size=args.eval_batch_size, num_inference_steps=50)["sample"]
 
             # denormalize the images and save to tensorboard
             images_processed = (images.cpu() + 1.0) * 127.5
@@ -165,11 +165,12 @@ def main(args):
 
             accelerator.trackers[0].writer.add_images("test_samples", images_processed, epoch)
 
-            # save the model
-            if args.push_to_hub:
-                push_to_hub(args, pipeline, repo, commit_message=f"Epoch {epoch}", blocking=False)
-            else:
-                pipeline.save_pretrained(args.output_dir)
+            if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
+                # save the model
+                if args.push_to_hub:
+                    push_to_hub(args, pipeline, repo, commit_message=f"Epoch {epoch}", blocking=False)
+                else:
+                    pipeline.save_pretrained(args.output_dir)
         accelerator.wait_for_everyone()
 
     accelerator.end_training()
@@ -185,6 +186,7 @@ if __name__ == "__main__":
     parser.add_argument("--train_batch_size", type=int, default=16)
     parser.add_argument("--eval_batch_size", type=int, default=16)
     parser.add_argument("--num_epochs", type=int, default=100)
+    parser.add_argument("--save_model_epochs", type=int, default=10)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
     parser.add_argument("--learning_rate", type=float, default=1e-4)
     parser.add_argument("--lr_scheduler", type=str, default="cosine")
