@@ -7,36 +7,13 @@ from .utils import is_inflect_available, is_transformers_available, is_unidecode
 __version__ = "0.0.4"
 
 from .modeling_utils import ModelMixin
-from .models import (
-    AutoencoderKL,
-    NCSNpp,
-    UNetConditionalModel,
-    UNetLDMModel,
-    UNetModel,
-    UNetUnconditionalModel,
-    VQModel,
-)
+from .models import AutoencoderKL, UNetConditionalModel, UNetUnconditionalModel, VQModel
 from .pipeline_utils import DiffusionPipeline
-from .pipelines import (
-    DDIMPipeline,
-    DDPMPipeline,
-    LatentDiffusionUncondPipeline,
-    PNDMPipeline,
-    ScoreSdeVePipeline,
-    ScoreSdeVpPipeline,
-)
-from .schedulers import (
-    DDIMScheduler,
-    DDPMScheduler,
-    PNDMScheduler,
-    SchedulerMixin,
-    ScoreSdeVeScheduler,
-    ScoreSdeVpScheduler,
-)
+from .pipelines import DDIMPipeline, DDPMPipeline, LatentDiffusionUncondPipeline, PNDMPipeline, ScoreSdeVePipeline
+from .schedulers import DDIMScheduler, DDPMScheduler, PNDMScheduler, SchedulerMixin, ScoreSdeVeScheduler
 
 
 if is_transformers_available():
-    from .models.unet_glide import GlideSuperResUNetModel, GlideTextToImageUNetModel, GlideUNetModel
-    from .pipelines import GlidePipeline, LatentDiffusionPipeline
+    from .pipelines import LatentDiffusionPipeline
 else:
     from .utils.dummy_transformers_objects import *
