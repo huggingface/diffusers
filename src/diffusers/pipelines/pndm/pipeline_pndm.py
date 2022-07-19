@@ -27,6 +27,7 @@ class PNDMPipeline(DiffusionPipeline):
         scheduler = scheduler.set_format("pt")
         self.register_modules(unet=unet, scheduler=scheduler)
 
+    @torch.no_grad()
     def __call__(self, batch_size=1, generator=None, torch_device=None, num_inference_steps=50):
         # For more information on the sampling method you can take a look at Algorithm 2 of
         # the official paper: https://arxiv.org/pdf/2202.09778.pdf
@@ -45,21 +46,15 @@ class PNDMPipeline(DiffusionPipeline):
         prk_time_steps = self.scheduler.get_prk_time_steps(num_inference_steps)
         for t in tqdm(range(len(prk_time_steps))):
             t_orig = prk_time_steps[t]
-            model_output = self.unet(image, t_orig)
-
-            if isinstance(model_output, dict):
-                model_output = model_output["sample"]
+            model_output = self.unet(image, t_orig)["sample"]
 
             image = self.scheduler.step_prk(model_output, t, image, num_inference_steps)["prev_sample"]
 
         timesteps = self.scheduler.get_time_steps(num_inference_steps)
         for t in tqdm(range(len(timesteps))):
             t_orig = timesteps[t]
-            model_output = self.unet(image, t_orig)
-
-            if isinstance(model_output, dict):
-                model_output = model_output["sample"]
+            model_output = self.unet(image, t_orig)["sample"]
 
             image = self.scheduler.step_plms(model_output, t, image, num_inference_steps)["prev_sample"]
 
-        return image
+        return {"sample": image}

@@ -665,9 +665,9 @@ class PipelineTesterMixin(unittest.TestCase):
 
         generator = torch.manual_seed(0)
 
-        image = ddpm(generator=generator)
+        image = ddpm(generator=generator)["sample"]
         generator = generator.manual_seed(0)
-        new_image = new_ddpm(generator=generator)
+        new_image = new_ddpm(generator=generator)["sample"]
 
         assert (image - new_image).abs().sum() < 1e-5, "Models don't give the same forward pass"
 
@@ -683,9 +683,9 @@ class PipelineTesterMixin(unittest.TestCase):
 
         generator = torch.manual_seed(0)
 
-        image = ddpm(generator=generator)
+        image = ddpm(generator=generator)["sample"]
         generator = generator.manual_seed(0)
-        new_image = ddpm_from_hub(generator=generator)
+        new_image = ddpm_from_hub(generator=generator)["sample"]
 
         assert (image - new_image).abs().sum() < 1e-5, "Models don't give the same forward pass"
 
@@ -700,7 +700,7 @@ class PipelineTesterMixin(unittest.TestCase):
         ddpm = DDPMPipeline(unet=unet, scheduler=scheduler)
 
         generator = torch.manual_seed(0)
-        image = ddpm(generator=generator)
+        image = ddpm(generator=generator)["sample"]
 
         image_slice = image[0, -1, -3:, -3:].cpu()
 
@@ -759,7 +759,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
         pndm = PNDMPipeline(unet=unet, scheduler=scheduler)
         generator = torch.manual_seed(0)
-        image = pndm(generator=generator)
+        image = pndm(generator=generator)["sample"]
 
         image_slice = image[0, -1, -3:, -3:].cpu()
 

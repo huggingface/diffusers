@@ -27,6 +27,7 @@ class DDIMPipeline(DiffusionPipeline):
         scheduler = scheduler.set_format("pt")
         self.register_modules(unet=unet, scheduler=scheduler)
 
+    @torch.no_grad()
     def __call__(self, batch_size=1, generator=None, torch_device=None, eta=0.0, num_inference_steps=50):
         # eta corresponds to η in paper and should be between [0, 1]
         if torch_device is None:
@@ -46,11 +47,7 @@ class DDIMPipeline(DiffusionPipeline):
 
         for t in tqdm(self.scheduler.timesteps):
             # 1. predict noise model_output
-            with torch.no_grad():
-                model_output = self.unet(image, t)
-
-                if isinstance(model_output, dict):
-                    model_output = model_output["sample"]
+            model_output = self.unet(image, t)["sample"]
 
             # 2. predict previous mean of image x_t-1 and add variance depending on eta
             # do x_t -> x_t-1
