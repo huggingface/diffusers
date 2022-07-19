@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint
 
-from tqdm.auto import tqdm
+import tqdm
 from transformers.activations import ACT2FN
 from transformers.configuration_utils import PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutput

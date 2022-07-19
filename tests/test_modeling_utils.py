@@ -1011,7 +1011,7 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_pndm_cifar10(self):
         model_id = "google/ddpm-cifar10"
 
-        unet = UNetUnconditionalModel.from_pretrained(model_id, ddpm=True)
+        unet = UNetUnconditionalModel.from_pretrained(model_id)
         scheduler = PNDMScheduler(tensor_format="pt")
 
         pndm = PNDMPipeline(unet=unet, scheduler=scheduler)
@@ -1072,7 +1072,6 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     def test_score_sde_ve_pipeline(self):
         model = UNetUnconditionalModel.from_pretrained("fusing/ffhq_ncsnpp", sde=True)
-        model = UNetUnconditionalModel.from_pretrained("google/ffhq_ncsnpp")
 
         torch.manual_seed(0)
         if torch.cuda.is_available():
