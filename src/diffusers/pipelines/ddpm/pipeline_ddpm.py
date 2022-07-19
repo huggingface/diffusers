@@ -27,7 +27,7 @@ class DDPMPipeline(DiffusionPipeline):
         scheduler = scheduler.set_format("pt")
         self.register_modules(unet=unet, scheduler=scheduler)
 
-    def __call__(self, batch_size=1, generator=None, torch_device=None, num_inference_steps=1000):
+    def __call__(self, batch_size=1, generator=None, torch_device=None):
         if torch_device is None:
             torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -41,7 +41,7 @@ class DDPMPipeline(DiffusionPipeline):
         image = image.to(torch_device)
 
         # set step values
-        self.scheduler.set_timesteps(num_inference_steps)
+        self.scheduler.set_timesteps(1000)
 
         for t in tqdm(self.scheduler.timesteps):
             # 1. predict noise model_output
