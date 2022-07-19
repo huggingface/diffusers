@@ -255,8 +255,6 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "ch": 32,
-            "ch_mult": (1, 2),
             "block_channels": (32, 64),
             "down_blocks": ("UNetResDownBlock2D", "UNetResAttnDownBlock2D"),
             "up_blocks": ("UNetResAttnUpBlock2D", "UNetResUpBlock2D"),
@@ -264,8 +262,6 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
             "out_channels": 3,
             "in_channels": 3,
             "num_res_blocks": 2,
-            "attn_resolutions": (16,),
-            "resolution": 32,
             "image_size": 32,
         }
         inputs_dict = self.dummy_input
@@ -322,13 +318,11 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
             "in_channels": 4,
             "out_channels": 4,
             "num_res_blocks": 2,
-            "attention_resolutions": (16,),
             "block_channels": (32, 64),
             "num_head_channels": 32,
             "conv_resample": True,
             "down_blocks": ("UNetResDownBlock2D", "UNetResDownBlock2D"),
             "up_blocks": ("UNetResUpBlock2D", "UNetResUpBlock2D"),
-            "ldm": True,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
@@ -529,8 +523,8 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
             "ch": 64,
             "out_ch": 3,
             "num_res_blocks": 1,
-            "attn_resolutions": [],
             "in_channels": 3,
+            "attn_resolutions": [],
             "resolution": 32,
             "z_channels": 3,
             "n_embed": 256,
@@ -605,11 +599,11 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
             "ch_mult": (1,),
             "embed_dim": 4,
             "in_channels": 3,
+            "attn_resolutions": [],
             "num_res_blocks": 1,
             "out_ch": 3,
             "resolution": 32,
             "z_channels": 4,
-            "attn_resolutions": [],
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
@@ -655,7 +649,6 @@ class PipelineTesterMixin(unittest.TestCase):
         model = UNetUnconditionalModel(
             block_channels=(32, 64),
             num_res_blocks=2,
-            attn_resolutions=(16,),
             image_size=32,
             in_channels=3,
             out_channels=3,
