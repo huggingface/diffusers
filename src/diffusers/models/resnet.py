@@ -5,6 +5,70 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+class Upsample1D(nn.Module):
+    """
+    An upsampling layer with an optional convolution. :param channels: channels in the inputs and outputs. :param
+    use_conv: a bool determining if a convolution is applied. :param dims: determines if the signal is 1D, 2D, or 3D.
+    If 3D, then
+                 upsampling occurs in the inner-two dimensions.
+    """
+
+    def __init__(self, channels, use_conv=False, use_conv_transpose=False, out_channels=None, name="conv"):
+        super().__init__()
+        self.channels = channels
+        self.out_channels = out_channels or channels
+        self.use_conv = use_conv
+        self.use_conv_transpose = use_conv_transpose
+        self.name = name
+
+        # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
+        self.conv = None
+        if use_conv_transpose:
+            self.conv = nn.ConvTranspose1d(channels, self.out_channels, 4, 2, 1)
+        elif use_conv:
+            self.conv = nn.Conv1d(self.channels, self.out_channels, 3, padding=1)
+
+    def forward(self, x):
+        assert x.shape[1] == self.channels
+        if self.use_conv_transpose:
+            return self.conv(x)
+
+        x = F.interpolate(x, scale_factor=2.0, mode="nearest")
+
+        if self.use_conv:
+            x = self.conv(x)
+
+        return x
+
+
+class Downsample1D(nn.Module):
+    """
+    A downsampling layer with an optional convolution. :param channels: channels in the inputs and outputs. :param
+    use_conv: a bool determining if a convolution is applied. :param dims: determines if the signal is 1D, 2D, or 3D.
+    If 3D, then
+                 downsampling occurs in the inner-two dimensions.
+    """
+
+    def __init__(self, channels, use_conv=False, out_channels=None, padding=1, name="conv"):
+        super().__init__()
+        self.channels = channels
+        self.out_channels = out_channels or channels
+        self.use_conv = use_conv
+        self.padding = padding
+        stride = 2
+        self.name = name
+
+        if use_conv:
+            self.conv = nn.Conv1d(self.channels, self.out_channels, 3, stride=stride, padding=padding)
+        else:
+            assert self.channels == self.out_channels
+            self.conv = nn.AvgPool1d(kernel_size=stride, stride=stride)
+
+    def forward(self, x):
+        assert x.shape[1] == self.channels
+        return self.conv(x)
+
+
 class Upsample2D(nn.Module):
     """
     An upsampling layer with an optional convolution.
@@ -372,6 +436,76 @@ class ResnetBlock2D(nn.Module):
 class Mish(torch.nn.Module):
     def forward(self, x):
         return x * torch.tanh(torch.nn.functional.softplus(x))
+
+
+class Conv1dBlock(nn.Module):
+    """
+    Conv1d --> GroupNorm --> Mish
+    """
+
+    def __init__(self, inp_channels, out_channels, kernel_size, n_groups=8):
+        super().__init__()
+
+        self.block = nn.Sequential(
+            nn.Conv1d(inp_channels, out_channels, kernel_size, padding=kernel_size // 2),
+            RearrangeDim(),
+            #            Rearrange("batch channels horizon -> batch channels 1 horizon"),
+            nn.GroupNorm(n_groups, out_channels),
+            RearrangeDim(),
+            #            Rearrange("batch channels 1 horizon -> batch channels horizon"),
+            nn.Mish(),
+        )
+
+    def forward(self, x):
+        return self.block(x)
+
+
+class RearrangeDim(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, tensor):
+        if len(tensor.shape) == 2:
+            return tensor[:, :, None]
+        if len(tensor.shape) == 3:
+            return tensor[:, :, None, :]
+        elif len(tensor.shape) == 4:
+            return tensor[:, :, 0, :]
+        else:
+            raise ValueError(f"`len(tensor)`: {len(tensor)} has to be 2, 3 or 4.")
+
+
+# unet_rl.py
+class ResidualTemporalBlock(nn.Module):
+    def __init__(self, inp_channels, out_channels, embed_dim, horizon, kernel_size=5):
+        super().__init__()
+
+        self.blocks = nn.ModuleList(
+            [
+                Conv1dBlock(inp_channels, out_channels, kernel_size),
+                Conv1dBlock(out_channels, out_channels, kernel_size),
+            ]
+        )
+
+        self.time_mlp = nn.Sequential(
+            nn.Mish(),
+            nn.Linear(embed_dim, out_channels),
+            RearrangeDim(),
+            #            Rearrange("batch t -> batch t 1"),
+        )
+
+        self.residual_conv = (
+            nn.Conv1d(inp_channels, out_channels, 1) if inp_channels != out_channels else nn.Identity()
+        )
+
+    def forward(self, x, t):
+        """
+        x : [ batch_size x inp_channels x horizon ] t : [ batch_size x embed_dim ] returns: out : [ batch_size x
+        out_channels x horizon ]
+        """
+        out = self.blocks[0](x) + self.time_mlp(t)
+        out = self.blocks[1](out)
+        return out + self.residual_conv(x)
 
 
 def upsample_2d(x, kernel=None, factor=2, gain=1):
