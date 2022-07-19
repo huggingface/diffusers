@@ -90,7 +90,21 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         self.ets = []
         self.prk_time_steps = {}
         self.time_steps = {}
-        self.set_prk_mode()
+        # self.set_prk_mode()
+
+        # setable values
+        self.num_inference_steps = None
+        self.timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
+
+        self.tensor_format = tensor_format
+        self.set_format(tensor_format=tensor_format)
+
+    def set_timesteps(self, num_inference_steps):
+        self.num_inference_steps = num_inference_steps
+        self.timesteps = np.arange(
+            0, self.config.num_train_timesteps, self.config.num_train_timesteps // self.num_inference_steps
+        )[::-1].copy()
+        self.set_format(tensor_format=self.tensor_format)
 
     def get_prk_time_steps(self, num_inference_steps):
         if num_inference_steps in self.prk_time_steps:
@@ -118,19 +132,19 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         return self.time_steps[num_inference_steps]
 
-    def set_prk_mode(self):
-        self.mode = "prk"
+    # def set_prk_mode(self):
+    #     self.mode = "prk"
+    #
+    # def set_plms_mode(self):
+    #     self.mode = "plms"
 
-    def set_plms_mode(self):
-        self.mode = "plms"
-
-    def step(self, *args, **kwargs):
-        if self.mode == "prk":
-            return self.step_prk(*args, **kwargs)
-        if self.mode == "plms":
-            return self.step_plms(*args, **kwargs)
-
-        raise ValueError(f"mode {self.mode} does not exist.")
+    # def step(self, *args, **kwargs):
+    #     if self.mode == "prk":
+    #         return self.step_prk(*args, **kwargs)
+    #     if self.mode == "plms":
+    #         return self.step_plms(*args, **kwargs)
+    #
+    #     raise ValueError(f"mode {self.mode} does not exist.")
 
     def step_prk(
         self,
