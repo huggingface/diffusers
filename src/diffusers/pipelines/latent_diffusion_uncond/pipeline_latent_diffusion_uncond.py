@@ -1,6 +1,6 @@
 import torch
 
-import tqdm
+from tqdm.auto import tqdm
 
 from ...pipeline_utils import DiffusionPipeline
 
@@ -35,7 +35,7 @@ class LatentDiffusionUncondPipeline(DiffusionPipeline):
 
         self.scheduler.set_timesteps(num_inference_steps)
 
-        for t in tqdm.tqdm(self.scheduler.timesteps):
+        for t in tqdm(self.scheduler.timesteps):
             with torch.no_grad():
                 model_output = self.unet(image, t)
 

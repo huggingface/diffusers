@@ -16,7 +16,7 @@
 
 import torch
 
-import tqdm
+from tqdm.auto import tqdm
 
 from ...pipeline_utils import DiffusionPipeline
 
@@ -41,7 +41,7 @@ class DDPMPipeline(DiffusionPipeline):
         image = image.to(torch_device)
 
         num_prediction_steps = len(self.scheduler)
-        for t in tqdm.tqdm(reversed(range(num_prediction_steps)), total=num_prediction_steps):
+        for t in tqdm(reversed(range(num_prediction_steps)), total=num_prediction_steps):
             # 1. predict noise model_output
             with torch.no_grad():
                 model_output = self.unet(image, t)

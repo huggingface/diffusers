@@ -16,7 +16,7 @@
 
 import torch
 
-import tqdm
+from tqdm.auto import tqdm
 
 from ...pipeline_utils import DiffusionPipeline
 
@@ -43,7 +43,7 @@ class PNDMPipeline(DiffusionPipeline):
         image = image.to(torch_device)
 
         prk_time_steps = self.scheduler.get_prk_time_steps(num_inference_steps)
-        for t in tqdm.tqdm(range(len(prk_time_steps))):
+        for t in tqdm(range(len(prk_time_steps))):
             t_orig = prk_time_steps[t]
             model_output = self.unet(image, t_orig)
 
@@ -53,7 +53,7 @@ class PNDMPipeline(DiffusionPipeline):
             image = self.scheduler.step_prk(model_output, t, image, num_inference_steps)["prev_sample"]
 
         timesteps = self.scheduler.get_time_steps(num_inference_steps)
-        for t in tqdm.tqdm(range(len(timesteps))):
+        for t in tqdm(range(len(timesteps))):
             t_orig = timesteps[t]
             model_output = self.unet(image, t_orig)
 

@@ -124,7 +124,7 @@ def assign_to_checkpoint(paths, checkpoint, old_checkpoint, attention_paths_to_s
 
 def convert_ldm_checkpoint(checkpoint, config):
     """
-    Takes a state dict and the path to
+    Takes a state dict and a config, and returns a converted checkpoint.
     """
     new_checkpoint = {}
 
@@ -142,15 +142,15 @@ def convert_ldm_checkpoint(checkpoint, config):
     new_checkpoint['conv_out.bias'] = checkpoint['out.2.bias']
 
     # Retrieves the keys for the input blocks only
-    num_input_blocks = len({shave_segments(layer, -2) for layer in checkpoint if 'input_blocks' in layer})
+    num_input_blocks = len({'.'.join(layer.split('.')[:2]) for layer in checkpoint if 'input_blocks' in layer})
     input_blocks = {layer_id: [key for key in checkpoint if f'input_blocks.{layer_id}' in key] for layer_id in range(num_input_blocks)}
 
     # Retrieves the keys for the middle blocks only
-    num_middle_blocks = len({shave_segments(layer, -2) for layer in checkpoint if 'middle_block' in layer})
+    num_middle_blocks = len({'.'.join(layer.split('.')[:2]) for layer in checkpoint if 'middle_block' in layer})
     middle_blocks = {layer_id: [key for key in checkpoint if f'middle_block.{layer_id}' in key] for layer_id in range(num_middle_blocks)}
 
     # Retrieves the keys for the output blocks only
-    num_output_blocks = len({shave_segments(layer, -2) for layer in checkpoint if 'output_blocks' in layer})
+    num_output_blocks = len({'.'.join(layer.split('.')[:2]) for layer in checkpoint if 'output_blocks' in layer})
     output_blocks = {layer_id: [key for key in checkpoint if f'output_blocks.{layer_id}' in key] for layer_id in range(num_output_blocks)}
 
     for i in range(1, num_input_blocks):
