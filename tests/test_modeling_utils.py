@@ -969,7 +969,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_ddim_lsun(self):
-        model_id = "google/ddpm-lsun-bedroom-ema"
+        model_id = "google/ddpm-ema-bedroom-256"
 
         unet = UNetUnconditionalModel.from_pretrained(model_id)
         scheduler = DDIMScheduler.from_config(model_id)
@@ -1028,7 +1028,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_ldm_text2img(self):
-        ldm = LatentDiffusionPipeline.from_pretrained("CompVis/latent-diffusion-text2im-large")
+        ldm = LatentDiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large")
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
@@ -1042,7 +1042,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_ldm_text2img_fast(self):
-        ldm = LatentDiffusionPipeline.from_pretrained("CompVis/latent-diffusion-text2im-large")
+        ldm = LatentDiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large")
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
@@ -1121,7 +1121,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_ldm_uncond(self):
-        ldm = LatentDiffusionUncondPipeline.from_pretrained("CompVis/latent-diffusion-celeba-256")
+        ldm = LatentDiffusionUncondPipeline.from_pretrained("CompVis/ldm-celebahq-256")
 
         generator = torch.manual_seed(0)
         image = ldm(generator=generator, num_inference_steps=5)["sample"]
