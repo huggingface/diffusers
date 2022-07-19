@@ -122,7 +122,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             return list(reversed(inference_step_times[:-3]))
 
         else:
-            raise ValueError("PNDM Scheduler only accpets prk and plms step options")
+            raise ValueError("PNDM Scheduler only accepts prk and plms step options")
 
     def step_prk(
         self,
