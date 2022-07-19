@@ -94,6 +94,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         self.set_format(tensor_format=tensor_format)
 
     def set_timesteps(self, num_inference_steps):
+        num_inference_steps = min(self.config.num_train_timesteps, num_inference_steps)
         self.num_inference_steps = num_inference_steps
         self.timesteps = np.arange(
             0, self.config.num_train_timesteps, self.config.num_train_timesteps // self.num_inference_steps
