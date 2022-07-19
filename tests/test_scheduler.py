@@ -70,7 +70,6 @@ class SchedulerCommonTest(unittest.TestCase):
         num_inference_steps = kwargs.pop("num_inference_steps", None)
 
         for scheduler_class in self.scheduler_classes:
-            scheduler_class = self.scheduler_classes[0]
             sample = self.dummy_sample
             residual = 0.1 * sample
 
@@ -102,7 +101,6 @@ class SchedulerCommonTest(unittest.TestCase):
             sample = self.dummy_sample
             residual = 0.1 * sample
 
-            scheduler_class = self.scheduler_classes[0]
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
@@ -417,7 +415,6 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         dummy_past_residuals = [residual + 0.2, residual + 0.15, residual + 0.1, residual + 0.05]
 
         for scheduler_class in self.scheduler_classes:
-            scheduler_class = self.scheduler_classes[0]
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
             scheduler.set_timesteps(kwargs["num_inference_steps"])
@@ -619,7 +616,6 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
         kwargs = dict(self.forward_default_kwargs)
 
         for scheduler_class in self.scheduler_classes:
-            scheduler_class = self.scheduler_classes[0]
             sample = self.dummy_sample
             residual = 0.1 * sample
 
@@ -648,7 +644,6 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
             sample = self.dummy_sample
             residual = 0.1 * sample
 
-            scheduler_class = self.scheduler_classes[0]
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
