@@ -51,13 +51,7 @@ class DDPMPipeline(DiffusionPipeline):
             # 2. predict previous mean of image x_t-1
             pred_prev_image = self.scheduler.step(model_output, t, image)["prev_sample"]
 
-            # 3. optionally sample variance
-            variance = 0
-            if t > 0:
-                noise = torch.randn(image.shape, generator=generator).to(image.device)
-                variance = self.scheduler.get_variance(t).sqrt() * noise
-
-            # 4. set current image to prev_image: x_t -> x_t-1
-            image = pred_prev_image + variance
+            # 3. set current image to prev_image: x_t -> x_t-1
+            image = pred_prev_image
 
         return {"sample": image}

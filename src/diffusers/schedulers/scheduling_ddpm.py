@@ -101,7 +101,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         )[::-1].copy()
         self.set_format(tensor_format=self.tensor_format)
 
-    def get_variance(self, t, variance_type=None):
+    def _get_variance(self, t, variance_type=None):
         alpha_prod_t = self.alphas_cumprod[t]
         alpha_prod_t_prev = self.alphas_cumprod[t - 1] if t > 0 else self.one
 
@@ -133,6 +133,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: Union[torch.FloatTensor, np.ndarray],
         predict_epsilon=True,
+        generator=None,
     ):
         t = timestep
         # 1. compute alphas, betas
@@ -160,6 +161,14 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         # 5. Compute predicted previous sample µ_t
         # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
         pred_prev_sample = pred_original_sample_coeff * pred_original_sample + current_sample_coeff * sample
+
+        # 6. Add noise
+        variance = 0
+        if t > 0:
+            noise = torch.randn(model_output.shape, generator=generator).to(model_output.device)
+            variance = self._get_variance(t).sqrt() * noise
+
+        pred_prev_sample = pred_prev_sample + variance
 
         return {"prev_sample": pred_prev_sample}
 
