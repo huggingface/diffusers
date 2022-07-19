@@ -147,6 +147,7 @@ class ModelMixin(torch.nn.Module):
           models, `pixel_values` for vision models and `input_values` for speech models).
     """
     config_name = CONFIG_NAME
+    _automatically_saved_args = ["_diffusers_version", "_class_name", "name_or_path"]
 
     def __init__(self):
         super().__init__()

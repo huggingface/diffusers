@@ -208,6 +208,7 @@ class ConfigMixin:
     def extract_init_dict(cls, config_dict, **kwargs):
         expected_keys = set(dict(inspect.signature(cls.__init__).parameters).keys())
         expected_keys.remove("self")
+        expected_keys.remove("kwargs")
         init_dict = {}
         for key in expected_keys:
             if key in kwargs:

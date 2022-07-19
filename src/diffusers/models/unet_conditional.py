@@ -63,8 +63,18 @@ class UNetConditionalModel(ModelMixin, ConfigMixin):
         mid_block_scale_factor=1,
         center_input_sample=False,
         resnet_num_groups=30,
+        **kwargs,
     ):
         super().__init__()
+        # remove automatically added kwargs
+        for arg in self._automatically_saved_args:
+            kwargs.pop(arg, None)
+
+        if len(kwargs) > 0:
+            raise ValueError(
+                f"The following keyword arguments do not exist for {self.__class__}: {','.join(kwargs.keys())}"
+            )
+
         # register all __init__ params to be accessible via `self.config.<...>`
         # should probably be automated down the road as this is pure boiler plate code
         self.register_to_config(
