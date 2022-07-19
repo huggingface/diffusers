@@ -4,7 +4,7 @@ import os
 import torch
 import torch.nn.functional as F
 
-from accelerate import Accelerator, DistributedDataParallelKwargs
+from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_dataset
 from diffusers import DDIMPipeline, DDIMScheduler, UNetUnconditionalModel
@@ -54,7 +54,7 @@ def main(args):
             "UNetResUpBlock2D",
             "UNetResUpBlock2D",
             "UNetResUpBlock2D",
-            "UNetResUpBlock2D"
+            "UNetResUpBlock2D",
         ),
     )
     noise_scheduler = DDIMScheduler(num_train_timesteps=1000, tensor_format="pt")
@@ -115,7 +115,9 @@ def main(args):
             noise = torch.randn(clean_images.shape).to(clean_images.device)
             bsz = clean_images.shape[0]
             # Sample a random timestep for each image
-            timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (bsz,), device=clean_images.device).long()
+            timesteps = torch.randint(
+                0, noise_scheduler.num_train_timesteps, (bsz,), device=clean_images.device
+            ).long()
 
             # Add noise to the clean images according to the noise magnitude at each timestep
             # (this is the forward diffusion process)
@@ -155,7 +157,8 @@ def main(args):
 
                 generator = torch.manual_seed(0)
                 # run pipeline in inference (sample random noise and denoise)
-                images = pipeline(generator=generator, batch_size=args.eval_batch_size, num_inference_steps=50)["sample"]
+                images = pipeline(generator=generator, batch_size=args.eval_batch_size, num_inference_steps=50)
+                images = images["sample"]
 
             # denormalize the images and save to tensorboard
             images_processed = (images.cpu() + 1.0) * 127.5
