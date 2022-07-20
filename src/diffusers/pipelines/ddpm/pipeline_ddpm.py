@@ -28,7 +28,7 @@ class DDPMPipeline(DiffusionPipeline):
         self.register_modules(unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
-    def __call__(self, batch_size=1, generator=None, torch_device=None, output_type="numpy"):
+    def __call__(self, batch_size=1, generator=None, torch_device=None, output_type="pil"):
         if torch_device is None:
             torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 

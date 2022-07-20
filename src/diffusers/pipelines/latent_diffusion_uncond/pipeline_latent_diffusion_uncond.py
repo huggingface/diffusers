@@ -13,7 +13,7 @@ class LatentDiffusionUncondPipeline(DiffusionPipeline):
 
     @torch.no_grad()
     def __call__(
-        self, batch_size=1, generator=None, torch_device=None, eta=0.0, num_inference_steps=50, output_type="numpy"
+        self, batch_size=1, generator=None, torch_device=None, eta=0.0, num_inference_steps=50, output_type="pil"
     ):
         # eta corresponds to η in paper and should be between [0, 1]
 
