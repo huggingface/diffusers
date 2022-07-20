@@ -48,7 +48,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         correct_steps=1,
         tensor_format="pt",
     ):
-        self.timesteps = np.linspace(1, sampling_eps, num_train_timesteps)
+        self.timesteps = np.linspace(1, sampling_eps, num_train_timesteps).copy()
         self.discrete_sigmas = torch.exp(
                 torch.linspace(np.log(sigma_min), np.log(sigma_max), num_train_timesteps)
             )
