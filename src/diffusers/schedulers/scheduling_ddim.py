@@ -59,7 +59,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         trained_betas=None,
         timestep_values=None,
         clip_sample=True,
-        tensor_format="np",
+        tensor_format="pt",
     ):
 
         if beta_schedule == "linear":
