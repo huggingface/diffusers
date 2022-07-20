@@ -17,14 +17,14 @@
 import argparse
 import json
 import torch
-from diffusers import UNetUnconditionalModel
+from diffusers import UNet2DModel
 
 
 def convert_ncsnpp_checkpoint(checkpoint, config):
     """
     Takes a state dict and the path to
     """
-    new_model_architecture = UNetUnconditionalModel(**config)
+    new_model_architecture = UNet2DModel(**config)
     new_model_architecture.time_steps.W.data = checkpoint["all_modules.0.W"].data
     new_model_architecture.time_steps.weight.data = checkpoint["all_modules.0.W"].data
     new_model_architecture.time_embedding.linear_1.weight.data = checkpoint["all_modules.1.weight"].data
@@ -171,7 +171,7 @@ if __name__ == "__main__":
     if "sde" in config:
         del config["sde"]
 
-    model = UNetUnconditionalModel(**config)
+    model = UNet2DModel(**config)
     model.load_state_dict(converted_checkpoint)
 
     try:

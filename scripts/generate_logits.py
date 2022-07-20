@@ -1,6 +1,6 @@
 from huggingface_hub import HfApi
 from transformers.file_utils import has_file
-from diffusers import UNetUnconditionalModel
+from diffusers import UNet2DModel
 import random
 import torch
 api = HfApi()
@@ -74,9 +74,9 @@ for mod in models:
         local_checkpoint = "/home/patrick/google_checkpoints/" + mod.modelId.split("/")[-1]
 
         if mod.modelId.startswith("CompVis"):
-            model = UNetUnconditionalModel.from_pretrained(local_checkpoint, subfolder = "unet")
+            model = UNet2DModel.from_pretrained(local_checkpoint, subfolder = "unet")
         else: 
-            model = UNetUnconditionalModel.from_pretrained(local_checkpoint)
+            model = UNet2DModel.from_pretrained(local_checkpoint)
         
         torch.manual_seed(0)
         random.seed(0)

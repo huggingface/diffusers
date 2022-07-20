@@ -1,4 +1,4 @@
-from diffusers import UNetUnconditionalModel, DDPMScheduler, DDPMPipeline
+from diffusers import UNet2DModel, DDPMScheduler, DDPMPipeline
 import argparse
 import json
 import torch
@@ -225,7 +225,7 @@ if __name__ == "__main__":
     if "ddpm" in config:
         del config["ddpm"]
 
-    model = UNetUnconditionalModel(**config)
+    model = UNet2DModel(**config)
     model.load_state_dict(converted_checkpoint)
 
     scheduler = DDPMScheduler.from_config("/".join(args.checkpoint_path.split("/")[:-1]))

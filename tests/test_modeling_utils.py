@@ -23,7 +23,7 @@ from atexit import register
 import numpy as np
 import torch
 
-from diffusers import UNetConditionalModel  # noqa: F401 TODO(Patrick) - need to write tests with it
+from diffusers import UNet2DConditionModel  # noqa: F401 TODO(Patrick) - need to write tests with it
 from diffusers import (
     AutoencoderKL,
     DDIMPipeline,
@@ -36,7 +36,7 @@ from diffusers import (
     PNDMScheduler,
     ScoreSdeVePipeline,
     ScoreSdeVeScheduler,
-    UNetUnconditionalModel,
+    UNet2DModel,
     VQModel,
 )
 from diffusers.configuration_utils import ConfigMixin, register_to_config
@@ -271,7 +271,7 @@ class ModelTesterMixin:
 
 
 class UnetModelTests(ModelTesterMixin, unittest.TestCase):
-    model_class = UNetUnconditionalModel
+    model_class = UNet2DModel
 
     @property
     def dummy_input(self):
@@ -309,7 +309,7 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
 
 #    TODO(Patrick) - Re-add this test after having correctly added the final VE checkpoints
 #    def test_output_pretrained(self):
-#        model = UNetUnconditionalModel.from_pretrained("fusing/ddpm_dummy_update", subfolder="unet")
+#        model = UNet2DModel.from_pretrained("fusing/ddpm_dummy_update", subfolder="unet")
 #        model.eval()
 #
 #        torch.manual_seed(0)
@@ -330,7 +330,7 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
 
 
 class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
-    model_class = UNetUnconditionalModel
+    model_class = UNet2DModel
 
     @property
     def dummy_input(self):
@@ -367,7 +367,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         return init_dict, inputs_dict
 
     def test_from_pretrained_hub(self):
-        model, loading_info = UNetUnconditionalModel.from_pretrained(
+        model, loading_info = UNet2DModel.from_pretrained(
             "fusing/unet-ldm-dummy-update", output_loading_info=True
         )
         self.assertIsNotNone(model)
@@ -379,7 +379,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained(self):
-        model = UNetUnconditionalModel.from_pretrained("fusing/unet-ldm-dummy-update")
+        model = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update")
         model.eval()
 
         torch.manual_seed(0)
@@ -426,7 +426,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
 
 
 class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
-    model_class = UNetUnconditionalModel
+    model_class = UNet2DModel
 
     @property
     def dummy_input(self):
@@ -474,7 +474,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         return init_dict, inputs_dict
 
     def test_from_pretrained_hub(self):
-        model, loading_info = UNetUnconditionalModel.from_pretrained(
+        model, loading_info = UNet2DModel.from_pretrained(
             "fusing/ncsnpp-ffhq-ve-dummy-update", output_loading_info=True
         )
         self.assertIsNotNone(model)
@@ -486,7 +486,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained_ve_mid(self):
-        model = UNetUnconditionalModel.from_pretrained("google/ncsnpp-celebahq-256")
+        model = UNet2DModel.from_pretrained("google/ncsnpp-celebahq-256")
         model.to(torch_device)
 
         torch.manual_seed(0)
@@ -511,7 +511,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
     def test_output_pretrained_ve_large(self):
-        model = UNetUnconditionalModel.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy-update")
+        model = UNet2DModel.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy-update")
         model.to(torch_device)
 
         torch.manual_seed(0)
@@ -685,7 +685,7 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
 class PipelineTesterMixin(unittest.TestCase):
     def test_from_pretrained_save_pretrained(self):
         # 1. Load models
-        model = UNetUnconditionalModel(
+        model = UNet2DModel(
             block_channels=(32, 64),
             num_res_blocks=2,
             image_size=32,
@@ -732,7 +732,7 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_ddpm_cifar10(self):
         model_id = "google/ddpm-cifar10-32"
 
-        unet = UNetUnconditionalModel.from_pretrained(model_id)
+        unet = UNet2DModel.from_pretrained(model_id)
         scheduler = DDPMScheduler.from_config(model_id)
         scheduler = scheduler.set_format("pt")
 
@@ -753,7 +753,7 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_ddim_lsun(self):
         model_id = "google/ddpm-ema-bedroom-256"
 
-        unet = UNetUnconditionalModel.from_pretrained(model_id)
+        unet = UNet2DModel.from_pretrained(model_id)
         scheduler = DDIMScheduler.from_config(model_id)
 
         ddpm = DDIMPipeline(unet=unet, scheduler=scheduler)
@@ -773,7 +773,7 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_ddim_cifar10(self):
         model_id = "google/ddpm-cifar10-32"
 
-        unet = UNetUnconditionalModel.from_pretrained(model_id)
+        unet = UNet2DModel.from_pretrained(model_id)
         scheduler = DDIMScheduler(tensor_format="pt")
 
         ddim = DDIMPipeline(unet=unet, scheduler=scheduler)
@@ -793,7 +793,7 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_pndm_cifar10(self):
         model_id = "google/ddpm-cifar10-32"
 
-        unet = UNetUnconditionalModel.from_pretrained(model_id)
+        unet = UNet2DModel.from_pretrained(model_id)
         scheduler = PNDMScheduler(tensor_format="pt")
 
         pndm = PNDMPipeline(unet=unet, scheduler=scheduler)
@@ -838,7 +838,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_score_sde_ve_pipeline(self):
-        model = UNetUnconditionalModel.from_pretrained("google/ncsnpp-ffhq-1024")
+        model = UNet2DModel.from_pretrained("google/ncsnpp-ffhq-1024")
 
         torch.manual_seed(0)
         if torch.cuda.is_available():

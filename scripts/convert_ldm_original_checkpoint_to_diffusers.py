@@ -17,7 +17,7 @@
 import argparse
 import json
 import torch
-from diffusers import VQModel, DDPMScheduler, UNetUnconditionalModel, LatentDiffusionUncondPipeline
+from diffusers import VQModel, DDPMScheduler, UNet2DModel, LatentDiffusionUncondPipeline
 
 
 def shave_segments(path, n_shave_prefix_segments=1):
@@ -319,7 +319,7 @@ if __name__ == "__main__":
     if "ldm" in config:
         del config["ldm"]
 
-    model = UNetUnconditionalModel(**config)
+    model = UNet2DModel(**config)
     model.load_state_dict(converted_checkpoint)
 
     try:

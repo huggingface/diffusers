@@ -84,7 +84,7 @@ For more examples see [schedulers](https://github.com/huggingface/diffusers/tree
 
 ```python
 import torch
-from diffusers import UNetUnconditionalModel, DDIMScheduler
+from diffusers import UNet2DModel, DDIMScheduler
 import PIL.Image
 import numpy as np
 import tqdm
@@ -93,7 +93,7 @@ torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # 1. Load models
 scheduler = DDIMScheduler.from_config("fusing/ddpm-celeba-hq", tensor_format="pt")
-unet = UNetUnconditionalModel.from_pretrained("fusing/ddpm-celeba-hq", ddpm=True).to(torch_device)
+unet = UNet2DModel.from_pretrained("fusing/ddpm-celeba-hq", ddpm=True).to(torch_device)
 
 # 2. Sample gaussian noise
 generator = torch.manual_seed(23)

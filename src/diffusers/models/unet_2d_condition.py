@@ -5,11 +5,11 @@ import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
-from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
-from .unet_blocks import UNetMidBlock2D, get_down_block, get_up_block
+from .embeddings import TimestepEmbedding, Timesteps
+from .unet_blocks import UNetMidBlock2DCrossAttn, get_down_block, get_up_block
 
 
-class UNetUnconditionalModel(ModelMixin, ConfigMixin):
+class UNet2DConditionModel(ModelMixin, ConfigMixin):
     """
     The full UNet model with attention and timestep embedding. :param in_channels: channels in the input Tensor. :param
     model_channels: base channel count for the model. :param out_channels: channels in the output Tensor. :param
@@ -37,29 +37,33 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
     def __init__(
         self,
         image_size=None,
-        in_channels=None,
-        out_channels=None,
-        num_res_blocks=None,
+        in_channels=4,
+        out_channels=4,
+        num_res_blocks=2,
         dropout=0,
-        block_channels=(224, 448, 672, 896),
+        block_channels=(320, 640, 1280, 1280),
         down_blocks=(
+            "UNetResCrossAttnDownBlock2D",
+            "UNetResCrossAttnDownBlock2D",
+            "UNetResCrossAttnDownBlock2D",
             "UNetResDownBlock2D",
-            "UNetResAttnDownBlock2D",
-            "UNetResAttnDownBlock2D",
-            "UNetResAttnDownBlock2D",
         ),
         downsample_padding=1,
-        up_blocks=("UNetResAttnUpBlock2D", "UNetResAttnUpBlock2D", "UNetResAttnUpBlock2D", "UNetResUpBlock2D"),
+        up_blocks=(
+            "UNetResUpBlock2D",
+            "UNetResCrossAttnUpBlock2D",
+            "UNetResCrossAttnUpBlock2D",
+            "UNetResCrossAttnUpBlock2D",
+        ),
         resnet_act_fn="silu",
         resnet_eps=1e-5,
         conv_resample=True,
-        num_head_channels=32,
+        num_head_channels=8,
         flip_sin_to_cos=True,
         downscale_freq_shift=0,
-        time_embedding_type="positional",
         mid_block_scale_factor=1,
         center_input_sample=False,
-        resnet_num_groups=32,
+        resnet_num_groups=30,
     ):
         super().__init__()
         self.image_size = image_size
@@ -69,12 +73,8 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         self.conv_in = nn.Conv2d(in_channels, block_channels[0], kernel_size=3, padding=(1, 1))
 
         # time
-        if time_embedding_type == "fourier":
-            self.time_steps = GaussianFourierProjection(embedding_size=block_channels[0], scale=16)
-            timestep_input_dim = 2 * block_channels[0]
-        elif time_embedding_type == "positional":
-            self.time_steps = Timesteps(block_channels[0], flip_sin_to_cos, downscale_freq_shift)
-            timestep_input_dim = block_channels[0]
+        self.time_steps = Timesteps(block_channels[0], flip_sin_to_cos, downscale_freq_shift)
+        timestep_input_dim = block_channels[0]
 
         self.time_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
 
@@ -104,7 +104,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             self.downsample_blocks.append(down_block)
 
         # mid
-        self.mid = UNetMidBlock2D(
+        self.mid = UNetMidBlock2DCrossAttn(
             in_channels=block_channels[-1],
             dropout=dropout,
             temb_channels=time_embed_dim,
@@ -142,13 +142,15 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             prev_output_channel = output_channel
 
         # out
-        num_groups_out = resnet_num_groups if resnet_num_groups is not None else min(block_channels[0] // 4, 32)
-        self.conv_norm_out = nn.GroupNorm(num_channels=block_channels[0], num_groups=num_groups_out, eps=resnet_eps)
+        self.conv_norm_out = nn.GroupNorm(num_channels=block_channels[0], num_groups=resnet_num_groups, eps=resnet_eps)
         self.conv_act = nn.SiLU()
         self.conv_out = nn.Conv2d(block_channels[0], out_channels, 3, padding=1)
 
     def forward(
-        self, sample: torch.FloatTensor, timestep: Union[torch.Tensor, float, int]
+        self,
+        sample: torch.FloatTensor,
+        timestep: Union[torch.Tensor, float, int],
+        encoder_hidden_states: torch.Tensor,
     ) -> Dict[str, torch.FloatTensor]:
 
         # 0. center input if necessary
@@ -166,15 +168,15 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         emb = self.time_embedding(t_emb)
 
         # 2. pre-process
-        skip_sample = sample
         sample = self.conv_in(sample)
 
         # 3. down
         down_block_res_samples = (sample,)
         for downsample_block in self.downsample_blocks:
-            if hasattr(downsample_block, "skip_conv"):
-                sample, res_samples, skip_sample = downsample_block(
-                    hidden_states=sample, temb=emb, skip_sample=skip_sample
+
+            if hasattr(downsample_block, "attentions") and downsample_block.attentions is not None:
+                sample, res_samples = downsample_block(
+                    hidden_states=sample, temb=emb, encoder_hidden_states=encoder_hidden_states
                 )
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
@@ -182,30 +184,29 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
             down_block_res_samples += res_samples
 
         # 4. mid
-        sample = self.mid(sample, emb)
+        sample = self.mid(sample, emb, encoder_hidden_states=encoder_hidden_states)
 
         # 5. up
-        skip_sample = None
         for upsample_block in self.upsample_blocks:
+
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
             down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
 
-            if hasattr(upsample_block, "skip_conv"):
-                sample, skip_sample = upsample_block(sample, res_samples, emb, skip_sample)
+            if hasattr(upsample_block, "attentions") and upsample_block.attentions is not None:
+                sample = upsample_block(
+                    hidden_states=sample,
+                    temb=emb,
+                    res_hidden_states_tuple=res_samples,
+                    encoder_hidden_states=encoder_hidden_states,
+                )
             else:
-                sample = upsample_block(sample, res_samples, emb)
+                sample = upsample_block(hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples)
 
         # 6. post-process
+
         sample = self.conv_norm_out(sample)
         sample = self.conv_act(sample)
         sample = self.conv_out(sample)
-
-        if skip_sample is not None:
-            sample += skip_sample
-
-        if self.config.time_embedding_type == "fourier":
-            timesteps = timesteps.reshape((sample.shape[0], *([1] * len(sample.shape[1:]))))
-            sample = sample / timesteps
 
         output = {"sample": sample}
 

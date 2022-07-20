@@ -17,7 +17,7 @@
 import argparse
 import json
 import torch
-from diffusers import UNetUnconditionalModel
+from diffusers import UNet2DModel
 
 
 if __name__ == "__main__":
@@ -58,7 +58,7 @@ if __name__ == "__main__":
 
 
     state_dict = torch.load(
-    model = UNetUnconditionalModel(**config)
+    model = UNet2DModel(**config)
     model.load_state_dict(converted_checkpoint)
 
     try:
