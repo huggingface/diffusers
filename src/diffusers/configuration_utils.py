@@ -322,11 +322,20 @@ def register_to_config(init):
         # Get positional arguments aligned with kwargs
         new_kwargs = {}
         signature = inspect.signature(init)
-        parameters = [name for i, name in enumerate(signature.parameters.keys()) if i > 0 and name not in ignore]
-        for arg, name in zip(args, parameters):
+        parameters = {
+            name: p.default for i, (name, p) in enumerate(signature.parameters.items()) if i > 0 and name not in ignore
+        }
+        for arg, name in zip(args, parameters.keys()):
             new_kwargs[name] = arg
+
         # Then add all kwargs
-        new_kwargs.update({k: v for k, v in init_kwargs.items() if k not in ignore})
+        new_kwargs.update(
+            {
+                k: init_kwargs.get(k, default)
+                for k, default in parameters.items()
+                if k not in ignore and k not in new_kwargs
+            }
+        )
         getattr(self, "register_to_config")(**new_kwargs)
 
     return inner_init

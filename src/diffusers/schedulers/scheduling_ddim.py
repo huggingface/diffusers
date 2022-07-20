@@ -49,8 +49,6 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
 
 
 class DDIMScheduler(SchedulerMixin, ConfigMixin):
-    ignore_for_config = ["tensor_format"]
-
     @register_to_config
     def __init__(
         self,

@@ -19,19 +19,13 @@
 import numpy as np
 import torch
 
-from ..configuration_utils import ConfigMixin
+from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils import SchedulerMixin
 
 
 class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
+    @register_to_config
     def __init__(self, num_train_timesteps=2000, beta_min=0.1, beta_max=20, sampling_eps=1e-3, tensor_format="np"):
-        super().__init__()
-        self.register_to_config(
-            num_train_timesteps=num_train_timesteps,
-            beta_min=beta_min,
-            beta_max=beta_max,
-            sampling_eps=sampling_eps,
-        )
 
         self.sigmas = None
         self.discrete_sigmas = None
