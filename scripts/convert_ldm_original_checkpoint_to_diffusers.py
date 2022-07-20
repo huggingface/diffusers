@@ -17,7 +17,7 @@
 import argparse
 import json
 import torch
-from diffusers import VQModel, DDPMScheduler, UNet2DModel, LatentDiffusionUncondPipeline
+from diffusers import VQModel, DDPMScheduler, UNet2DModel, LDMPipeline
 
 
 def shave_segments(path, n_shave_prefix_segments=1):
@@ -326,7 +326,7 @@ if __name__ == "__main__":
         scheduler = DDPMScheduler.from_config("/".join(args.checkpoint_path.split("/")[:-1]))
         vqvae = VQModel.from_pretrained("/".join(args.checkpoint_path.split("/")[:-1]))
 
-        pipe = LatentDiffusionUncondPipeline(unet=model, scheduler=scheduler, vae=vqvae)
+        pipe = LDMPipeline(unet=model, scheduler=scheduler, vae=vqvae)
         pipe.save_pretrained(args.dump_path)
     except:
         model.save_pretrained(args.dump_path)

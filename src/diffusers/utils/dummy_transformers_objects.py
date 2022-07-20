@@ -3,42 +3,7 @@
 from ..utils import DummyObject, requires_backends
 
 
-class GlideSuperResUNetModel(metaclass=DummyObject):
-    _backends = ["transformers"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["transformers"])
-
-
-class GlideTextToImageUNetModel(metaclass=DummyObject):
-    _backends = ["transformers"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["transformers"])
-
-
-class GlideUNetModel(metaclass=DummyObject):
-    _backends = ["transformers"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["transformers"])
-
-
-class UNetGradTTSModel(metaclass=DummyObject):
-    _backends = ["transformers"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["transformers"])
-
-
-class GlidePipeline(metaclass=DummyObject):
-    _backends = ["transformers"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["transformers"])
-
-
-class LatentDiffusionPipeline(metaclass=DummyObject):
+class LDMTextToImagePipeline(metaclass=DummyObject):
     _backends = ["transformers"]
 
     def __init__(self, *args, **kwargs):

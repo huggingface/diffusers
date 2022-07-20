@@ -5,7 +5,7 @@ from tqdm.auto import tqdm
 from ...pipeline_utils import DiffusionPipeline
 
 
-class LatentDiffusionUncondPipeline(DiffusionPipeline):
+class LDMPipeline(DiffusionPipeline):
     def __init__(self, vqvae, unet, scheduler):
         super().__init__()
         scheduler = scheduler.set_format("pt")
