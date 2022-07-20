@@ -18,11 +18,11 @@ import inspect
 import math
 import tempfile
 import unittest
-from atexit import register
 
 import numpy as np
 import torch
 
+import PIL
 from diffusers import UNetConditionalModel  # noqa: F401 TODO(Patrick) - need to write tests with it
 from diffusers import (
     AutoencoderKL,
@@ -727,6 +727,26 @@ class PipelineTesterMixin(unittest.TestCase):
         new_image = ddpm_from_hub(generator=generator)["sample"]
 
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
+
+    @slow
+    def test_output_format(self):
+        model_path = "google/ddpm-cifar10-32"
+
+        pipe = DDIMPipeline.from_pretrained(model_path)
+
+        generator = torch.manual_seed(0)
+        images = pipe(generator=generator)["sample"]
+        assert images.shape == (1, 32, 32, 3)
+        assert isinstance(images, np.ndarray)
+
+        images = pipe(generator=generator, output_type="numpy")["sample"]
+        assert images.shape == (1, 32, 32, 3)
+        assert isinstance(images, np.ndarray)
+
+        images = pipe(generator=generator, output_type="pil")["sample"]
+        assert isinstance(images, list)
+        assert len(images) == 1
+        assert isinstance(images[0], PIL.Image.Image)
 
     @slow
     def test_ddpm_cifar10(self):

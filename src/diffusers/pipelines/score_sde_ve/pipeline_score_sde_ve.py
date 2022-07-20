@@ -11,7 +11,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
         self.register_modules(model=model, scheduler=scheduler)
 
     @torch.no_grad()
-    def __call__(self, num_inference_steps=2000, generator=None):
+    def __call__(self, num_inference_steps=2000, generator=None, output_type="numpy"):
         device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
         img_size = self.model.config.image_size
@@ -47,5 +47,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
 
         sample = sample.clamp(0, 1)
         sample = sample.cpu().permute(0, 2, 3, 1).numpy()
+        if output_type == "pil":
+            sample = self.numpy_to_pil(sample)
 
         return {"sample": sample}
