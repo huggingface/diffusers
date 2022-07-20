@@ -83,7 +83,6 @@ class Downsample2D(nn.Module):
         elif name == "Conv2d_0":
             self.conv = conv
         else:
-            self.op = conv
             self.conv = conv
 
     def forward(self, x):

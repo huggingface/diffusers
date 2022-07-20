@@ -59,8 +59,8 @@ if __name__ == "__main__":
     key_parameters_to_change = {
         "time_steps": "time_proj",
         "mid": "mid_block",
-        "downsample_blocks": "down_block_types",
-        "upsample_blocks": "up_block_types",
+        "downsample_blocks": "down_blocks",
+        "upsample_blocks": "up_blocks",
     }
 
     subfolder = "" if has_file(args.repo_path, "config.json") else "unet"
@@ -97,12 +97,16 @@ if __name__ == "__main__":
         state_dict = torch.load(os.path.join(args.repo_path, subfolder, "diffusion_pytorch_model.bin"))
 
         new_state_dict = {}
-        for key, new_key in key_parameters_to_change.items():
-            for param_key, param_value in state_dict.items():
-                if param_key.endswith(".op") or param_key.endswith(".Conv2d_0"):
-                    continue
-                else:
-                    new_state_dict[param_key.replace(key, new_key) if param_key.startswith(key) else param_key] = param_value
+        for param_key, param_value in state_dict.items():
+            if param_key.endswith(".op.bias") or param_key.endswith(".op.weight"):
+                continue
+            has_changed = False
+            for key, new_key in key_parameters_to_change.items():
+                if not has_changed and param_key.split(".")[0] == key:
+                    new_state_dict[".".join([new_key] + param_key.split(".")[1:])] = param_value
+                    has_changed = True
+            if not has_changed:
+                new_state_dict[param_key] = param_value
 
-        model.load_state_dict(state_dict)
-        model.save_pretrained(os.path.join(args.repo_path, subfolder, "unet"))
+        model.load_state_dict(new_state_dict)
+        model.save_pretrained(os.path.join(args.repo_path, subfolder))

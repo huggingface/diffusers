@@ -87,5 +87,5 @@ for mod in models:
         with torch.no_grad():
             logits = model(noise, time_step)['sample']
 
-        torch.allclose(logits[0, 0, 0, :30], results["_".join("_".join(mod.modelId.split("/")).split("-"))], atol=1e-3)
+        assert torch.allclose(logits[0, 0, 0, :30], results["_".join("_".join(mod.modelId.split("/")).split("-"))], atol=1e-3)
         print(f"{mod.modelId} has passed succesfully!!!")
