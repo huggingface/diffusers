@@ -19,6 +19,7 @@ import os
 from typing import Optional, Union
 
 from huggingface_hub import snapshot_download
+from PIL import Image
 
 from .configuration_utils import ConfigMixin
 from .utils import DIFFUSERS_CACHE, logging
@@ -120,6 +121,7 @@ class DiffusionPipeline(ConfigMixin):
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)
         use_auth_token = kwargs.pop("use_auth_token", None)
+        revision = kwargs.pop("revision", None)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -131,6 +133,7 @@ class DiffusionPipeline(ConfigMixin):
                 proxies=proxies,
                 local_files_only=local_files_only,
                 use_auth_token=use_auth_token,
+                revision=revision,
             )
         else:
             cached_folder = pretrained_model_name_or_path
@@ -187,3 +190,15 @@ class DiffusionPipeline(ConfigMixin):
         # 5. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
         return model
+
+    @staticmethod
+    def numpy_to_pil(images):
+        """
+        Convert a numpy image or a batch of images to a PIL image.
+        """
+        if images.ndim == 3:
+            images = images[None, ...]
+        images = (images * 255).round().astype("uint8")
+        pil_images = [Image.fromarray(image) for image in images]
+
+        return pil_images

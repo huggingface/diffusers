@@ -13,12 +13,7 @@ class LatentDiffusionUncondPipeline(DiffusionPipeline):
 
     @torch.no_grad()
     def __call__(
-        self,
-        batch_size=1,
-        generator=None,
-        torch_device=None,
-        eta=0.0,
-        num_inference_steps=50,
+        self, batch_size=1, generator=None, torch_device=None, eta=0.0, num_inference_steps=50, output_type="pil"
     ):
         # eta corresponds to η in paper and should be between [0, 1]
 
@@ -28,25 +23,26 @@ class LatentDiffusionUncondPipeline(DiffusionPipeline):
         self.unet.to(torch_device)
         self.vqvae.to(torch_device)
 
-        image = torch.randn(
+        latents = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.image_size, self.unet.image_size),
             generator=generator,
-        ).to(torch_device)
+        )
+        latents = latents.to(torch_device)
 
         self.scheduler.set_timesteps(num_inference_steps)
 
         for t in tqdm(self.scheduler.timesteps):
-            with torch.no_grad():
-                model_output = self.unet(image, t)
+            # predict the noise residual
+            noise_prediction = self.unet(latents, t)["sample"]
+            # compute the previous noisy sample x_t -> x_t-1
+            latents = self.scheduler.step(noise_prediction, t, latents, eta)["prev_sample"]
 
-            if isinstance(model_output, dict):
-                model_output = model_output["sample"]
+        # decode the image latents with the VAE
+        image = self.vqvae.decode(latents)
 
-            # 2. predict previous mean of image x_t-1 and add variance depending on eta
-            # do x_t -> x_t-1
-            image = self.scheduler.step(model_output, t, image, eta)["prev_sample"]
+        image = (image / 2 + 0.5).clamp(0, 1)
+        image = image.cpu().permute(0, 2, 3, 1).numpy()
+        if output_type == "pil":
+            image = self.numpy_to_pil(image)
 
-        # decode image with vae
-        with torch.no_grad():
-            image = self.vqvae.decode(image)
         return {"sample": image}

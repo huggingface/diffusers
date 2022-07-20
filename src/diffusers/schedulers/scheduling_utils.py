@@ -23,6 +23,7 @@ SCHEDULER_CONFIG_NAME = "scheduler_config.json"
 class SchedulerMixin:
 
     config_name = SCHEDULER_CONFIG_NAME
+    ignore_for_config = ["tensor_format"]
 
     def set_format(self, tensor_format="pt"):
         self.tensor_format = tensor_format
