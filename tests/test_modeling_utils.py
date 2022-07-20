@@ -29,8 +29,8 @@ from diffusers import (
     DDIMScheduler,
     DDPMPipeline,
     DDPMScheduler,
-    LatentDiffusionPipeline,
-    LatentDiffusionUncondPipeline,
+    LDMPipeline,
+    LDMTextToImagePipeline,
     PNDMPipeline,
     PNDMScheduler,
     ScoreSdeVePipeline,
@@ -826,7 +826,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_ldm_text2img(self):
-        ldm = LatentDiffusionPipeline.from_pretrained("/home/patrick/google_checkpoints/ldm-text2im-large-256")
+        ldm = LDMTextToImagePipeline.from_pretrained("/home/patrick/google_checkpoints/ldm-text2im-large-256")
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
@@ -842,7 +842,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_ldm_text2img_fast(self):
-        ldm = LatentDiffusionPipeline.from_pretrained("/home/patrick/google_checkpoints/ldm-text2im-large-256")
+        ldm = LDMTextToImagePipeline.from_pretrained("/home/patrick/google_checkpoints/ldm-text2im-large-256")
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
@@ -877,7 +877,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_ldm_uncond(self):
-        ldm = LatentDiffusionUncondPipeline.from_pretrained("/home/patrick/google_checkpoints/ldm-celebahq-256")
+        ldm = LDMPipeline.from_pretrained("/home/patrick/google_checkpoints/ldm-celebahq-256")
 
         generator = torch.manual_seed(0)
         image = ldm(generator=generator, num_inference_steps=5, output_type="numpy")["sample"]

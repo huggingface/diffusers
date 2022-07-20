@@ -14,7 +14,7 @@ from transformers.utils import logging
 from ...pipeline_utils import DiffusionPipeline
 
 
-class LatentDiffusionPipeline(DiffusionPipeline):
+class LDMTextToImagePipeline(DiffusionPipeline):
     def __init__(self, vqvae, bert, tokenizer, unet, scheduler):
         super().__init__()
         scheduler = scheduler.set_format("pt")

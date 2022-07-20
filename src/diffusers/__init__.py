@@ -9,11 +9,11 @@ __version__ = "0.0.4"
 from .modeling_utils import ModelMixin
 from .models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
 from .pipeline_utils import DiffusionPipeline
-from .pipelines import DDIMPipeline, DDPMPipeline, LatentDiffusionUncondPipeline, PNDMPipeline, ScoreSdeVePipeline
+from .pipelines import DDIMPipeline, DDPMPipeline, LDMPipeline, PNDMPipeline, ScoreSdeVePipeline
 from .schedulers import DDIMScheduler, DDPMScheduler, PNDMScheduler, SchedulerMixin, ScoreSdeVeScheduler
 
 
 if is_transformers_available():
-    from .pipelines import LatentDiffusionPipeline
+    from .pipelines import LDMTextToImagePipeline
 else:
     from .utils.dummy_transformers_objects import *
