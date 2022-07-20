@@ -28,7 +28,7 @@ class DDIMPipeline(DiffusionPipeline):
         self.register_modules(unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
-    def __call__(self, batch_size=1, generator=None, torch_device=None, eta=0.0, num_inference_steps=50):
+    def __call__(self, batch_size=1, generator=None, torch_device=None, eta=0.0, num_inference_steps=50, output_type="pil"):
         # eta corresponds to η in paper and should be between [0, 1]
         if torch_device is None:
             torch_device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -52,5 +52,10 @@ class DDIMPipeline(DiffusionPipeline):
             # 2. predict previous mean of image x_t-1 and add variance depending on eta
             # do x_t -> x_t-1
             image = self.scheduler.step(model_output, t, image, eta)["prev_sample"]
+
+        image = (image / 2 + 0.5).clamp(0, 1)
+        image = image.cpu().permute(0, 2, 3, 1).numpy()
+        if output_type == "pil":
+            image = self.numpy_to_pil(image)
 
         return {"sample": image}
