@@ -48,14 +48,13 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         correct_steps=1,
         tensor_format="pt",
     ):
-        # self.sigmas = None
-        # self.discrete_sigmas = None
-        #
-        # # setable values
-        # self.num_inference_steps = None
-        self.timesteps = None
-
-        self.set_sigmas(self.num_train_timesteps)
+        self.timesteps = np.linspace(1, sampling_eps, num_train_timesteps)
+        self.discrete_sigmas = torch.exp(
+                torch.linspace(np.log(sigma_min), np.log(sigma_max), num_train_timesteps)
+            )
+        self.sigmas = torch.tensor(
+            [sigma_min * (sigma_max / sigma_min) ** t for t in self.timesteps]
+        )
 
         self.tensor_format = tensor_format
         self.set_format(tensor_format=tensor_format)
