@@ -213,6 +213,7 @@ class DDPMSchedulerTest(SchedulerCommonTest):
             "beta_schedule": "linear",
             "variance_type": "fixed_small",
             "clip_sample": True,
+            "tensor_format": "np",
         }
 
         config.update(**kwargs)
@@ -247,9 +248,9 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         scheduler_config = self.get_scheduler_config()
         scheduler = scheduler_class(**scheduler_config)
 
-        assert np.sum(np.abs(scheduler.get_variance(0) - 0.0)) < 1e-5
-        assert np.sum(np.abs(scheduler.get_variance(487) - 0.00979)) < 1e-5
-        assert np.sum(np.abs(scheduler.get_variance(999) - 0.02)) < 1e-5
+        assert np.sum(np.abs(scheduler._get_variance(0) - 0.0)) < 1e-5
+        assert np.sum(np.abs(scheduler._get_variance(487) - 0.00979)) < 1e-5
+        assert np.sum(np.abs(scheduler._get_variance(999) - 0.02)) < 1e-5
 
     def test_full_loop_no_noise(self):
         scheduler_class = self.scheduler_classes[0]
@@ -268,11 +269,12 @@ class DDPMSchedulerTest(SchedulerCommonTest):
             # 2. predict previous mean of sample x_t-1
             pred_prev_sample = scheduler.step(residual, t, sample)["prev_sample"]
 
-            if t > 0:
-                noise = self.dummy_sample_deter
-                variance = scheduler.get_variance(t) ** (0.5) * noise
-
-            sample = pred_prev_sample + variance
+            # if t > 0:
+            #     noise = self.dummy_sample_deter
+            #     variance = scheduler.get_variance(t) ** (0.5) * noise
+            #
+            # sample = pred_prev_sample + variance
+            sample = pred_prev_sample
 
         result_sum = np.sum(np.abs(sample))
         result_mean = np.mean(np.abs(sample))
