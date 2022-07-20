@@ -53,4 +53,7 @@ class DDIMPipeline(DiffusionPipeline):
             # do x_t -> x_t-1
             image = self.scheduler.step(model_output, t, image, eta)["prev_sample"]
 
+        image = (image / 2 + 0.5).clamp(0, 1)
+        image = image.cpu().permute(0, 2, 3, 1).numpy()
+
         return {"sample": image}

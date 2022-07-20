@@ -120,6 +120,7 @@ class DiffusionPipeline(ConfigMixin):
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)
         use_auth_token = kwargs.pop("use_auth_token", None)
+        revision = kwargs.pop("revision", None)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -131,6 +132,7 @@ class DiffusionPipeline(ConfigMixin):
                 proxies=proxies,
                 local_files_only=local_files_only,
                 use_auth_token=use_auth_token,
+                revision=revision,
             )
         else:
             cached_folder = pretrained_model_name_or_path
