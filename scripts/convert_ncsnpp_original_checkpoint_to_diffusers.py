@@ -25,8 +25,8 @@ def convert_ncsnpp_checkpoint(checkpoint, config):
     Takes a state dict and the path to
     """
     new_model_architecture = UNet2DModel(**config)
-    new_model_architecture.time_steps.W.data = checkpoint["all_modules.0.W"].data
-    new_model_architecture.time_steps.weight.data = checkpoint["all_modules.0.W"].data
+    new_model_architecture.time_proj.W.data = checkpoint["all_modules.0.W"].data
+    new_model_architecture.time_proj.weight.data = checkpoint["all_modules.0.W"].data
     new_model_architecture.time_embedding.linear_1.weight.data = checkpoint["all_modules.1.weight"].data
     new_model_architecture.time_embedding.linear_1.bias.data = checkpoint["all_modules.1.bias"].data
 
@@ -92,14 +92,14 @@ def convert_ncsnpp_checkpoint(checkpoint, config):
             block.skip_conv.bias.data = checkpoint[f"all_modules.{module_index}.Conv_0.bias"].data
             module_index += 1
 
-    set_resnet_weights(new_model_architecture.mid.resnets[0], checkpoint, module_index)
+    set_resnet_weights(new_model_architecture.mid_block.resnets[0], checkpoint, module_index)
     module_index += 1
-    set_attention_weights(new_model_architecture.mid.attentions[0], checkpoint, module_index)
+    set_attention_weights(new_model_architecture.mid_block.attentions[0], checkpoint, module_index)
     module_index += 1
-    set_resnet_weights(new_model_architecture.mid.resnets[1], checkpoint, module_index)
+    set_resnet_weights(new_model_architecture.mid_block.resnets[1], checkpoint, module_index)
     module_index += 1
 
-    for i, block in enumerate(new_model_architecture.upsample_blocks):
+    for i, block in enumerate(new_model_architecture.up_blocks):
         has_attentions = hasattr(block, "attentions")
         for j in range(len(block.resnets)):
             set_resnet_weights(block.resnets[j], checkpoint, module_index)
