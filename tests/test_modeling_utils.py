@@ -18,6 +18,7 @@ import inspect
 import math
 import tempfile
 import unittest
+from atexit import register
 
 import numpy as np
 import torch
@@ -38,7 +39,7 @@ from diffusers import (
     UNetUnconditionalModel,
     VQModel,
 )
-from diffusers.configuration_utils import ConfigMixin
+from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.testing_utils import floats_tensor, slow, torch_device
 from diffusers.training_utils import EMAModel
@@ -47,25 +48,63 @@ from diffusers.training_utils import EMAModel
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
+class SampleObject(ConfigMixin):
+    config_name = "config.json"
+
+    @register_to_config
+    def __init__(
+        self,
+        a=2,
+        b=5,
+        c=(2, 5),
+        d="for diffusion",
+        e=[1, 3],
+    ):
+        pass
+
+
 class ConfigTester(unittest.TestCase):
     def test_load_not_from_mixin(self):
         with self.assertRaises(ValueError):
             ConfigMixin.from_config("dummy_path")
 
+    def test_register_to_config(self):
+        obj = SampleObject()
+        config = obj.config
+        assert config["a"] == 2
+        assert config["b"] == 5
+        assert config["c"] == (2, 5)
+        assert config["d"] == "for diffusion"
+        assert config["e"] == [1, 3]
+
+        # init ignore private arguments
+        obj = SampleObject(_name_or_path="lalala")
+        config = obj.config
+        assert config["a"] == 2
+        assert config["b"] == 5
+        assert config["c"] == (2, 5)
+        assert config["d"] == "for diffusion"
+        assert config["e"] == [1, 3]
+
+        # can override default
+        obj = SampleObject(c=6)
+        config = obj.config
+        assert config["a"] == 2
+        assert config["b"] == 5
+        assert config["c"] == 6
+        assert config["d"] == "for diffusion"
+        assert config["e"] == [1, 3]
+
+        # can use positional arguments.
+        obj = SampleObject(1, c=6)
+        config = obj.config
+        assert config["a"] == 1
+        assert config["b"] == 5
+        assert config["c"] == 6
+        assert config["d"] == "for diffusion"
+        assert config["e"] == [1, 3]
+
     def test_save_load(self):
-        class SampleObject(ConfigMixin):
-            config_name = "config.json"
-
-            def __init__(
-                self,
-                a=2,
-                b=5,
-                c=(2, 5),
-                d="for diffusion",
-                e=[1, 3],
-            ):
-                self.register_to_config(a=a, b=b, c=c, d=d, e=e)
-
         obj = SampleObject()
         config = obj.config
 

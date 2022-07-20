@@ -3,7 +3,7 @@ from typing import Dict, Union
 import torch
 import torch.nn as nn
 
-from ..configuration_utils import ConfigMixin
+from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from .unet_blocks import UNetMidBlock2D, get_down_block, get_up_block
@@ -33,6 +33,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
                                     increased efficiency.
     """
 
+    @register_to_config
     def __init__(
         self,
         image_size=None,
@@ -59,41 +60,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         mid_block_scale_factor=1,
         center_input_sample=False,
         resnet_num_groups=32,
-        **kwargs,
     ):
-        super().__init__()
-        # remove automatically added kwargs
-        for arg in self._automatically_saved_args:
-            kwargs.pop(arg, None)
-
-        if len(kwargs) > 0:
-            raise ValueError(
-                f"The following keyword arguments do not exist for {self.__class__}: {','.join(kwargs.keys())}"
-            )
-
-        # register all __init__ params to be accessible via `self.config.<...>`
-        # should probably be automated down the road as this is pure boiler plate code
-        self.register_to_config(
-            image_size=image_size,
-            in_channels=in_channels,
-            block_channels=block_channels,
-            downsample_padding=downsample_padding,
-            out_channels=out_channels,
-            num_res_blocks=num_res_blocks,
-            down_blocks=down_blocks,
-            up_blocks=up_blocks,
-            dropout=dropout,
-            resnet_eps=resnet_eps,
-            conv_resample=conv_resample,
-            num_head_channels=num_head_channels,
-            flip_sin_to_cos=flip_sin_to_cos,
-            downscale_freq_shift=downscale_freq_shift,
-            time_embedding_type=time_embedding_type,
-            mid_block_scale_factor=mid_block_scale_factor,
-            resnet_num_groups=resnet_num_groups,
-            center_input_sample=center_input_sample,
-        )
-
         self.image_size = image_size
         time_embed_dim = block_channels[0] * 4
 
