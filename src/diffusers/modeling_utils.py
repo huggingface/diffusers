@@ -147,7 +147,7 @@ class ModelMixin(torch.nn.Module):
           models, `pixel_values` for vision models and `input_values` for speech models).
     """
     config_name = CONFIG_NAME
-    _automatically_saved_args = ["_diffusers_version", "_class_name", "name_or_path"]
+    _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
 
     def __init__(self):
         super().__init__()
@@ -207,7 +207,7 @@ class ModelMixin(torch.nn.Module):
         logger.info(f"Model weights saved in {os.path.join(save_directory, WEIGHTS_NAME)}")
 
     @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
+    def from_pretrained(cls, pretrained_model__name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
         r"""
         Instantiate a pretrained pytorch model from a pre-trained model configuration.
 
@@ -222,7 +222,7 @@ class ModelMixin(torch.nn.Module):
         weights are discarded.
 
         Parameters:
-            pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
+            pretrained_model__name_or_path (`str` or `os.PathLike`, *optional*):
                 Can be either:
 
                     - A string, the *model id* of a pretrained model hosted inside a model repo on huggingface.co.
@@ -244,17 +244,17 @@ class ModelMixin(torch.nn.Module):
                       model).
                     - The model was saved using [`~ModelMixin.save_pretrained`] and is reloaded by supplying the save
                       directory.
-                    - The model is loaded by supplying a local directory as `pretrained_model_name_or_path` and a
+                    - The model is loaded by supplying a local directory as `pretrained_model__name_or_path` and a
                       configuration JSON file named *config.json* is found in the directory.
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory in which a downloaded pretrained model configuration should be cached if the
                 standard cache should not be used.
             from_tf (`bool`, *optional*, defaults to `False`):
                 Load the model weights from a TensorFlow checkpoint save file (see docstring of
-                `pretrained_model_name_or_path` argument).
+                `pretrained_model__name_or_path` argument).
             from_flax (`bool`, *optional*, defaults to `False`):
                 Load the model weights from a Flax checkpoint save file (see docstring of
-                `pretrained_model_name_or_path` argument).
+                `pretrained_model__name_or_path` argument).
             ignore_mismatched_sizes (`bool`, *optional*, defaults to `False`):
                 Whether or not to raise an error if some of the weights from the checkpoint do not have the same size
                 as the weights of the model (if for instance, you are instantiating a model with 10 labels from a
@@ -327,7 +327,7 @@ class ModelMixin(torch.nn.Module):
         user_agent = {"file_type": "model", "framework": "pytorch", "from_auto_class": from_auto_class}
 
         # Load config if we don't provide a configuration
-        config_path = pretrained_model_name_or_path
+        config_path = pretrained_model__name_or_path
         model, unused_kwargs = cls.from_config(
             config_path,
             cache_dir=cache_dir,
@@ -341,27 +341,27 @@ class ModelMixin(torch.nn.Module):
             subfolder=subfolder,
             **kwargs,
         )
-        model.register_to_config(name_or_path=pretrained_model_name_or_path)
+        model.register_to_config(_name_or_path=pretrained_model__name_or_path)
         # This variable will flag if we're loading a sharded checkpoint. In this case the archive file is just the
         # Load model
-        pretrained_model_name_or_path = str(pretrained_model_name_or_path)
-        if os.path.isdir(pretrained_model_name_or_path):
-            if os.path.isfile(os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)):
+        pretrained_model__name_or_path = str(pretrained_model__name_or_path)
+        if os.path.isdir(pretrained_model__name_or_path):
+            if os.path.isfile(os.path.join(pretrained_model__name_or_path, WEIGHTS_NAME)):
                 # Load from a PyTorch checkpoint
-                model_file = os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)
+                model_file = os.path.join(pretrained_model__name_or_path, WEIGHTS_NAME)
             elif subfolder is not None and os.path.isfile(
-                os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)
+                os.path.join(pretrained_model__name_or_path, subfolder, WEIGHTS_NAME)
             ):
-                model_file = os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)
+                model_file = os.path.join(pretrained_model__name_or_path, subfolder, WEIGHTS_NAME)
             else:
                 raise EnvironmentError(
-                    f"Error no file named {WEIGHTS_NAME} found in directory {pretrained_model_name_or_path}."
+                    f"Error no file named {WEIGHTS_NAME} found in directory {pretrained_model__name_or_path}."
                 )
         else:
             try:
                 # Load from URL or cache if already cached
                 model_file = hf_hub_download(
-                    pretrained_model_name_or_path,
+                    pretrained_model__name_or_path,
                     filename=WEIGHTS_NAME,
                     cache_dir=cache_dir,
                     force_download=force_download,
@@ -375,7 +375,7 @@ class ModelMixin(torch.nn.Module):
 
             except RepositoryNotFoundError:
                 raise EnvironmentError(
-                    f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier "
+                    f"{pretrained_model__name_or_path} is not a local folder and is not a valid model identifier "
                     "listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a "
                     "token having permission to this repo with `use_auth_token` or log in with `huggingface-cli "
                     "login` and pass `use_auth_token=True`."
@@ -384,30 +384,30 @@ class ModelMixin(torch.nn.Module):
                 raise EnvironmentError(
                     f"{revision} is not a valid git identifier (branch name, tag name or commit id) that exists for "
                     "this model name. Check the model page at "
-                    f"'https://huggingface.co/{pretrained_model_name_or_path}' for available revisions."
+                    f"'https://huggingface.co/{pretrained_model__name_or_path}' for available revisions."
                 )
             except EntryNotFoundError:
                 raise EnvironmentError(
-                    f"{pretrained_model_name_or_path} does not appear to have a file named {model_file}."
+                    f"{pretrained_model__name_or_path} does not appear to have a file named {model_file}."
                 )
             except HTTPError as err:
                 raise EnvironmentError(
                     "There was a specific connection error when trying to load"
-                    f" {pretrained_model_name_or_path}:\n{err}"
+                    f" {pretrained_model__name_or_path}:\n{err}"
                 )
             except ValueError:
                 raise EnvironmentError(
                     f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load this model, couldn't find it"
-                    f" in the cached files and it looks like {pretrained_model_name_or_path} is not the path to a"
+                    f" in the cached files and it looks like {pretrained_model__name_or_path} is not the path to a"
                     f" directory containing a file named {WEIGHTS_NAME} or"
                     " \nCheckout your internet connection or see how to run the library in"
                     " offline mode at 'https://huggingface.co/docs/transformers/installation#offline-mode'."
                 )
             except EnvironmentError:
                 raise EnvironmentError(
-                    f"Can't load the model for '{pretrained_model_name_or_path}'. If you were trying to load it from "
+                    f"Can't load the model for '{pretrained_model__name_or_path}'. If you were trying to load it from "
                     "'https://huggingface.co/models', make sure you don't have a local directory with the same name. "
-                    f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
+                    f"Otherwise, make sure '{pretrained_model__name_or_path}' is the correct path to a directory "
                     f"containing a file named {WEIGHTS_NAME}"
                 )
 
@@ -417,7 +417,7 @@ class ModelMixin(torch.nn.Module):
             model,
             state_dict,
             model_file,
-            pretrained_model_name_or_path,
+            pretrained_model__name_or_path,
             ignore_mismatched_sizes=ignore_mismatched_sizes,
         )
 
@@ -441,7 +441,7 @@ class ModelMixin(torch.nn.Module):
         model,
         state_dict,
         resolved_archive_file,
-        pretrained_model_name_or_path,
+        pretrained_model__name_or_path,
         ignore_mismatched_sizes=False,
     ):
         # Retrieve missing & unexpected_keys
@@ -500,7 +500,7 @@ class ModelMixin(torch.nn.Module):
         if False:
             if len(unexpected_keys) > 0:
                 logger.warning(
-                    f"Some weights of the model checkpoint at {pretrained_model_name_or_path} were not used when"
+                    f"Some weights of the model checkpoint at {pretrained_model__name_or_path} were not used when"
                     f" initializing {model.__class__.__name__}: {unexpected_keys}\n- This IS expected if you are"
                     f" initializing {model.__class__.__name__} from the checkpoint of a model trained on another task"
                     " or with another architecture (e.g. initializing a BertForSequenceClassification model from a"
@@ -514,13 +514,13 @@ class ModelMixin(torch.nn.Module):
             if len(missing_keys) > 0:
                 logger.warning(
                     f"Some weights of {model.__class__.__name__} were not initialized from the model checkpoint at"
-                    f" {pretrained_model_name_or_path} and are newly initialized: {missing_keys}\nYou should probably"
+                    f" {pretrained_model__name_or_path} and are newly initialized: {missing_keys}\nYou should probably"
                     " TRAIN this model on a down-stream task to be able to use it for predictions and inference."
                 )
             elif len(mismatched_keys) == 0:
                 logger.info(
                     f"All the weights of {model.__class__.__name__} were initialized from the model checkpoint at"
-                    f" {pretrained_model_name_or_path}.\nIf your task is similar to the task the model of the"
+                    f" {pretrained_model__name_or_path}.\nIf your task is similar to the task the model of the"
                     f" checkpoint was trained on, you can already use {model.__class__.__name__} for predictions"
                     " without further training."
                 )
@@ -533,7 +533,7 @@ class ModelMixin(torch.nn.Module):
                 )
                 logger.warning(
                     f"Some weights of {model.__class__.__name__} were not initialized from the model checkpoint at"
-                    f" {pretrained_model_name_or_path} and are newly initialized because the shapes did not"
+                    f" {pretrained_model__name_or_path} and are newly initialized because the shapes did not"
                     f" match:\n{mismatched_warning}\nYou should probably TRAIN this model on a down-stream task to be"
                     " able to use it for predictions and inference."
                 )

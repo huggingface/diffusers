@@ -40,7 +40,6 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         in_channels=None,
         out_channels=None,
         num_res_blocks=None,
-        dropout=0,
         block_channels=(224, 448, 672, 896),
         down_blocks=(
             "UNetResDownBlock2D",
@@ -52,7 +51,6 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         up_blocks=("UNetResAttnUpBlock2D", "UNetResAttnUpBlock2D", "UNetResAttnUpBlock2D", "UNetResUpBlock2D"),
         resnet_act_fn="silu",
         resnet_eps=1e-5,
-        conv_resample=True,
         num_head_channels=32,
         flip_sin_to_cos=True,
         downscale_freq_shift=0,
@@ -106,7 +104,6 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         # mid
         self.mid = UNetMidBlock2D(
             in_channels=block_channels[-1],
-            dropout=dropout,
             temb_channels=time_embed_dim,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,

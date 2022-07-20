@@ -78,7 +78,7 @@ class ConfigTester(unittest.TestCase):
         assert config["e"] == [1, 3]
 
         # init ignore private arguments
-        obj = SampleObject(_name_or_path="lalala")
+        obj = SampleObject(__name_or_path="lalala")
         config = obj.config
         assert config["a"] == 2
         assert config["b"] == 5
@@ -736,7 +736,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_output_format(self):
-        model_path = "google/ddpm-cifar10-32"
+        model_path = "/home/patrick/google_checkpoints/ddpm-cifar10-32"
 
         pipe = DDIMPipeline.from_pretrained(model_path)
 

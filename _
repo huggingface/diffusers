@@ -16,6 +16,7 @@
 
 import argparse
 import os
+import json
 import torch
 from diffusers import UNet2DModel
 
@@ -38,21 +39,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config_parameters_to_change = {
-        "image_size": "sample_size",
-        "num_res_blocks": "layers_per_block",
-        "block_channels": "block_out_channels",
-        "downscale_freq_shift": "freq_shift",
-        "resnet_num_groups": "num_groups_norm",
-        "resnet_act_fn": "act_fn",
-        "resnet_eps": "norm_eps",
-        "num_head_channels": "attention_head_dim",
+
     }
 
     key_parameters_to_change = {
-        "time_steps": "time_proj",
-        "mid": "mid_block",
-        "downsample_blocks": "down_blocks",
-        "upsample_blocks": "up_blocks",
+    
     }
 
     model = UNet2DModel.from_config(args.repo_path)
@@ -69,11 +60,6 @@ if __name__ == "__main__":
             else:
                 config[key] = value
 
-    config["down_blocks"] = [k.replace("UNetRes", "") for k in config["down_blocks"]]
-    config["up_blocks"] = [k.replace("UNetRes", "") for k in config["up_blocks"]]
-
-    model = UNet2DModel(**config)
-
     state_dict = torch.load(os.path.join(args.repo_path, "diffusion_pytorch_model.bin"))
 
     new_state_dict = {}
@@ -85,4 +71,12 @@ if __name__ == "__main__":
                 new_state_dict[param_key.replace(key, new_key) if param_key.startswith(key) else param_key] = param_value
 
     model.load_state_dict(state_dict)
-    model.save_pretrained(args.repo_path + "_new")
+
+    try:
+        scheduler = DDPMScheduler.from_config("/".join(args.checkpoint_path.split("/")[:-1]))
+        vqvae = VQModel.from_pretrained("/".join(args.checkpoint_path.split("/")[:-1]))
+
+        pipe = LatentDiffusionUncondPipeline(unet=model, scheduler=scheduler, vae=vqvae)
+        pipe.save_pretrained(args.dump_path)
+    except:
+        model.save_pretrained(args.dump_path)

@@ -149,7 +149,7 @@ def get_class_in_module(class_name, module_path):
 
 
 def get_cached_module_file(
-    pretrained_model_name_or_path: Union[str, os.PathLike],
+    pretrained_model__name_or_path: Union[str, os.PathLike],
     module_file: str,
     cache_dir: Optional[Union[str, os.PathLike]] = None,
     force_download: bool = False,
@@ -164,7 +164,7 @@ def get_cached_module_file(
     Transformers module.
 
     Args:
-        pretrained_model_name_or_path (`str` or `os.PathLike`):
+        pretrained_model__name_or_path (`str` or `os.PathLike`):
             This can be either:
 
             - a string, the *model id* of a pretrained model configuration hosted inside a model repo on
@@ -205,9 +205,9 @@ def get_cached_module_file(
     Returns:
         `str`: The path to the module inside the cache.
     """
-    # Download and cache module_file from the repo `pretrained_model_name_or_path` of grab it if it's a local file.
-    pretrained_model_name_or_path = str(pretrained_model_name_or_path)
-    module_file_or_url = os.path.join(pretrained_model_name_or_path, module_file)
+    # Download and cache module_file from the repo `pretrained_model__name_or_path` of grab it if it's a local file.
+    pretrained_model__name_or_path = str(pretrained_model__name_or_path)
+    module_file_or_url = os.path.join(pretrained_model__name_or_path, module_file)
     submodule = "local"
 
     if os.path.isfile(module_file_or_url):
@@ -226,7 +226,7 @@ def get_cached_module_file(
             )
 
         except EnvironmentError:
-            logger.error(f"Could not locate the {module_file} inside {pretrained_model_name_or_path}.")
+            logger.error(f"Could not locate the {module_file} inside {pretrained_model__name_or_path}.")
             raise
 
     # Check we have all the requirements in our environment
@@ -242,12 +242,12 @@ def get_cached_module_file(
     shutil.copy(resolved_module_file, submodule_path / module_file)
     for module_needed in modules_needed:
         module_needed = f"{module_needed}.py"
-        shutil.copy(os.path.join(pretrained_model_name_or_path, module_needed), submodule_path / module_needed)
+        shutil.copy(os.path.join(pretrained_model__name_or_path, module_needed), submodule_path / module_needed)
     return os.path.join(full_submodule, module_file)
 
 
 def get_class_from_dynamic_module(
-    pretrained_model_name_or_path: Union[str, os.PathLike],
+    pretrained_model__name_or_path: Union[str, os.PathLike],
     module_file: str,
     class_name: str,
     cache_dir: Optional[Union[str, os.PathLike]] = None,
@@ -270,7 +270,7 @@ def get_class_from_dynamic_module(
     </Tip>
 
     Args:
-        pretrained_model_name_or_path (`str` or `os.PathLike`):
+        pretrained_model__name_or_path (`str` or `os.PathLike`):
             This can be either:
 
             - a string, the *model id* of a pretrained model configuration hosted inside a model repo on
@@ -322,7 +322,7 @@ def get_class_from_dynamic_module(
     ```"""
     # And lastly we get the class inside our newly created module
     final_module = get_cached_module_file(
-        pretrained_model_name_or_path,
+        pretrained_model__name_or_path,
         module_file,
         cache_dir=cache_dir,
         force_download=force_download,
