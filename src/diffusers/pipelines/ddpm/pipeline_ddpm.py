@@ -54,4 +54,7 @@ class DDPMPipeline(DiffusionPipeline):
             # 3. set current image to prev_image: x_t -> x_t-1
             image = pred_prev_image
 
+        image = (image / 2 + 0.5).clamp(0, 1)
+        image = image.cpu().permute(0, 2, 3, 1).numpy()
+
         return {"sample": image}

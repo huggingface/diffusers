@@ -57,4 +57,7 @@ class PNDMPipeline(DiffusionPipeline):
 
             image = self.scheduler.step_plms(model_output, t, image, num_inference_steps)["prev_sample"]
 
+        image = (image / 2 + 0.5).clamp(0, 1)
+        image = image.cpu().permute(0, 2, 3, 1).numpy()
+
         return {"sample": image}
