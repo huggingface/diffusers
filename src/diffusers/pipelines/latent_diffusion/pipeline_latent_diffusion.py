@@ -30,6 +30,7 @@ class LatentDiffusionPipeline(DiffusionPipeline):
         eta=0.0,
         guidance_scale=1.0,
         num_inference_steps=50,
+        output_type="numpy",
     ):
         # eta corresponds to η in paper and should be between [0, 1]
 
@@ -86,6 +87,8 @@ class LatentDiffusionPipeline(DiffusionPipeline):
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
+        if output_type == "pil":
+            image = self.numpy_to_pil(image)
 
         return {"sample": image}
 

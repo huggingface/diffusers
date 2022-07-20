@@ -19,6 +19,7 @@ import os
 from typing import Optional, Union
 
 from huggingface_hub import snapshot_download
+from PIL import Image
 
 from .configuration_utils import ConfigMixin
 from .utils import DIFFUSERS_CACHE, logging
@@ -189,3 +190,15 @@ class DiffusionPipeline(ConfigMixin):
         # 5. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
         return model
+
+    @staticmethod
+    def numpy_to_pil(images):
+        """
+        Convert a numpy image or a batch of images to a PIL image.
+        """
+        if images.ndim == 3:
+            images = images[None, ...]
+        images = (images * 255).round().astype("uint8")
+        pil_images = [Image.fromarray(image) for image in images]
+
+        return pil_images

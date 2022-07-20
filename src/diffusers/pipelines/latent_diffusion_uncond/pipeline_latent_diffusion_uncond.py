@@ -13,12 +13,7 @@ class LatentDiffusionUncondPipeline(DiffusionPipeline):
 
     @torch.no_grad()
     def __call__(
-        self,
-        batch_size=1,
-        generator=None,
-        torch_device=None,
-        eta=0.0,
-        num_inference_steps=50,
+        self, batch_size=1, generator=None, torch_device=None, eta=0.0, num_inference_steps=50, output_type="numpy"
     ):
         # eta corresponds to η in paper and should be between [0, 1]
 
@@ -47,5 +42,7 @@ class LatentDiffusionUncondPipeline(DiffusionPipeline):
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
+        if output_type == "pil":
+            image = self.numpy_to_pil(image)
 
         return {"sample": image}
