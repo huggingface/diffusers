@@ -71,10 +71,12 @@ models = api.list_models(filter="diffusers")
 for mod in models:
     if "google" in mod.author or mod.modelId == "CompVis/ldm-celebahq-256": 
             
-        if mod.modelId == "CompVis/ldm-celebahq-256" or not has_file(mod.modelId, "config.json"):
-            model = UNetUnconditionalModel.from_pretrained(mod.modelId, subfolder = "unet")
+        local_checkpoint = "/home/patrick/google_checkpoints/" + mod.modelId.split("/")[-1]
+
+        if mod.modelId.startswith("CompVis"):
+            model = UNetUnconditionalModel.from_pretrained(local_checkpoint, subfolder = "unet")
         else: 
-            model = UNetUnconditionalModel.from_pretrained(mod.modelId)
+            model = UNetUnconditionalModel.from_pretrained(local_checkpoint)
         
         torch.manual_seed(0)
         random.seed(0)

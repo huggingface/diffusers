@@ -34,7 +34,7 @@ from .utils import (
 )
 
 
-WEIGHTS_NAME = "diffusion_model.pt"
+WEIGHTS_NAME = "diffusion_pytorch_model.bin"
 
 
 logger = logging.get_logger(__name__)

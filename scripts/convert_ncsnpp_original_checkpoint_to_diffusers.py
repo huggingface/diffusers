@@ -134,7 +134,7 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--checkpoint_path",
-        default="/Users/arthurzucker/Work/diffusers/ArthurZ/diffusion_model.pt",
+        default="/Users/arthurzucker/Work/diffusers/ArthurZ/diffusion_pytorch_model.bin",
         type=str,
         required=False,
         help="Path to the checkpoint to convert.",
