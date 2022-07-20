@@ -17,7 +17,8 @@
 import argparse
 import os
 import torch
-from diffusers import UNet2DModel
+from diffusers import UNet2DModel, UNet2DConditionModel
+from transformers.file_utils import has_file
 
 
 if __name__ == "__main__":
@@ -42,7 +43,7 @@ if __name__ == "__main__":
         "num_res_blocks": "layers_per_block",
         "block_channels": "block_out_channels",
         "downscale_freq_shift": "freq_shift",
-        "resnet_num_groups": "num_groups_norm",
+        "resnet_num_groups": "norm_num_groups",
         "resnet_act_fn": "act_fn",
         "resnet_eps": "norm_eps",
         "num_head_channels": "attention_head_dim",
@@ -55,26 +56,30 @@ if __name__ == "__main__":
         "upsample_blocks": "up_blocks",
     }
 
-    model = UNet2DModel.from_config(args.repo_path)
+    if has_file(args.repo_path, "config.json"):
+        model = UNet2DModel.from_config(args.repo_path)
+        subfolder = ""
+    else:
+        subfolder = "unet"
+        class_name = UNet2DConditionModel if "ldm-text2im-large-256" in args.repo_path else UNet2DModel
+        model = class_name.from_config(args.repo_path, subfolder=subfolder)
+
     config = dict(model.config)
 
     for key, value in config_parameters_to_change.items():
         if key in config:
-            if isinstance(value, dict):
-                new_list = []
-
-                for block_name in config[key]:
-                    # map old block name to new one
-                    new_list.append(value[block_name])
-            else:
-                config[key] = value
+            config[value] = config[key]
+            del config[key]
 
     config["down_blocks"] = [k.replace("UNetRes", "") for k in config["down_blocks"]]
     config["up_blocks"] = [k.replace("UNetRes", "") for k in config["up_blocks"]]
 
-    model = UNet2DModel(**config)
+    if has_file(args.repo_path, "config.json"):
+        model = UNet2DModel(**config)
+    else:
+        model = UNet2DConditionModel(**config)
 
-    state_dict = torch.load(os.path.join(args.repo_path, "diffusion_pytorch_model.bin"))
+    state_dict = torch.load(os.path.join(args.repo_path, subfolder, "diffusion_pytorch_model.bin"))
 
     new_state_dict = {}
     for key, new_key in key_parameters_to_change.items():
@@ -85,4 +90,7 @@ if __name__ == "__main__":
                 new_state_dict[param_key.replace(key, new_key) if param_key.startswith(key) else param_key] = param_value
 
     model.load_state_dict(state_dict)
-    model.save_pretrained(args.repo_path + "_new")
+    if has_file(args.repo_path, "config.json"):
+        model.save_pretrained(args.repo_path)
+    else:
+        model.save_pretrained(os.path.join(args.repo_path, "unet"))

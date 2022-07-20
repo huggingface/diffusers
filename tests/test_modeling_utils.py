@@ -301,7 +301,7 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
             "out_channels": 3,
             "in_channels": 3,
             "num_res_blocks": 2,
-            "image_size": 32,
+            "sample_size": 32,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
@@ -316,7 +316,7 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
 #        if torch.cuda.is_available():
 #            torch.cuda.manual_seed_all(0)
 #
-#        noise = torch.randn(1, model.config.in_channels, model.config.image_size, model.config.image_size)
+#        noise = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
 #        time_step = torch.tensor([10])
 #
 #        with torch.no_grad():
@@ -353,7 +353,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "image_size": 32,
+            "sample_size": 32,
             "in_channels": 4,
             "out_channels": 4,
             "num_res_blocks": 2,
@@ -387,7 +387,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(0)
 
-        noise = torch.randn(1, model.config.in_channels, model.config.image_size, model.config.image_size)
+        noise = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
         time_step = torch.tensor([10] * noise.shape[0])
 
         with torch.no_grad():
@@ -410,7 +410,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
 #        if torch.cuda.is_available():
 #            torch.cuda.manual_seed_all(0)
 #
-#        noise = torch.randn(1, model.config.in_channels, model.config.image_size, model.config.image_size)
+#        noise = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
 #        context = torch.ones((1, 16, 64), dtype=torch.float32)
 #        time_step = torch.tensor([10] * noise.shape[0])
 #
@@ -572,7 +572,6 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
             "embed_dim": 3,
             "sane_index_shape": False,
             "ch_mult": (1,),
-            "dropout": 0.0,
             "double_z": False,
         }
         inputs_dict = self.dummy_input
@@ -694,7 +693,7 @@ class PipelineTesterMixin(unittest.TestCase):
         model = UNet2DModel(
             block_channels=(32, 64),
             num_res_blocks=2,
-            image_size=32,
+            sample_size=32,
             in_channels=3,
             out_channels=3,
             down_blocks=("UNetResDownBlock2D", "UNetResAttnDownBlock2D"),

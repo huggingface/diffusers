@@ -52,7 +52,7 @@ class LatentDiffusionPipeline(DiffusionPipeline):
         text_embeddings = self.bert(text_input.input_ids.to(torch_device))
 
         latents = torch.randn(
-            (batch_size, self.unet.in_channels, self.unet.image_size, self.unet.image_size),
+            (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
             generator=generator,
         )
         latents = latents.to(torch_device)

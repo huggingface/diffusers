@@ -14,7 +14,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
     def __call__(self, num_inference_steps=2000, generator=None, output_type="pil"):
         device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-        img_size = self.model.config.image_size
+        img_size = self.model.config.sample_size
         shape = (1, 3, img_size, img_size)
 
         model = self.model.to(device)

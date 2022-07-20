@@ -33,8 +33,9 @@ def get_down_block(
     attn_num_head_channels,
     downsample_padding=None,
 ):
-    if down_block_type == "UNetResDownBlock2D":
-        return UNetResDownBlock2D(
+    down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
+    if down_block_type == "DownBlock2D":
+        return DownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
@@ -44,20 +45,8 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             downsample_padding=downsample_padding,
         )
-    elif down_block_type == "UNetResAttnDownBlock2D":
-        return UNetResAttnDownBlock2D(
-            num_layers=num_layers,
-            in_channels=in_channels,
-            out_channels=out_channels,
-            temb_channels=temb_channels,
-            add_downsample=add_downsample,
-            resnet_eps=resnet_eps,
-            resnet_act_fn=resnet_act_fn,
-            downsample_padding=downsample_padding,
-            attn_num_head_channels=attn_num_head_channels,
-        )
-    elif down_block_type == "UNetResCrossAttnDownBlock2D":
-        return UNetResCrossAttnDownBlock2D(
+    elif down_block_type == "AttnDownBlock2D":
+        return AttnDownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
@@ -68,8 +57,20 @@ def get_down_block(
             downsample_padding=downsample_padding,
             attn_num_head_channels=attn_num_head_channels,
         )
-    elif down_block_type == "UNetResSkipDownBlock2D":
-        return UNetResSkipDownBlock2D(
+    elif down_block_type == "CrossAttnDownBlock2D":
+        return CrossAttnDownBlock2D(
+            num_layers=num_layers,
+            in_channels=in_channels,
+            out_channels=out_channels,
+            temb_channels=temb_channels,
+            add_downsample=add_downsample,
+            resnet_eps=resnet_eps,
+            resnet_act_fn=resnet_act_fn,
+            downsample_padding=downsample_padding,
+            attn_num_head_channels=attn_num_head_channels,
+        )
+    elif down_block_type == "SkipDownBlock2D":
+        return SkipDownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
@@ -79,8 +80,8 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             downsample_padding=downsample_padding,
         )
-    elif down_block_type == "UNetResAttnSkipDownBlock2D":
-        return UNetResAttnSkipDownBlock2D(
+    elif down_block_type == "AttnSkipDownBlock2D":
+        return AttnSkipDownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
@@ -105,8 +106,9 @@ def get_up_block(
     resnet_act_fn,
     attn_num_head_channels,
 ):
-    if up_block_type == "UNetResUpBlock2D":
-        return UNetResUpBlock2D(
+    up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
+    if up_block_type == "UpBlock2D":
+        return UpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
@@ -116,20 +118,8 @@ def get_up_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
         )
-    elif up_block_type == "UNetResCrossAttnUpBlock2D":
-        return UNetResCrossAttnUpBlock2D(
-            num_layers=num_layers,
-            in_channels=in_channels,
-            out_channels=out_channels,
-            prev_output_channel=prev_output_channel,
-            temb_channels=temb_channels,
-            add_upsample=add_upsample,
-            resnet_eps=resnet_eps,
-            resnet_act_fn=resnet_act_fn,
-            attn_num_head_channels=attn_num_head_channels,
-        )
-    elif up_block_type == "UNetResAttnUpBlock2D":
-        return UNetResAttnUpBlock2D(
+    elif up_block_type == "CrossAttnUpBlock2D":
+        return CrossAttnUpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
@@ -140,8 +130,20 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             attn_num_head_channels=attn_num_head_channels,
         )
-    elif up_block_type == "UNetResSkipUpBlock2D":
-        return UNetResSkipUpBlock2D(
+    elif up_block_type == "AttnUpBlock2D":
+        return AttnUpBlock2D(
+            num_layers=num_layers,
+            in_channels=in_channels,
+            out_channels=out_channels,
+            prev_output_channel=prev_output_channel,
+            temb_channels=temb_channels,
+            add_upsample=add_upsample,
+            resnet_eps=resnet_eps,
+            resnet_act_fn=resnet_act_fn,
+            attn_num_head_channels=attn_num_head_channels,
+        )
+    elif up_block_type == "SkipUpBlock2D":
+        return SkipUpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
@@ -151,8 +153,8 @@ def get_up_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
         )
-    elif up_block_type == "UNetResAttnSkipUpBlock2D":
-        return UNetResAttnSkipUpBlock2D(
+    elif up_block_type == "AttnSkipUpBlock2D":
+        return AttnSkipUpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
@@ -322,7 +324,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         return hidden_states
 
 
-class UNetResAttnDownBlock2D(nn.Module):
+class AttnDownBlock2D(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -403,7 +405,7 @@ class UNetResAttnDownBlock2D(nn.Module):
         return hidden_states, output_states
 
 
-class UNetResCrossAttnDownBlock2D(nn.Module):
+class CrossAttnDownBlock2D(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -485,7 +487,7 @@ class UNetResCrossAttnDownBlock2D(nn.Module):
         return hidden_states, output_states
 
 
-class UNetResDownBlock2D(nn.Module):
+class DownBlock2D(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -551,7 +553,7 @@ class UNetResDownBlock2D(nn.Module):
         return hidden_states, output_states
 
 
-class UNetResAttnSkipDownBlock2D(nn.Module):
+class AttnSkipDownBlock2D(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -644,7 +646,7 @@ class UNetResAttnSkipDownBlock2D(nn.Module):
         return hidden_states, output_states, skip_sample
 
 
-class UNetResSkipDownBlock2D(nn.Module):
+class SkipDownBlock2D(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -723,7 +725,7 @@ class UNetResSkipDownBlock2D(nn.Module):
         return hidden_states, output_states, skip_sample
 
 
-class UNetResAttnUpBlock2D(nn.Module):
+class AttnUpBlock2D(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -801,7 +803,7 @@ class UNetResAttnUpBlock2D(nn.Module):
         return hidden_states
 
 
-class UNetResCrossAttnUpBlock2D(nn.Module):
+class CrossAttnUpBlock2D(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -881,7 +883,7 @@ class UNetResCrossAttnUpBlock2D(nn.Module):
         return hidden_states
 
 
-class UNetResUpBlock2D(nn.Module):
+class UpBlock2D(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -944,7 +946,7 @@ class UNetResUpBlock2D(nn.Module):
         return hidden_states
 
 
-class UNetResAttnSkipUpBlock2D(nn.Module):
+class AttnSkipUpBlock2D(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -1055,7 +1057,7 @@ class UNetResAttnSkipUpBlock2D(nn.Module):
         return hidden_states, skip_sample
 
 
-class UNetResSkipUpBlock2D(nn.Module):
+class SkipUpBlock2D(nn.Module):
     def __init__(
         self,
         in_channels: int,
