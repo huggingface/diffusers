@@ -61,6 +61,7 @@ class UNetUnconditionalModel(ModelMixin, ConfigMixin):
         center_input_sample=False,
         resnet_num_groups=32,
     ):
+        super().__init__()
         self.image_size = image_size
         time_embed_dim = block_channels[0] * 4
 

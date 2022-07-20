@@ -400,6 +400,7 @@ class VQModel(ModelMixin, ConfigMixin):
         resamp_with_conv=True,
         give_pre_end=False,
     ):
+        super().__init__()
 
         # pass init params to Encoder
         self.encoder = Encoder(
@@ -477,6 +478,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         resamp_with_conv=True,
         give_pre_end=False,
     ):
+        super().__init__()
 
         # pass init params to Encoder
         self.encoder = Encoder(
