@@ -35,6 +35,7 @@ from diffusers import (
     PNDMScheduler,
     ScoreSdeVePipeline,
     ScoreSdeVeScheduler,
+    TemporalUNet,
     UNetUnconditionalModel,
     VQModel,
 )
@@ -570,6 +571,77 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
         expected_output_slice = torch.tensor([-1.1321, 0.1056, 0.3505, -0.6461, -0.2014, 0.0419, -0.5763, -0.8462, -0.4218])
         # fmt: on
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
+
+
+class TemporalUNetModelTests(ModelTesterMixin, unittest.TestCase):
+    model_class = TemporalUNet
+
+    @property
+    def dummy_input(self):
+        batch_size = 4
+        num_features = 14
+        seq_len = 16
+
+        noise = floats_tensor((batch_size, seq_len, num_features)).to(torch_device)
+        time_step = torch.tensor([10] * batch_size).to(torch_device)
+
+        return {"sample": noise, "timestep": time_step}
+
+    @property
+    def input_shape(self):
+        return (4, 16, 14)
+
+    @property
+    def output_shape(self):
+        return (4, 16, 14)
+
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = {
+            "training_horizon": 128,
+            "dim": 32,
+            "dim_mults": [1, 4, 8],
+            "predict_epsilon": False,
+            "clip_denoised": True,
+            "transition_dim": 14,
+            "cond_dim": 3,
+        }
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+
+    def test_from_pretrained_hub(self):
+        model, loading_info = TemporalUNet.from_pretrained(
+            "fusing/ddpm-unet-rl-hopper-hor128", output_loading_info=True
+        )
+        self.assertIsNotNone(model)
+        self.assertEqual(len(loading_info["missing_keys"]), 0)
+
+        model.to(torch_device)
+        image = model(**self.dummy_input)
+
+        assert image is not None, "Make sure output is not None"
+
+    def test_output_pretrained(self):
+        model = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor128")
+        model.eval()
+
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        num_features = model.transition_dim
+        seq_len = 16
+        noise = torch.randn((1, seq_len, num_features))
+        time_step = torch.full((num_features,), 0)
+
+        with torch.no_grad():
+            output = model(noise, time_step)
+
+        output_slice = output[0, -3:, -3:].flatten()
+        # fmt: off
+        expected_output_slice = torch.tensor([-0.2714, 0.1042, -0.0794, -0.2820, 0.0803, -0.0811, -0.2345, 0.0580, -0.0584])
+        # fmt: on
+
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))
 
 
 class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):

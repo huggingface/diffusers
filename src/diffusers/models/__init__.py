@@ -17,5 +17,6 @@
 # limitations under the License.
 
 from .unet_conditional import UNetConditionalModel
+from .unet_rl import TemporalUNet
 from .unet_unconditional import UNetUnconditionalModel
 from .vae import AutoencoderKL, VQModel
