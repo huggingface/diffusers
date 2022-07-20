@@ -112,7 +112,7 @@ class DiffusionPipeline(ConfigMixin):
             save_method(os.path.join(save_directory, pipeline_component_name))
 
     @classmethod
-    def from_pretrained(cls, pretrained_model__name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
+    def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
         r"""
         Add docstrings
         """
@@ -125,9 +125,9 @@ class DiffusionPipeline(ConfigMixin):
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
-        if not os.path.isdir(pretrained_model__name_or_path):
+        if not os.path.isdir(pretrained_model_name_or_path):
             cached_folder = snapshot_download(
-                pretrained_model__name_or_path,
+                pretrained_model_name_or_path,
                 cache_dir=cache_dir,
                 resume_download=resume_download,
                 proxies=proxies,
@@ -136,7 +136,7 @@ class DiffusionPipeline(ConfigMixin):
                 revision=revision,
             )
         else:
-            cached_folder = pretrained_model__name_or_path
+            cached_folder = pretrained_model_name_or_path
 
         config_dict = cls.get_config_dict(cached_folder)
 

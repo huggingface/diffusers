@@ -14,53 +14,26 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        image_size=None,
+        sample_size = None,
         in_channels=4,
         out_channels=4,
-        num_res_blocks=2,
-        block_channels=(320, 640, 1280, 1280),
-        down_blocks=(
-            "CrossAttnDownBlock2D",
-            "CrossAttnDownBlock2D",
-            "CrossAttnDownBlock2D",
-            "DownBlock2D",
-        ),
-        downsample_padding=1,
-        up_blocks=(
-            "UpBlock2D",
-            "CrossAttnUpBlock2D",
-            "CrossAttnUpBlock2D",
-            "CrossAttnUpBlock2D",
-        ),
-        resnet_act_fn="silu",
-        resnet_eps=1e-5,
-        conv_resample=True,
-        num_head_channels=8,
-        flip_sin_to_cos=True,
-        downscale_freq_shift=0,
-        mid_block_scale_factor=1,
         center_input_sample=False,
-        resnet_num_groups=30,
-        sample_size = None,
-        layers_per_block = None,
-        block_out_channels = None,
-        freq_shift = None,
-        norm_num_groups = None,
-        act_fn = None,
-        norm_eps = None,
-        attention_head_dim = None,
+        flip_sin_to_cos=True,
+        freq_shift = 0,
+        down_blocks=("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D"),
+        up_blocks=("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
+        block_out_channels=(320, 640, 1280, 1280),
+        layers_per_block = 2,
+        downsample_padding=1,
+        mid_block_scale_factor=1,
+        act_fn = "silu",
+        norm_num_groups = 32,
+        norm_eps = 1e-5,
+        attention_head_dim = 8,
     ):
         super().__init__()
-        sample_size = sample_size or image_size
-        layers_per_block = layers_per_block or num_res_blocks
-        block_out_channels = block_out_channels or block_channels
-        freq_shift = freq_shift or downscale_freq_shift
-        norm_num_groups = norm_num_groups or resnet_num_groups
-        act_fn = act_fn or resnet_act_fn
-        norm_eps = norm_eps or resnet_eps
-        attention_head_dim = attention_head_dim or num_head_channels
 
-        self.mage_size = sample_size
+        self.sample_size = sample_size
         time_embed_dim = block_out_channels[0] * 4
 
         # input
@@ -91,7 +64,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 temb_channels=time_embed_dim,
                 add_downsample=not is_final_block,
                 resnet_eps=norm_eps,
-                resnet_act_fn=resnet_act_fn,
+                resnet_act_fn=act_fn,
                 attn_num_head_channels=attention_head_dim,
                 downsample_padding=downsample_padding,
             )
@@ -102,7 +75,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             in_channels=block_out_channels[-1],
             temb_channels=time_embed_dim,
             resnet_eps=norm_eps,
-            resnet_act_fn=resnet_act_fn,
+            resnet_act_fn=act_fn,
             output_scale_factor=mid_block_scale_factor,
             resnet_time_scale_shift="default",
             attn_num_head_channels=attention_head_dim,
@@ -128,7 +101,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 temb_channels=time_embed_dim,
                 add_upsample=not is_final_block,
                 resnet_eps=norm_eps,
-                resnet_act_fn=resnet_act_fn,
+                resnet_act_fn=act_fn,
                 attn_num_head_channels=attention_head_dim,
             )
             self.upsample_blocks.append(up_block)

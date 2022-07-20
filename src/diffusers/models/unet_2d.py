@@ -14,46 +14,25 @@ class UNet2DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        image_size=None,
-        in_channels=None,
-        out_channels=None,
-        num_res_blocks=None,
-        block_channels=(224, 448, 672, 896),
-        down_blocks=(
-            "DownBlock2D",
-            "AttnDownBlock2D",
-            "AttnDownBlock2D",
-            "AttnDownBlock2D",
-        ),
-        downsample_padding=1,
-        up_blocks=("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"),
-        resnet_act_fn="silu",
-        resnet_eps=1e-5,
-        num_head_channels=32,
-        flip_sin_to_cos=True,
-        downscale_freq_shift=0,
-        time_embedding_type="positional",
-        mid_block_scale_factor=1,
-        center_input_sample=False,
-        resnet_num_groups=32,
         sample_size = None,
-        layers_per_block = None,
-        block_out_channels = None,
-        freq_shift = None,
-        norm_num_groups = None,
-        act_fn = None,
-        norm_eps = None,
-        attention_head_dim = None,
+        in_channels=3,
+        out_channels=3,
+        center_input_sample=False,
+        time_embedding_type="positional",
+        freq_shift = 0,
+        flip_sin_to_cos=True,
+        down_blocks=("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"),
+        up_blocks=("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"),
+        block_out_channels=(224, 448, 672, 896),
+        layers_per_block = 2,
+        mid_block_scale_factor=1,
+        downsample_padding=1,
+        act_fn = "silu",
+        attention_head_dim = 8,
+        norm_num_groups = 32,
+        norm_eps = 1e-5,
     ):
         super().__init__()
-        sample_size = sample_size or image_size
-        layers_per_block = layers_per_block or num_res_blocks
-        block_out_channels = block_out_channels or block_channels
-        freq_shift = freq_shift or downscale_freq_shift
-        norm_num_groups = norm_num_groups or resnet_num_groups
-        act_fn = act_fn or resnet_act_fn
-        norm_eps = norm_eps or resnet_eps
-        attention_head_dim = attention_head_dim or num_head_channels
 
         self.sample_size = sample_size
         time_embed_dim = block_out_channels[0] * 4

@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 import inspect
 import math
 import tempfile
@@ -78,7 +77,7 @@ class ConfigTester(unittest.TestCase):
         assert config["e"] == [1, 3]
 
         # init ignore private arguments
-        obj = SampleObject(__name_or_path="lalala")
+        obj = SampleObject(_name_or_path="lalala")
         config = obj.config
         assert config["a"] == 2
         assert config["b"] == 5
@@ -294,13 +293,13 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "block_channels": (32, 64),
-            "down_blocks": ("UNetResDownBlock2D", "UNetResAttnDownBlock2D"),
-            "up_blocks": ("UNetResAttnUpBlock2D", "UNetResUpBlock2D"),
-            "num_head_channels": None,
+            "block_out_channels": (32, 64),
+            "down_blocks": ("DownBlock2D", "AttnDownBlock2D"),
+            "up_blocks": ("AttnUpBlock2D", "UpBlock2D"),
+            "attention_head_dim": None,
             "out_channels": 3,
             "in_channels": 3,
-            "num_res_blocks": 2,
+            "layers_per_block": 2,
             "sample_size": 32,
         }
         inputs_dict = self.dummy_input
@@ -356,12 +355,11 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
             "sample_size": 32,
             "in_channels": 4,
             "out_channels": 4,
-            "num_res_blocks": 2,
-            "block_channels": (32, 64),
-            "num_head_channels": 32,
-            "conv_resample": True,
-            "down_blocks": ("UNetResDownBlock2D", "UNetResDownBlock2D"),
-            "up_blocks": ("UNetResUpBlock2D", "UNetResUpBlock2D"),
+            "layers_per_block": 2,
+            "block_out_channels": (32, 64),
+            "attention_head_dim": 32,
+            "down_blocks": ("DownBlock2D", "DownBlock2D"),
+            "up_blocks": ("UpBlock2D", "UpBlock2D"),
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
@@ -449,25 +447,25 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "block_channels": [32, 64, 64, 64],
+            "block_out_channels": [32, 64, 64, 64],
             "in_channels": 3,
-            "num_res_blocks": 1,
+            "layers_per_block": 1,
             "out_channels": 3,
             "time_embedding_type": "fourier",
-            "resnet_eps": 1e-6,
+            "norm_eps": 1e-6,
             "mid_block_scale_factor": math.sqrt(2.0),
-            "resnet_num_groups": None,
+            "norm_num_groups": None,
             "down_blocks": [
-                "UNetResSkipDownBlock2D",
-                "UNetResAttnSkipDownBlock2D",
-                "UNetResSkipDownBlock2D",
-                "UNetResSkipDownBlock2D",
+                "SkipDownBlock2D",
+                "AttnSkipDownBlock2D",
+                "SkipDownBlock2D",
+                "SkipDownBlock2D",
             ],
             "up_blocks": [
-                "UNetResSkipUpBlock2D",
-                "UNetResSkipUpBlock2D",
-                "UNetResAttnSkipUpBlock2D",
-                "UNetResSkipUpBlock2D",
+                "SkipUpBlock2D",
+                "SkipUpBlock2D",
+                "AttnSkipUpBlock2D",
+                "SkipUpBlock2D",
             ],
         }
         inputs_dict = self.dummy_input
@@ -691,13 +689,13 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_from_pretrained_save_pretrained(self):
         # 1. Load models
         model = UNet2DModel(
-            block_channels=(32, 64),
-            num_res_blocks=2,
+            block_out_channels=(32, 64),
+            layers_per_block=2,
             sample_size=32,
             in_channels=3,
             out_channels=3,
-            down_blocks=("UNetResDownBlock2D", "UNetResAttnDownBlock2D"),
-            up_blocks=("UNetResAttnUpBlock2D", "UNetResUpBlock2D"),
+            down_blocks=("DownBlock2D", "AttnDownBlock2D"),
+            up_blocks=("AttnUpBlock2D", "UpBlock2D"),
         )
         schedular = DDPMScheduler(num_train_timesteps=10)
 
