@@ -21,7 +21,7 @@ from typing import Union
 import numpy as np
 import torch
 
-from ..configuration_utils import ConfigMixin
+from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils import SchedulerMixin
 
 
@@ -49,6 +49,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
 
 
 class DDIMScheduler(SchedulerMixin, ConfigMixin):
+    @register_to_config
     def __init__(
         self,
         num_train_timesteps=1000,
@@ -60,16 +61,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         clip_sample=True,
         tensor_format="np",
     ):
-        super().__init__()
-        self.register_to_config(
-            num_train_timesteps=num_train_timesteps,
-            beta_start=beta_start,
-            beta_end=beta_end,
-            beta_schedule=beta_schedule,
-            trained_betas=trained_betas,
-            timestep_values=timestep_values,
-            clip_sample=clip_sample,
-        )
 
         if beta_schedule == "linear":
             self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)

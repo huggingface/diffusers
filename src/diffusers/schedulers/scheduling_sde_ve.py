@@ -21,7 +21,7 @@ from typing import Union
 import numpy as np
 import torch
 
-from ..configuration_utils import ConfigMixin
+from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils import SchedulerMixin
 
 
@@ -37,6 +37,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
     "np" or "pt" for the expected format of samples passed to the Scheduler.
     """
 
+    @register_to_config
     def __init__(
         self,
         num_train_timesteps=2000,
@@ -47,15 +48,6 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         correct_steps=1,
         tensor_format="pt",
     ):
-        super().__init__()
-        self.register_to_config(
-            num_train_timesteps=num_train_timesteps,
-            snr=snr,
-            sigma_min=sigma_min,
-            sigma_max=sigma_max,
-            sampling_eps=sampling_eps,
-            correct_steps=correct_steps,
-        )
         # self.sigmas = None
         # self.discrete_sigmas = None
         #
