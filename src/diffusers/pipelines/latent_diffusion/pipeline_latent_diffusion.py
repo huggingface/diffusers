@@ -30,7 +30,7 @@ class LatentDiffusionPipeline(DiffusionPipeline):
         eta=0.0,
         guidance_scale=1.0,
         num_inference_steps=50,
-        output_type="numpy",
+        output_type="pil",
     ):
         # eta corresponds to η in paper and should be between [0, 1]
 

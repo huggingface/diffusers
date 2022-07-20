@@ -704,9 +704,9 @@ class PipelineTesterMixin(unittest.TestCase):
 
         generator = torch.manual_seed(0)
 
-        image = ddpm(generator=generator)["sample"]
+        image = ddpm(generator=generator, output_type="numpy")["sample"]
         generator = generator.manual_seed(0)
-        new_image = new_ddpm(generator=generator)["sample"]
+        new_image = new_ddpm(generator=generator, output_type="numpy")["sample"]
 
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
 
@@ -722,9 +722,9 @@ class PipelineTesterMixin(unittest.TestCase):
 
         generator = torch.manual_seed(0)
 
-        image = ddpm(generator=generator)["sample"]
+        image = ddpm(generator=generator, output_type="numpy")["sample"]
         generator = generator.manual_seed(0)
-        new_image = ddpm_from_hub(generator=generator)["sample"]
+        new_image = ddpm_from_hub(generator=generator, output_type="numpy")["sample"]
 
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
 
@@ -735,10 +735,6 @@ class PipelineTesterMixin(unittest.TestCase):
         pipe = DDIMPipeline.from_pretrained(model_path)
 
         generator = torch.manual_seed(0)
-        images = pipe(generator=generator)["sample"]
-        assert images.shape == (1, 32, 32, 3)
-        assert isinstance(images, np.ndarray)
-
         images = pipe(generator=generator, output_type="numpy")["sample"]
         assert images.shape == (1, 32, 32, 3)
         assert isinstance(images, np.ndarray)
@@ -746,6 +742,11 @@ class PipelineTesterMixin(unittest.TestCase):
         images = pipe(generator=generator, output_type="pil")["sample"]
         assert isinstance(images, list)
         assert len(images) == 1
+        assert isinstance(images[0], PIL.Image.Image)
+
+        # use PIL by default
+        images = pipe(generator=generator)["sample"]
+        assert isinstance(images, list)
         assert isinstance(images[0], PIL.Image.Image)
 
     @slow
@@ -759,7 +760,7 @@ class PipelineTesterMixin(unittest.TestCase):
         ddpm = DDPMPipeline(unet=unet, scheduler=scheduler)
 
         generator = torch.manual_seed(0)
-        image = ddpm(generator=generator)["sample"]
+        image = ddpm(generator=generator, output_type="numpy")["sample"]
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -777,7 +778,7 @@ class PipelineTesterMixin(unittest.TestCase):
         ddpm = DDIMPipeline(unet=unet, scheduler=scheduler)
 
         generator = torch.manual_seed(0)
-        image = ddpm(generator=generator)["sample"]
+        image = ddpm(generator=generator, output_type="numpy")["sample"]
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -795,7 +796,7 @@ class PipelineTesterMixin(unittest.TestCase):
         ddim = DDIMPipeline(unet=unet, scheduler=scheduler)
 
         generator = torch.manual_seed(0)
-        image = ddim(generator=generator, eta=0.0)["sample"]
+        image = ddim(generator=generator, eta=0.0, output_type="numpy")["sample"]
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -812,7 +813,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
         pndm = PNDMPipeline(unet=unet, scheduler=scheduler)
         generator = torch.manual_seed(0)
-        image = pndm(generator=generator)["sample"]
+        image = pndm(generator=generator, output_type="numpy")["sample"]
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -826,7 +827,9 @@ class PipelineTesterMixin(unittest.TestCase):
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
-        image = ldm([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=20)["sample"]
+        image = ldm([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=20, output_type="numpy")[
+            "sample"
+        ]
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -840,7 +843,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
-        image = ldm([prompt], generator=generator, num_inference_steps=1)["sample"]
+        image = ldm([prompt], generator=generator, num_inference_steps=1, output_type="numpy")["sample"]
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -861,7 +864,7 @@ class PipelineTesterMixin(unittest.TestCase):
         sde_ve = ScoreSdeVePipeline(model=model, scheduler=scheduler)
 
         torch.manual_seed(0)
-        image = sde_ve(num_inference_steps=300)["sample"]
+        image = sde_ve(num_inference_steps=300, output_type="numpy")["sample"]
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -874,7 +877,7 @@ class PipelineTesterMixin(unittest.TestCase):
         ldm = LatentDiffusionUncondPipeline.from_pretrained("CompVis/ldm-celebahq-256")
 
         generator = torch.manual_seed(0)
-        image = ldm(generator=generator, num_inference_steps=5)["sample"]
+        image = ldm(generator=generator, num_inference_steps=5, output_type="numpy")["sample"]
 
         image_slice = image[0, -3:, -3:, -1]
 
