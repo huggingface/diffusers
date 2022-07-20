@@ -708,7 +708,7 @@ class PipelineTesterMixin(unittest.TestCase):
         generator = generator.manual_seed(0)
         new_image = new_ddpm(generator=generator)["sample"]
 
-        assert (image - new_image).abs().sum() < 1e-5, "Models don't give the same forward pass"
+        assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
 
     @slow
     def test_from_pretrained_hub(self):
@@ -726,7 +726,7 @@ class PipelineTesterMixin(unittest.TestCase):
         generator = generator.manual_seed(0)
         new_image = ddpm_from_hub(generator=generator)["sample"]
 
-        assert (image - new_image).abs().sum() < 1e-5, "Models don't give the same forward pass"
+        assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
 
     @slow
     def test_ddpm_cifar10(self):
