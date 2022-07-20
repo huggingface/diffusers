@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_dataset
-from diffusers import DDIMPipeline, DDIMScheduler, UNetUnconditionalModel
+from diffusers import DDPMPipeline, DDPMScheduler, UNetUnconditionalModel
 from diffusers.hub_utils import init_git_repo, push_to_hub
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
@@ -57,7 +57,7 @@ def main(args):
             "UNetResUpBlock2D",
         ),
     )
-    noise_scheduler = DDIMScheduler(num_train_timesteps=1000, tensor_format="pt")
+    noise_scheduler = DDPMScheduler(num_train_timesteps=1000, tensor_format="pt")
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
@@ -150,15 +150,14 @@ def main(args):
         # Generate a sample image for visual inspection
         if accelerator.is_main_process:
             with torch.no_grad():
-                pipeline = DDIMPipeline(
-                    unet=accelerator.unwrap_model(ema_model.averaged_model),
+                pipeline = DDPMPipeline(
+                    unet=accelerator.unwrap_model(ema_model.averaged_model if args.use_ema else model),
                     scheduler=noise_scheduler,
                 )
 
                 generator = torch.manual_seed(0)
                 # run pipeline in inference (sample random noise and denoise)
-                images = pipeline(generator=generator, batch_size=args.eval_batch_size, num_inference_steps=50)
-                images = images["sample"]
+                images = pipeline(generator=generator, batch_size=args.eval_batch_size)
 
             # denormalize the images and save to tensorboard
             images_processed = (images.cpu() + 1.0) * 127.5
@@ -187,7 +186,7 @@ if __name__ == "__main__":
     parser.add_argument("--train_batch_size", type=int, default=16)
     parser.add_argument("--eval_batch_size", type=int, default=16)
     parser.add_argument("--num_epochs", type=int, default=100)
-    parser.add_argument("--save_model_epochs", type=int, default=10)
+    parser.add_argument("--save_model_epochs", type=int, default=5)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
     parser.add_argument("--learning_rate", type=float, default=1e-4)
     parser.add_argument("--lr_scheduler", type=str, default="cosine")

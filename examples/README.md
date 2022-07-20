@@ -8,7 +8,7 @@ The command to train a DDPM UNet model on the Oxford Flowers dataset:
 accelerate launch train_unconditional.py \
   --dataset="huggan/flowers-102-categories" \
   --resolution=64 \
-  --output_dir="flowers-ddpm" \
+  --output_dir="ddpm-ema-flowers-64" \
   --train_batch_size=16 \
   --num_epochs=100 \
   --gradient_accumulation_steps=1 \
@@ -31,7 +31,7 @@ The command to train a DDPM UNet model on the Pokemon dataset:
 accelerate launch train_unconditional.py \
   --dataset="huggan/pokemon" \
   --resolution=64 \
-  --output_dir="pokemon-ddpm" \
+  --output_dir="ddpm-ema-pokemon-64" \
   --train_batch_size=16 \
   --num_epochs=100 \
   --gradient_accumulation_steps=1 \
