@@ -10,26 +10,25 @@ from .unet_blocks import UNetMidBlock2DCrossAttn, get_down_block, get_up_block
 
 
 class UNet2DConditionModel(ModelMixin, ConfigMixin):
-
     @register_to_config
     def __init__(
         self,
-        sample_size = None,
+        sample_size=None,
         in_channels=4,
         out_channels=4,
         center_input_sample=False,
         flip_sin_to_cos=True,
-        freq_shift = 0,
-        down_blocks=("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D"),
-        up_blocks=("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
+        freq_shift=0,
+        down_block_types=("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D"),
+        up_block_types=("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
         block_out_channels=(320, 640, 1280, 1280),
-        layers_per_block = 2,
+        layers_per_block=2,
         downsample_padding=1,
         mid_block_scale_factor=1,
-        act_fn = "silu",
-        norm_num_groups = 32,
-        norm_eps = 1e-5,
-        attention_head_dim = 8,
+        act_fn="silu",
+        norm_num_groups=32,
+        norm_eps=1e-5,
+        attention_head_dim=8,
     ):
         super().__init__()
 
@@ -51,7 +50,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
 
         # down
         output_channel = block_out_channels[0]
-        for i, down_block_type in enumerate(down_blocks):
+        for i, down_block_type in enumerate(down_block_types):
             input_channel = output_channel
             output_channel = block_out_channels[i]
             is_final_block = i == len(block_out_channels) - 1
@@ -85,7 +84,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
         output_channel = reversed_block_out_channels[0]
-        for i, up_block_type in enumerate(up_blocks):
+        for i, up_block_type in enumerate(up_block_types):
             prev_output_channel = output_channel
             output_channel = reversed_block_out_channels[i]
             input_channel = reversed_block_out_channels[min(i + 1, len(block_out_channels) - 1)]

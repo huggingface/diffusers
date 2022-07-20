@@ -16,9 +16,14 @@
 
 import argparse
 import os
+import json
 import torch
 from diffusers import UNet2DModel, UNet2DConditionModel
 from transformers.file_utils import has_file
+
+do_only_config = False
+do_only_weights = True
+do_only_renaming = False
 
 
 if __name__ == "__main__":
@@ -42,6 +47,8 @@ if __name__ == "__main__":
         "image_size": "sample_size",
         "num_res_blocks": "layers_per_block",
         "block_channels": "block_out_channels",
+        "down_blocks": "down_block_types",
+        "up_blocks": "up_block_types",
         "downscale_freq_shift": "freq_shift",
         "resnet_num_groups": "norm_num_groups",
         "resnet_act_fn": "act_fn",
@@ -52,45 +59,50 @@ if __name__ == "__main__":
     key_parameters_to_change = {
         "time_steps": "time_proj",
         "mid": "mid_block",
-        "downsample_blocks": "down_blocks",
-        "upsample_blocks": "up_blocks",
+        "downsample_blocks": "down_block_types",
+        "upsample_blocks": "up_block_types",
     }
 
-    if has_file(args.repo_path, "config.json"):
-        model = UNet2DModel.from_config(args.repo_path)
-        subfolder = ""
-    else:
-        subfolder = "unet"
-        class_name = UNet2DConditionModel if "ldm-text2im-large-256" in args.repo_path else UNet2DModel
-        model = class_name.from_config(args.repo_path, subfolder=subfolder)
+    subfolder = "" if has_file(args.repo_path, "config.json") else "unet"
 
-    config = dict(model.config)
+    with open(os.path.join(args.repo_path, subfolder, "config.json"), "r", encoding="utf-8") as reader:
+        text = reader.read()
+        config = json.loads(text)
 
-    for key, value in config_parameters_to_change.items():
-        if key in config:
-            config[value] = config[key]
-            del config[key]
-
-    config["down_blocks"] = [k.replace("UNetRes", "") for k in config["down_blocks"]]
-    config["up_blocks"] = [k.replace("UNetRes", "") for k in config["up_blocks"]]
+    if do_only_config:
+        for key in config_parameters_to_change.keys():
+            config.pop(key, None)
 
     if has_file(args.repo_path, "config.json"):
         model = UNet2DModel(**config)
     else:
-        model = UNet2DConditionModel(**config)
+        class_name = UNet2DConditionModel if "ldm-text2im-large-256" in args.repo_path else UNet2DModel
+        model = class_name(**config)
 
-    state_dict = torch.load(os.path.join(args.repo_path, subfolder, "diffusion_pytorch_model.bin"))
+    if do_only_config:
+        model.save_config(os.path.join(args.repo_path, subfolder))
 
-    new_state_dict = {}
-    for key, new_key in key_parameters_to_change.items():
-        for param_key, param_value in state_dict.items():
-            if param_key.endswith(".op") or param_key.endswith(".Conv2d_0"):
-                continue
-            else:
-                new_state_dict[param_key.replace(key, new_key) if param_key.startswith(key) else param_key] = param_value
+    config = dict(model.config)
 
-    model.load_state_dict(state_dict)
-    if has_file(args.repo_path, "config.json"):
-        model.save_pretrained(args.repo_path)
-    else:
-        model.save_pretrained(os.path.join(args.repo_path, "unet"))
+    if do_only_renaming:
+        for key, value in config_parameters_to_change.items():
+            if key in config:
+                config[value] = config[key]
+                del config[key]
+
+        config["down_block_types"] = [k.replace("UNetRes", "") for k in config["down_block_types"]]
+        config["up_block_types"] = [k.replace("UNetRes", "") for k in config["up_block_types"]]
+
+    if do_only_weights:
+        state_dict = torch.load(os.path.join(args.repo_path, subfolder, "diffusion_pytorch_model.bin"))
+
+        new_state_dict = {}
+        for key, new_key in key_parameters_to_change.items():
+            for param_key, param_value in state_dict.items():
+                if param_key.endswith(".op") or param_key.endswith(".Conv2d_0"):
+                    continue
+                else:
+                    new_state_dict[param_key.replace(key, new_key) if param_key.startswith(key) else param_key] = param_value
+
+        model.load_state_dict(state_dict)
+        model.save_pretrained(os.path.join(args.repo_path, subfolder, "unet"))

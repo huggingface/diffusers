@@ -94,9 +94,7 @@ class ConfigMixin:
         logger.info(f"ConfigMixinuration saved in {output_config_file}")
 
     @classmethod
-    def from_config(
-        cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs
-    ):
+    def from_config(cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs):
         config_dict = cls.get_config_dict(pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs)
 
         init_dict, unused_kwargs = cls.extract_init_dict(config_dict, **kwargs)

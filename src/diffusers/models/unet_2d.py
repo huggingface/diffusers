@@ -10,27 +10,26 @@ from .unet_blocks import UNetMidBlock2D, get_down_block, get_up_block
 
 
 class UNet2DModel(ModelMixin, ConfigMixin):
-
     @register_to_config
     def __init__(
         self,
-        sample_size = None,
+        sample_size=None,
         in_channels=3,
         out_channels=3,
         center_input_sample=False,
         time_embedding_type="positional",
-        freq_shift = 0,
+        freq_shift=0,
         flip_sin_to_cos=True,
-        down_blocks=("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"),
-        up_blocks=("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"),
+        down_block_types=("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"),
+        up_block_types=("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"),
         block_out_channels=(224, 448, 672, 896),
-        layers_per_block = 2,
+        layers_per_block=2,
         mid_block_scale_factor=1,
         downsample_padding=1,
-        act_fn = "silu",
-        attention_head_dim = 8,
-        norm_num_groups = 32,
-        norm_eps = 1e-5,
+        act_fn="silu",
+        attention_head_dim=8,
+        norm_num_groups=32,
+        norm_eps=1e-5,
     ):
         super().__init__()
 
@@ -56,7 +55,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
 
         # down
         output_channel = block_out_channels[0]
-        for i, down_block_type in enumerate(down_blocks):
+        for i, down_block_type in enumerate(down_block_types):
             input_channel = output_channel
             output_channel = block_out_channels[i]
             is_final_block = i == len(block_out_channels) - 1
@@ -90,7 +89,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
         output_channel = reversed_block_out_channels[0]
-        for i, up_block_type in enumerate(up_blocks):
+        for i, up_block_type in enumerate(up_block_types):
             prev_output_channel = output_channel
             output_channel = reversed_block_out_channels[i]
             input_channel = reversed_block_out_channels[min(i + 1, len(block_out_channels) - 1)]

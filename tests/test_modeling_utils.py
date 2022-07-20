@@ -294,8 +294,8 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
             "block_out_channels": (32, 64),
-            "down_blocks": ("DownBlock2D", "AttnDownBlock2D"),
-            "up_blocks": ("AttnUpBlock2D", "UpBlock2D"),
+            "down_block_types": ("DownBlock2D", "AttnDownBlock2D"),
+            "up_block_types": ("AttnUpBlock2D", "UpBlock2D"),
             "attention_head_dim": None,
             "out_channels": 3,
             "in_channels": 3,
@@ -358,8 +358,8 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
             "layers_per_block": 2,
             "block_out_channels": (32, 64),
             "attention_head_dim": 32,
-            "down_blocks": ("DownBlock2D", "DownBlock2D"),
-            "up_blocks": ("UpBlock2D", "UpBlock2D"),
+            "down_block_types": ("DownBlock2D", "DownBlock2D"),
+            "up_block_types": ("UpBlock2D", "UpBlock2D"),
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
@@ -455,13 +455,13 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
             "norm_eps": 1e-6,
             "mid_block_scale_factor": math.sqrt(2.0),
             "norm_num_groups": None,
-            "down_blocks": [
+            "down_block_types": [
                 "SkipDownBlock2D",
                 "AttnSkipDownBlock2D",
                 "SkipDownBlock2D",
                 "SkipDownBlock2D",
             ],
-            "up_blocks": [
+            "up_block_types": [
                 "SkipUpBlock2D",
                 "SkipUpBlock2D",
                 "AttnSkipUpBlock2D",
@@ -694,8 +694,8 @@ class PipelineTesterMixin(unittest.TestCase):
             sample_size=32,
             in_channels=3,
             out_channels=3,
-            down_blocks=("DownBlock2D", "AttnDownBlock2D"),
-            up_blocks=("AttnUpBlock2D", "UpBlock2D"),
+            down_block_types=("DownBlock2D", "AttnDownBlock2D"),
+            up_block_types=("AttnUpBlock2D", "UpBlock2D"),
         )
         schedular = DDPMScheduler(num_train_timesteps=10)
 
