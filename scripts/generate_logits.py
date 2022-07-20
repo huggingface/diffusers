@@ -1,6 +1,6 @@
 from huggingface_hub import HfApi
 from transformers.file_utils import has_file
-from diffusers import UNetUnconditionalModel
+from diffusers import UNet2DModel
 import random
 import torch
 api = HfApi()
@@ -70,19 +70,22 @@ results["google_ddpm_ema_cat_256"] = torch.tensor([-1.4574, -2.0569, -0.0473, -0
 models = api.list_models(filter="diffusers")
 for mod in models:
     if "google" in mod.author or mod.modelId == "CompVis/ldm-celebahq-256": 
-            
-        if mod.modelId == "CompVis/ldm-celebahq-256" or not has_file(mod.modelId, "config.json"):
-            model = UNetUnconditionalModel.from_pretrained(mod.modelId, subfolder = "unet")
+        local_checkpoint = "/home/patrick/google_checkpoints/" + mod.modelId.split("/")[-1]
+
+        print(f"Started running {mod.modelId}!!!")
+
+        if mod.modelId.startswith("CompVis"):
+            model = UNet2DModel.from_pretrained(local_checkpoint, subfolder = "unet")
         else: 
-            model = UNetUnconditionalModel.from_pretrained(mod.modelId)
+            model = UNet2DModel.from_pretrained(local_checkpoint)
         
         torch.manual_seed(0)
         random.seed(0)
         
-        noise = torch.randn(1, model.config.in_channels, model.config.image_size, model.config.image_size)
+        noise = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
         time_step = torch.tensor([10] * noise.shape[0])
         with torch.no_grad():
             logits = model(noise, time_step)['sample']
 
-        torch.allclose(logits[0, 0, 0, :30], results["_".join("_".join(mod.modelId.split("/")).split("-"))], atol=1e-3)
+        assert torch.allclose(logits[0, 0, 0, :30], results["_".join("_".join(mod.modelId.split("/")).split("-"))], atol=1e-3)
         print(f"{mod.modelId} has passed succesfully!!!")

@@ -78,12 +78,11 @@ class Downsample2D(nn.Module):
 
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if name == "conv":
-            self.conv = conv
-        elif name == "Conv2d_0":
             self.Conv2d_0 = conv
             self.conv = conv
+        elif name == "Conv2d_0":
+            self.conv = conv
         else:
-            self.op = conv
             self.conv = conv
 
     def forward(self, x):

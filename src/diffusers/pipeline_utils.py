@@ -25,7 +25,7 @@ from .configuration_utils import ConfigMixin
 from .utils import DIFFUSERS_CACHE, logging
 
 
-INDEX_FILE = "diffusion_model.pt"
+INDEX_FILE = "diffusion_pytorch_model.bin"
 
 
 logger = logging.get_logger(__name__)

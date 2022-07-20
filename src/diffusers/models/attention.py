@@ -17,7 +17,6 @@ class AttentionBlockNew(nn.Module):
     def __init__(
         self,
         channels,
-        num_heads=1,
         num_head_channels=None,
         num_groups=32,
         rescale_output_factor=1.0,
@@ -25,14 +24,8 @@ class AttentionBlockNew(nn.Module):
     ):
         super().__init__()
         self.channels = channels
-        if num_head_channels is None:
-            self.num_heads = num_heads
-        else:
-            assert (
-                channels % num_head_channels == 0
-            ), f"q,k,v channels {channels} is not divisible by num_head_channels {num_head_channels}"
-            self.num_heads = channels // num_head_channels
 
+        self.num_heads = channels // num_head_channels if num_head_channels is not None else 1
         self.num_head_size = num_head_channels
         self.group_norm = nn.GroupNorm(num_channels=channels, num_groups=num_groups, eps=eps, affine=True)
 

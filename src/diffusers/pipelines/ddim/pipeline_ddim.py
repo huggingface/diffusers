@@ -28,7 +28,9 @@ class DDIMPipeline(DiffusionPipeline):
         self.register_modules(unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
-    def __call__(self, batch_size=1, generator=None, torch_device=None, eta=0.0, num_inference_steps=50, output_type="pil"):
+    def __call__(
+        self, batch_size=1, generator=None, torch_device=None, eta=0.0, num_inference_steps=50, output_type="pil"
+    ):
         # eta corresponds to η in paper and should be between [0, 1]
         if torch_device is None:
             torch_device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -37,7 +39,7 @@ class DDIMPipeline(DiffusionPipeline):
 
         # Sample gaussian noise to begin loop
         image = torch.randn(
-            (batch_size, self.unet.in_channels, self.unet.image_size, self.unet.image_size),
+            (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
             generator=generator,
         )
         image = image.to(torch_device)

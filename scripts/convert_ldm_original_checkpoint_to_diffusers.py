@@ -17,7 +17,7 @@
 import argparse
 import json
 import torch
-from diffusers import VQModel, DDPMScheduler, UNetUnconditionalModel, LatentDiffusionUncondPipeline
+from diffusers import VQModel, DDPMScheduler, UNet2DModel, LatentDiffusionUncondPipeline
 
 
 def shave_segments(path, n_shave_prefix_segments=1):
@@ -207,14 +207,14 @@ def convert_ldm_checkpoint(checkpoint, config):
     attentions_paths = renew_attention_paths(attentions)
     to_split = {
         'middle_block.1.qkv.bias': {
-            'key': 'mid.attentions.0.key.bias',
-            'query': 'mid.attentions.0.query.bias',
-            'value': 'mid.attentions.0.value.bias',
+            'key': 'mid_block.attentions.0.key.bias',
+            'query': 'mid_block.attentions.0.query.bias',
+            'value': 'mid_block.attentions.0.value.bias',
         },
         'middle_block.1.qkv.weight': {
-            'key': 'mid.attentions.0.key.weight',
-            'query': 'mid.attentions.0.query.weight',
-            'value': 'mid.attentions.0.value.weight',
+            'key': 'mid_block.attentions.0.key.weight',
+            'query': 'mid_block.attentions.0.query.weight',
+            'value': 'mid_block.attentions.0.value.weight',
         },
     }
     assign_to_checkpoint(attentions_paths, new_checkpoint, checkpoint, attention_paths_to_split=to_split, config=config)
@@ -239,13 +239,13 @@ def convert_ldm_checkpoint(checkpoint, config):
             resnet_0_paths = renew_resnet_paths(resnets)
             paths = renew_resnet_paths(resnets)
 
-            meta_path = {'old': f'output_blocks.{i}.0', 'new': f'upsample_blocks.{block_id}.resnets.{layer_in_block_id}'}
+            meta_path = {'old': f'output_blocks.{i}.0', 'new': f'up_blocks.{block_id}.resnets.{layer_in_block_id}'}
             assign_to_checkpoint(paths, new_checkpoint, checkpoint, additional_replacements=[meta_path], config=config)
 
             if ['conv.weight', 'conv.bias'] in output_block_list.values():
                 index = list(output_block_list.values()).index(['conv.weight', 'conv.bias'])
-                new_checkpoint[f'upsample_blocks.{block_id}.upsamplers.0.conv.weight'] = checkpoint[f'output_blocks.{i}.{index}.conv.weight']
-                new_checkpoint[f'upsample_blocks.{block_id}.upsamplers.0.conv.bias'] = checkpoint[f'output_blocks.{i}.{index}.conv.bias']
+                new_checkpoint[f'up_blocks.{block_id}.upsamplers.0.conv.weight'] = checkpoint[f'output_blocks.{i}.{index}.conv.weight']
+                new_checkpoint[f'up_blocks.{block_id}.upsamplers.0.conv.bias'] = checkpoint[f'output_blocks.{i}.{index}.conv.bias']
 
                 # Clear attentions as they have been attributed above.
                 if len(attentions) == 2:
@@ -255,18 +255,18 @@ def convert_ldm_checkpoint(checkpoint, config):
                 paths = renew_attention_paths(attentions)
                 meta_path = {
                     'old': f'output_blocks.{i}.1',
-                    'new': f'upsample_blocks.{block_id}.attentions.{layer_in_block_id}'
+                    'new': f'up_blocks.{block_id}.attentions.{layer_in_block_id}'
                 }
                 to_split = {
                     f'output_blocks.{i}.1.qkv.bias': {
-                        'key': f'upsample_blocks.{block_id}.attentions.{layer_in_block_id}.key.bias',
-                        'query': f'upsample_blocks.{block_id}.attentions.{layer_in_block_id}.query.bias',
-                        'value': f'upsample_blocks.{block_id}.attentions.{layer_in_block_id}.value.bias',
+                        'key': f'up_blocks.{block_id}.attentions.{layer_in_block_id}.key.bias',
+                        'query': f'up_blocks.{block_id}.attentions.{layer_in_block_id}.query.bias',
+                        'value': f'up_blocks.{block_id}.attentions.{layer_in_block_id}.value.bias',
                     },
                     f'output_blocks.{i}.1.qkv.weight': {
-                        'key': f'upsample_blocks.{block_id}.attentions.{layer_in_block_id}.key.weight',
-                        'query': f'upsample_blocks.{block_id}.attentions.{layer_in_block_id}.query.weight',
-                        'value': f'upsample_blocks.{block_id}.attentions.{layer_in_block_id}.value.weight',
+                        'key': f'up_blocks.{block_id}.attentions.{layer_in_block_id}.key.weight',
+                        'query': f'up_blocks.{block_id}.attentions.{layer_in_block_id}.query.weight',
+                        'value': f'up_blocks.{block_id}.attentions.{layer_in_block_id}.value.weight',
                     },
                 }
                 assign_to_checkpoint(
@@ -281,7 +281,7 @@ def convert_ldm_checkpoint(checkpoint, config):
             resnet_0_paths = renew_resnet_paths(output_block_layers, n_shave_prefix_segments=1)
             for path in resnet_0_paths:
                 old_path = '.'.join(['output_blocks', str(i), path['old']])
-                new_path = '.'.join(['upsample_blocks', str(block_id), 'resnets', str(layer_in_block_id), path['new']])
+                new_path = '.'.join(['up_blocks', str(block_id), 'resnets', str(layer_in_block_id), path['new']])
 
                 new_checkpoint[new_path] = checkpoint[old_path]
 
@@ -319,7 +319,7 @@ if __name__ == "__main__":
     if "ldm" in config:
         del config["ldm"]
 
-    model = UNetUnconditionalModel(**config)
+    model = UNet2DModel(**config)
     model.load_state_dict(converted_checkpoint)
 
     try:

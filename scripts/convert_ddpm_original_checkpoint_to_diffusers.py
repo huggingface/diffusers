@@ -1,4 +1,4 @@
-from diffusers import UNetUnconditionalModel, DDPMScheduler, DDPMPipeline
+from diffusers import UNet2DModel, DDPMScheduler, DDPMPipeline
 import argparse
 import json
 import torch
@@ -80,7 +80,7 @@ def assign_to_checkpoint(paths, checkpoint, old_checkpoint, attention_paths_to_s
             continue
 
         new_path = new_path.replace('down.', 'downsample_blocks.')
-        new_path = new_path.replace('up.', 'upsample_blocks.')
+        new_path = new_path.replace('up.', 'up_blocks.')
 
         if additional_replacements is not None:
             for replacement in additional_replacements:
@@ -114,8 +114,8 @@ def convert_ddpm_checkpoint(checkpoint, config):
     num_downsample_blocks = len({'.'.join(layer.split('.')[:2]) for layer in checkpoint if 'down' in layer})
     downsample_blocks = {layer_id: [key for key in checkpoint if f'down.{layer_id}' in key] for layer_id in range(num_downsample_blocks)}
 
-    num_upsample_blocks = len({'.'.join(layer.split('.')[:2]) for layer in checkpoint if 'up' in layer})
-    upsample_blocks = {layer_id: [key for key in checkpoint if f'up.{layer_id}' in key] for layer_id in range(num_upsample_blocks)}
+    num_up_blocks = len({'.'.join(layer.split('.')[:2]) for layer in checkpoint if 'up' in layer})
+    up_blocks = {layer_id: [key for key in checkpoint if f'up.{layer_id}' in key] for layer_id in range(num_up_blocks)}
 
     for i in range(num_downsample_blocks):
         block_id = (i - 1) // (config['num_res_blocks'] + 1)
@@ -164,34 +164,34 @@ def convert_ddpm_checkpoint(checkpoint, config):
         {'old': 'mid.', 'new': 'mid_new_2.'}, {'old': 'attn_1', 'new': 'attentions.0'}
     ])
 
-    for i in range(num_upsample_blocks):
-        block_id = num_upsample_blocks - 1 - i
+    for i in range(num_up_blocks):
+        block_id = num_up_blocks - 1 - i
 
-        if any('upsample' in layer for layer in upsample_blocks[i]):
-            new_checkpoint[f'upsample_blocks.{block_id}.upsamplers.0.conv.weight'] = checkpoint[f'up.{i}.upsample.conv.weight']
-            new_checkpoint[f'upsample_blocks.{block_id}.upsamplers.0.conv.bias'] = checkpoint[f'up.{i}.upsample.conv.bias']
+        if any('upsample' in layer for layer in up_blocks[i]):
+            new_checkpoint[f'up_blocks.{block_id}.upsamplers.0.conv.weight'] = checkpoint[f'up.{i}.upsample.conv.weight']
+            new_checkpoint[f'up_blocks.{block_id}.upsamplers.0.conv.bias'] = checkpoint[f'up.{i}.upsample.conv.bias']
 
-        if any('block' in layer for layer in upsample_blocks[i]):
-            num_blocks = len({'.'.join(shave_segments(layer, 2).split('.')[:2]) for layer in upsample_blocks[i] if 'block' in layer})
-            blocks = {layer_id: [key for key in upsample_blocks[i] if f'block.{layer_id}' in key] for layer_id in range(num_blocks)}
+        if any('block' in layer for layer in up_blocks[i]):
+            num_blocks = len({'.'.join(shave_segments(layer, 2).split('.')[:2]) for layer in up_blocks[i] if 'block' in layer})
+            blocks = {layer_id: [key for key in up_blocks[i] if f'block.{layer_id}' in key] for layer_id in range(num_blocks)}
 
             if num_blocks > 0:
                 for j in range(config['num_res_blocks'] + 1):
-                    replace_indices = {'old': f'upsample_blocks.{i}', 'new': f'upsample_blocks.{block_id}'}
+                    replace_indices = {'old': f'up_blocks.{i}', 'new': f'up_blocks.{block_id}'}
                     paths = renew_resnet_paths(blocks[j])
                     assign_to_checkpoint(paths, new_checkpoint, checkpoint, additional_replacements=[replace_indices])
 
-        if any('attn' in layer for layer in upsample_blocks[i]):
-            num_attn = len({'.'.join(shave_segments(layer, 2).split('.')[:2]) for layer in upsample_blocks[i] if 'attn' in layer})
-            attns = {layer_id: [key for key in upsample_blocks[i] if f'attn.{layer_id}' in key] for layer_id in range(num_blocks)}
+        if any('attn' in layer for layer in up_blocks[i]):
+            num_attn = len({'.'.join(shave_segments(layer, 2).split('.')[:2]) for layer in up_blocks[i] if 'attn' in layer})
+            attns = {layer_id: [key for key in up_blocks[i] if f'attn.{layer_id}' in key] for layer_id in range(num_blocks)}
 
             if num_attn > 0:
                 for j in range(config['num_res_blocks'] + 1):
-                    replace_indices = {'old': f'upsample_blocks.{i}', 'new': f'upsample_blocks.{block_id}'}
+                    replace_indices = {'old': f'up_blocks.{i}', 'new': f'up_blocks.{block_id}'}
                     paths = renew_attention_paths(attns[j])
                     assign_to_checkpoint(paths, new_checkpoint, checkpoint, additional_replacements=[replace_indices])
 
-    new_checkpoint = {k.replace('mid_new_2', 'mid'): v for k, v in new_checkpoint.items()}
+    new_checkpoint = {k.replace('mid_new_2', 'mid_block'): v for k, v in new_checkpoint.items()}
     return new_checkpoint
 
 
@@ -225,7 +225,7 @@ if __name__ == "__main__":
     if "ddpm" in config:
         del config["ddpm"]
 
-    model = UNetUnconditionalModel(**config)
+    model = UNet2DModel(**config)
     model.load_state_dict(converted_checkpoint)
 
     scheduler = DDPMScheduler.from_config("/".join(args.checkpoint_path.split("/")[:-1]))

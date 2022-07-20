@@ -161,10 +161,10 @@ class ConfigMixin:
 
             except RepositoryNotFoundError:
                 raise EnvironmentError(
-                    f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier listed"
-                    " on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token"
-                    " having permission to this repo with `use_auth_token` or log in with `huggingface-cli login` and"
-                    " pass `use_auth_token=True`."
+                    f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier"
+                    " listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a"
+                    " token having permission to this repo with `use_auth_token` or log in with `huggingface-cli"
+                    " login` and pass `use_auth_token=True`."
                 )
             except RevisionNotFoundError:
                 raise EnvironmentError(
