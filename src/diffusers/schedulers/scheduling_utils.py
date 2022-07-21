@@ -85,12 +85,13 @@ class SchedulerMixin:
 
         raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
 
-    def randn_like(self, tensor):
+    def randn_like(self, tensor, generator=None):
         tensor_format = getattr(self, "tensor_format", "pt")
         if tensor_format == "np":
             return np.random.randn(*np.shape(tensor))
         elif tensor_format == "pt":
-            return torch.randn_like(tensor)
+            # return torch.randn_like(tensor)
+            return torch.randn(tensor.shape, layout=tensor.layout, generator=generator).to(tensor.device)
 
         raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
 

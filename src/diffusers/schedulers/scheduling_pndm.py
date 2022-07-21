@@ -56,7 +56,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         beta_start=0.0001,
         beta_end=0.02,
         beta_schedule="linear",
-        tensor_format="np",
+        tensor_format="pt",
     ):
 
         if beta_schedule == "linear":

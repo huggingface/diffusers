@@ -59,7 +59,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         timestep_values=None,
         variance_type="fixed_small",
         clip_sample=True,
-        tensor_format="np",
+        tensor_format="pt",
     ):
 
         if trained_betas is not None:
@@ -155,8 +155,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         # 6. Add noise
         variance = 0
         if t > 0:
-            noise = torch.randn(model_output.shape, generator=generator).to(model_output.device)
-            variance = self._get_variance(t).sqrt() * noise
+            noise = self.randn_like(model_output, generator=generator)
+            variance = (self._get_variance(t) ** 0.5) * noise
 
         pred_prev_sample = pred_prev_sample + variance
 
