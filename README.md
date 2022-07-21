@@ -64,7 +64,12 @@ The class provides functionality to compute previous image according to alpha, b
 
 ## Quickstart
 
-**Check out this notebook: https://colab.research.google.com/drive/1nMfF04cIxg6FujxsNYi9kiTRrzj4_eZU?usp=sharing**
+In order to get started, we recommend taking a look at two notebooks:
+
+- The [Diffusers](https://colab.research.google.com/drive/1aEFVu0CvcIBzSNIQ7F71ujYYplAX4Bml?usp=sharing#scrollTo=PzW5ublpBuUt) notebook, which showcases an end-to-end example of usage for diffusion models, schedulers and pipelines.
+  Take a look at this notebook to learn how to use the pipeline abstraction, which takes care of everything (model, scheduler, noise handling) for you, but also to get an understanding of each independent building blocks in the library.
+- The [Training diffusers](https://colab.research.google.com/drive/1qqJmz7JJ04suJzEF4Hn4-Acb8rfL-eA3?usp=sharing) notebook, which summarizes diffuser model training methods. This notebook takes a step-by-step approach to training your
+  diffuser model on an image dataset, with explanatory graphics.
 
 ### Installation
 
