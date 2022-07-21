@@ -133,3 +133,23 @@ image_pil.save("generated_image.png")
 
 ```python
 ```
+
+
+## In the works
+
+For the first release, 🤗 Diffusers focuses on text-to-image diffusion techniques. However, diffusers can be used for much more than that! Over the upcoming releases, we'll be focusing on:
+
+- Diffusers for audio
+- Diffusers for reinforcement learning (initial work happening in https://github.com/huggingface/diffusers/pull/105).
+- Diffusers for video generation
+- Diffusers for molecule generation (initial work happening in https://github.com/huggingface/diffusers/pull/54)
+
+We want diffusers to be a toolbox useful for diffusers models in general; if you find yourself limited in any way by the current API, or would like to see additional models, schedulers, or techniques, please open a [GitHub issue](https://github.com/huggingface/diffusers/issues) mentioning what you would like to see.
+
+## Credits
+
+This library concretizes previous work by many different authors and would not have been possible without their great research and implementations. We'd like to thank, in particular, the following implementations which have helped us in our development and without which the API could not have been as polished today:
+
+- @ermongroup's DDIM and DDPM implementations, available [here](https://github.com/ermongroup/ddim).
+- @yang-song's Score-VE and Score-VP implementations, available [here](https://github.com/yang-song/score_sde_pytorch)
+- @CompVis' latent diffusion models library, available [here](https://github.com/CompVis/latent-diffusion)
