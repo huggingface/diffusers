@@ -48,11 +48,8 @@ class DDPMPipeline(DiffusionPipeline):
             # 1. predict noise model_output
             model_output = self.unet(image, t)["sample"]
 
-            # 2. predict previous mean of image x_t-1
-            pred_prev_image = self.scheduler.step(model_output, t, image)["prev_sample"]
-
-            # 3. set current image to prev_image: x_t -> x_t-1
-            image = pred_prev_image
+            # 2. compute previous image: x_t -> t_t-1
+            image = self.scheduler.step(model_output, t, image)["prev_sample"]
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()

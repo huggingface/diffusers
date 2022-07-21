@@ -56,7 +56,6 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         beta_end=0.02,
         beta_schedule="linear",
         trained_betas=None,
-        timestep_values=None,
         variance_type="fixed_small",
         clip_sample=True,
         tensor_format="pt",

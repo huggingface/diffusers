@@ -28,21 +28,15 @@ class ScoreSdeVePipeline(DiffusionPipeline):
         for i, t in tqdm(enumerate(self.scheduler.timesteps)):
             sigma_t = self.scheduler.sigmas[i] * torch.ones(shape[0], device=device)
 
+            # correction step
             for _ in range(self.scheduler.correct_steps):
-                model_output = self.model(sample, sigma_t)
-
-                if isinstance(model_output, dict):
-                    model_output = model_output["sample"]
-
+                model_output = self.model(sample, sigma_t)["sample"]
                 sample = self.scheduler.step_correct(model_output, sample)["prev_sample"]
 
-            with torch.no_grad():
-                model_output = model(sample, sigma_t)
-
-                if isinstance(model_output, dict):
-                    model_output = model_output["sample"]
-
+            # prediction step
+            model_output = model(sample, sigma_t)["sample"]
             output = self.scheduler.step_pred(model_output, t, sample)
+
             sample, sample_mean = output["prev_sample"], output["prev_sample_mean"]
 
         sample = sample.clamp(0, 1)

@@ -106,8 +106,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         model_output: Union[torch.FloatTensor, np.ndarray],
         timestep: int,
         sample: Union[torch.FloatTensor, np.ndarray],
-        eta,
-        use_clipped_model_output=False,
+        eta: float = 0.0,
+        use_clipped_model_output: bool = False,
         generator=None,
     ):
         # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf

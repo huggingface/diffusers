@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import pdb
 import tempfile
 import unittest
 
@@ -383,6 +382,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
     def check_over_configs(self, time_step=0, **config):
         kwargs = dict(self.forward_default_kwargs)
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
         sample = self.dummy_sample
         residual = 0.1 * sample
         dummy_past_residuals = [residual + 0.2, residual + 0.15, residual + 0.1, residual + 0.05]
@@ -390,14 +390,14 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         for scheduler_class in self.scheduler_classes:
             scheduler_config = self.get_scheduler_config(**config)
             scheduler = scheduler_class(**scheduler_config)
-            scheduler.set_timesteps(kwargs["num_inference_steps"])
+            scheduler.set_timesteps(num_inference_steps)
             # copy over dummy past residuals
             scheduler.ets = dummy_past_residuals[:]
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_config(tmpdirname)
-                new_scheduler.set_timesteps(kwargs["num_inference_steps"])
+                new_scheduler.set_timesteps(num_inference_steps)
                 # copy over dummy past residuals
                 new_scheduler.ets = dummy_past_residuals[:]
 
@@ -416,7 +416,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
     def check_over_forward(self, time_step=0, **forward_kwargs):
         kwargs = dict(self.forward_default_kwargs)
-        kwargs.update(forward_kwargs)
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
         sample = self.dummy_sample
         residual = 0.1 * sample
         dummy_past_residuals = [residual + 0.2, residual + 0.15, residual + 0.1, residual + 0.05]
@@ -424,7 +424,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         for scheduler_class in self.scheduler_classes:
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
-            scheduler.set_timesteps(kwargs["num_inference_steps"])
+            scheduler.set_timesteps(num_inference_steps)
 
             # copy over dummy past residuals
             scheduler.ets = dummy_past_residuals[:]
@@ -434,7 +434,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
                 new_scheduler = scheduler_class.from_config(tmpdirname)
                 # copy over dummy past residuals
                 new_scheduler.ets = dummy_past_residuals[:]
-                new_scheduler.set_timesteps(kwargs["num_inference_steps"])
+                new_scheduler.set_timesteps(num_inference_steps)
 
             output = scheduler.step_prk(residual, time_step, sample, **kwargs)["prev_sample"]
             new_output = new_scheduler.step_prk(residual, time_step, sample, **kwargs)["prev_sample"]
@@ -474,12 +474,12 @@ class PNDMSchedulerTest(SchedulerCommonTest):
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
-            output = scheduler.step_prk(residual, 1, sample, num_inference_steps, **kwargs)["prev_sample"]
-            output_pt = scheduler_pt.step_prk(residual_pt, 1, sample_pt, num_inference_steps, **kwargs)["prev_sample"]
+            output = scheduler.step_prk(residual, 1, sample, **kwargs)["prev_sample"]
+            output_pt = scheduler_pt.step_prk(residual_pt, 1, sample_pt, **kwargs)["prev_sample"]
             assert np.sum(np.abs(output - output_pt.numpy())) < 1e-4, "Scheduler outputs are not identical"
 
-            output = scheduler.step_plms(residual, 1, sample, num_inference_steps, **kwargs)["prev_sample"]
-            output_pt = scheduler_pt.step_plms(residual_pt, 1, sample_pt, num_inference_steps, **kwargs)["prev_sample"]
+            output = scheduler.step_plms(residual, 1, sample, **kwargs)["prev_sample"]
+            output_pt = scheduler_pt.step_plms(residual_pt, 1, sample_pt, **kwargs)["prev_sample"]
 
             assert np.sum(np.abs(output - output_pt.numpy())) < 1e-4, "Scheduler outputs are not identical"
 
@@ -503,14 +503,14 @@ class PNDMSchedulerTest(SchedulerCommonTest):
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
-            output_0 = scheduler.step_prk(residual, 0, sample, num_inference_steps, **kwargs)["prev_sample"]
-            output_1 = scheduler.step_prk(residual, 1, sample, num_inference_steps, **kwargs)["prev_sample"]
+            output_0 = scheduler.step_prk(residual, 0, sample, **kwargs)["prev_sample"]
+            output_1 = scheduler.step_prk(residual, 1, sample, **kwargs)["prev_sample"]
 
             self.assertEqual(output_0.shape, sample.shape)
             self.assertEqual(output_0.shape, output_1.shape)
 
-            output_0 = scheduler.step_plms(residual, 0, sample, num_inference_steps, **kwargs)["prev_sample"]
-            output_1 = scheduler.step_plms(residual, 1, sample, num_inference_steps, **kwargs)["prev_sample"]
+            output_0 = scheduler.step_plms(residual, 0, sample, **kwargs)["prev_sample"]
+            output_1 = scheduler.step_plms(residual, 1, sample, **kwargs)["prev_sample"]
 
             self.assertEqual(output_0.shape, sample.shape)
             self.assertEqual(output_0.shape, output_1.shape)
@@ -541,7 +541,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
-            scheduler.step_plms(self.dummy_sample, 1, self.dummy_sample, 50)["prev_sample"]
+            scheduler.step_plms(self.dummy_sample, 1, self.dummy_sample)["prev_sample"]
 
     def test_full_loop_no_noise(self):
         scheduler_class = self.scheduler_classes[0]
@@ -555,11 +555,11 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
         for i, t in enumerate(scheduler.prk_timesteps):
             residual = model(sample, t)
-            sample = scheduler.step_prk(residual, i, sample, num_inference_steps)["prev_sample"]
+            sample = scheduler.step_prk(residual, i, sample)["prev_sample"]
 
         for i, t in enumerate(scheduler.plms_timesteps):
             residual = model(sample, t)
-            sample = scheduler.step_plms(residual, i, sample, num_inference_steps)["prev_sample"]
+            sample = scheduler.step_plms(residual, i, sample)["prev_sample"]
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
@@ -706,7 +706,7 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
                 model_output = model(sample, sigma_t)
 
             output = scheduler.step_pred(model_output, t, sample, **kwargs)
-            sample, sample_mean = output["prev_sample"], output["prev_sample_mean"]
+            sample, _ = output["prev_sample"], output["prev_sample_mean"]
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))

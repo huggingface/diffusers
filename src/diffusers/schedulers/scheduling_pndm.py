@@ -15,7 +15,6 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 import math
-import pdb
 from typing import Union
 
 import numpy as np
@@ -79,78 +78,91 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         # running values
         self.cur_model_output = 0
+        self.counter = 0
         self.cur_sample = None
         self.ets = []
 
         # setable values
         self.num_inference_steps = None
-        self.timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
+        self._timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
         self.prk_timesteps = None
         self.plms_timesteps = None
+        self.timesteps = None
 
         self.tensor_format = tensor_format
         self.set_format(tensor_format=tensor_format)
 
     def set_timesteps(self, num_inference_steps):
         self.num_inference_steps = num_inference_steps
-        self.timesteps = list(
+        self._timesteps = list(
             range(0, self.config.num_train_timesteps, self.config.num_train_timesteps // num_inference_steps)
         )
 
-        prk_time_steps = np.array(self.timesteps[-self.pndm_order :]).repeat(2) + np.tile(
+        prk_timesteps = np.array(self._timesteps[-self.pndm_order :]).repeat(2) + np.tile(
             np.array([0, self.config.num_train_timesteps // num_inference_steps // 2]), self.pndm_order
         )
-        self.prk_timesteps = list(reversed(prk_time_steps[:-1].repeat(2)[1:-1]))
-        self.plms_timesteps = list(reversed(self.timesteps[:-3]))
+        self.prk_timesteps = list(reversed(prk_timesteps[:-1].repeat(2)[1:-1]))
+        self.plms_timesteps = list(reversed(self._timesteps[:-3]))
+        self.timesteps = self.prk_timesteps + self.plms_timesteps
 
+        self.counter = 0
         self.set_format(tensor_format=self.tensor_format)
+
+    def step(
+        self,
+        model_output: Union[torch.FloatTensor, np.ndarray],
+        timestep: int,
+        sample: Union[torch.FloatTensor, np.ndarray],
+    ):
+        if self.counter < len(self.prk_timesteps):
+            return self.step_prk(model_output=model_output, timestep=timestep, sample=sample)
+        else:
+            return self.step_plms(model_output=model_output, timestep=timestep, sample=sample)
 
     def step_prk(
         self,
         model_output: Union[torch.FloatTensor, np.ndarray],
         timestep: int,
         sample: Union[torch.FloatTensor, np.ndarray],
-        num_inference_steps,
     ):
         """
         Step function propagating the sample with the Runge-Kutta method. RK takes 4 forward passes to approximate the
         solution to the differential equation.
         """
-        t = timestep
-        prk_time_steps = self.prk_timesteps
+        diff_to_prev = 0 if self.counter % 2 else self.config.num_train_timesteps // self.num_inference_steps // 2
+        prev_timestep = max(timestep - diff_to_prev, self.prk_timesteps[-1])
+        timestep = self.prk_timesteps[self.counter // 4 * 4]
 
-        t_orig = prk_time_steps[t // 4 * 4]
-        t_orig_prev = prk_time_steps[min(t + 1, len(prk_time_steps) - 1)]
-
-        if t % 4 == 0:
+        if self.counter % 4 == 0:
             self.cur_model_output += 1 / 6 * model_output
             self.ets.append(model_output)
             self.cur_sample = sample
-        elif (t - 1) % 4 == 0:
+        elif (self.counter - 1) % 4 == 0:
             self.cur_model_output += 1 / 3 * model_output
-        elif (t - 2) % 4 == 0:
+        elif (self.counter - 2) % 4 == 0:
             self.cur_model_output += 1 / 3 * model_output
-        elif (t - 3) % 4 == 0:
+        elif (self.counter - 3) % 4 == 0:
             model_output = self.cur_model_output + 1 / 6 * model_output
             self.cur_model_output = 0
 
         # cur_sample should not be `None`
         cur_sample = self.cur_sample if self.cur_sample is not None else sample
 
-        return {"prev_sample": self.get_prev_sample(cur_sample, t_orig, t_orig_prev, model_output)}
+        prev_sample = self._get_prev_sample(cur_sample, timestep, prev_timestep, model_output)
+        self.counter += 1
+
+        return {"prev_sample": prev_sample}
 
     def step_plms(
         self,
         model_output: Union[torch.FloatTensor, np.ndarray],
         timestep: int,
         sample: Union[torch.FloatTensor, np.ndarray],
-        num_inference_steps,
     ):
         """
         Step function propagating the sample with the linear multi-step method. This has one forward pass with multiple
         times to approximate the solution.
         """
-        t = timestep
         if len(self.ets) < 3:
             raise ValueError(
                 f"{self.__class__} can only be run AFTER scheduler has been run "
@@ -159,17 +171,17 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
                 "for more information."
             )
 
-        timesteps = self.plms_timesteps
-
-        t_orig = timesteps[t]
-        t_orig_prev = timesteps[min(t + 1, len(timesteps) - 1)]
+        prev_timestep = max(timestep - self.config.num_train_timesteps // self.num_inference_steps, 0)
         self.ets.append(model_output)
 
         model_output = (1 / 24) * (55 * self.ets[-1] - 59 * self.ets[-2] + 37 * self.ets[-3] - 9 * self.ets[-4])
 
-        return {"prev_sample": self.get_prev_sample(sample, t_orig, t_orig_prev, model_output)}
+        prev_sample = self._get_prev_sample(sample, timestep, prev_timestep, model_output)
+        self.counter += 1
 
-    def get_prev_sample(self, sample, t_orig, t_orig_prev, model_output):
+        return {"prev_sample": prev_sample}
+
+    def _get_prev_sample(self, sample, timestep, timestep_prev, model_output):
         # See formula (9) of PNDM paper https://arxiv.org/pdf/2202.09778.pdf
         # this function computes x_(t−δ) using the formula of (9)
         # Note that x_t needs to be added to both sides of the equation
@@ -182,8 +194,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         # sample -> x_t
         # model_output -> e_θ(x_t, t)
         # prev_sample -> x_(t−δ)
-        alpha_prod_t = self.alphas_cumprod[t_orig + 1]
-        alpha_prod_t_prev = self.alphas_cumprod[t_orig_prev + 1]
+        alpha_prod_t = self.alphas_cumprod[timestep + 1]
+        alpha_prod_t_prev = self.alphas_cumprod[timestep_prev + 1]
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
