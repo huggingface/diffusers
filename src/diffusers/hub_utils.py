@@ -184,7 +184,7 @@ def create_model_card(args, model_name):
         adam_beta1=args.adam_beta1 if hasattr(args, "adam_beta1") else None,
         adam_beta2=args.adam_beta2 if hasattr(args, "adam_beta2") else None,
         adam_weight_decay=args.adam_weight_decay if hasattr(args, "adam_weight_decay") else None,
-        adam_epsilon=args.adam_epsilon if hasattr(args, "adam_weight_decay") else None,
+        adam_epsilon=args.adam_epsilon if hasattr(args, "adam_epsilon") else None,
         lr_scheduler=args.lr_scheduler if hasattr(args, "lr_scheduler") else None,
         lr_warmup_steps=args.lr_warmup_steps if hasattr(args, "lr_warmup_steps") else None,
         ema_inv_gamma=args.ema_inv_gamma if hasattr(args, "ema_inv_gamma") else None,
