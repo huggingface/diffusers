@@ -169,7 +169,7 @@ extras["test"] = [
 extras["dev"] = extras["quality"] + extras["test"] + extras["training"]
 
 install_requires = [
-    deps["importlib_metadata"] + ";python_version<'3.8'",  # importlib_metadata for Python versions that don't have it
+    deps["importlib_metadata"],
     deps["filelock"],
     deps["huggingface-hub"],
     deps["numpy"],
