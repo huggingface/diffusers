@@ -195,7 +195,7 @@ if __name__ == "__main__":
     parser.add_argument("--adam_beta1", type=float, default=0.95)
     parser.add_argument("--adam_beta2", type=float, default=0.999)
     parser.add_argument("--adam_weight_decay", type=float, default=1e-6)
-    parser.add_argument("--adam_epsilon", type=float, default=1e-3)
+    parser.add_argument("--adam_epsilon", type=float, default=1e-08)
     parser.add_argument("--use_ema", action="store_true", default=True)
     parser.add_argument("--ema_inv_gamma", type=float, default=1.0)
     parser.add_argument("--ema_power", type=float, default=3 / 4)
