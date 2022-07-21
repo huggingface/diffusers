@@ -21,7 +21,11 @@ from typing import Optional
 
 from diffusers import DiffusionPipeline
 from huggingface_hub import HfFolder, Repository, whoami
-from modelcards import CardData, ModelCard
+from utils import is_modelcards_available
+
+
+if is_modelcards_available():
+    from modelcards import CardData, ModelCard
 
 from .utils import logging
 
@@ -147,6 +151,12 @@ def push_to_hub(
 
 
 def create_model_card(args, model_name):
+    if not is_modelcards_available:
+        raise ValueError(
+            "Please make sure to have `modelcards` installed when using the `create_model_card` function. You can"
+            " install the package with `pip install modelcards`."
+        )
+
     if hasattr(args, "local_rank") and args.local_rank not in [-1, 0]:
         return
 

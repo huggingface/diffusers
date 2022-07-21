@@ -161,10 +161,11 @@ extras = {}
 extras = {}
 extras["quality"] = ["black ~= 22.0", "isort >= 5.5.4", "flake8 >= 3.8.3"]
 extras["docs"] = []
+extras["training"] = ["tensorboard", "modelcards"]
 extras["test"] = [
     "pytest",
 ]
-extras["dev"] = extras["quality"] + extras["test"]
+extras["dev"] = extras["quality"] + extras["test"] + extras["training"]
 
 install_requires = [
     deps["filelock"],
@@ -174,8 +175,6 @@ install_requires = [
     deps["requests"],
     deps["torch"],
     deps["Pillow"],
-    deps["tensorboard"],
-    deps["modelcards"],
 ]
 
 setup(
