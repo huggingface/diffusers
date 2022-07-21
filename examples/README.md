@@ -25,10 +25,11 @@ accelerate launch train_unconditional.py \
   --mixed_precision=no \
   --push_to_hub
 ```
+An example trained model: https://huggingface.co/anton-l/ddpm-ema-flowers-64
 
 A full training run takes 2 hours on 4xV100 GPUs.
 
-<img src="https://user-images.githubusercontent.com/26864830/173855866-5628989f-856b-4725-a944-d6c09490b2df.png" width="500" />
+<img src="https://user-images.githubusercontent.com/26864830/180248660-a0b143d0-b89a-42c5-8656-2ebf6ece7e52.png" width="700" />
 
 
 ### Unconditional Pokemon 
@@ -48,7 +49,8 @@ accelerate launch train_unconditional.py \
   --mixed_precision=no \
   --push_to_hub
 ```
+An example trained model: https://huggingface.co/anton-l/ddpm-ema-pokemon-64
 
 A full training run takes 2 hours on 4xV100 GPUs.
 
-<img src="https://user-images.githubusercontent.com/26864830/173856733-4f117f8c-97bd-4f51-8002-56b488c96df9.png" width="500" />
+<img src="https://user-images.githubusercontent.com/26864830/180248200-928953b4-db38-48db-b0c6-8b740fe6786f.png" width="700" />
