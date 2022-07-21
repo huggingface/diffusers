@@ -7,7 +7,7 @@ from .utils import is_inflect_available, is_transformers_available, is_unidecode
 __version__ = "0.1.2"
 
 from .modeling_utils import ModelMixin
-from .models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
+from .models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel, DualEncoderEpsNetwork
 from .pipeline_utils import DiffusionPipeline
 from .pipelines import DDIMPipeline, DDPMPipeline, LDMPipeline, PNDMPipeline, ScoreSdeVePipeline
 from .schedulers import DDIMScheduler, DDPMScheduler, PNDMScheduler, SchedulerMixin, ScoreSdeVeScheduler

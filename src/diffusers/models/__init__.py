@@ -16,6 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .dualencoder_gfn import DualEncoderEpsNetwork
 from .unet_2d import UNet2DModel
 from .unet_2d_condition import UNet2DConditionModel
 from .vae import AutoencoderKL, VQModel
