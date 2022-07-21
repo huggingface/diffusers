@@ -81,6 +81,7 @@ _deps = [
     "filelock",
     "flake8>=3.8.3",
     "huggingface-hub",
+    "importlib_metadata",
     "isort>=5.5.4",
     "numpy",
     "pytest",
@@ -168,6 +169,7 @@ extras["test"] = [
 extras["dev"] = extras["quality"] + extras["test"] + extras["training"]
 
 install_requires = [
+    deps["importlib_metadata"] + ";python_version<'3.8'",  # importlib_metadata for Python versions that don't have it
     deps["filelock"],
     deps["huggingface-hub"],
     deps["numpy"],
@@ -179,7 +181,7 @@ install_requires = [
 
 setup(
     name="diffusers",
-    version="0.1.0",
+    version="0.1.1",
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
