@@ -1,5 +1,7 @@
 ## Training examples
 
+Creating a training image set is [described in a different document](https://huggingface.co/docs/datasets/image_process#image-datasets).
+
 ### Installing the dependencies
 
 Before running the scipts, make sure to install the library's training dependencies:
