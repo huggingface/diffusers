@@ -38,8 +38,40 @@ In order to get started, we recommend taking a look at two notebooks:
 
 If you want to run the code yourself 💻, you can try out:
 - [Text-to-Image Latent Diffusion](https://huggingface.co/CompVis/ldm-text2im-large-256)
-- [Unconditional Latent Diffusion](https://huggingface.co/CompVis/ldm-celebahq-256#)
+```
+# !pip install diffusers transformers
+from diffusers import DiffusionPipeline
+
+model_id = "CompVis/ldm-text2im-large-256"
+
+# load model and scheduler
+ldm = DiffusionPipeline.from_pretrained(model_id)
+
+# run pipeline in inference (sample random noise and denoise)
+prompt = "A painting of a squirrel eating a burger"
+images = ldm([prompt], num_inference_steps=50, eta=0.3, guidance_scale=6)["sample"]
+
+# save images
+for idx, image in enumerate(images):
+    image.save(f"squirrel-{idx}.png")
+```
 - [Unconditional Diffusion with discrete scheduler](https://huggingface.co/google/ddpm-celebahq-256)
+```
+# !pip install diffusers
+from diffusers import DDPMPipeline, DDIMPipeline, PNDMPipeline
+
+model_id = "google/ddpm-celebahq-256"
+
+# load model and scheduler
+ddpm = DDPMPipeline.from_pretrained(model_id)  # you can replace DDPMPipeline with DDIMPipeline or PNDMPipeline for faster inference
+
+# run pipeline in inference (sample random noise and denoise)
+image = ddpm()["sample"]
+
+# save image
+image[0].save("ddpm_generated_image.png")
+```
+- [Unconditional Latent Diffusion](https://huggingface.co/CompVis/ldm-celebahq-256)
 - [Unconditional Diffusion with continous scheduler](https://huggingface.co/google/ncsnpp-ffhq-1024)
 
 If you just want to play around with some web demos, you can try out the following 🚀 Spaces:
