@@ -856,7 +856,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
         scheduler = ScoreSdeVeScheduler.from_config("google/ncsnpp-church-256")
 
-        sde_ve = ScoreSdeVePipeline(model=model, scheduler=scheduler)
+        sde_ve = ScoreSdeVePipeline(unet=model, scheduler=scheduler)
 
         torch.manual_seed(0)
         image = sde_ve(num_inference_steps=300, output_type="numpy")["sample"]
