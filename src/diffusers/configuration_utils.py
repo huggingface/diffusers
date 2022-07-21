@@ -48,6 +48,7 @@ class ConfigMixin:
 
     """
     config_name = None
+    ignore_for_config = []
 
     def register_to_config(self, **kwargs):
         if self.config_name is None:
@@ -212,6 +213,9 @@ class ConfigMixin:
         # remove general kwargs if present in dict
         if "kwargs" in expected_keys:
             expected_keys.remove("kwargs")
+        # remove keys to be ignored
+        if len(cls.ignore_for_config) > 0:
+            expected_keys = expected_keys - set(cls.ignore_for_config)
         init_dict = {}
         for key in expected_keys:
             if key in kwargs:
