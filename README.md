@@ -33,6 +33,21 @@ In order to get started, we recommend taking a look at two notebooks:
   Take a look at this notebook to learn how to use the pipeline abstraction, which takes care of everything (model, scheduler, noise handling) for you, but also to get an understanding of each independent building blocks in the library.
 - The [Training diffusers](https://colab.research.google.com/gist/anton-l/cde0c3643e991ad7dbc01939865acaf4/diffusers_training_example.ipynb) notebook, which summarizes diffuser model training methods. This notebook takes a step-by-step approach to training your
   diffuser model on an image dataset, with explanatory graphics.
+  
+## Examples
+
+If you want to run the code yourself 💻, you can try out:
+- [Text-to-Image Latent Diffusion](https://huggingface.co/CompVis/ldm-text2im-large-256)
+- [Unconditional Latent Diffusion](https://huggingface.co/CompVis/ldm-celebahq-256#)
+- [Unconditional Diffusion with discrete scheduler](https://huggingface.co/google/ddpm-celebahq-256)
+- [Unconditional Diffusion with continous scheduler](https://huggingface.co/google/ncsnpp-ffhq-1024)
+
+If you just want to play around with some web demos, you can try out the following 🚀 Spaces:
+| Model                          	| Hugging Face Spaces                                                                                                                                               	|
+|--------------------------------	|-------------------------------------------------------------------------------------------------------------------------------------------------------------------	|
+| Text-to-Image Latent Diffusion 	| [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/CompVis/text2img-latent-diffusion) 	|
+| Faces generator                	| [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/CompVis/celeba-latent-diffusion)    	|
+| DDPM with different schedulers 	| [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/fusing/celeba-diffusion)           	|
 
 ## Definitions
 
@@ -77,18 +92,7 @@ The class provides functionality to compute previous image according to alpha, b
 pip install diffusers  # should install diffusers 0.1.2
 ```
 
-## Examples
 
-If you want to run the code yourself 💻, you can try out:
-- [Text-to-Image Latent Diffusion](https://huggingface.co/CompVis/ldm-text2im-large-256#usage)
-- [Unconditional Latent Diffusion](https://huggingface.co/CompVis/ldm-celebahq-256#inference-with-an-unrolled-loop)
-- [Unconditional Diffusion with discrete scheduler](https://huggingface.co/google/ddpm-celebahq-256)
-- [Unconditional Diffusion with continous scheduler](https://huggingface.co/google/ncsnpp-ffhq-1024)
-
-If you just want to play around with some models, you can try out the following 🚀 spaces:
-- [Text-to-Image Latent Diffusion](https://huggingface.co/spaces/CompVis/text2img-latent-diffusion)
-- [Faces generator](https://huggingface.co/spaces/CompVis/celeba-latent-diffusion)
-- [DDPM with different schedulers](https://huggingface.co/spaces/fusing/celeba-diffusion)
 
 ## In the works
 
