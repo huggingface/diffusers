@@ -1,5 +1,13 @@
 ## Training examples
 
+### Installing the dependencies
+
+Before running the scipts, make sure to install the library's training dependencies:
+
+```bash
+pip install diffusers[training] accelerate datasets
+```
+
 ### Unconditional Flowers  
 
 The command to train a DDPM UNet model on the Oxford Flowers dataset:
