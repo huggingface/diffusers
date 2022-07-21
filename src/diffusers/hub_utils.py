@@ -21,13 +21,12 @@ from typing import Optional
 
 from diffusers import DiffusionPipeline
 from huggingface_hub import HfFolder, Repository, whoami
-from utils import is_modelcards_available
+
+from .utils import is_modelcards_available, logging
 
 
 if is_modelcards_available():
     from modelcards import CardData, ModelCard
-
-from .utils import logging
 
 
 logger = logging.get_logger(__name__)

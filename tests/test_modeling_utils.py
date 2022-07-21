@@ -848,13 +848,10 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_score_sde_ve_pipeline(self):
-        model = UNet2DModel.from_pretrained("google/ncsnpp-church-256")
+        model_id = "google/ncsnpp-church-256"
+        model = UNet2DModel.from_pretrained(model_id)
 
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
-
-        scheduler = ScoreSdeVeScheduler.from_config("google/ncsnpp-church-256")
+        scheduler = ScoreSdeVeScheduler.from_config(model_id)
 
         sde_ve = ScoreSdeVePipeline(unet=model, scheduler=scheduler)
 

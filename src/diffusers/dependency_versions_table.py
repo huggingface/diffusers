@@ -7,6 +7,7 @@ deps = {
     "filelock": "filelock",
     "flake8": "flake8>=3.8.3",
     "huggingface-hub": "huggingface-hub",
+    "importlib_metadata": "importlib_metadata",
     "isort": "isort>=5.5.4",
     "numpy": "numpy",
     "pytest": "pytest",
