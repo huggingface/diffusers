@@ -179,7 +179,7 @@ install_requires = [
 
 setup(
     name="diffusers",
-    version="0.0.4",
+    version="0.1.0",
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
