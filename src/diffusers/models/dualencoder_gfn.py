@@ -13,7 +13,6 @@ from torch_geometric.typing import Adj, OptPairTensor, OptTensor, Size
 from torch_geometric.utils import dense_to_sparse, to_dense_adj
 from torch_scatter import scatter_add, scatter_mean
 from torch_sparse import SparseTensor, coalesce
-from tqdm.auto import tqdm
 
 from ..configuration_utils import ConfigMixin
 from ..modeling_utils import ModelMixin
@@ -463,35 +462,6 @@ def eq_transform(score_d, pos, edge_index, edge_length):
     return score_pos
 
 
-def get_beta_schedule(beta_schedule, *, beta_start, beta_end, num_diffusion_timesteps):
-    def sigmoid(x):
-        return 1 / (np.exp(-x) + 1)
-
-    if beta_schedule == "quad":
-        betas = (
-            np.linspace(
-                beta_start**0.5,
-                beta_end**0.5,
-                num_diffusion_timesteps,
-                dtype=np.float64,
-            )
-            ** 2
-        )
-    elif beta_schedule == "linear":
-        betas = np.linspace(beta_start, beta_end, num_diffusion_timesteps, dtype=np.float64)
-    elif beta_schedule == "const":
-        betas = beta_end * np.ones(num_diffusion_timesteps, dtype=np.float64)
-    elif beta_schedule == "jsd":  # 1/T, 1/(T-1), 1/(T-2), ..., 1
-        betas = 1.0 / np.linspace(num_diffusion_timesteps, 1, num_diffusion_timesteps, dtype=np.float64)
-    elif beta_schedule == "sigmoid":
-        betas = np.linspace(-6, 6, num_diffusion_timesteps)
-        betas = sigmoid(betas) * (beta_end - beta_start) + beta_start
-    else:
-        raise NotImplementedError(beta_schedule)
-    assert betas.shape == (num_diffusion_timesteps,)
-    return betas
-
-
 class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
     def __init__(
         self,
@@ -500,10 +470,6 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
         num_convs_local,
         cutoff,
         mlp_act,
-        beta_schedule,
-        beta_start,
-        beta_end,
-        num_diffusion_timesteps,
         edge_order,
         edge_encoder,
         smooth_conv,
@@ -554,23 +520,6 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
         self.model_global = nn.ModuleList([self.edge_encoder_global, self.encoder_global, self.grad_global_dist_mlp])
         self.model_local = nn.ModuleList([self.edge_encoder_local, self.encoder_local, self.grad_local_dist_mlp])
 
-        self.model_type = type  # type  # 'diffusion'; 'dsm'
-
-        # denoising diffusion
-        ## betas
-        betas = get_beta_schedule(
-            beta_schedule=beta_schedule,
-            beta_start=beta_start,
-            beta_end=beta_end,
-            num_diffusion_timesteps=num_diffusion_timesteps,
-        )
-        betas = torch.from_numpy(betas).float()
-        self.betas = nn.Parameter(betas, requires_grad=False)
-        ## variances
-        alphas = (1.0 - betas).cumprod(dim=0)
-        self.alphas = nn.Parameter(alphas, requires_grad=False)
-        self.num_timesteps = self.betas.size(0)
-
     def forward(
         self,
         atom_type,
@@ -578,7 +527,7 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
         bond_index,
         bond_type,
         batch,
-        time_step,
+        time_step,      # NOTE, model trained without timestep performed best
         edge_index=None,
         edge_type=None,
         edge_length=None,
@@ -617,7 +566,6 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
 
         # Encoding global
         edge_attr_global = self.edge_encoder_global(edge_length=edge_length, edge_type=edge_type)  # Embed edges
-        # edge_attr += temb_edge
 
         # Global
         node_attr_global = self.encoder_global(
@@ -651,6 +599,7 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
             edge_index=edge_index[:, local_edge_mask],
             edge_attr=edge_attr_local[local_edge_mask],
         )  # (E_local, 2H)
+
         ## Invariant features of edges (bond graph, local)
         if isinstance(sigma_edge, torch.Tensor):
             edge_inv_local = self.grad_local_dist_mlp(h_pair_local) * (
@@ -663,97 +612,6 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
             return edge_inv_global, edge_inv_local, edge_index, edge_type, edge_length, local_edge_mask
         else:
             return edge_inv_global, edge_inv_local
-
-    def get_loss(
-        self,
-        atom_type,
-        pos,
-        bond_index,
-        bond_type,
-        batch,
-        num_nodes_per_graph,
-        num_graphs,
-        anneal_power=2.0,
-        return_unreduced_loss=False,
-        return_unreduced_edge_loss=False,
-        extend_order=True,
-        extend_radius=True,
-        is_sidechain=None,
-    ):
-        N = atom_type.size(0)
-        node2graph = batch
-
-        # Four elements for DDPM: original_data(pos), gaussian_noise(pos_noise), beta(sigma), time_step
-        # Sample noise levels
-        time_step = torch.randint(0, self.num_timesteps, size=(num_graphs // 2 + 1,), device=pos.device)
-        time_step = torch.cat([time_step, self.num_timesteps - time_step - 1], dim=0)[:num_graphs]
-        a = self.alphas.index_select(0, time_step)  # (G, )
-        # Perterb pos
-        a_pos = a.index_select(0, node2graph).unsqueeze(-1)  # (N, 1)
-        pos_noise = torch.zeros(size=pos.size(), device=pos.device)
-        pos_noise.normal_()
-        pos_perturbed = pos + pos_noise * (1.0 - a_pos).sqrt() / a_pos.sqrt()
-
-        # Update invariant edge features, as shown in equation 5-7
-        edge_inv_global, edge_inv_local, edge_index, edge_type, edge_length, local_edge_mask = self(
-            atom_type=atom_type,
-            pos=pos_perturbed,
-            bond_index=bond_index,
-            bond_type=bond_type,
-            batch=batch,
-            time_step=time_step,
-            return_edges=True,
-            extend_order=extend_order,
-            extend_radius=extend_radius,
-            is_sidechain=is_sidechain,
-        )  # (E_global, 1), (E_local, 1)
-
-        edge2graph = node2graph.index_select(0, edge_index[0])
-        # Compute sigmas_edge
-        a_edge = a.index_select(0, edge2graph).unsqueeze(-1)  # (E, 1)
-
-        # Compute original and perturbed distances
-        d_gt = get_distance(pos, edge_index).unsqueeze(-1)  # (E, 1)
-        d_perturbed = edge_length
-        # Filtering for protein
-        train_edge_mask = is_train_edge(edge_index, is_sidechain)
-        d_perturbed = torch.where(train_edge_mask.unsqueeze(-1), d_perturbed, d_gt)
-
-        if self.edge_encoder == "gaussian":
-            # Distances must be greater than 0
-            d_sgn = torch.sign(d_perturbed)
-            d_perturbed = torch.clamp(d_perturbed * d_sgn, min=0.01, max=float("inf"))
-        d_target = (d_gt - d_perturbed) / (1.0 - a_edge).sqrt() * a_edge.sqrt()  # (E_global, 1), denoising direction
-
-        global_mask = torch.logical_and(
-            torch.logical_or(d_perturbed <= self.cutoff, local_edge_mask.unsqueeze(-1)),
-            ~local_edge_mask.unsqueeze(-1),
-        )
-        target_d_global = torch.where(global_mask, d_target, torch.zeros_like(d_target))
-        edge_inv_global = torch.where(global_mask, edge_inv_global, torch.zeros_like(edge_inv_global))
-        target_pos_global = eq_transform(target_d_global, pos_perturbed, edge_index, edge_length)
-        node_eq_global = eq_transform(edge_inv_global, pos_perturbed, edge_index, edge_length)
-        loss_global = (node_eq_global - target_pos_global) ** 2
-        loss_global = 2 * torch.sum(loss_global, dim=-1, keepdim=True)
-
-        target_pos_local = eq_transform(
-            d_target[local_edge_mask], pos_perturbed, edge_index[:, local_edge_mask], edge_length[local_edge_mask]
-        )
-        node_eq_local = eq_transform(
-            edge_inv_local, pos_perturbed, edge_index[:, local_edge_mask], edge_length[local_edge_mask]
-        )
-        loss_local = (node_eq_local - target_pos_local) ** 2
-        loss_local = 5 * torch.sum(loss_local, dim=-1, keepdim=True)
-
-        # loss for atomic eps regression
-        loss = loss_global + loss_local
-
-        if return_unreduced_edge_loss:
-            pass
-        elif return_unreduced_loss:
-            return loss, loss_global, loss_local
-        else:
-            return loss
 
     def get_residual_params(
         self,
