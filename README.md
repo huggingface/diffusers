@@ -42,10 +42,12 @@ If you want to run the code yourself 💻, you can try out:
 - [Unconditional Diffusion with discrete scheduler](https://huggingface.co/google/ddpm-celebahq-256)
 - [Unconditional Diffusion with continous scheduler](https://huggingface.co/google/ncsnpp-ffhq-1024)
 
-If you just want to play around with some models, you can try out the following 🚀 spaces:
-- [Text-to-Image Latent Diffusion](https://huggingface.co/spaces/CompVis/text2img-latent-diffusion)
-- [Faces generator](https://huggingface.co/spaces/CompVis/celeba-latent-diffusion)
-- [DDPM with different schedulers](https://huggingface.co/spaces/fusing/celeba-diffusion)
+If you just want to play around with some web demos, you can try out the following 🚀 Spaces:
+| Model                          	| Hugging Face Spaces                                                                                                                                               	|
+|--------------------------------	|-------------------------------------------------------------------------------------------------------------------------------------------------------------------	|
+| Text-to-Image Latent Diffusion 	| [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/CompVis/text2img-latent-diffusion) 	|
+| Faces generator                	| [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/CompVis/celeba-latent-diffusion)    	|
+| DDPM with different schedulers 	| [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/fusing/celeba-diffusion)           	|
 
 ## Definitions
 
