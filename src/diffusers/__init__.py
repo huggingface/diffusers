@@ -4,7 +4,7 @@
 from .utils import is_inflect_available, is_transformers_available, is_unidecode_available
 
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 from .modeling_utils import ModelMixin
 from .models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
