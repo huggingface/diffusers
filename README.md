@@ -29,9 +29,9 @@ More precisely, 🤗 Diffusers offers:
 
 In order to get started, we recommend taking a look at two notebooks:
 
-- The [Diffusers](https://github.com/patrickvonplaten/notebooks/blob/master/Diffusers.ipynb) notebook, which showcases an end-to-end example of usage for diffusion models, schedulers and pipelines.
+- The [Getting started with Diffusers](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb) notebook, which showcases an end-to-end example of usage for diffusion models, schedulers and pipelines.
   Take a look at this notebook to learn how to use the pipeline abstraction, which takes care of everything (model, scheduler, noise handling) for you, but also to get an understanding of each independent building blocks in the library.
-- The [Training diffusers](https://colab.research.google.com/gist/anton-l/cde0c3643e991ad7dbc01939865acaf4/diffusers_training_example.ipynb) notebook, which summarizes diffuser model training methods. This notebook takes a step-by-step approach to training your
+- The [Training a diffusers model](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb) notebook, which summarizes diffuser model training methods. This notebook takes a step-by-step approach to training your
   diffuser model on an image dataset, with explanatory graphics.
   
 ## Examples
