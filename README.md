@@ -25,6 +25,15 @@ More precisely, 🤗 Diffusers offers:
 - Multiple types of models, such as UNet, that can be used as building blocks in an end-to-end diffusion system (see [src/diffusers/models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models)).
 - Training examples to show how to train the most popular diffusion models (see [examples](https://github.com/huggingface/diffusers/tree/main/examples)).
 
+## Quickstart
+
+In order to get started, we recommend taking a look at two notebooks:
+
+- The [Diffusers](https://github.com/patrickvonplaten/notebooks/blob/master/Diffusers.ipynb) notebook, which showcases an end-to-end example of usage for diffusion models, schedulers and pipelines.
+  Take a look at this notebook to learn how to use the pipeline abstraction, which takes care of everything (model, scheduler, noise handling) for you, but also to get an understanding of each independent building blocks in the library.
+- The [Training diffusers](https://colab.research.google.com/gist/anton-l/cde0c3643e991ad7dbc01939865acaf4/diffusers_training_example.ipynb) notebook, which summarizes diffuser model training methods. This notebook takes a step-by-step approach to training your
+  diffuser model on an image dataset, with explanatory graphics.
+
 ## Definitions
 
 **Models**: Neural network that models $p_\theta(\mathbf{x}_{t-1}|\mathbf{x}_t)$ (see image below) and is trained end-to-end to *denoise* a noisy input to an image.
@@ -62,83 +71,24 @@ The class provides functionality to compute previous image according to alpha, b
 - Diffusers is **modality independent** and focusses on providing pretrained models and tools to build systems that generate **continous outputs**, *e.g.* vision and audio.
 - Diffusion models and schedulers are provided as consise, elementary building blocks whereas diffusion pipelines are a collection of end-to-end diffusion systems that can be used out-of-the-box, should stay as close as possible to their original implementation and can include components of other library, such as text-encoders. Examples for diffusion pipelines are [Glide](https://github.com/openai/glide-text2im) and [Latent Diffusion](https://github.com/CompVis/latent-diffusion).
 
-## Quickstart
-
-In order to get started, we recommend taking a look at two notebooks:
-
-- The [Diffusers](https://colab.research.google.com/drive/1aEFVu0CvcIBzSNIQ7F71ujYYplAX4Bml?usp=sharing#scrollTo=PzW5ublpBuUt) notebook, which showcases an end-to-end example of usage for diffusion models, schedulers and pipelines.
-  Take a look at this notebook to learn how to use the pipeline abstraction, which takes care of everything (model, scheduler, noise handling) for you, but also to get an understanding of each independent building blocks in the library.
-- The [Training diffusers](https://colab.research.google.com/drive/1qqJmz7JJ04suJzEF4Hn4-Acb8rfL-eA3?usp=sharing) notebook, which summarizes diffuser model training methods. This notebook takes a step-by-step approach to training your
-  diffuser model on an image dataset, with explanatory graphics.
-
-### Installation
+## Installation
 
 ```
-pip install diffusers  # should install diffusers 0.0.4
+pip install diffusers  # should install diffusers 0.1.2
 ```
 
-### 1. `diffusers` as a toolbox for schedulers and models
+## Examples
 
-`diffusers` is more modularized than `transformers`. The idea is that researchers and engineers can use only parts of the library easily for the own use cases.
-It could become a central place for all kinds of models, schedulers, training utils and processors that one can mix and match for one's own use case.
-Both models and schedulers should be load- and saveable from the Hub.
+If you want to run the code yourself 💻, you can try out:
+- [Text-to-Image Latent Diffusion](https://huggingface.co/CompVis/ldm-text2im-large-256#usage)
+- [Unconditional Latent Diffusion](https://huggingface.co/CompVis/ldm-celebahq-256#inference-with-an-unrolled-loop)
+- [Unconditional Diffusion with discrete scheduler](https://huggingface.co/google/ddpm-celebahq-256)
+- [Unconditional Diffusion with continous scheduler](https://huggingface.co/google/ncsnpp-ffhq-1024)
 
-For more examples see [schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers) and [models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models)
-
-#### **Example for Unconditonal Image generation [DDPM](https://arxiv.org/abs/2006.11239):**
-
-```python
-import torch
-from diffusers import UNet2DModel, DDIMScheduler
-import PIL.Image
-import numpy as np
-import tqdm
-
-torch_device = "cuda" if torch.cuda.is_available() else "cpu"
-
-# 1. Load models
-scheduler = DDIMScheduler.from_config("fusing/ddpm-celeba-hq", tensor_format="pt")
-unet = UNet2DModel.from_pretrained("fusing/ddpm-celeba-hq", ddpm=True).to(torch_device)
-
-# 2. Sample gaussian noise
-generator = torch.manual_seed(23)
-unet.image_size = unet.resolution
-image = torch.randn(
-   (1, unet.in_channels, unet.image_size, unet.image_size),
-   generator=generator,
-)
-image = image.to(torch_device)
-
-# 3. Denoise
-num_inference_steps = 50
-eta = 0.0  # <- deterministic sampling
-scheduler.set_timesteps(num_inference_steps)
-
-for t in tqdm.tqdm(scheduler.timesteps):
-    # 1. predict noise residual
-    with torch.no_grad():
-        residual = unet(image, t)["sample"]
-
-    prev_image = scheduler.step(residual, t, image, eta)["prev_sample"]
-
-    # 3. set current image to prev_image: x_t -> x_t-1
-    image = prev_image
-
-# 4. process image to PIL
-image_processed = image.cpu().permute(0, 2, 3, 1)
-image_processed = (image_processed + 1.0) * 127.5
-image_processed = image_processed.numpy().astype(np.uint8)
-image_pil = PIL.Image.fromarray(image_processed[0])
-
-# 5. save image
-image_pil.save("generated_image.png")
-``` 
-
-#### **Example for Unconditonal Image generation [LDM](https://github.com/CompVis/latent-diffusion):**
-
-```python
-```
-
+If you just want to play around with some models, you can try out the following 🚀 spaces:
+- [Text-to-Image Latent Diffusion](https://huggingface.co/spaces/CompVis/text2img-latent-diffusion)
+- [Faces generator](https://huggingface.co/spaces/CompVis/celeba-latent-diffusion)
+- [DDPM with different schedulers](https://huggingface.co/spaces/fusing/celeba-diffusion)
 
 ## In the works
 
@@ -166,4 +116,4 @@ This library concretizes previous work by many different authors and would not h
 - @ermongroup's DDIM implementation, available [here](https://github.com/ermongroup/ddim).
 - @yang-song's Score-VE and Score-VP implementations, available [here](https://github.com/yang-song/score_sde_pytorch)
 
-We also want to thank @heejkoo for the very helpful overview of papers, code and resources on diffusion models, available [here](https://github.com/heejkoo/Awesome-Diffusion-Models).
+We also want to thank @heejkoo for the very helpful overview of papers, code and resources on diffusion models, available [here](https://github.com/heejkoo/Awesome-Diffusion-Models) as well as @crowsonkb and @rromb for useful discussions and insights.
