@@ -120,11 +120,17 @@ The class provides functionality to compute previous image according to alpha, b
 
 ## Installation
 
+**With `pip`**
+    
 ```
 pip install diffusers  # should install diffusers 0.1.2
 ```
 
-
+**With `conda`**
+    
+```sh
+conda install -c conda-forge diffusers
+```
 
 ## In the works
 
