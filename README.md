@@ -38,7 +38,7 @@ In order to get started, we recommend taking a look at two notebooks:
 
 If you want to run the code yourself 💻, you can try out:
 - [Text-to-Image Latent Diffusion](https://huggingface.co/CompVis/ldm-text2im-large-256)
-```
+```python
 # !pip install diffusers transformers
 from diffusers import DiffusionPipeline
 
@@ -56,7 +56,7 @@ for idx, image in enumerate(images):
     image.save(f"squirrel-{idx}.png")
 ```
 - [Unconditional Diffusion with discrete scheduler](https://huggingface.co/google/ddpm-celebahq-256)
-```
+```python
 # !pip install diffusers
 from diffusers import DDPMPipeline, DDIMPipeline, PNDMPipeline
 
@@ -120,7 +120,7 @@ The class provides functionality to compute previous image according to alpha, b
 
 ## Installation
 
-```
+```bash
 pip install diffusers  # should install diffusers 0.1.2
 ```
 
