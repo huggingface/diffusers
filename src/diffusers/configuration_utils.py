@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ ConfigMixinuration base class and utilities."""
+import functools
 import inspect
 import json
 import os
@@ -47,6 +48,7 @@ class ConfigMixin:
 
     """
     config_name = None
+    ignore_for_config = []
 
     def register_to_config(self, **kwargs):
         if self.config_name is None:
@@ -116,6 +118,7 @@ class ConfigMixin:
         use_auth_token = kwargs.pop("use_auth_token", None)
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
 
         user_agent = {"file_type": "config"}
 
@@ -133,6 +136,10 @@ class ConfigMixin:
             if os.path.isfile(os.path.join(pretrained_model_name_or_path, cls.config_name)):
                 # Load from a PyTorch checkpoint
                 config_file = os.path.join(pretrained_model_name_or_path, cls.config_name)
+            elif subfolder is not None and os.path.isfile(
+                os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name)
+            ):
+                config_file = os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name)
             else:
                 raise EnvironmentError(
                     f"Error no file named {cls.config_name} found in directory {pretrained_model_name_or_path}."
@@ -150,14 +157,15 @@ class ConfigMixin:
                     local_files_only=local_files_only,
                     use_auth_token=use_auth_token,
                     user_agent=user_agent,
+                    subfolder=subfolder,
                 )
 
             except RepositoryNotFoundError:
                 raise EnvironmentError(
-                    f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier listed"
-                    " on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a token"
-                    " having permission to this repo with `use_auth_token` or log in with `huggingface-cli login` and"
-                    " pass `use_auth_token=True`."
+                    f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier"
+                    " listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a"
+                    " token having permission to this repo with `use_auth_token` or log in with `huggingface-cli"
+                    " login` and pass `use_auth_token=True`."
                 )
             except RevisionNotFoundError:
                 raise EnvironmentError(
@@ -202,6 +210,12 @@ class ConfigMixin:
     def extract_init_dict(cls, config_dict, **kwargs):
         expected_keys = set(dict(inspect.signature(cls.__init__).parameters).keys())
         expected_keys.remove("self")
+        # remove general kwargs if present in dict
+        if "kwargs" in expected_keys:
+            expected_keys.remove("kwargs")
+        # remove keys to be ignored
+        if len(cls.ignore_for_config) > 0:
+            expected_keys = expected_keys - set(cls.ignore_for_config)
         init_dict = {}
         for key in expected_keys:
             if key in kwargs:
@@ -286,3 +300,46 @@ class FrozenDict(OrderedDict):
         if hasattr(self, "__frozen") and self.__frozen:
             raise Exception(f"You cannot use ``__setattr__`` on a {self.__class__.__name__} instance.")
         super().__setitem__(name, value)
+
+
+def register_to_config(init):
+    """
+    Decorator to apply on the init of classes inheriting from `ConfigMixin` so that all the arguments are automatically
+    sent to `self.register_for_config`. To ignore a specific argument accepted by the init but that shouldn't be
+    registered in the config, use the `ignore_for_config` class variable
+
+    Warning: Once decorated, all private arguments (beginning with an underscore) are trashed and not sent to the init!
+    """
+
+    @functools.wraps(init)
+    def inner_init(self, *args, **kwargs):
+        # Ignore private kwargs in the init.
+        init_kwargs = {k: v for k, v in kwargs.items() if not k.startswith("_")}
+        init(self, *args, **init_kwargs)
+        if not isinstance(self, ConfigMixin):
+            raise RuntimeError(
+                f"`@register_for_config` was applied to {self.__class__.__name__} init method, but this class does "
+                "not inherit from `ConfigMixin`."
+            )
+
+        ignore = getattr(self, "ignore_for_config", [])
+        # Get positional arguments aligned with kwargs
+        new_kwargs = {}
+        signature = inspect.signature(init)
+        parameters = {
+            name: p.default for i, (name, p) in enumerate(signature.parameters.items()) if i > 0 and name not in ignore
+        }
+        for arg, name in zip(args, parameters.keys()):
+            new_kwargs[name] = arg
+
+        # Then add all kwargs
+        new_kwargs.update(
+            {
+                k: init_kwargs.get(k, default)
+                for k, default in parameters.items()
+                if k not in ignore and k not in new_kwargs
+            }
+        )
+        getattr(self, "register_to_config")(**new_kwargs)
+
+    return inner_init

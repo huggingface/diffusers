@@ -54,14 +54,57 @@ def get_timestep_embedding(
     return emb
 
 
-# unet_sde_score_estimation.py
+class TimestepEmbedding(nn.Module):
+    def __init__(self, channel, time_embed_dim, act_fn="silu"):
+        super().__init__()
+
+        self.linear_1 = nn.Linear(channel, time_embed_dim)
+        self.act = None
+        if act_fn == "silu":
+            self.act = nn.SiLU()
+        self.linear_2 = nn.Linear(time_embed_dim, time_embed_dim)
+
+    def forward(self, sample):
+        sample = self.linear_1(sample)
+
+        if self.act is not None:
+            sample = self.act(sample)
+
+        sample = self.linear_2(sample)
+        return sample
+
+
+class Timesteps(nn.Module):
+    def __init__(self, num_channels, flip_sin_to_cos, downscale_freq_shift):
+        super().__init__()
+        self.num_channels = num_channels
+        self.flip_sin_to_cos = flip_sin_to_cos
+        self.downscale_freq_shift = downscale_freq_shift
+
+    def forward(self, timesteps):
+        t_emb = get_timestep_embedding(
+            timesteps,
+            self.num_channels,
+            flip_sin_to_cos=self.flip_sin_to_cos,
+            downscale_freq_shift=self.downscale_freq_shift,
+        )
+        return t_emb
+
+
 class GaussianFourierProjection(nn.Module):
     """Gaussian Fourier embeddings for noise levels."""
 
     def __init__(self, embedding_size=256, scale=1.0):
         super().__init__()
+        self.weight = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)
+
+        # to delete later
         self.W = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)
 
+        self.weight = self.W
+
     def forward(self, x):
-        x_proj = x[:, None] * self.W[None, :] * 2 * np.pi
-        return torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1)
+        x = torch.log(x)
+        x_proj = x[:, None] * self.weight[None, :] * 2 * np.pi
+        out = torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1)
+        return out

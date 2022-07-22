@@ -1,27 +1,37 @@
 ## Training examples
 
+Creating a training image set is [described in a different document](https://huggingface.co/docs/datasets/image_process#image-datasets).
+
+### Installing the dependencies
+
+Before running the scipts, make sure to install the library's training dependencies:
+
+```bash
+pip install diffusers[training] accelerate datasets
+```
+
 ### Unconditional Flowers  
 
 The command to train a DDPM UNet model on the Oxford Flowers dataset:
 
 ```bash
-python -m torch.distributed.launch \
-  --nproc_per_node 4 \
-  train_unconditional.py \
+accelerate launch train_unconditional.py \
   --dataset="huggan/flowers-102-categories" \
   --resolution=64 \
-  --output_dir="flowers-ddpm" \
-  --batch_size=16 \
+  --output_dir="ddpm-ema-flowers-64" \
+  --train_batch_size=16 \
   --num_epochs=100 \
   --gradient_accumulation_steps=1 \
-  --lr=1e-4 \
-  --warmup_steps=500 \
-  --mixed_precision=no
+  --learning_rate=1e-4 \
+  --lr_warmup_steps=500 \
+  --mixed_precision=no \
+  --push_to_hub
 ```
+An example trained model: https://huggingface.co/anton-l/ddpm-ema-flowers-64
 
 A full training run takes 2 hours on 4xV100 GPUs.
 
-<img src="https://user-images.githubusercontent.com/26864830/173855866-5628989f-856b-4725-a944-d6c09490b2df.png" width="500" />
+<img src="https://user-images.githubusercontent.com/26864830/180248660-a0b143d0-b89a-42c5-8656-2ebf6ece7e52.png" width="700" />
 
 
 ### Unconditional Pokemon 
@@ -29,20 +39,20 @@ A full training run takes 2 hours on 4xV100 GPUs.
 The command to train a DDPM UNet model on the Pokemon dataset:
 
 ```bash
-python -m torch.distributed.launch \
-  --nproc_per_node 4 \
-  train_unconditional.py \
+accelerate launch train_unconditional.py \
   --dataset="huggan/pokemon" \
   --resolution=64 \
-  --output_dir="pokemon-ddpm" \
-  --batch_size=16 \
+  --output_dir="ddpm-ema-pokemon-64" \
+  --train_batch_size=16 \
   --num_epochs=100 \
   --gradient_accumulation_steps=1 \
-  --lr=1e-4 \
-  --warmup_steps=500 \
-  --mixed_precision=no
+  --learning_rate=1e-4 \
+  --lr_warmup_steps=500 \
+  --mixed_precision=no \
+  --push_to_hub
 ```
+An example trained model: https://huggingface.co/anton-l/ddpm-ema-pokemon-64
 
 A full training run takes 2 hours on 4xV100 GPUs.
 
-<img src="https://user-images.githubusercontent.com/26864830/173856733-4f117f8c-97bd-4f51-8002-56b488c96df9.png" width="500" />
+<img src="https://user-images.githubusercontent.com/26864830/180248200-928953b4-db38-48db-b0c6-8b740fe6786f.png" width="700" />

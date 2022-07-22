@@ -3,7 +3,7 @@ import argparse
 import OmegaConf
 import torch
 
-from diffusers import UNetLDMModel, VQModel, LatentDiffusionUncondPipeline, DDIMScheduler
+from diffusers import UNetLDMModel, VQModel, LDMPipeline, DDIMScheduler
 
 def convert_ldm_original(checkpoint_path, config_path, output_path):
     config = OmegaConf.load(config_path)
@@ -41,7 +41,7 @@ def convert_ldm_original(checkpoint_path, config_path, output_path):
         clip_sample=False,
     )
 
-    pipeline = LatentDiffusionUncondPipeline(vqvae, unet, noise_scheduler)
+    pipeline = LDMPipeline(vqvae, unet, noise_scheduler)
     pipeline.save_pretrained(output_path)
 
 
