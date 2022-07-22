@@ -465,14 +465,14 @@ def eq_transform(score_d, pos, edge_index, edge_length):
 class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
     def __init__(
         self,
-        hidden_dim,
-        num_convs,
-        num_convs_local,
-        cutoff,
-        mlp_act,
-        edge_order,
-        edge_encoder,
-        smooth_conv,
+        hidden_dim=128,
+        num_convs=6,
+        num_convs_local=4,
+        cutoff=10.0,
+        mlp_act="relu",
+        edge_order=3,
+        edge_encoder="mlp",
+        smooth_conv=True,
     ):
         super().__init__()
         self.cutoff = cutoff
