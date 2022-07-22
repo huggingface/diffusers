@@ -10,6 +10,12 @@ Before running the scipts, make sure to install the library's training dependenc
 pip install diffusers[training] accelerate datasets
 ```
 
+And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
+
+```bash
+accelerate config
+```
+
 ### Unconditional Flowers  
 
 The command to train a DDPM UNet model on the Oxford Flowers dataset:
