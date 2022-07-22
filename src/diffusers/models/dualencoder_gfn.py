@@ -1,5 +1,5 @@
 # Model adapted from GeoDiff https://github.com/MinkaiXu/GeoDiff
-from typing import Callable, Union, Dict
+from typing import Callable, Dict, Union
 
 import numpy as np
 import torch
@@ -527,7 +527,7 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
         bond_index,
         bond_type,
         batch,
-        time_step,      # NOTE, model trained without timestep performed best
+        time_step,  # NOTE, model trained without timestep performed best
         edge_index=None,
         edge_type=None,
         edge_length=None,
@@ -620,7 +620,7 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
         extend_order=False,
         extend_radius=True,
         clip_local=None,
-    )-> Dict[str, torch.FloatTensor]:
+    ) -> Dict[str, torch.FloatTensor]:
         atom_type = sample.atom_type
         bond_index = sample.edge_index
         bond_type = sample.edge_type

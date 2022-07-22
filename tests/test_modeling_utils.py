@@ -627,10 +627,17 @@ class DualEncoderEpsNetworkTests(ModelTesterMixin, unittest.TestCase):
             torch.manual_seed(0)
 
             # molecule components / properties
-            atom_type = torch.randint(0, 6, (num_nodes*batch_size,)).to(torch_device)
-            edge_index = torch.randint(0, 20, (2, num_edges*batch_size,)).to(torch_device)
-            edge_type = torch.randint(0, 20, (num_edges*batch_size,)).to(torch_device)
-            pos = torch.randn(num_nodes*batch_size, 3).to(torch_device)
+            atom_type = torch.randint(0, 6, (num_nodes * batch_size,)).to(torch_device)
+            edge_index = torch.randint(
+                0,
+                20,
+                (
+                    2,
+                    num_edges * batch_size,
+                ),
+            ).to(torch_device)
+            edge_type = torch.randint(0, 20, (num_edges * batch_size,)).to(torch_device)
+            pos = torch.randn(num_nodes * batch_size, 3).to(torch_device)
             batch = torch.tensor([*range(batch_size)]).repeat_interleave(num_nodes)
             nx = batch_size
 
@@ -645,6 +652,7 @@ class DualEncoderEpsNetworkTests(ModelTesterMixin, unittest.TestCase):
         class GeoDiffShapes:
             shape_0 = torch.Size([1305, 1])
             shape_1 = torch.Size([92, 1])
+
         return GeoDiffShapes()
 
     # training not implemented for this model yet
@@ -678,15 +686,15 @@ class DualEncoderEpsNetworkTests(ModelTesterMixin, unittest.TestCase):
             self.assertEqual(output[1].shape, shapes.shape_1, "Input and output shapes do not match")
 
     def prepare_init_args_and_inputs_for_common(self):
-        init_dict ={
-          "hidden_dim": 128,
-          "num_convs": 6,
-          "num_convs_local": 4,
-          "cutoff": 10.0,
-          "mlp_act": "relu",
-          "edge_order": 3,
-          "edge_encoder": "mlp",
-          "smooth_conv": True
+        init_dict = {
+            "hidden_dim": 128,
+            "num_convs": 6,
+            "num_convs_local": 4,
+            "cutoff": 10.0,
+            "mlp_act": "relu",
+            "edge_order": 3,
+            "edge_encoder": "mlp",
+            "smooth_conv": True,
         }
 
         inputs_dict = self.dummy_input
@@ -739,7 +747,6 @@ class DualEncoderEpsNetworkTests(ModelTesterMixin, unittest.TestCase):
                                                  192.5891,
                                                  -17.7297])
         # fmt: on
-
 
         output_slice_4 = output[4][-6:].flatten()
         # fmt: off
