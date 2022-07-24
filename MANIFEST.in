@@ -1,1 +1,1 @@
-include diffusers/utils/model_card_template.md
+include src/diffusers/utils/model_card_template.md
