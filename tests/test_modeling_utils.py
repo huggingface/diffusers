@@ -618,33 +618,33 @@ class MoleculeGNNTests(ModelTesterMixin, unittest.TestCase):
 
         class GeoDiffData:
             # constants corresponding to a molecule
-            num_nodes = 26
-            num_edges = 54
+            num_nodes = 6
+            num_edges = 10
             num_graphs = 1
 
             # sampling
             torch.Generator(device=torch_device)
-            torch.manual_seed(0)
+            torch.manual_seed(3)
 
             # molecule components / properties
             atom_type = torch.randint(0, 6, (num_nodes * batch_size,)).to(torch_device)
             edge_index = torch.randint(
                 0,
-                20,
+                num_edges,
                 (
                     2,
                     num_edges * batch_size,
                 ),
             ).to(torch_device)
-            edge_type = torch.randint(0, 20, (num_edges * batch_size,)).to(torch_device)
-            pos = torch.randn(num_nodes * batch_size, 3).to(torch_device)
+            edge_type = torch.randint(0, 5, (num_edges * batch_size,)).to(torch_device)
+            pos = .001*torch.randn(num_nodes * batch_size, 3).to(torch_device)
             batch = torch.tensor([*range(batch_size)]).repeat_interleave(num_nodes)
             nx = batch_size
 
         torch.manual_seed(0)
         noise = GeoDiffData()
 
-        return {"sample": noise, "timestep": time_step}
+        return {"sample": noise, "timestep": time_step, "sigma": 1.0}
 
     @property
     def output_shape(self):
@@ -721,46 +721,18 @@ class MoleculeGNNTests(ModelTesterMixin, unittest.TestCase):
             torch.cuda.manual_seed_all(0)
 
         input = self.dummy_input
-        sample, time_step = input["sample"], input["timestep"]
+        sample, time_step, sigma = input["sample"], input["timestep"], input["sigma"]
         with torch.no_grad():
-            output = model(sample, time_step)
+            output = model(sample, time_step, sigma=sigma)["sample"]
 
-        # outputs correspond to molecule conformation
-        # variables: edge_inv_global, edge_inv_local, edge_index, edge_type, edge_length, local_edge_mask, node_eq_local
 
-        output_slice_0 = output[0][-6:].flatten()
+        output_slice = output[:3][:].flatten()
         # fmt: off
-        expected_output_slice_0 = torch.tensor([10633.3818,
-                                                20670.0996,
-                                                14251.5283,
-                                                19087.3828,
-                                                18654.5586,
-                                                18116.2617])
+        expected_output_slice = torch.tensor([ -3.7335,  -7.4622, -29.5600,  16.9646, -11.2205, -32.5315,   1.2303,
+          4.2985,   8.8828])
         # fmt: on
 
-        output_slice_1 = output[1][-6:].flatten()
-        # fmt: off
-        expected_output_slice_1 = torch.tensor([-946.4217,
-                                                   4.1009,
-                                                 -60.8591,
-                                                   4.5929,
-                                                 192.5891,
-                                                 -17.7297])
-        # fmt: on
-
-        output_slice_4 = output[4][-6:].flatten()
-        # fmt: off
-        expected_output_slice_4 = torch.tensor([1.9213,
-                                                2.2776,
-                                                1.1385,
-                                                0.8868,
-                                                1.0347,
-                                                0.8127])
-        # fmt: on
-
-        self.assertTrue(torch.allclose(output_slice_0, expected_output_slice_0, rtol=1e-3))
-        self.assertTrue(torch.allclose(output_slice_1, expected_output_slice_1, rtol=1e-3))
-        self.assertTrue(torch.allclose(output_slice_4, expected_output_slice_4, rtol=1e-3))
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))
 
     def test_model_from_config(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()

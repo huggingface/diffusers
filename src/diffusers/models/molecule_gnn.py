@@ -617,10 +617,16 @@ class MoleculeGNN(ModelMixin, ConfigMixin):
         self,
         sample,
         timestep: Union[torch.Tensor, float, int],
+        sigma=1.0,
+        global_start_sigma=0.5,
+        w_global=1.0,
         extend_order=False,
         extend_radius=True,
         clip_local=None,
+        clip_global=1000.0,
     ) -> Dict[str, torch.FloatTensor]:
+
+        # unpack sample
         atom_type = sample.atom_type
         bond_index = sample.edge_index
         bond_type = sample.edge_type
@@ -646,38 +652,51 @@ class MoleculeGNN(ModelMixin, ConfigMixin):
         if clip_local is not None:
             node_eq_local = clip_norm(node_eq_local, limit=clip_local)
 
-        return edge_inv_global, edge_inv_local, edge_index, edge_type, edge_length, local_edge_mask, node_eq_local
-
-    def get_residual(
-        self,
-        pos,
-        sigma,
-        model_outputs,
-        global_start_sigma=0.5,
-        w_global=1.0,
-        clip=1000.0,
-    ):
-        (
-            edge_inv_global,
-            edge_inv_local,
-            edge_index,
-            edge_type,
-            edge_length,
-            local_edge_mask,
-            node_eq_local,
-        ) = model_outputs
-
         # Global
         if sigma < global_start_sigma:
             edge_inv_global = edge_inv_global * (1 - local_edge_mask.view(-1, 1).float())
             node_eq_global = eq_transform(edge_inv_global, pos, edge_index, edge_length)
-            node_eq_global = clip_norm(node_eq_global, limit=clip)
+            node_eq_global = clip_norm(node_eq_global, limit=clip_global)
         else:
             node_eq_global = 0
 
         # Sum
         eps_pos = node_eq_local + node_eq_global * w_global
         return {"sample": -eps_pos}
+
+
+        # return edge_inv_global, edge_inv_local, edge_index, edge_type, edge_length, local_edge_mask, node_eq_local
+
+    # def get_residual(
+    #     self,
+    #     pos,
+    #     sigma,
+    #     model_outputs,
+    #     global_start_sigma=0.5,
+    #     w_global=1.0,
+    #     clip=1000.0,
+    # ):
+    #     (
+    #         edge_inv_global,
+    #         edge_inv_local,
+    #         edge_index,
+    #         edge_type,
+    #         edge_length,
+    #         local_edge_mask,
+    #         node_eq_local,
+    #     ) = model_outputs
+    #
+    #     # Global
+    #     if sigma < global_start_sigma:
+    #         edge_inv_global = edge_inv_global * (1 - local_edge_mask.view(-1, 1).float())
+    #         node_eq_global = eq_transform(edge_inv_global, pos, edge_index, edge_length)
+    #         node_eq_global = clip_norm(node_eq_global, limit=clip)
+    #     else:
+    #         node_eq_global = 0
+    #
+    #     # Sum
+    #     eps_pos = node_eq_local + node_eq_global * w_global
+    #     return {"sample": -eps_pos}
 
 
 def clip_norm(vec, limit, p=2):
