@@ -15,7 +15,6 @@
 
 import inspect
 import math
-import pdb
 import tempfile
 import unittest
 
@@ -30,9 +29,9 @@ from diffusers import (
     DDIMScheduler,
     DDPMPipeline,
     DDPMScheduler,
-    MoleculeGNN,
     LDMPipeline,
     LDMTextToImagePipeline,
+    MoleculeGNN,
     PNDMPipeline,
     PNDMScheduler,
     ScoreSdeVePipeline,
@@ -637,7 +636,7 @@ class MoleculeGNNTests(ModelTesterMixin, unittest.TestCase):
                 ),
             ).to(torch_device)
             edge_type = torch.randint(0, 5, (num_edges * batch_size,)).to(torch_device)
-            pos = .001*torch.randn(num_nodes * batch_size, 3).to(torch_device)
+            pos = 0.001 * torch.randn(num_nodes * batch_size, 3).to(torch_device)
             batch = torch.tensor([*range(batch_size)]).repeat_interleave(num_nodes)
             nx = batch_size
 
@@ -701,9 +700,7 @@ class MoleculeGNNTests(ModelTesterMixin, unittest.TestCase):
         return init_dict, inputs_dict
 
     def test_from_pretrained_hub(self):
-        model, loading_info = MoleculeGNN.from_pretrained(
-            "fusing/gfn-molecule-gen-drugs", output_loading_info=True
-        )
+        model, loading_info = MoleculeGNN.from_pretrained("fusing/gfn-molecule-gen-drugs", output_loading_info=True)
         self.assertIsNotNone(model)
         self.assertEqual(len(loading_info["missing_keys"]), 0)
 
@@ -724,7 +721,6 @@ class MoleculeGNNTests(ModelTesterMixin, unittest.TestCase):
         sample, time_step, sigma = input["sample"], input["timestep"], input["sigma"]
         with torch.no_grad():
             output = model(sample, time_step, sigma=sigma)["sample"]
-
 
         output_slice = output[:3][:].flatten()
         # fmt: off

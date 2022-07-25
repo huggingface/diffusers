@@ -7,18 +7,14 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 from torch.nn import Embedding, Linear, Module, ModuleList, Sequential
 
-from rdkit.Chem.rdchem import BondType as BT
 from torch_geometric.nn import MessagePassing, radius, radius_graph
 from torch_geometric.typing import Adj, OptPairTensor, OptTensor, Size
 from torch_geometric.utils import dense_to_sparse, to_dense_adj
-from torch_scatter import scatter_add, scatter_mean
+from torch_scatter import scatter_add
 from torch_sparse import SparseTensor, coalesce
 
-from ..configuration_utils import ConfigMixin
+from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
-
-
-BOND_TYPES = {t: i for i, t in enumerate(BT.names.values())}
 
 
 class MultiLayerPerceptron(nn.Module):
@@ -288,29 +284,6 @@ def assemble_atom_pair_feature(node_attr, edge_index, edge_attr):
     return h_pair
 
 
-def generate_symmetric_edge_noise(num_nodes_per_graph, edge_index, edge2graph, device):
-    num_cum_nodes = num_nodes_per_graph.cumsum(0)  # (G, )
-    node_offset = num_cum_nodes - num_nodes_per_graph  # (G, )
-    edge_offset = node_offset[edge2graph]  # (E, )
-
-    num_nodes_square = num_nodes_per_graph**2  # (G, )
-    num_nodes_square_cumsum = num_nodes_square.cumsum(-1)  # (G, )
-    edge_start = num_nodes_square_cumsum - num_nodes_square  # (G, )
-    edge_start = edge_start[edge2graph]
-
-    all_len = num_nodes_square_cumsum[-1]
-
-    node_index = edge_index.t() - edge_offset.unsqueeze(-1)
-    node_large = node_index.max(dim=-1)[0]
-    node_small = node_index.min(dim=-1)[0]
-    undirected_edge_id = node_large * (node_large + 1) + node_small + edge_start
-
-    symm_noise = torch.zeros(size=[all_len.item()], device=device)
-    symm_noise.normal_()
-    d_noise = symm_noise[undirected_edge_id].unsqueeze(-1)  # (E, 1)
-    return d_noise
-
-
 def _extend_graph_order(num_nodes, edge_index, edge_type, order=3):
     """
     Args:
@@ -351,8 +324,9 @@ def _extend_graph_order(num_nodes, edge_index, edge_type, order=3):
 
         return order_mat
 
-    num_types = len(BOND_TYPES)
-
+    num_types = 22
+    # given from len(BOND_TYPES), where BOND_TYPES = {t: i for i, t in enumerate(BT.names.values())}
+    # from rdkit.Chem.rdchem import BondType as BT
     N = num_nodes
     adj = to_dense_adj(edge_index).squeeze(0)
     adj_order = get_higher_order_adj_matrix(adj, order)  # (N, N)
@@ -367,14 +341,6 @@ def _extend_graph_order(num_nodes, edge_index, edge_type, order=3):
 
     # data.bond_edge_index = data.edge_index  # Save original edges
     new_edge_index, new_edge_type = coalesce(new_edge_index, new_edge_type.long(), N, N)  # modify data
-
-    # [Note] This is not necessary
-    # data.is_bond = (data.edge_type < num_types)
-
-    # [Note] In earlier versions, `edge_order` attribute will be added.
-    #         However, it doesn't seem to be necessary anymore so I removed it.
-    # edge_index_1, data.edge_order = coalesce(new_edge_index, edge_order.long(), N, N) # modify data
-    # assert (data.edge_index == edge_index_1).all()
 
     return new_edge_index, new_edge_type
 
@@ -463,6 +429,7 @@ def eq_transform(score_d, pos, edge_index, edge_length):
 
 
 class MoleculeGNN(ModelMixin, ConfigMixin):
+    @register_to_config
     def __init__(
         self,
         hidden_dim=128,
@@ -665,40 +632,6 @@ class MoleculeGNN(ModelMixin, ConfigMixin):
         return {"sample": -eps_pos}
 
 
-        # return edge_inv_global, edge_inv_local, edge_index, edge_type, edge_length, local_edge_mask, node_eq_local
-
-    # def get_residual(
-    #     self,
-    #     pos,
-    #     sigma,
-    #     model_outputs,
-    #     global_start_sigma=0.5,
-    #     w_global=1.0,
-    #     clip=1000.0,
-    # ):
-    #     (
-    #         edge_inv_global,
-    #         edge_inv_local,
-    #         edge_index,
-    #         edge_type,
-    #         edge_length,
-    #         local_edge_mask,
-    #         node_eq_local,
-    #     ) = model_outputs
-    #
-    #     # Global
-    #     if sigma < global_start_sigma:
-    #         edge_inv_global = edge_inv_global * (1 - local_edge_mask.view(-1, 1).float())
-    #         node_eq_global = eq_transform(edge_inv_global, pos, edge_index, edge_length)
-    #         node_eq_global = clip_norm(node_eq_global, limit=clip)
-    #     else:
-    #         node_eq_global = 0
-    #
-    #     # Sum
-    #     eps_pos = node_eq_local + node_eq_global * w_global
-    #     return {"sample": -eps_pos}
-
-
 def clip_norm(vec, limit, p=2):
     norm = torch.norm(vec, dim=-1, p=2, keepdim=True)
     denom = torch.where(norm > limit, limit / norm, torch.ones_like(norm))
@@ -707,11 +640,3 @@ def clip_norm(vec, limit, p=2):
 
 def is_local_edge(edge_type):
     return edge_type > 0
-
-
-def is_train_edge(edge_index, is_sidechain):
-    if is_sidechain is None:
-        return torch.ones(edge_index.size(1), device=edge_index.device).bool()
-    else:
-        is_sidechain = is_sidechain.bool()
-        return torch.logical_or(is_sidechain[edge_index[0]], is_sidechain[edge_index[1]])
