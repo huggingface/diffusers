@@ -30,7 +30,7 @@ from diffusers import (
     DDIMScheduler,
     DDPMPipeline,
     DDPMScheduler,
-    DualEncoderEpsNetwork,
+    MoleculeGNN,
     LDMPipeline,
     LDMTextToImagePipeline,
     PNDMPipeline,
@@ -608,8 +608,8 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
 
-class DualEncoderEpsNetworkTests(ModelTesterMixin, unittest.TestCase):
-    model_class = DualEncoderEpsNetwork
+class MoleculeGNNTests(ModelTesterMixin, unittest.TestCase):
+    model_class = MoleculeGNN
 
     @property
     def dummy_input(self):
@@ -701,7 +701,7 @@ class DualEncoderEpsNetworkTests(ModelTesterMixin, unittest.TestCase):
         return init_dict, inputs_dict
 
     def test_from_pretrained_hub(self):
-        model, loading_info = DualEncoderEpsNetwork.from_pretrained(
+        model, loading_info = MoleculeGNN.from_pretrained(
             "fusing/gfn-molecule-gen-drugs", output_loading_info=True
         )
         self.assertIsNotNone(model)
@@ -713,7 +713,7 @@ class DualEncoderEpsNetworkTests(ModelTesterMixin, unittest.TestCase):
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained(self):
-        model = DualEncoderEpsNetwork.from_pretrained("fusing/gfn-molecule-gen-drugs")
+        model = MoleculeGNN.from_pretrained("fusing/gfn-molecule-gen-drugs")
         model.eval()
 
         torch.manual_seed(0)

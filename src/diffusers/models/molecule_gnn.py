@@ -462,7 +462,7 @@ def eq_transform(score_d, pos, edge_index, edge_length):
     return score_pos
 
 
-class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
+class MoleculeGNN(ModelMixin, ConfigMixin):
     def __init__(
         self,
         hidden_dim=128,
