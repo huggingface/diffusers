@@ -39,8 +39,6 @@ from diffusers import (
     VQModel,
 )
 from diffusers.utils import is_torch_geometric_available
-
-
 if is_torch_geometric_available():
     from diffusers import MoleculeGNN
 else:
