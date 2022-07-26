@@ -595,6 +595,12 @@ class TemporalUNetModelTests(ModelTesterMixin, unittest.TestCase):
     def output_shape(self):
         return (4, 16, 14)
 
+    def test_ema_training(self):
+        pass
+
+    def test_training(self):
+        pass
+
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
             "training_horizon": 128,

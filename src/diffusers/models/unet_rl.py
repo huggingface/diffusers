@@ -5,7 +5,7 @@ import torch.nn as nn
 
 from diffusers.models.resnet import Downsample1D, ResidualTemporalBlock, Upsample1D
 
-from ..configuration_utils import ConfigMixin
+from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from .embeddings import get_timestep_embedding
 
@@ -57,6 +57,7 @@ class Conv1dBlock(nn.Module):
 
 
 class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
+    @register_to_config
     def __init__(
         self,
         training_horizon=128,
