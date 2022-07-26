@@ -31,7 +31,6 @@ from diffusers import (
     DDPMScheduler,
     LDMPipeline,
     LDMTextToImagePipeline,
-    MoleculeGNN,
     PNDMPipeline,
     PNDMScheduler,
     ScoreSdeVePipeline,
@@ -39,6 +38,14 @@ from diffusers import (
     UNet2DModel,
     VQModel,
 )
+from diffusers.utils import is_torch_geometric_available
+
+
+if is_torch_geometric_available():
+    from diffusers import MoleculeGNN
+else:
+    from diffusers.utils.dummy_torch_geometric_objects import *
+
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.testing_utils import floats_tensor, slow, torch_device
