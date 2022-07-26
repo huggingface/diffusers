@@ -6,6 +6,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
+from .unet_blocks import UNetMidBlock2D, get_up_block
 
 
 def nonlinearity(x):
@@ -42,7 +43,7 @@ class Encoder(nn.Module):
         self.in_channels = in_channels
 
         # downsampling
-        self.conv_in = torch.nn.Conv2d(in_channels, self.ch, kernel_size=3, stride=1, padding=1)
+        self.conv_in = torch.nn.Conv2d(in_channels, ch, kernel_size=3, stride=1, padding=1)
 
         curr_res = resolution
         in_ch_mult = (1,) + tuple(ch_mult)
@@ -118,32 +119,106 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(
         self,
-        *,
-        ch,
-        out_ch,
+        in_channels=3,
+        out_channels=3,
+        up_block_types=("UpDecoderBlock2D",),
+        block_out_channels=(64,),
+        layers_per_block=2,
+        act_fn="silu",
+        # To delete
+        ch=None,
+        out_ch=None,
         ch_mult=(1, 2, 4, 8),
-        num_res_blocks,
-        attn_resolutions,
+        num_res_blocks=None,
+        attn_resolutions=None,
         dropout=0.0,
         resamp_with_conv=True,
-        in_channels,
-        resolution,
-        z_channels,
+        resolution=None,
+        z_channels=None,
         give_pre_end=False,
         **ignorekwargs,
     ):
         super().__init__()
-        self.ch = ch
-        self.temb_ch = 0
-        self.num_resolutions = len(ch_mult)
-        self.num_res_blocks = num_res_blocks
-        self.resolution = resolution
-        self.in_channels = in_channels
-        self.give_pre_end = give_pre_end
+        #        self.ch = ch
+        #        self.temb_ch = 0
+        #        self.num_resolutions = len(ch_mult)
+        #        self.num_res_blocks = num_res_blocks
+        #        self.resolution = resolution
+        #        self.in_channels = in_channels
+        #        self.give_pre_end = give_pre_end
 
+        self.init_orig(
+            ch=ch,
+            ch_mult=ch_mult,
+            resolution=resolution,
+            z_channels=z_channels,
+            dropout=0.0,
+            attn_resolutions=attn_resolutions,
+            resamp_with_conv=resamp_with_conv,
+            out_ch=out_ch,
+            num_res_blocks=num_res_blocks,
+        )
+        self.weights_is_set = False
+
+        if True:
+            in_channels = z_channels
+            block_out_channels = [ch * c for c in ch_mult]
+            up_block_types = [up_block_types[0] for _ in range(len(block_out_channels))]
+            self.layers_per_block = num_res_blocks
+
+        self.conv_in = nn.Conv2d(in_channels, block_out_channels[-1], kernel_size=3, stride=1, padding=1)
+
+        self.mid_block = None
+        self.up_blocks = nn.ModuleList([])
+
+        # mid
+        self.mid_block = UNetMidBlock2D(
+            in_channels=block_out_channels[-1],
+            resnet_eps=1e-6,
+            resnet_act_fn=act_fn,
+            output_scale_factor=1,
+            resnet_time_scale_shift="default",
+            attn_num_head_channels=None,
+            resnet_groups=32,
+            temb_channels=None,
+        )
+
+        # up
+        reversed_block_out_channels = list(reversed(block_out_channels))
+        output_channel = reversed_block_out_channels[0]
+        for i, up_block_type in enumerate(up_block_types):
+            prev_output_channel = output_channel
+            output_channel = reversed_block_out_channels[i]
+
+            is_final_block = i == len(block_out_channels) - 1
+
+            up_block = get_up_block(
+                up_block_type,
+                num_layers=self.layers_per_block + 1,
+                in_channels=prev_output_channel,
+                out_channels=output_channel,
+                prev_output_channel=None,
+                add_upsample=not is_final_block,
+                resnet_eps=1e-6,
+                resnet_act_fn=act_fn,
+                attn_num_head_channels=None,
+                temb_channels=None,
+            )
+            self.up_blocks.append(up_block)
+            prev_output_channel = output_channel
+
+        # out
+        num_groups_out = 32
+        self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=num_groups_out, eps=1e-6)
+        self.conv_act = nn.SiLU()
+        self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, 3, padding=1)
+
+    def init_orig(
+        self, ch, ch_mult, resolution, z_channels, dropout, attn_resolutions, resamp_with_conv, out_ch, num_res_blocks
+    ):
         # compute in_ch_mult, block_in and curr_res at lowest res
-        block_in = ch * ch_mult[self.num_resolutions - 1]
-        curr_res = resolution // 2 ** (self.num_resolutions - 1)
+        block_in = ch * ch_mult[len(ch_mult) - 1]
+        curr_res = resolution // 2 ** (len(ch_mult) - 1)
         self.z_shape = (1, z_channels, curr_res, curr_res)
         # print("Working with z of shape {} = {} dimensions.".format(self.z_shape, np.prod(self.z_shape)))
 
@@ -152,25 +227,19 @@ class Decoder(nn.Module):
 
         # middle
         self.mid = nn.Module()
-        self.mid.block_1 = ResnetBlock2D(
-            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
-        )
+        self.mid.block_1 = ResnetBlock2D(in_channels=block_in, out_channels=block_in, temb_channels=0, dropout=dropout)
         self.mid.attn_1 = AttentionBlock(block_in, overwrite_qkv=True)
-        self.mid.block_2 = ResnetBlock2D(
-            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
-        )
+        self.mid.block_2 = ResnetBlock2D(in_channels=block_in, out_channels=block_in, temb_channels=0, dropout=dropout)
 
         # upsampling
         self.up = nn.ModuleList()
-        for i_level in reversed(range(self.num_resolutions)):
+        for i_level in reversed(range(len(ch_mult))):
             block = nn.ModuleList()
             attn = nn.ModuleList()
             block_out = ch * ch_mult[i_level]
-            for i_block in range(self.num_res_blocks + 1):
+            for i_block in range(num_res_blocks + 1):
                 block.append(
-                    ResnetBlock2D(
-                        in_channels=block_in, out_channels=block_out, temb_channels=self.temb_ch, dropout=dropout
-                    )
+                    ResnetBlock2D(in_channels=block_in, out_channels=block_out, temb_channels=0, dropout=dropout)
                 )
                 block_in = block_out
                 if curr_res in attn_resolutions:
@@ -196,29 +265,84 @@ class Decoder(nn.Module):
 
         # z to block_in
         h = self.conv_in(z)
+        print("h", h.abs().sum())
 
         # middle
         h = self.mid.block_1(h, temb)
         h = self.mid.attn_1(h)
         h = self.mid.block_2(h, temb)
+        print("h", h.abs().sum())
 
         # upsampling
-        for i_level in reversed(range(self.num_resolutions)):
-            for i_block in range(self.num_res_blocks + 1):
+        for i_level in reversed(range(len(self.up))):
+            for i_block in range(self.layers_per_block + 1):
                 h = self.up[i_level].block[i_block](h, temb)
                 if len(self.up[i_level].attn) > 0:
                     h = self.up[i_level].attn[i_block](h)
             if i_level != 0:
                 h = self.up[i_level].upsample(h)
+            print("h", h.abs().sum())
 
         # end
+        self.give_pre_end = False
         if self.give_pre_end:
             return h
 
         h = self.norm_out(h)
         h = nonlinearity(h)
         h = self.conv_out(h)
-        return h
+
+        out_h = self.forward_2(z)
+        print("Diff", (h - out_h).abs().sum())
+
+        return out_h
+
+    def forward_2(self, z):
+        self.set_weight()
+        # z to block_in
+        sample = z
+        sample = self.conv_in(sample)
+        print("sample", sample.abs().sum())
+
+        # middle
+        sample = self.mid_block(sample)
+        print("sample", sample.abs().sum())
+
+        # up
+        for up_block in self.up_blocks:
+            sample = up_block(sample)
+            print("sample up", sample.abs().sum())
+
+        # post-process
+        sample = self.conv_norm_out(sample)
+        sample = self.conv_act(sample)
+        sample = self.conv_out(sample)
+
+        return sample
+
+    def set_weight(self):
+        if self.weights_is_set:
+            return
+        self.weights_is_set = True
+
+        self.mid_block.resnets[0].set_weight(self.mid.block_1)
+        self.mid_block.resnets[1].set_weight(self.mid.block_2)
+        self.mid_block.attentions[0].set_weight(self.mid.attn_1)
+
+        for i, block in enumerate(self.up):
+            k = len(self.up) - 1 - i
+            if hasattr(block, "upsample"):
+                self.up_blocks[k].upsamplers[0].conv.weight.data = block.upsample.conv.weight.data
+                self.up_blocks[k].upsamplers[0].conv.bias.data = block.upsample.conv.bias.data
+            if hasattr(block, "block") and len(block.block) > 0:
+                for j in range(self.layers_per_block + 1):
+                    self.up_blocks[k].resnets[j].set_weight(block.block[j])
+            if hasattr(block, "attn") and len(block.attn) > 0:
+                for j in range(self.layers_per_block + 1):
+                    self.up_blocks[k].attentions[j].set_weight(block.attn[j])
+
+        self.conv_norm_out.weight.data = self.norm_out.weight.data
+        self.conv_norm_out.bias.data = self.norm_out.bias.data
 
 
 class VectorQuantizer(nn.Module):

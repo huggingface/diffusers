@@ -288,7 +288,10 @@ class ResnetBlock(nn.Module):
 
         self.conv1 = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
-        self.time_emb_proj = torch.nn.Linear(temb_channels, out_channels)
+        if temb_channels is not None:
+            self.time_emb_proj = torch.nn.Linear(temb_channels, out_channels)
+        else:
+            self.time_emb_proj = None
 
         self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
         self.dropout = torch.nn.Dropout(dropout)
@@ -364,8 +367,9 @@ class ResnetBlock(nn.Module):
         self.conv1.weight.data = resnet.conv1.weight.data
         self.conv1.bias.data = resnet.conv1.bias.data
 
-        self.time_emb_proj.weight.data = resnet.temb_proj.weight.data
-        self.time_emb_proj.bias.data = resnet.temb_proj.bias.data
+        if self.time_emb_proj is not None:
+            self.time_emb_proj.weight.data = resnet.temb_proj.weight.data
+            self.time_emb_proj.bias.data = resnet.temb_proj.bias.data
 
         self.norm2.weight.data = resnet.norm2.weight.data
         self.norm2.bias.data = resnet.norm2.bias.data
