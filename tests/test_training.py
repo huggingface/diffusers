@@ -18,7 +18,7 @@ import unittest
 import torch
 
 from diffusers import DDIMScheduler, DDPMScheduler, UNet2DModel
-from diffusers.testing_utils import torch_device
+from diffusers.testing_utils import slow, torch_device
 from diffusers.training_utils import enable_full_determinism, set_seed
 
 
@@ -32,6 +32,7 @@ class TrainingTests(unittest.TestCase):
         optimizer = torch.optim.SGD(model.parameters(), lr=0.0001)
         return model, optimizer
 
+    @slow
     def test_training_step_equality(self):
         enable_full_determinism(0)
 
