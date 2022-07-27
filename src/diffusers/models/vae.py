@@ -141,41 +141,6 @@ class Encoder(nn.Module):
         # end
         self.norm_out = Normalize(block_in)
 
-    def old_forward(self, x):
-        # assert x.shape[2] == x.shape[3] == self.resolution, "{}, {}, {}".format(x.shape[2], x.shape[3], self.resolution)
-
-        # timestep embedding
-        temb = None
-
-        # downsampling
-        hs = [self.conv_in(x)]
-        num_resolutions = len(self.down)
-        num_res_blocks = self.layers_per_block
-        for i_level in range(num_resolutions):
-            for i_block in range(num_res_blocks):
-                h = self.down[i_level].block[i_block](hs[-1], temb)
-                if len(self.down[i_level].attn) > 0:
-                    h = self.down[i_level].attn[i_block](h)
-                hs.append(h)
-            if i_level != num_resolutions - 1:
-                hs.append(self.down[i_level].downsample(hs[-1]))
-
-        # middle
-        h = hs[-1]
-        h = self.mid.block_1(h, temb)
-        h = self.mid.attn_1(h)
-        h = self.mid.block_2(h, temb)
-
-        # end
-        h = self.norm_out(h)
-        h = nonlinearity(h)
-        h = self.conv_out(h)
-
-        out_h = self.forward_2(x)
-        print("Diff", (h - out_h).abs().sum())
-
-        return out_h
-
     def forward(self, x):
         self.set_weight()
 
@@ -346,47 +311,6 @@ class Decoder(nn.Module):
         # end
         self.norm_out = Normalize(block_in)
         self.conv_out = torch.nn.Conv2d(block_in, out_ch, kernel_size=3, stride=1, padding=1)
-
-    def old_forward(self, z):
-        # assert z.shape[1:] == self.z_shape[1:]
-        self.last_z_shape = z.shape
-
-        # timestep embedding
-        temb = None
-
-        # z to block_in
-        h = self.conv_in(z)
-        print("h", h.abs().sum())
-
-        # middle
-        h = self.mid.block_1(h, temb)
-        h = self.mid.attn_1(h)
-        h = self.mid.block_2(h, temb)
-        print("h", h.abs().sum())
-
-        # upsampling
-        for i_level in reversed(range(len(self.up))):
-            for i_block in range(self.layers_per_block + 1):
-                h = self.up[i_level].block[i_block](h, temb)
-                if len(self.up[i_level].attn) > 0:
-                    h = self.up[i_level].attn[i_block](h)
-            if i_level != 0:
-                h = self.up[i_level].upsample(h)
-            print("h", h.abs().sum())
-
-        # end
-        self.give_pre_end = False
-        if self.give_pre_end:
-            return h
-
-        h = self.norm_out(h)
-        h = nonlinearity(h)
-        h = self.conv_out(h)
-
-        out_h = self.forward_2(z)
-        print("Diff", (h - out_h).abs().sum())
-
-        return out_h
 
     def forward(self, z):
         self.set_weight()
@@ -600,33 +524,13 @@ class VQModel(ModelMixin, ConfigMixin):
         down_block_types=("DownEncoderBlock2D",),
         up_block_types=("UpDecoderBlock2D",),
         block_out_channels=(64,),
-        layers_per_block=2,
+        layers_per_block=1,
         act_fn="silu",
-        # to delete
-        ch=None,
-        out_ch=None,
-        num_res_blocks=None,
-        attn_resolutions=None,
-        resolution=None,
-        z_channels=None,
-        n_embed=None,
-        embed_dim=None,
-        remap=None,
-        sane_index_shape=False,  # tell vector quantizer to return indices as bhw
-        ch_mult=(1, 2, 4, 8),
-        dropout=0.0,
-        double_z=True,
-        resamp_with_conv=True,
-        give_pre_end=False,
+        latent_channels=3,
+        sample_size=32,
+        num_vq_embeddings=256,
     ):
         super().__init__()
-
-        if True:
-            block_out_channels = [ch * c for c in ch_mult]
-            down_block_types = [down_block_types[0] for _ in range(len(block_out_channels))]
-            up_block_types = [up_block_types[0] for _ in range(len(block_out_channels))]
-            layers_per_block = num_res_blocks
-            latent_channels = z_channels
 
         # pass init params to Encoder
         self.encoder = Encoder(
@@ -639,9 +543,9 @@ class VQModel(ModelMixin, ConfigMixin):
             double_z=False,
         )
 
-        self.quant_conv = torch.nn.Conv2d(z_channels, embed_dim, 1)
-        self.quantize = VectorQuantizer(n_embed, embed_dim, beta=0.25, remap=remap, sane_index_shape=sane_index_shape)
-        self.post_quant_conv = torch.nn.Conv2d(embed_dim, z_channels, 1)
+        self.quant_conv = torch.nn.Conv2d(latent_channels, latent_channels, 1)
+        self.quantize = VectorQuantizer(num_vq_embeddings, latent_channels, beta=0.25, remap=None, sane_index_shape=False)
+        self.post_quant_conv = torch.nn.Conv2d(latent_channels, latent_channels, 1)
 
         # pass init params to Decoder
         self.decoder = Decoder(
@@ -684,32 +588,12 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         down_block_types=("DownEncoderBlock2D",),
         up_block_types=("UpDecoderBlock2D",),
         block_out_channels=(64,),
-        layers_per_block=2,
+        layers_per_block=1,
         act_fn="silu",
-        # to delete
-        ch=None,
-        out_ch=None,
-        num_res_blocks=None,
-        attn_resolutions=None,
-        resolution=None,
-        z_channels=None,
-        embed_dim=None,
-        remap=None,
-        sane_index_shape=False,  # tell vector quantizer to return indices as bhw
-        ch_mult=(1, 2, 4, 8),
-        dropout=0.0,
-        double_z=True,
-        resamp_with_conv=True,
-        give_pre_end=False,
+        latent_channels=4,
+        sample_size=32,
     ):
         super().__init__()
-
-        if True:
-            block_out_channels = [ch * c for c in ch_mult]
-            down_block_types = [down_block_types[0] for _ in range(len(block_out_channels))]
-            up_block_types = [up_block_types[0] for _ in range(len(block_out_channels))]
-            layers_per_block = num_res_blocks
-            latent_channels = z_channels
 
         # pass init params to Encoder
         self.encoder = Encoder(
@@ -732,8 +616,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             act_fn=act_fn,
         )
 
-        self.quant_conv = torch.nn.Conv2d(2 * z_channels, 2 * embed_dim, 1)
-        self.post_quant_conv = torch.nn.Conv2d(embed_dim, z_channels, 1)
+        self.quant_conv = torch.nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1)
+        self.post_quant_conv = torch.nn.Conv2d(latent_channels, latent_channels, 1)
 
     def encode(self, x):
         h = self.encoder(x)

@@ -578,7 +578,7 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
         pass
 
     def test_from_pretrained_hub(self):
-        model, loading_info = VQModel.from_pretrained("fusing/vqgan-dummy", output_loading_info=True)
+        model, loading_info = VQModel.from_pretrained("/home/patrick/google_checkpoints/vqgan-dummy", output_loading_info=True)
         self.assertIsNotNone(model)
         self.assertEqual(len(loading_info["missing_keys"]), 0)
 
@@ -588,14 +588,14 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained(self):
-        model = VQModel.from_pretrained("fusing/vqgan-dummy")
+        model = VQModel.from_pretrained("/home/patrick/google_checkpoints/vqgan-dummy")
         model.eval()
 
         torch.manual_seed(0)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(0)
 
-        image = torch.randn(1, model.config.in_channels, model.config.resolution, model.config.resolution)
+        image = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
         with torch.no_grad():
             output = model(image)
 
@@ -649,7 +649,7 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
         pass
 
     def test_from_pretrained_hub(self):
-        model, loading_info = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy", output_loading_info=True)
+        model, loading_info = AutoencoderKL.from_pretrained("/home/patrick/google_checkpoints/autoencoder-kl-dummy", output_loading_info=True)
         self.assertIsNotNone(model)
         self.assertEqual(len(loading_info["missing_keys"]), 0)
 
@@ -659,14 +659,14 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained(self):
-        model = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy")
+        model = AutoencoderKL.from_pretrained("/home/patrick/google_checkpoints/autoencoder-kl-dummy")
         model.eval()
 
         torch.manual_seed(0)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(0)
 
-        image = torch.randn(1, model.config.in_channels, model.config.resolution, model.config.resolution)
+        image = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
         with torch.no_grad():
             output = model(image, sample_posterior=True)
 
@@ -818,7 +818,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_ldm_text2img(self):
-        ldm = LDMTextToImagePipeline.from_pretrained("CompVis/ldm-text2im-large-256")
+        ldm = LDMTextToImagePipeline.from_pretrained("/home/patrick/google_checkpoints/ldm-text2im-large-256")
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
@@ -834,7 +834,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_ldm_text2img_fast(self):
-        ldm = LDMTextToImagePipeline.from_pretrained("CompVis/ldm-text2im-large-256")
+        ldm = LDMTextToImagePipeline.from_pretrained("/home/patrick/google_checkpoints/ldm-text2im-large-256")
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
@@ -866,7 +866,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_ldm_uncond(self):
-        ldm = LDMPipeline.from_pretrained("CompVis/ldm-celebahq-256")
+        ldm = LDMPipeline.from_pretrained("/home/patrick/google_checkpoints/ldm-celebahq-256")
 
         generator = torch.manual_seed(0)
         image = ldm(generator=generator, num_inference_steps=5, output_type="numpy")["sample"]
