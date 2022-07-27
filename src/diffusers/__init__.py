@@ -11,9 +11,9 @@ from .models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
 from .optimization import (
     get_constant_schedule,
     get_constant_schedule_with_warmup,
-    get_linear_schedule_with_warmup,
     get_cosine_schedule_with_warmup,
     get_cosine_with_hard_restarts_schedule_with_warmup,
+    get_linear_schedule_with_warmup,
     get_polynomial_decay_schedule_with_warmup,
     get_scheduler,
 )
