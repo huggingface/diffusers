@@ -1,4 +1,5 @@
 # Model adapted from GeoDiff https://github.com/MinkaiXu/GeoDiff
+# Model inspired by https://github.com/DeepGraphLearning/torchdrug/tree/master/torchdrug/models
 from typing import Callable, Dict, Union
 
 import numpy as np
