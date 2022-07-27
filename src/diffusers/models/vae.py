@@ -29,24 +29,8 @@ class Encoder(nn.Module):
         layers_per_block=2,
         act_fn="silu",
         double_z=True,
-        # To delete
-#        ch=None,
-#        ch_mult=(1, 2, 4, 8),
-#        num_res_blocks=None,
-#        attn_resolutions=None,
-#        dropout=0.0,
-#        resamp_with_conv=True,
-#        resolution=None,
-#        z_channels=None,
-#        **ignore_kwargs,
     ):
         super().__init__()
-#        self.ch = ch
-#        self.temb_ch = 0
-#        self.num_resolutions = len(ch_mult)
-#        self.num_res_blocks = num_res_blocks
-#        self.resolution = resolution
-#        self.in_channels = in_channels
         self.layers_per_block = layers_per_block
 
         if True:
@@ -157,7 +141,7 @@ class Encoder(nn.Module):
         # end
         self.norm_out = Normalize(block_in)
 
-    def forward(self, x):
+    def old_forward(self, x):
         # assert x.shape[2] == x.shape[3] == self.resolution, "{}, {}, {}".format(x.shape[2], x.shape[3], self.resolution)
 
         # timestep embedding
@@ -192,21 +176,18 @@ class Encoder(nn.Module):
 
         return out_h
 
-    def forward_2(self, x):
+    def forward(self, x):
         self.set_weight()
-        # z to block_in
+
         sample = x
         sample = self.conv_in(sample)
-        print("sample", sample.abs().sum())
 
         # down
         for down_block in self.down_blocks:
             sample = down_block(sample)
-            print("sample up", sample.abs().sum())
 
         # middle
         sample = self.mid_block(sample)
-        print("sample", sample.abs().sum())
 
         # post-process
         sample = self.conv_norm_out(sample)
@@ -249,18 +230,6 @@ class Decoder(nn.Module):
         block_out_channels=(64,),
         layers_per_block=2,
         act_fn="silu",
-        # To delete
-#        ch=None,
-#        out_ch=None,
-#        ch_mult=(1, 2, 4, 8),
-#        num_res_blocks=None,
-#        attn_resolutions=None,
-#        dropout=0.0,
-#        resamp_with_conv=True,
-#        resolution=None,
-#        z_channels=None,
-#        give_pre_end=False,
-#        **ignorekwargs,
     ):
         super().__init__()
         self.layers_per_block = layers_per_block
@@ -378,7 +347,7 @@ class Decoder(nn.Module):
         self.norm_out = Normalize(block_in)
         self.conv_out = torch.nn.Conv2d(block_in, out_ch, kernel_size=3, stride=1, padding=1)
 
-    def forward(self, z):
+    def old_forward(self, z):
         # assert z.shape[1:] == self.z_shape[1:]
         self.last_z_shape = z.shape
 
@@ -419,21 +388,18 @@ class Decoder(nn.Module):
 
         return out_h
 
-    def forward_2(self, z):
+    def forward(self, z):
         self.set_weight()
-        # z to block_in
+
         sample = z
         sample = self.conv_in(sample)
-        print("sample", sample.abs().sum())
 
         # middle
         sample = self.mid_block(sample)
-        print("sample", sample.abs().sum())
 
         # up
         for up_block in self.up_blocks:
             sample = up_block(sample)
-            print("sample up", sample.abs().sum())
 
         # post-process
         sample = self.conv_norm_out(sample)
@@ -755,21 +721,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             act_fn=act_fn,
             double_z=True,
         )
-#        self.encoder = Encoder(
-#            ch=ch,
-#            out_ch=out_ch,
-#            num_res_blocks=num_res_blocks,
-#            attn_resolutions=attn_resolutions,
-#            in_channels=in_channels,
-#            resolution=resolution,
-#            z_channels=z_channels,
-#            ch_mult=ch_mult,
-#            dropout=dropout,
-#            resamp_with_conv=resamp_with_conv,
-#            give_pre_end=give_pre_end,
-#            double_z=True,
-#        )
-#
+
         # pass init params to Decoder
         self.decoder = Decoder(
             in_channels=latent_channels,
@@ -779,20 +731,6 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             layers_per_block=layers_per_block,
             act_fn=act_fn,
         )
-        # pass init params to Decoder
-#        self.decoder = Decoder(
-#            ch=ch,
-#            out_ch=out_ch,
-#            num_res_blocks=num_res_blocks,
-#            attn_resolutions=attn_resolutions,
-#            in_channels=in_channels,
-#            resolution=resolution,
-#            z_channels=z_channels,
-#            ch_mult=ch_mult,
-#            dropout=dropout,
-#            resamp_with_conv=resamp_with_conv,
-#            give_pre_end=give_pre_end,
-#        )
 
         self.quant_conv = torch.nn.Conv2d(2 * z_channels, 2 * embed_dim, 1)
         self.post_quant_conv = torch.nn.Conv2d(embed_dim, z_channels, 1)
