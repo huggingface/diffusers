@@ -6,7 +6,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from .attention import AttentionBlock
 from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
-from .unet_blocks import UNetMidBlock2D, get_up_block
+from .unet_blocks import UNetMidBlock2D, get_up_block, get_down_block
 
 
 def nonlinearity(x):
@@ -19,44 +19,110 @@ def Normalize(in_channels):
 
 
 class Encoder(nn.Module):
+
     def __init__(
         self,
-        *,
-        ch,
+        in_channels=3,
+        out_channels=3,
+        down_block_types=("DownEncoderBlock2D",),
+        block_out_channels=(64,),
+        layers_per_block=2,
+        act_fn="silu",
+        # To delete
+        ch=None,
         ch_mult=(1, 2, 4, 8),
-        num_res_blocks,
-        attn_resolutions,
+        num_res_blocks=None,
+        attn_resolutions=None,
         dropout=0.0,
         resamp_with_conv=True,
-        in_channels,
-        resolution,
-        z_channels,
+        resolution=None,
+        z_channels=None,
         double_z=True,
         **ignore_kwargs,
     ):
         super().__init__()
-        self.ch = ch
-        self.temb_ch = 0
-        self.num_resolutions = len(ch_mult)
-        self.num_res_blocks = num_res_blocks
-        self.resolution = resolution
-        self.in_channels = in_channels
+#        self.ch = ch
+#        self.temb_ch = 0
+#        self.num_resolutions = len(ch_mult)
+#        self.num_res_blocks = num_res_blocks
+#        self.resolution = resolution
+#        self.in_channels = in_channels
+        self.init_orig(
+            ch=ch,
+            ch_mult=ch_mult,
+            resolution=resolution,
+            z_channels=z_channels,
+            dropout=0.0,
+            attn_resolutions=attn_resolutions,
+            resamp_with_conv=resamp_with_conv,
+            num_res_blocks=num_res_blocks,
+        )
+        self.weights_is_set = False
 
+        if True:
+            block_out_channels = [ch * c for c in ch_mult]
+            down_block_types = [down_block_types[0] for _ in range(len(block_out_channels))]
+            self.layers_per_block = num_res_blocks
+            out_channels = z_channels
+
+        self.conv_in = torch.nn.Conv2d(in_channels, block_out_channels[0], kernel_size=3, stride=1, padding=1)
+
+        self.mid_block = None
+        self.down_blocks = nn.ModuleList([])
+
+        # down
+        output_channel = block_out_channels[0]
+        for i, down_block_type in enumerate(down_block_types):
+            input_channel = output_channel
+            output_channel = block_out_channels[i]
+            is_final_block = i == len(block_out_channels) - 1
+
+            down_block = get_down_block(
+                down_block_type,
+                num_layers=self.layers_per_block,
+                in_channels=input_channel,
+                out_channels=output_channel,
+                add_downsample=not is_final_block,
+                resnet_eps=1e-6,
+                resnet_act_fn=act_fn,
+                attn_num_head_channels=None,
+                temb_channels=None,
+            )
+            self.down_blocks.append(down_block)
+
+        # mid
+        self.mid_block = UNetMidBlock2D(
+            in_channels=block_out_channels[-1],
+            resnet_eps=1e-6,
+            resnet_act_fn=act_fn,
+            output_scale_factor=1,
+            resnet_time_scale_shift="default",
+            attn_num_head_channels=None,
+            resnet_groups=32,
+            temb_channels=None,
+        )
+
+        # out
+        num_groups_out = 32
+        self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[-1], num_groups=num_groups_out, eps=1e-6)
+        self.conv_act = nn.SiLU()
+        self.conv_out = nn.Conv2d(block_out_channels[-1], 2 * out_channels, 3, padding=1)
+
+    def init_orig(self, ch, ch_mult, resolution, z_channels, dropout, attn_resolutions, resamp_with_conv, num_res_blocks):
         # downsampling
-        self.conv_in = torch.nn.Conv2d(in_channels, ch, kernel_size=3, stride=1, padding=1)
-
         curr_res = resolution
         in_ch_mult = (1,) + tuple(ch_mult)
         self.down = nn.ModuleList()
-        for i_level in range(self.num_resolutions):
+        num_resolutions = len(ch_mult)
+        for i_level in range(num_resolutions):
             block = nn.ModuleList()
             attn = nn.ModuleList()
             block_in = ch * in_ch_mult[i_level]
             block_out = ch * ch_mult[i_level]
-            for i_block in range(self.num_res_blocks):
+            for i_block in range(num_res_blocks):
                 block.append(
                     ResnetBlock2D(
-                        in_channels=block_in, out_channels=block_out, temb_channels=self.temb_ch, dropout=dropout
+                        in_channels=block_in, out_channels=block_out, temb_channels=0, dropout=dropout
                     )
                 )
                 block_in = block_out
@@ -65,7 +131,7 @@ class Encoder(nn.Module):
             down = nn.Module()
             down.block = block
             down.attn = attn
-            if i_level != self.num_resolutions - 1:
+            if i_level != num_resolutions - 1:
                 down.downsample = Downsample2D(block_in, use_conv=resamp_with_conv, padding=0)
                 curr_res = curr_res // 2
             self.down.append(down)
@@ -73,18 +139,15 @@ class Encoder(nn.Module):
         # middle
         self.mid = nn.Module()
         self.mid.block_1 = ResnetBlock2D(
-            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
+            in_channels=block_in, out_channels=block_in, temb_channels=0, dropout=dropout
         )
         self.mid.attn_1 = AttentionBlock(block_in, overwrite_qkv=True)
         self.mid.block_2 = ResnetBlock2D(
-            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
+            in_channels=block_in, out_channels=block_in, temb_channels=0, dropout=dropout
         )
 
         # end
         self.norm_out = Normalize(block_in)
-        self.conv_out = torch.nn.Conv2d(
-            block_in, 2 * z_channels if double_z else z_channels, kernel_size=3, stride=1, padding=1
-        )
 
     def forward(self, x):
         # assert x.shape[2] == x.shape[3] == self.resolution, "{}, {}, {}".format(x.shape[2], x.shape[3], self.resolution)
@@ -94,13 +157,15 @@ class Encoder(nn.Module):
 
         # downsampling
         hs = [self.conv_in(x)]
-        for i_level in range(self.num_resolutions):
-            for i_block in range(self.num_res_blocks):
+        num_resolutions = len(self.down)
+        num_res_blocks = self.layers_per_block
+        for i_level in range(num_resolutions):
+            for i_block in range(num_res_blocks):
                 h = self.down[i_level].block[i_block](hs[-1], temb)
                 if len(self.down[i_level].attn) > 0:
                     h = self.down[i_level].attn[i_block](h)
                 hs.append(h)
-            if i_level != self.num_resolutions - 1:
+            if i_level != num_resolutions - 1:
                 hs.append(self.down[i_level].downsample(hs[-1]))
 
         # middle
@@ -113,7 +178,58 @@ class Encoder(nn.Module):
         h = self.norm_out(h)
         h = nonlinearity(h)
         h = self.conv_out(h)
-        return h
+
+        out_h = self.forward_2(x)
+        print("Diff", (h - out_h).abs().sum())
+
+        return out_h
+
+    def forward_2(self, x):
+        self.set_weight()
+        # z to block_in
+        sample = x
+        sample = self.conv_in(sample)
+        print("sample", sample.abs().sum())
+
+        # down
+        for down_block in self.down_blocks:
+            sample = down_block(sample)
+            print("sample up", sample.abs().sum())
+
+        # middle
+        sample = self.mid_block(sample)
+        print("sample", sample.abs().sum())
+
+        # post-process
+        sample = self.conv_norm_out(sample)
+        sample = self.conv_act(sample)
+        sample = self.conv_out(sample)
+
+        return sample
+
+    def set_weight(self):
+        if self.weights_is_set:
+            return
+        self.weights_is_set = True
+
+        self.mid_block.resnets[0].set_weight(self.mid.block_1)
+        self.mid_block.resnets[1].set_weight(self.mid.block_2)
+        self.mid_block.attentions[0].set_weight(self.mid.attn_1)
+
+        for i, block in enumerate(self.down):
+            k = i
+            if hasattr(block, "downsample"):
+                self.down_blocks[k].downsamplers[0].conv.weight.data = block.downsample.conv.weight.data
+                self.down_blocks[k].downsamplers[0].conv.bias.data = block.downsample.conv.bias.data
+            if hasattr(block, "block") and len(block.block) > 0:
+                for j in range(self.layers_per_block):
+                    self.down_blocks[k].resnets[j].set_weight(block.block[j])
+            if hasattr(block, "attn") and len(block.attn) > 0:
+                for j in range(self.layers_per_block):
+                    self.down_blocks[k].attentions[j].set_weight(block.attn[j])
+
+        self.conv_norm_out.weight.data = self.norm_out.weight.data
+        self.conv_norm_out.bias.data = self.norm_out.bias.data
 
 
 class Decoder(nn.Module):
@@ -139,13 +255,6 @@ class Decoder(nn.Module):
         **ignorekwargs,
     ):
         super().__init__()
-        #        self.ch = ch
-        #        self.temb_ch = 0
-        #        self.num_resolutions = len(ch_mult)
-        #        self.num_res_blocks = num_res_blocks
-        #        self.resolution = resolution
-        #        self.in_channels = in_channels
-        #        self.give_pre_end = give_pre_end
 
         self.init_orig(
             ch=ch,
