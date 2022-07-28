@@ -4,22 +4,10 @@ import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
-from .attention import AttentionBlock
-from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
-from .unet_blocks import UNetMidBlock2D, get_up_block, get_down_block
-
-
-def nonlinearity(x):
-    # swish
-    return x * torch.sigmoid(x)
-
-
-def Normalize(in_channels):
-    return torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
+from .unet_blocks import UNetMidBlock2D, get_down_block, get_up_block
 
 
 class Encoder(nn.Module):
-
     def __init__(
         self,
         in_channels=3,
@@ -32,27 +20,6 @@ class Encoder(nn.Module):
     ):
         super().__init__()
         self.layers_per_block = layers_per_block
-
-        if True:
-            ch = block_out_channels[0]
-            ch_mult = [x // ch for x in block_out_channels]
-            resolution = None
-            z_channels = out_channels
-            attn_resolutions = ()
-            num_res_blocks = layers_per_block
-            resamp_with_conv = True
-
-            self.init_orig(
-                ch=ch,
-                ch_mult=ch_mult,
-                resolution=resolution,
-                z_channels=z_channels,
-                dropout=0.0,
-                attn_resolutions=attn_resolutions,
-                resamp_with_conv=resamp_with_conv,
-                num_res_blocks=num_res_blocks,
-            )
-            self.weights_is_set = False
 
         self.conv_in = torch.nn.Conv2d(in_channels, block_out_channels[0], kernel_size=3, stride=1, padding=1)
 
@@ -99,51 +66,7 @@ class Encoder(nn.Module):
         conv_out_channels = 2 * out_channels if double_z else out_channels
         self.conv_out = nn.Conv2d(block_out_channels[-1], conv_out_channels, 3, padding=1)
 
-    def init_orig(self, ch, ch_mult, resolution, z_channels, dropout, attn_resolutions, resamp_with_conv, num_res_blocks):
-        # downsampling
-#        curr_res = resolution
-        curr_res = 32
-        in_ch_mult = (1,) + tuple(ch_mult)
-        self.down = nn.ModuleList()
-        num_resolutions = len(ch_mult)
-        for i_level in range(num_resolutions):
-            block = nn.ModuleList()
-            attn = nn.ModuleList()
-            block_in = ch * in_ch_mult[i_level]
-            block_out = ch * ch_mult[i_level]
-            for i_block in range(num_res_blocks):
-                block.append(
-                    ResnetBlock2D(
-                        in_channels=block_in, out_channels=block_out, temb_channels=0, dropout=dropout
-                    )
-                )
-                block_in = block_out
-                if curr_res in attn_resolutions:
-                    attn.append(AttentionBlock(block_in, overwrite_qkv=True))
-            down = nn.Module()
-            down.block = block
-            down.attn = attn
-            if i_level != num_resolutions - 1:
-                down.downsample = Downsample2D(block_in, use_conv=resamp_with_conv, padding=0)
-                curr_res = curr_res // 2
-            self.down.append(down)
-
-        # middle
-        self.mid = nn.Module()
-        self.mid.block_1 = ResnetBlock2D(
-            in_channels=block_in, out_channels=block_in, temb_channels=0, dropout=dropout
-        )
-        self.mid.attn_1 = AttentionBlock(block_in, overwrite_qkv=True)
-        self.mid.block_2 = ResnetBlock2D(
-            in_channels=block_in, out_channels=block_in, temb_channels=0, dropout=dropout
-        )
-
-        # end
-        self.norm_out = Normalize(block_in)
-
     def forward(self, x):
-        self.set_weight()
-
         sample = x
         sample = self.conv_in(sample)
 
@@ -161,30 +84,6 @@ class Encoder(nn.Module):
 
         return sample
 
-    def set_weight(self):
-        if self.weights_is_set:
-            return
-        self.weights_is_set = True
-
-        self.mid_block.resnets[0].set_weight(self.mid.block_1)
-        self.mid_block.resnets[1].set_weight(self.mid.block_2)
-        self.mid_block.attentions[0].set_weight(self.mid.attn_1)
-
-        for i, block in enumerate(self.down):
-            k = i
-            if hasattr(block, "downsample"):
-                self.down_blocks[k].downsamplers[0].conv.weight.data = block.downsample.conv.weight.data
-                self.down_blocks[k].downsamplers[0].conv.bias.data = block.downsample.conv.bias.data
-            if hasattr(block, "block") and len(block.block) > 0:
-                for j in range(self.layers_per_block):
-                    self.down_blocks[k].resnets[j].set_weight(block.block[j])
-            if hasattr(block, "attn") and len(block.attn) > 0:
-                for j in range(self.layers_per_block):
-                    self.down_blocks[k].attentions[j].set_weight(block.attn[j])
-
-        self.conv_norm_out.weight.data = self.norm_out.weight.data
-        self.conv_norm_out.bias.data = self.norm_out.bias.data
-
 
 class Decoder(nn.Module):
     def __init__(
@@ -198,28 +97,6 @@ class Decoder(nn.Module):
     ):
         super().__init__()
         self.layers_per_block = layers_per_block
-
-        if True:
-            ch = block_out_channels[0]
-            ch_mult = [x // ch for x in block_out_channels]
-            resolution = None
-            z_channels = in_channels
-            attn_resolutions = ()
-            num_res_blocks = layers_per_block
-            resamp_with_conv = True
-
-            self.init_orig(
-                ch=ch,
-                ch_mult=ch_mult,
-                resolution=resolution,
-                z_channels=z_channels,
-                dropout=0.0,
-                attn_resolutions=attn_resolutions,
-                resamp_with_conv=resamp_with_conv,
-                out_ch=out_channels,
-                num_res_blocks=num_res_blocks,
-            )
-            self.weights_is_set = False
 
         self.conv_in = nn.Conv2d(in_channels, block_out_channels[-1], kernel_size=3, stride=1, padding=1)
 
@@ -268,53 +145,7 @@ class Decoder(nn.Module):
         self.conv_act = nn.SiLU()
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, 3, padding=1)
 
-    def init_orig(
-        self, ch, ch_mult, resolution, z_channels, dropout, attn_resolutions, resamp_with_conv, out_ch, num_res_blocks
-    ):
-        # compute in_ch_mult, block_in and curr_res at lowest res
-        resolution = 32
-        block_in = ch * ch_mult[len(ch_mult) - 1]
-        curr_res = resolution // 2 ** (len(ch_mult) - 1)
-        self.z_shape = (1, z_channels, curr_res, curr_res)
-        # print("Working with z of shape {} = {} dimensions.".format(self.z_shape, np.prod(self.z_shape)))
-
-        # z to block_in
-        self.conv_in = torch.nn.Conv2d(z_channels, block_in, kernel_size=3, stride=1, padding=1)
-
-        # middle
-        self.mid = nn.Module()
-        self.mid.block_1 = ResnetBlock2D(in_channels=block_in, out_channels=block_in, temb_channels=0, dropout=dropout)
-        self.mid.attn_1 = AttentionBlock(block_in, overwrite_qkv=True)
-        self.mid.block_2 = ResnetBlock2D(in_channels=block_in, out_channels=block_in, temb_channels=0, dropout=dropout)
-
-        # upsampling
-        self.up = nn.ModuleList()
-        for i_level in reversed(range(len(ch_mult))):
-            block = nn.ModuleList()
-            attn = nn.ModuleList()
-            block_out = ch * ch_mult[i_level]
-            for i_block in range(num_res_blocks + 1):
-                block.append(
-                    ResnetBlock2D(in_channels=block_in, out_channels=block_out, temb_channels=0, dropout=dropout)
-                )
-                block_in = block_out
-                if curr_res in attn_resolutions:
-                    attn.append(AttentionBlock(block_in, overwrite_qkv=True))
-            up = nn.Module()
-            up.block = block
-            up.attn = attn
-            if i_level != 0:
-                up.upsample = Upsample2D(block_in, use_conv=resamp_with_conv)
-                curr_res = curr_res * 2
-            self.up.insert(0, up)  # prepend to get consistent order
-
-        # end
-        self.norm_out = Normalize(block_in)
-        self.conv_out = torch.nn.Conv2d(block_in, out_ch, kernel_size=3, stride=1, padding=1)
-
     def forward(self, z):
-        self.set_weight()
-
         sample = z
         sample = self.conv_in(sample)
 
@@ -331,30 +162,6 @@ class Decoder(nn.Module):
         sample = self.conv_out(sample)
 
         return sample
-
-    def set_weight(self):
-        if self.weights_is_set:
-            return
-        self.weights_is_set = True
-
-        self.mid_block.resnets[0].set_weight(self.mid.block_1)
-        self.mid_block.resnets[1].set_weight(self.mid.block_2)
-        self.mid_block.attentions[0].set_weight(self.mid.attn_1)
-
-        for i, block in enumerate(self.up):
-            k = len(self.up) - 1 - i
-            if hasattr(block, "upsample"):
-                self.up_blocks[k].upsamplers[0].conv.weight.data = block.upsample.conv.weight.data
-                self.up_blocks[k].upsamplers[0].conv.bias.data = block.upsample.conv.bias.data
-            if hasattr(block, "block") and len(block.block) > 0:
-                for j in range(self.layers_per_block + 1):
-                    self.up_blocks[k].resnets[j].set_weight(block.block[j])
-            if hasattr(block, "attn") and len(block.attn) > 0:
-                for j in range(self.layers_per_block + 1):
-                    self.up_blocks[k].attentions[j].set_weight(block.attn[j])
-
-        self.conv_norm_out.weight.data = self.norm_out.weight.data
-        self.conv_norm_out.bias.data = self.norm_out.bias.data
 
 
 class VectorQuantizer(nn.Module):
@@ -544,7 +351,9 @@ class VQModel(ModelMixin, ConfigMixin):
         )
 
         self.quant_conv = torch.nn.Conv2d(latent_channels, latent_channels, 1)
-        self.quantize = VectorQuantizer(num_vq_embeddings, latent_channels, beta=0.25, remap=None, sane_index_shape=False)
+        self.quantize = VectorQuantizer(
+            num_vq_embeddings, latent_channels, beta=0.25, remap=None, sane_index_shape=False
+        )
         self.post_quant_conv = torch.nn.Conv2d(latent_channels, latent_channels, 1)
 
         # pass init params to Decoder

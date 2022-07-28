@@ -28,8 +28,8 @@ def enable_full_determinism(seed: int):
 
 def set_seed(seed: int):
     """
-    Helper function for reproducible behavior to set the seed in `random`, `numpy`, `torch`.
     Args:
+    Helper function for reproducible behavior to set the seed in `random`, `numpy`, `torch`.
         seed (`int`): The seed to set.
     """
     random.seed(seed)
