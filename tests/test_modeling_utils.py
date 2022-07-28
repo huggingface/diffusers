@@ -555,18 +555,12 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "ch": 64,
-            "out_ch": 3,
-            "num_res_blocks": 1,
+            "block_out_channels": [64],
             "in_channels": 3,
-            "attn_resolutions": [],
-            "resolution": 32,
-            "z_channels": 3,
-            "n_embed": 256,
-            "embed_dim": 3,
-            "sane_index_shape": False,
-            "ch_mult": (1,),
-            "double_z": False,
+            "out_channels": 3,
+            "down_block_types": ["DownEncoderBlock2D"],
+            "up_block_types": ["UpDecoderBlock2D"],
+            "latent_channels": 3,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
@@ -595,7 +589,7 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(0)
 
-        image = torch.randn(1, model.config.in_channels, model.config.resolution, model.config.resolution)
+        image = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
         with torch.no_grad():
             output = model(image)
 
@@ -639,6 +633,14 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
             "resolution": 32,
             "z_channels": 4,
         }
+        init_dict = {
+            "block_out_channels": [64],
+            "in_channels": 3,
+            "out_channels": 3,
+            "down_block_types": ["DownEncoderBlock2D"],
+            "up_block_types": ["UpDecoderBlock2D"],
+            "latent_channels": 4,
+        }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
@@ -666,13 +668,13 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(0)
 
-        image = torch.randn(1, model.config.in_channels, model.config.resolution, model.config.resolution)
+        image = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
         with torch.no_grad():
             output = model(image, sample_posterior=True)
 
         output_slice = output[0, -1, -3:, -3:].flatten()
         # fmt: off
-        expected_output_slice = torch.tensor([-0.0814, -0.0229, -0.1320, -0.4123, -0.0366, -0.3473, 0.0438, -0.1662, 0.1750])
+        expected_output_slice = torch.tensor([-0.3900, -0.2800, 0.1281, -0.4449, -0.4890, -0.0207, 0.0784, -0.1258, -0.0409])
         # fmt: on
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
