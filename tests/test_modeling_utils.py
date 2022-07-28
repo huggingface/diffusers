@@ -876,3 +876,45 @@ class PipelineTesterMixin(unittest.TestCase):
         assert image.shape == (1, 256, 256, 3)
         expected_slice = np.array([0.4399, 0.44975, 0.46825, 0.474, 0.4359, 0.4581, 0.45095, 0.4341, 0.4447])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    @slow
+    def test_ddpm_ddim_equality(self):
+        model_id = "google/ddpm-cifar10-32"
+
+        unet = UNet2DModel.from_pretrained(model_id)
+        ddpm_scheduler = DDPMScheduler(tensor_format="pt")
+        ddim_scheduler = DDIMScheduler(tensor_format="pt")
+
+        ddpm = DDPMPipeline(unet=unet, scheduler=ddpm_scheduler)
+        ddim = DDIMPipeline(unet=unet, scheduler=ddim_scheduler)
+
+        generator = torch.manual_seed(0)
+        ddpm_image = ddpm(generator=generator, output_type="numpy")["sample"]
+
+        generator = torch.manual_seed(0)
+        ddim_image = ddim(generator=generator, num_inference_steps=1000, eta=1.0, output_type="numpy")["sample"]
+
+        # the values aren't exactly equal, but the images look the same upon visual inspection
+        assert np.abs(ddpm_image - ddim_image).max() < 1e-1
+
+    @slow
+    def test_ddpm_ddim_equality_batched(self):
+        model_id = "google/ddpm-cifar10-32"
+
+        unet = UNet2DModel.from_pretrained(model_id)
+        ddpm_scheduler = DDPMScheduler(tensor_format="pt")
+        ddim_scheduler = DDIMScheduler(tensor_format="pt")
+
+        ddpm = DDPMPipeline(unet=unet, scheduler=ddpm_scheduler)
+        ddim = DDIMPipeline(unet=unet, scheduler=ddim_scheduler)
+
+        generator = torch.manual_seed(0)
+        ddpm_images = ddpm(batch_size=2, generator=generator, output_type="numpy")["sample"]
+
+        generator = torch.manual_seed(0)
+        ddim_images = ddim(batch_size=2, generator=generator, num_inference_steps=1000, eta=1.0, output_type="numpy")[
+            "sample"
+        ]
+
+        # the values aren't exactly equal, but the images look the same upon visual inspection
+        assert np.abs(ddpm_images - ddim_images).max() < 1e-1
