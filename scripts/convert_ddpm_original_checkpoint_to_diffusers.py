@@ -98,10 +98,11 @@ def convert_ddpm_checkpoint(checkpoint, config):
     """
     new_checkpoint = {}
 
-    new_checkpoint['time_embedding.linear_1.weight'] = checkpoint['temb.dense.0.weight']
-    new_checkpoint['time_embedding.linear_1.bias'] = checkpoint['temb.dense.0.bias']
-    new_checkpoint['time_embedding.linear_2.weight'] = checkpoint['temb.dense.1.weight']
-    new_checkpoint['time_embedding.linear_2.bias'] = checkpoint['temb.dense.1.bias']
+    if "temb.dense.0.weight" in checkpoint:
+        new_checkpoint['time_embedding.linear_1.weight'] = checkpoint['temb.dense.0.weight']
+        new_checkpoint['time_embedding.linear_1.bias'] = checkpoint['temb.dense.0.bias']
+        new_checkpoint['time_embedding.linear_2.weight'] = checkpoint['temb.dense.1.weight']
+        new_checkpoint['time_embedding.linear_2.bias'] = checkpoint['temb.dense.1.bias']
 
     new_checkpoint['conv_norm_out.weight'] = checkpoint['norm_out.weight']
     new_checkpoint['conv_norm_out.bias'] = checkpoint['norm_out.bias']
@@ -121,10 +122,10 @@ def convert_ddpm_checkpoint(checkpoint, config):
         block_id = (i - 1) // (config['num_res_blocks'] + 1)
 
         if any('downsample' in layer for layer in downsample_blocks[i]):
-            new_checkpoint[f'downsample_blocks.{i}.downsamplers.0.conv.weight'] = checkpoint[f'down.{i}.downsample.conv.weight']
-            new_checkpoint[f'downsample_blocks.{i}.downsamplers.0.conv.bias'] = checkpoint[f'down.{i}.downsample.conv.bias']
-            new_checkpoint[f'downsample_blocks.{i}.downsamplers.0.op.weight'] = checkpoint[f'down.{i}.downsample.conv.weight']
-            new_checkpoint[f'downsample_blocks.{i}.downsamplers.0.op.bias'] = checkpoint[f'down.{i}.downsample.conv.bias']
+            new_checkpoint[f'downsample_blocks.{i}.downsamplers.0.conv.weight'] = checkpoint[f'down.{i}.downsample.op.weight']
+            new_checkpoint[f'downsample_blocks.{i}.downsamplers.0.conv.bias'] = checkpoint[f'down.{i}.downsample.op.bias']
+#            new_checkpoint[f'downsample_blocks.{i}.downsamplers.0.op.weight'] = checkpoint[f'down.{i}.downsample.conv.weight']
+#            new_checkpoint[f'downsample_blocks.{i}.downsamplers.0.op.bias'] = checkpoint[f'down.{i}.downsample.conv.bias']
 
         if any('block' in layer for layer in downsample_blocks[i]):
             num_blocks = len({'.'.join(shave_segments(layer, 2).split('.')[:2]) for layer in downsample_blocks[i] if 'block' in layer})
@@ -228,7 +229,8 @@ if __name__ == "__main__":
     model = UNet2DModel(**config)
     model.load_state_dict(converted_checkpoint)
 
-    scheduler = DDPMScheduler.from_config("/".join(args.checkpoint_path.split("/")[:-1]))
-
-    pipe = DDPMPipeline(unet=model, scheduler=scheduler)
-    pipe.save_pretrained(args.dump_path)
+#    scheduler = DDPMScheduler.from_config("/".join(args.checkpoint_path.split("/")[:-1]))
+#
+#    pipe = DDPMPipeline(unet=model, scheduler=scheduler)
+#    pipe.save_pretrained(args.dump_path)
+    model.save_pretrained(args.dump_path)

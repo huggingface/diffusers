@@ -555,18 +555,12 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "ch": 64,
-            "out_ch": 3,
-            "num_res_blocks": 1,
+            "block_out_channels": [64],
             "in_channels": 3,
-            "attn_resolutions": [],
-            "resolution": 32,
-            "z_channels": 3,
-            "n_embed": 256,
-            "embed_dim": 3,
-            "sane_index_shape": False,
-            "ch_mult": (1,),
-            "double_z": False,
+            "out_channels": 3,
+            "down_block_types": ["DownEncoderBlock2D"],
+            "up_block_types": ["UpDecoderBlock2D"],
+            "latent_channels": 3,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
@@ -638,6 +632,14 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
             "out_ch": 3,
             "resolution": 32,
             "z_channels": 4,
+        }
+        init_dict = {
+            "block_out_channels": [64],
+            "in_channels": 3,
+            "out_channels": 3,
+            "down_block_types": ["DownEncoderBlock2D"],
+            "up_block_types": ["UpDecoderBlock2D"],
+            "latent_channels": 4,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
