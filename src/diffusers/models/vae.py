@@ -4,221 +4,164 @@ import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
-from .attention import AttentionBlock
-from .resnet import Downsample2D, ResnetBlock2D, Upsample2D
-
-
-def nonlinearity(x):
-    # swish
-    return x * torch.sigmoid(x)
-
-
-def Normalize(in_channels):
-    return torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
+from .unet_blocks import UNetMidBlock2D, get_down_block, get_up_block
 
 
 class Encoder(nn.Module):
     def __init__(
         self,
-        *,
-        ch,
-        ch_mult=(1, 2, 4, 8),
-        num_res_blocks,
-        attn_resolutions,
-        dropout=0.0,
-        resamp_with_conv=True,
-        in_channels,
-        resolution,
-        z_channels,
+        in_channels=3,
+        out_channels=3,
+        down_block_types=("DownEncoderBlock2D",),
+        block_out_channels=(64,),
+        layers_per_block=2,
+        act_fn="silu",
         double_z=True,
-        **ignore_kwargs,
     ):
         super().__init__()
-        self.ch = ch
-        self.temb_ch = 0
-        self.num_resolutions = len(ch_mult)
-        self.num_res_blocks = num_res_blocks
-        self.resolution = resolution
-        self.in_channels = in_channels
+        self.layers_per_block = layers_per_block
 
-        # downsampling
-        self.conv_in = torch.nn.Conv2d(in_channels, self.ch, kernel_size=3, stride=1, padding=1)
+        self.conv_in = torch.nn.Conv2d(in_channels, block_out_channels[0], kernel_size=3, stride=1, padding=1)
 
-        curr_res = resolution
-        in_ch_mult = (1,) + tuple(ch_mult)
-        self.down = nn.ModuleList()
-        for i_level in range(self.num_resolutions):
-            block = nn.ModuleList()
-            attn = nn.ModuleList()
-            block_in = ch * in_ch_mult[i_level]
-            block_out = ch * ch_mult[i_level]
-            for i_block in range(self.num_res_blocks):
-                block.append(
-                    ResnetBlock2D(
-                        in_channels=block_in, out_channels=block_out, temb_channels=self.temb_ch, dropout=dropout
-                    )
-                )
-                block_in = block_out
-                if curr_res in attn_resolutions:
-                    attn.append(AttentionBlock(block_in, overwrite_qkv=True))
-            down = nn.Module()
-            down.block = block
-            down.attn = attn
-            if i_level != self.num_resolutions - 1:
-                down.downsample = Downsample2D(block_in, use_conv=resamp_with_conv, padding=0)
-                curr_res = curr_res // 2
-            self.down.append(down)
+        self.mid_block = None
+        self.down_blocks = nn.ModuleList([])
 
-        # middle
-        self.mid = nn.Module()
-        self.mid.block_1 = ResnetBlock2D(
-            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
-        )
-        self.mid.attn_1 = AttentionBlock(block_in, overwrite_qkv=True)
-        self.mid.block_2 = ResnetBlock2D(
-            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
+        # down
+        output_channel = block_out_channels[0]
+        for i, down_block_type in enumerate(down_block_types):
+            input_channel = output_channel
+            output_channel = block_out_channels[i]
+            is_final_block = i == len(block_out_channels) - 1
+
+            down_block = get_down_block(
+                down_block_type,
+                num_layers=self.layers_per_block,
+                in_channels=input_channel,
+                out_channels=output_channel,
+                add_downsample=not is_final_block,
+                resnet_eps=1e-6,
+                resnet_act_fn=act_fn,
+                attn_num_head_channels=None,
+                temb_channels=None,
+            )
+            self.down_blocks.append(down_block)
+
+        # mid
+        self.mid_block = UNetMidBlock2D(
+            in_channels=block_out_channels[-1],
+            resnet_eps=1e-6,
+            resnet_act_fn=act_fn,
+            output_scale_factor=1,
+            resnet_time_scale_shift="default",
+            attn_num_head_channels=None,
+            resnet_groups=32,
+            temb_channels=None,
         )
 
-        # end
-        self.norm_out = Normalize(block_in)
-        self.conv_out = torch.nn.Conv2d(
-            block_in, 2 * z_channels if double_z else z_channels, kernel_size=3, stride=1, padding=1
-        )
+        # out
+        num_groups_out = 32
+        self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[-1], num_groups=num_groups_out, eps=1e-6)
+        self.conv_act = nn.SiLU()
+
+        conv_out_channels = 2 * out_channels if double_z else out_channels
+        self.conv_out = nn.Conv2d(block_out_channels[-1], conv_out_channels, 3, padding=1)
 
     def forward(self, x):
-        # assert x.shape[2] == x.shape[3] == self.resolution, "{}, {}, {}".format(x.shape[2], x.shape[3], self.resolution)
+        sample = x
+        sample = self.conv_in(sample)
 
-        # timestep embedding
-        temb = None
-
-        # downsampling
-        hs = [self.conv_in(x)]
-        for i_level in range(self.num_resolutions):
-            for i_block in range(self.num_res_blocks):
-                h = self.down[i_level].block[i_block](hs[-1], temb)
-                if len(self.down[i_level].attn) > 0:
-                    h = self.down[i_level].attn[i_block](h)
-                hs.append(h)
-            if i_level != self.num_resolutions - 1:
-                hs.append(self.down[i_level].downsample(hs[-1]))
+        # down
+        for down_block in self.down_blocks:
+            sample = down_block(sample)
 
         # middle
-        h = hs[-1]
-        h = self.mid.block_1(h, temb)
-        h = self.mid.attn_1(h)
-        h = self.mid.block_2(h, temb)
+        sample = self.mid_block(sample)
 
-        # end
-        h = self.norm_out(h)
-        h = nonlinearity(h)
-        h = self.conv_out(h)
-        return h
+        # post-process
+        sample = self.conv_norm_out(sample)
+        sample = self.conv_act(sample)
+        sample = self.conv_out(sample)
+
+        return sample
 
 
 class Decoder(nn.Module):
     def __init__(
         self,
-        *,
-        ch,
-        out_ch,
-        ch_mult=(1, 2, 4, 8),
-        num_res_blocks,
-        attn_resolutions,
-        dropout=0.0,
-        resamp_with_conv=True,
-        in_channels,
-        resolution,
-        z_channels,
-        give_pre_end=False,
-        **ignorekwargs,
+        in_channels=3,
+        out_channels=3,
+        up_block_types=("UpDecoderBlock2D",),
+        block_out_channels=(64,),
+        layers_per_block=2,
+        act_fn="silu",
     ):
         super().__init__()
-        self.ch = ch
-        self.temb_ch = 0
-        self.num_resolutions = len(ch_mult)
-        self.num_res_blocks = num_res_blocks
-        self.resolution = resolution
-        self.in_channels = in_channels
-        self.give_pre_end = give_pre_end
+        self.layers_per_block = layers_per_block
 
-        # compute in_ch_mult, block_in and curr_res at lowest res
-        block_in = ch * ch_mult[self.num_resolutions - 1]
-        curr_res = resolution // 2 ** (self.num_resolutions - 1)
-        self.z_shape = (1, z_channels, curr_res, curr_res)
-        # print("Working with z of shape {} = {} dimensions.".format(self.z_shape, np.prod(self.z_shape)))
+        self.conv_in = nn.Conv2d(in_channels, block_out_channels[-1], kernel_size=3, stride=1, padding=1)
 
-        # z to block_in
-        self.conv_in = torch.nn.Conv2d(z_channels, block_in, kernel_size=3, stride=1, padding=1)
+        self.mid_block = None
+        self.up_blocks = nn.ModuleList([])
 
-        # middle
-        self.mid = nn.Module()
-        self.mid.block_1 = ResnetBlock2D(
-            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
-        )
-        self.mid.attn_1 = AttentionBlock(block_in, overwrite_qkv=True)
-        self.mid.block_2 = ResnetBlock2D(
-            in_channels=block_in, out_channels=block_in, temb_channels=self.temb_ch, dropout=dropout
+        # mid
+        self.mid_block = UNetMidBlock2D(
+            in_channels=block_out_channels[-1],
+            resnet_eps=1e-6,
+            resnet_act_fn=act_fn,
+            output_scale_factor=1,
+            resnet_time_scale_shift="default",
+            attn_num_head_channels=None,
+            resnet_groups=32,
+            temb_channels=None,
         )
 
-        # upsampling
-        self.up = nn.ModuleList()
-        for i_level in reversed(range(self.num_resolutions)):
-            block = nn.ModuleList()
-            attn = nn.ModuleList()
-            block_out = ch * ch_mult[i_level]
-            for i_block in range(self.num_res_blocks + 1):
-                block.append(
-                    ResnetBlock2D(
-                        in_channels=block_in, out_channels=block_out, temb_channels=self.temb_ch, dropout=dropout
-                    )
-                )
-                block_in = block_out
-                if curr_res in attn_resolutions:
-                    attn.append(AttentionBlock(block_in, overwrite_qkv=True))
-            up = nn.Module()
-            up.block = block
-            up.attn = attn
-            if i_level != 0:
-                up.upsample = Upsample2D(block_in, use_conv=resamp_with_conv)
-                curr_res = curr_res * 2
-            self.up.insert(0, up)  # prepend to get consistent order
+        # up
+        reversed_block_out_channels = list(reversed(block_out_channels))
+        output_channel = reversed_block_out_channels[0]
+        for i, up_block_type in enumerate(up_block_types):
+            prev_output_channel = output_channel
+            output_channel = reversed_block_out_channels[i]
 
-        # end
-        self.norm_out = Normalize(block_in)
-        self.conv_out = torch.nn.Conv2d(block_in, out_ch, kernel_size=3, stride=1, padding=1)
+            is_final_block = i == len(block_out_channels) - 1
+
+            up_block = get_up_block(
+                up_block_type,
+                num_layers=self.layers_per_block + 1,
+                in_channels=prev_output_channel,
+                out_channels=output_channel,
+                prev_output_channel=None,
+                add_upsample=not is_final_block,
+                resnet_eps=1e-6,
+                resnet_act_fn=act_fn,
+                attn_num_head_channels=None,
+                temb_channels=None,
+            )
+            self.up_blocks.append(up_block)
+            prev_output_channel = output_channel
+
+        # out
+        num_groups_out = 32
+        self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=num_groups_out, eps=1e-6)
+        self.conv_act = nn.SiLU()
+        self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, 3, padding=1)
 
     def forward(self, z):
-        # assert z.shape[1:] == self.z_shape[1:]
-        self.last_z_shape = z.shape
-
-        # timestep embedding
-        temb = None
-
-        # z to block_in
-        h = self.conv_in(z)
+        sample = z
+        sample = self.conv_in(sample)
 
         # middle
-        h = self.mid.block_1(h, temb)
-        h = self.mid.attn_1(h)
-        h = self.mid.block_2(h, temb)
+        sample = self.mid_block(sample)
 
-        # upsampling
-        for i_level in reversed(range(self.num_resolutions)):
-            for i_block in range(self.num_res_blocks + 1):
-                h = self.up[i_level].block[i_block](h, temb)
-                if len(self.up[i_level].attn) > 0:
-                    h = self.up[i_level].attn[i_block](h)
-            if i_level != 0:
-                h = self.up[i_level].upsample(h)
+        # up
+        for up_block in self.up_blocks:
+            sample = up_block(sample)
 
-        # end
-        if self.give_pre_end:
-            return h
+        # post-process
+        sample = self.conv_norm_out(sample)
+        sample = self.conv_act(sample)
+        sample = self.conv_out(sample)
 
-        h = self.norm_out(h)
-        h = nonlinearity(h)
-        h = self.conv_out(h)
-        return h
+        return sample
 
 
 class VectorQuantizer(nn.Module):
@@ -383,57 +326,44 @@ class VQModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        ch,
-        out_ch,
-        num_res_blocks,
-        attn_resolutions,
-        in_channels,
-        resolution,
-        z_channels,
-        n_embed,
-        embed_dim,
-        remap=None,
-        sane_index_shape=False,  # tell vector quantizer to return indices as bhw
-        ch_mult=(1, 2, 4, 8),
-        dropout=0.0,
-        double_z=True,
-        resamp_with_conv=True,
-        give_pre_end=False,
+        in_channels=3,
+        out_channels=3,
+        down_block_types=("DownEncoderBlock2D",),
+        up_block_types=("UpDecoderBlock2D",),
+        block_out_channels=(64,),
+        layers_per_block=1,
+        act_fn="silu",
+        latent_channels=3,
+        sample_size=32,
+        num_vq_embeddings=256,
     ):
         super().__init__()
 
         # pass init params to Encoder
         self.encoder = Encoder(
-            ch=ch,
-            num_res_blocks=num_res_blocks,
-            attn_resolutions=attn_resolutions,
             in_channels=in_channels,
-            resolution=resolution,
-            z_channels=z_channels,
-            ch_mult=ch_mult,
-            dropout=dropout,
-            resamp_with_conv=resamp_with_conv,
-            double_z=double_z,
-            give_pre_end=give_pre_end,
+            out_channels=latent_channels,
+            down_block_types=down_block_types,
+            block_out_channels=block_out_channels,
+            layers_per_block=layers_per_block,
+            act_fn=act_fn,
+            double_z=False,
         )
 
-        self.quant_conv = torch.nn.Conv2d(z_channels, embed_dim, 1)
-        self.quantize = VectorQuantizer(n_embed, embed_dim, beta=0.25, remap=remap, sane_index_shape=sane_index_shape)
-        self.post_quant_conv = torch.nn.Conv2d(embed_dim, z_channels, 1)
+        self.quant_conv = torch.nn.Conv2d(latent_channels, latent_channels, 1)
+        self.quantize = VectorQuantizer(
+            num_vq_embeddings, latent_channels, beta=0.25, remap=None, sane_index_shape=False
+        )
+        self.post_quant_conv = torch.nn.Conv2d(latent_channels, latent_channels, 1)
 
         # pass init params to Decoder
         self.decoder = Decoder(
-            ch=ch,
-            out_ch=out_ch,
-            num_res_blocks=num_res_blocks,
-            attn_resolutions=attn_resolutions,
-            in_channels=in_channels,
-            resolution=resolution,
-            z_channels=z_channels,
-            ch_mult=ch_mult,
-            dropout=dropout,
-            resamp_with_conv=resamp_with_conv,
-            give_pre_end=give_pre_end,
+            in_channels=latent_channels,
+            out_channels=out_channels,
+            up_block_types=up_block_types,
+            block_out_channels=block_out_channels,
+            layers_per_block=layers_per_block,
+            act_fn=act_fn,
         )
 
     def encode(self, x):
@@ -462,57 +392,41 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        ch,
-        out_ch,
-        num_res_blocks,
-        attn_resolutions,
-        in_channels,
-        resolution,
-        z_channels,
-        embed_dim,
-        remap=None,
-        sane_index_shape=False,  # tell vector quantizer to return indices as bhw
-        ch_mult=(1, 2, 4, 8),
-        dropout=0.0,
-        double_z=True,
-        resamp_with_conv=True,
-        give_pre_end=False,
+        in_channels=3,
+        out_channels=3,
+        down_block_types=("DownEncoderBlock2D",),
+        up_block_types=("UpDecoderBlock2D",),
+        block_out_channels=(64,),
+        layers_per_block=1,
+        act_fn="silu",
+        latent_channels=4,
+        sample_size=32,
     ):
         super().__init__()
 
         # pass init params to Encoder
         self.encoder = Encoder(
-            ch=ch,
-            out_ch=out_ch,
-            num_res_blocks=num_res_blocks,
-            attn_resolutions=attn_resolutions,
             in_channels=in_channels,
-            resolution=resolution,
-            z_channels=z_channels,
-            ch_mult=ch_mult,
-            dropout=dropout,
-            resamp_with_conv=resamp_with_conv,
-            double_z=double_z,
-            give_pre_end=give_pre_end,
+            out_channels=latent_channels,
+            down_block_types=down_block_types,
+            block_out_channels=block_out_channels,
+            layers_per_block=layers_per_block,
+            act_fn=act_fn,
+            double_z=True,
         )
 
         # pass init params to Decoder
         self.decoder = Decoder(
-            ch=ch,
-            out_ch=out_ch,
-            num_res_blocks=num_res_blocks,
-            attn_resolutions=attn_resolutions,
-            in_channels=in_channels,
-            resolution=resolution,
-            z_channels=z_channels,
-            ch_mult=ch_mult,
-            dropout=dropout,
-            resamp_with_conv=resamp_with_conv,
-            give_pre_end=give_pre_end,
+            in_channels=latent_channels,
+            out_channels=out_channels,
+            up_block_types=up_block_types,
+            block_out_channels=block_out_channels,
+            layers_per_block=layers_per_block,
+            act_fn=act_fn,
         )
 
-        self.quant_conv = torch.nn.Conv2d(2 * z_channels, 2 * embed_dim, 1)
-        self.post_quant_conv = torch.nn.Conv2d(embed_dim, z_channels, 1)
+        self.quant_conv = torch.nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1)
+        self.post_quant_conv = torch.nn.Conv2d(latent_channels, latent_channels, 1)
 
     def encode(self, x):
         h = self.encoder(x)

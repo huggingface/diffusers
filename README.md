@@ -121,7 +121,7 @@ The class provides functionality to compute previous image according to alpha, b
 ## Installation
 
 ```bash
-pip install diffusers  # should install diffusers 0.1.2
+pip install diffusers  # should install diffusers 0.1.3
 ```
 
 
