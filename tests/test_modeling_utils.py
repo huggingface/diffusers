@@ -33,6 +33,8 @@ from diffusers import (
     LDMTextToImagePipeline,
     PNDMPipeline,
     PNDMScheduler,
+    RePaintPipeline,
+    RePaintScheduler,
     ScoreSdeVePipeline,
     ScoreSdeVeScheduler,
     UNet2DModel,
@@ -920,3 +922,29 @@ class PipelineTesterMixin(unittest.TestCase):
 
         # the values aren't exactly equal, but the images look the same visually
         assert np.abs(ddpm_images - ddim_images).max() < 1e-1
+
+    #@slow
+    def test_repaint_celebahq(self):
+        from datasets import load_dataset
+
+        dataset = load_dataset('huggan/CelebA-HQ', split='train', streaming=True)
+        original_image = next(iter(dataset))["image"].resize((256, 256))
+        original_image = torch.tensor(np.array(original_image)).permute(2, 0, 1).unsqueeze(0)
+        original_image = (original_image / 255.0) * 2 - 1
+        mask = torch.zeros_like(original_image)
+        mask[:, :, :128, :] = 1  # mask the top half of the image
+
+        model_id = "google/ddpm-ema-celebahq-256"
+        unet = UNet2DModel.from_pretrained(model_id)
+        scheduler = RePaintScheduler.from_config(model_id)
+
+        repaint = RePaintPipeline(unet=unet, scheduler=scheduler)
+
+        generator = torch.manual_seed(0)
+        image = repaint(original_image, mask, generator=generator, output_type="numpy")["sample"]
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 256, 256, 3)
+        expected_slice = np.array([0.00605, 0.0201, 0.0344, 0.00235, 0.00185, 0.00025, 0.00215, 0.0, 0.00685])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

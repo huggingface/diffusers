@@ -18,10 +18,15 @@ import torch
 
 from tqdm.auto import tqdm
 
+from ...models import UNet2DModel
 from ...pipeline_utils import DiffusionPipeline
+from ...schedulers import RePaintScheduler
 
 
 class RePaintPipeline(DiffusionPipeline):
+    unet: UNet2DModel
+    scheduler: RePaintScheduler
+
     def __init__(self, unet, scheduler):
         super().__init__()
         scheduler = scheduler.set_format("pt")
@@ -30,7 +35,8 @@ class RePaintPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        batch_size=1,
+        original_image: torch.Tensor,
+        mask: torch.Tensor,
         num_inference_steps=250,
         jump_length=10,
         jump_n_sample=10,
@@ -42,26 +48,33 @@ class RePaintPipeline(DiffusionPipeline):
             torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self.unet.to(torch_device)
+        original_image = original_image.to(torch_device)
+        mask = mask.to(torch_device)
 
         # sample gaussian noise to begin the loop
-        image = torch.randn(
-            (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
+        sample = torch.randn(
+            (original_image.shape[0], self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
             generator=generator,
         )
-        image = image.to(torch_device)
+        sample = sample.to(torch_device)
         # set step values
         self.scheduler.set_timesteps(num_inference_steps, jump_length, jump_n_sample)
 
+        t_last = self.scheduler.timesteps[-1] + 1
         for t in tqdm(self.scheduler.timesteps):
-            # 1. predict the noise residual
-            model_output = self.unet(image, t)["sample"]
+            if t < t_last:
+                # predict the noise residual
+                model_output = self.unet(sample, t)["sample"]
+                # compute previous image: x_t -> x_t-1
+                sample = self.scheduler.step(model_output, t, sample, original_image, mask, generator)["prev_sample"]
+            else:
+                # compute the reverse: x_t-1 -> x_t
+                sample = self.scheduler.undo_step(sample, t, generator)
+            t_last = t
 
-            # 2. compute previous image: x_t -> t_t-1
-            image = self.scheduler.step(model_output, t, image)["prev_sample"]
-
-        image = (image / 2 + 0.5).clamp(0, 1)
-        image = image.cpu().permute(0, 2, 3, 1).numpy()
+        sample = (sample / 2 + 0.5).clamp(0, 1)
+        sample = sample.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "pil":
-            image = self.numpy_to_pil(image)
+            sample = self.numpy_to_pil(sample)
 
-        return {"sample": image}
+        return {"sample": sample}

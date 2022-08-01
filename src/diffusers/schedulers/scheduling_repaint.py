@@ -48,7 +48,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     return np.array(betas, dtype=np.float32)
 
 
-class DDIMScheduler(SchedulerMixin, ConfigMixin):
+class RePaintScheduler(SchedulerMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
@@ -94,11 +94,27 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
-    def set_timesteps(self, num_inference_steps):
+    def set_timesteps(self, num_inference_steps, jump_length=10, jump_n_sample=10):
         self.num_inference_steps = num_inference_steps
-        self.timesteps = np.arange(
-            0, self.config.num_train_timesteps, self.config.num_train_timesteps // self.num_inference_steps
-        )[::-1].copy()
+        timesteps = []
+
+        jumps = {}
+        for j in range(0, num_inference_steps - jump_length, jump_length):
+            jumps[j] = jump_n_sample - 1
+
+        t = num_inference_steps
+        while t >= 1:
+            t = t - 1
+            timesteps.append(t)
+
+            if jumps.get(t, 0) > 0:
+                jumps[t] = jumps[t] - 1
+                for _ in range(jump_length):
+                    t = t + 1
+                    timesteps.append(t)
+
+        self.timesteps = np.array(timesteps) * (self.config.num_train_timesteps // self.num_inference_steps)
+
         self.set_format(tensor_format=self.tensor_format)
 
     def step(
@@ -106,72 +122,64 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         model_output: Union[torch.FloatTensor, np.ndarray],
         timestep: int,
         sample: Union[torch.FloatTensor, np.ndarray],
-        eta: float = 0.0,
-        use_clipped_model_output: bool = False,
+        original_sample: Union[torch.FloatTensor, np.ndarray],
+        mask: Union[torch.FloatTensor, np.ndarray],
         generator=None,
     ):
-        # See formulas (12) and (16) of DDIM paper https://arxiv.org/pdf/2010.02502.pdf
-        # Ideally, read DDIM paper in-detail understanding
-
-        # Notation (<variable name> -> <name in paper>
-        # - pred_noise_t -> e_theta(x_t, t)
-        # - pred_original_sample -> f_theta(x_t, t) or x_0
-        # - std_dev_t -> sigma_t
-        # - eta -> η
-        # - pred_sample_direction -> "direction pointingc to x_t"
-        # - pred_prev_sample -> "x_t-1"
-
-        # 1. get previous step value (=t-1)
+        device = model_output.device
         prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
 
-        # 2. compute alphas, betas
-        alpha_prod_t = self.alphas_cumprod[timestep]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.one
-        beta_prod_t = 1 - alpha_prod_t
+        alpha = self.alphas[timestep]
+        alpha_prod = self.alphas_cumprod[timestep]
+        beta = self.betas[timestep]
+        alpha_prod_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.one
+        std_dev = self.sqrt(self._get_variance(timestep, prev_timestep))
 
-        # 3. compute predicted original sample from predicted noise also called
-        # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+        if timestep > 1:
+            noise = torch.randn(model_output.shape, generator=generator).to(device)
+        else:
+            noise = torch.zeros(model_output.shape, device=device)
 
-        # 4. Clip "predicted x_0"
+        # compute predicted original sample from predicted noise
+        pred_original_sample = (sample - self.sqrt(1 - alpha_prod) * model_output) / self.sqrt(alpha_prod)
+
+        #  clip "predicted x_0"
         if self.config.clip_sample:
             pred_original_sample = self.clip(pred_original_sample, -1, 1)
 
-        # 5. compute variance: "sigma_t(η)" -> see formula (16)
-        # σ_t = sqrt((1 − α_t−1)/(1 − α_t)) * sqrt(1 − α_t/α_t−1)
-        variance = self._get_variance(timestep, prev_timestep)
-        std_dev_t = eta * variance ** (0.5)
+        # add noise to the known pixels of the image
+        prev_known_part = self.sqrt(alpha_prod) * original_sample + self.sqrt(1 - alpha_prod) * noise
 
-        if use_clipped_model_output:
-            # the model_output is always re-derived from the clipped x_0 in Glide
-            model_output = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
+        # add noise to the unknown pixels of the image
+        posterior_mean_coef1 = (
+                beta * self.sqrt(alpha_prod_prev) /
+                (1.0 - alpha_prod)
+        )
+        posterior_mean_coef2 = (
+                (1.0 - alpha_prod_prev)
+                * self.sqrt(alpha)
+                / (1.0 - alpha_prod)
+        )
+        prev_unknown_part = posterior_mean_coef1 * pred_original_sample + posterior_mean_coef2 * sample
+        prev_unknown_part = prev_unknown_part + std_dev * noise
+        #pred_sample_direction = self.sqrt(1 - alpha_prod_prev - std_dev ** 2) * model_output
+        #prev_unknown_part = self.sqrt(alpha_prod_prev) * pred_original_sample + pred_sample_direction
+        #prev_unknown_part = prev_unknown_part + std_dev * noise
 
-        # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * model_output
-
-        # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
-
-        if eta > 0:
-            device = model_output.device if torch.is_tensor(model_output) else "cpu"
-            noise = torch.randn(model_output.shape, generator=generator).to(device)
-            variance = self._get_variance(timestep, prev_timestep) ** (0.5) * eta * noise
-
-            if not torch.is_tensor(model_output):
-                variance = variance.numpy()
-
-            prev_sample = prev_sample + variance
+        prev_sample = mask * prev_known_part + (1 - mask) * prev_unknown_part
 
         return {"prev_sample": prev_sample}
 
-    def add_noise(self, original_samples, noise, timesteps):
-        sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
-        sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
-        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
-        sqrt_one_minus_alpha_prod = self.match_shape(sqrt_one_minus_alpha_prod, original_samples)
+    def undo_step(self, sample, timestep, generator=None):
+        beta = self.betas[timestep]
 
-        noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
-        return noisy_samples
+        noise = torch.randn(sample.shape, generator=generator).to(sample.device)
+        next_sample = self.sqrt(1 - beta) * sample + self.sqrt(beta) * noise
+
+        return next_sample
+
+    def add_noise(self, original_samples, noise, timesteps):
+        raise NotImplementedError("Use `DDPMScheduler.add_noise()` to train for sampling with RePaint.")
 
     def __len__(self):
         return self.config.num_train_timesteps

@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_dataset
-from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
+from diffusers import DDIMPipeline, DDIMScheduler, UNet2DModel
 from diffusers.hub_utils import init_git_repo, push_to_hub
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
@@ -39,25 +39,23 @@ def main(args):
         in_channels=3,
         out_channels=3,
         layers_per_block=2,
-        block_out_channels=(128, 128, 256, 256, 512, 512),
+        block_out_channels=(128, 128, 256, 256, 512),
         down_block_types=(
             "DownBlock2D",
             "DownBlock2D",
             "DownBlock2D",
             "DownBlock2D",
-            "AttnDownBlock2D",
             "DownBlock2D",
         ),
         up_block_types=(
             "UpBlock2D",
-            "AttnUpBlock2D",
             "UpBlock2D",
             "UpBlock2D",
             "UpBlock2D",
             "UpBlock2D",
         ),
     )
-    noise_scheduler = DDPMScheduler(num_train_timesteps=1000, tensor_format="pt")
+    noise_scheduler = DDIMScheduler(num_train_timesteps=1000, tensor_format="pt")
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
@@ -150,7 +148,7 @@ def main(args):
         # Generate sample images for visual inspection
         if accelerator.is_main_process:
             if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
-                pipeline = DDPMPipeline(
+                pipeline = DDIMPipeline(
                     unet=accelerator.unwrap_model(ema_model.averaged_model if args.use_ema else model),
                     scheduler=noise_scheduler,
                 )
@@ -179,15 +177,15 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument("--local_rank", type=int, default=-1)
-    parser.add_argument("--dataset", type=str, default="huggan/flowers-102-categories")
+    parser.add_argument("--dataset", type=str, default="huggan/smithsonian_butterflies_subset")
     parser.add_argument("--output_dir", type=str, default="ddpm-flowers-64")
     parser.add_argument("--overwrite_output_dir", action="store_true")
-    parser.add_argument("--resolution", type=int, default=64)
+    parser.add_argument("--resolution", type=int, default=32)
     parser.add_argument("--train_batch_size", type=int, default=16)
     parser.add_argument("--eval_batch_size", type=int, default=16)
     parser.add_argument("--num_epochs", type=int, default=100)
-    parser.add_argument("--save_images_epochs", type=int, default=10)
-    parser.add_argument("--save_model_epochs", type=int, default=10)
+    parser.add_argument("--save_images_epochs", type=int, default=1)
+    parser.add_argument("--save_model_epochs", type=int, default=100)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
     parser.add_argument("--learning_rate", type=float, default=1e-4)
     parser.add_argument("--lr_scheduler", type=str, default="cosine")

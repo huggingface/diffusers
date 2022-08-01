@@ -3,6 +3,7 @@ from .ddim import DDIMPipeline
 from .ddpm import DDPMPipeline
 from .latent_diffusion_uncond import LDMPipeline
 from .pndm import PNDMPipeline
+from .repaint import RePaintPipeline
 from .score_sde_ve import ScoreSdeVePipeline
 
 
