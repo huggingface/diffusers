@@ -36,8 +36,9 @@ class MultiLayerPerceptron(nn.Module):
         if isinstance(activation, str):
             self.activation = getattr(F, activation)
         else:
+            print(f"Warning, activation passed {activation} is not string and ignored")
             self.activation = None
-        if dropout:
+        if dropout > 0:
             self.dropout = nn.Dropout(dropout)
         else:
             self.dropout = None
@@ -46,9 +47,8 @@ class MultiLayerPerceptron(nn.Module):
         for i in range(len(self.dims) - 1):
             self.layers.append(nn.Linear(self.dims[i], self.dims[i + 1]))
 
-    def forward(self, input):
+    def forward(self, x):
         """"""
-        x = input
         for i, layer in enumerate(self.layers):
             x = layer(x)
             if i < len(self.layers) - 1:
@@ -69,11 +69,11 @@ class ShiftedSoftplus(torch.nn.Module):
 
 
 class CFConv(MessagePassing):
-    def __init__(self, in_channels, out_channels, num_filters, nn, cutoff, smooth):
+    def __init__(self, in_channels, out_channels, num_filters, mlp, cutoff, smooth):
         super(CFConv, self).__init__(aggr="add")
         self.lin1 = Linear(in_channels, num_filters, bias=False)
         self.lin2 = Linear(num_filters, out_channels)
-        self.nn = nn
+        self.nn = mlp
         self.cutoff = cutoff
         self.smooth = smooth
 
@@ -97,7 +97,7 @@ class CFConv(MessagePassing):
         x = self.lin2(x)
         return x
 
-    def message(self, x_j, W):
+    def message(self, x_j: torch.Tensor, W) -> torch.Tensor:
         return x_j * W
 
 
@@ -151,9 +151,14 @@ class SchNetEncoder(Module):
 
 
 class GINEConv(MessagePassing):
-    def __init__(self, nn: Callable, eps: float = 0.0, train_eps: bool = False, activation="softplus", **kwargs):
+    """
+    Custom class of the graph isomorphism operator from the "How Powerful are Graph Neural Networks?
+    https://arxiv.org/abs/1810.00826 paper. Note that this implementation has the added option of a custom activation.
+    """
+
+    def __init__(self, mlp: Callable, eps: float = 0.0, train_eps: bool = False, activation="softplus", **kwargs):
         super(GINEConv, self).__init__(aggr="add", **kwargs)
-        self.nn = nn
+        self.nn = mlp
         self.initial_eps = eps
 
         if isinstance(activation, str):
@@ -226,10 +231,11 @@ class GINEncoder(torch.nn.Module):
     def forward(self, z, edge_index, edge_attr):
         """
         Input:
-            data: (torch_geometric.data.Data): batched graph node_attr: node feature tensor with shape (num_node,
-            hidden) edge_attr: edge feature tensor with shape (num_edge, hidden)
+            data: (torch_geometric.data.Data): batched graph
+            edge_index: bond indices of the original graph (num_node, hidden)
+            edge_attr: edge feature tensor with shape (num_edge, hidden)
         Output:
-            node_attr graph feature
+            node_feature: graph feature
         """
 
         node_attr = self.node_emb(z)  # (num_node, hidden)
@@ -380,8 +386,6 @@ def _extend_to_radius_graph(pos, edge_index, edge_type, cutoff, batch, unspecifi
     )
 
     composed_adj = (bgraph_adj + rgraph_adj).coalesce()  # Sparse (N, N, T)
-    # edge_index = composed_adj.indices()
-    # dist = (pos[edge_index[0]] - pos[edge_index[1]]).norm(dim=-1)
 
     new_edge_index = composed_adj.indices()
     new_edge_type = composed_adj.values().long()
@@ -405,8 +409,6 @@ def extend_graph_order_radius(
         edge_index, edge_type = _extend_graph_order(
             num_nodes=num_nodes, edge_index=edge_index, edge_type=edge_type, order=order
         )
-        # edge_index_order = edge_index
-        # edge_type_order = edge_type
 
     if extend_radius:
         edge_index, edge_type = _extend_to_radius_graph(
@@ -420,7 +422,11 @@ def get_distance(pos, edge_index):
     return (pos[edge_index[0]] - pos[edge_index[1]]).norm(dim=-1)
 
 
-def eq_transform(score_d, pos, edge_index, edge_length):
+def graph_field_network(score_d, pos, edge_index, edge_length):
+    """
+    Transformation to make the epsilon predicted from the diffusion model roto-translational equivariant.
+    See equations 5-7 of the GeoDiff Paper https://arxiv.org/pdf/2203.02923.pdf
+    """
     N = pos.size(0)
     dd_dr = (1.0 / edge_length) * (pos[edge_index[0]] - pos[edge_index[1]])  # (E, 3)
     score_pos = scatter_add(dd_dr * score_d, edge_index[0], dim=0, dim_size=N) + scatter_add(
@@ -616,14 +622,16 @@ class MoleculeGNN(ModelMixin, ConfigMixin):
         )  # (E_global, 1), (E_local, 1)
 
         # Important equation in the paper for equivariant features - eqns 5-7 of GeoDiff
-        node_eq_local = eq_transform(edge_inv_local, pos, edge_index[:, local_edge_mask], edge_length[local_edge_mask])
+        node_eq_local = graph_field_network(
+            edge_inv_local, pos, edge_index[:, local_edge_mask], edge_length[local_edge_mask]
+        )
         if clip_local is not None:
             node_eq_local = clip_norm(node_eq_local, limit=clip_local)
 
         # Global
         if sigma < global_start_sigma:
             edge_inv_global = edge_inv_global * (1 - local_edge_mask.view(-1, 1).float())
-            node_eq_global = eq_transform(edge_inv_global, pos, edge_index, edge_length)
+            node_eq_global = graph_field_network(edge_inv_global, pos, edge_index, edge_length)
             node_eq_global = clip_norm(node_eq_global, limit=clip_global)
         else:
             node_eq_global = 0
