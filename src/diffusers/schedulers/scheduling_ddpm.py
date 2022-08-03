@@ -135,7 +135,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
     ):
         t = timestep
         
-        if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["leanred", "learned_range"]:
+        if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
             model_output, predicted_variance = torch.split(model_output, sample.shape[1], dim=1)
         else:
             predicted_variance = None
