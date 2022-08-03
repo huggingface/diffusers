@@ -82,13 +82,10 @@ def main(args):
             args.dataset_config_name,
             cache_dir=args.cache_dir,
             use_auth_token=True if args.use_auth_token else None,
+            split="train",
         )
     else:
-        dataset = load_dataset(
-            "imagefolder",
-            data_dir=args.train_data_dir,
-            cache_dir=args.cache_dir,
-        )
+        dataset = load_dataset("imagefolder", data_dir=args.train_data_dir, cache_dir=args.cache_dir, split="train")
 
     def transforms(examples):
         images = [augmentations(image.convert("RGB")) for image in examples["image"]]
@@ -192,10 +189,10 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument("--local_rank", type=int, default=-1)
-    parser.add_argument("--dataset_name", type=str, default="huggan/flowers-102-categories")
+    parser.add_argument("--dataset_name", type=str, default=None)
     parser.add_argument("--dataset_config_name", type=str, default=None)
     parser.add_argument("--train_data_dir", type=str, default=None, help="A folder containing the training data.")
-    parser.add_argument("--output_dir", type=str, default="ddpm-flowers-64")
+    parser.add_argument("--output_dir", type=str, default="ddpm-model-64")
     parser.add_argument("--overwrite_output_dir", action="store_true")
     parser.add_argument("--cache_dir", type=str, default=None)
     parser.add_argument("--resolution", type=int, default=64)
@@ -240,8 +237,6 @@ if __name__ == "__main__":
         args.local_rank = env_local_rank
 
     if args.dataset_name is None and args.train_data_dir is None:
-        raise ValueError(
-            "You must specify either a dataset name from the hub or a train data directory."
-        )
+        raise ValueError("You must specify either a dataset name from the hub or a train data directory.")
 
     main(args)
