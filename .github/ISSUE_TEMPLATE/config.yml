@@ -1,0 +1,7 @@
+contact_links:
+  - name: Forum
+    url: https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers/63
+    about: General usage questions and community discussions
+  - name: Blank issue
+    url: https://github.com/huggingface/diffusers/issues/new
+    about: Please note that the Forum is in most places the right place for discussions
