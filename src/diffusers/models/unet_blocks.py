@@ -31,6 +31,7 @@ def get_down_block(
     resnet_eps,
     resnet_act_fn,
     attn_num_head_channels,
+    cross_attention_dim=None,
     downsample_padding=None,
 ):
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
@@ -58,6 +59,8 @@ def get_down_block(
             attn_num_head_channels=attn_num_head_channels,
         )
     elif down_block_type == "CrossAttnDownBlock2D":
+        if cross_attention_dim is None:
+            raise ValueError("cross_attention_dim must be specified for CrossAttnUpBlock2D")
         return CrossAttnDownBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -67,6 +70,7 @@ def get_down_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             downsample_padding=downsample_padding,
+            cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
         )
     elif down_block_type == "SkipDownBlock2D":
@@ -115,6 +119,7 @@ def get_up_block(
     resnet_eps,
     resnet_act_fn,
     attn_num_head_channels,
+    cross_attention_dim=None,
 ):
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
     if up_block_type == "UpBlock2D":
@@ -129,6 +134,8 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
         )
     elif up_block_type == "CrossAttnUpBlock2D":
+        if cross_attention_dim is None:
+            raise ValueError("cross_attention_dim must be specified for CrossAttnUpBlock2D")
         return CrossAttnUpBlock2D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -138,6 +145,7 @@ def get_up_block(
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
+            cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
         )
     elif up_block_type == "AttnUpBlock2D":
