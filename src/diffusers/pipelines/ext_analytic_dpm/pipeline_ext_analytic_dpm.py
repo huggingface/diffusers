@@ -58,7 +58,7 @@ class SNDPMPipeline(DiffusionPipeline):
                     1 - self.scheduler.alphas_cumprod[t]
                 )
                 beta_bar_div_alpha_bar = (1 - self.scheduler.alphas_cumprod[t]) / self.scheduler.alphas_cumprod[t]
-                noise = torch.randn(image.shape, generator=generator).to(image.device)
+                noise = torch.randn(model_output.shape, generator=generator).to(model_output.device)
                 variance = (
                     self.scheduler.get_variance(t) + gamma**2 * beta_bar_div_alpha_bar * noise_residual_square
                 ).sqrt() * noise
