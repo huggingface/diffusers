@@ -28,6 +28,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         act_fn="silu",
         norm_num_groups=32,
         norm_eps=1e-5,
+        cross_attention_dim=1280,
         attention_head_dim=8,
     ):
         super().__init__()
@@ -64,6 +65,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 add_downsample=not is_final_block,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
+                cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=attention_head_dim,
                 downsample_padding=downsample_padding,
             )
@@ -77,6 +79,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             resnet_act_fn=act_fn,
             output_scale_factor=mid_block_scale_factor,
             resnet_time_scale_shift="default",
+            cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attention_head_dim,
             resnet_groups=norm_num_groups,
         )
@@ -101,6 +104,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 add_upsample=not is_final_block,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
+                cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=attention_head_dim,
             )
             self.up_blocks.append(up_block)
