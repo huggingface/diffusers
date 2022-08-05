@@ -129,6 +129,13 @@ def assign_to_checkpoint(paths, checkpoint, old_checkpoint, attention_paths_to_s
             checkpoint[new_path] = old_checkpoint[path['old']]
 
 
+def create_unet_diffusers_config(config):
+    """
+    Creates a config for the diffusers based on the config of the LDM model.
+    """
+    unet_config = {}
+    
+
 def convert_ldm_unet_checkpoint(checkpoint, config):
     """
     Takes a state dict and a config, and returns a converted checkpoint.
