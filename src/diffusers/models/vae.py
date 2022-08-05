@@ -40,6 +40,7 @@ class Encoder(nn.Module):
                 out_channels=output_channel,
                 add_downsample=not is_final_block,
                 resnet_eps=1e-6,
+                downsample_padding=0,
                 resnet_act_fn=act_fn,
                 attn_num_head_channels=None,
                 temb_channels=None,
