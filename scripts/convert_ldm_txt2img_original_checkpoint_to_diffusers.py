@@ -23,7 +23,7 @@ try:
 except ImportError:
     raise ImportError("OmegaConf is required to convert the LDM checkpoints. Please install it with `pip install OmegaConf`.")
 
-from diffusers import VQModel, DDPMScheduler, UNet2DModel, LDMPipeline
+from diffusers import VQModel, DDPMScheduler, LDMTextToImagePipeline, AutoencoderKL, UNet2DConditionModel
 
 
 def shave_segments(path, n_shave_prefix_segments=1):
@@ -448,7 +448,7 @@ if __name__ == "__main__":
     if "ldm" in config:
         del config["ldm"]
 
-    model = UNet2DModel(**config)
+    model = UNet2DConditionModel(**config)
     model.load_state_dict(converted_checkpoint)
 
     try:
