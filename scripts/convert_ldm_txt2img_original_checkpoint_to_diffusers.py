@@ -129,11 +129,37 @@ def assign_to_checkpoint(paths, checkpoint, old_checkpoint, attention_paths_to_s
             checkpoint[new_path] = old_checkpoint[path['old']]
 
 
-def create_unet_diffusers_config(config):
+def create_unet_diffusers_config(original_config):
     """
     Creates a config for the diffusers based on the config of the LDM model.
     """
-    unet_config = {}
+    unet_params = config.model.params.unet_config.params
+
+    block_out_channels = [unet_params.model_channels * mult for mult in unet_params.channel_mult]
+
+    down_block_types = []
+    for i in range(len(block_out_channels)):
+        block_type = "CrossAttnDownBlock2D" if i < len(block_out_channels) - 1 else "DownBlock2D"
+        down_block_types.append(block_type)
+
+    up_block_types = []
+    for i in range(len(block_out_channels)):
+        block_type = "UpBlock2D" if i == 0 else "CrossAttnUpBlock2D"
+        up_block_types.append(block_type)
+
+    config = dict(
+        sample_size=unet_params.image_size,
+        in_channels=unet_params.in_channels,
+        out_channels=unet_params.out_channels,
+        down_block_types=tuple(down_block_types),
+        up_block_types=tuple(up_block_types),
+        block_out_channels=tuple(block_out_channels),
+        layers_per_block=unet_params.num_res_blocks,
+        cross_attention_dim=unet_params.context_dim,
+        attention_head_dim=unet_params.num_heads,
+    )
+
+    return config
     
 
 def convert_ldm_unet_checkpoint(checkpoint, config):
@@ -407,12 +433,17 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    original_config = OmegaConf.load(args.original_config_file)
+
     checkpoint = torch.load(args.checkpoint_path)
 
-    with open(args.config_file) as f:
-        config = json.loads(f.read())
+    if args.config_file is not None:
+        with open(args.config_file) as f:
+            config = json.loads(f.read())
+    else:
+        config = create_unet_diffusers_config(original_config)
 
-    converted_checkpoint = convert_ldm_checkpoint(checkpoint, config)
+    converted_checkpoint = convert_ldm_unet_checkpoint(checkpoint, config)
 
     if "ldm" in config:
         del config["ldm"]
