@@ -22,8 +22,64 @@ More precisely, 🤗 Diffusers offers:
 
 - State-of-the-art diffusion pipelines that can be run in inference with just a couple of lines of code (see [src/diffusers/pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines)).
 - Various noise schedulers that can be used interchangeably for the prefered speed vs. quality trade-off in inference (see [src/diffusers/schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers)).
-- Multiple types of models, such as UNet, that can be used as building blocks in an end-to-end diffusion system (see [src/diffusers/models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models)).
+- Multiple types of models, such as UNet, can be used as building blocks in an end-to-end diffusion system (see [src/diffusers/models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models)).
 - Training examples to show how to train the most popular diffusion models (see [examples](https://github.com/huggingface/diffusers/tree/main/examples)).
+
+## Quickstart
+
+In order to get started, we recommend taking a look at two notebooks:
+
+- The [Getting started with Diffusers](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb) notebook, which showcases an end-to-end example of usage for diffusion models, schedulers and pipelines.
+  Take a look at this notebook to learn how to use the pipeline abstraction, which takes care of everything (model, scheduler, noise handling) for you, and also to understand each independent building block in the library.
+- The [Training a diffusers model](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb) notebook summarizes diffuser model training methods. This notebook takes a step-by-step approach to training your
+  diffuser model on an image dataset, with explanatory graphics.
+  
+## Examples
+
+If you want to run the code yourself 💻, you can try out:
+- [Text-to-Image Latent Diffusion](https://huggingface.co/CompVis/ldm-text2im-large-256)
+```python
+# !pip install diffusers transformers
+from diffusers import DiffusionPipeline
+
+model_id = "CompVis/ldm-text2im-large-256"
+
+# load model and scheduler
+ldm = DiffusionPipeline.from_pretrained(model_id)
+
+# run pipeline in inference (sample random noise and denoise)
+prompt = "A painting of a squirrel eating a burger"
+images = ldm([prompt], num_inference_steps=50, eta=0.3, guidance_scale=6)["sample"]
+
+# save images
+for idx, image in enumerate(images):
+    image.save(f"squirrel-{idx}.png")
+```
+- [Unconditional Diffusion with discrete scheduler](https://huggingface.co/google/ddpm-celebahq-256)
+```python
+# !pip install diffusers
+from diffusers import DDPMPipeline, DDIMPipeline, PNDMPipeline
+
+model_id = "google/ddpm-celebahq-256"
+
+# load model and scheduler
+ddpm = DDPMPipeline.from_pretrained(model_id)  # you can replace DDPMPipeline with DDIMPipeline or PNDMPipeline for faster inference
+
+# run pipeline in inference (sample random noise and denoise)
+image = ddpm()["sample"]
+
+# save image
+image[0].save("ddpm_generated_image.png")
+```
+- [Unconditional Latent Diffusion](https://huggingface.co/CompVis/ldm-celebahq-256)
+- [Unconditional Diffusion with continous scheduler](https://huggingface.co/google/ncsnpp-ffhq-1024)
+
+If you just want to play around with some web demos, you can try out the following 🚀 Spaces:
+| Model                          	| Hugging Face Spaces                                                                                                                                               	|
+|--------------------------------	|-------------------------------------------------------------------------------------------------------------------------------------------------------------------	|
+| Text-to-Image Latent Diffusion 	| [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/CompVis/text2img-latent-diffusion) 	|
+| Faces generator                	| [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/CompVis/celeba-latent-diffusion)    	|
+| DDPM with different schedulers 	| [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/fusing/celeba-diffusion)           	|
 
 ## Definitions
 
@@ -59,283 +115,47 @@ The class provides functionality to compute previous image according to alpha, b
 ## Philosophy
 
 - Readability and clarity is prefered over highly optimized code. A strong importance is put on providing readable, intuitive and elementary code design. *E.g.*, the provided [schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers) are separated from the provided [models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models) and provide well-commented code that can be read alongside the original paper.
-- Diffusers is **modality independent** and focusses on providing pretrained models and tools to build systems that generate **continous outputs**, *e.g.* vision and audio.
-- Diffusion models and schedulers are provided as consise, elementary building blocks whereas diffusion pipelines are a collection of end-to-end diffusion systems that can be used out-of-the-box, should stay as close as possible to their original implementation and can include components of other library, such as text-encoders. Examples for diffusion pipelines are [Glide](https://github.com/openai/glide-text2im) and [Latent Diffusion](https://github.com/CompVis/latent-diffusion).
+- Diffusers is **modality independent** and focuses on providing pretrained models and tools to build systems that generate **continous outputs**, *e.g.* vision and audio.
+- Diffusion models and schedulers are provided as concise, elementary building blocks. In contrast, diffusion pipelines are a collection of end-to-end diffusion systems that can be used out-of-the-box, should stay as close as possible to their original implementation and can include components of another library, such as text-encoders. Examples for diffusion pipelines are [Glide](https://github.com/openai/glide-text2im) and [Latent Diffusion](https://github.com/CompVis/latent-diffusion).
 
-## Quickstart
+## Installation
 
-### Installation
-
-```
-pip install diffusers  # should install diffusers 0.0.4
-```
-
-### 1. `diffusers` as a toolbox for schedulers and models
-
-`diffusers` is more modularized than `transformers`. The idea is that researchers and engineers can use only parts of the library easily for the own use cases.
-It could become a central place for all kinds of models, schedulers, training utils and processors that one can mix and match for one's own use case.
-Both models and schedulers should be load- and saveable from the Hub.
-
-For more examples see [schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers) and [models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models)
-
-#### **Example for [DDPM](https://arxiv.org/abs/2006.11239):**
-
-```python
-import torch
-from diffusers import UNetModel, DDPMScheduler
-import PIL
-import numpy as np
-import tqdm
-
-generator = torch.manual_seed(0)
-torch_device = "cuda" if torch.cuda.is_available() else "cpu"
-
-# 1. Load models
-noise_scheduler = DDPMScheduler.from_config("fusing/ddpm-lsun-church", tensor_format="pt")
-unet = UNetModel.from_pretrained("fusing/ddpm-lsun-church").to(torch_device)
-
-# 2. Sample gaussian noise
-image = torch.randn(
-    (1, unet.in_channels, unet.resolution, unet.resolution),
-    generator=generator,
-)
-image = image.to(torch_device)
-
-# 3. Denoise
-num_prediction_steps = len(noise_scheduler)
-for t in tqdm.tqdm(reversed(range(num_prediction_steps)), total=num_prediction_steps):
-    # predict noise residual
-    with torch.no_grad():
-        residual = unet(image, t)
-
-    # predict previous mean of image x_t-1
-    pred_prev_image = noise_scheduler.step(residual, image, t)
-
-    # optionally sample variance
-    variance = 0
-    if t > 0:
-        noise = torch.randn(image.shape, generator=generator).to(image.device)
-        variance = noise_scheduler.get_variance(t).sqrt() * noise
-
-    # set current image to prev_image: x_t -> x_t-1
-    image = pred_prev_image + variance
-
-# 5. process image to PIL
-image_processed = image.cpu().permute(0, 2, 3, 1)
-image_processed = (image_processed + 1.0) * 127.5
-image_processed = image_processed.numpy().astype(np.uint8)
-image_pil = PIL.Image.fromarray(image_processed[0])
-
-# 6. save image
-image_pil.save("test.png")
+**With `pip`**
+    
+```bash
+pip install diffusers  # should install diffusers 0.1.3
 ```
 
-#### **Example for [DDIM](https://arxiv.org/abs/2010.02502):**
+**With `conda`**
 
-```python
-import torch
-from diffusers import UNetModel, DDIMScheduler
-import PIL
-import numpy as np
-import tqdm
-
-generator = torch.manual_seed(0)
-torch_device = "cuda" if torch.cuda.is_available() else "cpu"
-
-# 1. Load models
-noise_scheduler = DDIMScheduler.from_config("fusing/ddpm-celeba-hq", tensor_format="pt")
-unet = UNetModel.from_pretrained("fusing/ddpm-celeba-hq").to(torch_device)
-
-# 2. Sample gaussian noise
-image = torch.randn(
-   (1, unet.in_channels, unet.resolution, unet.resolution),
-   generator=generator,
-)
-image = image.to(torch_device)
-
-# 3. Denoise                                                                                                                                           
-num_inference_steps = 50
-eta = 0.0  # <- deterministic sampling
-
-for t in tqdm.tqdm(reversed(range(num_inference_steps)), total=num_inference_steps):
-    # 1. predict noise residual
-    orig_t = len(noise_scheduler) // num_inference_steps * t
-
-    with torch.no_grad():
-        residual = unet(image, orig_t)
-
-    # 2. predict previous mean of image x_t-1
-    pred_prev_image = noise_scheduler.step(residual, image, t, num_inference_steps, eta)
-
-    # 3. optionally sample variance
-    variance = 0
-    if eta > 0:
-        noise = torch.randn(image.shape, generator=generator).to(image.device)
-        variance = noise_scheduler.get_variance(t).sqrt() * eta * noise
-
-    # 4. set current image to prev_image: x_t -> x_t-1
-    image = pred_prev_image + variance
-
-# 5. process image to PIL
-image_processed = image.cpu().permute(0, 2, 3, 1)
-image_processed = (image_processed + 1.0) * 127.5
-image_processed = image_processed.numpy().astype(np.uint8)
-image_pil = PIL.Image.fromarray(image_processed[0])
-
-# 6. save image
-image_pil.save("test.png")
+```sh
+conda install -c conda-forge diffusers
 ```
 
-#### **Examples for other modalities:**
+## In the works
 
-[Diffuser](https://diffusion-planning.github.io/) for planning in reinforcement learning (currenlty only inference): [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1TmBmlYeKUZSkUZoJqfBmaicVTKx6nN1R?usp=sharing)
+For the first release, 🤗 Diffusers focuses on text-to-image diffusion techniques. However, diffusers can be used for much more than that! Over the upcoming releases, we'll be focusing on:
 
-### 2. `diffusers` as a collection of popular Diffusion systems (Glide, Dalle, ...)
+- Diffusers for audio
+- Diffusers for reinforcement learning (initial work happening in https://github.com/huggingface/diffusers/pull/105).
+- Diffusers for video generation
+- Diffusers for molecule generation (initial work happening in https://github.com/huggingface/diffusers/pull/54)
 
-For more examples see [pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines).
+A few pipeline components are already being worked on, namely:
 
-#### **Example image generation with PNDM**
+- BDDMPipeline for spectrogram-to-sound vocoding
+- GLIDEPipeline to support OpenAI's GLIDE model
+- Grad-TTS for text to audio generation / conditional audio generation
 
-```python
-from diffusers import PNDM, UNetModel, PNDMScheduler
-import PIL.Image
-import numpy as np
-import torch
+We want diffusers to be a toolbox useful for diffusers models in general; if you find yourself limited in any way by the current API, or would like to see additional models, schedulers, or techniques, please open a [GitHub issue](https://github.com/huggingface/diffusers/issues) mentioning what you would like to see.
 
-model_id = "fusing/ddim-celeba-hq"
+## Credits
 
-model = UNetModel.from_pretrained(model_id)
-scheduler = PNDMScheduler()
+This library concretizes previous work by many different authors and would not have been possible without their great research and implementations. We'd like to thank, in particular, the following implementations which have helped us in our development and without which the API could not have been as polished today:
 
-# load model and scheduler
-pndm = PNDM(unet=model, noise_scheduler=scheduler)
+- @CompVis' latent diffusion models library, available [here](https://github.com/CompVis/latent-diffusion)
+- @hojonathanho original DDPM implementation, available [here](https://github.com/hojonathanho/diffusion) as well as the extremely useful translation into PyTorch by @pesser, available [here](https://github.com/pesser/pytorch_diffusion)
+- @ermongroup's DDIM implementation, available [here](https://github.com/ermongroup/ddim).
+- @yang-song's Score-VE and Score-VP implementations, available [here](https://github.com/yang-song/score_sde_pytorch)
 
-# run pipeline in inference (sample random noise and denoise)
-with torch.no_grad():
-    image = pndm()
-
-# process image to PIL
-image_processed = image.cpu().permute(0, 2, 3, 1)
-image_processed = (image_processed + 1.0) / 2
-image_processed = torch.clamp(image_processed, 0.0, 1.0)
-image_processed = image_processed * 255
-image_processed = image_processed.numpy().astype(np.uint8)
-image_pil = PIL.Image.fromarray(image_processed[0])
-
-# save image
-image_pil.save("test.png")
-```
-
-#### **Example 1024x1024 image generation with SDE VE**
-
-See [paper](https://arxiv.org/abs/2011.13456) for more information on SDE VE.
-
-```python
-from diffusers import DiffusionPipeline
-import torch
-import PIL.Image
-import numpy as np
-
-torch.manual_seed(32)
-
-score_sde_sv = DiffusionPipeline.from_pretrained("fusing/ffhq_ncsnpp")
-
-# Note this might take up to 3 minutes on a GPU
-image = score_sde_sv(num_inference_steps=2000)
-
-image = image.permute(0, 2, 3, 1).cpu().numpy()
-image = np.clip(image * 255, 0, 255).astype(np.uint8)
-image_pil = PIL.Image.fromarray(image[0])
-
-# save image
-image_pil.save("test.png")
-```
-#### **Example 32x32 image generation with SDE VP**
-	
-See [paper](https://arxiv.org/abs/2011.13456) for more information on SDE VE.
-
-```python
-from diffusers import DiffusionPipeline
-import torch
-import PIL.Image
-import numpy as np
-
-torch.manual_seed(32)
-
-score_sde_sv = DiffusionPipeline.from_pretrained("fusing/cifar10-ddpmpp-deep-vp")
-
-# Note this might take up to 3 minutes on a GPU
-image = score_sde_sv(num_inference_steps=1000)
-
-image = image.permute(0, 2, 3, 1).cpu().numpy()
-image = np.clip(image * 255, 0, 255).astype(np.uint8)
-image_pil = PIL.Image.fromarray(image[0])
-
-# save image
-image_pil.save("test.png")
-```
-
-
-#### **Text to Image generation with Latent Diffusion**
-
-_Note: To use latent diffusion install transformers from [this branch](https://github.com/patil-suraj/transformers/tree/ldm-bert)._
-
-```python
-from diffusers import DiffusionPipeline
-
-ldm = DiffusionPipeline.from_pretrained("fusing/latent-diffusion-text2im-large")
-
-generator = torch.manual_seed(42)
-
-prompt = "A painting of a squirrel eating a burger"
-image = ldm([prompt], generator=generator, eta=0.3, guidance_scale=6.0, num_inference_steps=50)
-
-image_processed = image.cpu().permute(0, 2, 3, 1)
-image_processed = image_processed  * 255.
-image_processed = image_processed.numpy().astype(np.uint8)
-image_pil = PIL.Image.fromarray(image_processed[0])
-
-# save image
-image_pil.save("test.png")
-```
-
-#### **Text to speech with GradTTS and BDDMPipeline**
-
-```python
-import torch
-from diffusers import BDDMPipeline, GradTTSPipeline
-
-torch_device = "cuda"
-
-# load grad tts and bddm pipelines
-grad_tts = GradTTSPipeline.from_pretrained("fusing/grad-tts-libri-tts")
-bddm = BDDMPipeline.from_pretrained("fusing/diffwave-vocoder-ljspeech")
-
-text = "Hello world, I missed you so much."
-
-# generate mel spectograms using text
-mel_spec = grad_tts(text, torch_device=torch_device)
-
-#  generate the speech by passing mel spectograms to BDDMPipeline pipeline
-generator = torch.manual_seed(42)
-audio = bddm(mel_spec, generator, torch_device=torch_device)
-
-# save generated audio
-from scipy.io.wavfile import write as wavwrite
-sampling_rate = 22050
-wavwrite("generated_audio.wav", sampling_rate, audio.squeeze().cpu().numpy())
-```
-
-## TODO
-
-- [ ] Create common API for models
-- [ ] Add tests for models
-- [ ] Adapt schedulers for training
-- [ ] Write google colab for training
-- [ ] Write docs / Think about how to structure docs
-- [ ] Add tests to circle ci
-- [ ] Add [Diffusion LM models](https://arxiv.org/pdf/2205.14217.pdf)
-- [ ] Add more vision models
-- [ ] Add more speech models
-- [ ] Add RL model
-- [ ] Add FID and KID metrics
+We also want to thank @heejkoo for the very helpful overview of papers, code and resources on diffusion models, available [here](https://github.com/heejkoo/Awesome-Diffusion-Models) as well as @crowsonkb and @rromb for useful discussions and insights.

@@ -16,18 +16,19 @@
 
 import torch
 
-import tqdm
+from tqdm.auto import tqdm
 
 from ...pipeline_utils import DiffusionPipeline
 
 
 class PNDMPipeline(DiffusionPipeline):
-    def __init__(self, unet, noise_scheduler):
+    def __init__(self, unet, scheduler):
         super().__init__()
-        noise_scheduler = noise_scheduler.set_format("pt")
-        self.register_modules(unet=unet, noise_scheduler=noise_scheduler)
+        scheduler = scheduler.set_format("pt")
+        self.register_modules(unet=unet, scheduler=scheduler)
 
-    def __call__(self, batch_size=1, generator=None, torch_device=None, num_inference_steps=50):
+    @torch.no_grad()
+    def __call__(self, batch_size=1, generator=None, torch_device=None, num_inference_steps=50, output_type="pil"):
         # For more information on the sampling method you can take a look at Algorithm 2 of
         # the official paper: https://arxiv.org/pdf/2202.09778.pdf
         if torch_device is None:
@@ -37,23 +38,20 @@ class PNDMPipeline(DiffusionPipeline):
 
         # Sample gaussian noise to begin loop
         image = torch.randn(
-            (batch_size, self.unet.in_channels, self.unet.resolution, self.unet.resolution),
+            (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
             generator=generator,
         )
         image = image.to(torch_device)
 
-        prk_time_steps = self.noise_scheduler.get_prk_time_steps(num_inference_steps)
-        for t in tqdm.tqdm(range(len(prk_time_steps))):
-            t_orig = prk_time_steps[t]
-            residual = self.unet(image, t_orig)
+        self.scheduler.set_timesteps(num_inference_steps)
+        for t in tqdm(self.scheduler.timesteps):
+            model_output = self.unet(image, t)["sample"]
 
-            image = self.noise_scheduler.step_prk(residual, image, t, num_inference_steps)
+            image = self.scheduler.step(model_output, t, image)["prev_sample"]
 
-        timesteps = self.noise_scheduler.get_time_steps(num_inference_steps)
-        for t in tqdm.tqdm(range(len(timesteps))):
-            t_orig = timesteps[t]
-            residual = self.unet(image, t_orig)
+        image = (image / 2 + 0.5).clamp(0, 1)
+        image = image.cpu().permute(0, 2, 3, 1).numpy()
+        if output_type == "pil":
+            image = self.numpy_to_pil(image)
 
-            image = self.noise_scheduler.step_plms(residual, image, t, num_inference_steps)
-
-        return image
+        return {"sample": image}

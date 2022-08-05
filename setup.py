@@ -81,6 +81,7 @@ _deps = [
     "filelock",
     "flake8>=3.8.3",
     "huggingface-hub",
+    "importlib_metadata",
     "isort>=5.5.4",
     "numpy",
     "pytest",
@@ -161,12 +162,14 @@ extras = {}
 extras = {}
 extras["quality"] = ["black ~= 22.0", "isort >= 5.5.4", "flake8 >= 3.8.3"]
 extras["docs"] = []
+extras["training"] = ["tensorboard", "modelcards"]
 extras["test"] = [
     "pytest",
 ]
-extras["dev"] = extras["quality"] + extras["test"]
+extras["dev"] = extras["quality"] + extras["test"] + extras["training"]
 
 install_requires = [
+    deps["importlib_metadata"],
     deps["filelock"],
     deps["huggingface-hub"],
     deps["numpy"],
@@ -174,13 +177,11 @@ install_requires = [
     deps["requests"],
     deps["torch"],
     deps["Pillow"],
-    deps["tensorboard"],
-    deps["modelcards"],
 ]
 
 setup(
     name="diffusers",
-    version="0.0.4",
+    version="0.1.3",
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
@@ -191,6 +192,7 @@ setup(
     url="https://github.com/huggingface/diffusers",
     package_dir={"": "src"},
     packages=find_packages("src"),
+    include_package_data=True,
     python_requires=">=3.6.0",
     install_requires=install_requires,
     extras_require=extras,

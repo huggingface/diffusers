@@ -16,18 +16,19 @@
 
 import torch
 
-import tqdm
+from tqdm.auto import tqdm
 
 from ...pipeline_utils import DiffusionPipeline
 
 
 class DDPMPipeline(DiffusionPipeline):
-    def __init__(self, unet, noise_scheduler):
+    def __init__(self, unet, scheduler):
         super().__init__()
-        noise_scheduler = noise_scheduler.set_format("pt")
-        self.register_modules(unet=unet, noise_scheduler=noise_scheduler)
+        scheduler = scheduler.set_format("pt")
+        self.register_modules(unet=unet, scheduler=scheduler)
 
-    def __call__(self, batch_size=1, generator=None, torch_device=None):
+    @torch.no_grad()
+    def __call__(self, batch_size=1, generator=None, torch_device=None, output_type="pil"):
         if torch_device is None:
             torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -35,27 +36,24 @@ class DDPMPipeline(DiffusionPipeline):
 
         # Sample gaussian noise to begin loop
         image = torch.randn(
-            (batch_size, self.unet.in_channels, self.unet.resolution, self.unet.resolution),
+            (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
             generator=generator,
         )
         image = image.to(torch_device)
 
-        num_prediction_steps = len(self.noise_scheduler)
-        for t in tqdm.tqdm(reversed(range(num_prediction_steps)), total=num_prediction_steps):
-            # 1. predict noise residual
-            with torch.no_grad():
-                residual = self.unet(image, t)
+        # set step values
+        self.scheduler.set_timesteps(1000)
 
-            # 2. predict previous mean of image x_t-1
-            pred_prev_image = self.noise_scheduler.step(residual, image, t)
+        for t in tqdm(self.scheduler.timesteps):
+            # 1. predict noise model_output
+            model_output = self.unet(image, t)["sample"]
 
-            # 3. optionally sample variance
-            variance = 0
-            if t > 0:
-                noise = torch.randn(image.shape, generator=generator).to(image.device)
-                variance = self.noise_scheduler.get_variance(t).sqrt() * noise
+            # 2. compute previous image: x_t -> t_t-1
+            image = self.scheduler.step(model_output, t, image)["prev_sample"]
 
-            # 4. set current image to prev_image: x_t -> x_t-1
-            image = pred_prev_image + variance
+        image = (image / 2 + 0.5).clamp(0, 1)
+        image = image.cpu().permute(0, 2, 3, 1).numpy()
+        if output_type == "pil":
+            image = self.numpy_to_pil(image)
 
-        return image
+        return {"sample": image}

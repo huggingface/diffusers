@@ -1,6 +1,42 @@
 import copy
+import os
+import random
 
+import numpy as np
 import torch
+
+
+def enable_full_determinism(seed: int):
+    """
+    Helper function for reproducible behavior during distributed training. See
+    - https://pytorch.org/docs/stable/notes/randomness.html for pytorch
+    """
+    # set seed first
+    set_seed(seed)
+
+    #  Enable PyTorch deterministic mode. This potentially requires either the environment
+    #  variable 'CUDA_LAUNCH_BLOCKING' or 'CUBLAS_WORKSPACE_CONFIG' to be set,
+    # depending on the CUDA version, so we set them both here
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
+    torch.use_deterministic_algorithms(True)
+
+    # Enable CUDNN deterministic mode
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
+def set_seed(seed: int):
+    """
+    Args:
+    Helper function for reproducible behavior to set the seed in `random`, `numpy`, `torch`.
+        seed (`int`): The seed to set.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    # ^^ safe to call this function even if cuda is not available
 
 
 class EMAModel:
@@ -30,7 +66,7 @@ class EMAModel:
             min_value (float): The minimum EMA decay rate. Default: 0.
         """
 
-        self.averaged_model = copy.deepcopy(model)
+        self.averaged_model = copy.deepcopy(model).eval()
         self.averaged_model.requires_grad_(False)
 
         self.update_after_step = update_after_step
@@ -43,6 +79,7 @@ class EMAModel:
             self.averaged_model = self.averaged_model.to(device=device)
 
         self.decay = 0.0
+        self.optimization_step = 0
 
     def get_decay(self, optimization_step):
         """
@@ -57,11 +94,11 @@ class EMAModel:
         return max(self.min_value, min(value, self.max_value))
 
     @torch.no_grad()
-    def step(self, new_model, optimization_step):
+    def step(self, new_model):
         ema_state_dict = {}
         ema_params = self.averaged_model.state_dict()
 
-        self.decay = self.get_decay(optimization_step)
+        self.decay = self.get_decay(self.optimization_step)
 
         for key, param in new_model.named_parameters():
             if isinstance(param, dict):
@@ -85,3 +122,4 @@ class EMAModel:
             ema_state_dict[key] = param
 
         self.averaged_model.load_state_dict(ema_state_dict, strict=False)
+        self.optimization_step += 1

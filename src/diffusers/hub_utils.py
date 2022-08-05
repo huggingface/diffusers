@@ -21,9 +21,12 @@ from typing import Optional
 
 from diffusers import DiffusionPipeline
 from huggingface_hub import HfFolder, Repository, whoami
-from modelcards import CardData, ModelCard
 
-from .utils import logging
+from .utils import is_modelcards_available, logging
+
+
+if is_modelcards_available():
+    from modelcards import CardData, ModelCard
 
 
 logger = logging.get_logger(__name__)
@@ -50,15 +53,16 @@ def init_git_repo(args, at_init: bool = False):
             Whether this function is called before any training or not. If `self.args.overwrite_output_dir` is `True`
             and `at_init` is `True`, the path to the repo (which is `self.args.output_dir`) might be wiped out.
     """
-    if args.local_rank not in [-1, 0]:
+    if hasattr(args, "local_rank") and args.local_rank not in [-1, 0]:
         return
-    use_auth_token = True if args.hub_token is None else args.hub_token
-    if args.hub_model_id is None:
+    hub_token = args.hub_token if hasattr(args, "hub_token") else None
+    use_auth_token = True if hub_token is None else hub_token
+    if not hasattr(args, "hub_model_id") or args.hub_model_id is None:
         repo_name = Path(args.output_dir).absolute().name
     else:
         repo_name = args.hub_model_id
     if "/" not in repo_name:
-        repo_name = get_full_repo_name(repo_name, token=args.hub_token)
+        repo_name = get_full_repo_name(repo_name, token=hub_token)
 
     try:
         repo = Repository(
@@ -111,7 +115,7 @@ def push_to_hub(
         commit and an object to track the progress of the commit if `blocking=True`
     """
 
-    if args.hub_model_id is None:
+    if not hasattr(args, "hub_model_id") or args.hub_model_id is None:
         model_name = Path(args.output_dir).name
     else:
         model_name = args.hub_model_id.split("/")[-1]
@@ -122,7 +126,7 @@ def push_to_hub(
     pipeline.save_pretrained(output_dir)
 
     # Only push from one node.
-    if args.local_rank not in [-1, 0]:
+    if hasattr(args, "local_rank") and args.local_rank not in [-1, 0]:
         return
 
     # Cancel any async push in progress if blocking=True. The commits will all be pushed together.
@@ -146,10 +150,17 @@ def push_to_hub(
 
 
 def create_model_card(args, model_name):
-    if args.local_rank not in [-1, 0]:
+    if not is_modelcards_available:
+        raise ValueError(
+            "Please make sure to have `modelcards` installed when using the `create_model_card` function. You can"
+            " install the package with `pip install modelcards`."
+        )
+
+    if hasattr(args, "local_rank") and args.local_rank not in [-1, 0]:
         return
 
-    repo_name = get_full_repo_name(model_name, token=args.hub_token)
+    hub_token = args.hub_token if hasattr(args, "hub_token") else None
+    repo_name = get_full_repo_name(model_name, token=hub_token)
 
     model_card = ModelCard.from_template(
         card_data=CardData(  # Card metadata object that will be converted to YAML block
@@ -163,20 +174,22 @@ def create_model_card(args, model_name):
         template_path=MODEL_CARD_TEMPLATE_PATH,
         model_name=model_name,
         repo_name=repo_name,
-        dataset_name=args.dataset,
+        dataset_name=args.dataset if hasattr(args, "dataset") else None,
         learning_rate=args.learning_rate,
         train_batch_size=args.train_batch_size,
         eval_batch_size=args.eval_batch_size,
-        gradient_accumulation_steps=args.gradient_accumulation_steps,
-        adam_beta1=args.adam_beta1,
-        adam_beta2=args.adam_beta2,
-        adam_weight_decay=args.adam_weight_decay,
-        adam_epsilon=args.adam_epsilon,
-        lr_scheduler=args.lr_scheduler,
-        lr_warmup_steps=args.lr_warmup_steps,
-        ema_inv_gamma=args.ema_inv_gamma,
-        ema_power=args.ema_power,
-        ema_max_decay=args.ema_max_decay,
+        gradient_accumulation_steps=args.gradient_accumulation_steps
+        if hasattr(args, "gradient_accumulation_steps")
+        else None,
+        adam_beta1=args.adam_beta1 if hasattr(args, "adam_beta1") else None,
+        adam_beta2=args.adam_beta2 if hasattr(args, "adam_beta2") else None,
+        adam_weight_decay=args.adam_weight_decay if hasattr(args, "adam_weight_decay") else None,
+        adam_epsilon=args.adam_epsilon if hasattr(args, "adam_epsilon") else None,
+        lr_scheduler=args.lr_scheduler if hasattr(args, "lr_scheduler") else None,
+        lr_warmup_steps=args.lr_warmup_steps if hasattr(args, "lr_warmup_steps") else None,
+        ema_inv_gamma=args.ema_inv_gamma if hasattr(args, "ema_inv_gamma") else None,
+        ema_power=args.ema_power if hasattr(args, "ema_power") else None,
+        ema_max_decay=args.ema_max_decay if hasattr(args, "ema_max_decay") else None,
         mixed_precision=args.mixed_precision,
     )
 

@@ -12,15 +12,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 import tempfile
 import unittest
 
 import numpy as np
 import torch
 
-from diffusers import DDIMScheduler, DDPMScheduler, PNDMScheduler
+from diffusers import DDIMScheduler, DDPMScheduler, PNDMScheduler, ScoreSdeVeScheduler
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -37,7 +35,7 @@ class SchedulerCommonTest(unittest.TestCase):
         height = 8
         width = 8
 
-        sample = np.random.rand(batch_size, num_channels, height, width)
+        sample = torch.rand((batch_size, num_channels, height, width))
 
         return sample
 
@@ -49,10 +47,10 @@ class SchedulerCommonTest(unittest.TestCase):
         width = 8
 
         num_elems = batch_size * num_channels * height * width
-        sample = np.arange(num_elems)
+        sample = torch.arange(num_elems)
         sample = sample.reshape(num_channels, height, width, batch_size)
         sample = sample / num_elems
-        sample = sample.transpose(3, 0, 1, 2)
+        sample = sample.permute(3, 0, 1, 2)
 
         return sample
 
@@ -68,8 +66,9 @@ class SchedulerCommonTest(unittest.TestCase):
     def check_over_configs(self, time_step=0, **config):
         kwargs = dict(self.forward_default_kwargs)
 
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
+
         for scheduler_class in self.scheduler_classes:
-            scheduler_class = self.scheduler_classes[0]
             sample = self.dummy_sample
             residual = 0.1 * sample
 
@@ -80,20 +79,27 @@ class SchedulerCommonTest(unittest.TestCase):
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_config(tmpdirname)
 
-            output = scheduler.step(residual, sample, time_step, **kwargs)
-            new_output = new_scheduler.step(residual, sample, time_step, **kwargs)
+            if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
+                scheduler.set_timesteps(num_inference_steps)
+                new_scheduler.set_timesteps(num_inference_steps)
+            elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
+                kwargs["num_inference_steps"] = num_inference_steps
 
-            assert np.sum(np.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
+            output = scheduler.step(residual, time_step, sample, **kwargs)["prev_sample"]
+            new_output = new_scheduler.step(residual, time_step, sample, **kwargs)["prev_sample"]
+
+            assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
     def check_over_forward(self, time_step=0, **forward_kwargs):
         kwargs = dict(self.forward_default_kwargs)
         kwargs.update(forward_kwargs)
 
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
+
         for scheduler_class in self.scheduler_classes:
             sample = self.dummy_sample
             residual = 0.1 * sample
 
-            scheduler_class = self.scheduler_classes[0]
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
@@ -101,14 +107,24 @@ class SchedulerCommonTest(unittest.TestCase):
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_config(tmpdirname)
 
-            output = scheduler.step(residual, sample, time_step, **kwargs)
-            new_output = new_scheduler.step(residual, sample, time_step, **kwargs)
+            if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
+                scheduler.set_timesteps(num_inference_steps)
+                new_scheduler.set_timesteps(num_inference_steps)
+            elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
+                kwargs["num_inference_steps"] = num_inference_steps
 
-            assert np.sum(np.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
+            torch.manual_seed(0)
+            output = scheduler.step(residual, time_step, sample, **kwargs)["prev_sample"]
+            torch.manual_seed(0)
+            new_output = new_scheduler.step(residual, time_step, sample, **kwargs)["prev_sample"]
+
+            assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
     def test_from_pretrained_save_pretrained(self):
         kwargs = dict(self.forward_default_kwargs)
 
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
+
         for scheduler_class in self.scheduler_classes:
             sample = self.dummy_sample
             residual = 0.1 * sample
@@ -120,13 +136,23 @@ class SchedulerCommonTest(unittest.TestCase):
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_config(tmpdirname)
 
-            output = scheduler.step(residual, sample, 1, **kwargs)
-            new_output = new_scheduler.step(residual, sample, 1, **kwargs)
+            if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
+                scheduler.set_timesteps(num_inference_steps)
+                new_scheduler.set_timesteps(num_inference_steps)
+            elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
+                kwargs["num_inference_steps"] = num_inference_steps
 
-            assert np.sum(np.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
+            torch.manual_seed(0)
+            output = scheduler.step(residual, 1, sample, **kwargs)["prev_sample"]
+            torch.manual_seed(0)
+            new_output = new_scheduler.step(residual, 1, sample, **kwargs)["prev_sample"]
+
+            assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
     def test_step_shape(self):
         kwargs = dict(self.forward_default_kwargs)
+
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
 
         for scheduler_class in self.scheduler_classes:
             scheduler_config = self.get_scheduler_config()
@@ -135,8 +161,13 @@ class SchedulerCommonTest(unittest.TestCase):
             sample = self.dummy_sample
             residual = 0.1 * sample
 
-            output_0 = scheduler.step(residual, sample, 0, **kwargs)
-            output_1 = scheduler.step(residual, sample, 1, **kwargs)
+            if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
+                scheduler.set_timesteps(num_inference_steps)
+            elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
+                kwargs["num_inference_steps"] = num_inference_steps
+
+            output_0 = scheduler.step(residual, 0, sample, **kwargs)["prev_sample"]
+            output_1 = scheduler.step(residual, 1, sample, **kwargs)["prev_sample"]
 
             self.assertEqual(output_0.shape, sample.shape)
             self.assertEqual(output_0.shape, output_1.shape)
@@ -144,20 +175,28 @@ class SchedulerCommonTest(unittest.TestCase):
     def test_pytorch_equal_numpy(self):
         kwargs = dict(self.forward_default_kwargs)
 
-        for scheduler_class in self.scheduler_classes:
-            sample = self.dummy_sample
-            residual = 0.1 * sample
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
 
-            sample_pt = torch.tensor(sample)
+        for scheduler_class in self.scheduler_classes:
+            sample_pt = self.dummy_sample
             residual_pt = 0.1 * sample_pt
 
+            sample = sample_pt.numpy()
+            residual = 0.1 * sample
+
             scheduler_config = self.get_scheduler_config()
-            scheduler = scheduler_class(**scheduler_config)
+            scheduler = scheduler_class(tensor_format="np", **scheduler_config)
 
             scheduler_pt = scheduler_class(tensor_format="pt", **scheduler_config)
 
-            output = scheduler.step(residual, sample, 1, **kwargs)
-            output_pt = scheduler_pt.step(residual_pt, sample_pt, 1, **kwargs)
+            if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
+                scheduler.set_timesteps(num_inference_steps)
+                scheduler_pt.set_timesteps(num_inference_steps)
+            elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
+                kwargs["num_inference_steps"] = num_inference_steps
+
+            output = scheduler.step(residual, 1, sample, **kwargs)["prev_sample"]
+            output_pt = scheduler_pt.step(residual_pt, 1, sample_pt, **kwargs)["prev_sample"]
 
             assert np.sum(np.abs(output - output_pt.numpy())) < 1e-4, "Scheduler outputs are not identical"
 
@@ -167,12 +206,13 @@ class DDPMSchedulerTest(SchedulerCommonTest):
 
     def get_scheduler_config(self, **kwargs):
         config = {
-            "timesteps": 1000,
+            "num_train_timesteps": 1000,
             "beta_start": 0.0001,
             "beta_end": 0.02,
             "beta_schedule": "linear",
             "variance_type": "fixed_small",
             "clip_sample": True,
+            "tensor_format": "pt",
         }
 
         config.update(**kwargs)
@@ -180,7 +220,7 @@ class DDPMSchedulerTest(SchedulerCommonTest):
 
     def test_timesteps(self):
         for timesteps in [1, 5, 100, 1000]:
-            self.check_over_configs(timesteps=timesteps)
+            self.check_over_configs(num_train_timesteps=timesteps)
 
     def test_betas(self):
         for beta_start, beta_end in zip([0.0001, 0.001, 0.01, 0.1], [0.002, 0.02, 0.2, 2]):
@@ -207,9 +247,13 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         scheduler_config = self.get_scheduler_config()
         scheduler = scheduler_class(**scheduler_config)
 
-        assert np.sum(np.abs(scheduler.get_variance(0) - 0.0)) < 1e-5
-        assert np.sum(np.abs(scheduler.get_variance(487) - 0.00979)) < 1e-5
-        assert np.sum(np.abs(scheduler.get_variance(999) - 0.02)) < 1e-5
+        assert torch.sum(torch.abs(scheduler._get_variance(0) - 0.0)) < 1e-5
+        assert torch.sum(torch.abs(scheduler._get_variance(487) - 0.00979)) < 1e-5
+        assert torch.sum(torch.abs(scheduler._get_variance(999) - 0.02)) < 1e-5
+
+    # TODO Make DDPM Numpy compatible
+    def test_pytorch_equal_numpy(self):
+        pass
 
     def test_full_loop_no_noise(self):
         scheduler_class = self.scheduler_classes[0]
@@ -226,28 +270,29 @@ class DDPMSchedulerTest(SchedulerCommonTest):
             residual = model(sample, t)
 
             # 2. predict previous mean of sample x_t-1
-            pred_prev_sample = scheduler.step(residual, sample, t)
+            pred_prev_sample = scheduler.step(residual, t, sample)["prev_sample"]
 
-            if t > 0:
-                noise = self.dummy_sample_deter
-                variance = scheduler.get_variance(t) ** (0.5) * noise
+            # if t > 0:
+            #     noise = self.dummy_sample_deter
+            #     variance = scheduler.get_variance(t) ** (0.5) * noise
+            #
+            # sample = pred_prev_sample + variance
+            sample = pred_prev_sample
 
-            sample = pred_prev_sample + variance
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
 
-        result_sum = np.sum(np.abs(sample))
-        result_mean = np.mean(np.abs(sample))
-
-        assert abs(result_sum.item() - 732.9947) < 1e-2
-        assert abs(result_mean.item() - 0.9544) < 1e-3
+        assert abs(result_sum.item() - 259.0883) < 1e-2
+        assert abs(result_mean.item() - 0.3374) < 1e-3
 
 
 class DDIMSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (DDIMScheduler,)
-    forward_default_kwargs = (("num_inference_steps", 50), ("eta", 0.0))
+    forward_default_kwargs = (("eta", 0.0), ("num_inference_steps", 50))
 
     def get_scheduler_config(self, **kwargs):
         config = {
-            "timesteps": 1000,
+            "num_train_timesteps": 1000,
             "beta_start": 0.0001,
             "beta_end": 0.02,
             "beta_schedule": "linear",
@@ -258,8 +303,8 @@ class DDIMSchedulerTest(SchedulerCommonTest):
         return config
 
     def test_timesteps(self):
-        for timesteps in [1, 5, 100, 1000]:
-            self.check_over_configs(timesteps=timesteps)
+        for timesteps in [100, 500, 1000]:
+            self.check_over_configs(num_train_timesteps=timesteps)
 
     def test_betas(self):
         for beta_start, beta_end in zip([0.0001, 0.001, 0.01, 0.1], [0.002, 0.02, 0.2, 2]):
@@ -279,7 +324,7 @@ class DDIMSchedulerTest(SchedulerCommonTest):
 
     def test_inference_steps(self):
         for t, num_inference_steps in zip([1, 10, 50], [10, 50, 500]):
-            self.check_over_forward(time_step=t, num_inference_steps=num_inference_steps)
+            self.check_over_forward(num_inference_steps=num_inference_steps)
 
     def test_eta(self):
         for t, eta in zip([1, 10, 49], [0.0, 0.5, 1.0]):
@@ -290,43 +335,34 @@ class DDIMSchedulerTest(SchedulerCommonTest):
         scheduler_config = self.get_scheduler_config()
         scheduler = scheduler_class(**scheduler_config)
 
-        assert np.sum(np.abs(scheduler.get_variance(0, 50) - 0.0)) < 1e-5
-        assert np.sum(np.abs(scheduler.get_variance(21, 50) - 0.14771)) < 1e-5
-        assert np.sum(np.abs(scheduler.get_variance(49, 50) - 0.32460)) < 1e-5
-        assert np.sum(np.abs(scheduler.get_variance(0, 1000) - 0.0)) < 1e-5
-        assert np.sum(np.abs(scheduler.get_variance(487, 1000) - 0.00979)) < 1e-5
-        assert np.sum(np.abs(scheduler.get_variance(999, 1000) - 0.02)) < 1e-5
+        assert torch.sum(torch.abs(scheduler._get_variance(0, 0) - 0.0)) < 1e-5
+        assert torch.sum(torch.abs(scheduler._get_variance(420, 400) - 0.14771)) < 1e-5
+        assert torch.sum(torch.abs(scheduler._get_variance(980, 960) - 0.32460)) < 1e-5
+        assert torch.sum(torch.abs(scheduler._get_variance(0, 0) - 0.0)) < 1e-5
+        assert torch.sum(torch.abs(scheduler._get_variance(487, 486) - 0.00979)) < 1e-5
+        assert torch.sum(torch.abs(scheduler._get_variance(999, 998) - 0.02)) < 1e-5
 
     def test_full_loop_no_noise(self):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
         scheduler = scheduler_class(**scheduler_config)
 
-        num_inference_steps, eta = 10, 0.1
-        num_trained_timesteps = len(scheduler)
-
-        inference_step_times = range(0, num_trained_timesteps, num_trained_timesteps // num_inference_steps)
+        num_inference_steps, eta = 10, 0.0
 
         model = self.dummy_model()
         sample = self.dummy_sample_deter
 
-        for t in reversed(range(num_inference_steps)):
-            residual = model(sample, inference_step_times[t])
+        scheduler.set_timesteps(num_inference_steps)
+        for t in scheduler.timesteps:
+            residual = model(sample, t)
 
-            pred_prev_sample = scheduler.step(residual, sample, t, num_inference_steps, eta)
+            sample = scheduler.step(residual, t, sample, eta)["prev_sample"]
 
-            variance = 0
-            if eta > 0:
-                noise = self.dummy_sample_deter
-                variance = scheduler.get_variance(t, num_inference_steps) ** (0.5) * eta * noise
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
 
-            sample = pred_prev_sample + variance
-
-        result_sum = np.sum(np.abs(sample))
-        result_mean = np.mean(np.abs(sample))
-
-        assert abs(result_sum.item() - 270.6214) < 1e-2
-        assert abs(result_mean.item() - 0.3524) < 1e-3
+        assert abs(result_sum.item() - 172.0067) < 1e-2
+        assert abs(result_mean.item() - 0.223967) < 1e-3
 
 
 class PNDMSchedulerTest(SchedulerCommonTest):
@@ -335,7 +371,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
     def get_scheduler_config(self, **kwargs):
         config = {
-            "timesteps": 1000,
+            "num_train_timesteps": 1000,
             "beta_start": 0.0001,
             "beta_end": 0.02,
             "beta_schedule": "linear",
@@ -344,80 +380,150 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         config.update(**kwargs)
         return config
 
-    def check_over_configs_pmls(self, time_step=0, **config):
+    def check_over_configs(self, time_step=0, **config):
         kwargs = dict(self.forward_default_kwargs)
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
         sample = self.dummy_sample
         residual = 0.1 * sample
         dummy_past_residuals = [residual + 0.2, residual + 0.15, residual + 0.1, residual + 0.05]
 
         for scheduler_class in self.scheduler_classes:
-            scheduler_class = self.scheduler_classes[0]
             scheduler_config = self.get_scheduler_config(**config)
             scheduler = scheduler_class(**scheduler_config)
+            scheduler.set_timesteps(num_inference_steps)
             # copy over dummy past residuals
             scheduler.ets = dummy_past_residuals[:]
-            scheduler.set_plms_mode()
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler.set_timesteps(num_inference_steps)
                 # copy over dummy past residuals
                 new_scheduler.ets = dummy_past_residuals[:]
-                new_scheduler.set_plms_mode()
 
-            output = scheduler.step(residual, sample, time_step, **kwargs)
-            new_output = new_scheduler.step(residual, sample, time_step, **kwargs)
+            output = scheduler.step_prk(residual, time_step, sample, **kwargs)["prev_sample"]
+            new_output = new_scheduler.step_prk(residual, time_step, sample, **kwargs)["prev_sample"]
 
-            assert np.sum(np.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
+            assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-    def check_over_forward_pmls(self, time_step=0, **forward_kwargs):
+            output = scheduler.step_plms(residual, time_step, sample, **kwargs)["prev_sample"]
+            new_output = new_scheduler.step_plms(residual, time_step, sample, **kwargs)["prev_sample"]
+
+            assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
+
+    def test_from_pretrained_save_pretrained(self):
+        pass
+
+    def check_over_forward(self, time_step=0, **forward_kwargs):
         kwargs = dict(self.forward_default_kwargs)
-        kwargs.update(forward_kwargs)
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
         sample = self.dummy_sample
         residual = 0.1 * sample
         dummy_past_residuals = [residual + 0.2, residual + 0.15, residual + 0.1, residual + 0.05]
 
         for scheduler_class in self.scheduler_classes:
-            scheduler_class = self.scheduler_classes[0]
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
+            scheduler.set_timesteps(num_inference_steps)
+
             # copy over dummy past residuals
             scheduler.ets = dummy_past_residuals[:]
-            scheduler.set_plms_mode()
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_config(tmpdirname)
                 # copy over dummy past residuals
                 new_scheduler.ets = dummy_past_residuals[:]
-                new_scheduler.set_plms_mode()
+                new_scheduler.set_timesteps(num_inference_steps)
 
-            output = scheduler.step(residual, sample, time_step, **kwargs)
-            new_output = new_scheduler.step(residual, sample, time_step, **kwargs)
+            output = scheduler.step_prk(residual, time_step, sample, **kwargs)["prev_sample"]
+            new_output = new_scheduler.step_prk(residual, time_step, sample, **kwargs)["prev_sample"]
 
-            assert np.sum(np.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
+            assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
+
+            output = scheduler.step_plms(residual, time_step, sample, **kwargs)["prev_sample"]
+            new_output = new_scheduler.step_plms(residual, time_step, sample, **kwargs)["prev_sample"]
+
+            assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
+
+    def test_pytorch_equal_numpy(self):
+        kwargs = dict(self.forward_default_kwargs)
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
+
+        for scheduler_class in self.scheduler_classes:
+            sample_pt = self.dummy_sample
+            residual_pt = 0.1 * sample_pt
+            dummy_past_residuals_pt = [residual_pt + 0.2, residual_pt + 0.15, residual_pt + 0.1, residual_pt + 0.05]
+
+            sample = sample_pt.numpy()
+            residual = 0.1 * sample
+            dummy_past_residuals = [residual + 0.2, residual + 0.15, residual + 0.1, residual + 0.05]
+
+            scheduler_config = self.get_scheduler_config()
+            scheduler = scheduler_class(tensor_format="np", **scheduler_config)
+            # copy over dummy past residuals
+            scheduler.ets = dummy_past_residuals[:]
+
+            scheduler_pt = scheduler_class(tensor_format="pt", **scheduler_config)
+            # copy over dummy past residuals
+            scheduler_pt.ets = dummy_past_residuals_pt[:]
+
+            if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
+                scheduler.set_timesteps(num_inference_steps)
+                scheduler_pt.set_timesteps(num_inference_steps)
+            elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
+                kwargs["num_inference_steps"] = num_inference_steps
+
+            output = scheduler.step_prk(residual, 1, sample, **kwargs)["prev_sample"]
+            output_pt = scheduler_pt.step_prk(residual_pt, 1, sample_pt, **kwargs)["prev_sample"]
+            assert np.sum(np.abs(output - output_pt.numpy())) < 1e-4, "Scheduler outputs are not identical"
+
+            output = scheduler.step_plms(residual, 1, sample, **kwargs)["prev_sample"]
+            output_pt = scheduler_pt.step_plms(residual_pt, 1, sample_pt, **kwargs)["prev_sample"]
+
+            assert np.sum(np.abs(output - output_pt.numpy())) < 1e-4, "Scheduler outputs are not identical"
+
+    def test_step_shape(self):
+        kwargs = dict(self.forward_default_kwargs)
+
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
+
+        for scheduler_class in self.scheduler_classes:
+            scheduler_config = self.get_scheduler_config()
+            scheduler = scheduler_class(**scheduler_config)
+
+            sample = self.dummy_sample
+            residual = 0.1 * sample
+            # copy over dummy past residuals
+            dummy_past_residuals = [residual + 0.2, residual + 0.15, residual + 0.1, residual + 0.05]
+            scheduler.ets = dummy_past_residuals[:]
+
+            if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
+                scheduler.set_timesteps(num_inference_steps)
+            elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
+                kwargs["num_inference_steps"] = num_inference_steps
+
+            output_0 = scheduler.step_prk(residual, 0, sample, **kwargs)["prev_sample"]
+            output_1 = scheduler.step_prk(residual, 1, sample, **kwargs)["prev_sample"]
+
+            self.assertEqual(output_0.shape, sample.shape)
+            self.assertEqual(output_0.shape, output_1.shape)
+
+            output_0 = scheduler.step_plms(residual, 0, sample, **kwargs)["prev_sample"]
+            output_1 = scheduler.step_plms(residual, 1, sample, **kwargs)["prev_sample"]
+
+            self.assertEqual(output_0.shape, sample.shape)
+            self.assertEqual(output_0.shape, output_1.shape)
 
     def test_timesteps(self):
         for timesteps in [100, 1000]:
-            self.check_over_configs(timesteps=timesteps)
-
-    def test_timesteps_pmls(self):
-        for timesteps in [100, 1000]:
-            self.check_over_configs_pmls(timesteps=timesteps)
+            self.check_over_configs(num_train_timesteps=timesteps)
 
     def test_betas(self):
         for beta_start, beta_end in zip([0.0001, 0.001, 0.01], [0.002, 0.02, 0.2]):
             self.check_over_configs(beta_start=beta_start, beta_end=beta_end)
 
-    def test_betas_pmls(self):
-        for beta_start, beta_end in zip([0.0001, 0.001, 0.01], [0.002, 0.02, 0.2]):
-            self.check_over_configs_pmls(beta_start=beta_start, beta_end=beta_end)
-
     def test_schedules(self):
-        for schedule in ["linear", "squaredcos_cap_v2"]:
-            self.check_over_configs(beta_schedule=schedule)
-
-    def test_schedules_pmls(self):
         for schedule in ["linear", "squaredcos_cap_v2"]:
             self.check_over_configs(beta_schedule=schedule)
 
@@ -425,27 +531,17 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         for t in [1, 5, 10]:
             self.check_over_forward(time_step=t)
 
-    def test_time_indices_pmls(self):
-        for t in [1, 5, 10]:
-            self.check_over_forward_pmls(time_step=t)
-
     def test_inference_steps(self):
         for t, num_inference_steps in zip([1, 5, 10], [10, 50, 100]):
             self.check_over_forward(time_step=t, num_inference_steps=num_inference_steps)
 
-    def test_inference_steps_pmls(self):
-        for t, num_inference_steps in zip([1, 5, 10], [10, 50, 100]):
-            self.check_over_forward_pmls(time_step=t, num_inference_steps=num_inference_steps)
-
-    def test_inference_pmls_no_past_residuals(self):
+    def test_inference_plms_no_past_residuals(self):
         with self.assertRaises(ValueError):
             scheduler_class = self.scheduler_classes[0]
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
-            scheduler.set_plms_mode()
-
-            scheduler.step(self.dummy_sample, self.dummy_sample, 1, 50)
+            scheduler.step_plms(self.dummy_sample, 1, self.dummy_sample)["prev_sample"]
 
     def test_full_loop_no_noise(self):
         scheduler_class = self.scheduler_classes[0]
@@ -455,23 +551,188 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         num_inference_steps = 10
         model = self.dummy_model()
         sample = self.dummy_sample_deter
+        scheduler.set_timesteps(num_inference_steps)
 
-        prk_time_steps = scheduler.get_prk_time_steps(num_inference_steps)
-        for t in range(len(prk_time_steps)):
-            t_orig = prk_time_steps[t]
-            residual = model(sample, t_orig)
+        for i, t in enumerate(scheduler.prk_timesteps):
+            residual = model(sample, t)
+            sample = scheduler.step_prk(residual, i, sample)["prev_sample"]
 
-            sample = scheduler.step_prk(residual, sample, t, num_inference_steps)
+        for i, t in enumerate(scheduler.plms_timesteps):
+            residual = model(sample, t)
+            sample = scheduler.step_plms(residual, i, sample)["prev_sample"]
 
-        timesteps = scheduler.get_time_steps(num_inference_steps)
-        for t in range(len(timesteps)):
-            t_orig = timesteps[t]
-            residual = model(sample, t_orig)
-
-            sample = scheduler.step_plms(residual, sample, t, num_inference_steps)
-
-        result_sum = np.sum(np.abs(sample))
-        result_mean = np.mean(np.abs(sample))
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
 
         assert abs(result_sum.item() - 199.1169) < 1e-2
         assert abs(result_mean.item() - 0.2593) < 1e-3
+
+
+class ScoreSdeVeSchedulerTest(unittest.TestCase):
+    # TODO adapt with class SchedulerCommonTest (scheduler needs Numpy Integration)
+    scheduler_classes = (ScoreSdeVeScheduler,)
+    forward_default_kwargs = (("seed", 0),)
+
+    @property
+    def dummy_sample(self):
+        batch_size = 4
+        num_channels = 3
+        height = 8
+        width = 8
+
+        sample = torch.rand((batch_size, num_channels, height, width))
+
+        return sample
+
+    @property
+    def dummy_sample_deter(self):
+        batch_size = 4
+        num_channels = 3
+        height = 8
+        width = 8
+
+        num_elems = batch_size * num_channels * height * width
+        sample = torch.arange(num_elems)
+        sample = sample.reshape(num_channels, height, width, batch_size)
+        sample = sample / num_elems
+        sample = sample.permute(3, 0, 1, 2)
+
+        return sample
+
+    def dummy_model(self):
+        def model(sample, t, *args):
+            return sample * t / (t + 1)
+
+        return model
+
+    def get_scheduler_config(self, **kwargs):
+        config = {
+            "num_train_timesteps": 2000,
+            "snr": 0.15,
+            "sigma_min": 0.01,
+            "sigma_max": 1348,
+            "sampling_eps": 1e-5,
+            "tensor_format": "pt",  # TODO add test for tensor formats
+        }
+
+        config.update(**kwargs)
+        return config
+
+    def check_over_configs(self, time_step=0, **config):
+        kwargs = dict(self.forward_default_kwargs)
+
+        for scheduler_class in self.scheduler_classes:
+            sample = self.dummy_sample
+            residual = 0.1 * sample
+
+            scheduler_config = self.get_scheduler_config(**config)
+            scheduler = scheduler_class(**scheduler_config)
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                scheduler.save_config(tmpdirname)
+                new_scheduler = scheduler_class.from_config(tmpdirname)
+
+            output = scheduler.step_pred(residual, time_step, sample, **kwargs)["prev_sample"]
+            new_output = new_scheduler.step_pred(residual, time_step, sample, **kwargs)["prev_sample"]
+
+            assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
+
+            output = scheduler.step_correct(residual, sample, **kwargs)["prev_sample"]
+            new_output = new_scheduler.step_correct(residual, sample, **kwargs)["prev_sample"]
+
+            assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler correction are not identical"
+
+    def check_over_forward(self, time_step=0, **forward_kwargs):
+        kwargs = dict(self.forward_default_kwargs)
+        kwargs.update(forward_kwargs)
+
+        for scheduler_class in self.scheduler_classes:
+            sample = self.dummy_sample
+            residual = 0.1 * sample
+
+            scheduler_config = self.get_scheduler_config()
+            scheduler = scheduler_class(**scheduler_config)
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                scheduler.save_config(tmpdirname)
+                new_scheduler = scheduler_class.from_config(tmpdirname)
+
+            output = scheduler.step_pred(residual, time_step, sample, **kwargs)["prev_sample"]
+            new_output = new_scheduler.step_pred(residual, time_step, sample, **kwargs)["prev_sample"]
+
+            assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
+
+            output = scheduler.step_correct(residual, sample, **kwargs)["prev_sample"]
+            new_output = new_scheduler.step_correct(residual, sample, **kwargs)["prev_sample"]
+
+            assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler correction are not identical"
+
+    def test_timesteps(self):
+        for timesteps in [10, 100, 1000]:
+            self.check_over_configs(num_train_timesteps=timesteps)
+
+    def test_sigmas(self):
+        for sigma_min, sigma_max in zip([0.0001, 0.001, 0.01], [1, 100, 1000]):
+            self.check_over_configs(sigma_min=sigma_min, sigma_max=sigma_max)
+
+    def test_time_indices(self):
+        for t in [0.1, 0.5, 0.75]:
+            self.check_over_forward(time_step=t)
+
+    def test_full_loop_no_noise(self):
+        kwargs = dict(self.forward_default_kwargs)
+
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        num_inference_steps = 3
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter
+
+        scheduler.set_sigmas(num_inference_steps)
+        scheduler.set_timesteps(num_inference_steps)
+
+        for i, t in enumerate(scheduler.timesteps):
+            sigma_t = scheduler.sigmas[i]
+
+            for _ in range(scheduler.correct_steps):
+                with torch.no_grad():
+                    model_output = model(sample, sigma_t)
+                sample = scheduler.step_correct(model_output, sample, **kwargs)["prev_sample"]
+
+            with torch.no_grad():
+                model_output = model(sample, sigma_t)
+
+            output = scheduler.step_pred(model_output, t, sample, **kwargs)
+            sample, _ = output["prev_sample"], output["prev_sample_mean"]
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_sum.item() - 14379591680.0) < 1e-2
+        assert abs(result_mean.item() - 18723426.0) < 1e-3
+
+    def test_step_shape(self):
+        kwargs = dict(self.forward_default_kwargs)
+
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
+
+        for scheduler_class in self.scheduler_classes:
+            scheduler_config = self.get_scheduler_config()
+            scheduler = scheduler_class(**scheduler_config)
+
+            sample = self.dummy_sample
+            residual = 0.1 * sample
+
+            if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
+                scheduler.set_timesteps(num_inference_steps)
+            elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
+                kwargs["num_inference_steps"] = num_inference_steps
+
+            output_0 = scheduler.step_pred(residual, 0, sample, **kwargs)["prev_sample"]
+            output_1 = scheduler.step_pred(residual, 1, sample, **kwargs)["prev_sample"]
+
+            self.assertEqual(output_0.shape, sample.shape)
+            self.assertEqual(output_0.shape, output_1.shape)
