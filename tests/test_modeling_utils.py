@@ -29,12 +29,14 @@ from diffusers import (
     DDIMScheduler,
     DDPMPipeline,
     DDPMScheduler,
+    KarrasScheduler,
     LDMPipeline,
     LDMTextToImagePipeline,
     PNDMPipeline,
     PNDMScheduler,
     ScoreSdeVePipeline,
     ScoreSdeVeScheduler,
+    StochasticKarrasPipeline,
     UNet2DModel,
     VQModel,
 )
@@ -920,3 +922,20 @@ class PipelineTesterMixin(unittest.TestCase):
 
         # the values aren't exactly equal, but the images look the same visually
         assert np.abs(ddpm_images - ddim_images).max() < 1e-1
+
+    # @slow
+    def test_karras_pipeline(self):
+        model_id = "google/ncsnpp-celebahq-256"
+        model = UNet2DModel.from_pretrained(model_id)
+        scheduler = KarrasScheduler(tensor_format="pt")
+
+        pipe = StochasticKarrasPipeline(unet=model, scheduler=scheduler)
+
+        torch.manual_seed(0)
+        image = pipe(num_inference_steps=20, output_type="numpy")["sample"]
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 256, 256, 3)
+        expected_slice = np.array([0.64363, 0.5868, 0.3031, 0.2284, 0.7409, 0.3216, 0.25643, 0.6557, 0.2633])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
