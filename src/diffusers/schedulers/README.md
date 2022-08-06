@@ -1,14 +1,14 @@
 # Schedulers
 
 - Schedulers are the algorithms to use diffusion models in inference as well as for training. They include the noise schedules and define algorithm-specific diffusion steps.
-- Schedulers can be used interchangable between diffusion models in inference to find the preferred tradef-off between speed and generation quality.
+- Schedulers can be used interchangable between diffusion models in inference to find the preferred trade-off between speed and generation quality.
 - Schedulers are available in numpy, but can easily be transformed into PyTorch.
 
 ## API
 
 - Schedulers should provide one or more `def step(...)` functions that should be called iteratively to unroll the diffusion loop during 
 the forward pass.
-- Schedulers should be framework-agonstic, but provide a simple functionality to convert the scheduler into a specific framework, such as PyTorch 
+- Schedulers should be framework-agnostic, but provide a simple functionality to convert the scheduler into a specific framework, such as PyTorch 
 with a `set_format(...)` method.
 
 ## Examples
