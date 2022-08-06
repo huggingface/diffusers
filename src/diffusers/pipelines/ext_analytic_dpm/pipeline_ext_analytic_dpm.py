@@ -23,7 +23,7 @@ class SNDPMPipeline(DiffusionPipeline):
     def __init__(self, unet, sn_net, scheduler):
         super().__init__()
         scheduler = scheduler.set_format("pt")
-        self.register_modules(unet=unet, noise_scheduler=scheduler, sn_net=sn_net)
+        self.register_modules(unet=unet, scheduler=scheduler, sn_net=sn_net)
 
     def __call__(self, batch_size=1, generator=None, torch_device=None, output_type="pil"):
         if torch_device is None:
@@ -54,7 +54,7 @@ class SNDPMPipeline(DiffusionPipeline):
             # 3. optionally sample variance via equation (10)
             variance = 0
             if t > 0:
-                gamma = (torch.sqrt(self.scheduler.alphas_cumprod[t - 1]) * self.noise_scheduler.betas[t]) / (
+                gamma = (torch.sqrt(self.scheduler.alphas_cumprod[t - 1]) * self.scheduler.betas[t]) / (
                     1 - self.scheduler.alphas_cumprod[t]
                 )
                 beta_bar_div_alpha_bar = (1 - self.scheduler.alphas_cumprod[t]) / self.scheduler.alphas_cumprod[t]
@@ -103,12 +103,12 @@ class NPRDPMPipeline(DiffusionPipeline):
             noise_pred_residual_square = self.npr_net(image, t)["sample"]
 
             # 2. predict previous mean of image x_t-1
-            pred_prev_image = self.noise_scheduler.step(model_output, image, t)["prev_sample"]
+            pred_prev_image = self.scheduler.step(model_output, t, image)["prev_sample"]
 
             # 3. optionally sample variance via equation (16)
             variance = 0
             if t > 0:
-                gamma = (torch.sqrt(self.scheduler.alphas_cumprod[t - 1]) * self.noise_scheduler.betas[t]) / (
+                gamma = (torch.sqrt(self.scheduler.alphas_cumprod[t - 1]) * self.scheduler.betas[t]) / (
                     1 - self.scheduler.alphas_cumprod[t]
                 )
                 beta_bar_div_alpha_bar = (1 - self.scheduler.alphas_cumprod[t]) / self.scheduler.alphas_cumprod[t]
