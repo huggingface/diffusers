@@ -19,7 +19,7 @@ import json
 import torch
 
 try:
-    import OmegaConf
+    from omegaconf import OmegaConf
 except ImportError:
     raise ImportError("OmegaConf is required to convert the LDM checkpoints. Please install it with `pip install OmegaConf`.")
 
@@ -133,7 +133,7 @@ def create_unet_diffusers_config(original_config):
     """
     Creates a config for the diffusers based on the config of the LDM model.
     """
-    unet_params = config.model.params.unet_config.params
+    unet_params = original_config.model.params.unet_config.params
 
     block_out_channels = [unet_params.model_channels * mult for mult in unet_params.channel_mult]
 
@@ -203,8 +203,8 @@ def convert_ldm_unet_checkpoint(checkpoint, config):
     output_blocks = {layer_id: [key for key in unet_state_dict if f'output_blocks.{layer_id}' in key] for layer_id in range(num_output_blocks)}
 
     for i in range(1, num_input_blocks):
-        block_id = (i - 1) // (config['num_res_blocks'] + 1)
-        layer_in_block_id = (i - 1) % (config['num_res_blocks'] + 1)
+        block_id = (i - 1) // (config['layers_per_block'] + 1)
+        layer_in_block_id = (i - 1) % (config['layers_per_block'] + 1)
 
         resnets = [key for key in input_blocks[i] if f'input_blocks.{i}.0' in key]
         attentions = [key for key in input_blocks[i] if f'input_blocks.{i}.1' in key]
@@ -268,8 +268,8 @@ def convert_ldm_unet_checkpoint(checkpoint, config):
     assign_to_checkpoint(attentions_paths, new_checkpoint, unet_state_dict, attention_paths_to_split=to_split, config=config)
 
     for i in range(num_output_blocks):
-        block_id = i // (config['num_res_blocks'] + 1)
-        layer_in_block_id = i % (config['num_res_blocks'] + 1)
+        block_id = i // (config['layers_per_block'] + 1)
+        layer_in_block_id = i % (config['layers_per_block'] + 1)
         output_block_layers = [shave_segments(name, 2) for name in output_blocks[i]]
         output_block_list = {}
 
