@@ -154,7 +154,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         if eta > 0:
             device = model_output.device if torch.is_tensor(model_output) else "cpu"
-            noise = torch.randn(model_output.shape, generator=generator).to(device)
+            noise = torch.randn(model_output.shape, generator=generator, device=device)
             variance = self._get_variance(timestep, prev_timestep) ** (0.5) * eta * noise
 
             if not torch.is_tensor(model_output):

@@ -122,7 +122,7 @@ def main(args):
         for step, batch in enumerate(train_dataloader):
             clean_images = batch["input"]
             # Sample noise that we'll add to the images
-            noise = torch.randn(clean_images.shape).to(clean_images.device)
+            noise = torch.randn(clean_images.shape, device=clean_images.device)
             bsz = clean_images.shape[0]
             # Sample a random timestep for each image
             timesteps = torch.randint(

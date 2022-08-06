@@ -163,7 +163,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         grad_norm = self.norm(model_output)
         noise_norm = self.norm(noise)
         step_size = (self.config.snr * noise_norm / grad_norm) ** 2 * 2
-        step_size = step_size * torch.ones(sample.shape[0]).to(sample.device)
+        step_size = step_size * torch.ones(sample.shape[0], device=sample.device)
         # self.repeat_scalar(step_size, sample.shape[0])
 
         # compute corrected sample: model_output term and noise term

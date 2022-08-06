@@ -246,7 +246,7 @@ class ModelTesterMixin:
         if isinstance(output, dict):
             output = output["sample"]
 
-        noise = torch.randn((inputs_dict["sample"].shape[0],) + self.output_shape).to(torch_device)
+        noise = torch.randn((inputs_dict["sample"].shape[0],) + self.output_shape, device=torch_device)
         loss = torch.nn.functional.mse_loss(output, noise)
         loss.backward()
 
@@ -263,7 +263,7 @@ class ModelTesterMixin:
         if isinstance(output, dict):
             output = output["sample"]
 
-        noise = torch.randn((inputs_dict["sample"].shape[0],) + self.output_shape).to(torch_device)
+        noise = torch.randn((inputs_dict["sample"].shape[0],) + self.output_shape, device=torch_device)
         loss = torch.nn.functional.mse_loss(output, noise)
         loss.backward()
         ema_model.step(model)
@@ -278,8 +278,8 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
         num_channels = 3
         sizes = (32, 32)
 
-        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor([10]).to(torch_device)
+        noise = floats_tensor((batch_size, num_channels) + sizes, device=torch_device)
+        time_step = torch.tensor([10], device=torch_device)
 
         return {"sample": noise, "timestep": time_step}
 
@@ -337,8 +337,8 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         num_channels = 4
         sizes = (32, 32)
 
-        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor([10]).to(torch_device)
+        noise = floats_tensor((batch_size, num_channels) + sizes, device=torch_device)
+        time_step = torch.tensor([10], device=torch_device)
 
         return {"sample": noise, "timestep": time_step}
 
@@ -430,8 +430,8 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         batch_size = 4
         num_channels = 3
 
-        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor(batch_size * [10]).to(torch_device)
+        noise = floats_tensor((batch_size, num_channels) + sizes, device=torch_device)
+        time_step = torch.tensor(batch_size * [10], device=torch_device)
 
         return {"sample": noise, "timestep": time_step}
 
@@ -476,7 +476,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
 
         model.to(torch_device)
         inputs = self.dummy_input
-        noise = floats_tensor((4, 3) + (256, 256)).to(torch_device)
+        noise = floats_tensor((4, 3) + (256, 256), device=torch_device)
         inputs["sample"] = noise
         image = model(**inputs)
 
@@ -494,8 +494,8 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         num_channels = 3
         sizes = (256, 256)
 
-        noise = torch.ones((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor(batch_size * [1e-4]).to(torch_device)
+        noise = torch.ones((batch_size, num_channels) + sizes, device=torch_device)
+        time_step = torch.tensor(batch_size * [1e-4], device=torch_device)
 
         with torch.no_grad():
             output = model(noise, time_step)["sample"]
@@ -519,8 +519,8 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         num_channels = 3
         sizes = (32, 32)
 
-        noise = torch.ones((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor(batch_size * [1e-4]).to(torch_device)
+        noise = torch.ones((batch_size, num_channels) + sizes, device=torch_device)
+        time_step = torch.tensor(batch_size * [1e-4], device=torch_device)
 
         with torch.no_grad():
             output = model(noise, time_step)["sample"]
@@ -541,7 +541,7 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
         batch_size = 4
         num_channels = 3
 
-        image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        image = floats_tensor((batch_size, num_channels) + sizes, device=torch_device)
 
         return {"sample": image}
 
@@ -609,7 +609,7 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
         num_channels = 3
         sizes = (32, 32)
 
-        image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        image = floats_tensor((batch_size, num_channels) + sizes, device=torch_device)
 
         return {"sample": image}
 

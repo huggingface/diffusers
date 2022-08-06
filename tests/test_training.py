@@ -57,9 +57,9 @@ class TrainingTests(unittest.TestCase):
 
         # shared batches for DDPM and DDIM
         set_seed(0)
-        clean_images = [torch.randn((4, 3, 32, 32)).clip(-1, 1).to(torch_device) for _ in range(4)]
-        noise = [torch.randn((4, 3, 32, 32)).to(torch_device) for _ in range(4)]
-        timesteps = [torch.randint(0, 1000, (4,)).long().to(torch_device) for _ in range(4)]
+        clean_images = [torch.randn((4, 3, 32, 32), device=torch_device).clip(-1, 1) for _ in range(4)]
+        noise = [torch.randn((4, 3, 32, 32), device=torch_device) for _ in range(4)]
+        timesteps = [torch.randint(0, 1000, (4,), device=torch_device).long() for _ in range(4)]
 
         # train with a DDPM scheduler
         model, optimizer = self.get_model_optimizer(resolution=32)

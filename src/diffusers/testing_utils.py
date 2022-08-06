@@ -29,7 +29,7 @@ def parse_flag_from_env(key, default=False):
 _run_slow_tests = parse_flag_from_env("RUN_SLOW", default=False)
 
 
-def floats_tensor(shape, scale=1.0, rng=None, name=None):
+def floats_tensor(shape, scale=1.0, rng=None, name=None, device=None):
     """Creates a random float32 tensor"""
     if rng is None:
         rng = global_rng
@@ -42,7 +42,7 @@ def floats_tensor(shape, scale=1.0, rng=None, name=None):
     for _ in range(total_dims):
         values.append(rng.random() * scale)
 
-    return torch.tensor(data=values, dtype=torch.float).view(shape).contiguous()
+    return torch.tensor(data=values, dtype=torch.float, device=device).view(shape).contiguous()
 
 
 def slow(test_case):
