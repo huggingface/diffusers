@@ -522,8 +522,6 @@ def convert_ldm_bert_checkpoint(checkpoint, config):
     return hf_model
 
 
-def convert_vae_checkpoint(checkpoint, config):
-    pass
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -572,13 +570,21 @@ if __name__ == "__main__":
     else:
         config = create_unet_diffusers_config(original_config)
 
-    converted_checkpoint = convert_ldm_unet_checkpoint(checkpoint, config)
+    converted_unet_checkpoint = convert_ldm_unet_checkpoint(checkpoint, config)
+
+    vae_config = create_vae_diffusers_config(original_config)
+    converted_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
+
+    # TODO: convert bert or CLIP model
 
     if "ldm" in config:
         del config["ldm"]
 
     model = UNet2DConditionModel(**config)
-    model.load_state_dict(converted_checkpoint)
+    model.load_state_dict(converted_unet_checkpoint)
+
+    vae = AutoencoderKL(**vae_config)
+    vae.load_state_dict(converted_vae_checkpoint)
 
     try:
         scheduler = DDPMScheduler.from_config("/".join(args.checkpoint_path.split("/")[:-1]))
