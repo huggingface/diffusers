@@ -122,8 +122,8 @@ class UNet2DModel(ModelMixin, ConfigMixin):
     ) -> Dict[str, torch.FloatTensor]:
 
         # 0. center input if necessary
-        #if self.config.center_input_sample:
-        #   sample = 2 * sample - 1.0
+        if self.config.center_input_sample:
+            sample = 2 * sample - 1.0
 
         # 1. time
         timesteps = timestep
@@ -173,9 +173,9 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         if skip_sample is not None:
             sample += skip_sample
 
-        #if self.config.time_embedding_type == "fourier":
-        #    timesteps = timesteps.reshape((sample.shape[0], *([1] * len(sample.shape[1:]))))
-        #    sample = sample / timesteps
+        if self.config.time_embedding_type == "fourier":
+            timesteps = timesteps.reshape((sample.shape[0], *([1] * len(sample.shape[1:]))))
+            sample = sample / timesteps
 
         output = {"sample": sample}
 
