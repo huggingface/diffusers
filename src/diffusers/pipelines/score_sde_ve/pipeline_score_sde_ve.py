@@ -32,11 +32,11 @@ class ScoreSdeVePipeline(DiffusionPipeline):
 
             # correction step
             for _ in range(self.scheduler.correct_steps):
-                model_output = self.unet(sample, sigma_t)["sample"] / sigma_t
+                model_output = self.unet(sample, sigma_t)["sample"]
                 sample = self.scheduler.step_correct(model_output, sample)["prev_sample"]
 
             # prediction step
-            model_output = model(sample, sigma_t)["sample"] / sigma_t
+            model_output = model(sample, sigma_t)["sample"]
             output = self.scheduler.step_pred(model_output, t, sample)
 
             sample, sample_mean = output["prev_sample"], output["prev_sample_mean"]
