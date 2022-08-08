@@ -23,7 +23,9 @@ try:
 except ImportError:
     raise ImportError("OmegaConf is required to convert the LDM checkpoints. Please install it with `pip install OmegaConf`.")
 
+from transformers import  CLIPTokenizer, CLIPTextModel
 from diffusers import VQModel, DDPMScheduler, LDMTextToImagePipeline, AutoencoderKL, UNet2DConditionModel
+from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertModel, LDMBertConfig
 
 
 def shave_segments(path, n_shave_prefix_segments=1):
@@ -241,6 +243,16 @@ def create_vae_diffusers_config(original_config):
         block_out_channels=tuple(block_out_channels),
         latent_channels=vae_params.z_channels,
         layers_per_block=vae_params.num_res_blocks,
+    )
+    return config
+
+
+def create_ldm_bert_config(original_config):
+    bert_params = original_config.model.parms.cond_stage_config.params
+    config = LDMBertConfig(
+        d_model=bert_params.n_embed,
+        encoder_layers=bert_params.n_layer,
+        encoder_ffn_dim=bert_params.n_embed * 4,
     )
     return config
     
@@ -480,10 +492,6 @@ def convert_ldm_bert_checkpoint(checkpoint, config):
         hf_linear.weight = pt_linear.weight
         hf_linear.bias = pt_linear.bias
     
-    def _copy_mlp(hf_mlp, pt_mlp):
-        _copy_linear(hf_mlp.fc1, pt_mlp.net[0][0])
-        _copy_linear(hf_mlp.fc2, pt_mlp.net[2])
-
 
     def _copy_layer(hf_layer, pt_layer):
         # copy layer norms
@@ -575,10 +583,14 @@ if __name__ == "__main__":
     vae_config = create_vae_diffusers_config(original_config)
     converted_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
 
-    # TODO: convert bert or CLIP model
-
-    if "ldm" in config:
-        del config["ldm"]
+    text_model_type = original_config.model.params.cond_stage_config.target.split(".")[-1]
+    if text_model_type == "FrozenCLIPEmbedder":
+        text_model = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
+        tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
+    else:
+        # TODO: update the convert function to use the state_dict without the model instance.
+        text_config = create_ldm_bert_config(original_config)
+        text_checkpoint = convert_ldm_bert_checkpoint(checkpoint, text_config)
 
     model = UNet2DConditionModel(**config)
     model.load_state_dict(converted_unet_checkpoint)
@@ -590,7 +602,7 @@ if __name__ == "__main__":
         scheduler = DDPMScheduler.from_config("/".join(args.checkpoint_path.split("/")[:-1]))
         vqvae = VQModel.from_pretrained("/".join(args.checkpoint_path.split("/")[:-1]))
 
-        pipe = LDMPipeline(unet=model, scheduler=scheduler, vae=vqvae)
+        pipe = LDMTextToImagePipeline(unet=model, scheduler=scheduler, vae=vqvae)
         pipe.save_pretrained(args.dump_path)
     except:
         model.save_pretrained(args.dump_path)
