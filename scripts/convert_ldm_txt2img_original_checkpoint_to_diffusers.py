@@ -199,14 +199,17 @@ def create_unet_diffusers_config(original_config):
     block_out_channels = [unet_params.model_channels * mult for mult in unet_params.channel_mult]
 
     down_block_types = []
+    resolution = 1
     for i in range(len(block_out_channels)):
-        block_type = "CrossAttnDownBlock2D" if i < len(block_out_channels) - 1 else "DownBlock2D"
+        block_type = "CrossAttnDownBlock2D" if resolution in unet_params.attention_resolutions else "DownBlock2D"
         down_block_types.append(block_type)
+        resolution *= 2
 
     up_block_types = []
     for i in range(len(block_out_channels)):
-        block_type = "UpBlock2D" if i == 0 else "CrossAttnUpBlock2D"
+        block_type = "CrossAttnUpBlock2D" if resolution in unet_params.attention_resolutions else "UpBlock2D" 
         up_block_types.append(block_type)
+        resolution //= 2
 
     config = dict(
         sample_size=unet_params.image_size,
