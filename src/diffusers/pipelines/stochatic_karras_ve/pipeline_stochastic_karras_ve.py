@@ -13,8 +13,8 @@ class KarrasVePipeline(DiffusionPipeline):
     Stochastic sampling from Karras et al. [1] tailored to the Variance-Expanding (VE) models [2].
     Use Algorithm 2 and the VE column of Table 1 from [1] for reference.
 
-    [1] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models." arXiv preprint arXiv:2206.00364 (2022).
-    [2] Song, Yang, et al. "Score-based generative modeling through stochastic differential equations." In Proc. ICLR (2021).
+    [1] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models." https://arxiv.org/abs/2206.00364
+    [2] Song, Yang, et al. "Score-based generative modeling through stochastic differential equations." https://arxiv.org/abs/2011.13456
     """
 
     unet: UNet2DModel
@@ -49,7 +49,7 @@ class KarrasVePipeline(DiffusionPipeline):
 
             # 1. Select temporarily increased noise level sigma_hat
             # 2. Add new noise to move from sample_i to sample_hat
-            sample_hat, sigma_hat = self.scheduler.get_model_inputs(sample, sigma, generator=generator)
+            sample_hat, sigma_hat = self.scheduler.add_noise_to_input(sample, sigma, generator=generator)
 
             # 3. Predict the noise residual given the noise magnitude `sigma_hat`
             # The model inputs and output are adjusted by following eq. (213) in [1].
@@ -72,7 +72,6 @@ class KarrasVePipeline(DiffusionPipeline):
                     step_output["derivative"],
                 )
             sample = step_output["prev_sample"]
-            print(i, sample.min().item(), sample.max().item())
 
         sample = (sample / 2 + 0.5).clamp(0, 1)
         sample = sample.cpu().permute(0, 2, 3, 1).numpy()
