@@ -55,9 +55,9 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
                 A reasonable range is [1.000, 1.011].
             s_churn (`float`): the parameter controlling the overall amount of stochasticity.
                 A reasonable range is [0, 100].
-            s_min (`float`): the start of the sigma range where we add noise (enable stochasticity)
+            s_min (`float`): the start value of the sigma range where we add noise (enable stochasticity).
                 A reasonable range is [0, 10].
-            s_max (`float`): the end of the sigma range where we add noise
+            s_max (`float`): the end value of the sigma range where we add noise.
                 A reasonable range is [0.2, 80].
         """
         # setable values
