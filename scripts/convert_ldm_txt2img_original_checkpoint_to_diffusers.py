@@ -23,8 +23,8 @@ try:
 except ImportError:
     raise ImportError("OmegaConf is required to convert the LDM checkpoints. Please install it with `pip install OmegaConf`.")
 
-from transformers import  CLIPTokenizer, CLIPTextModel
-from diffusers import VQModel, DDPMScheduler, LDMTextToImagePipeline, AutoencoderKL, UNet2DConditionModel
+from transformers import  BertTokenizerFast, CLIPTokenizer, CLIPTextModel
+from diffusers import VQModel, DDPMScheduler, LDMTextToImagePipeline, AutoencoderKL, UNet2DConditionModel, DDIMScheduler
 from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertModel, LDMBertConfig
 
 
@@ -250,6 +250,16 @@ def create_vae_diffusers_config(original_config):
     )
     return config
 
+
+def create_diffusers_schedular(original_config):
+    schedular = DDIMScheduler(
+        num_train_timesteps=original_config.model.params.timesteps,
+        beta_start=original_config.model.params.linear_start,
+        beta_end=original_config.model.params.linear_end,
+        beta_schedule="scaled_linear",
+    )
+    return schedular
+    
 
 def create_ldm_bert_config(original_config):
     bert_params = original_config.model.parms.cond_stage_config.params
@@ -551,22 +561,6 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--config_file",
-        default=None,
-        type=str,
-        required=True,
-        help="The config json file corresponding to the architecture.",
-    )
-
-    parser.add_argument(
-        "--ldm_bert_config_file",
-        default=None,
-        type=str,
-        required=False,
-        help="The config json file corresponding to the LDMBert architecture.",
-    )
-
-    parser.add_argument(
         "--dump_path", default=None, type=str, required=True, help="Path to the output model."
     )
 
@@ -576,17 +570,21 @@ if __name__ == "__main__":
 
     checkpoint = torch.load(args.checkpoint_path)
 
-    if args.config_file is not None:
-        with open(args.config_file) as f:
-            config = json.loads(f.read())
-    else:
-        config = create_unet_diffusers_config(original_config)
+    # Convert the UNet2DConditionModel model.
+    unet_config = create_unet_diffusers_config(original_config)
+    converted_unet_checkpoint = convert_ldm_unet_checkpoint(checkpoint, unet_config)
+    
+    unet = UNet2DConditionModel(**unet_config)
+    unet.load_state_dict(converted_unet_checkpoint)
 
-    converted_unet_checkpoint = convert_ldm_unet_checkpoint(checkpoint, config)
-
+    # Convert the VAE model.
     vae_config = create_vae_diffusers_config(original_config)
     converted_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
 
+    vae = AutoencoderKL(**vae_config)
+    vae.load_state_dict(converted_vae_checkpoint)
+
+    # Convert the text model.
     text_model_type = original_config.model.params.cond_stage_config.target.split(".")[-1]
     if text_model_type == "FrozenCLIPEmbedder":
         text_model = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
@@ -594,19 +592,10 @@ if __name__ == "__main__":
     else:
         # TODO: update the convert function to use the state_dict without the model instance.
         text_config = create_ldm_bert_config(original_config)
-        text_checkpoint = convert_ldm_bert_checkpoint(checkpoint, text_config)
+        text_model = convert_ldm_bert_checkpoint(checkpoint, text_config)
+        tokenizer = BertTokenizerFast.from_pretrained("bert-base-uncased")
 
-    model = UNet2DConditionModel(**config)
-    model.load_state_dict(converted_unet_checkpoint)
+    scheduler = create_diffusers_schedular(original_config)
+    pipe = LDMTextToImagePipeline(vqvae=vae, bert=text_model, tokenizer=tokenizer, unet=unet, scheduler=scheduler)
+    pipe.save_pretrained(args.dump_path)
 
-    vae = AutoencoderKL(**vae_config)
-    vae.load_state_dict(converted_vae_checkpoint)
-
-    try:
-        scheduler = DDPMScheduler.from_config("/".join(args.checkpoint_path.split("/")[:-1]))
-        vqvae = VQModel.from_pretrained("/".join(args.checkpoint_path.split("/")[:-1]))
-
-        pipe = LDMTextToImagePipeline(unet=model, scheduler=scheduler, vae=vqvae)
-        pipe.save_pretrained(args.dump_path)
-    except:
-        model.save_pretrained(args.dump_path)
