@@ -18,8 +18,15 @@ from .optimization import (
     get_scheduler,
 )
 from .pipeline_utils import DiffusionPipeline
-from .pipelines import DDIMPipeline, DDPMPipeline, LDMPipeline, PNDMPipeline, ScoreSdeVePipeline
-from .schedulers import DDIMScheduler, DDPMScheduler, PNDMScheduler, SchedulerMixin, ScoreSdeVeScheduler
+from .pipelines import DDIMPipeline, DDPMPipeline, KarrasVePipeline, LDMPipeline, PNDMPipeline, ScoreSdeVePipeline
+from .schedulers import (
+    DDIMScheduler,
+    DDPMScheduler,
+    KarrasVeScheduler,
+    PNDMScheduler,
+    SchedulerMixin,
+    ScoreSdeVeScheduler,
+)
 from .training_utils import EMAModel
 
 
