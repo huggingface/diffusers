@@ -41,11 +41,10 @@ class KarrasVePipeline(DiffusionPipeline):
 
         self.scheduler.set_timesteps(num_inference_steps)
 
-        for i in tqdm(self.scheduler.timesteps):
+        for t in tqdm(self.scheduler.timesteps):
             # here sigma_t == t_i from the paper
-            # sigmas are multiplied by 2 for compatibility with the original VE scheduler's sigma range
-            sigma = self.scheduler.schedule[i]
-            sigma_prev = self.scheduler.schedule[i - 1] if i > 0 else 0
+            sigma = self.scheduler.schedule[t]
+            sigma_prev = self.scheduler.schedule[t - 1] if t > 0 else 0
 
             # 1. Select temporarily increased noise level sigma_hat
             # 2. Add new noise to move from sample_i to sample_hat
