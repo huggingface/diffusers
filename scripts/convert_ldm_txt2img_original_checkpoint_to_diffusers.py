@@ -567,7 +567,7 @@ if __name__ == "__main__":
 
     original_config = OmegaConf.load(args.original_config_file)
 
-    checkpoint = torch.load(args.checkpoint_path)
+    checkpoint = torch.load(args.checkpoint_path)["state_dict"]
 
     # Convert the UNet2DConditionModel model.
     unet_config = create_unet_diffusers_config(original_config)
