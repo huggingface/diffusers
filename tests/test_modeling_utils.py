@@ -33,6 +33,8 @@ from diffusers import (
     KarrasVeScheduler,
     LDMPipeline,
     LDMTextToImagePipeline,
+    LmsDiscreteScheduler,
+    LmsTextToImagePipeline,
     PNDMPipeline,
     PNDMScheduler,
     ScoreSdeVePipeline,
@@ -926,4 +928,25 @@ class PipelineTesterMixin(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 256, 256, 3)
         expected_slice = np.array([0.26815, 0.1581, 0.2658, 0.23248, 0.1550, 0.2539, 0.1131, 0.1024, 0.0837])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    # @slow
+    def test_lms_text2img_pipeline(self):
+        model_id = "CompVis/ldm-text2im-large-256"
+        ldm = LDMTextToImagePipeline.from_pretrained(model_id)
+        scheduler = LmsDiscreteScheduler.from_config(model_id, subfolder="scheduler")
+        lms_pipe = LmsTextToImagePipeline(
+            unet=ldm.unet, scheduler=scheduler, vae=ldm.vqvae, text_encoder=ldm.bert, tokenizer=ldm.tokenizer
+        )
+
+        prompt = "A painting of a squirrel eating a burger"
+        generator = torch.manual_seed(0)
+        image = lms_pipe(
+            [prompt], generator=generator, guidance_scale=6.0, num_inference_steps=20, output_type="numpy"
+        )["sample"]
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 256, 256, 3)
+        expected_slice = np.array([0.9256, 0.9340, 0.8933, 0.9361, 0.9113, 0.8727, 0.9122, 0.8745, 0.8099])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
