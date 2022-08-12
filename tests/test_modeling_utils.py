@@ -45,6 +45,8 @@ from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.testing_utils import floats_tensor, slow, torch_device
 from diffusers.training_utils import EMAModel
 
+from ..src.diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipeline
+
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
@@ -836,6 +838,38 @@ class PipelineTesterMixin(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 256, 256, 3)
+        expected_slice = np.array([0.3163, 0.8670, 0.6465, 0.1865, 0.6291, 0.5139, 0.2824, 0.3723, 0.4344])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    @slow
+    def test_stable_diffusion(self):
+        ldm = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1-diffusers")
+
+        prompt = "A painting of a squirrel eating a burger"
+        generator = torch.manual_seed(0)
+        image = ldm([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=20, output_type="numpy")[
+            "sample"
+        ]
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        # TODO: update the expected_slice
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.9256, 0.9340, 0.8933, 0.9361, 0.9113, 0.8727, 0.9122, 0.8745, 0.8099])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    @slow
+    def test_stable_diffusion_fast(self):
+        ldm = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1-diffusers")
+
+        prompt = "A painting of a squirrel eating a burger"
+        generator = torch.manual_seed(0)
+        image = ldm([prompt], generator=generator, num_inference_steps=1, output_type="numpy")["sample"]
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        # TODO: update the expected_slice
+        assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.3163, 0.8670, 0.6465, 0.1865, 0.6291, 0.5139, 0.2824, 0.3723, 0.4344])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
