@@ -1,3 +1,5 @@
+import inspect
+
 import torch
 
 from tqdm.auto import tqdm
@@ -31,11 +33,17 @@ class LDMPipeline(DiffusionPipeline):
 
         self.scheduler.set_timesteps(num_inference_steps)
 
+        # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
+        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        extra_kwrags = {}
+        if not accepts_eta:
+            extra_kwrags["eta"] = eta
+
         for t in tqdm(self.scheduler.timesteps):
             # predict the noise residual
             noise_prediction = self.unet(latents, t)["sample"]
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_prediction, t, latents, eta)["prev_sample"]
+            latents = self.scheduler.step(noise_prediction, t, latents, **extra_kwrags)["prev_sample"]
 
         # decode the image latents with the VAE
         image = self.vqvae.decode(latents)

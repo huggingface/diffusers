@@ -116,7 +116,6 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         model_output: Union[torch.FloatTensor, np.ndarray],
         timestep: int,
         sample: Union[torch.FloatTensor, np.ndarray],
-        **kwargs,
     ):
         if self.counter < len(self.prk_timesteps):
             return self.step_prk(model_output=model_output, timestep=timestep, sample=sample)
