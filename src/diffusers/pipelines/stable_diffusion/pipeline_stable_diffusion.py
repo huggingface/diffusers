@@ -17,7 +17,6 @@ class StableDiffusionPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt,
-        batch_size=1,
         generator=None,
         torch_device=None,
         eta=0.0,
