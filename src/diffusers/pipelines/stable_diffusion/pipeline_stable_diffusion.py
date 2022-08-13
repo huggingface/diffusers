@@ -1,14 +1,25 @@
 import inspect
+from typing import List, Optional, Union
 
 import torch
 
 from tqdm.auto import tqdm
+from transformers import CLIPTextModel, CLIPTokenizer
 
+from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
+from ...schedulers import DDIMScheduler, PNDMScheduler
 
 
 class StableDiffusionPipeline(DiffusionPipeline):
-    def __init__(self, vae, text_encoder, tokenizer, unet, scheduler):
+    def __init__(
+        self,
+        vae: AutoencoderKL,
+        text_encoder: CLIPTextModel,
+        tokenizer: CLIPTokenizer,
+        unet: UNet2DConditionModel,
+        scheduler: Union[DDIMScheduler, PNDMScheduler],
+    ):
         super().__init__()
         scheduler = scheduler.set_format("pt")
         self.register_modules(vae=vae, text_encoder=text_encoder, tokenizer=tokenizer, unet=unet, scheduler=scheduler)
@@ -16,13 +27,13 @@ class StableDiffusionPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt,
-        generator=None,
-        torch_device=None,
-        eta=0.0,
-        guidance_scale=1.0,
-        num_inference_steps=50,
-        output_type="pil",
+        prompt: Union[str, List[str]],
+        num_inference_steps: Optional[int] = 50,
+        guidance_scale: Optional[float] = 1.0,
+        eta: Optional[float] = 0.0,
+        generator: Optional[torch.Generator] = None,
+        torch_device: Optional[Union[str, torch.device]] = None,
+        output_type: Optional[str] = "pil",
     ):
         # eta corresponds to η in paper and should be between [0, 1]
 
