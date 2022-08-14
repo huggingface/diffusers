@@ -28,6 +28,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
+        height: Optional[int] = 512,
+        width: Optional[int] = 512,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 1.0,
         eta: Optional[float] = 0.0,
@@ -72,7 +74,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         # get the intial random noise
         latents = torch.randn(
-            (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
+            (batch_size, self.unet.in_channels, height // 8, width // 8),
             generator=generator,
         )
         latents = latents.to(torch_device)
