@@ -24,11 +24,12 @@ from .scheduling_utils import SchedulerMixin
 
 class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
     """
-    Stochastic sampling from Karras et al. [1] tailored to the Variance-Expanding (VE) models [2].
-    Use Algorithm 2 and the VE column of Table 1 from [1] for reference.
+    Stochastic sampling from Karras et al. [1] tailored to the Variance-Expanding (VE) models [2]. Use Algorithm 2 and
+    the VE column of Table 1 from [1] for reference.
 
-    [1] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models." https://arxiv.org/abs/2206.00364
-    [2] Song, Yang, et al. "Score-based generative modeling through stochastic differential equations." https://arxiv.org/abs/2011.13456
+    [1] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models."
+    https://arxiv.org/abs/2206.00364 [2] Song, Yang, et al. "Score-based generative modeling through stochastic
+    differential equations." https://arxiv.org/abs/2011.13456
     """
 
     @register_to_config
@@ -43,10 +44,9 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         tensor_format="pt",
     ):
         """
-        For more details on the parameters, see the original paper's Appendix E.:
-        "Elucidating the Design Space of Diffusion-Based Generative Models." https://arxiv.org/abs/2206.00364.
-        The grid search values used to find the optimal {s_noise, s_churn, s_min, s_max} for a specific model
-        are described in Table 5 of the paper.
+        For more details on the parameters, see the original paper's Appendix E.: "Elucidating the Design Space of
+        Diffusion-Based Generative Models." https://arxiv.org/abs/2206.00364. The grid search values used to find the
+        optimal {s_noise, s_churn, s_min, s_max} for a specific model are described in Table 5 of the paper.
 
         Args:
             sigma_min (`float`): minimum noise magnitude
@@ -81,8 +81,8 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
 
     def add_noise_to_input(self, sample, sigma, generator=None):
         """
-        Explicit Langevin-like "churn" step of adding noise to the sample according to
-        a factor gamma_i ≥ 0 to reach a higher noise level sigma_hat = sigma_i + gamma_i*sigma_i.
+        Explicit Langevin-like "churn" step of adding noise to the sample according to a factor gamma_i ≥ 0 to reach a
+        higher noise level sigma_hat = sigma_i + gamma_i*sigma_i.
         """
         if self.s_min <= sigma <= self.s_max:
             gamma = min(self.s_churn / self.num_inference_steps, 2**0.5 - 1)
