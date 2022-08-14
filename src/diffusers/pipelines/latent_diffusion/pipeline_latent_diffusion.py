@@ -62,8 +62,9 @@ class LDMTextToImagePipeline(DiffusionPipeline):
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
+
         extra_kwargs = {}
-        if not accepts_eta:
+        if accepts_eta:
             extra_kwargs["eta"] = eta
 
         for t in tqdm(self.scheduler.timesteps):
