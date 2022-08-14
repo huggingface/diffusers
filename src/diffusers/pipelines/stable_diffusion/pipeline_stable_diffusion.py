@@ -49,6 +49,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
         text_input = self.tokenizer(prompt, padding="max_length", max_length=77, return_tensors="pt")
         text_embeddings = self.text_encoder(text_input.input_ids.to(torch_device))[0]
 
+         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
+         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
