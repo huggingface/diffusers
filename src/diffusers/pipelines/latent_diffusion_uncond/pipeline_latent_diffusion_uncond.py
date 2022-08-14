@@ -35,15 +35,16 @@ class LDMPipeline(DiffusionPipeline):
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        extra_kwrags = {}
+
+        extra_kwargs = {}
         if accepts_eta:
-            extra_kwrags["eta"] = eta
+            extra_kwargs["eta"] = eta
 
         for t in tqdm(self.scheduler.timesteps):
             # predict the noise residual
             noise_prediction = self.unet(latents, t)["sample"]
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_prediction, t, latents, **extra_kwrags)["prev_sample"]
+            latents = self.scheduler.step(noise_prediction, t, latents, **extra_kwargs)["prev_sample"]
 
         # decode the image latents with the VAE
         image = self.vqvae.decode(latents)

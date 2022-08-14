@@ -62,9 +62,10 @@ class LDMTextToImagePipeline(DiffusionPipeline):
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        extra_kwrags = {}
+
+        extra_kwargs = {}
         if accepts_eta:
-            extra_kwrags["eta"] = eta
+            extra_kwargs["eta"] = eta
 
         for t in tqdm(self.scheduler.timesteps):
             if guidance_scale == 1.0:
@@ -86,7 +87,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_prediction_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, **extra_kwrags)["prev_sample"]
+            latents = self.scheduler.step(noise_pred, t, latents, **extra_kwargs)["prev_sample"]
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents

@@ -10,11 +10,12 @@ from ...schedulers import KarrasVeScheduler
 
 class KarrasVePipeline(DiffusionPipeline):
     """
-    Stochastic sampling from Karras et al. [1] tailored to the Variance-Expanding (VE) models [2].
-    Use Algorithm 2 and the VE column of Table 1 from [1] for reference.
+    Stochastic sampling from Karras et al. [1] tailored to the Variance-Expanding (VE) models [2]. Use Algorithm 2 and
+    the VE column of Table 1 from [1] for reference.
 
-    [1] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models." https://arxiv.org/abs/2206.00364
-    [2] Song, Yang, et al. "Score-based generative modeling through stochastic differential equations." https://arxiv.org/abs/2011.13456
+    [1] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models."
+    https://arxiv.org/abs/2206.00364 [2] Song, Yang, et al. "Score-based generative modeling through stochastic
+    differential equations." https://arxiv.org/abs/2011.13456
     """
 
     unet: UNet2DModel
