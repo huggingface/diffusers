@@ -843,34 +843,36 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_stable_diffusion(self):
-        ldm = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1-diffusers")
+        pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1-diffusers")
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
-        image = ldm([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=20, output_type="numpy")[
+        image = pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=20, output_type="numpy")[
             "sample"
         ]
 
         image_slice = image[0, -3:, -3:, -1]
 
-        # TODO: update the expected_slice
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.9256, 0.9340, 0.8933, 0.9361, 0.9113, 0.8727, 0.9122, 0.8745, 0.8099])
+        # fmt: off
+        expected_slice = np.array([0.09609553, 0.09020892, 0.07902172, 0.07634321, 0.08755809, 0.06491277, 0.07687345, 0.07173461, 0.07374045])
+        # fmt: on
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
     def test_stable_diffusion_fast(self):
-        ldm = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1-diffusers")
+        pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1-diffusers")
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
-        image = ldm([prompt], generator=generator, num_inference_steps=1, output_type="numpy")["sample"]
+        image = pipe([prompt], generator=generator, num_inference_steps=5, output_type="numpy")["sample"]
 
         image_slice = image[0, -3:, -3:, -1]
 
-        # TODO: update the expected_slice
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.3163, 0.8670, 0.6465, 0.1865, 0.6291, 0.5139, 0.2824, 0.3723, 0.4344])
+        # fmt: off
+        expected_slice = np.array([0.16537648, 0.17572534, 0.14657784, 0.20084214, 0.19819549, 0.16032678, 0.30438453, 0.22730353, 0.21307352])
+        # fmt: on
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
