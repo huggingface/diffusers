@@ -47,6 +47,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
         else:
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
+        if height % 8 != 0 or width % 8 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+
         self.unet.to(torch_device)
         self.vae.to(torch_device)
         self.text_encoder.to(torch_device)
