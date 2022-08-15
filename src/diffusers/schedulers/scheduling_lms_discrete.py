@@ -35,6 +35,11 @@ class LmsDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timestep_values=None,
         tensor_format="pt",
     ):
+        """
+        Linear Multistep Scheduler for discrete beta schedules.
+        Based on the original k-diffusion implementation by Katherine Crowson:
+        https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L181
+        """
 
         if beta_schedule == "linear":
             self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
@@ -52,6 +57,7 @@ class LmsDiscreteScheduler(SchedulerMixin, ConfigMixin):
         # setable values
         self.num_inference_steps = None
         self.timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
+        self.derivatives = []
 
         self.tensor_format = tensor_format
         self.set_format(tensor_format=tensor_format)
@@ -73,17 +79,28 @@ class LmsDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         return integrated_coeff
 
+    def sigma_to_timestep(self, sigma):
+        sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
+        dists = torch.abs(sigma - sigmas)
+        low_idx, high_idx = np.argsort(dists)[:2]
+        low, high = sigmas[low_idx], sigmas[high_idx]
+        w = (low - sigma) / (low - high)
+        w = w.clamp(0, 1)
+        timestep = (1 - w) * low_idx + w * high_idx
+        return timestep
+
     def set_timesteps(self, num_inference_steps):
         self.num_inference_steps = num_inference_steps
-        self.timesteps = np.linspace(num_inference_steps - 1, 0, num_inference_steps, dtype=int)
+        self.timesteps = np.linspace(self.num_train_timesteps - 1, 0, num_inference_steps, dtype=float)
 
-        train_timesteps = np.linspace(self.num_train_timesteps - 1, 0, num_inference_steps, dtype=float)
-        low_idx = np.floor(train_timesteps).astype(int)
-        high_idx = np.ceil(train_timesteps).astype(int)
-        frac = np.mod(train_timesteps, 1.0)
-        sigmas = np.array(self.sigmas)
+        low_idx = np.floor(self.timesteps).astype(int)
+        high_idx = np.ceil(self.timesteps).astype(int)
+        frac = np.mod(self.timesteps, 1.0)
+        sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         sigmas = (1 - frac) * sigmas[low_idx] + frac * sigmas[high_idx]
-        self.sigmas = np.concatenate([sigmas, [0.]])
+        self.sigmas = np.concatenate([sigmas, [0.0]])
+
+        self.derivatives = []
 
         self.set_format(tensor_format=self.tensor_format)
 
@@ -93,7 +110,6 @@ class LmsDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: Union[torch.FloatTensor, np.ndarray],
         order: int = 4,
-        derivatives: List[Union[torch.FloatTensor, np.ndarray]] = None,
     ):
         sigma = self.sigmas[timestep]
 
@@ -102,18 +118,18 @@ class LmsDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma
-        derivatives.append(derivative)
-        if len(derivatives) > order:
-            derivatives.pop(0)
+        self.derivatives.append(derivative)
+        if len(self.derivatives) > order:
+            self.derivatives.pop(0)
 
         # 3. Compute linear multistep coefficients
         order = min(timestep + 1, order)
         lms_coeffs = [self.get_lms_coefficient(order, timestep, curr_order) for curr_order in range(order)]
 
         # 4. Compute previous sample based on the derivatives path
-        prev_sample = sample + sum(coeff * derivative for coeff, derivative in zip(lms_coeffs, derivatives))
+        prev_sample = sample + sum(coeff * derivative for coeff, derivative in zip(lms_coeffs, self.derivatives))
 
-        return {"prev_sample": prev_sample, "derivatives": derivatives}
+        return {"prev_sample": prev_sample}
 
     def add_noise(self, original_samples, noise, timesteps):
         alpha_prod = self.alphas_cumprod[timesteps]

@@ -69,6 +69,14 @@ except importlib_metadata.PackageNotFoundError:
     _modelcards_available = False
 
 
+_scipy_available = importlib.util.find_spec("scipy") is not None
+try:
+    _scipy_version = importlib_metadata.version("scipy")
+    logger.debug(f"Successfully imported transformers version {_scipy_version}")
+except importlib_metadata.PackageNotFoundError:
+    _scipy_available = False
+
+
 def is_transformers_available():
     return _transformers_available
 
@@ -83,6 +91,10 @@ def is_unidecode_available():
 
 def is_modelcards_available():
     return _modelcards_available
+
+
+def is_scipy_available():
+    return _scipy_available
 
 
 class RepositoryNotFoundError(HTTPError):
@@ -118,11 +130,18 @@ inflect`
 """
 
 
+SCIPY_IMPORT_ERROR = """
+{0} requires the scipy library but it was not found in your environment. You can install it with pip: `pip install
+scipy`
+"""
+
+
 BACKENDS_MAPPING = OrderedDict(
     [
         ("transformers", (is_transformers_available, TRANSFORMERS_IMPORT_ERROR)),
         ("unidecode", (is_unidecode_available, UNIDECODE_IMPORT_ERROR)),
         ("inflect", (is_inflect_available, INFLECT_IMPORT_ERROR)),
+        ("scipy", (is_scipy_available, SCIPY_IMPORT_ERROR)),
     ]
 )
 
