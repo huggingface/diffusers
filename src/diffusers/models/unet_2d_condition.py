@@ -133,6 +133,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)
 
+        # broadcast to batch dimension
+        timesteps = timesteps.broadcast_to(sample.shape[0])
+
         t_emb = self.time_proj(timesteps)
         emb = self.time_embedding(t_emb)
 
@@ -172,8 +175,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 sample = upsample_block(hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples)
 
         # 6. post-process
-
-        sample = self.conv_norm_out(sample)
+        # make sure hidden states is in float32
+        # when running in half-precision
+        sample = self.conv_norm_out(sample.float()).type(sample.dtype)
         sample = self.conv_act(sample)
         sample = self.conv_out(sample)
 
