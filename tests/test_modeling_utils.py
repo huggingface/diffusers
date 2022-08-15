@@ -37,6 +37,7 @@ from diffusers import (
     PNDMScheduler,
     ScoreSdeVePipeline,
     ScoreSdeVeScheduler,
+    StableDiffusionPipeline,
     UNet2DModel,
     VQModel,
 )
@@ -44,8 +45,6 @@ from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.testing_utils import floats_tensor, slow, torch_device
 from diffusers.training_utils import EMAModel
-
-from ..src.diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipeline
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
