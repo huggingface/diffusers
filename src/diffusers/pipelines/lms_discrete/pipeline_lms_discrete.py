@@ -36,7 +36,7 @@ class LmsTextToImagePipeline(DiffusionPipeline):
         batch_size = len(prompt)
 
         self.unet.to(torch_device)
-        self.vae.to(torch_device)
+        #self.vae.to(torch_device)
         self.text_encoder.to(torch_device)
 
         # get unconditional embeddings for classifier free guidance
@@ -51,8 +51,9 @@ class LmsTextToImagePipeline(DiffusionPipeline):
         latents = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
             generator=generator,
-        )
+        ) * self.scheduler.sigmas[0]
         latents = latents.to(torch_device)
+        print(latents.sum())
 
         self.scheduler.set_timesteps(num_inference_steps)
         derivatives = []
