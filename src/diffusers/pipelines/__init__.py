@@ -10,3 +10,4 @@ from .stochatic_karras_ve import KarrasVePipeline
 
 if is_transformers_available():
     from .latent_diffusion import LDMTextToImagePipeline
+    from .stable_diffusion import StableDiffusionPipeline
