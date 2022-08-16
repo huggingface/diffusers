@@ -55,7 +55,13 @@ class StableDiffusionPipeline(DiffusionPipeline):
         self.text_encoder.to(torch_device)
 
         # get prompt text embeddings
-        text_input = self.tokenizer(prompt, padding=True, truncation=True, return_tensors="pt")
+        text_input = self.tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=self.tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        )
         text_embeddings = self.text_encoder(text_input.input_ids.to(torch_device))[0]
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
@@ -79,19 +85,25 @@ class StableDiffusionPipeline(DiffusionPipeline):
         latents = torch.randn(
             (batch_size, self.unet.in_channels, height // 8, width // 8),
             generator=generator,
+            device=torch_device,
         )
-        latents = latents.to(torch_device)
+
+        # set timesteps
+        accepts_offset = "offset" in set(inspect.signature(self.scheduler.set_timesteps).parameters.keys())
+        extra_set_kwargs = {}
+        if accepts_offset:
+            extra_set_kwargs["offset"] = 1
+
+        self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        extra_kwargs = {}
+        extra_step_kwargs = {}
         if accepts_eta:
-            extra_kwargs["eta"] = eta
-
-        self.scheduler.set_timesteps(num_inference_steps)
+            extra_step_kwargs["eta"] = eta
 
         for t in tqdm(self.scheduler.timesteps):
             # expand the latents if we are doing classifier free guidance
@@ -106,7 +118,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, **extra_kwargs)["prev_sample"]
+            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs)["prev_sample"]
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents

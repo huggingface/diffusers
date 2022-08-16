@@ -37,6 +37,7 @@ from diffusers import (
     PNDMScheduler,
     ScoreSdeVePipeline,
     ScoreSdeVeScheduler,
+    StableDiffusionPipeline,
     UNet2DModel,
     VQModel,
 )
@@ -44,8 +45,6 @@ from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.testing_utils import floats_tensor, slow, torch_device
 from diffusers.training_utils import EMAModel
-
-from ..src.diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipeline
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -667,7 +666,7 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
 
         output_slice = output[0, -1, -3:, -3:].flatten()
         # fmt: off
-        expected_output_slice = torch.tensor([-4.0078e-01, -3.8304e-04, -1.2681e-01, -1.1462e-01,  2.0095e-01, 1.0893e-01, -8.8248e-02, -3.0361e-01, -9.8646e-03])
+        expected_output_slice = torch.tensor([-4.0078e-01, -3.8304e-04, -1.2681e-01, -1.1462e-01, 2.0095e-01, 1.0893e-01, -8.8248e-02, -3.0361e-01, -9.8646e-03])
         # fmt: on
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
@@ -842,38 +841,51 @@ class PipelineTesterMixin(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is suppused to run on GPU")
     def test_stable_diffusion(self):
-        pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1-diffusers")
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1-diffusers")
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.manual_seed(0)
-        image = pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=20, output_type="numpy")[
-            "sample"
-        ]
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        with torch.autocast("cuda"):
+            output = sd_pipe(
+                [prompt], generator=generator, guidance_scale=6.0, num_inference_steps=20, output_type="np"
+            )
+
+        image = output["sample"]
 
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        # fmt: off
-        expected_slice = np.array([0.09609553, 0.09020892, 0.07902172, 0.07634321, 0.08755809, 0.06491277, 0.07687345, 0.07173461, 0.07374045])
-        # fmt: on
+        expected_slice = np.array([0.898, 0.9194, 0.91, 0.8955, 0.915, 0.919, 0.9233, 0.9307, 0.8887])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
-    def test_stable_diffusion_fast(self):
-        pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1-diffusers")
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is suppused to run on GPU")
+    def test_stable_diffusion_fast_ddim(self):
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1-diffusers")
+
+        scheduler = DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            clip_alpha_at_one=False,
+        )
+        sd_pipe.scheduler = scheduler
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.manual_seed(0)
-        image = pipe([prompt], generator=generator, num_inference_steps=5, output_type="numpy")["sample"]
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+
+        with torch.autocast("cuda"):
+            output = sd_pipe([prompt], generator=generator, num_inference_steps=2, output_type="numpy")
+        image = output["sample"]
 
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        # fmt: off
-        expected_slice = np.array([0.16537648, 0.17572534, 0.14657784, 0.20084214, 0.19819549, 0.16032678, 0.30438453, 0.22730353, 0.21307352])
-        # fmt: on
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        expected_slice = np.array([0.8354, 0.83, 0.866, 0.838, 0.8315, 0.867, 0.836, 0.8584, 0.869])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     @slow
     def test_score_sde_ve_pipeline(self):
@@ -890,6 +902,7 @@ class PipelineTesterMixin(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 256, 256, 3)
+
         expected_slice = np.array([0.64363, 0.5868, 0.3031, 0.2284, 0.7409, 0.3216, 0.25643, 0.6557, 0.2633])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
