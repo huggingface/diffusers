@@ -8,7 +8,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import DDIMScheduler, PNDMScheduler
+from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 
 
 class StableDiffusionPipeline(DiffusionPipeline):
@@ -18,7 +18,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[DDIMScheduler, PNDMScheduler],
+        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
     ):
         super().__init__()
         scheduler = scheduler.set_format("pt")
@@ -105,9 +105,16 @@ class StableDiffusionPipeline(DiffusionPipeline):
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
-        for t in tqdm(self.scheduler.timesteps):
+        self.scheduler.set_timesteps(num_inference_steps)
+        if isinstance(self.scheduler, LMSDiscreteScheduler):
+            latents = latents * self.scheduler.sigmas[0]
+
+        for i, t in tqdm(enumerate(self.scheduler.timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+            if isinstance(self.scheduler, LMSDiscreteScheduler):
+                sigma = self.scheduler.sigmas[i]
+                latent_model_input = latent_model_input / ((sigma**2 + 1) ** 0.5)
 
             # predict the noise residual
             noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings)["sample"]
@@ -118,7 +125,10 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs)["prev_sample"]
+            if isinstance(self.scheduler, LMSDiscreteScheduler):
+                latents = self.scheduler.step(noise_pred, i, latents, **extra_step_kwargs)["prev_sample"]
+            else:
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs)["prev_sample"]
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents

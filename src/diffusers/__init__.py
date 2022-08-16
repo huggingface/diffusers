@@ -1,7 +1,7 @@
 # flake8: noqa
 # There's no way to ignore "F401 '...' imported but unused" warnings in this
 # module, but to preserve other warnings. So, don't check this module at all.
-from .utils import is_inflect_available, is_transformers_available, is_unidecode_available
+from .utils import is_inflect_available, is_scipy_available, is_transformers_available, is_unidecode_available
 
 
 __version__ = "0.1.3"
@@ -27,11 +27,17 @@ from .schedulers import (
     SchedulerMixin,
     ScoreSdeVeScheduler,
 )
+
+
+if is_scipy_available():
+    from .schedulers import LMSDiscreteScheduler
+
 from .training_utils import EMAModel
 
 
 if is_transformers_available():
     from .pipelines import LDMTextToImagePipeline, StableDiffusionPipeline
+
 
 else:
     from .utils.dummy_transformers_objects import *
