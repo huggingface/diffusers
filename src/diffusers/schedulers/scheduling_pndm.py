@@ -106,6 +106,9 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         self._timesteps = [t + self._offset for t in self._timesteps]
 
         if self.config.skip_prk_steps:
+            # for some models like stable diffusion the prk steps can/should be skipped to
+            # produce better results. When using PNDM with `self.config.skip_prk_steps` the implementation
+            # is based on crowsonkb's PLMS sampler implementation: https://github.com/CompVis/latent-diffusion/pull/51
             self.prk_timesteps = []
             self.plms_timesteps = list(reversed(self._timesteps[:-1] + self._timesteps[-2:-1] + self._timesteps[-1:]))
         else:
@@ -190,10 +193,6 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         else:
             prev_timestep = timestep
             timestep = timestep + self.config.num_train_timesteps // self.num_inference_steps
-            print("e_t 1", model_output.abs().sum())
-
-        print("e_t", self.ets[-1].abs().sum())
-        print("t", timestep)
 
         if len(self.ets) == 1 and self.counter == 0:
             model_output = model_output
@@ -209,10 +208,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         else:
             model_output = (1 / 24) * (55 * self.ets[-1] - 59 * self.ets[-2] + 37 * self.ets[-3] - 9 * self.ets[-4])
 
-        print("model_output", model_output.abs().sum())
         prev_sample = self._get_prev_sample(sample, timestep, prev_timestep, model_output)
-        print("prev_sample", prev_sample.abs().sum())
-        print(20 * "-")
         self.counter += 1
 
         return {"prev_sample": prev_sample}
@@ -234,9 +230,6 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         alpha_prod_t_prev = self.alphas_cumprod[timestep_prev + 1 - self._offset]
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
-
-        print(alpha_prod_t)
-        print(alpha_prod_t_prev)
 
         # corresponds to (α_(t−δ) - α_t) divided by
         # denominator of x_t in formula (9) and plus 1
