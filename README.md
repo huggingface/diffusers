@@ -60,7 +60,7 @@ pipe = StableDiffusionPipeline.from_pretrained(
 
 prompt = "a photo of an astronaut riding a horse on mars"
 with autocast("cuda"):
-    image = pipe(prompt, width=768, guidance_scale=7)["sample"][0]  
+    image = pipe(prompt, width=512, guidance_scale=7.5)["sample"][0]  
     
 image.save("astronaut_rides_horse.png")
 ```
