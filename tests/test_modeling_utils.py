@@ -666,7 +666,7 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
 
         output_slice = output[0, -1, -3:, -3:].flatten()
         # fmt: off
-        expected_output_slice = torch.tensor([-4.0078e-01, -3.8304e-04, -1.2681e-01, -1.1462e-01,  2.0095e-01, 1.0893e-01, -8.8248e-02, -3.0361e-01, -9.8646e-03])
+        expected_output_slice = torch.tensor([-4.0078e-01, -3.8304e-04, -1.2681e-01, -1.1462e-01, 2.0095e-01, 1.0893e-01, -8.8248e-02, -3.0361e-01, -9.8646e-03])
         # fmt: on
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
@@ -841,35 +841,46 @@ class PipelineTesterMixin(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is suppused to run on GPU")
     def test_stable_diffusion(self):
-        ldm = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1-diffusers")
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1-diffusers")
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.manual_seed(0)
-        image = ldm([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=20, output_type="numpy")[
-            "sample"
-        ]
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        output = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=20, output_type="np")
+
+        image = output["sample"]
 
         image_slice = image[0, -3:, -3:, -1]
 
         # TODO: update the expected_slice
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.9256, 0.9340, 0.8933, 0.9361, 0.9113, 0.8727, 0.9122, 0.8745, 0.8099])
+        expected_slice = np.array([0.8983, 0.9198, 0.9107, 0.8959, 0.9157, 0.9199, 0.9236, 0.9311, 0.8891])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
-    def test_stable_diffusion_fast(self):
-        ldm = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1-diffusers")
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is suppused to run on GPU")
+    def test_stable_diffusion_fast_ddim(self):
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1-diffusers")
+
+        scheduler = DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            clip_alpha_at_one=False,
+        )
+        sd_pipe.scheduler = scheduler
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.manual_seed(0)
-        image = ldm([prompt], generator=generator, num_inference_steps=1, output_type="numpy")["sample"]
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image = sd_pipe([prompt], generator=generator, num_inference_steps=2, output_type="numpy")["sample"]
 
         image_slice = image[0, -3:, -3:, -1]
 
         # TODO: update the expected_slice
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.3163, 0.8670, 0.6465, 0.1865, 0.6291, 0.5139, 0.2824, 0.3723, 0.4344])
+        expected_slice = np.array([0.8364, 0.8308, 0.8678, 0.8391, 0.8325, 0.8678, 0.8373, 0.8596, 0.8697])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
@@ -887,6 +898,9 @@ class PipelineTesterMixin(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 256, 256, 3)
+        import ipdb
+
+        ipdb.set_trace()
         expected_slice = np.array([0.64363, 0.5868, 0.3031, 0.2284, 0.7409, 0.3216, 0.25643, 0.6557, 0.2633])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
