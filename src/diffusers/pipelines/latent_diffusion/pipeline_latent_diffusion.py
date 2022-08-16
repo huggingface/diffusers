@@ -1,3 +1,4 @@
+import inspect
 from typing import Optional, Tuple, Union
 
 import torch
@@ -45,11 +46,11 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         # get unconditional embeddings for classifier free guidance
         if guidance_scale != 1.0:
             uncond_input = self.tokenizer([""] * batch_size, padding="max_length", max_length=77, return_tensors="pt")
-            uncond_embeddings = self.bert(uncond_input.input_ids.to(torch_device))
+            uncond_embeddings = self.bert(uncond_input.input_ids.to(torch_device))[0]
 
         # get prompt text embeddings
         text_input = self.tokenizer(prompt, padding="max_length", max_length=77, return_tensors="pt")
-        text_embeddings = self.bert(text_input.input_ids.to(torch_device))
+        text_embeddings = self.bert(text_input.input_ids.to(torch_device))[0]
 
         latents = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
@@ -58,6 +59,13 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         latents = latents.to(torch_device)
 
         self.scheduler.set_timesteps(num_inference_steps)
+
+        # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
+        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
+
+        extra_kwargs = {}
+        if accepts_eta:
+            extra_kwargs["eta"] = eta
 
         for t in tqdm(self.scheduler.timesteps):
             if guidance_scale == 1.0:
@@ -79,7 +87,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_prediction_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, eta)["prev_sample"]
+            latents = self.scheduler.step(noise_pred, t, latents, **extra_kwargs)["prev_sample"]
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
@@ -618,5 +626,4 @@ class LDMBertModel(LDMBertPreTrainedModel):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
-        sequence_output = outputs[0]
-        return sequence_output
+        return outputs

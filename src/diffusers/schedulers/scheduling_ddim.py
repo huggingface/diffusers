@@ -59,6 +59,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         trained_betas=None,
         timestep_values=None,
         clip_sample=True,
+        clip_alpha_at_one=True,
         tensor_format="pt",
     ):
 
@@ -75,7 +76,12 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
-        self.one = np.array(1.0)
+
+        # At every step in ddim, we are looking into the previous alphas_cumprod
+        # For the final step, there is no previous alphas_cumprod because we are already at 0
+        # `clip_alpha_at_one` decides whether we set this paratemer simply to one or
+        # whether we use the final alpha of the "non-previous" one.
+        self.final_alpha_cumprod = np.array(1.0) if clip_alpha_at_one else self.alphas_cumprod[0]
 
         # setable values
         self.num_inference_steps = None
@@ -86,7 +92,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
     def _get_variance(self, timestep, prev_timestep):
         alpha_prod_t = self.alphas_cumprod[timestep]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.one
+        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
@@ -94,11 +100,12 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
-    def set_timesteps(self, num_inference_steps):
+    def set_timesteps(self, num_inference_steps, offset=0):
         self.num_inference_steps = num_inference_steps
         self.timesteps = np.arange(
             0, self.config.num_train_timesteps, self.config.num_train_timesteps // self.num_inference_steps
         )[::-1].copy()
+        self.timesteps += offset
         self.set_format(tensor_format=self.tensor_format)
 
     def step(
@@ -126,7 +133,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         # 2. compute alphas, betas
         alpha_prod_t = self.alphas_cumprod[timestep]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.one
+        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
         beta_prod_t = 1 - alpha_prod_t
 
         # 3. compute predicted original sample from predicted noise also called

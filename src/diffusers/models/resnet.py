@@ -331,7 +331,9 @@ class ResnetBlock(nn.Module):
     def forward(self, x, temb, hey=False):
         h = x
 
-        h = self.norm1(h)
+        # make sure hidden states is in float32
+        # when running in half-precision
+        h = self.norm1(h.float()).type(h.dtype)
         h = self.nonlinearity(h)
 
         if self.upsample is not None:
@@ -347,7 +349,9 @@ class ResnetBlock(nn.Module):
             temb = self.time_emb_proj(self.nonlinearity(temb))[:, :, None, None]
             h = h + temb
 
-        h = self.norm2(h)
+        # make sure hidden states is in float32
+        # when running in half-precision
+        h = self.norm2(h.float()).type(h.dtype)
         h = self.nonlinearity(h)
 
         h = self.dropout(h)

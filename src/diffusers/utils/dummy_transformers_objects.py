@@ -8,3 +8,10 @@ class LDMTextToImagePipeline(metaclass=DummyObject):
 
     def __init__(self, *args, **kwargs):
         requires_backends(self, ["transformers"])
+
+
+class StableDiffusionPipeline(metaclass=DummyObject):
+    _backends = ["transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["transformers"])
