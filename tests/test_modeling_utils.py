@@ -988,7 +988,8 @@ class PipelineTesterMixin(unittest.TestCase):
         pipe.scheduler = scheduler
 
         prompt = "a photograph of an astronaut riding a horse"
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device='cuda')
+        generator.manual_seed(0)
         image = pipe([prompt], generator=generator, guidance_scale=7.5, num_inference_steps=50, output_type="numpy")[
             "sample"
         ]
