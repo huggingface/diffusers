@@ -719,6 +719,28 @@ class PipelineTesterMixin(unittest.TestCase):
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
 
     @slow
+    def test_from_pretrained_hub_pass_model(self):
+        model_path = "google/ddpm-cifar10-32"
+
+        # pass unet into DiffusionPipeline
+        unet = UNet2DModel.from_pretrained(model_path)
+        ddpm_from_hub_custom_model = DDPMPipeline.from_pretrained(model_path, unet=unet)
+        ddpm_from_hub_custom_model = DiffusionPipeline.from_pretrained(model_path, unet=unet)
+
+        ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path)
+
+        ddpm_from_hub_custom_model.scheduler.num_timesteps = 10
+        ddpm_from_hub.scheduler.num_timesteps = 10
+
+        generator = torch.manual_seed(0)
+
+        image = ddpm_from_hub_custom_model(generator=generator, output_type="numpy")["sample"]
+        generator = generator.manual_seed(0)
+        new_image = ddpm_from_hub(generator=generator, output_type="numpy")["sample"]
+
+        assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
+
+    @slow
     def test_output_format(self):
         model_path = "google/ddpm-cifar10-32"
 
