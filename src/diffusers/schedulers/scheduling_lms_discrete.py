@@ -36,8 +36,8 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         tensor_format="pt",
     ):
         """
-        Linear Multistep Scheduler for discrete beta schedules.
-        Based on the original k-diffusion implementation by Katherine Crowson:
+        Linear Multistep Scheduler for discrete beta schedules. Based on the original k-diffusion implementation by
+        Katherine Crowson:
         https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L181
         """
 

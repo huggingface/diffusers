@@ -96,6 +96,10 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
 
+        # if we use LMSDiscreteScheduler, let's make sure latents are mulitplied by sigmas
+        if isinstance(self.scheduler, LMSDiscreteScheduler):
+            latents = latents * self.scheduler.sigmas[0]
+
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
@@ -104,10 +108,6 @@ class StableDiffusionPipeline(DiffusionPipeline):
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
-
-        self.scheduler.set_timesteps(num_inference_steps)
-        if isinstance(self.scheduler, LMSDiscreteScheduler):
-            latents = latents * self.scheduler.sigmas[0]
 
         for i, t in tqdm(enumerate(self.scheduler.timesteps)):
             # expand the latents if we are doing classifier free guidance
