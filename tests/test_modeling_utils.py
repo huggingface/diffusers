@@ -964,8 +964,10 @@ class PipelineTesterMixin(unittest.TestCase):
         expected_slice = np.array([0.26815, 0.1581, 0.2658, 0.23248, 0.1550, 0.2539, 0.1131, 0.1024, 0.0837])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    @slow
+    #@slow
     def test_lms_stable_diffusion_pipeline(self):
+        from PIL import Image
+
         model_id = "CompVis/stable-diffusion-v1-1-diffusers"
         pipe = StableDiffusionPipeline.from_pretrained(model_id, use_auth_token=True)
         scheduler = LmsDiscreteScheduler.from_config(model_id, subfolder="scheduler", use_auth_token=True)
@@ -976,6 +978,15 @@ class PipelineTesterMixin(unittest.TestCase):
         image = pipe([prompt], generator=generator, guidance_scale=7.5, num_inference_steps=50, output_type="numpy")[
             "sample"
         ]
+
+        # def make_grid(images, rows, cols):
+        #     w, h = images[0].size
+        #     grid = Image.new('RGB', size=(cols * w, rows * h))
+        #     for i, image in enumerate(images):
+        #         grid.paste(image, box=(i % cols * w, i // cols * h))
+        #     return grid
+        #
+        # image = make_grid(image, 2, 2)
 
         image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 512, 512, 3)

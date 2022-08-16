@@ -79,16 +79,6 @@ class LmsDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         return integrated_coeff
 
-    def sigma_to_timestep(self, sigma):
-        sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
-        dists = torch.abs(sigma - sigmas)
-        low_idx, high_idx = np.argsort(dists)[:2]
-        low, high = sigmas[low_idx], sigmas[high_idx]
-        w = (low - sigma) / (low - high)
-        w = w.clamp(0, 1)
-        timestep = (1 - w) * low_idx + w * high_idx
-        return timestep
-
     def set_timesteps(self, num_inference_steps):
         self.num_inference_steps = num_inference_steps
         self.timesteps = np.linspace(self.num_train_timesteps - 1, 0, num_inference_steps, dtype=float)
@@ -112,12 +102,18 @@ class LmsDiscreteScheduler(SchedulerMixin, ConfigMixin):
         order: int = 4,
     ):
         sigma = self.sigmas[timestep]
+        print("timestep", timestep)
+        print("sigma", sigma.item())
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
+        print("sample", sample.sum().item())
+        print("model_output", model_output.sum().item())
         pred_original_sample = sample - sigma * model_output
+        print("pred_original_sample", pred_original_sample.sum().item())
 
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma
+        print("derivative", derivative.sum().item())
         self.derivatives.append(derivative)
         if len(self.derivatives) > order:
             self.derivatives.pop(0)
