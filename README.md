@@ -34,6 +34,35 @@ In order to get started, we recommend taking a look at two notebooks:
 - The [Training a diffusers model](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb) notebook summarizes diffuser model training methods. This notebook takes a step-by-step approach to training your
   diffuser model on an image dataset, with explanatory graphics.
   
+## **New** Stable Diffusion is now fully compatible with `diffusers`! 
+
+```py
+# make sure you're logged in with `huggingface-cli login`
+from torch import autocast
+from diffusers import StableDiffusionPipeline, LMSDiscreteScheduler
+
+lms = LMSDiscreteScheduler(
+	beta_start=0.00085, 
+	beta_end=0.012, 
+	beta_schedule="scaled_linear"
+)
+
+pipe = StableDiffusionPipeline.from_pretrained(
+	"CompVis/stable-diffusion-v1-3-diffusers", 
+	scheduler=lms,
+	use_auth_token=True
+)  
+
+prompt = "a photo of an astronaut riding a horse on mars"
+with autocast("cuda"):
+    image = pipe(prompt, width=768, guidance_scale=7)["sample"][0]  
+    
+image.save("astronaut_rides_horse.png")
+```
+
+For more details, check out [this notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/stable_diffusion.ipynb)
+and have a look into the [release notes](https://github.com/huggingface/diffusers/releases/tag/v0.2.0).
+  
 ## Examples
 
 If you want to run the code yourself 💻, you can try out:
