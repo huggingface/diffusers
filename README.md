@@ -123,7 +123,7 @@ The class provides functionality to compute previous image according to alpha, b
 **With `pip`**
     
 ```bash
-pip install diffusers  # should install diffusers 0.1.3
+pip install --upgrade diffusers  # should install diffusers 0.2.0
 ```
 
 **With `conda`**
