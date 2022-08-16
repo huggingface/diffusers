@@ -125,7 +125,10 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, i, latents, **extra_step_kwargs)["prev_sample"]
+            if isinstance(self.scheduler, LmsDiscreteScheduler):
+                latents = self.scheduler.step(noise_pred, i, latents, **extra_step_kwargs)["prev_sample"]
+            else:
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs)["prev_sample"]
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents

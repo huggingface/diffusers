@@ -842,7 +842,7 @@ class PipelineTesterMixin(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
-    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is suppused to run on GPU")
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion(self):
         # make sure here that pndm scheduler skips prk
         sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1-diffusers")
@@ -863,7 +863,7 @@ class PipelineTesterMixin(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
-    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is suppused to run on GPU")
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_fast_ddim(self):
         sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1-diffusers")
 
@@ -979,7 +979,8 @@ class PipelineTesterMixin(unittest.TestCase):
         expected_slice = np.array([0.26815, 0.1581, 0.2658, 0.23248, 0.1550, 0.2539, 0.1131, 0.1024, 0.0837])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    # @slow
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_lms_stable_diffusion_pipeline(self):
         model_id = "CompVis/stable-diffusion-v1-1-diffusers"
         pipe = StableDiffusionPipeline.from_pretrained(model_id, use_auth_token=True)
