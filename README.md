@@ -65,7 +65,7 @@ with autocast("cuda"):
 image.save("astronaut_rides_horse.png")
 ```
 
-For more details, check out [this notebook](https://github.com/huggingface/notebooks/blob/main/diffusers/stable_diffusion.ipynb)
+For more details, check out [the Stable Diffusion notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/stable_diffusion.ipynb)
 and have a look into the [release notes](https://github.com/huggingface/diffusers/releases/tag/v0.2.0).
   
 ## Examples
