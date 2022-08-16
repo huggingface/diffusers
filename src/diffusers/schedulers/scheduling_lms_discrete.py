@@ -102,18 +102,12 @@ class LmsDiscreteScheduler(SchedulerMixin, ConfigMixin):
         order: int = 4,
     ):
         sigma = self.sigmas[timestep]
-        print("timestep", timestep)
-        print("sigma", sigma.item())
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
-        print("sample", sample.sum().item())
-        print("model_output", model_output.sum().item())
         pred_original_sample = sample - sigma * model_output
-        print("pred_original_sample", pred_original_sample.sum().item())
 
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma
-        print("derivative", derivative.sum().item())
         self.derivatives.append(derivative)
         if len(self.derivatives) > order:
             self.derivatives.pop(0)
@@ -123,7 +117,9 @@ class LmsDiscreteScheduler(SchedulerMixin, ConfigMixin):
         lms_coeffs = [self.get_lms_coefficient(order, timestep, curr_order) for curr_order in range(order)]
 
         # 4. Compute previous sample based on the derivatives path
-        prev_sample = sample + sum(coeff * derivative for coeff, derivative in zip(lms_coeffs, self.derivatives))
+        prev_sample = sample + sum(
+            coeff * derivative for coeff, derivative in zip(lms_coeffs, reversed(self.derivatives))
+        )
 
         return {"prev_sample": prev_sample}
 

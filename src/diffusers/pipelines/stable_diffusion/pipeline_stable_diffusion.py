@@ -110,19 +110,14 @@ class StableDiffusionPipeline(DiffusionPipeline):
             latents = latents * self.scheduler.sigmas[0]
 
         for i, t in tqdm(enumerate(self.scheduler.timesteps)):
-            print()
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             if isinstance(self.scheduler, LmsDiscreteScheduler):
                 sigma = self.scheduler.sigmas[i]
-                print("c_in", (1 / (sigma**2 + 1) ** 0.5).item())
-                print("sigma_to_t", t)
-                latent_model_input = latent_model_input / (sigma**2 + 1) ** 0.5
+                latent_model_input = latent_model_input / ((sigma**2 + 1) ** 0.5)
 
             # predict the noise residual
-            noise_pred = self.unet(
-                latent_model_input, t, encoder_hidden_states=text_embeddings
-            )["sample"]
+            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings)["sample"]
 
             # perform guidance
             if do_classifier_free_guidance:
