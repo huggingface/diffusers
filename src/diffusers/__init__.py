@@ -31,13 +31,13 @@ from .schedulers import (
 
 if is_scipy_available():
     from .schedulers import LMSDiscreteScheduler
+else:
+    from .utils.dummy_scipy_objects import *
 
 from .training_utils import EMAModel
 
 
 if is_transformers_available():
     from .pipelines import LDMTextToImagePipeline, StableDiffusionPipeline
-
-
 else:
     from .utils.dummy_transformers_objects import *

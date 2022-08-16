@@ -28,3 +28,5 @@ from .scheduling_utils import SchedulerMixin
 
 if is_scipy_available():
     from .scheduling_lms_discrete import LMSDiscreteScheduler
+else:
+    from ..utils.dummy_scipy_objects import *
