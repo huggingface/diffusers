@@ -23,7 +23,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils import SchedulerMixin
 
 
-class LmsDiscreteScheduler(SchedulerMixin, ConfigMixin):
+class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,

@@ -30,7 +30,7 @@ from .schedulers import (
 
 
 if is_scipy_available():
-    from .schedulers import LmsDiscreteScheduler
+    from .schedulers import LMSDiscreteScheduler
 
 from .training_utils import EMAModel
 

@@ -33,7 +33,7 @@ from diffusers import (
     KarrasVeScheduler,
     LDMPipeline,
     LDMTextToImagePipeline,
-    LmsDiscreteScheduler,
+    LMSDiscreteScheduler,
     PNDMPipeline,
     PNDMScheduler,
     ScoreSdeVePipeline,
@@ -984,7 +984,7 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_lms_stable_diffusion_pipeline(self):
         model_id = "CompVis/stable-diffusion-v1-1-diffusers"
         pipe = StableDiffusionPipeline.from_pretrained(model_id, use_auth_token=True)
-        scheduler = LmsDiscreteScheduler.from_config(model_id, subfolder="scheduler", use_auth_token=True)
+        scheduler = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler", use_auth_token=True)
         pipe.scheduler = scheduler
 
         prompt = "a photograph of an astronaut riding a horse"
