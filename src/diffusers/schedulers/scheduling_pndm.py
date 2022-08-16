@@ -120,6 +120,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         self.timesteps = self.prk_timesteps + self.plms_timesteps
 
+        self.ets = []
         self.counter = 0
         self.set_format(tensor_format=self.tensor_format)
 

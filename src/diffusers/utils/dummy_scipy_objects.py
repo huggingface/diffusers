@@ -3,7 +3,7 @@
 from ..utils import DummyObject, requires_backends
 
 
-class LmsDiscreteScheduler(metaclass=DummyObject):
+class LMSDiscreteScheduler(metaclass=DummyObject):
     _backends = ["scipy"]
 
     def __init__(self, *args, **kwargs):
