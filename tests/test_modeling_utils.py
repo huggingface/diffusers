@@ -843,6 +843,7 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is suppused to run on GPU")
     def test_stable_diffusion(self):
+        # make sure here that pndm scheduler skips prk
         sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1-diffusers")
 
         prompt = "A painting of a squirrel eating a burger"
@@ -857,7 +858,7 @@ class PipelineTesterMixin(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.898, 0.9194, 0.91, 0.8955, 0.915, 0.919, 0.9233, 0.9307, 0.8887])
+        expected_slice = np.array([0.8887, 0.915, 0.91, 0.894, 0.909, 0.912, 0.919, 0.925, 0.883])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
