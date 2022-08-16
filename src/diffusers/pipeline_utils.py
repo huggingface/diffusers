@@ -156,6 +156,15 @@ class DiffusionPipeline(ConfigMixin):
         from diffusers import pipelines
 
         # 3. Load each module in the pipeline
+
+        # 3.1 Assign override modules first (they are already instantiated in `init_dict`)
+        passed_class_obj = {k: v for k, v in kwargs.items() if k in init_dict}
+        for name, module in passed_class_obj.items():
+            # TODO: verify that the module class belongs to one of the supported classes
+            init_kwargs[name] = module
+            init_dict.pop(name)
+
+        # 3.2 Load standard modules
         for name, (library_name, class_name) in init_dict.items():
             is_pipeline_module = hasattr(pipelines, library_name)
             # if the model is in a pipeline module, then we load it from the pipeline
