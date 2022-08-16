@@ -871,7 +871,7 @@ class PipelineTesterMixin(unittest.TestCase):
             beta_end=0.012,
             beta_schedule="scaled_linear",
             clip_sample=False,
-            clip_alpha_at_one=False,
+            set_alpha_to_one=False,
         )
         sd_pipe.scheduler = scheduler
 

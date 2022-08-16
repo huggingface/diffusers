@@ -59,7 +59,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         trained_betas=None,
         timestep_values=None,
         clip_sample=True,
-        clip_alpha_at_one=True,
+        set_alpha_to_one=True,
         tensor_format="pt",
     ):
 
@@ -79,9 +79,9 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         # At every step in ddim, we are looking into the previous alphas_cumprod
         # For the final step, there is no previous alphas_cumprod because we are already at 0
-        # `clip_alpha_at_one` decides whether we set this paratemer simply to one or
+        # `set_alpha_to_one` decides whether we set this paratemer simply to one or
         # whether we use the final alpha of the "non-previous" one.
-        self.final_alpha_cumprod = np.array(1.0) if clip_alpha_at_one else self.alphas_cumprod[0]
+        self.final_alpha_cumprod = np.array(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
 
         # setable values
         self.num_inference_steps = None
