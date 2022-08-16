@@ -8,8 +8,13 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from ...schedulers import DDIMScheduler, PNDMScheduler
 
+from ...utils import is_scipy_available
+if is_scipy_available():
+    from ...schedulers import LMSDiscreteScheduler
+else:
+    class LMSDiscreteScheduler: pass
 
 class StableDiffusionPipeline(DiffusionPipeline):
     def __init__(
