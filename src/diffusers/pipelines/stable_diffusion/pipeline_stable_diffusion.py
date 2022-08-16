@@ -96,9 +96,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        extra_forward_kwargs = {}
+        extra_step_kwargs = {}
         if accepts_eta:
-            extra_forward_kwargs["eta"] = eta
+            extra_step_kwargs["eta"] = eta
 
         for t in tqdm(self.scheduler.timesteps):
             # expand the latents if we are doing classifier free guidance
@@ -113,7 +113,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, **extra_forward_kwargs)["prev_sample"]
+            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs)["prev_sample"]
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
