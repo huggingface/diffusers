@@ -847,14 +847,17 @@ class PipelineTesterMixin(unittest.TestCase):
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=20, output_type="np")
+        with torch.autocast("cuda"):
+            output = sd_pipe(
+                [prompt], generator=generator, guidance_scale=6.0, num_inference_steps=20, output_type="np"
+            )
 
         image = output["sample"]
 
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.8983, 0.9198, 0.9107, 0.8959, 0.9157, 0.9199, 0.9236, 0.9311, 0.8891])
+        expected_slice = np.array([0.898, 0.9194, 0.91, 0.8955, 0.915, 0.919, 0.9233, 0.9307, 0.8887])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
@@ -873,14 +876,15 @@ class PipelineTesterMixin(unittest.TestCase):
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = sd_pipe([prompt], generator=generator, num_inference_steps=2, output_type="numpy")
-        
+
+        with torch.autocast("cuda"):
+            output = sd_pipe([prompt], generator=generator, num_inference_steps=2, output_type="numpy")
         image = output["sample"]
 
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.8364, 0.8308, 0.8678, 0.8391, 0.8325, 0.8678, 0.8373, 0.8596, 0.8697])
+        expected_slice = np.array([0.8354, 0.83, 0.866, 0.838, 0.8315, 0.867, 0.836, 0.8584, 0.869])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     @slow
@@ -898,9 +902,7 @@ class PipelineTesterMixin(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 256, 256, 3)
-        import ipdb
 
-        ipdb.set_trace()
         expected_slice = np.array([0.64363, 0.5868, 0.3031, 0.2284, 0.7409, 0.3216, 0.25643, 0.6557, 0.2633])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
