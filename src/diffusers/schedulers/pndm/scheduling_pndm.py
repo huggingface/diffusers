@@ -20,8 +20,8 @@ from typing import Union
 import numpy as np
 import torch
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin
+from ...configuration_utils import ConfigMixin, register_to_config
+from ..scheduling_utils import SchedulerMixin
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):

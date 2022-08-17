@@ -19,8 +19,8 @@ import torch
 
 from scipy import integrate
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin
+from ...configuration_utils import ConfigMixin, register_to_config
+from ..scheduling_utils import SchedulerMixin
 
 
 class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
