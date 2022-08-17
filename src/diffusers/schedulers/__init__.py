@@ -17,16 +17,16 @@
 # limitations under the License.
 
 from ..utils import is_scipy_available
-from .scheduling_ddim import DDIMScheduler
-from .scheduling_ddpm import DDPMScheduler
-from .scheduling_karras_ve import KarrasVeScheduler
-from .scheduling_pndm import PNDMScheduler
-from .scheduling_sde_ve import ScoreSdeVeScheduler
-from .scheduling_sde_vp import ScoreSdeVpScheduler
+from .ddim.scheduling_ddim import DDIMScheduler
+from .ddpm.scheduling_ddpm import DDPMScheduler
+from .karras_ve.scheduling_karras_ve import KarrasVeScheduler
+from .pndm.scheduling_pndm import PNDMScheduler
+from .sde_ve.scheduling_sde_ve import ScoreSdeVeScheduler
+from .sde_vp.scheduling_sde_vp import ScoreSdeVpScheduler
 from .scheduling_utils import SchedulerMixin
 
 
 if is_scipy_available():
-    from .scheduling_lms_discrete import LMSDiscreteScheduler
+    from .lms_discrete.scheduling_lms_discrete import LMSDiscreteScheduler
 else:
     from ..utils.dummy_scipy_objects import *
