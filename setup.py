@@ -83,7 +83,7 @@ _deps = [
     "filelock",
     "flake8>=3.8.3",
     "hf-doc-builder>=0.3.0",
-    "huggingface-hub",
+    "huggingface-hub>=0.8.1,<1.0",
     "importlib_metadata",
     "isort>=5.5.4",
     "modelcards==0.1.4",
