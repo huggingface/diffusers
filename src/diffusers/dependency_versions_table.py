@@ -3,12 +3,15 @@
 # 2. run `make deps_table_update``
 deps = {
     "Pillow": "Pillow",
+    "accelerate": "accelerate>=0.11.0",
     "black": "black~=22.0,>=22.3",
     "filelock": "filelock",
     "flake8": "flake8>=3.8.3",
+    "hf-doc-builder": "hf-doc-builder>=0.3.0",
     "huggingface-hub": "huggingface-hub>=0.8.1,<1.0",
     "importlib_metadata": "importlib_metadata",
     "isort": "isort>=5.5.4",
+    "modelcards": "modelcards==0.1.4",
     "numpy": "numpy",
     "pytest": "pytest",
     "regex": "regex!=2019.12.17",
