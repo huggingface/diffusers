@@ -8,17 +8,3 @@ class LMSDiscreteScheduler(metaclass=DummyObject):
 
     def __init__(self, *args, **kwargs):
         requires_backends(self, ["scipy"])
-
-
-class LDMTextToImagePipeline(metaclass=DummyObject):
-    _backends = ["scipy"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["scipy"])
-
-
-class StableDiffusionPipeline(metaclass=DummyObject):
-    _backends = ["scipy"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["scipy"])

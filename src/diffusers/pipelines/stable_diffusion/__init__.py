@@ -1,3 +1,4 @@
+# flake8: noqa
 from ...utils import is_transformers_available
 
 

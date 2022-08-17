@@ -1,4 +1,8 @@
-from ..utils import is_inflect_available, is_transformers_available, is_unidecode_available
+# flake8: noqa
+# There's no way to ignore "F401 '...' imported but unused" warnings in this
+# module, but to preserve other warnings. So, don't check this module at all.
+
+from ..utils import is_transformers_available
 from .ddim import DDIMPipeline
 from .ddpm import DDPMPipeline
 from .latent_diffusion_uncond import LDMPipeline
