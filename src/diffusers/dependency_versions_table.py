@@ -5,6 +5,7 @@ deps = {
     "Pillow": "Pillow",
     "accelerate": "accelerate>=0.11.0",
     "black": "black~=22.0,>=22.3",
+    "datasets": "datasets",
     "filelock": "filelock",
     "flake8": "flake8>=3.8.3",
     "hf-doc-builder": "hf-doc-builder>=0.3.0",
@@ -16,7 +17,6 @@ deps = {
     "pytest": "pytest",
     "regex": "regex!=2019.12.17",
     "requests": "requests",
-    "torch": "torch>=1.4",
     "tensorboard": "tensorboard",
-    "modelcards": "modelcards==0.1.4",
+    "torch": "torch>=1.4",
 }
