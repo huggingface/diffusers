@@ -47,15 +47,15 @@ from torch import autocast
 from diffusers import StableDiffusionPipeline, LMSDiscreteScheduler
 
 lms = LMSDiscreteScheduler(
-	beta_start=0.00085, 
-	beta_end=0.012, 
-	beta_schedule="scaled_linear"
+    beta_start=0.00085, 
+    beta_end=0.012, 
+    beta_schedule="scaled_linear"
 )
 
 pipe = StableDiffusionPipeline.from_pretrained(
-	"CompVis/stable-diffusion-v1-3-diffusers", 
-	scheduler=lms,
-	use_auth_token=True
+    "CompVis/stable-diffusion-v1-3-diffusers", 
+    scheduler=lms,
+    use_auth_token=True
 )  
 
 prompt = "a photo of an astronaut riding a horse on mars"
