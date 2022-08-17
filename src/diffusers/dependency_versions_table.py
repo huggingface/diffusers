@@ -6,7 +6,7 @@ deps = {
     "black": "black~=22.0,>=22.3",
     "filelock": "filelock",
     "flake8": "flake8>=3.8.3",
-    "huggingface-hub": "huggingface-hub",
+    "huggingface-hub": "huggingface-hub>=0.8.1,<1.0",
     "importlib_metadata": "importlib_metadata",
     "isort": "isort>=5.5.4",
     "numpy": "numpy",
