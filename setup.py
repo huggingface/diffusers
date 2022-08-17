@@ -79,6 +79,7 @@ _deps = [
     "Pillow",
     "accelerate>=0.11.0",
     "black~=22.0,>=22.3",
+    "datasets",
     "filelock",
     "flake8>=3.8.3",
     "hf-doc-builder>=0.3.0",
@@ -90,8 +91,8 @@ _deps = [
     "pytest",
     "regex!=2019.12.17",
     "requests",
-    "torch>=1.4",
     "tensorboard",
+    "torch>=1.4",
 ]
 
 # this is a lookup table with items like:
@@ -164,10 +165,8 @@ extras = {}
 extras = {}
 extras["quality"] = ["black ~= 22.0", "isort >= 5.5.4", "flake8 >= 3.8.3"]
 extras["docs"] = ["hf-doc-builder"]
-extras["training"] = ["accelerate", "tensorboard", "modelcards"]
-extras["test"] = [
-    "pytest",
-]
+extras["training"] = ["accelerate", "datasets", "tensorboard", "modelcards"]
+extras["test"] = ["pytest"]
 extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras["docs"]
 
 install_requires = [
