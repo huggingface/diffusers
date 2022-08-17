@@ -237,7 +237,7 @@ if __name__ == "__main__":
     parser.add_argument("--hub_model_id", type=str, default=None)
     parser.add_argument("--hub_private_repo", action="store_true")
     parser.add_argument("--logging_dir", type=str, default="logs")
-    parser.add_argument("--checkpoint_model", type=bool, default=False)
+    parser.add_argument("--checkpoint_model", action="store_true", default=False)
     parser.add_argument(
         "--mixed_precision",
         type=str,
