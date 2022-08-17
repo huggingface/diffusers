@@ -1,6 +1,8 @@
 import argparse
 import os
 
+from datetime import datetime
+
 import torch
 import torch.nn.functional as F
 
@@ -34,29 +36,37 @@ def main(args):
         logging_dir=logging_dir,
     )
 
-    model = UNet2DModel(
-        sample_size=args.resolution,
-        in_channels=3,
-        out_channels=3,
-        layers_per_block=2,
-        block_out_channels=(128, 128, 256, 256, 512, 512),
-        down_block_types=(
-            "DownBlock2D",
-            "DownBlock2D",
-            "DownBlock2D",
-            "DownBlock2D",
-            "AttnDownBlock2D",
-            "DownBlock2D",
-        ),
-        up_block_types=(
-            "UpBlock2D",
-            "AttnUpBlock2D",
-            "UpBlock2D",
-            "UpBlock2D",
-            "UpBlock2D",
-            "UpBlock2D",
-        ),
-    )
+
+    model_dir = f"{args.output_dir}/unet"
+    if os.path.exists(model_dir):
+        print(f"reloading model from {model_dir}")
+        model = UNet2DModel.from_pretrained(model_dir)
+        print(f"reloaded model from {model_dir}")
+    else:
+        print(f"creating fresh model")
+        model = UNet2DModel(
+            sample_size=args.resolution,
+            in_channels=3,
+            out_channels=3,
+            layers_per_block=2,
+            block_out_channels=(128, 128, 256, 256, 512, 512),
+            down_block_types=(
+                "DownBlock2D",
+                "DownBlock2D",
+                "DownBlock2D",
+                "DownBlock2D",
+                "AttnDownBlock2D",
+                "DownBlock2D",
+            ),
+            up_block_types=(
+                "UpBlock2D",
+                "AttnUpBlock2D",
+                "UpBlock2D",
+                "UpBlock2D",
+                "UpBlock2D",
+                "UpBlock2D",
+            ),
+        )
     noise_scheduler = DDPMScheduler(num_train_timesteps=1000, tensor_format="pt")
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -171,8 +181,10 @@ def main(args):
 
                 # denormalize the images and save to tensorboard
                 images_processed = (images * 255).round().astype("uint8")
+                epoch06 = str(epoch).zfill( 6 )
+                test_samples = datetime.now().strftime(f"test_samples-%Y-%m-%d+%H-%M-%S+{epoch06}")
                 accelerator.trackers[0].writer.add_images(
-                    "test_samples", images_processed.transpose(0, 3, 1, 2), epoch
+                    test_samples, images_processed.transpose(0, 3, 1, 2), epoch
                 )
 
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
