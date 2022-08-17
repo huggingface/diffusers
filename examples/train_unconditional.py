@@ -192,6 +192,12 @@ def main(args):
                 if args.push_to_hub:
                     push_to_hub(args, pipeline, repo, commit_message=f"Epoch {epoch}", blocking=False)
                 else:
+                    if args.checkpoint_model and os.path.exists(model_dir):
+                        checkpoints_dir = f"{args.output_dir}/checkpoints"
+                        os.makedirs(checkpoints_dir, exist_ok=True)
+                        checkpoint_dir = datetime.now().strftime(f"{checkpoints_dir}/checkpoint-%Y-%m-%d+%H-%M-%S")
+                        os.rename(model_dir,checkpoint_dir)
+                        print(f"checkpointed {model_dir} to {checkpoint_dir}")
                     pipeline.save_pretrained(args.output_dir)
         accelerator.wait_for_everyone()
 
@@ -231,6 +237,7 @@ if __name__ == "__main__":
     parser.add_argument("--hub_model_id", type=str, default=None)
     parser.add_argument("--hub_private_repo", action="store_true")
     parser.add_argument("--logging_dir", type=str, default="logs")
+    parser.add_argument("--checkpoint_model", type=bool, default=False)
     parser.add_argument(
         "--mixed_precision",
         type=str,
