@@ -31,7 +31,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         height: Optional[int] = 512,
         width: Optional[int] = 512,
         num_inference_steps: Optional[int] = 50,
-        guidance_scale: Optional[float] = 1.0,
+        guidance_scale: Optional[float] = 7.5,
         eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
         torch_device: Optional[Union[str, torch.device]] = None,
