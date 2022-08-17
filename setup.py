@@ -80,7 +80,7 @@ _deps = [
     "black~=22.0,>=22.3",
     "filelock",
     "flake8>=3.8.3",
-    "huggingface-hub",
+    "huggingface-hub>=0.8.1,<1.0",
     "importlib_metadata",
     "isort>=5.5.4",
     "numpy",

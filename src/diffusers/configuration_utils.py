@@ -23,17 +23,11 @@ from collections import OrderedDict
 from typing import Any, Dict, Tuple, Union
 
 from huggingface_hub import hf_hub_download
+from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
 from . import __version__
-from .utils import (
-    DIFFUSERS_CACHE,
-    HUGGINGFACE_CO_RESOLVE_ENDPOINT,
-    EntryNotFoundError,
-    RepositoryNotFoundError,
-    RevisionNotFoundError,
-    logging,
-)
+from .utils import DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT, logging
 
 
 logger = logging.get_logger(__name__)
