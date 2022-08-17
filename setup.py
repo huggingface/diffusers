@@ -77,19 +77,22 @@ from setuptools import find_packages, setup
 # 2. once modified, run: `make deps_table_update` to update src/diffusers/dependency_versions_table.py
 _deps = [
     "Pillow",
+    "accelerate>=0.11.0",
     "black~=22.0,>=22.3",
+    "datasets",
     "filelock",
     "flake8>=3.8.3",
+    "hf-doc-builder>=0.3.0",
     "huggingface-hub",
     "importlib_metadata",
     "isort>=5.5.4",
+    "modelcards==0.1.4",
     "numpy",
     "pytest",
     "regex!=2019.12.17",
     "requests",
-    "torch>=1.4",
     "tensorboard",
-    "modelcards==0.1.4"
+    "torch>=1.4",
 ]
 
 # this is a lookup table with items like:
@@ -161,12 +164,10 @@ extras = {}
 
 extras = {}
 extras["quality"] = ["black ~= 22.0", "isort >= 5.5.4", "flake8 >= 3.8.3"]
-extras["docs"] = []
-extras["training"] = ["tensorboard", "modelcards"]
-extras["test"] = [
-    "pytest",
-]
-extras["dev"] = extras["quality"] + extras["test"] + extras["training"]
+extras["docs"] = ["hf-doc-builder"]
+extras["training"] = ["accelerate", "datasets", "tensorboard", "modelcards"]
+extras["test"] = ["pytest"]
+extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras["docs"]
 
 install_requires = [
     deps["importlib_metadata"],
