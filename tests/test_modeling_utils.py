@@ -724,7 +724,6 @@ class PipelineTesterMixin(unittest.TestCase):
 
         # pass unet into DiffusionPipeline
         unet = UNet2DModel.from_pretrained(model_path)
-        ddpm_from_hub_custom_model = DDPMPipeline.from_pretrained(model_path, unet=unet)
         ddpm_from_hub_custom_model = DiffusionPipeline.from_pretrained(model_path, unet=unet)
 
         ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path)
