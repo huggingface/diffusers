@@ -3,8 +3,8 @@ from typing import Dict, Union
 import torch
 import torch.nn as nn
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..modeling_utils import ModelMixin
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...modeling_utils import ModelMixin
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from .unet_blocks import UNetMidBlock2D, get_down_block, get_up_block
 
