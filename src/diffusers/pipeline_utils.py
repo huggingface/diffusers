@@ -42,6 +42,7 @@ LOADABLE_CLASSES = {
         "PreTrainedTokenizer": ["save_pretrained", "from_pretrained"],
         "PreTrainedTokenizerFast": ["save_pretrained", "from_pretrained"],
         "PreTrainedModel": ["save_pretrained", "from_pretrained"],
+        "FeatureExtractionMixin": ["save_pretrained", "from_pretrained"],
     },
 }
 
