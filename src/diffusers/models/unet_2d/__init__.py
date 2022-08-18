@@ -16,15 +16,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .scheduling_utils import SchedulerMixin
-
-
-from . import (
-    ddim,
-    ddpm,
-    karras_ve,
-    lms_discrete,
-    pndm,
-    sde_ve,
-    sde_vp,
+from .modeling_unet_2d import (
+    UNet2DModel,
 )

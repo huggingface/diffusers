@@ -16,15 +16,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .scheduling_utils import SchedulerMixin
+from ...utils import is_scipy_available
 
 
-from . import (
-    ddim,
-    ddpm,
-    karras_ve,
-    lms_discrete,
-    pndm,
-    sde_ve,
-    sde_vp,
-)
+if is_scipy_available():
+    from .scheduling_lms_discrete import LMSDiscreteScheduler
+else:
+    from ...utils.dummy_scipy_objects import *

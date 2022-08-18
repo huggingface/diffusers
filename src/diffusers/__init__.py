@@ -7,7 +7,11 @@ from .utils import is_inflect_available, is_scipy_available, is_transformers_ava
 __version__ = "0.2.2"
 
 from .modeling_utils import ModelMixin
-from .models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
+
+from .models.unet_2d import UNet2DModel
+from .models.unet_2d_condition import UNet2DConditionModel
+from .models.vae import AutoencoderKL, VQModel
+
 from .optimization import (
     get_constant_schedule,
     get_constant_schedule_with_warmup,
@@ -17,20 +21,33 @@ from .optimization import (
     get_polynomial_decay_schedule_with_warmup,
     get_scheduler,
 )
-from .pipeline_utils import DiffusionPipeline
-from .pipelines import DDIMPipeline, DDPMPipeline, KarrasVePipeline, LDMPipeline, PNDMPipeline, ScoreSdeVePipeline
-from .schedulers import (
-    DDIMScheduler,
-    DDPMScheduler,
-    KarrasVeScheduler,
-    PNDMScheduler,
-    SchedulerMixin,
-    ScoreSdeVeScheduler,
-)
 
+from .pipeline_utils import DiffusionPipeline
+from .pipelines.ddim import DDIMPipeline
+from .pipelines.ddpm import DDPMPipeline
+from .pipelines.latent_diffusion_uncond import LDMPipeline
+from .pipelines.pndm import PNDMPipeline
+from .pipelines.score_sde_ve import ScoreSdeVePipeline
+
+from .pipelines.stochatic_karras_ve import KarrasVePipeline
+
+if is_transformers_available():
+    from .pipelines.latent_diffusion import LDMTextToImagePipeline
+    from .pipelines.stable_diffusion import StableDiffusionPipeline
+else:
+    from .utils.dummy_transformers_objects import *
+
+from .schedulers.ddim import DDIMScheduler
+from .schedulers.ddpm import DDPMScheduler
+from .schedulers.karras_ve import KarrasVeScheduler
+from .schedulers.pndm import PNDMScheduler
+from .schedulers.sde_ve import ScoreSdeVeScheduler
+from .schedulers.sde_vp import ScoreSdeVpScheduler
+
+from .schedulers.scheduling_utils import SchedulerMixin
 
 if is_scipy_available():
-    from .schedulers import LMSDiscreteScheduler
+    from .schedulers.lms_discrete import LMSDiscreteScheduler
 else:
     from .utils.dummy_scipy_objects import *
 
