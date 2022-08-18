@@ -63,9 +63,6 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
         for idx, has_nsfw_concept in enumerate(has_nsfw_concept):
             if has_nsfw_concept:
-                black_image = np.zeros(images[idx].shape)  # black image
-                draw = ImageDraw.Draw(black_image)
-                draw.text((10, 10), "Too NSFW for diffusers")  # TODO: better text
-                images[idx] = black_image
+                images[idx] = np.zeros(images[idx].shape)  # black image
 
         return images, has_nsfw_concept
