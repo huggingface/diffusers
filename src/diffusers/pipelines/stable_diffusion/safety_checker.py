@@ -10,7 +10,7 @@ def cosine_distance(image_embeds, text_embeds):
     return torch.mm(normalized_image_embeds, normalized_text_embeds.T)
 
 
-class SafetyChecker(PreTrainedModel):
+class StableDiffusionSafetyChecker(PreTrainedModel):
     config_class = CLIPConfig
 
     def __init__(self, config: CLIPConfig):
@@ -28,7 +28,7 @@ class SafetyChecker(PreTrainedModel):
     @torch.no_grad()
     def forward(self, images):
         """Get embeddings for images and output nsfw and concept scores"""
-        pooled_output = self.vision_model(**images)[1]  # pooled_output
+        pooled_output = self.vision_model(images)[1]  # pooled_output
         image_embeds = self.visual_projection(pooled_output)
 
         special_cos_dist = cosine_distance(image_embeds, self.special_care_embeds).cpu().numpy()

@@ -9,7 +9,7 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from .safety_checker import SafetyChecker
+from .safety_checker import StableDiffusionSafetyChecker
 
 
 class StableDiffusionPipeline(DiffusionPipeline):
@@ -20,7 +20,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
-        safety_checker: SafetyChecker,
+        safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
@@ -149,8 +149,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
 
-        safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image)).pixel_values
-        has_bad_concepts = self.safety_checker(safety_cheker_input)
+        safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").pixel_values
+        has_bad_concepts = self.safety_checker(safety_cheker_input.to(torch_device))
 
         if has_bad_concepts:
             raise ValueError("The generated image contains concepts that are not allowed.")
