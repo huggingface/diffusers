@@ -1,3 +1,4 @@
+from asyncio import open_unix_connection
 import inspect
 from typing import Optional, Tuple, Union
 import random
@@ -127,11 +128,13 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         return {"sample": image}  
     
     def decode_image(self, latents, torch_device=None, output_type="pil"):
+        if output_type == "latent":
+            return latents.detach().cpu()
         if torch_device is None:
             torch_device = "cuda" if torch.cuda.is_available() else "cpu"
         self.vqvae.to(torch_device)
         latents = 1 / 0.18215 * latents
-        image = self.vqvae.decode(latents)
+        image = self.vqvae.decode(latents.to(torch_device))
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1)
         if output_type == "pil":
