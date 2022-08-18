@@ -17,6 +17,7 @@
 import importlib
 import inspect
 import os
+import torch
 from typing import Optional, Union
 
 from huggingface_hub import snapshot_download
@@ -111,6 +112,21 @@ class DiffusionPipeline(ConfigMixin):
 
             save_method = getattr(sub_model, save_method_name)
             save_method(os.path.join(save_directory, pipeline_component_name))
+
+
+    def to(self, torch_device: Optional[Union[str, torch.device]] = None):
+        if torch_device is None:
+            # Same semantics as in PyTorch.
+            return self
+
+        modules, _ = self.extract_init_dict(dict(self.config))
+        for name in modules.keys():
+            module = getattr(self, name)
+            if isinstance(module, torch.nn.Module):
+                module.to(torch_device)
+
+        return self
+
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
