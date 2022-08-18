@@ -156,4 +156,4 @@ class StableDiffusionPipeline(DiffusionPipeline):
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
-        return {"sample": image, "nsfw": has_nsfw_concept}
+        return {"sample": image, "nsfw_content_detected": has_nsfw_concept}

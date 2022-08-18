@@ -2,7 +2,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from PIL import ImageDraw
 from transformers import CLIPConfig, CLIPVisionModel, PreTrainedModel
 
 
@@ -29,7 +28,6 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
     @torch.no_grad()
     def forward(self, clip_input, images):
-        """Get embeddings for images and output nsfw and concept scores"""
         pooled_output = self.vision_model(clip_input)[1]  # pooled_output
         image_embeds = self.visual_projection(pooled_output)
 
