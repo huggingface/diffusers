@@ -57,7 +57,9 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
             result.append(result_img)
 
-        has_nsfw_concept = [len(result[i]["bad_concepts"]) > 0 for i in range(len(result))]
+        has_nsfw_concept = [
+            len(result[i]["bad_concepts"]) > 0 or len(result[i]["special_care"]) > 0 for i in range(len(result))
+        ]
 
         for idx, has_nsfw_concept in enumerate(has_nsfw_concept):
             if has_nsfw_concept:
