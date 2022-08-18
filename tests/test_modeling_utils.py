@@ -854,7 +854,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
-        image = ldm([prompt], generator=generator, num_inference_steps=1, output_type="numpy")["sample"]
+        image = ldm(prompt, generator=generator, num_inference_steps=1, output_type="numpy")["sample"]
 
         image_slice = image[0, -3:, -3:, -1]
 

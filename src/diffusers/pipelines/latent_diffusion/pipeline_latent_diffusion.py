@@ -37,7 +37,13 @@ class LDMTextToImagePipeline(DiffusionPipeline):
 
         if torch_device is None:
             torch_device = "cuda" if torch.cuda.is_available() else "cpu"
-        batch_size = len(prompt)
+
+        if isinstance(prompt, str):
+            batch_size = 1
+        elif isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         self.unet.to(torch_device)
         self.vqvae.to(torch_device)
