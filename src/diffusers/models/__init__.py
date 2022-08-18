@@ -17,6 +17,9 @@
 # limitations under the License.
 
 from . import (
+    attention,
+    embeddings,
+    resnet,
     unet_2d,
     unet_2d_condition,
     vae,
