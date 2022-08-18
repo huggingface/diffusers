@@ -17,8 +17,8 @@ import numpy as np
 import torch
 from torch import nn
 
-from .attention import AttentionBlockNew, SpatialTransformer
-from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, ResnetBlock, Upsample2D
+from ..attention.attention import AttentionBlockNew, SpatialTransformer
+from ..resnet.resnet import Downsample2D, FirDownsample2D, FirUpsample2D, ResnetBlock, Upsample2D
 
 
 def get_down_block(

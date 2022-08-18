@@ -5,8 +5,8 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...modeling_utils import ModelMixin
-from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
-from .unet_blocks import UNetMidBlock2D, get_down_block, get_up_block
+from ..embeddings.embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
+from ..unet_blocks.unet_blocks import UNetMidBlock2D, get_down_block, get_up_block
 
 
 class UNet2DModel(ModelMixin, ConfigMixin):
