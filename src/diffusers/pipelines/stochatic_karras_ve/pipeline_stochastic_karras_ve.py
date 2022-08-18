@@ -3,9 +3,9 @@ import torch
 
 from tqdm.auto import tqdm
 
-from ...models import UNet2DModel
+from ...models.unet_2d import UNet2DModel
 from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import KarrasVeScheduler
+from ...schedulers.karras_ve import KarrasVeScheduler
 
 
 class KarrasVePipeline(DiffusionPipeline):

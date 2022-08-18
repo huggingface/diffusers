@@ -6,9 +6,12 @@ import torch
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from ...models import AutoencoderKL, UNet2DConditionModel
+from ...models.unet_2d_condition import UNet2DConditionModel
+from ...models.vae import AutoencoderKL
 from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from ...schedulers.ddim import DDIMScheduler
+from ...schedulers.lms_discrete import LMSDiscreteScheduler
+from ...schedulers.pndm import PNDMScheduler
 
 
 class StableDiffusionPipeline(DiffusionPipeline):
