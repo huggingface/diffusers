@@ -32,10 +32,14 @@ class DDIMPipeline(DiffusionPipeline):
         self, batch_size=1, generator=None, torch_device=None, eta=0.0, num_inference_steps=50, output_type="pil"
     ):
         # eta corresponds to η in paper and should be between [0, 1]
-        if torch_device is None:
-            torch_device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        self.unet.to(torch_device)
+        if torch_device is None:
+            if self.unet.device.type == "cpu":
+                torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+            else:
+                torch_device = self.unet.device
+
+        self.to(torch_device)
 
         # Sample gaussian noise to begin loop
         image = torch.randn(

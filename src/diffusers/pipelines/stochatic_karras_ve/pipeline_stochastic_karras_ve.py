@@ -29,12 +29,16 @@ class KarrasVePipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(self, batch_size=1, num_inference_steps=50, generator=None, torch_device=None, output_type="pil"):
         if torch_device is None:
-            torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+            if self.unet.device.type == "cpu":
+                torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+            else:
+                torch_device = self.unet.device
 
         img_size = self.unet.config.sample_size
         shape = (batch_size, 3, img_size, img_size)
 
-        model = self.unet.to(torch_device)
+        self.to(torch_device)
+        model = self.unet
 
         # sample x_0 ~ N(0, sigma_0^2 * I)
         sample = torch.randn(*shape) * self.scheduler.config.sigma_max

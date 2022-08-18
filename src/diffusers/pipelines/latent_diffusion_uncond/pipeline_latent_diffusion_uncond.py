@@ -20,10 +20,12 @@ class LDMPipeline(DiffusionPipeline):
         # eta corresponds to η in paper and should be between [0, 1]
 
         if torch_device is None:
-            torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+            if self.unet.device.type == "cpu":
+                torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+            else:
+                torch_device = self.unet.device
 
-        self.unet.to(torch_device)
-        self.vqvae.to(torch_device)
+        self.to(torch_device)
 
         latents = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),

@@ -30,9 +30,12 @@ class DDPMPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(self, batch_size=1, generator=None, torch_device=None, output_type="pil"):
         if torch_device is None:
-            torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+            if self.unet.device.type == "cpu":
+                torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+            else:
+                torch_device = self.unet.device
 
-        self.unet.to(torch_device)
+        self.to(torch_device)
 
         # Sample gaussian noise to begin loop
         image = torch.randn(

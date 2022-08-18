@@ -38,7 +38,10 @@ class StableDiffusionPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
     ):
         if torch_device is None:
-            torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+            if self.unet.device.type == "cpu":
+                torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+            else:
+                torch_device = self.unet.device
 
         if isinstance(prompt, str):
             batch_size = 1
@@ -50,9 +53,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        self.unet.to(torch_device)
-        self.vae.to(torch_device)
-        self.text_encoder.to(torch_device)
+        self.to(torch_device)
 
         # get prompt text embeddings
         text_input = self.tokenizer(
