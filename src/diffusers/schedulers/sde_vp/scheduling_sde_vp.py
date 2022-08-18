@@ -19,8 +19,8 @@
 import numpy as np
 import torch
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin
+from ...configuration_utils import ConfigMixin, register_to_config
+from ..scheduling_utils import SchedulerMixin
 
 
 class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
