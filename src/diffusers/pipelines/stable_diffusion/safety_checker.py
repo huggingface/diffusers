@@ -1,7 +1,8 @@
+import numpy as np
 import torch
 import torch.nn as nn
 
-from transformers import CLIPConfig, CLIPProcessor, CLIPVisionModel, PreTrainedModel
+from transformers import CLIPConfig, CLIPVisionModel, PreTrainedModel
 
 
 def cosine_distance(image_embeds, text_embeds):
@@ -26,16 +27,17 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
         self.register_buffer("special_care_embeds_weights", torch.ones(3))
 
     @torch.no_grad()
-    def forward(self, images):
+    def forward(self, clip_input, images):
         """Get embeddings for images and output nsfw and concept scores"""
-        pooled_output = self.vision_model(images)[1]  # pooled_output
+        pooled_output = self.vision_model(clip_input)[1]  # pooled_output
         image_embeds = self.visual_projection(pooled_output)
 
         special_cos_dist = cosine_distance(image_embeds, self.special_care_embeds).cpu().numpy()
         cos_dist = cosine_distance(image_embeds, self.concept_embeds).cpu().numpy()
 
         result = []
-        for i in range(image_embeds.shape[0]):
+        batch_size = image_embeds.shape[0]
+        for i in range(batch_size):
             result_img = {"special_scores": {}, "special_care": [], "concept_scores": {}, "bad_concepts": []}
             adjustment = 0.05
 
@@ -56,5 +58,10 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
             result.append(result_img)
 
-        has_bad_concepts = [len(result[i]["bad_concepts"]) > 0 for i in range(len(result))]
-        return has_bad_concepts
+        has_nsfw_concept = [len(result[i]["bad_concepts"]) > 0 for i in range(len(result))]
+
+        for idx, has_nsfw_concept in enumerate(has_nsfw_concept):
+            if has_nsfw_concept:
+                images[idx] = np.zeros(images[idx].shape)  # black image
+
+        return images, has_nsfw_concept
