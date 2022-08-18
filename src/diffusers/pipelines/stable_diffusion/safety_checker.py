@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from PIL import ImageDraw
 from transformers import CLIPConfig, CLIPVisionModel, PreTrainedModel
 
 
@@ -62,6 +63,9 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
         for idx, has_nsfw_concept in enumerate(has_nsfw_concept):
             if has_nsfw_concept:
-                images[idx] = np.zeros(images[idx].shape)  # black image
+                black_image = np.zeros(images[idx].shape)  # black image
+                draw = ImageDraw.Draw(black_image)
+                draw.text((10, 10), "Too NSFW for diffusers")  # TODO: better text
+                images[idx] = black_image
 
         return images, has_nsfw_concept
