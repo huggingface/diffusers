@@ -33,12 +33,6 @@ class DDIMPipeline(DiffusionPipeline):
     ):
         # eta corresponds to η in paper and should be between [0, 1]
 
-        if torch_device is None:
-            if self.unet.device.type == "cpu":
-                torch_device = "cuda" if torch.cuda.is_available() else "cpu"
-            else:
-                torch_device = self.unet.device
-
         self.to(torch_device)
 
         # Sample gaussian noise to begin loop
@@ -46,7 +40,7 @@ class DDIMPipeline(DiffusionPipeline):
             (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
             generator=generator,
         )
-        image = image.to(torch_device)
+        image = image.to(self.device)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)

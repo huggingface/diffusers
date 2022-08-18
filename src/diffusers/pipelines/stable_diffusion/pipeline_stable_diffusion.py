@@ -37,12 +37,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
         torch_device: Optional[Union[str, torch.device]] = None,
         output_type: Optional[str] = "pil",
     ):
-        if torch_device is None:
-            if self.unet.device.type == "cpu":
-                torch_device = "cuda" if torch.cuda.is_available() else "cpu"
-            else:
-                torch_device = self.unet.device
-
+        self.to(torch_device)
+        torch_device = self.device
+        
         if isinstance(prompt, str):
             batch_size = 1
         elif isinstance(prompt, list):

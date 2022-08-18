@@ -35,13 +35,8 @@ class LDMTextToImagePipeline(DiffusionPipeline):
     ):
         # eta corresponds to η in paper and should be between [0, 1]
 
-        if torch_device is None:
-            if self.unet.device.type == "cpu":
-                torch_device = "cuda" if torch.cuda.is_available() else "cpu"
-            else:
-                torch_device = self.unet.device
-                
         self.to(torch_device)
+        torch_device = self.device
 
         batch_size = len(prompt)
 

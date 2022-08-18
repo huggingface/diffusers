@@ -32,12 +32,6 @@ class PNDMPipeline(DiffusionPipeline):
         # For more information on the sampling method you can take a look at Algorithm 2 of
         # the official paper: https://arxiv.org/pdf/2202.09778.pdf
 
-        if torch_device is None:
-            if self.unet.device.type == "cpu":
-                torch_device = "cuda" if torch.cuda.is_available() else "cpu"
-            else:
-                torch_device = self.unet.device
-
         self.to(torch_device)
 
         # Sample gaussian noise to begin loop
@@ -45,7 +39,7 @@ class PNDMPipeline(DiffusionPipeline):
             (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
             generator=generator,
         )
-        image = image.to(torch_device)
+        image = image.to(self.device)
 
         self.scheduler.set_timesteps(num_inference_steps)
         for t in tqdm(self.scheduler.timesteps):

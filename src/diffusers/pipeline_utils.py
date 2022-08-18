@@ -115,17 +115,27 @@ class DiffusionPipeline(ConfigMixin):
 
 
     def to(self, torch_device: Optional[Union[str, torch.device]] = None):
-        if torch_device is None:
-            # Same semantics as in PyTorch.
-            return self
-
         modules, _ = self.extract_init_dict(dict(self.config))
         for name in modules.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
+                if torch_device is None:
+                    if module.device.type == "cpu":
+                        torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+                    else:
+                        torch_device = module.device
                 module.to(torch_device)
-
         return self
+
+
+    @property
+    def device(self) -> torch.device:
+        modules, _ = self.extract_init_dict(dict(self.config))
+        for name in modules.keys():
+            module = getattr(self, name)
+            if isinstance(module, torch.nn.Module):
+                return module.device
+        return torch.device("cpu")        
 
 
     @classmethod
