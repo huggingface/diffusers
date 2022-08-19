@@ -4,11 +4,12 @@ from typing import List, Optional, Union
 import torch
 
 from tqdm.auto import tqdm
-from transformers import CLIPTextModel, CLIPTokenizer
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from .safety_checker import StableDiffusionSafetyChecker
 
 
 class StableDiffusionPipeline(DiffusionPipeline):
@@ -19,10 +20,20 @@ class StableDiffusionPipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+        safety_checker: StableDiffusionSafetyChecker,
+        feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
         scheduler = scheduler.set_format("pt")
-        self.register_modules(vae=vae, text_encoder=text_encoder, tokenizer=tokenizer, unet=unet, scheduler=scheduler)
+        self.register_modules(
+            vae=vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            unet=unet,
+            scheduler=scheduler,
+            safety_checker=safety_checker,
+            feature_extractor=feature_extractor,
+        )
 
     @torch.no_grad()
     def __call__(
@@ -53,6 +64,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         self.unet.to(torch_device)
         self.vae.to(torch_device)
         self.text_encoder.to(torch_device)
+        self.safety_checker.to(torch_device)
 
         # get prompt text embeddings
         text_input = self.tokenizer(
@@ -136,7 +148,12 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
+
+        # run safety checker
+        safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(torch_device)
+        image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_cheker_input.pixel_values)
+
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
-        return {"sample": image}
+        return {"sample": image, "nsfw_content_detected": has_nsfw_concept}

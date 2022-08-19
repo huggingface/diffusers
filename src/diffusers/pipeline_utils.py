@@ -42,6 +42,7 @@ LOADABLE_CLASSES = {
         "PreTrainedTokenizer": ["save_pretrained", "from_pretrained"],
         "PreTrainedTokenizerFast": ["save_pretrained", "from_pretrained"],
         "PreTrainedModel": ["save_pretrained", "from_pretrained"],
+        "FeatureExtractionMixin": ["save_pretrained", "from_pretrained"],
     },
 }
 
@@ -63,9 +64,9 @@ class DiffusionPipeline(ConfigMixin):
             library = module.__module__.split(".")[0]
 
             # check if the module is a pipeline module
-            pipeline_file = module.__module__.split(".")[-1]
             pipeline_dir = module.__module__.split(".")[-2]
-            is_pipeline_module = pipeline_file == "pipeline_" + pipeline_dir and hasattr(pipelines, pipeline_dir)
+            path = module.__module__.split(".")
+            is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
 
             # if library is not in LOADABLE_CLASSES, then it is a custom module.
             # Or if it's a pipeline module, then the module is inside the pipeline
