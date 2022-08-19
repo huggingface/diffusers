@@ -10,6 +10,9 @@ from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from .safety_checker import StableDiffusionSafetyChecker
+from .safety import SafetyChecker
+
+original_checker = SafetyChecker()
 
 
 class StableDiffusionPipeline(DiffusionPipeline):
@@ -149,9 +152,23 @@ class StableDiffusionPipeline(DiffusionPipeline):
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
 
+        original_result = original_checker(self.numpy_to_pil(image))
+
         # run safety checker
         safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(torch_device)
-        image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_cheker_input.pixel_values)
+        image, has_nsfw_concept, result = self.safety_checker(images=image, clip_input=safety_cheker_input.pixel_values)
+
+        def check_values_the_same(dict_1, dict_2, name):
+            dict_1_values = dict_1[name].values()
+            dict_2_values = dict_2[name].values()
+            the_same = torch.allclose(torch.tensor(list(dict_1_values)), torch.tensor(list(dict_2_values)), atol=1e-3)
+            if not the_same:
+                print("Original", dict_1[name])
+                print("Diffusers", dict_2[name])
+
+        for dict_1, dict_2 in zip(original_result, result):
+            for name in ['special_scores', 'concept_scores']:
+                check_values_the_same(dict_1, dict_2, name)
 
         if output_type == "pil":
             image = self.numpy_to_pil(image)

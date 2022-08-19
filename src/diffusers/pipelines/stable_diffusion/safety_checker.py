@@ -74,4 +74,4 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
                 " Try again with a different prompt and/or seed."
             )
 
-        return images, has_nsfw_concepts
+        return images, has_nsfw_concepts, result
