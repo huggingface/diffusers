@@ -28,9 +28,7 @@ class DDPMPipeline(DiffusionPipeline):
         self.register_modules(unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
-    def __call__(self, batch_size=1, generator=None, torch_device=None, output_type="pil"):
-        self.to(torch_device)
-
+    def __call__(self, batch_size=1, generator=None, output_type="pil"):
         # Sample gaussian noise to begin loop
         image = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),

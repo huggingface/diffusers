@@ -27,19 +27,15 @@ class KarrasVePipeline(DiffusionPipeline):
         self.register_modules(unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
-    def __call__(self, batch_size=1, num_inference_steps=50, generator=None, torch_device=None, output_type="pil"):
-        self.to(torch_device)
-        torch_device = self.device
-
+    def __call__(self, batch_size=1, num_inference_steps=50, generator=None, output_type="pil"):
         img_size = self.unet.config.sample_size
         shape = (batch_size, 3, img_size, img_size)
 
-        self.to(torch_device)
         model = self.unet
 
         # sample x_0 ~ N(0, sigma_0^2 * I)
         sample = torch.randn(*shape) * self.scheduler.config.sigma_max
-        sample = sample.to(torch_device)
+        sample = sample.to(self.device)
 
         self.scheduler.set_timesteps(num_inference_steps)
 

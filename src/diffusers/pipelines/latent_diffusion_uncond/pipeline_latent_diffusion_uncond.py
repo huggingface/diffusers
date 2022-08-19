@@ -15,11 +15,9 @@ class LDMPipeline(DiffusionPipeline):
 
     @torch.no_grad()
     def __call__(
-        self, batch_size=1, generator=None, torch_device=None, eta=0.0, num_inference_steps=50, output_type="pil"
+        self, batch_size=1, generator=None, eta=0.0, num_inference_steps=50, output_type="pil"
     ):
         # eta corresponds to η in paper and should be between [0, 1]
-
-        self.to(torch_device)
 
         latents = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),

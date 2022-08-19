@@ -27,7 +27,6 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         prompt,
         batch_size=1,
         generator=None,
-        torch_device=None,
         eta=0.0,
         guidance_scale=1.0,
         num_inference_steps=50,
@@ -35,25 +34,22 @@ class LDMTextToImagePipeline(DiffusionPipeline):
     ):
         # eta corresponds to η in paper and should be between [0, 1]
 
-        self.to(torch_device)
-        torch_device = self.device
-
         batch_size = len(prompt)
 
         # get unconditional embeddings for classifier free guidance
         if guidance_scale != 1.0:
             uncond_input = self.tokenizer([""] * batch_size, padding="max_length", max_length=77, return_tensors="pt")
-            uncond_embeddings = self.bert(uncond_input.input_ids.to(torch_device))[0]
+            uncond_embeddings = self.bert(uncond_input.input_ids.to(self.device))[0]
 
         # get prompt text embeddings
         text_input = self.tokenizer(prompt, padding="max_length", max_length=77, return_tensors="pt")
-        text_embeddings = self.bert(text_input.input_ids.to(torch_device))[0]
+        text_embeddings = self.bert(text_input.input_ids.to(self.device))[0]
 
         latents = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
             generator=generator,
         )
-        latents = latents.to(torch_device)
+        latents = latents.to(self.device)
 
         self.scheduler.set_timesteps(num_inference_steps)
 

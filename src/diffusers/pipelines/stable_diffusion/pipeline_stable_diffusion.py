@@ -34,12 +34,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
         guidance_scale: Optional[float] = 7.5,
         eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
-        torch_device: Optional[Union[str, torch.device]] = None,
         output_type: Optional[str] = "pil",
-    ):
-        self.to(torch_device)
-        torch_device = self.device
-        
+    ):        
         if isinstance(prompt, str):
             batch_size = 1
         elif isinstance(prompt, list):
@@ -50,8 +46,6 @@ class StableDiffusionPipeline(DiffusionPipeline):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        self.to(torch_device)
-
         # get prompt text embeddings
         text_input = self.tokenizer(
             prompt,
@@ -60,7 +54,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             truncation=True,
             return_tensors="pt",
         )
-        text_embeddings = self.text_encoder(text_input.input_ids.to(torch_device))[0]
+        text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -72,7 +66,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             uncond_input = self.tokenizer(
                 [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="pt"
             )
-            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(torch_device))[0]
+            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
@@ -83,7 +77,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         latents = torch.randn(
             (batch_size, self.unet.in_channels, height // 8, width // 8),
             generator=generator,
-            device=torch_device,
+            device=self.device,
         )
 
         # set timesteps
