@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-import torch
 import warnings
+
+import torch
 
 from diffusers import DiffusionPipeline
 from tqdm.auto import tqdm

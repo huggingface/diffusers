@@ -1,8 +1,8 @@
 import inspect
+import warnings
 from typing import List, Optional, Union
 
 import torch
-import warnings
 
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
@@ -47,7 +47,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
-        **kwargs
+        **kwargs,
     ):
         if "torch_device" in kwargs:
             device = kwargs.pop("torch_device")
@@ -155,7 +155,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         image = image.cpu().permute(0, 2, 3, 1).numpy()
 
         # run safety checker
-        safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(torch_device)
+        safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
         image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_cheker_input.pixel_values)
 
         if output_type == "pil":

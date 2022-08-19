@@ -1,10 +1,10 @@
 import inspect
+import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint
-import warnings
 
 from tqdm.auto import tqdm
 from transformers.activations import ACT2FN
@@ -33,7 +33,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
-        **kwargs
+        **kwargs,
     ):
         # eta corresponds to η in paper and should be between [0, 1]
 
@@ -48,7 +48,6 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             if device is None:
                 device = "cuda" if torch.cuda.is_available() else "cpu"
             self.to(device)
-
 
         if isinstance(prompt, str):
             batch_size = 1

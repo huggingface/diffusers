@@ -17,8 +17,9 @@
 import importlib
 import inspect
 import os
-import torch
 from typing import Optional, Union
+
+import torch
 
 from huggingface_hub import snapshot_download
 from PIL import Image
@@ -114,7 +115,6 @@ class DiffusionPipeline(ConfigMixin):
             save_method = getattr(sub_model, save_method_name)
             save_method(os.path.join(save_directory, pipeline_component_name))
 
-
     def to(self, torch_device: Optional[Union[str, torch.device]] = None):
         if torch_device is None:
             return self
@@ -126,7 +126,6 @@ class DiffusionPipeline(ConfigMixin):
                 module.to(torch_device)
         return self
 
-
     @property
     def device(self) -> torch.device:
         module_names, _ = self.extract_init_dict(dict(self.config))
@@ -134,8 +133,7 @@ class DiffusionPipeline(ConfigMixin):
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
                 return module.device
-        return torch.device("cpu")        
-
+        return torch.device("cpu")
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):

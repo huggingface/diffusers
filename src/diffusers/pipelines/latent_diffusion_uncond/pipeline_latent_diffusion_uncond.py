@@ -1,7 +1,7 @@
 import inspect
+import warnings
 
 import torch
-import warnings
 
 from tqdm.auto import tqdm
 
@@ -15,9 +15,7 @@ class LDMPipeline(DiffusionPipeline):
         self.register_modules(vqvae=vqvae, unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
-    def __call__(
-        self, batch_size=1, generator=None, eta=0.0, num_inference_steps=50, output_type="pil", **kwargs
-    ):
+    def __call__(self, batch_size=1, generator=None, eta=0.0, num_inference_steps=50, output_type="pil", **kwargs):
         # eta corresponds to η in paper and should be between [0, 1]
 
         if "torch_device" in kwargs:
