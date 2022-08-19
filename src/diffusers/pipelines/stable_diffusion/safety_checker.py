@@ -4,6 +4,11 @@ import torch.nn as nn
 
 from transformers import CLIPConfig, CLIPVisionModel, PreTrainedModel
 
+from ...utils import logging
+
+
+logger = logging.get_logger(__name__)
+
 
 def cosine_distance(image_embeds, text_embeds):
     normalized_image_embeds = nn.functional.normalize(image_embeds)
@@ -57,12 +62,16 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
             result.append(result_img)
 
-        has_nsfw_concept = [
-            len(result[i]["bad_concepts"]) > 0 or len(result[i]["special_care"]) > 0 for i in range(len(result))
-        ]
+        has_nsfw_concepts = [len(result[i]["bad_concepts"]) > 0 or i in range(len(result))]
 
-        for idx, has_nsfw_concept in enumerate(has_nsfw_concept):
+        for idx, has_nsfw_concept in enumerate(has_nsfw_concepts):
             if has_nsfw_concept:
                 images[idx] = np.zeros(images[idx].shape)  # black image
 
-        return images, has_nsfw_concept
+        if any(has_nsfw_concepts):
+            logger.warning(
+                "Potential NSFW content was detected in one or more images. A black image will be returned instead."
+                " Try again with a different prompt and/or seed."
+            )
+
+        return images, has_nsfw_concepts
