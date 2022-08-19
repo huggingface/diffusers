@@ -29,7 +29,16 @@ class DDIMPipeline(DiffusionPipeline):
 
     @torch.no_grad()
     def __call__(
-        self, batch_size=1, generator=None, eta=0.0, num_inference_steps=50, output_type="pil"
+        self, batch_size=1, generator=None, eta=0.0, num_inference_steps=50, output_type="pil", **kwargs
+        ):
+        
+        if "torch_device" in kwargs:
+            device = kwargs.pop("torch_device")
+            warnings.warn(
+                "`torch_device` is deprecated as an input argument to `__call__` and will be removed in v0.3.0.
+                Consider using `pipe.to(torch_device)` instead."
+           )
+        # ...set device as previously 
     ):
         # eta corresponds to η in paper and should be between [0, 1]
 
