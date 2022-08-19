@@ -1,5 +1,5 @@
 import inspect
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -25,13 +25,14 @@ class LDMTextToImagePipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt,
-        batch_size=1,
-        generator=None,
-        eta=0.0,
-        guidance_scale=1.0,
-        num_inference_steps=50,
-        output_type="pil",
+        prompt: Union[str, List[str]],
+        height: Optional[int] = 256,
+        width: Optional[int] = 256,
+        num_inference_steps: Optional[int] = 50,
+        guidance_scale: Optional[float] = 1.0,
+        eta: Optional[float] = 0.0,
+        generator: Optional[torch.Generator] = None,
+        output_type: Optional[str] = "pil",
         **kwargs
     ):
         # eta corresponds to η in paper and should be between [0, 1]
@@ -48,7 +49,16 @@ class LDMTextToImagePipeline(DiffusionPipeline):
                 device = "cuda" if torch.cuda.is_available() else "cpu"
             self.to(device)
 
-        batch_size = len(prompt)
+
+        if isinstance(prompt, str):
+            batch_size = 1
+        elif isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        if height % 8 != 0 or width % 8 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         # get unconditional embeddings for classifier free guidance
         if guidance_scale != 1.0:
@@ -60,7 +70,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         text_embeddings = self.bert(text_input.input_ids.to(self.device))[0]
 
         latents = torch.randn(
-            (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
+            (batch_size, self.unet.in_channels, height // 8, width // 8),
             generator=generator,
         )
         latents = latents.to(self.device)
