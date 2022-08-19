@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import torch
+import warnings
 
 from tqdm.auto import tqdm
 
@@ -27,7 +28,19 @@ class KarrasVePipeline(DiffusionPipeline):
         self.register_modules(unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
-    def __call__(self, batch_size=1, num_inference_steps=50, generator=None, output_type="pil"):
+    def __call__(self, batch_size=1, num_inference_steps=50, generator=None, output_type="pil", **kwargs):
+        if "torch_device" in kwargs:
+            device = kwargs.pop("torch_device")
+            warnings.warn(
+                "`torch_device` is deprecated as an input argument to `__call__` and will be removed in v0.3.0."
+                " Consider using `pipe.to(torch_device)` instead."
+            )
+
+            # Set device as before (to be removed in 0.3.0)
+            if device is None:
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.to(device)
+
         img_size = self.unet.config.sample_size
         shape = (batch_size, 3, img_size, img_size)
 
