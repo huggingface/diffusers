@@ -41,6 +41,8 @@ See the [model card](https://huggingface.co/CompVis/stable-diffusion) for more i
 
 **The Stable Diffusion weights are currently only available to universities, academics, research institutions and independent researchers. Please request access applying to <a href="https://stability.ai/academia-access-form" target="_blank">this</a> form**
 
+Please run `pip install diffusers transformers` for the example below to work, since the current `main` git branch is not compatible with the checkpoint yet. 
+
 ```py
 # make sure you're logged in with `huggingface-cli login`
 from torch import autocast
