@@ -43,7 +43,10 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
         batch_size = image_embeds.shape[0]
         for i in range(batch_size):
             result_img = {"special_scores": {}, "special_care": [], "concept_scores": {}, "bad_concepts": []}
-            adjustment = 0.05
+
+            # increase this value to create a stronger `nfsw` filter
+            # at the cost of increasing the possibility of filtering benign images
+            adjustment = 0.0
 
             for concet_idx in range(len(special_cos_dist[0])):
                 concept_cos = special_cos_dist[i][concet_idx]
