@@ -315,6 +315,7 @@ class ModelMixin(torch.nn.Module):
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
         from_auto_class = kwargs.pop("_from_auto", False)
+        torch_dtype = kwargs.pop("torch_dtype", None)
         subfolder = kwargs.pop("subfolder", None)
 
         user_agent = {"file_type": "model", "framework": "pytorch", "from_auto_class": from_auto_class}
@@ -334,6 +335,12 @@ class ModelMixin(torch.nn.Module):
             subfolder=subfolder,
             **kwargs,
         )
+
+        if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
+            raise ValueError(f"{torch_dtype} needs to be of type `torch.dtype`, e.g. `torch.float16`, but is {type(torch_dtype)}.")
+        elif torch_dtype is not None:
+            model = model.to(torch_dtype)
+
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
         # This variable will flag if we're loading a sharded checkpoint. In this case the archive file is just the
         # Load model

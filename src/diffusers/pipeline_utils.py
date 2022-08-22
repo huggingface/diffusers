@@ -146,6 +146,7 @@ class DiffusionPipeline(ConfigMixin):
         local_files_only = kwargs.pop("local_files_only", False)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
+        torch_dtype = kwargs.pop("torch_dtype", None)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -237,12 +238,16 @@ class DiffusionPipeline(ConfigMixin):
 
                 load_method = getattr(class_obj, load_method_name)
 
+                loading_kwargs = {}
+                if issubclass(class_obj, torch.nn.Module):
+                    loading_kwargs["torch_dtype"] = torch_dtype
+
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
-                    loaded_sub_model = load_method(os.path.join(cached_folder, name))
+                    loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
                 else:
                     # else load from the root directory
-                    loaded_sub_model = load_method(cached_folder)
+                    loaded_sub_model = load_method(cached_folder, **loading_kwargs)
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
