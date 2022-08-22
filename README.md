@@ -56,7 +56,7 @@ pipe = StableDiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-3", 
     scheduler=lms,
     use_auth_token=True
-) .to("cuda")
+).to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
 with autocast("cuda"):
