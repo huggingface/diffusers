@@ -47,4 +47,4 @@ with autocast("cuda"):
 
 images[0].save("fantasy_landscape.png")
 ```
-You can also run this example on colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1yHBat74l_fvS9f4IDLvquvJSyY7G36G0?usp=sharing)
+You can also run this example on colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/patil-suraj/Notebooks/blob/master/diffusers_image_2image.ipynb)
