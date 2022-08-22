@@ -2,7 +2,7 @@
 
 ## Installing the dependencies
 
-Before running the scipts, make sure to install the library's training dependencies:
+Before running the scipts, make sure to install the library's dependencies:
 
 ```bash
 pip install diffusers transformers ftfy
@@ -10,7 +10,7 @@ pip install diffusers transformers ftfy
 
 ## Image-to-Image text-guided generation with Stable Diffusion
 
-The `image_to_image.py` implements `StableDiffusionImg2ImgPipeline`, it let's you pass a text prompt and an initial image to condition on to generate new images. This examples also showcases how you can write custom diffusion pipelines using `diffusers`.
+The `image_to_image.py` script implements `StableDiffusionImg2ImgPipeline`. It lets you pass a text prompt and an initial image to condition the generation of new images. This example also showcases how you can write custom diffusion pipelines using `diffusers`!
 
 ### How to use it
 
