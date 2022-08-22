@@ -157,7 +157,7 @@ The class provides functionality to compute previous image according to alpha, b
 **With `pip`**
     
 ```bash
-pip install --upgrade diffusers  # should install diffusers 0.2.1
+pip install --upgrade diffusers  # should install diffusers 0.2.3
 ```
 
 **With `conda`**
