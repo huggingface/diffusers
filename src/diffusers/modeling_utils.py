@@ -337,7 +337,9 @@ class ModelMixin(torch.nn.Module):
         )
 
         if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
-            raise ValueError(f"{torch_dtype} needs to be of type `torch.dtype`, e.g. `torch.float16`, but is {type(torch_dtype)}.")
+            raise ValueError(
+                f"{torch_dtype} needs to be of type `torch.dtype`, e.g. `torch.float16`, but is {type(torch_dtype)}."
+            )
         elif torch_dtype is not None:
             model = model.to(torch_dtype)
 
