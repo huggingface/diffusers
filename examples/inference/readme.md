@@ -16,15 +16,17 @@ The `image_to_image.py` implements `StableDiffusionImg2ImgPipeline`, it let's yo
 
 
 ```python
-from image_to_image import StableDiffusionImg2ImgPipeline, preprocess
+from torch import autocast
 import requests
 from PIL import Image
 from io import BytesIO
 
+from image_to_image import StableDiffusionImg2ImgPipeline, preprocess
+
 # load the pipeline
 device = "cuda"
 pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-    model_path,
+    "CompVis/stable-diffusion-v1-4",
     revision="fp16", 
     torch_dtype=torch.float16,
     use_auth_token=True
