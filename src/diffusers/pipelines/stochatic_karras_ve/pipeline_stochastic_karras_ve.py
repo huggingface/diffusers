@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import warnings
+
 import torch
 
 from tqdm.auto import tqdm
@@ -27,18 +29,27 @@ class KarrasVePipeline(DiffusionPipeline):
         self.register_modules(unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
-    def __call__(self, batch_size=1, num_inference_steps=50, generator=None, torch_device=None, output_type="pil"):
-        if torch_device is None:
-            torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+    def __call__(self, batch_size=1, num_inference_steps=50, generator=None, output_type="pil", **kwargs):
+        if "torch_device" in kwargs:
+            device = kwargs.pop("torch_device")
+            warnings.warn(
+                "`torch_device` is deprecated as an input argument to `__call__` and will be removed in v0.3.0."
+                " Consider using `pipe.to(torch_device)` instead."
+            )
+
+            # Set device as before (to be removed in 0.3.0)
+            if device is None:
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.to(device)
 
         img_size = self.unet.config.sample_size
         shape = (batch_size, 3, img_size, img_size)
 
-        model = self.unet.to(torch_device)
+        model = self.unet
 
         # sample x_0 ~ N(0, sigma_0^2 * I)
         sample = torch.randn(*shape) * self.scheduler.config.sigma_max
-        sample = sample.to(torch_device)
+        sample = sample.to(self.device)
 
         self.scheduler.set_timesteps(num_inference_steps)
 

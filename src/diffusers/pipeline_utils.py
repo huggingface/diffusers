@@ -19,6 +19,8 @@ import inspect
 import os
 from typing import Optional, Union
 
+import torch
+
 from huggingface_hub import snapshot_download
 from PIL import Image
 
@@ -42,6 +44,7 @@ LOADABLE_CLASSES = {
         "PreTrainedTokenizer": ["save_pretrained", "from_pretrained"],
         "PreTrainedTokenizerFast": ["save_pretrained", "from_pretrained"],
         "PreTrainedModel": ["save_pretrained", "from_pretrained"],
+        "FeatureExtractionMixin": ["save_pretrained", "from_pretrained"],
     },
 }
 
@@ -63,9 +66,9 @@ class DiffusionPipeline(ConfigMixin):
             library = module.__module__.split(".")[0]
 
             # check if the module is a pipeline module
-            pipeline_file = module.__module__.split(".")[-1]
             pipeline_dir = module.__module__.split(".")[-2]
-            is_pipeline_module = pipeline_file == "pipeline_" + pipeline_dir and hasattr(pipelines, pipeline_dir)
+            path = module.__module__.split(".")
+            is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
 
             # if library is not in LOADABLE_CLASSES, then it is a custom module.
             # Or if it's a pipeline module, then the module is inside the pipeline
@@ -112,6 +115,26 @@ class DiffusionPipeline(ConfigMixin):
             save_method = getattr(sub_model, save_method_name)
             save_method(os.path.join(save_directory, pipeline_component_name))
 
+    def to(self, torch_device: Optional[Union[str, torch.device]] = None):
+        if torch_device is None:
+            return self
+
+        module_names, _ = self.extract_init_dict(dict(self.config))
+        for name in module_names.keys():
+            module = getattr(self, name)
+            if isinstance(module, torch.nn.Module):
+                module.to(torch_device)
+        return self
+
+    @property
+    def device(self) -> torch.device:
+        module_names, _ = self.extract_init_dict(dict(self.config))
+        for name in module_names.keys():
+            module = getattr(self, name)
+            if isinstance(module, torch.nn.Module):
+                return module.device
+        return torch.device("cpu")
+
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
         r"""
@@ -123,6 +146,7 @@ class DiffusionPipeline(ConfigMixin):
         local_files_only = kwargs.pop("local_files_only", False)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
+        torch_dtype = kwargs.pop("torch_dtype", None)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -214,12 +238,16 @@ class DiffusionPipeline(ConfigMixin):
 
                 load_method = getattr(class_obj, load_method_name)
 
+                loading_kwargs = {}
+                if issubclass(class_obj, torch.nn.Module):
+                    loading_kwargs["torch_dtype"] = torch_dtype
+
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
-                    loaded_sub_model = load_method(os.path.join(cached_folder, name))
+                    loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
                 else:
                     # else load from the root directory
-                    loaded_sub_model = load_method(cached_folder)
+                    loaded_sub_model = load_method(cached_folder, **loading_kwargs)
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 

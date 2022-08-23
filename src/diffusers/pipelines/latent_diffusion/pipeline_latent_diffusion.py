@@ -1,7 +1,12 @@
 from asyncio import open_unix_connection
 import inspect
+<<<<<<< HEAD
 from typing import Optional, Tuple, Union
 import random
+=======
+import warnings
+from typing import List, Optional, Tuple, Union
+>>>>>>> upstream/main
 
 import torch
 import torch.nn as nn
@@ -29,21 +34,23 @@ class LDMTextToImagePipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt=None,
         text_embeddings=None,
         batch_size=1,
-        generator=None,
-        torch_device=None,
-        eta=0.0,
-        guidance_scale=1.0,
-        num_inference_steps=50,
-        output_type="pil",
         start_img=None,
         weights=None,
         seed=None,
         noise_strength=None,
         noise_step=None,
         verbose=True,
+        prompt: Union[str, List[str]]=None,
+        height: Optional[int] = 256,
+        width: Optional[int] = 256,
+        num_inference_steps: Optional[int] = 50,
+        guidance_scale: Optional[float] = 1.0,
+        eta: Optional[float] = 0.0,
+        generator: Optional[torch.Generator] = None,
+        output_type: Optional[str] = "pil",
+        **kwargs,
     ):
         # eta corresponds to η in paper and should be between [0, 1]
         
@@ -54,16 +61,29 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             np.random.seed(seed)
             random.seed(seed)
 
-        if torch_device is None:
-            torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+        if "torch_device" in kwargs:
+            device = kwargs.pop("torch_device")
+            warnings.warn(
+                "`torch_device` is deprecated as an input argument to `__call__` and will be removed in v0.3.0."
+                " Consider using `pipe.to(torch_device)` instead."
+            )
+
+        # Set device as before (to be removed in 0.3.0)
+        if device is None:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.to(device)
+        
         if prompt is not None:
-            batch_size = len(prompt)
+            if isinstance(prompt, str):
+                batch_size = 1
+            elif isinstance(prompt, list):
+                batch_size = len(prompt)
         else:
             batch_size = len(text_embeddings)
+            #raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
-        self.unet.to(torch_device)
-        self.vqvae.to(torch_device)
-        self.bert.to(torch_device)
+        if height % 8 != 0 or width % 8 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         # get unconditional embeddings for classifier free guidance
         if guidance_scale != 1.0 and self.uncond_embeddings is None:
@@ -76,21 +96,18 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         if text_embeddings is None:
             text_embeddings = self.embed_prompts(prompt, weights=weights)
 
+
         self.scheduler.set_timesteps(num_inference_steps)
 
         # create starting image/noise
         if start_img is None:
-            latents = torch.randn(
-                (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
-                generator=generator,
-            )
-            latents = latents.to(torch_device)
+            latents = torch.randn(batch_size, self.unet.in_channels, height // 8, width // 8, generator=generator, device=device)
         else:
             # start img is tensor of shape (batch_size, in_channels, sample_size, sample_size)
             # encode start img with vqvae
             
             # make it torch tensor first
-            latents = self.encode_image(start_img, torch_device=torch_device)
+            latents = self.encode_image(start_img, torch_device=device)
             # add noise
             noise = torch.randn_like(latents)
             if noise_strength is not None:
@@ -131,7 +148,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             latents = self.scheduler.step(noise_pred, t, latents, **extra_kwargs)["prev_sample"]
 
         # scale and decode the image latents with vae
-        image = self.decode_image(latents, torch_device=torch_device, output_type=output_type)
+        image = self.decode_image(latents, torch_device=device, output_type=output_type)
 
         return {"sample": image}  
     

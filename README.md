@@ -29,9 +29,9 @@ More precisely, 🤗 Diffusers offers:
 
 In order to get started, we recommend taking a look at two notebooks:
 
-- The [Getting started with Diffusers](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb) notebook, which showcases an end-to-end example of usage for diffusion models, schedulers and pipelines.
+- The [Getting started with Diffusers](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb) notebook, which showcases an end-to-end example of usage for diffusion models, schedulers and pipelines.
   Take a look at this notebook to learn how to use the pipeline abstraction, which takes care of everything (model, scheduler, noise handling) for you, and also to understand each independent building block in the library.
-- The [Training a diffusers model](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb) notebook summarizes diffuser model training methods. This notebook takes a step-by-step approach to training your
+- The [Training a diffusers model](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb) notebook summarizes diffuser model training methods. This notebook takes a step-by-step approach to training your
   diffuser model on an image dataset, with explanatory graphics.
   
 ## **New 🎨🎨🎨** Stable Diffusion is now fully compatible with `diffusers`! 
@@ -39,7 +39,7 @@ In order to get started, we recommend taking a look at two notebooks:
 Stable Diffusion is a text-to-image latent diffusion model created by the researchers and engineers from [CompVis](https://github.com/CompVis), [Stability AI](https://stability.ai/) and [LAION](https://laion.ai/). It's trained on 512x512 images from a subset of the [LAION-5B](https://laion.ai/blog/laion-5b/) database. This model uses a frozen CLIP ViT-L/14 text encoder to condition the model on text prompts. With its 860M UNet and 123M text encoder, the model is relatively lightweight and runs on a GPU with at least 10GB VRAM.
 See the [model card](https://huggingface.co/CompVis/stable-diffusion) for more information.
 
-**The Stable Diffusion weights are currently only available to universities, academics, research institutions and independent researchers. Please request access applying to <a href="https://stability.ai/academia-access-form" target="_blank">this</a> form**
+You need to accept the model license before downloading or using the Stable Diffusion weights. Please, visit the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-3), read the license and tick the checkbox if you agree. You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section](https://huggingface.co/docs/hub/security-tokens) of the documentation.
 
 ```py
 # make sure you're logged in with `huggingface-cli login`
@@ -53,10 +53,10 @@ lms = LMSDiscreteScheduler(
 )
 
 pipe = StableDiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-3-diffusers", 
+    "CompVis/stable-diffusion-v1-3", 
     scheduler=lms,
     use_auth_token=True
-)  
+).to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
 with autocast("cuda"):
@@ -65,7 +65,7 @@ with autocast("cuda"):
 image.save("astronaut_rides_horse.png")
 ```
 
-For more details, check out [the Stable Diffusion notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/stable_diffusion.ipynb)
+For more details, check out [the Stable Diffusion notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/stable_diffusion.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/stable_diffusion.ipynb)
 and have a look into the [release notes](https://github.com/huggingface/diffusers/releases/tag/v0.2.0).
   
 ## Examples
@@ -157,7 +157,7 @@ The class provides functionality to compute previous image according to alpha, b
 **With `pip`**
     
 ```bash
-pip install --upgrade diffusers  # should install diffusers 0.2.1
+pip install --upgrade diffusers  # should install diffusers 0.2.4
 ```
 
 **With `conda`**
