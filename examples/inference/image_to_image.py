@@ -83,7 +83,8 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         # get the original timestep using init_timestep
         init_timestep = int(num_inference_steps * strength) + offset
-        timesteps = self.scheduler.timesteps[max(-init_timestep, 0)]
+        init_timestep = min(init_timestep, num_inference_steps)
+        timesteps = self.scheduler.timesteps[-init_timestep]
         timesteps = torch.tensor([timesteps] * batch_size, dtype=torch.long, device=self.device)
 
         # add noise to latents using the timesteps
