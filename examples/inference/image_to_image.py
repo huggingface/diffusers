@@ -64,6 +64,9 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         else:
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
+        if strength < 0 or strength > 1:
+            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
+
         # set timesteps
         accepts_offset = "offset" in set(inspect.signature(self.scheduler.set_timesteps).parameters.keys())
         extra_set_kwargs = {}
