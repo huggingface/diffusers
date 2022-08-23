@@ -42,6 +42,8 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         weights=None,
         seed=None,
         noise_strength=None,
+        noise_step=None,
+        verbose=True,
     ):
         # eta corresponds to η in paper and should be between [0, 1]
         
@@ -74,6 +76,8 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         if text_embeddings is None:
             text_embeddings = self.embed_prompts(prompt, weights=weights)
 
+        self.scheduler.set_timesteps(num_inference_steps)
+
         # create starting image/noise
         if start_img is None:
             latents = torch.randn(
@@ -88,10 +92,14 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             # make it torch tensor first
             latents = self.encode_image(start_img, torch_device=torch_device)
             # add noise
+            noise = torch.randn_like(latents)
             if noise_strength is not None:
-                latents = latents * (1 - noise_strength) + torch.randn_like(latents) * noise_strength
-
-        self.scheduler.set_timesteps(num_inference_steps)
+                # old method to add noise:
+                latents = latents * (1 - noise_strength) + noise * noise_strength
+            elif noise_step is not None:
+                # now we use the scheduler to add noise
+                latents = self.scheduler.add_noise(latents, noise, noise_step)
+        
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
@@ -100,7 +108,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         if accepts_eta:
             extra_kwargs["eta"] = eta
 
-        for t in tqdm(self.scheduler.timesteps):
+        for t in tqdm(self.scheduler.timesteps, disable=not verbose):
             if guidance_scale == 1.0:
                 # guidance_scale of 1 means no guidance
                 latents_input = latents
@@ -136,11 +144,11 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         latents = 1 / 0.18215 * latents
         image = self.vqvae.decode(latents.to(torch_device))
         image = (image / 2 + 0.5).clamp(0, 1)
-        image = image.cpu().permute(0, 2, 3, 1)
+        image = image.cpu()
         if output_type == "pil":
-            image = self.numpy_to_pil(image.numpy())
+            image = self.numpy_to_pil(image.permute(0, 2, 3, 1).numpy())
         elif output_type == "numpy":
-            image = image.numpy()
+            image = image.permute(0, 2, 3, 1).numpy()
         return image
     
     def encode_image(self, image, torch_device=None):
@@ -151,22 +159,23 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             if not isinstance(image, np.ndarray):
                 image = np.array(image)
             image = torch.from_numpy(image)
-            if image.ndim == 3:
-                image = image.unsqueeze(0)
+        if image.ndim == 3:
+            image = image.unsqueeze(0)
         # reverse channel dimension
-        image = image.permute(0, 3, 1, 2)
+        if image.shape[-1] == 3:
+            image = image.permute(0, 3, 1, 2)
         # make it float tensor between 0 and 1
         max_val = torch.max(image)
         min_val = torch.min(image)
         image = (image - min_val) / (max_val - min_val)
         # norm img
         image = (image - 0.5) * 2
-            
+        # encode image
         latents = self.vqvae.encode(image.to(torch_device))
-            
-        # encoded img is DiagonalGaussianDistribution, need to sample from it... (maybe take mean instead)
+        # encoded img is DiagonalGaussianDistribution, need to sample from it or we take the mean instead
         #latents = latents.sample()
         latents = latents.mean
+        # norm latents
         latents = latents * 0.18215
         return latents
     
