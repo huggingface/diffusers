@@ -1,4 +1,5 @@
 import inspect
+import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -31,13 +32,22 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         guidance_scale: Optional[float] = 1.0,
         eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
-        torch_device: Optional[Union[str, torch.device]] = None,
         output_type: Optional[str] = "pil",
+        **kwargs,
     ):
         # eta corresponds to η in paper and should be between [0, 1]
 
-        if torch_device is None:
-            torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+        if "torch_device" in kwargs:
+            device = kwargs.pop("torch_device")
+            warnings.warn(
+                "`torch_device` is deprecated as an input argument to `__call__` and will be removed in v0.3.0."
+                " Consider using `pipe.to(torch_device)` instead."
+            )
+
+            # Set device as before (to be removed in 0.3.0)
+            if device is None:
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.to(device)
 
         if isinstance(prompt, str):
             batch_size = 1
@@ -49,24 +59,20 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        self.unet.to(torch_device)
-        self.vqvae.to(torch_device)
-        self.bert.to(torch_device)
-
         # get unconditional embeddings for classifier free guidance
         if guidance_scale != 1.0:
             uncond_input = self.tokenizer([""] * batch_size, padding="max_length", max_length=77, return_tensors="pt")
-            uncond_embeddings = self.bert(uncond_input.input_ids.to(torch_device))[0]
+            uncond_embeddings = self.bert(uncond_input.input_ids.to(self.device))[0]
 
         # get prompt text embeddings
         text_input = self.tokenizer(prompt, padding="max_length", max_length=77, return_tensors="pt")
-        text_embeddings = self.bert(text_input.input_ids.to(torch_device))[0]
+        text_embeddings = self.bert(text_input.input_ids.to(self.device))[0]
 
         latents = torch.randn(
             (batch_size, self.unet.in_channels, height // 8, width // 8),
             generator=generator,
         )
-        latents = latents.to(torch_device)
+        latents = latents.to(self.device)
 
         self.scheduler.set_timesteps(num_inference_steps)
 

@@ -28,6 +28,7 @@ from .import_utils import (
     DummyObject,
     is_flax_available,
     is_inflect_available,
+    is_modelcards_available,
     is_scipy_available,
     is_tf_available,
     is_torch_available,

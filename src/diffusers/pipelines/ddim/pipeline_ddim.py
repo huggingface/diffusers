@@ -14,6 +14,8 @@
 # limitations under the License.
 
 
+import warnings
+
 import torch
 
 from tqdm.auto import tqdm
@@ -28,21 +30,28 @@ class DDIMPipeline(DiffusionPipeline):
         self.register_modules(unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
-    def __call__(
-        self, batch_size=1, generator=None, torch_device=None, eta=0.0, num_inference_steps=50, output_type="pil"
-    ):
-        # eta corresponds to η in paper and should be between [0, 1]
-        if torch_device is None:
-            torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+    def __call__(self, batch_size=1, generator=None, eta=0.0, num_inference_steps=50, output_type="pil", **kwargs):
 
-        self.unet.to(torch_device)
+        if "torch_device" in kwargs:
+            device = kwargs.pop("torch_device")
+            warnings.warn(
+                "`torch_device` is deprecated as an input argument to `__call__` and will be removed in v0.3.0."
+                " Consider using `pipe.to(torch_device)` instead."
+            )
+
+            # Set device as before (to be removed in 0.3.0)
+            if device is None:
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.to(device)
+
+        # eta corresponds to η in paper and should be between [0, 1]
 
         # Sample gaussian noise to begin loop
         image = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
             generator=generator,
         )
-        image = image.to(torch_device)
+        image = image.to(self.device)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
