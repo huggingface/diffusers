@@ -567,8 +567,8 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 199.1169) < 1e-2
-        assert abs(result_mean.item() - 0.2593) < 1e-3
+        assert abs(result_sum.item() - 428.8788) < 1e-2
+        assert abs(result_mean.item() - 0.5584) < 1e-3
 
 
 class ScoreSdeVeSchedulerTest(unittest.TestCase):
