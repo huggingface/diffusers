@@ -147,7 +147,7 @@ class CrossAttention(nn.Module):
     def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.0):
         super().__init__()
         inner_dim = dim_head * heads
-        context_dim = context_dim or query_dim
+        context_dim = context_dim if context_dim is not None else query_dim
 
         self.scale = dim_head**-0.5
         self.heads = heads
@@ -178,7 +178,7 @@ class CrossAttention(nn.Module):
         h = self.heads
 
         q = self.to_q(x)
-        context = context or x
+        context = context if context is not None else x
         k = self.to_k(context)
         v = self.to_v(context)
 
@@ -206,7 +206,7 @@ class FeedForward(nn.Module):
     def __init__(self, dim, dim_out=None, mult=4, glu=False, dropout=0.0):
         super().__init__()
         inner_dim = int(dim * mult)
-        dim_out = dim_out or dim
+        dim_out = dim_out if dim_out is not None else dim
         project_in = GEGLU(dim, inner_dim)
 
         self.net = nn.Sequential(project_in, nn.Dropout(dropout), nn.Linear(inner_dim, dim_out))
