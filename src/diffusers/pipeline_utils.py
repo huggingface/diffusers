@@ -23,6 +23,7 @@ import torch
 
 from huggingface_hub import snapshot_download
 from PIL import Image
+from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
 from .utils import DIFFUSERS_CACHE, logging
@@ -56,6 +57,10 @@ for library in LOADABLE_CLASSES:
 class DiffusionPipeline(ConfigMixin):
 
     config_name = "model_index.json"
+
+    def __init__(self):
+        super().__init__()
+        self._is_progress_bar_enabled = True
 
     def register_modules(self, **kwargs):
         # import it here to avoid circular import
@@ -266,3 +271,15 @@ class DiffusionPipeline(ConfigMixin):
         pil_images = [Image.fromarray(image) for image in images]
 
         return pil_images
+
+    def progress_bar(self, iterable):
+        if self._is_progress_bar_enabled:
+            return tqdm(iterable)
+        else:
+            return iterable
+
+    def enable_progress_bar(self):
+        self._is_progress_bar_enabled = True
+
+    def disable_progress_bar(self):
+        self._is_progress_bar_enabled = False

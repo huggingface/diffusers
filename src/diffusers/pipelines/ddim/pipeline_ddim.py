@@ -18,8 +18,6 @@ import warnings
 
 import torch
 
-from tqdm.auto import tqdm
-
 from ...pipeline_utils import DiffusionPipeline
 
 
@@ -56,7 +54,7 @@ class DDIMPipeline(DiffusionPipeline):
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
 
-        for t in tqdm(self.scheduler.timesteps):
+        for t in self.progress_bar(self.scheduler.timesteps):
             # 1. predict noise model_output
             model_output = self.unet(image, t)["sample"]
 

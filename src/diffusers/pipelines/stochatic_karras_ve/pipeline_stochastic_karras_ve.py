@@ -53,7 +53,7 @@ class KarrasVePipeline(DiffusionPipeline):
 
         self.scheduler.set_timesteps(num_inference_steps)
 
-        for t in tqdm(self.scheduler.timesteps):
+        for t in self.progress_bar(self.scheduler.timesteps):
             # here sigma_t == t_i from the paper
             sigma = self.scheduler.schedule[t]
             sigma_prev = self.scheduler.schedule[t - 1] if t > 0 else 0
