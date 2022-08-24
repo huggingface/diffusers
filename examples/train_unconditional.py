@@ -39,11 +39,11 @@ def main(args):
 
     model_dir = f"{args.output_dir}/unet"
     if os.path.exists(model_dir):
-        print(f"reloading model from {model_dir}")
+        logger.info(f"reloading model from {model_dir}")
         model = UNet2DModel.from_pretrained(model_dir)
-        print(f"reloaded model from {model_dir}")
+        logger.info(f"reloaded model from {model_dir}")
     else:
-        print(f"creating fresh model")
+        logger.info(f"creating fresh model")
         model = UNet2DModel(
             sample_size=args.resolution,
             in_channels=3,
@@ -181,8 +181,8 @@ def main(args):
 
                 # denormalize the images and save to tensorboard
                 images_processed = (images * 255).round().astype("uint8")
-                epoch06 = str(epoch).zfill( 6 )
                 if args.timestamp_test_samples:
+                    epoch06 = str(epoch).zfill( 6 )
                     test_samples = datetime.now().strftime(f"test_samples-%Y-%m-%d+%H-%M-%S+{epoch06}")
                 else:
                     test_samples = "test_samples"
@@ -200,7 +200,7 @@ def main(args):
                         os.makedirs(checkpoints_dir, exist_ok=True)
                         checkpoint_dir = datetime.now().strftime(f"{checkpoints_dir}/checkpoint-%Y-%m-%d+%H-%M-%S")
                         os.rename(model_dir,checkpoint_dir)
-                        print(f"checkpointed {model_dir} to {checkpoint_dir}")
+                        logger.info(f"checkpointed {model_dir} to {checkpoint_dir}")
                     pipeline.save_pretrained(args.output_dir)
         accelerator.wait_for_everyone()
 
