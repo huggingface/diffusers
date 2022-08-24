@@ -162,7 +162,8 @@ class StableDiffusionInpaintingPipeline(DiffusionPipeline):
             latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs)["prev_sample"]
 
             #masking
-            latents=init_latents_orig*mask+latents*(1-mask)
+            init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, t)
+            latents = ( init_latents_proper * mask ) + ( latents * (1-mask) )
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
