@@ -248,7 +248,7 @@ class FirDownsample2D(nn.Module):
         return x
 
 
-class ResnetBlock(nn.Module):
+class ResnetBlock2D(nn.Module):
     def __init__(
         self,
         *,
