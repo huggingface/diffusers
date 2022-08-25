@@ -99,8 +99,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
 
-        # get the initial random noise
-
+        # get the initial random noise unless the user supplied it
         latents_shape = (batch_size, self.unet.in_channels, height // 8, width // 8)
         if latents is None:
             latents = torch.randn(
@@ -108,7 +107,10 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 generator=generator,
                 device=self.device,
             )
-        assert latents.shape == latents_shape, f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}"
+        else:
+            if latents.shape != latents_shape:
+                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
+            latents = latents.to(self.device)
 
         # set timesteps
         accepts_offset = "offset" in set(inspect.signature(self.scheduler.set_timesteps).parameters.keys())
