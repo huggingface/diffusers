@@ -15,11 +15,14 @@
 """ Conversion script for the LDM checkpoints. """
 
 import argparse
-import os
 import json
+import os
+
 import torch
-from diffusers import UNet2DModel, UNet2DConditionModel
+
+from diffusers import UNet2DConditionModel, UNet2DModel
 from transformers.file_utils import has_file
+
 
 do_only_config = False
 do_only_weights = True
@@ -37,9 +40,7 @@ if __name__ == "__main__":
         help="The config json file corresponding to the architecture.",
     )
 
-    parser.add_argument(
-        "--dump_path", default=None, type=str, required=True, help="Path to the output model."
-    )
+    parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
 
     args = parser.parse_args()
 
