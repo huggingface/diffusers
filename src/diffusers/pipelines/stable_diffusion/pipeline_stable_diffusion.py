@@ -47,6 +47,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
+        censored = False,
         **kwargs,
     ):
         if "torch_device" in kwargs:
@@ -154,11 +155,16 @@ class StableDiffusionPipeline(DiffusionPipeline):
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
 
-        # run safety checker
-        safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
-        image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_cheker_input.pixel_values)
-
+        # run safety checker if censorship enabled
+        has_nsfw_concept= False
+        if censored:
+            warnings.warn("Running in Censored Mode! If you get the NSFW message repeatedly, pls try calling this with censored=False")
+            safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
+            image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_cheker_input.pixel_values)
+            if has_nsfw_concept:
+                warnings.warn("CENSORED. If this behavior is not desirable for your use case, simple call with censored=False")
+        else:
+            warnings.warn("Running in Uncensored Mode! Returned image may be NSFW")
         if output_type == "pil":
             image = self.numpy_to_pil(image)
-
-        return {"sample": image, "nsfw_content_detected": has_nsfw_concept}
+        return {"sample": image, "nsfw_content_detected": False}
