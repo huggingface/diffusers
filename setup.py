@@ -78,7 +78,7 @@ from setuptools import find_packages, setup
 _deps = [
     "Pillow",
     "accelerate>=0.11.0",
-    "black~=22.0,>=22.3",
+    "black==22.3",
     "datasets",
     "filelock",
     "flake8>=3.8.3",
@@ -163,7 +163,7 @@ extras = {}
 
 
 extras = {}
-extras["quality"] = ["black ~= 22.0", "isort >= 5.5.4", "flake8 >= 3.8.3"]
+extras["quality"] = ["black==22.3", "isort >= 5.5.4", "flake8 >= 3.8.3"]
 extras["docs"] = ["hf-doc-builder"]
 extras["training"] = ["accelerate", "datasets", "tensorboard", "modelcards"]
 extras["test"] = ["pytest"]
