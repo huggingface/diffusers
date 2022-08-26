@@ -51,7 +51,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        init_image: torch.FloatTensor,
+        init_image: Union[torch.FloatTensor, PIL.Image],
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
@@ -80,7 +80,8 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
 
-        init_image = preprocess(init_image)
+        if not isinstance(init_image, torch.FloatTensor):
+            init_image = preprocess(init_image)
 
         # encode the init image into latents and scale the latents
         init_latents = self.vae.encode(init_image.to(self.device)).sample()

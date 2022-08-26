@@ -36,7 +36,7 @@ If you feel like an important examples, we are more than happy to welcome a [Fea
 Training examples show how to pretrain or fine-tune diffusion models for a variety of tasks. Currently we support:
 
 | Task | 🤗 Accelerate | 🤗 Datasets | Colab
-|---|---|:---:|:---:|:---:|:---:|
+|---|---|:---:|:---:|
 | [**Unconditional Image Generation**](https://github.com/huggingface/transformers/tree/main/examples/training/train_unconditional.py) | ✅ | ✅ | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb)
 
 ## Community
