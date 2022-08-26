@@ -38,7 +38,6 @@ try:
     print("Cuda version:", torch.version.cuda)
     print("CuDNN version:", torch.backends.cudnn.version())
     print("Number of GPUs available:", torch.cuda.device_count())
-    print("NCCL version:", torch.cuda.nccl.version())
 except ImportError:
     print("Torch version:", None)
 
