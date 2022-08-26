@@ -3,4 +3,9 @@ from ...utils import is_transformers_available
 
 
 if is_transformers_available():
-    from .pipeline_stable_diffusion import StableDiffusionPipeline, StableDiffusionSafetyChecker
+    from .pipeline_stable_diffusion import (
+        StableDiffusionImg2ImgPipeline,
+        StableDiffusionInPaintPipeline,
+        StableDiffusionPipeline,
+        StableDiffusionSafetyChecker,
+    )

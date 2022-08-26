@@ -2,16 +2,3 @@
 # flake8: noqa
 from ..utils import DummyObject, requires_backends
 
-
-class LDMTextToImagePipeline(metaclass=DummyObject):
-    _backends = ["transformers"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["transformers"])
-
-
-class StableDiffusionPipeline(metaclass=DummyObject):
-    _backends = ["transformers"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["transformers"])

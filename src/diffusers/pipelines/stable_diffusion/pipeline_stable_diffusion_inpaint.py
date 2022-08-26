@@ -3,15 +3,15 @@ from typing import List, Optional, Union
 
 import numpy as np
 import torch
-import PIL
 
+import PIL
 from tqdm.auto import tqdm
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, PNDMScheduler
 from .safety_checker import StableDiffusionSafetyChecker
-
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 
 def preprocess_image(image):

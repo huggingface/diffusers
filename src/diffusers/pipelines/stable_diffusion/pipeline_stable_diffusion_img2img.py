@@ -3,8 +3,8 @@ from typing import List, Optional, Union
 
 import numpy as np
 import torch
-import PIL
 
+import PIL
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
@@ -79,6 +79,8 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             extra_set_kwargs["offset"] = 1
 
         self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
+
+        init_image = preprocess(init_image)
 
         # encode the init image into latents and scale the latents
         init_latents = self.vae.encode(init_image.to(self.device)).sample()
