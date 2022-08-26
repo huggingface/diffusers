@@ -9,7 +9,7 @@ env:
   HF_HOME: /mnt/cache
   OMP_NUM_THREADS: 8
   MKL_NUM_THREADS: 8
-  PYTEST_TIMEOUT: 180
+  PYTEST_TIMEOUT: 1000
   RUN_SLOW: yes
 
 jobs:
