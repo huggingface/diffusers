@@ -89,6 +89,8 @@ _deps = [
     "modelcards==0.1.4",
     "numpy",
     "pytest",
+    "pytest-timeout",
+    "pytest-xdist",
     "regex!=2019.12.17",
     "requests",
     "tensorboard",
@@ -163,10 +165,10 @@ extras = {}
 
 
 extras = {}
-extras["quality"] = ["black==22.3", "isort >= 5.5.4", "flake8 >= 3.8.3"]
+extras["quality"] = ["black==22.3", "isort>=5.5.4", "flake8>=3.8.3", "hf-doc-builder"]
 extras["docs"] = ["hf-doc-builder"]
 extras["training"] = ["accelerate", "datasets", "tensorboard", "modelcards"]
-extras["test"] = ["pytest"]
+extras["test"] = ["pytest", "pytest-timeout", "pytest-xdist"]
 extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras["docs"]
 
 install_requires = [
