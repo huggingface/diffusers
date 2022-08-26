@@ -71,6 +71,10 @@ and have a look into the [release notes](https://github.com/huggingface/diffuser
   
 ## Examples
 
+There are many ways to try running Diffusers! Here we outline code-focused tools (primarily using `DiffusionPipeline`s and Google Colab) and interactive web-tools.
+
+### Running Code
+
 If you want to run the code yourself 💻, you can try out:
 - [Text-to-Image Latent Diffusion](https://huggingface.co/CompVis/ldm-text2im-large-256)
 ```python
@@ -109,12 +113,19 @@ image[0].save("ddpm_generated_image.png")
 - [Unconditional Latent Diffusion](https://huggingface.co/CompVis/ldm-celebahq-256)
 - [Unconditional Diffusion with continous scheduler](https://huggingface.co/google/ncsnpp-ffhq-1024)
 
+**Other Notebooks**:
+* [image-to-image generation with Stable Diffusion](https://colab.research.google.com/github/patil-suraj/Notebooks/blob/master/image_2_image_using_diffusers.ipynb) ![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg),
+* [tweak images via repeated Stable Diffusion seeds](https://colab.research.google.com/github/pcuenca/diffusers-examples/blob/main/notebooks/stable-diffusion-seeds.ipynb) ![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg),
+
+### Web Demos
 If you just want to play around with some web demos, you can try out the following 🚀 Spaces:
 | Model                          	| Hugging Face Spaces                                                                                                                                               	|
 |--------------------------------	|-------------------------------------------------------------------------------------------------------------------------------------------------------------------	|
 | Text-to-Image Latent Diffusion 	| [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/CompVis/text2img-latent-diffusion) 	|
 | Faces generator                	| [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/CompVis/celeba-latent-diffusion)    	|
 | DDPM with different schedulers 	| [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/fusing/celeba-diffusion)           	|
+| Conditional generation from sketch (*SOON*) 	| [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/huggingface/diffuse-the-rest)           	|
+| Composable diffusion | [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/Shuang59/Composable-Diffusion)           	|
 
 ## Definitions
 
