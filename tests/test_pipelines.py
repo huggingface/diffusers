@@ -35,6 +35,8 @@ from diffusers import (
     ScoreSdeVePipeline,
     ScoreSdeVeScheduler,
     StableDiffusionPipeline,
+    StableDiffusionInpaintingPipeline,
+    StableDiffusionInPaintPipeline,
     UNet2DModel,
 )
 from diffusers.pipeline_utils import DiffusionPipeline
@@ -379,6 +381,27 @@ class PipelineTesterMixin(unittest.TestCase):
         pipe = StableDiffusionPipeline.from_pretrained(model_id, use_auth_token=True).to(torch_device)
         scheduler = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler", use_auth_token=True)
         pipe.scheduler = scheduler
+
+        prompt = "a photograph of an astronaut riding a horse"
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image = pipe([prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy")[
+            "sample"
+        ]
+
+        image_slice = image[0, -3:, -3:, -1]
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.9077, 0.9254, 0.9181, 0.9227, 0.9213, 0.9367, 0.9399, 0.9406, 0.9024])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    def test_stable_diffusion_pipeline(self):
+        model_id = "CompVis/stable-diffusion-v1-1"
+        model_id = "/home/patrick/stable-diffusion-v1-4"
+
+        init_image = torch.ones(
+        mask_image = torch.ones(
+        pipe = StableDiffusionInPaintPipeline.from_pretrained(model_id, use_auth_token=True).to(torch_device)
 
         prompt = "a photograph of an astronaut riding a horse"
         generator = torch.Generator(device=torch_device).manual_seed(0)
