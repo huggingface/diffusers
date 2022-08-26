@@ -44,7 +44,7 @@ Training examples show how to pretrain or fine-tune diffusion models for a varie
 In additon, we provide **community** examples, which are examples added and maintained by our community.
 Community examples can consists of both *training* examples and *inference* pipelines.
 For such examples, we are more lenient regarding the philosophy defined above and also cannot guarantee to provide maintenance for every issue.
-Examples that we deem not (yet) popular/important enough to go into the [official training examples]( ) or [official pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines), or that don't fully following the philosophy defined above, should go into the [community examples](https://github.com/huggingface/diffusers/tree/main/examples/community) folder. The community folder therefore includes training examples and inference pipelines.
+For examples that are not yet deemed popular/important enough, but might be very valuable to the community, or that don't fully following the philosophy defined above, should go into the [community examples](https://github.com/huggingface/diffusers/tree/main/examples/community) folder. The community folder therefore includes training examples and inference pipelines.
 **Note**: Community examples can be a [great first contribution](https://github.com/huggingface/diffusers/compare) to show to the community how you like to use `diffusers` 🪄.
 
 ## Important note
