@@ -71,7 +71,7 @@ and have a look into the [release notes](https://github.com/huggingface/diffuser
   
 ## Examples
 
-There are many ways to try running Diffusers! Here we outline code-focused tools (primarily using `DiffusionPipeline`s and Google Colab) and itneractive web-tools.
+There are many ways to try running Diffusers! Here we outline code-focused tools (primarily using `DiffusionPipeline`s and Google Colab) and interactive web-tools.
 
 ### Running Code
 
