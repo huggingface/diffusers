@@ -29,13 +29,11 @@ jobs:
       with:
         fetch-depth: 2
 
-    - name: NVIDIA-SMI
-      run: |
-        nvidia-smi
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         python -m pip install -e .[quality,test]
+
     - name: Run all non-slow selected tests on CPU
       run: |
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s
