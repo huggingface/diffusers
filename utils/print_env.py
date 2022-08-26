@@ -18,15 +18,14 @@
 # this script dumps information about the environment
 
 import os
-import sys
 import platform
+import sys
 
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 print("Python version:", sys.version)
 
-print("OS distribution:", platform.dist())
 print("OS platform:", platform.platform())
 print("OS architecture:", platform.machine())
 
