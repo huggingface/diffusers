@@ -114,7 +114,7 @@ image[0].save("ddpm_generated_image.png")
 - [Unconditional Diffusion with continous scheduler](https://huggingface.co/google/ncsnpp-ffhq-1024)
 
 **Other Notebooks**:
-* [image-to-image generation with Stable Diffusion](https://colab.research.google.com/drive/1yHBat74l_fvS9f4IDLvquvJSyY7G36G0?usp=sharing) ![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg),
+* [image-to-image generation with Stable Diffusion](https://colab.research.google.com/github/patil-suraj/Notebooks/blob/master/image_2_image_using_diffusers.ipynb) ![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg),
 * [tweak images via repeated Stable Diffusion seeds](https://colab.research.google.com/github/pcuenca/diffusers-examples/blob/main/notebooks/stable-diffusion-seeds.ipynb) ![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg),
 
 ### Web Demos
