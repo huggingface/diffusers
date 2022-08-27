@@ -2,7 +2,7 @@
 
 ## Installing the dependencies
 
-Before running the scipts, make sure to install the library's dependencies:
+Before running the scripts, make sure to install the library's dependencies:
 
 ```bash
 pip install diffusers transformers ftfy
