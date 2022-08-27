@@ -1,13 +1,8 @@
 from asyncio import open_unix_connection
 import inspect
-<<<<<<< HEAD
-from typing import Optional, Tuple, Union
-import random
-=======
 import warnings
 from typing import List, Optional, Tuple, Union
->>>>>>> upstream/main
-
+import random
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint
