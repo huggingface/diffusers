@@ -445,6 +445,10 @@ def main(args):
     model.freeze_vae()
     model.freeze_unet()
 
+    # scale learning rate (TODO: also use number of GPUs)
+    if args.scale_lr:
+        args.learning_rate = args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size
+
     # initialize the optimizer
     optimizer = torch.optim.AdamW(
         [next(model.parameters())],  # only optimize the concept embeddings
@@ -637,6 +641,12 @@ if __name__ == "__main__":
     parser.add_argument("--save_model_epochs", type=int, default=10)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
     parser.add_argument("--learning_rate", type=float, default=1e-4)
+    parser.add_argument(
+        "--scale_lr",
+        action="store_true",
+        default=True,
+        help="Scale the learning rate by the number of GPUs, gradient accumulation steps, and batch size.",
+    )
     parser.add_argument("--lr_scheduler", type=str, default="cosine")
     parser.add_argument("--lr_warmup_steps", type=int, default=500)
     parser.add_argument("--adam_beta1", type=float, default=0.95)
