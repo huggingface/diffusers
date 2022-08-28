@@ -410,6 +410,7 @@ def main(args):
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
 
     accelerator = Accelerator(
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with="tensorboard",
         logging_dir=logging_dir,
@@ -506,23 +507,21 @@ def main(args):
         progress_bar = tqdm(total=len(train_dataloader), disable=not accelerator.is_local_main_process)
         progress_bar.set_description(f"Epoch {epoch}")
         for step, batch in enumerate(train_dataloader):
-            pixel_values = batch["pixel_values"]
-
-            # convert images to latent space
-            latents = model.vae.encode(pixel_values).sample().detach()
-            latents = latents * 0.18215
-
-            # Sample noise that we'll add to the latents
-            noise = torch.randn(latents.shape).to(latents.device)
-            bsz = latents.shape[0]
-            # Sample a random timestep for each image
-            timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (bsz,), device=latents.device).long()
-
-            # Add noise to t1`he latents according to the noise magnitude at each timestep
-            # (this is the forward diffusion process)
-            noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-
             with accelerator.accumulate(model):
+                # convert images to latent space
+                latents = model.vae.encode(batch["pixel_values"]).sample().detach()
+                latents = latents * 0.18215
+
+                # Sample noise that we'll add to the latents
+                noise = torch.randn(latents.shape).to(latents.device)
+                bsz = latents.shape[0]
+                # Sample a random timestep for each image
+                timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (bsz,), device=latents.device).long()
+
+                # Add noise to t1`he latents according to the noise magnitude at each timestep
+                # (this is the forward diffusion process)
+                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+
                 # get the text embedding for conditioning
                 input_ids = batch["input_ids"].reshape(bsz, -1)
                 encoder_hidden_states = model.text_encoder(input_ids)[0]
@@ -541,17 +540,19 @@ def main(args):
                     loss += args.embedding_reg_weight * coarse_loss
 
                 accelerator.backward(loss)
-
                 # accelerator.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
+            
+            # Checks if the accelerator has performed an optimization step behind the scenes
+            if accelerator.sync_gradients:
+                progress_bar.update(1)
+                global_step += 1
 
-            progress_bar.update(1)
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
-            global_step += 1
 
             if global_step >= args.max_train_steps:
                 break
