@@ -504,7 +504,7 @@ def main(args):
     global_step = 0
     for epoch in range(args.num_epochs):
         model.train()
-        progress_bar = tqdm(total=len(train_dataloader), disable=not accelerator.is_local_main_process)
+        progress_bar = tqdm(total=num_update_steps_per_epoch, disable=not accelerator.is_local_main_process)
         progress_bar.set_description(f"Epoch {epoch}")
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(model):
