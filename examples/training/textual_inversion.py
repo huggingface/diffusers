@@ -15,7 +15,7 @@ import PIL
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_dataset
-from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.hub_utils import init_git_repo, push_to_hub
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
@@ -415,14 +415,12 @@ def main(args):
         logging_dir=logging_dir,
     )
 
-    # TODO: use args to load tokenizer and initializer, placeholder token
-    placeholder_token = args.placeholder_token
-    initializer_token = args.initializer_token
+    # TODO: use args to load tokenizer
     tokenizer = CLIPTokenizer.from_pretrained(
-        "openai/clip-vit-base-patch32", additional_special_tokens=[placeholder_token]
+        "openai/clip-vit-base-patch32", additional_special_tokens=[args.placeholder_token]
     )
-    placeholder_token_id = tokenizer.convert_tokens_to_ids(placeholder_token)
-    initializer_token_id = tokenizer.convert_tokens_to_ids(initializer_token)
+    placeholder_token_id = tokenizer.convert_tokens_to_ids(args.placeholder_token)
+    initializer_token_id = tokenizer.convert_tokens_to_ids(args.initializer_token)
 
     # load models and create wrapper for stable diffusion
     unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
@@ -461,7 +459,12 @@ def main(args):
     )
 
     dataset = PersonalizedBase(
-        data_root=args.train_data_dir, tokenizer=tokenizer, size=512, set="train", placeholder_token=placeholder_token
+        data_root=args.train_data_dir,
+        tokenizer=tokenizer,
+        size=512,
+        placeholder_token=args.placeholder_token,
+        repeats=args.repeats,
+        set="train",
     )
     train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.train_batch_size, shuffle=True)
 
@@ -525,7 +528,7 @@ def main(args):
 
                 # Predict the noise residual
                 noise_pred = model.unet(noisy_latents, timesteps, encoder_hidden_states)["sample"]
-                loss = F.mse_loss(noise_pred, noise, reduction='none').mean([1, 2, 3]).mean()
+                loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
 
                 # compute coarse loss
                 if args.embedding_reg_weight > 0:
@@ -534,7 +537,7 @@ def main(args):
                     coarse = model.text_encoder.get_initializer_embeddings().clone().to(optimized.device)
                     coarse_loss = (optimized - coarse) @ (optimized - coarse).T / num_embeddings
 
-                    loss += (args.embedding_reg_weight * coarse_loss)
+                    loss += args.embedding_reg_weight * coarse_loss
 
                 accelerator.backward(loss)
 
@@ -586,6 +589,21 @@ def main(args):
         #             pipeline.save_pretrained(args.output_dir)
         accelerator.wait_for_everyone()
 
+    if accelerator.is_main_process:
+        noise_scheduler = PNDMScheduler.from_config("CompVis/stable")
+        pipeline = StableDiffusionPipeline(
+            unet=accelerator.unwrap_model(model.unet),
+            vae=accelerator.unwrap_model(model.vae),
+            text_encoder=accelerator.unwrap_model(model.text_encoder),
+            tokenizer=tokenizer,
+            scheduler=noise_scheduler,
+            safety_checker=StableDiffusionSafetyChecker.from_pretrained(
+                "CompVis/stable-diffusion-v1-4", subfolder="scheduler", use_auth_token=True
+            ),
+            feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
+        )
+        pipeline.save_pretrained(args.output_dir)
+
     accelerator.end_training()
 
 
@@ -598,6 +616,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--placeholder_token", type=str, default=None, help="A token to use as a placeholder for the concept."
     )
+    parser.add_argument("--repeats", type=int, default=100, help="How many times to repeat the training data.")
     parser.add_argument("--embedding_reg_weight", type=float, default=0.0)
     parser.add_argument("--initializer_token", type=str, default=None, help="A token to use as initializer word.")
     parser.add_argument("--output_dir", type=str, default="ddpm-model-64")
