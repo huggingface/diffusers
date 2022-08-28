@@ -1,4 +1,5 @@
 import argparse
+import math
 import os
 import random
 from typing import Any, Optional, Tuple, Union
@@ -151,7 +152,8 @@ class TextualInversionWrapper(CLIPPreTrainedModel):
 
         inputs_embeds = self.get_input_embeddings()(input_ids)
         # update the inputs_embeds for concept token embedding
-        inputs_embeds[:, self.placeholder_token_id] = self.concept_embeddings
+        placeholder_idx = torch.where(input_ids == self.placeholder_token_id)
+        inputs_embeds[placeholder_idx] = self.concept_embeddings
 
         return self.text_model(
             inputs_embeds=inputs_embeds,
@@ -169,7 +171,7 @@ class TextualInversionWrapper(CLIPPreTrainedModel):
 # wrap unet, vae and clip
 class StableDiffusionWrapper(nn.Module):
     def __init__(self, text_encoder: TextualInversionWrapper, vae: AutoencoderKL, unet: UNet2DConditionModel):
-        super.__init__()
+        super().__init__()
         self.text_encoder = text_encoder
         self.vae = vae
         self.unet = unet
@@ -377,7 +379,9 @@ class PersonalizedBase(Dataset):
         else:
             text = random.choice(self.templates).format(placeholder_string)
 
-        example["input_ids"] = self.tokenizer(text, padding="max_length", truncation=True, max_length=77)
+        example["input_ids"] = self.tokenizer(
+            text, padding="max_length", truncation=True, max_length=77, return_tensors="pt"
+        ).input_ids
 
         # default to score-sde preprocessing
         img = np.array(image).astype(np.uint8)
@@ -429,6 +433,7 @@ def main(args):
         placeholder_token_id=placeholder_token_id,
         initializer_token_id=initializer_token_id,
     )
+    text_encoder.resize_token_embeddings(len(tokenizer))
 
     # init the concept embeddings
     text_encoder.init_concept_embeddings()
@@ -443,7 +448,7 @@ def main(args):
 
     # initialize the optimizer
     optimizer = torch.optim.AdamW(
-        model.text_encoder.concept_embeddings,  # only optimize the concept embeddings
+        [next(model.parameters())],  # only optimize the concept embeddings
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -455,19 +460,34 @@ def main(args):
         beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000, tensor_format="pt"
     )
 
-    dataset = PersonalizedBase(data_root=args.train_data_dir, tokenizer=tokenizer, size=512, set="train")
+    dataset = PersonalizedBase(
+        data_root=args.train_data_dir, tokenizer=tokenizer, size=512, set="train", placeholder_token=placeholder_token
+    )
     train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.train_batch_size, shuffle=True)
+
+    # Scheduler and math around the number of training steps.
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    if args.max_train_steps is None:
+        args.max_train_steps = args.num_epochs * num_update_steps_per_epoch
+        overrode_max_train_steps = True
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps,
-        num_training_steps=(len(train_dataloader) * args.num_epochs) // args.gradient_accumulation_steps,
+        num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
+        num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
 
     model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, lr_scheduler
     )
+
+    # We need to recalculate our total training steps as the size of the training dataloader may have changed.
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    if overrode_max_train_steps:
+        args.max_train_steps = args.num_epochs * num_update_steps_per_epoch
+    # Afterwards we recalculate our number of training epochs
+    args.num_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
 
     if args.push_to_hub:
         repo = init_git_repo(args, at_init=True)
@@ -500,7 +520,8 @@ def main(args):
 
             with accelerator.accumulate(model):
                 # get the text embedding for conditioning
-                encoder_hidden_states = model.text_encoder(batch["input_ids"])[0]
+                input_ids = batch["input_ids"].reshape(bsz, -1)
+                encoder_hidden_states = model.text_encoder(input_ids)[0]
 
                 # Predict the noise residual
                 noise_pred = model.unet(noisy_latents, timesteps, encoder_hidden_states)["sample"]
@@ -526,6 +547,9 @@ def main(args):
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
             global_step += 1
+
+            if global_step >= args.max_train_steps:
+                break
         progress_bar.close()
 
         accelerator.wait_for_everyone()
@@ -570,6 +594,10 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_name", type=str, default=None)
     parser.add_argument("--dataset_config_name", type=str, default=None)
     parser.add_argument("--train_data_dir", type=str, default=None, help="A folder containing the training data.")
+    parser.add_argument(
+        "--placeholder_token", type=str, default=None, help="A token to use as a placeholder for the concept."
+    )
+    parser.add_argument("--initializer_token", type=str, default=None, help="A token to use as initializer word.")
     parser.add_argument("--output_dir", type=str, default="ddpm-model-64")
     parser.add_argument("--overwrite_output_dir", action="store_true")
     parser.add_argument("--cache_dir", type=str, default=None)
@@ -577,6 +605,7 @@ if __name__ == "__main__":
     parser.add_argument("--train_batch_size", type=int, default=16)
     parser.add_argument("--eval_batch_size", type=int, default=16)
     parser.add_argument("--num_epochs", type=int, default=100)
+    parser.add_argument("--max_train_steps", type=int, default=5000)
     parser.add_argument("--save_images_epochs", type=int, default=10)
     parser.add_argument("--save_model_epochs", type=int, default=10)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
