@@ -103,6 +103,11 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         sigma_prev: float,
         sample_hat: Union[torch.FloatTensor, np.ndarray],
     ):
+        if self.num_inference_steps is None:
+            raise ValueError(
+                "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
+            )
+
         pred_original_sample = sample_hat + sigma_hat * model_output
         derivative = (sample_hat - pred_original_sample) / sigma_hat
         sample_prev = sample_hat + (sigma_prev - sigma_hat) * derivative
@@ -118,6 +123,11 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         sample_prev: Union[torch.FloatTensor, np.ndarray],
         derivative: Union[torch.FloatTensor, np.ndarray],
     ):
+        if self.num_inference_steps is None:
+            raise ValueError(
+                "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
+            )
+
         pred_original_sample = sample_prev + sigma_prev * model_output
         derivative_corr = (sample_prev - pred_original_sample) / sigma_prev
         sample_prev = sample_hat + (sigma_prev - sigma_hat) * (0.5 * derivative + 0.5 * derivative_corr)

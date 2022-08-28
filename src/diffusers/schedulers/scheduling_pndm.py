@@ -130,6 +130,11 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: Union[torch.FloatTensor, np.ndarray],
     ):
+        if self.num_inference_steps is None:
+            raise ValueError(
+                "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
+            )
+
         if self.counter < len(self.prk_timesteps) and not self.config.skip_prk_steps:
             return self.step_prk(model_output=model_output, timestep=timestep, sample=sample)
         else:
@@ -145,6 +150,11 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         Step function propagating the sample with the Runge-Kutta method. RK takes 4 forward passes to approximate the
         solution to the differential equation.
         """
+        if self.num_inference_steps is None:
+            raise ValueError(
+                "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
+            )
+
         diff_to_prev = 0 if self.counter % 2 else self.config.num_train_timesteps // self.num_inference_steps // 2
         prev_timestep = max(timestep - diff_to_prev, self.prk_timesteps[-1])
         timestep = self.prk_timesteps[self.counter // 4 * 4]
@@ -179,6 +189,11 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         Step function propagating the sample with the linear multi-step method. This has one forward pass with multiple
         times to approximate the solution.
         """
+        if self.num_inference_steps is None:
+            raise ValueError(
+                "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
+            )
+
         if not self.config.skip_prk_steps and len(self.ets) < 3:
             raise ValueError(
                 f"{self.__class__} can only be run AFTER scheduler has been run "

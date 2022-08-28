@@ -203,6 +203,7 @@ class SchedulerCommonTest(unittest.TestCase):
 
 class DDPMSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (DDPMScheduler,)
+    forward_default_kwargs = (("num_inference_steps", 50),)
 
     def get_scheduler_config(self, **kwargs):
         config = {
@@ -265,6 +266,7 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         model = self.dummy_model()
         sample = self.dummy_sample_deter
 
+        scheduler.set_timesteps(num_trained_timesteps)
         for t in reversed(range(num_trained_timesteps)):
             # 1. predict noise residual
             residual = model(sample, t)

@@ -136,6 +136,11 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         predict_epsilon=True,
         generator=None,
     ):
+        if self.num_inference_steps is None:
+            raise ValueError(
+                "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
+            )
+
         t = timestep
 
         if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
