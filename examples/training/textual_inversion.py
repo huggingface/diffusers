@@ -22,7 +22,7 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import CLIPFeatureExtractor, CLIPPreTrainedModel, CLIPTextConfig, CLIPTokenizer, CLIPTextModel
+from transformers import CLIPFeatureExtractor, CLIPPreTrainedModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.models.clip.modeling_clip import CLIPEncoder, CLIPTextEmbeddings, _expand_mask
 
@@ -544,7 +544,7 @@ def main(args):
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
-            
+
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
                 progress_bar.update(1)
@@ -601,7 +601,9 @@ def main(args):
             vae=accelerator.unwrap_model(model.vae),
             text_encoder=clip,
             tokenizer=tokenizer,
-            scheduler=PNDMScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler", use_auth_token=True),
+            scheduler=PNDMScheduler.from_config(
+                "CompVis/stable-diffusion-v1-4", subfolder="scheduler", use_auth_token=True
+            ),
             safety_checker=StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker"),
             feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
         )
