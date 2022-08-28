@@ -610,6 +610,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument("--local_rank", type=int, default=-1)
+    parser.add_argument("--pretrained_model_name_or_path", type=str, default=None, required=True)
     parser.add_argument("--dataset_name", type=str, default=None)
     parser.add_argument("--dataset_config_name", type=str, default=None)
     parser.add_argument("--train_data_dir", type=str, default=None, help="A folder containing the training data.")
