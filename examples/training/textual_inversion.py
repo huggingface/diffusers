@@ -306,7 +306,7 @@ class PersonalizedBase(Dataset):
         self,
         data_root,
         tokenizer,
-        style="style",  # [object, style]
+        style="style",  # [concept, style]
         size=None,
         repeats=100,
         interpolation="bicubic",
@@ -469,6 +469,7 @@ def main(args):
         size=args.resolution,
         placeholder_token=args.placeholder_token,
         repeats=args.repeats,
+        style=args.style,
         set="train",
     )
     train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.train_batch_size, shuffle=True)
@@ -626,6 +627,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--placeholder_token", type=str, default=None, help="A token to use as a placeholder for the concept."
     )
+    parser.add_argument("--style", type=str, default="concept", help="Choose between 'concept' and 'style'")
     parser.add_argument("--repeats", type=int, default=100, help="How many times to repeat the training data.")
     parser.add_argument("--embedding_reg_weight", type=float, default=0.0)
     parser.add_argument("--initializer_token", type=str, default=None, help="A token to use as initializer word.")
