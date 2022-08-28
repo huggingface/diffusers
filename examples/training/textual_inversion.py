@@ -22,7 +22,7 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import CLIPFeatureExtractor, CLIPPreTrainedModel, CLIPTextConfig, CLIPTokenizer
+from transformers import CLIPFeatureExtractor, CLIPPreTrainedModel, CLIPTextConfig, CLIPTokenizer, CLIPTextModel
 from transformers.modeling_outputs import BaseModelOutputWithPooling
 from transformers.models.clip.modeling_clip import CLIPEncoder, CLIPTextEmbeddings, _expand_mask
 
@@ -461,7 +461,7 @@ def main(args):
     dataset = PersonalizedBase(
         data_root=args.train_data_dir,
         tokenizer=tokenizer,
-        size=512,
+        size=args.resolution,
         placeholder_token=args.placeholder_token,
         repeats=args.repeats,
         set="train",
@@ -469,6 +469,7 @@ def main(args):
     train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.train_batch_size, shuffle=True)
 
     # Scheduler and math around the number of training steps.
+    overrode_max_train_steps = False
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if args.max_train_steps is None:
         args.max_train_steps = args.num_epochs * num_update_steps_per_epoch
@@ -590,16 +591,17 @@ def main(args):
         accelerator.wait_for_everyone()
 
     if accelerator.is_main_process:
-        noise_scheduler = PNDMScheduler.from_config("CompVis/stable")
+        text_model = accelerator.unwrap_model(model.text_encoder)
+        text_model.merge_concept_embeddings_in_embeddings()
+        clip = CLIPTextModel(text_model.config)
+        clip.load_state_dict(text_model.state_dict(), strict=False)
         pipeline = StableDiffusionPipeline(
             unet=accelerator.unwrap_model(model.unet),
             vae=accelerator.unwrap_model(model.vae),
-            text_encoder=accelerator.unwrap_model(model.text_encoder),
+            text_encoder=clip,
             tokenizer=tokenizer,
-            scheduler=noise_scheduler,
-            safety_checker=StableDiffusionSafetyChecker.from_pretrained(
-                "CompVis/stable-diffusion-v1-4", subfolder="scheduler", use_auth_token=True
-            ),
+            scheduler=PNDMScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler", use_auth_token=True),
+            safety_checker=StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker"),
             feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
         )
         pipeline.save_pretrained(args.output_dir)
