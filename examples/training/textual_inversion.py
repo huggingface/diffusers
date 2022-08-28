@@ -525,19 +525,20 @@ def main(args):
 
                 # Predict the noise residual
                 noise_pred = model.unet(noisy_latents, timesteps, encoder_hidden_states)["sample"]
-                loss = F.mse_loss(noise_pred, noise)
+                loss = F.mse_loss(noise_pred, noise, reduction='none').mean([1, 2, 3]).mean()
 
                 # compute coarse loss
-                num_embeddings = 1  # TODO: generalize to multiple embeddings
-                optimized = model.text_encoder.get_concept_embeddings()
-                coarse = model.text_encoder.get_initializer_embeddings().clone().to(optimized.device)
-                coarse_loss = (optimized - coarse) @ (optimized - coarse).T / num_embeddings
+                if args.embedding_reg_weight > 0:
+                    num_embeddings = 1  # TODO: generalize to multiple embeddings
+                    optimized = model.text_encoder.get_concept_embeddings()
+                    coarse = model.text_encoder.get_initializer_embeddings().clone().to(optimized.device)
+                    coarse_loss = (optimized - coarse) @ (optimized - coarse).T / num_embeddings
 
-                loss += coarse_loss
+                    loss += (args.embedding_reg_weight * coarse_loss)
 
                 accelerator.backward(loss)
 
-                accelerator.clip_grad_norm_(model.parameters(), 1.0)
+                # accelerator.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -597,6 +598,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--placeholder_token", type=str, default=None, help="A token to use as a placeholder for the concept."
     )
+    parser.add_argument("--embedding_reg_weight", type=float, default=0.0)
     parser.add_argument("--initializer_token", type=str, default=None, help="A token to use as initializer word.")
     parser.add_argument("--output_dir", type=str, default="ddpm-model-64")
     parser.add_argument("--overwrite_output_dir", action="store_true")
