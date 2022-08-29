@@ -420,7 +420,7 @@ class PipelineTesterMixin(unittest.TestCase):
         ds = load_dataset("hf-internal-testing/diffusers-images", split="train")
 
         init_image = ds[0]["image"].resize((768, 512))
-        output_image = ds[4]["image"].resize((768, 512))
+        output_image = ds[3]["image"].resize((768, 512))
 
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(model_id, use_auth_token=True)
@@ -430,13 +430,15 @@ class PipelineTesterMixin(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         image = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5, generator=generator)["sample"][0]
 
-        image.save("/home/patrick/diffusers-images/in_paint/red_cat_sitting_on_a_parking_bench.png")
-        assert image.shape == (1, 512, 512, 3)
+        import ipdb; ipdb.set_trace()
+
+        image.save("/home/patrick/diffusers-images/img2img/fanasty_landscape.png")
 
         expected_array = np.array(output_image)
         sampled_array = np.array(image)
 
-        assert np.max(np.abs(sampled_array - expected_array)) < 1e-3
+        assert sampled_array.shape == (512, 768, 3)
+        assert np.max(np.abs(sampled_array - expected_array)) < 1e-4
 
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
@@ -458,10 +460,8 @@ class PipelineTesterMixin(unittest.TestCase):
             prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75, guidance_scale=7.5, generator=generator
         )["sample"][0]
 
-        image.save("/home/patrick/diffusers-images/in_paint/red_cat_sitting_on_a_parking_bench.png")
-        assert image.shape == (1, 512, 512, 3)
-
         expected_array = np.array(output_image)
         sampled_array = np.array(image)
 
+        assert sampled_array.shape == (512, 768, 3)
         assert np.max(np.abs(sampled_array - expected_array)) < 1e-3

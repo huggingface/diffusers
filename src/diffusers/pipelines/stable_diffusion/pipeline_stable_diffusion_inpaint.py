@@ -98,7 +98,7 @@ class StableDiffusionInPaintPipeline(DiffusionPipeline):
         init_image = preprocess_image(init_image).to(self.device)
 
         # encode the init image into latents and scale the latents
-        init_latents = self.vae.encode(init_image, generator=generator).sample()
+        init_latents = self.vae.encode(init_image).sample(generator=generator)
         init_latents = 0.18215 * init_latents
 
         # prepare init_latents noise to latents
