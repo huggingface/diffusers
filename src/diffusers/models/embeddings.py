@@ -35,7 +35,7 @@ def get_timestep_embedding(
     exponent = -math.log(max_period) * torch.arange(start=0, end=half_dim, dtype=torch.float32)
     exponent = exponent / (half_dim - downscale_freq_shift)
 
-    emb = torch.exp(exponent).to(device=timesteps.device)
+    emb = torch.exp(exponent).to(device=timesteps.device, non_blocking=True)
     emb = timesteps[:, None].float() * emb[None, :]
 
     # scale embeddings
