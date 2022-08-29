@@ -51,7 +51,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        init_image: Union[torch.FloatTensor, PIL.Image],
+        init_image: Union[torch.FloatTensor, PIL.Image.Image],
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
