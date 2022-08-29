@@ -15,7 +15,6 @@
 
 import tempfile
 import unittest
-from io import BytesIO
 
 import numpy as np
 import torch
@@ -418,25 +417,26 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_img2img_pipeline(self):
+        ds = load_dataset("hf-internal-testing/diffusers-images", split="train")
+
+        init_image = ds[0]["image"].resize((768, 512))
+        output_image = ds[4]["image"].resize((768, 512))
+
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(model_id, use_auth_token=True)
-
-        # TODO(PVP) - move to hf-internal-testing
-        url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
-        response = requests.get(url)
-        init_image = PIL.Image.open(BytesIO(response.content)).convert("RGB")
-        init_image = init_image.resize((768, 512))
-        init_
 
         prompt = "A fantasy landscape, trending on artstation"
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
         image = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5, generator=generator)["sample"][0]
 
-        image_slice = image[0, -3:, -3:, -1]
+        image.save("/home/patrick/diffusers-images/in_paint/red_cat_sitting_on_a_parking_bench.png")
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.9077, 0.9254, 0.9181, 0.9227, 0.9213, 0.9367, 0.9399, 0.9406, 0.9024])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+        expected_array = np.array(output_image)
+        sampled_array = np.array(image)
+
+        assert np.max(np.abs(sampled_array - expected_array)) < 1e-3
 
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
@@ -459,9 +459,9 @@ class PipelineTesterMixin(unittest.TestCase):
         )["sample"][0]
 
         image.save("/home/patrick/diffusers-images/in_paint/red_cat_sitting_on_a_parking_bench.png")
-        import ipdb; ipdb.set_trace()
-
-        image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.9077, 0.9254, 0.9181, 0.9227, 0.9213, 0.9367, 0.9399, 0.9406, 0.9024])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+        expected_array = np.array(output_image)
+        sampled_array = np.array(image)
+
+        assert np.max(np.abs(sampled_array - expected_array)) < 1e-3
