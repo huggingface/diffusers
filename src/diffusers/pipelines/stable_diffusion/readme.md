@@ -2,7 +2,7 @@
 
 ## Installing the dependencies
 
-Before running the scipts, make sure to install the library's dependencies:
+Before running the scripts, make sure to install the library's dependencies:
 
 ```bash
 pip install diffusers transformers ftfy
@@ -16,6 +16,7 @@ The `image_to_image.py` script implements `StableDiffusionImg2ImgPipeline`. It l
 
 
 ```python
+import torch
 from torch import autocast
 import requests
 from PIL import Image
@@ -61,6 +62,7 @@ The `inpainting.py` script implements `StableDiffusionInpaintingPipeline`. This 
 ### How to use it
 
 ```python
+import torch
 from io import BytesIO
 
 from torch import autocast
