@@ -15,6 +15,8 @@ deps = {
     "modelcards": "modelcards==0.1.4",
     "numpy": "numpy",
     "pytest": "pytest",
+    "pytest-timeout": "pytest-timeout",
+    "pytest-xdist": "pytest-xdist",
     "regex": "regex!=2019.12.17",
     "requests": "requests",
     "tensorboard": "tensorboard",

@@ -1,0 +1,40 @@
+name: Run non-slow tests
+
+on:
+  pull_request:
+    branches:
+      - main
+
+env:
+  HF_HOME: /mnt/cache
+  OMP_NUM_THREADS: 8
+  MKL_NUM_THREADS: 8
+  PYTEST_TIMEOUT: 60
+
+jobs:
+  run_tests_cpu:
+    name: Diffusers tests
+    runs-on: [ self-hosted, docker-gpu ]
+    container:
+      image: python:3.7
+      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
+
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install torch --extra-index-url https://download.pytorch.org/whl/cpu
+        python -m pip install -e .[quality,test]
+
+    - name: Environment
+      run: |
+        python utils/print_env.py
+
+    - name: Run all non-slow selected tests on CPU
+      run: |
+        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s tests/
