@@ -145,10 +145,12 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         latents = init_latents
         t_start = max(num_inference_steps - init_timestep + offset, 0)
         for i, t in tqdm(enumerate(self.scheduler.timesteps[t_start:])):
+            t_index = t_start + i
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             if isinstance(self.scheduler, LMSDiscreteScheduler):
-                sigma = self.scheduler.sigmas[t_start + i]
+                sigma = self.scheduler.sigmas[t_index]
+                # the model input needs to be scaled to match the continuous ODE formulation in K-LMS
                 latent_model_input = latent_model_input / ((sigma**2 + 1) ** 0.5)
                 latent_model_input = latent_model_input.to(self.unet.dtype)
                 t = t.to(self.unet.dtype)
@@ -163,7 +165,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
             # compute the previous noisy sample x_t -> x_t-1
             if isinstance(self.scheduler, LMSDiscreteScheduler):
-                latents = self.scheduler.step(noise_pred, t_start + i, latents, **extra_step_kwargs)["prev_sample"]
+                latents = self.scheduler.step(noise_pred, t_index, latents, **extra_step_kwargs)["prev_sample"]
             else:
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs)["prev_sample"]
 
