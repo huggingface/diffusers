@@ -282,6 +282,9 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
+        # Large tolerance because of differences on GPU/CPU
+        # since tiny initial numerical differences get bigger after diffusion steps
+        # followed by summing and averaging
         assert abs(result_sum.item() - 259.0883) < 1e1
         assert abs(result_mean.item() - 0.3374) < 1e-2
 
@@ -714,6 +717,9 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
+        # Large tolerances because of differences on GPU/CPU
+        # since tiny initial numerical differences get bigger after diffusion steps
+        # followed by summing and averaging
         assert abs(result_sum.item() - 14379591680.0) < 2.5e3
         assert abs(result_mean.item() - 18723426.0) < 1e1
 
