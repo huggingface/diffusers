@@ -87,7 +87,7 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
         with torch.no_grad():
             output = model(image)
 
-        output_slice = output[0, -1, -3:, -3:].flatten()
+        output_slice = output[0, -1, -3:, -3:].flatten().cpu()
         # fmt: off
         expected_output_slice = torch.tensor([-0.0153, -0.4044, -0.1880, -0.5161, -0.2418, -0.4072, -0.1612, -0.0633, -0.0143])
         # fmt: on

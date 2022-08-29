@@ -64,6 +64,7 @@ class PipelineTesterMixin(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdirname:
             ddpm.save_pretrained(tmpdirname)
             new_ddpm = DDPMPipeline.from_pretrained(tmpdirname)
+            new_ddpm.to(torch_device)
 
         generator = torch.manual_seed(0)
 
@@ -77,13 +78,12 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_from_pretrained_hub(self):
         model_path = "google/ddpm-cifar10-32"
 
-        ddpm = DDPMPipeline.from_pretrained(model_path)
-        ddpm.to(torch_device)
-        ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path)
-        ddpm_from_hub.to(torch_device)
+        scheduler = DDPMScheduler(num_train_timesteps=10)
 
-        ddpm.scheduler.num_timesteps = 10
-        ddpm_from_hub.scheduler.num_timesteps = 10
+        ddpm = DDPMPipeline.from_pretrained(model_path, scheduler=scheduler)
+        ddpm.to(torch_device)
+        ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path, scheduler=scheduler)
+        ddpm_from_hub.to(torch_device)
 
         generator = torch.manual_seed(0)
 
@@ -97,16 +97,15 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_from_pretrained_hub_pass_model(self):
         model_path = "google/ddpm-cifar10-32"
 
+        scheduler = DDPMScheduler(num_train_timesteps=10)
+
         # pass unet into DiffusionPipeline
         unet = UNet2DModel.from_pretrained(model_path)
-        ddpm_from_hub_custom_model = DiffusionPipeline.from_pretrained(model_path, unet=unet)
+        ddpm_from_hub_custom_model = DiffusionPipeline.from_pretrained(model_path, unet=unet, scheduler=scheduler)
         ddpm_from_hub_custom_model.to(torch_device)
 
-        ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path)
+        ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path, scheduler=scheduler)
         ddpm_from_hub.to(torch_device)
-
-        ddpm_from_hub_custom_model.scheduler.num_timesteps = 10
-        ddpm_from_hub.scheduler.num_timesteps = 10
 
         generator = torch.manual_seed(0)
 
@@ -317,10 +316,10 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     def test_ldm_uncond(self):
         ldm = LDMPipeline.from_pretrained("CompVis/ldm-celebahq-256")
+        ldm.to(torch_device)
 
         generator = torch.manual_seed(0)
         image = ldm(generator=generator, num_inference_steps=5, output_type="numpy")["sample"]
-        ldm.to(torch_device)
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -360,6 +359,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
         ddpm = DDPMPipeline(unet=unet, scheduler=ddpm_scheduler)
         ddpm.to(torch_device)
+
         ddim = DDIMPipeline(unet=unet, scheduler=ddim_scheduler)
         ddim.to(torch_device)
 
