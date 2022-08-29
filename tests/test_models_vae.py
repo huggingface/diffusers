@@ -23,6 +23,9 @@ from diffusers.testing_utils import floats_tensor, torch_device
 from .test_modeling_common import ModelTesterMixin
 
 
+torch.backends.cuda.matmul.allow_tf32 = False
+
+
 class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
     model_class = AutoencoderKL
 
@@ -74,6 +77,7 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
 
     def test_output_pretrained(self):
         model = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy")
+        model = model.to(torch_device)
         model.eval()
 
         torch.manual_seed(0)
@@ -81,10 +85,11 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
             torch.cuda.manual_seed_all(0)
 
         image = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
+        image = image.to(torch_device)
         with torch.no_grad():
             output = model(image, sample_posterior=True)
 
-        output_slice = output[0, -1, -3:, -3:].flatten()
+        output_slice = output[0, -1, -3:, -3:].flatten().cpu()
         # fmt: off
         expected_output_slice = torch.tensor([-4.0078e-01, -3.8304e-04, -1.2681e-01, -1.1462e-01, 2.0095e-01, 1.0893e-01, -8.8248e-02, -3.0361e-01, -9.8646e-03])
         # fmt: on
