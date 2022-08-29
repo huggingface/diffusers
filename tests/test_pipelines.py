@@ -419,20 +419,17 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_stable_diffusion_img2img_pipeline(self):
         ds = load_dataset("hf-internal-testing/diffusers-images", split="train")
 
-        init_image = ds[0]["image"].resize((768, 512))
-        output_image = ds[3]["image"].resize((768, 512))
+        init_image = ds[1]["image"].resize((768, 512))
+        output_image = ds[0]["image"].resize((768, 512))
 
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(model_id, use_auth_token=True)
+        pipe.to(torch_device)
 
         prompt = "A fantasy landscape, trending on artstation"
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
         image = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5, generator=generator)["sample"][0]
-
-        import ipdb; ipdb.set_trace()
-
-        image.save("/home/patrick/diffusers-images/img2img/fanasty_landscape.png")
 
         expected_array = np.array(output_image)
         sampled_array = np.array(image)
@@ -445,9 +442,9 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_stable_diffusion_in_paint_pipeline(self):
         ds = load_dataset("hf-internal-testing/diffusers-images", split="train")
 
-        init_image = ds[1]["image"].resize((768, 512))
-        mask_image = ds[2]["image"].resize((768, 512))
-        output_image = ds[3]["image"].resize((768, 512))
+        init_image = ds[2]["image"].resize((768, 512))
+        mask_image = ds[3]["image"].resize((768, 512))
+        output_image = ds[4]["image"].resize((768, 512))
 
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionInPaintPipeline.from_pretrained(model_id, use_auth_token=True)
