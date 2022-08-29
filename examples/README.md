@@ -15,7 +15,8 @@ limitations under the License.
 
 # 🧨 Diffusers Examples
 
-Diffusers examples are a collection of best-practices on how to use the `diffusers` library.
+Diffusers examples are a collection of scripts to demonstrate how to effectively use the `diffusers` library
+for a variety of use cases.
 
 **Note**: If you are looking for **official** examples on how to use `diffusers` for inference, 
 please have a look at [src/diffusers/pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines)
