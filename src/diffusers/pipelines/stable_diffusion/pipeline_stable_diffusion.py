@@ -144,7 +144,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         s = torch.cuda.Stream()
         s.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(s):
-            for i in range(1):
+            for i in range(11):
                 with torch.no_grad():
                     noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings)["sample"]
         torch.cuda.current_stream().wait_stream(s)
@@ -155,16 +155,22 @@ class StableDiffusionPipeline(DiffusionPipeline):
             with torch.no_grad():
                 noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings)["sample"]
 
+        print(noise_pred.mean())
+        g.replay()
+        print(noise_pred.mean())
 
-        for i, t in tqdm(enumerate(self.scheduler.timesteps)):
+        for i, timestep in tqdm(enumerate(self.scheduler.timesteps)):
             # expand the latents if we are doing classifier free guidance
-            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+            latent_model_input.copy_(torch.cat([latents] * 2) if do_classifier_free_guidance else latents)
             if isinstance(self.scheduler, LMSDiscreteScheduler):
                 sigma = self.scheduler.sigmas[i]
-                latent_model_input = latent_model_input / ((sigma**2 + 1) ** 0.5)
+                latent_model_input.copy_(latent_model_input / ((sigma**2 + 1) ** 0.5))
+
+            t.copy_(timestep)
 
             # predict the noise residual
             g.replay() # replay the graph and updates outputs
+            print(noise_pred.mean())
 
             # perform guidance
             if do_classifier_free_guidance:
