@@ -93,4 +93,4 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
         # fmt: off
         expected_output_slice = torch.tensor([-4.0078e-01, -3.8304e-04, -1.2681e-01, -1.1462e-01, 2.0095e-01, 1.0893e-01, -8.8248e-02, -3.0361e-01, -9.8646e-03])
         # fmt: on
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))

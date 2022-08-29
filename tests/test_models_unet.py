@@ -154,7 +154,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         expected_output_slice = torch.tensor([-13.3258, -20.1100, -15.9873, -17.6617, -23.0596, -17.9419, -13.3675, -16.1889, -12.3800])
         # fmt: on
 
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-2))
 
 
 #    TODO(Patrick) - Re-add this test after having cleaned up LDM
