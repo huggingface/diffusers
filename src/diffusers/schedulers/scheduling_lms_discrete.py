@@ -124,7 +124,8 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         return {"prev_sample": prev_sample}
 
     def add_noise(self, original_samples, noise, timesteps):
-        noisy_samples = original_samples + noise * self.sigmas[timesteps]
+        sigmas = self.match_shape(self.sigmas, noise)
+        noisy_samples = original_samples + noise * sigmas[timesteps]
         return noisy_samples
 
     def __len__(self):
