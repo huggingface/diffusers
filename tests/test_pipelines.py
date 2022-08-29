@@ -20,8 +20,9 @@ from io import BytesIO
 import numpy as np
 import torch
 
+from datasets import load_dataset
+
 import PIL
-import requests
 from diffusers import (
     DDIMPipeline,
     DDIMScheduler,
@@ -425,11 +426,12 @@ class PipelineTesterMixin(unittest.TestCase):
         response = requests.get(url)
         init_image = PIL.Image.open(BytesIO(response.content)).convert("RGB")
         init_image = init_image.resize((768, 512))
+        init_
 
         prompt = "A fantasy landscape, trending on artstation"
 
-        with torch.autocast("cuda"):
-            image = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5)["sample"][0]
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5, generator=generator)["sample"][0]
 
         image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 512, 512, 3)
@@ -439,22 +441,25 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_in_paint_pipeline(self):
+        ds = load_dataset("hf-internal-testing/diffusers-images", split="train")
+
+        init_image = ds[1]["image"].resize((768, 512))
+        mask_image = ds[2]["image"].resize((768, 512))
+        output_image = ds[3]["image"].resize((768, 512))
+
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionInPaintPipeline.from_pretrained(model_id, use_auth_token=True)
+        pipe.to(torch_device)
 
-        # TODO(PVP) - move to hf-internal-testing
-        url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
-        response = requests.get(url)
-        init_image = PIL.Image.open(BytesIO(response.content)).convert("RGB")
-        init_image = init_image.resize((768, 512))
-        mask_image = init_image
+        prompt = "A red cat sitting on a parking bench"
 
-        prompt = "A fantasy landscape, trending on artstation"
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image = pipe(
+            prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75, guidance_scale=7.5, generator=generator
+        )["sample"][0]
 
-        with torch.autocast("cuda"):
-            image = pipe(
-                prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75, guidance_scale=7.5
-            )["sample"][0]
+        image.save("/home/patrick/diffusers-images/in_paint/red_cat_sitting_on_a_parking_bench.png")
+        import ipdb; ipdb.set_trace()
 
         image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 512, 512, 3)
