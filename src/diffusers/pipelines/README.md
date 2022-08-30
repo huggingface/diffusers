@@ -94,7 +94,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 
-from image_to_image import StableDiffusionImg2ImgPipeline, preprocess
+from diffusers import StableDiffusionImg2ImgPipeline
 
 # load the pipeline
 device = "cuda"
@@ -111,7 +111,6 @@ url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/st
 response = requests.get(url)
 init_image = Image.open(BytesIO(response.content)).convert("RGB")
 init_image = init_image.resize((768, 512))
-init_image = preprocess(init_image)
 
 prompt = "A fantasy landscape, trending on artstation"
 
@@ -138,7 +137,7 @@ from torch import autocast
 import requests
 import PIL
 
-from inpainting import StableDiffusionInpaintingPipeline
+from diffusers import StableDiffusionInpaintPipeline
 
 def download_image(url):
     response = requests.get(url)
