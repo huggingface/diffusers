@@ -621,8 +621,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument("--local_rank", type=int, default=-1)
     parser.add_argument("--pretrained_model_name_or_path", type=str, default=None, required=True)
-    parser.add_argument("--dataset_name", type=str, default=None)
-    parser.add_argument("--dataset_config_name", type=str, default=None)
     parser.add_argument("--train_data_dir", type=str, default=None, help="A folder containing the training data.")
     parser.add_argument(
         "--placeholder_token", type=str, default=None, help="A token to use as a placeholder for the concept."
@@ -655,10 +653,6 @@ if __name__ == "__main__":
     parser.add_argument("--adam_beta2", type=float, default=0.999)
     parser.add_argument("--adam_weight_decay", type=float, default=1e-6)
     parser.add_argument("--adam_epsilon", type=float, default=1e-08)
-    parser.add_argument("--use_ema", action="store_true", default=True)
-    parser.add_argument("--ema_inv_gamma", type=float, default=1.0)
-    parser.add_argument("--ema_power", type=float, default=3 / 4)
-    parser.add_argument("--ema_max_decay", type=float, default=0.9999)
     parser.add_argument("--push_to_hub", action="store_true")
     parser.add_argument("--use_auth_token", action="store_true")
     parser.add_argument("--hub_token", type=str, default=None)
@@ -682,7 +676,7 @@ if __name__ == "__main__":
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
 
-    if args.dataset_name is None and args.train_data_dir is None:
-        raise ValueError("You must specify either a dataset name from the hub or a train data directory.")
+    if args.train_data_dir is None:
+        raise ValueError("You must specify a train data directory.")
 
     main(args)
