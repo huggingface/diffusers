@@ -32,19 +32,19 @@ available a colab notebook to directly try them out.
 
 | Pipeline | Paper | Tasks | Colab
 |---|---|:---:|:---:|
-| [ddim](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/ddim) | []() | Unconditional Image Generation | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb)
-| [ddpm](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/ddpm) | []() | Unconditional Image Generation |
-| [latent_diffusion](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/latent_diffusion) | []() | Text-to-Image Generation | 
-| [latent_diffusion_uncond](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/latent_diffusion_uncond) | []() | Unconditional Image Generation | 
-| [pndm](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/pndm) | []() | Unconditional Image Generation | 
-| [score_sde_ve](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/score_sde_ve) | []() | Unconditional Image Generation | 
-| [score_sde_vp](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/score_sde_ve) | []() | Unconditional Image Generation | 
-| [stable_diffusion](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion) | []() | Text-to-Image Generation | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb)
-|  | []() | Image-to-Image Translation | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb)
-|  | []() | Image In-Painting | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb)
-| [stochatic_karras_ve](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stochatic_karras_ve) | []() | Unconditional Image Generation | 
+| [ddpm](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/ddpm) | [*Denoising Diffusion Probabilistic Models*](https://arxiv.org/abs/2006.11239) | **Unconditional Image Generation** |
+| [ddim](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/ddim) | [*Denoising Diffusion Implicit Models*](https://arxiv.org/abs/2010.02502) | **Unconditional Image Generation** | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb)
+| [latent_diffusion](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/latent_diffusion) | []() | **Text-to-Image Generation** | 
+| [latent_diffusion_uncond](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/latent_diffusion_uncond) | [*High-Resolution Image Synthesis with Latent Diffusion Models*](https://arxiv.org/abs/2112.10752) | Unconditional Image Generation | 
+| [pndm](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/pndm) | [*Pseudo Numerical Methods for Diffusion Models on Manifolds*](https://arxiv.org/abs/2202.09778) | **Unconditional Image Generation** | 
+| [score_sde_ve](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/score_sde_ve) | [*Score-Based Generative Modeling through Stochastic Differential Equations*](https://openreview.net/forum?id=PxTIG12RRHS) | **Unconditional Image Generation** | 
+| [score_sde_vp](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/score_sde_vp) | [*Score-Based Generative Modeling through Stochastic Differential Equations*](https://openreview.net/forum?id=PxTIG12RRHS) | **Unconditional Image Generation** | 
+| [stable_diffusion](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion) | [*Stable Diffusion*](https://stability.ai/blog/stable-diffusion-public-release) | **Text-to-Image Generation** | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb)
+|  | [*Stable Diffusion*](https://stability.ai/blog/stable-diffusion-public-release) | **Image-to-Image Translation** | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb)
+|  | [*Stable Diffusion*](https://stability.ai/blog/stable-diffusion-public-release) | **Image In-Painting** | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb)
+| [stochatic_karras_ve](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stochatic_karras_ve) | [*Elucidating the Design Space of Diffusion-Based Generative Models*](https://arxiv.org/abs/2206.00364) | **Unconditional Image Generation** | 
 
-**Note**: Many pipelines provide very simple examples of how to play around with the diffusion systems as described in the corresponding papers. 
+**Note**: Pipelines are simple examples of how to play around with the diffusion systems as described in the corresponding papers. 
 However, most of them can be adapted to use different scheduler components or even different model components. Some pipeline examples are shown in the [Examples](#examples) below.
 
 ## Pipelines API
@@ -83,6 +83,33 @@ We try to make the pipeline code as readable as possible so that each part from 
 - **One-purpose-only**: Pipelines should be used for one task and one task only. Even if two tasks are very similar from a modeling point of view, *e.g.* image2image translation and in-painting, pipelines shall be used for one task only to keep them *easy-to-tweak* and *readable*.
 
 ## Examples
+
+### Text-to-Image generation with Stable Diffusion
+
+```python
+# make sure you're logged in with `huggingface-cli login`
+from torch import autocast
+from diffusers import StableDiffusionPipeline, LMSDiscreteScheduler
+
+lms = LMSDiscreteScheduler(
+    beta_start=0.00085, 
+    beta_end=0.012, 
+    beta_schedule="scaled_linear"
+)
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4", 
+    scheduler=lms,
+    use_auth_token=True
+)
+pipe = pipe.to("cuda")
+
+prompt = "a photo of an astronaut riding a horse on mars"
+with autocast("cuda"):
+    image = pipe(prompt)["sample"][0]  
+    
+image.save("astronaut_rides_horse.png")
+```
 
 ### Image-to-Image text-guided generation with Stable Diffusion
 

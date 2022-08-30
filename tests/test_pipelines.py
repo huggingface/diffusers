@@ -19,9 +19,8 @@ import unittest
 import numpy as np
 import torch
 
-from datasets import load_dataset
-
 import PIL
+from datasets import load_dataset
 from diffusers import (
     DDIMPipeline,
     DDIMScheduler,
@@ -452,7 +451,9 @@ class PipelineTesterMixin(unittest.TestCase):
         prompt = "A fantasy landscape, trending on artstation"
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5, generator=generator)["sample"][0]
+        image = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5, generator=generator)[
+            "sample"
+        ][0]
 
         expected_array = np.array(output_image)
         sampled_array = np.array(image)
@@ -477,7 +478,12 @@ class PipelineTesterMixin(unittest.TestCase):
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
         image = pipe(
-            prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75, guidance_scale=7.5, generator=generator
+            prompt=prompt,
+            init_image=init_image,
+            mask_image=mask_image,
+            strength=0.75,
+            guidance_scale=7.5,
+            generator=generator,
         )["sample"][0]
 
         expected_array = np.array(output_image)
