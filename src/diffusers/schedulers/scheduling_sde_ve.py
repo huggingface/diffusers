@@ -120,6 +120,11 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             self.set_seed(seed)
         # TODO(Patrick) non-PyTorch
 
+        if self.timesteps is None:
+            raise ValueError(
+                "`self.timesteps` is not set, you need to run 'set_timesteps' after creating the scheduler"
+            )
+
         timestep = timestep * torch.ones(
             sample.shape[0], device=sample.device
         )  # torch.repeat_interleave(timestep, sample.shape[0])
@@ -154,6 +159,11 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         """
         if seed is not None:
             self.set_seed(seed)
+
+        if self.timesteps is None:
+            raise ValueError(
+                "`self.timesteps` is not set, you need to run 'set_timesteps' after creating the scheduler"
+            )
 
         # For small batch sizes, the paper "suggest replacing norm(z) with sqrt(d), where d is the dim. of z"
         # sample noise for correction
