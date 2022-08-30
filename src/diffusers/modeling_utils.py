@@ -390,7 +390,7 @@ class ModelMixin(torch.nn.Module):
                 )
             except EntryNotFoundError:
                 raise EnvironmentError(
-                    f"{pretrained_model_name_or_path} does not appear to have a file named {model_file}."
+                    f"{pretrained_model_name_or_path} does not appear to have a file named {WEIGHTS_NAME}."
                 )
             except HTTPError as err:
                 raise EnvironmentError(

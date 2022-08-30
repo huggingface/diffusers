@@ -4,7 +4,7 @@
 deps = {
     "Pillow": "Pillow",
     "accelerate": "accelerate>=0.11.0",
-    "black": "black~=22.0,>=22.3",
+    "black": "black==22.3",
     "datasets": "datasets",
     "filelock": "filelock",
     "flake8": "flake8>=3.8.3",
@@ -15,6 +15,8 @@ deps = {
     "modelcards": "modelcards==0.1.4",
     "numpy": "numpy",
     "pytest": "pytest",
+    "pytest-timeout": "pytest-timeout",
+    "pytest-xdist": "pytest-xdist",
     "regex": "regex!=2019.12.17",
     "requests": "requests",
     "tensorboard": "tensorboard",
