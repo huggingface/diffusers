@@ -416,10 +416,12 @@ def main(args):
         logging_dir=logging_dir,
     )
 
-    # TODO: use args to load tokenizer
-    tokenizer = CLIPTokenizer.from_pretrained(
-        "openai/clip-vit-base-patch32", additional_special_tokens=[args.placeholder_token]
-    )
+    # load the tokenizer and add the placeholder token as a additional special token
+    if args.tokenizer_name:
+        tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_name, additional_special_tokens=[args.placeholder_token])
+    elif args.pretrained_model_name_or_path:
+        tokenizer = CLIPTokenizer.from_pretrained(args.model_name_or_path, additional_special_tokens=[args.placeholder_token], subfolder="tokenizer")
+    
     placeholder_token_id = tokenizer.convert_tokens_to_ids(args.placeholder_token)
     initializer_token_id = tokenizer.convert_tokens_to_ids(args.initializer_token)
 
@@ -432,6 +434,8 @@ def main(args):
         placeholder_token_id=placeholder_token_id,
         initializer_token_id=initializer_token_id,
     )
+    
+    # resize the token embeddings as we are adding new special tokens to the tokenizer
     text_encoder.resize_token_embeddings(len(tokenizer))
 
     # init the concept embeddings
@@ -620,14 +624,20 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument("--local_rank", type=int, default=-1)
     parser.add_argument("--pretrained_model_name_or_path", type=str, default=None, required=True)
-    parser.add_argument("--train_data_dir", type=str, default=None, help="A folder containing the training data.")
     parser.add_argument(
-        "--placeholder_token", type=str, default=None, help="A token to use as a placeholder for the concept."
+        "--tokenizer_name",
+        type=str,
+        default=None,
+        help="Pretrained tokenizer name or path if not the same as model_name",
     )
+    parser.add_argument("--train_data_dir", type=str, default=None, required=True, help="A folder containing the training data.")
+    parser.add_argument(
+        "--placeholder_token", type=str, default=None, required=True, help="A token to use as a placeholder for the concept."
+    )
+    parser.add_argument("--initializer_token", type=str, default=None, required=True, help="A token to use as initializer word.")
     parser.add_argument("--style", type=str, default="concept", help="Choose between 'concept' and 'style'")
     parser.add_argument("--repeats", type=int, default=100, help="How many times to repeat the training data.")
     parser.add_argument("--embedding_reg_weight", type=float, default=0.0)
-    parser.add_argument("--initializer_token", type=str, default=None, help="A token to use as initializer word.")
     parser.add_argument("--output_dir", type=str, default="ddpm-model-64")
     parser.add_argument("--overwrite_output_dir", action="store_true")
     parser.add_argument("--cache_dir", type=str, default=None)
