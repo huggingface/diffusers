@@ -58,10 +58,6 @@ class DiffusionPipeline(ConfigMixin):
 
     config_name = "model_index.json"
 
-    def __init__(self):
-        super().__init__()
-        self._progress_bar_config = dict()
-
     def register_modules(self, **kwargs):
         # import it here to avoid circular import
         from diffusers import pipelines
@@ -273,6 +269,9 @@ class DiffusionPipeline(ConfigMixin):
         return pil_images
 
     def progress_bar(self, iterable):
+        if not hasattr(self, "_progress_bar_config"):
+            self._progress_bar_config = {}
+
         return tqdm(iterable, **self._progress_bar_config)
 
     def set_progress_bar_config(self, **kwargs):
