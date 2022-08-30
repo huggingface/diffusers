@@ -100,7 +100,7 @@ class CLIPTextTransformer(nn.Module):
         return mask
 
 
-class TextualInversionWrapper(CLIPPreTrainedModel):
+class CLIPTextualInversionWrapper(CLIPPreTrainedModel):
     config_class = CLIPTextConfig
 
     def __init__(self, config: CLIPTextConfig, placeholder_token_id: int, initializer_token_id: int):
@@ -170,7 +170,7 @@ class TextualInversionWrapper(CLIPPreTrainedModel):
 
 # Simple wrapper module for Stabel Diffusion
 class StableDiffusionWrapper(nn.Module):
-    def __init__(self, text_encoder: TextualInversionWrapper, vae: AutoencoderKL, unet: UNet2DConditionModel):
+    def __init__(self, text_encoder: CLIPTextualInversionWrapper, vae: AutoencoderKL, unet: UNet2DConditionModel):
         super().__init__()
         self.text_encoder = text_encoder
         self.vae = vae
@@ -306,7 +306,7 @@ class TextualInversionDataset(Dataset):
         self,
         data_root,
         tokenizer,
-        style="style",  # [concept, style]
+        style="style",  # [concept, style] TODO: better names ?
         size=None,
         repeats=100,
         interpolation="bicubic",
@@ -355,7 +355,6 @@ class TextualInversionDataset(Dataset):
         }[interpolation]
         self.flip = transforms.RandomHorizontalFlip(p=flip_p)
 
-        # hack
         self.templates = imagenet_style_templates_small if style == "style" else imagenet_templates_small
 
     def __len__(self):
@@ -438,7 +437,7 @@ def main(args):
     # Load models and create wrapper for stable diffusion
     unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
-    text_encoder = TextualInversionWrapper.from_pretrained(
+    text_encoder = CLIPTextualInversionWrapper.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="text_encoder",
         placeholder_token_id=placeholder_token_id,
@@ -451,7 +450,7 @@ def main(args):
     # Initialize the new concept embeddings with the embeddings of the initializer token
     text_encoder.init_concept_embeddings()
 
-    # Creat a wrapper module for Stable Diffusion
+    # Create a wrapper module for Stable Diffusion
     model = StableDiffusionWrapper(text_encoder, vae, unet)
 
     # Freeze everything except the concept embedding
@@ -615,7 +614,7 @@ def main(args):
 
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
-        # Load the TextualInversionWrapper into CLIPTextModel.
+        # Load the CLIPTextualInversionWrapper into CLIPTextModel.
         text_model = accelerator.unwrap_model(model.text_encoder)
         # Update the token embeddings of the placeholder_token to the trained embeddings.
         text_model.merge_concept_embeddings_in_token_embeddings()
@@ -684,7 +683,9 @@ if __name__ == "__main__":
             " resolution"
         ),
     )
-    parser.add_argument("--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution")
+    parser.add_argument(
+        "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution"
+    )
     parser.add_argument(
         "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
     )
