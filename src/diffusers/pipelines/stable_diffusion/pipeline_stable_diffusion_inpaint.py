@@ -101,7 +101,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         init_latents = self.vae.encode(init_image).sample(generator=generator)
         init_latents = 0.18215 * init_latents
 
-        # prepare init_latents noise to latents
+        # Expand init_latents for batch_size
         init_latents = torch.cat([init_latents] * batch_size)
         init_latents_orig = init_latents
 
