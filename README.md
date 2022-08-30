@@ -36,7 +36,7 @@ In order to get started, we recommend taking a look at two notebooks:
 - The [Training a diffusers model](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb) notebook summarizes diffusion models training methods. This notebook takes a step-by-step approach to training your
   diffusion models on an image dataset, with explanatory graphics. 
   
-## **New ** Stable Diffusion is now fully compatible with `diffusers`!  
+## **New** Stable Diffusion is now fully compatible with `diffusers`!  
 
 Stable Diffusion is a text-to-image latent diffusion model created by the researchers and engineers from [CompVis](https://github.com/CompVis), [Stability AI](https://stability.ai/) and [LAION](https://laion.ai/). It's trained on 512x512 images from a subset of the [LAION-5B](https://laion.ai/blog/laion-5b/) database. This model uses a frozen CLIP ViT-L/14 text encoder to condition the model on text prompts. With its 860M UNet and 123M text encoder, the model is relatively lightweight and runs on a GPU with at least 10GB VRAM.
 See the [model card](https://huggingface.co/CompVis/stable-diffusion) for more information.
