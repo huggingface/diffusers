@@ -103,7 +103,7 @@ class CLIPTextTransformer(nn.Module):
 class TextualInversionWrapper(CLIPPreTrainedModel):
     config_class = CLIPTextConfig
 
-    def __init__(self, config: CLIPTextConfig, placeholder_token_id: int, initializer_token_id):
+    def __init__(self, config: CLIPTextConfig, placeholder_token_id: int, initializer_token_id: int):
         super().__init__(config)
         self.text_model = CLIPTextTransformer(config)
 
@@ -127,11 +127,11 @@ class TextualInversionWrapper(CLIPPreTrainedModel):
             param.requires_grad = False
 
     def init_concept_embeddings(self):
-        # initialize concept embeddings with embeddings of initializer_token_id
+        """Initialize concept embeddings with embeddings of initializer_token_id"""
         self.concept_embeddings.data.copy_(self.get_input_embeddings().weight[self.initializer_token_id])
 
-    def merge_concept_embeddings_in_embeddings(self):
-        # merge concept embeddings into embeddings
+    def merge_concept_embeddings_in_token_embeddings(self):
+        """Update the token embeddings of the placeholder_token to the trained embeddings."""
         self.get_input_embeddings().weight.data[self.placeholder_token_id] = self.concept_embeddings.data
 
     def get_concept_embeddings(self):
@@ -168,7 +168,7 @@ class TextualInversionWrapper(CLIPPreTrainedModel):
 #############################################################
 
 
-# wrap unet, vae and clip
+# Simple wrapper module for Stabel Diffusion
 class StableDiffusionWrapper(nn.Module):
     def __init__(self, text_encoder: TextualInversionWrapper, vae: AutoencoderKL, unet: UNet2DConditionModel):
         super().__init__()
@@ -301,7 +301,7 @@ per_img_token_list = [
 ]
 
 
-class PersonalizedBase(Dataset):
+class TextualInversionDataset(Dataset):
     def __init__(
         self,
         data_root,
@@ -478,13 +478,14 @@ def main(args):
         beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000, tensor_format="pt"
     )
 
-    dataset = PersonalizedBase(
+    dataset = TextualInversionDataset(
         data_root=args.train_data_dir,
         tokenizer=tokenizer,
         size=args.resolution,
         placeholder_token=args.placeholder_token,
         repeats=args.repeats,
         style=args.style,
+        center_crop=args.center_crop,
         set="train",
     )
     train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.train_batch_size, shuffle=True)
@@ -617,7 +618,7 @@ def main(args):
         # Load the TextualInversionWrapper into CLIPTextModel.
         text_model = accelerator.unwrap_model(model.text_encoder)
         # Update the token embeddings of the placeholder_token to the trained embeddings.
-        text_model.merge_concept_embeddings_in_embeddings()
+        text_model.merge_concept_embeddings_in_token_embeddings()
         clip = CLIPTextModel(text_model.config)
         clip.load_state_dict(text_model.state_dict(), strict=False)
 
@@ -683,6 +684,7 @@ if __name__ == "__main__":
             " resolution"
         ),
     )
+    parser.add_argument("--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution")
     parser.add_argument(
         "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
     )
