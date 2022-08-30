@@ -87,7 +87,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         init_latents = self.vae.encode(init_image.to(self.device)).sample(generator=generator)
         init_latents = 0.18215 * init_latents
 
-        # prepare init_latents noise to latents
+        # expand init_latents for batch_size
         init_latents = torch.cat([init_latents] * batch_size)
 
         # get the original timestep using init_timestep
