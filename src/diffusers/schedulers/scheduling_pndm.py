@@ -103,7 +103,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             range(0, self.config.num_train_timesteps, self.config.num_train_timesteps // num_inference_steps)
         )
         self._offset = offset
-        self._timesteps = [t + self._offset for t in self._timesteps]
+        self._timesteps = np.array([t + self._offset for t in self._timesteps])
 
         if self.config.skip_prk_steps:
             # for some models like stable diffusion the prk steps can/should be skipped to
