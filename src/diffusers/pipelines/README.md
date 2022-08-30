@@ -91,17 +91,7 @@ We try to make the pipeline code as readable as possible so that each part –fr
 from torch import autocast
 from diffusers import StableDiffusionPipeline, LMSDiscreteScheduler
 
-lms = LMSDiscreteScheduler(
-    beta_start=0.00085, 
-    beta_end=0.012, 
-    beta_schedule="scaled_linear"
-)
-
-pipe = StableDiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4", 
-    scheduler=lms,
-    use_auth_token=True
-)
+pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
