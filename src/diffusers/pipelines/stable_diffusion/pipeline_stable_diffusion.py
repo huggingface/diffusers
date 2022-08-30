@@ -119,7 +119,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
             extra_set_kwargs["offset"] = 1
 
         self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
-
+        self.scheduler.timesteps = torch.tensor(self.scheduler.timesteps, device=self.device)
+        
         # if we use LMSDiscreteScheduler, let's make sure latents are mulitplied by sigmas
         if isinstance(self.scheduler, LMSDiscreteScheduler):
             latents = latents * self.scheduler.sigmas[0]
