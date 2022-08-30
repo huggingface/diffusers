@@ -155,7 +155,7 @@ You can generate your own latents to reproduce results, or tweak your prompt on 
 
 ### In-painting using Stable Diffusion
 
-The `inpainting.py` script implements `StableDiffusionInpainPipeline`. This script lets you edit specific parts of an image by providing a mask and text prompt.
+The `StableDiffusionInpainPipeline` lets you edit specific parts of an image by providing a mask and text prompt.
 
 ```python
 from io import BytesIO
