@@ -20,6 +20,7 @@ import numpy as np
 import torch
 
 import PIL
+from datasets import load_dataset
 from diffusers import (
     DDIMPipeline,
     DDIMScheduler,
@@ -34,6 +35,8 @@ from diffusers import (
     PNDMScheduler,
     ScoreSdeVePipeline,
     ScoreSdeVeScheduler,
+    StableDiffusionImg2ImgPipeline,
+    StableDiffusionInpaintPipeline,
     StableDiffusionPipeline,
     UNet2DModel,
 )
@@ -432,3 +435,59 @@ class PipelineTesterMixin(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.9077, 0.9254, 0.9181, 0.9227, 0.9213, 0.9367, 0.9399, 0.9406, 0.9024])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    def test_stable_diffusion_img2img_pipeline(self):
+        ds = load_dataset("hf-internal-testing/diffusers-images", split="train")
+
+        init_image = ds[1]["image"].resize((768, 512))
+        output_image = ds[0]["image"].resize((768, 512))
+
+        model_id = "CompVis/stable-diffusion-v1-4"
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(model_id, use_auth_token=True)
+        pipe.to(torch_device)
+
+        prompt = "A fantasy landscape, trending on artstation"
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5, generator=generator)[
+            "sample"
+        ][0]
+
+        expected_array = np.array(output_image)
+        sampled_array = np.array(image)
+
+        assert sampled_array.shape == (512, 768, 3)
+        assert np.max(np.abs(sampled_array - expected_array)) < 1e-4
+
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    def test_stable_diffusion_in_paint_pipeline(self):
+        ds = load_dataset("hf-internal-testing/diffusers-images", split="train")
+
+        init_image = ds[2]["image"].resize((768, 512))
+        mask_image = ds[3]["image"].resize((768, 512))
+        output_image = ds[4]["image"].resize((768, 512))
+
+        model_id = "CompVis/stable-diffusion-v1-4"
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(model_id, use_auth_token=True)
+        pipe.to(torch_device)
+
+        prompt = "A red cat sitting on a parking bench"
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image = pipe(
+            prompt=prompt,
+            init_image=init_image,
+            mask_image=mask_image,
+            strength=0.75,
+            guidance_scale=7.5,
+            generator=generator,
+        )["sample"][0]
+
+        expected_array = np.array(output_image)
+        sampled_array = np.array(image)
+
+        assert sampled_array.shape == (512, 768, 3)
+        assert np.max(np.abs(sampled_array - expected_array)) < 1e-3

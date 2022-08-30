@@ -38,6 +38,11 @@ from .training_utils import EMAModel
 
 
 if is_transformers_available():
-    from .pipelines import LDMTextToImagePipeline, StableDiffusionPipeline
+    from .pipelines import (
+        LDMTextToImagePipeline,
+        StableDiffusionImg2ImgPipeline,
+        StableDiffusionInpaintPipeline,
+        StableDiffusionPipeline,
+    )
 else:
     from .utils.dummy_transformers_objects import *
