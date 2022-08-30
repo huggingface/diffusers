@@ -145,8 +145,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         Step function propagating the sample with the Runge-Kutta method. RK takes 4 forward passes to approximate the
         solution to the differential equation.
         """
-        diff_to_prev = 0 if self.counter % 2 else self.config.num_train_timesteps // self.num_inference_steps // 2
-        prev_timestep = max(timestep - diff_to_prev, self.prk_timesteps[-1])
+        diff_to_prev = 0 if self.counter % 2 else self.config.num_train_timesteps // self.num_inference_steps // 2 #TODO: check if we still have condition in cuda graph
+        prev_timestep = torch.max(torch.tensor(timestep - diff_to_prev), self.prk_timesteps[-1])
         timestep = self.prk_timesteps[self.counter // 4 * 4]
 
         if self.counter % 4 == 0:
@@ -187,7 +187,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
                 "for more information."
             )
 
-        prev_timestep = max(timestep - self.config.num_train_timesteps // self.num_inference_steps, 0)
+        prev_timestep = torch.max(timestep - self.config.num_train_timesteps // self.num_inference_steps, torch.tensor(0))
 
         if self.counter != 1:
             self.ets.append(model_output)
