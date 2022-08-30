@@ -422,8 +422,14 @@ def main(args):
     elif args.pretrained_model_name_or_path:
         tokenizer = CLIPTokenizer.from_pretrained(args.model_name_or_path, additional_special_tokens=[args.placeholder_token], subfolder="tokenizer")
     
+    # Convert the initializer_token, placeholder_token to ids
+    token_ids = tokenizer.encode(args.initializer_token , add_special_tokens=False)
+    # Check if initializer_token is a single token or a sequence of tokens
+    if len(token_ids) > 1:
+        raise ValueError("The initializer token must be a single token.")
+
+    initializer_token_id = token_ids[0]
     placeholder_token_id = tokenizer.convert_tokens_to_ids(args.placeholder_token)
-    initializer_token_id = tokenizer.convert_tokens_to_ids(args.initializer_token)
 
     # load models and create wrapper for stable diffusion
     unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
