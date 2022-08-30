@@ -133,55 +133,26 @@ class StableDiffusionPipeline(DiffusionPipeline):
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
-
-        # warmup
-        latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-        t = self.scheduler.timesteps[1]
-        i=1
-        if isinstance(self.scheduler, LMSDiscreteScheduler):
-            sigma = self.scheduler.sigmas[i]
-            latent_model_input = latent_model_input / ((sigma**2 + 1) ** 0.5)
-        s = torch.cuda.Stream()
-        s.wait_stream(torch.cuda.current_stream())
-        with torch.cuda.stream(s):
-            for i in range(11):
-                with torch.no_grad():
-                    noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings)["sample"]
-        torch.cuda.current_stream().wait_stream(s)
-
-        # capture
-        g = torch.cuda.CUDAGraph()
-        with torch.cuda.graph(g):
-            with torch.no_grad():
-                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings)["sample"]
-
-        print(noise_pred.mean())
-        g.replay()
-        print(noise_pred.mean())
-
-        for i, timestep in tqdm(enumerate(self.scheduler.timesteps)):
+        for i, t in tqdm(enumerate(self.scheduler.timesteps)):
             # expand the latents if we are doing classifier free guidance
-            latent_model_input.copy_(torch.cat([latents] * 2) if do_classifier_free_guidance else latents)
+            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             if isinstance(self.scheduler, LMSDiscreteScheduler):
                 sigma = self.scheduler.sigmas[i]
-                latent_model_input.copy_(latent_model_input / ((sigma**2 + 1) ** 0.5))
-
-            t.copy_(timestep)
+                latent_model_input = latent_model_input / ((sigma**2 + 1) ** 0.5)
 
             # predict the noise residual
-            g.replay() # replay the graph and updates outputs
-            print(noise_pred.mean())
+            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings)["sample"]
 
             # perform guidance
             if do_classifier_free_guidance:
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                noise_pred_cond = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
             if isinstance(self.scheduler, LMSDiscreteScheduler):
-                latents = self.scheduler.step(noise_pred_cond, i, latents, **extra_step_kwargs)["prev_sample"]
+                latents = self.scheduler.step(noise_pred, i, latents, **extra_step_kwargs)["prev_sample"]
             else:
-                latents = self.scheduler.step(noise_pred_cond, t, latents, **extra_step_kwargs)["prev_sample"]
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs)["prev_sample"]
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
