@@ -416,14 +416,18 @@ def main(args):
         logging_dir=logging_dir,
     )
 
-    # load the tokenizer and add the placeholder token as a additional special token
+    # Load the tokenizer and add the placeholder token as a additional special token
     if args.tokenizer_name:
-        tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_name, additional_special_tokens=[args.placeholder_token])
+        tokenizer = CLIPTokenizer.from_pretrained(
+            args.tokenizer_name, additional_special_tokens=[args.placeholder_token]
+        )
     elif args.pretrained_model_name_or_path:
-        tokenizer = CLIPTokenizer.from_pretrained(args.model_name_or_path, additional_special_tokens=[args.placeholder_token], subfolder="tokenizer")
-    
+        tokenizer = CLIPTokenizer.from_pretrained(
+            args.model_name_or_path, additional_special_tokens=[args.placeholder_token], subfolder="tokenizer"
+        )
+
     # Convert the initializer_token, placeholder_token to ids
-    token_ids = tokenizer.encode(args.initializer_token , add_special_tokens=False)
+    token_ids = tokenizer.encode(args.initializer_token, add_special_tokens=False)
     # Check if initializer_token is a single token or a sequence of tokens
     if len(token_ids) > 1:
         raise ValueError("The initializer token must be a single token.")
@@ -431,7 +435,7 @@ def main(args):
     initializer_token_id = token_ids[0]
     placeholder_token_id = tokenizer.convert_tokens_to_ids(args.placeholder_token)
 
-    # load models and create wrapper for stable diffusion
+    # Load models and create wrapper for stable diffusion
     unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
     text_encoder = TextualInversionWrapper.from_pretrained(
@@ -440,25 +444,27 @@ def main(args):
         placeholder_token_id=placeholder_token_id,
         initializer_token_id=initializer_token_id,
     )
-    
-    # resize the token embeddings as we are adding new special tokens to the tokenizer
+
+    # Resize the token embeddings as we are adding new special tokens to the tokenizer
     text_encoder.resize_token_embeddings(len(tokenizer))
 
-    # init the concept embeddings
+    # Initialize the new concept embeddings with the embeddings of the initializer token
     text_encoder.init_concept_embeddings()
 
-    # creat a wrapper module for Stable Diffusion
+    # Creat a wrapper module for Stable Diffusion
     model = StableDiffusionWrapper(text_encoder, vae, unet)
 
-    # freeze everything except the concept embedding
+    # Freeze everything except the concept embedding
     model.freeze_text_encoder()
     model.freeze_vae()
     model.freeze_unet()
 
     if args.scale_lr:
-        args.learning_rate = args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+        args.learning_rate = (
+            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+        )
 
-    # initialize the optimizer
+    # Initialize the optimizer
     optimizer = torch.optim.AdamW(
         [next(model.parameters())],  # only optimize the concept embeddings
         lr=args.learning_rate,
@@ -522,7 +528,7 @@ def main(args):
         progress_bar.set_description(f"Epoch {epoch}")
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(model):
-                # convert images to latent space
+                # Convert images to latent space
                 latents = model.vae.encode(batch["pixel_values"]).sample().detach()
                 latents = latents * 0.18215
 
@@ -544,7 +550,8 @@ def main(args):
                 noise_pred = model.unet(noisy_latents, timesteps, encoder_hidden_states)["sample"]
                 loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
 
-                # compute coarse loss
+                # Compute coarse loss
+                # TODO: Choose better name for embedding_reg_weight
                 if args.embedding_reg_weight > 0:
                     num_embeddings = 1  # TODO: generalize to multiple embeddings
                     optimized = model.text_encoder.get_concept_embeddings()
@@ -605,11 +612,15 @@ def main(args):
         #             pipeline.save_pretrained(args.output_dir)
         accelerator.wait_for_everyone()
 
+    # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
+        # Load the TextualInversionWrapper into CLIPTextModel.
         text_model = accelerator.unwrap_model(model.text_encoder)
+        # Update the token embeddings of the placeholder_token to the trained embeddings.
         text_model.merge_concept_embeddings_in_embeddings()
         clip = CLIPTextModel(text_model.config)
         clip.load_state_dict(text_model.state_dict(), strict=False)
+
         pipeline = StableDiffusionPipeline(
             unet=accelerator.unwrap_model(model.unet),
             vae=accelerator.unwrap_model(model.vae),
@@ -636,11 +647,19 @@ if __name__ == "__main__":
         default=None,
         help="Pretrained tokenizer name or path if not the same as model_name",
     )
-    parser.add_argument("--train_data_dir", type=str, default=None, required=True, help="A folder containing the training data.")
     parser.add_argument(
-        "--placeholder_token", type=str, default=None, required=True, help="A token to use as a placeholder for the concept."
+        "--train_data_dir", type=str, default=None, required=True, help="A folder containing the training data."
     )
-    parser.add_argument("--initializer_token", type=str, default=None, required=True, help="A token to use as initializer word.")
+    parser.add_argument(
+        "--placeholder_token",
+        type=str,
+        default=None,
+        required=True,
+        help="A token to use as a placeholder for the concept.",
+    )
+    parser.add_argument(
+        "--initializer_token", type=str, default=None, required=True, help="A token to use as initializer word."
+    )
     parser.add_argument("--style", type=str, default="concept", help="Choose between 'concept' and 'style'")
     parser.add_argument("--repeats", type=int, default=100, help="How many times to repeat the training data.")
     parser.add_argument("--embedding_reg_weight", type=float, default=0.0)
