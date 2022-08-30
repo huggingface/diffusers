@@ -52,10 +52,6 @@ class StableDiffusionWrapper(nn.Module):
 
 
 #############################################################
-imagenet_templates_smallest = [
-    "a photo of a {}",
-]
-
 imagenet_templates_small = [
     "a photo of a {}",
     "a rendering of a {}",
@@ -108,61 +104,6 @@ imagenet_style_templates_small = [
     "a large painting in the style of {}",
 ]
 
-imagenet_dual_templates_small = [
-    "a photo of a {} with {}",
-    "a rendering of a {} with {}",
-    "a cropped photo of the {} with {}",
-    "the photo of a {} with {}",
-    "a photo of a clean {} with {}",
-    "a photo of a dirty {} with {}",
-    "a dark photo of the {} with {}",
-    "a photo of my {} with {}",
-    "a photo of the cool {} with {}",
-    "a close-up photo of a {} with {}",
-    "a bright photo of the {} with {}",
-    "a cropped photo of a {} with {}",
-    "a photo of the {} with {}",
-    "a good photo of the {} with {}",
-    "a photo of one {} with {}",
-    "a close-up photo of the {} with {}",
-    "a rendition of the {} with {}",
-    "a photo of the clean {} with {}",
-    "a rendition of a {} with {}",
-    "a photo of a nice {} with {}",
-    "a good photo of a {} with {}",
-    "a photo of the nice {} with {}",
-    "a photo of the small {} with {}",
-    "a photo of the weird {} with {}",
-    "a photo of the large {} with {}",
-    "a photo of a cool {} with {}",
-    "a photo of a small {} with {}",
-]
-
-per_img_token_list = [
-    "א",
-    "ב",
-    "ג",
-    "ד",
-    "ה",
-    "ו",
-    "ז",
-    "ח",
-    "ט",
-    "י",
-    "כ",
-    "ל",
-    "מ",
-    "נ",
-    "ס",
-    "ע",
-    "פ",
-    "צ",
-    "ק",
-    "ר",
-    "ש",
-    "ת",
-]
-
 
 class TextualInversionDataset(Dataset):
     def __init__(
@@ -170,53 +111,37 @@ class TextualInversionDataset(Dataset):
         data_root,
         tokenizer,
         style="style",  # [concept, style] TODO: better names ?
-        size=None,
+        size=512,
         repeats=100,
         interpolation="bicubic",
         flip_p=0.5,
         set="train",
         placeholder_token="*",
-        per_image_tokens=False,
         center_crop=False,
-        mixing_prob=0.25,
-        coarse_class_text=None,
     ):
 
         self.data_root = data_root
         self.tokenizer = tokenizer
         self.style = style
+        self.size = size
+        self.placeholder_token = placeholder_token
+        self.center_crop = center_crop
+        self.flip_p = flip_p
 
         self.image_paths = [os.path.join(self.data_root, file_path) for file_path in os.listdir(self.data_root)]
 
-        # self._length = len(self.image_paths)
         self.num_images = len(self.image_paths)
         self._length = self.num_images
-
-        self.placeholder_token = placeholder_token
-
-        self.per_image_tokens = per_image_tokens
-        self.center_crop = center_crop
-        self.mixing_prob = mixing_prob
-
-        self.coarse_class_text = coarse_class_text
-
-        if per_image_tokens:
-            assert self.num_images < len(per_img_token_list), (
-                "Can't use per-image tokens when the training set contains more than"
-                f" {len(per_img_token_list)} tokens. To enable larger sets, add more tokens to 'per_img_token_list'."
-            )
 
         if set == "train":
             self._length = self.num_images * repeats
 
-        self.size = size
         self.interpolation = {
             "linear": PIL.Image.LINEAR,
             "bilinear": PIL.Image.BILINEAR,
             "bicubic": PIL.Image.BICUBIC,
             "lanczos": PIL.Image.LANCZOS,
         }[interpolation]
-        self.flip = transforms.RandomHorizontalFlip(p=flip_p)
 
         self.templates = imagenet_style_templates_small if style == "style" else imagenet_templates_small
 
@@ -231,15 +156,7 @@ class TextualInversionDataset(Dataset):
             image = image.convert("RGB")
 
         placeholder_string = self.placeholder_token
-        if self.coarse_class_text:
-            placeholder_string = f"{self.coarse_class_text} {placeholder_string}"
-
-        if self.per_image_tokens and np.random.uniform() < self.mixing_prob:
-            text = random.choice(imagenet_dual_templates_small).format(
-                placeholder_string, per_img_token_list[i % self.num_images]
-            )
-        else:
-            text = random.choice(self.templates).format(placeholder_string)
+        text = random.choice(self.templates).format(placeholder_string)
 
         example["input_ids"] = self.tokenizer(
             text, padding="max_length", truncation=True, max_length=77, return_tensors="pt"
@@ -257,10 +174,9 @@ class TextualInversionDataset(Dataset):
             img = img[(h - crop) // 2 : (h + crop) // 2, (w - crop) // 2 : (w + crop) // 2]
 
         image = Image.fromarray(img)
-        if self.size is not None:
-            image = image.resize((self.size, self.size), resample=self.interpolation)
+        image = image.resize((self.size, self.size), resample=self.interpolation)
 
-        image = self.flip(image)
+        image = transforms.RandomHorizontalFlip(p=self.flip_p)
         image = np.array(image).astype(np.uint8)
         image = (image / 127.5 - 1.0).astype(np.float32)
 
@@ -412,16 +328,6 @@ def main(args):
                 noise_pred = model.unet(noisy_latents, timesteps, encoder_hidden_states)["sample"]
                 loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
 
-                # Compute coarse loss
-                # TODO: Choose better name for embedding_reg_weight
-                if args.embedding_reg_weight > 0:
-                    num_embeddings = 1  # TODO: generalize to multiple embeddings
-                    optimized = model.text_encoder.get_concept_embeddings()
-                    coarse = model.text_encoder.get_initializer_embeddings().clone().to(optimized.device)
-                    coarse_loss = (optimized - coarse) @ (optimized - coarse).T / num_embeddings
-
-                    loss += args.embedding_reg_weight * coarse_loss
-
                 accelerator.backward(loss)
 
                 # zero out the gradients for all token embeddings except the newly added
@@ -480,7 +386,7 @@ def main(args):
         #             push_to_hub(args, pipeline, repo, commit_message=f"Epoch {epoch}", blocking=False)
         #         else:
         #             pipeline.save_pretrained(args.output_dir)
-        accelerator.wait_for_everyone()
+        # accelerator.wait_for_everyone()
 
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
@@ -530,7 +436,6 @@ if __name__ == "__main__":
     )
     parser.add_argument("--style", type=str, default="concept", help="Choose between 'concept' and 'style'")
     parser.add_argument("--repeats", type=int, default=100, help="How many times to repeat the training data.")
-    parser.add_argument("--embedding_reg_weight", type=float, default=0.0)
     parser.add_argument(
         "--output_dir",
         type=str,
