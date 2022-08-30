@@ -20,6 +20,7 @@ import numpy as np
 import torch
 
 import PIL
+from datasets import load_dataset
 from diffusers import (
     DDIMPipeline,
     DDIMScheduler,
@@ -34,6 +35,8 @@ from diffusers import (
     PNDMScheduler,
     ScoreSdeVePipeline,
     ScoreSdeVeScheduler,
+    StableDiffusionImg2ImgPipeline,
+    StableDiffusionInpaintPipeline,
     StableDiffusionPipeline,
     UNet2DModel,
 )
@@ -42,6 +45,29 @@ from diffusers.testing_utils import slow, torch_device
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+
+
+def test_progress_bar(capsys):
+    model = UNet2DModel(
+        block_out_channels=(32, 64),
+        layers_per_block=2,
+        sample_size=32,
+        in_channels=3,
+        out_channels=3,
+        down_block_types=("DownBlock2D", "AttnDownBlock2D"),
+        up_block_types=("AttnUpBlock2D", "UpBlock2D"),
+    )
+    scheduler = DDPMScheduler(num_train_timesteps=10)
+
+    ddpm = DDPMPipeline(model, scheduler).to(torch_device)
+    ddpm(output_type="numpy")["sample"]
+    captured = capsys.readouterr()
+    assert "10/10" in captured.err, "Progress bar has to be displayed"
+
+    ddpm.set_progress_bar_config(disable=True)
+    ddpm(output_type="numpy")["sample"]
+    captured = capsys.readouterr()
+    assert captured.err == "", "Progress bar should be disabled"
 
 
 class PipelineTesterMixin(unittest.TestCase):
@@ -59,10 +85,12 @@ class PipelineTesterMixin(unittest.TestCase):
         schedular = DDPMScheduler(num_train_timesteps=10)
 
         ddpm = DDPMPipeline(model, schedular)
+        ddpm.to(torch_device)
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             ddpm.save_pretrained(tmpdirname)
             new_ddpm = DDPMPipeline.from_pretrained(tmpdirname)
+            new_ddpm.to(torch_device)
 
         generator = torch.manual_seed(0)
 
@@ -76,11 +104,12 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_from_pretrained_hub(self):
         model_path = "google/ddpm-cifar10-32"
 
-        ddpm = DDPMPipeline.from_pretrained(model_path)
-        ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path)
+        scheduler = DDPMScheduler(num_train_timesteps=10)
 
-        ddpm.scheduler.num_timesteps = 10
-        ddpm_from_hub.scheduler.num_timesteps = 10
+        ddpm = DDPMPipeline.from_pretrained(model_path, scheduler=scheduler)
+        ddpm.to(torch_device)
+        ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path, scheduler=scheduler)
+        ddpm_from_hub.to(torch_device)
 
         generator = torch.manual_seed(0)
 
@@ -94,14 +123,15 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_from_pretrained_hub_pass_model(self):
         model_path = "google/ddpm-cifar10-32"
 
+        scheduler = DDPMScheduler(num_train_timesteps=10)
+
         # pass unet into DiffusionPipeline
         unet = UNet2DModel.from_pretrained(model_path)
-        ddpm_from_hub_custom_model = DiffusionPipeline.from_pretrained(model_path, unet=unet)
+        ddpm_from_hub_custom_model = DiffusionPipeline.from_pretrained(model_path, unet=unet, scheduler=scheduler)
+        ddpm_from_hub_custom_model.to(torch_device)
 
-        ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path)
-
-        ddpm_from_hub_custom_model.scheduler.num_timesteps = 10
-        ddpm_from_hub.scheduler.num_timesteps = 10
+        ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path, scheduler=scheduler)
+        ddpm_from_hub.to(torch_device)
 
         generator = torch.manual_seed(0)
 
@@ -116,6 +146,7 @@ class PipelineTesterMixin(unittest.TestCase):
         model_path = "google/ddpm-cifar10-32"
 
         pipe = DDIMPipeline.from_pretrained(model_path)
+        pipe.to(torch_device)
 
         generator = torch.manual_seed(0)
         images = pipe(generator=generator, output_type="numpy")["sample"]
@@ -141,6 +172,7 @@ class PipelineTesterMixin(unittest.TestCase):
         scheduler = scheduler.set_format("pt")
 
         ddpm = DDPMPipeline(unet=unet, scheduler=scheduler)
+        ddpm.to(torch_device)
 
         generator = torch.manual_seed(0)
         image = ddpm(generator=generator, output_type="numpy")["sample"]
@@ -159,6 +191,7 @@ class PipelineTesterMixin(unittest.TestCase):
         scheduler = DDIMScheduler.from_config(model_id)
 
         ddpm = DDIMPipeline(unet=unet, scheduler=scheduler)
+        ddpm.to(torch_device)
 
         generator = torch.manual_seed(0)
         image = ddpm(generator=generator, output_type="numpy")["sample"]
@@ -177,6 +210,7 @@ class PipelineTesterMixin(unittest.TestCase):
         scheduler = DDIMScheduler(tensor_format="pt")
 
         ddim = DDIMPipeline(unet=unet, scheduler=scheduler)
+        ddim.to(torch_device)
 
         generator = torch.manual_seed(0)
         image = ddim(generator=generator, eta=0.0, output_type="numpy")["sample"]
@@ -195,6 +229,7 @@ class PipelineTesterMixin(unittest.TestCase):
         scheduler = PNDMScheduler(tensor_format="pt")
 
         pndm = PNDMPipeline(unet=unet, scheduler=scheduler)
+        pndm.to(torch_device)
         generator = torch.manual_seed(0)
         image = pndm(generator=generator, output_type="numpy")["sample"]
 
@@ -207,6 +242,7 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     def test_ldm_text2img(self):
         ldm = LDMTextToImagePipeline.from_pretrained("CompVis/ldm-text2im-large-256")
+        ldm.to(torch_device)
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
@@ -223,6 +259,7 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     def test_ldm_text2img_fast(self):
         ldm = LDMTextToImagePipeline.from_pretrained("CompVis/ldm-text2im-large-256")
+        ldm.to(torch_device)
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
@@ -290,6 +327,7 @@ class PipelineTesterMixin(unittest.TestCase):
         scheduler = ScoreSdeVeScheduler.from_config(model_id)
 
         sde_ve = ScoreSdeVePipeline(unet=model, scheduler=scheduler)
+        sde_ve.to(torch_device)
 
         torch.manual_seed(0)
         image = sde_ve(num_inference_steps=300, output_type="numpy")["sample"]
@@ -304,6 +342,7 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     def test_ldm_uncond(self):
         ldm = LDMPipeline.from_pretrained("CompVis/ldm-celebahq-256")
+        ldm.to(torch_device)
 
         generator = torch.manual_seed(0)
         image = ldm(generator=generator, num_inference_steps=5, output_type="numpy")["sample"]
@@ -323,7 +362,9 @@ class PipelineTesterMixin(unittest.TestCase):
         ddim_scheduler = DDIMScheduler(tensor_format="pt")
 
         ddpm = DDPMPipeline(unet=unet, scheduler=ddpm_scheduler)
+        ddpm.to(torch_device)
         ddim = DDIMPipeline(unet=unet, scheduler=ddim_scheduler)
+        ddim.to(torch_device)
 
         generator = torch.manual_seed(0)
         ddpm_image = ddpm(generator=generator, output_type="numpy")["sample"]
@@ -343,7 +384,10 @@ class PipelineTesterMixin(unittest.TestCase):
         ddim_scheduler = DDIMScheduler(tensor_format="pt")
 
         ddpm = DDPMPipeline(unet=unet, scheduler=ddpm_scheduler)
+        ddpm.to(torch_device)
+
         ddim = DDIMPipeline(unet=unet, scheduler=ddim_scheduler)
+        ddim.to(torch_device)
 
         generator = torch.manual_seed(0)
         ddpm_images = ddpm(batch_size=4, generator=generator, output_type="numpy")["sample"]
@@ -363,6 +407,7 @@ class PipelineTesterMixin(unittest.TestCase):
         scheduler = KarrasVeScheduler(tensor_format="pt")
 
         pipe = KarrasVePipeline(unet=model, scheduler=scheduler)
+        pipe.to(torch_device)
 
         generator = torch.manual_seed(0)
         image = pipe(num_inference_steps=20, generator=generator, output_type="numpy")["sample"]
@@ -390,3 +435,59 @@ class PipelineTesterMixin(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.9077, 0.9254, 0.9181, 0.9227, 0.9213, 0.9367, 0.9399, 0.9406, 0.9024])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    def test_stable_diffusion_img2img_pipeline(self):
+        ds = load_dataset("hf-internal-testing/diffusers-images", split="train")
+
+        init_image = ds[1]["image"].resize((768, 512))
+        output_image = ds[0]["image"].resize((768, 512))
+
+        model_id = "CompVis/stable-diffusion-v1-4"
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(model_id, use_auth_token=True)
+        pipe.to(torch_device)
+
+        prompt = "A fantasy landscape, trending on artstation"
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5, generator=generator)[
+            "sample"
+        ][0]
+
+        expected_array = np.array(output_image)
+        sampled_array = np.array(image)
+
+        assert sampled_array.shape == (512, 768, 3)
+        assert np.max(np.abs(sampled_array - expected_array)) < 1e-4
+
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    def test_stable_diffusion_in_paint_pipeline(self):
+        ds = load_dataset("hf-internal-testing/diffusers-images", split="train")
+
+        init_image = ds[2]["image"].resize((768, 512))
+        mask_image = ds[3]["image"].resize((768, 512))
+        output_image = ds[4]["image"].resize((768, 512))
+
+        model_id = "CompVis/stable-diffusion-v1-4"
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(model_id, use_auth_token=True)
+        pipe.to(torch_device)
+
+        prompt = "A red cat sitting on a parking bench"
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image = pipe(
+            prompt=prompt,
+            init_image=init_image,
+            mask_image=mask_image,
+            strength=0.75,
+            guidance_scale=7.5,
+            generator=generator,
+        )["sample"][0]
+
+        expected_array = np.array(output_image)
+        sampled_array = np.array(image)
+
+        assert sampled_array.shape == (512, 768, 3)
+        assert np.max(np.abs(sampled_array - expected_array)) < 1e-3
