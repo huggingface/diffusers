@@ -4,7 +4,7 @@ Pipelines provide a simple way to run state-of-the-art diffusion models in infer
 Most diffusion systems consist of multiple independently-trained models and highly adaptable scheduler 
 components - all of which are needed to have a functioning end-to-end diffusion system.
 
-As an example, [Stable Diffusion](https://huggingface.co/blog/stable_diffusion) has three indepently trained models:
+As an example, [Stable Diffusion](https://huggingface.co/blog/stable_diffusion) has three independently trained models:
 - [Autoencoder](https://github.com/huggingface/diffusers/blob/5cbed8e0d157f65d3ddc2420dfd09f2df630e978/src/diffusers/models/vae.py#L392)
 - [Conditional Unet](https://github.com/huggingface/diffusers/blob/5cbed8e0d157f65d3ddc2420dfd09f2df630e978/src/diffusers/models/unet_2d_condition.py#L12)
 - [CLIP text encoder](https://huggingface.co/docs/transformers/v4.21.2/en/model_doc/clip#transformers.CLIPTextModel)
@@ -16,9 +16,9 @@ or created independently from each other.
 
 To that end, we strive to offer all open-sourced, state-of-the-art diffusion system under a unified API. 
 More specifically, we strive to provide pipelines that
-- 1. can load the officially published weights and yield 1-to-1 the same outputs as the original implemetation according to the corresponding paper (*e.g.* [LatentDiffusionPipeline](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines/latent_diffusion), uses the officially released weights of [High-Resolution Image Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752)),
+- 1. can load the officially published weights and yield 1-to-1 the same outputs as the original implementation according to the corresponding paper (*e.g.* [LatentDiffusionPipeline](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines/latent_diffusion), uses the officially released weights of [High-Resolution Image Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752)),
 - 2. have a simple user interface to run the model in inference (see the [Pipelines API](#pipelines-api) section), 
-- 3. are easy to understand with code that is self-explanatory and be can read along-side the official paper (see [Pipelines summary](#pipelines-summary)),
+- 3. are easy to understand with code that is self-explanatory and can be read along-side the official paper (see [Pipelines summary](#pipelines-summary)),
 - 4. can easily be contributed by the community (see the [Contribution](#contribution) section).
 
 **Note** that pipelines do not (and should not) offer any training functionality. 
@@ -52,11 +52,11 @@ However, most of them can be adapted to use different scheduler components or ev
 Diffusion models often consist of multiple independently-trained models or other previously existing components. 
 
 
-Each model has been trained indepently on a different task and the scheduler can easily be swapped out against another scheduler. 
+Each model has been trained independently on a different task and the scheduler can easily be swapped out and replaced with a different one. 
 During inference, we however want to be able to easily load all components and use them in inference - even if one component, *e.g.* CLIP's text encoder, originates from a different library, such as [Transformers](https://github.com/huggingface/transformers). To that end, all pipelines provide the following functionality:
 
 - [`from_pretrained` method](https://github.com/huggingface/diffusers/blob/5cbed8e0d157f65d3ddc2420dfd09f2df630e978/src/diffusers/pipeline_utils.py#L139) that accepts a Hugging Face Hub repository id, *e.g.* [CompVis/stable-diffusion-v1-4](https://huggingface.co/CompVis/stable-diffusion-v1-4) or a path to a local directory, *e.g.*
-"./stable-diffusion". To correctly retrieve which models and components should be loaded one has to provide a `model_index.json` file, *e.g.* [CompVis/stable-diffusion-v1-4/model_index.json](https://huggingface.co/CompVis/stable-diffusion-v1-4/blob/main/model_index.json), which defines all components that should be 
+"./stable-diffusion". To correctly retrieve which models and components should be loaded, one has to provide a `model_index.json` file, *e.g.* [CompVis/stable-diffusion-v1-4/model_index.json](https://huggingface.co/CompVis/stable-diffusion-v1-4/blob/main/model_index.json), which defines all components that should be 
 loaded into the pipelines. More specifically, for each model/component one needs to define the format `<name>: ["<library>", "<class name>"]`. `<name>` is the attribute name given to the loaded instance of `<class name>` which can be found in the library or pipeline folder called `"<library>"`.
 - [`save_pretrained`](https://github.com/huggingface/diffusers/blob/5cbed8e0d157f65d3ddc2420dfd09f2df630e978/src/diffusers/pipeline_utils.py#L90) that accepts a local path, *e.g.* `./stable-diffusion` under which all models/components of the pipeline will be saved. For each component/model a folder is created inside the local path that is named after the given attribute name, *e.g.* `./stable_diffusion/unet`. 
 In addition, a `model_index.json` file is created at the root of the local path, *e.g.* `./stable_diffusion/model_index.json` so that the complete pipeline can again be instantiated 
@@ -79,7 +79,7 @@ use it for its designated task, *e.g.* text-to-image generation, in just a coupl
 logic including pre-processing, an unrolled diffusion loop, and post-processing should all happen inside the `__call__` method.
 - **Easy-to-tweak**: Certain pipelines will not be able to handle all use cases and tasks that you might like them to. If you want to use a certain pipeline for a specific use case that is not yet supported, you might have to copy the pipeline file and tweak the code to your needs.
 
-We try to make the pipeline code as readable as possible so that each part from pre-processing to diffusing to post-processing can easily be adapted. If you would like the community to benefit from your customized pipeline, we would   to see a contribution to our [community-examples](https://github.com/huggingface/diffusers/tree/main/examples/commmunity). If you feel that an important pipeline should be part of the official pipelines but isn't, a contribution to the [official pipelines](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines) would be even better .
+We try to make the pipeline code as readable as possible so that each part –from pre-processing to diffusing to post-processing– can easily be adapted. If you would like the community to benefit from your customized pipeline, we would love to see a contribution to our [community-examples](https://github.com/huggingface/diffusers/tree/main/examples/commmunity). If you feel that an important pipeline should be part of the official pipelines but isn't, a contribution to the [official pipelines](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines) would be even better.
 - **One-purpose-only**: Pipelines should be used for one task and one task only. Even if two tasks are very similar from a modeling point of view, *e.g.* image2image translation and in-painting, pipelines shall be used for one task only to keep them *easy-to-tweak* and *readable*.
 
 ## Examples
@@ -113,7 +113,7 @@ image.save("astronaut_rides_horse.png")
 
 ### Image-to-Image text-guided generation with Stable Diffusion
 
-The `image_to_image.py` script implements `StableDiffusionImg2ImgPipeline`. It lets you pass a text prompt and an initial image to condition the generation of new images. This example also showcases how you can write custom diffusion pipelines using `diffusers`!
+The `StableDiffusionImg2ImgPipeline` lets you pass a text prompt and an initial image to condition the generation of new images.
 
 ```python
 from torch import autocast
@@ -150,7 +150,7 @@ You can also run this example on colab [![Open In Colab](https://colab.research.
 
 ### Tweak prompts reusing seeds and latents
 
-You can generate your own latents to reproduce results, or tweak your prompt on a specific result you liked. [This notebook](stable-diffusion-seeds.ipynb) shows how to do it step by step. You can also run it in Google Colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/pcuenca/diffusers-examples/blob/main/notebooks/stable-diffusion-seeds.ipynb).
+You can generate your own latents to reproduce results, or tweak your prompt on a specific result you liked. [This notebook](https://github.com/pcuenca/diffusers-examples/blob/main/notebooks/stable-diffusion-seeds.ipynb) shows how to do it step by step. You can also run it in Google Colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/pcuenca/diffusers-examples/blob/main/notebooks/stable-diffusion-seeds.ipynb).
 
 
 ### In-painting using Stable Diffusion
