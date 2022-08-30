@@ -37,7 +37,7 @@ from diffusers import (
     ScoreSdeVePipeline,
     ScoreSdeVeScheduler,
     StableDiffusionImg2ImgPipeline,
-    StableDiffusionInPaintPipeline,
+    StableDiffusionInpaintPipeline,
     StableDiffusionPipeline,
     UNet2DModel,
 )
@@ -470,7 +470,7 @@ class PipelineTesterMixin(unittest.TestCase):
         output_image = ds[4]["image"].resize((768, 512))
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionInPaintPipeline.from_pretrained(model_id, use_auth_token=True)
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(model_id, use_auth_token=True)
         pipe.to(torch_device)
 
         prompt = "A red cat sitting on a parking bench"

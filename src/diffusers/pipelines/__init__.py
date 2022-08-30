@@ -15,6 +15,6 @@ if is_transformers_available():
     from .latent_diffusion import LDMTextToImagePipeline
     from .stable_diffusion import (
         StableDiffusionImg2ImgPipeline,
-        StableDiffusionInPaintPipeline,
+        StableDiffusionInpaintPipeline,
         StableDiffusionPipeline,
     )

@@ -41,7 +41,7 @@ if is_transformers_available():
     from .pipelines import (
         LDMTextToImagePipeline,
         StableDiffusionImg2ImgPipeline,
-        StableDiffusionInPaintPipeline,
+        StableDiffusionInpaintPipeline,
         StableDiffusionPipeline,
     )
 else:
