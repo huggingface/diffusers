@@ -155,7 +155,7 @@ You can generate your own latents to reproduce results, or tweak your prompt on 
 
 ### In-painting using Stable Diffusion
 
-The `inpainting.py` script implements `StableDiffusionInpaintingPipeline`. This script lets you edit specific parts of an image by providing a mask and text prompt.
+The `inpainting.py` script implements `StableDiffusionInpainPipeline`. This script lets you edit specific parts of an image by providing a mask and text prompt.
 
 ```python
 from io import BytesIO
@@ -177,7 +177,7 @@ init_image = download_image(img_url).resize((512, 512))
 mask_image = download_image(mask_url).resize((512, 512))
 
 device = "cuda"
-pipe = StableDiffusionInpaintingPipeline.from_pretrained(
+pipe = StableDiffusionInpainPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     revision="fp16", 
     torch_dtype=torch.float16,

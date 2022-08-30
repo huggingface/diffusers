@@ -1,1 +1,1 @@
-from diffusers import StableDiffusionInpaintPipeline as StableDiffusionInpaintingPipeline  # noqa F401
+from diffusers import StableDiffusionInpaintPipeline as StableDiffusionInpainPipeline  # noqa F401
