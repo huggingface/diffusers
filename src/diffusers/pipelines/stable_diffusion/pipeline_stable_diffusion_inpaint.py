@@ -37,7 +37,7 @@ def preprocess_mask(mask):
     return mask
 
 
-class StableDiffusionInPaintPipeline(DiffusionPipeline):
+class StableDiffusionInpaintPipeline(DiffusionPipeline):
     def __init__(
         self,
         vae: AutoencoderKL,
