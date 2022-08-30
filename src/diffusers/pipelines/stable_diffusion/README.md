@@ -50,11 +50,6 @@ image.save("astronaut_rides_horse.png")
 from torch import autocast
 from diffusers import StableDiffusionPipeline, DDIMScheduler
 
-lms = LMSDiscreteScheduler(
-    beta_start=0.00085, 
-    beta_end=0.012, 
-    beta_schedule="scaled_linear"
-)
 scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
 
 pipe = StableDiffusionPipeline.from_pretrained(
