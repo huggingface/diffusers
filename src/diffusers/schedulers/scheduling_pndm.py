@@ -118,7 +118,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             self.prk_timesteps = (prk_timesteps[:-1].repeat(2)[1:-1])[::-1].copy()
             self.plms_timesteps = self._timesteps[:-3][::-1].copy() # we copy to avoid having negative strides which are not supported by torch.from_numpy
 
-        self.timesteps = np.concatenate([self.prk_timesteps, self.plms_timesteps])
+        self.timesteps = np.concatenate([self.prk_timesteps, self.plms_timesteps]).astype(np.int64)
 
         self.ets = []
         self.counter = 0
