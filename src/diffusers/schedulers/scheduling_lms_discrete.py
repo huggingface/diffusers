@@ -101,11 +101,6 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sample: Union[torch.FloatTensor, np.ndarray],
         order: int = 4,
     ):
-        if self.num_inference_steps is None:
-            raise ValueError(
-                "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
-            )
-
         sigma = self.sigmas[timestep]
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise

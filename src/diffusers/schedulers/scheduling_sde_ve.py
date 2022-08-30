@@ -122,7 +122,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
 
         if self.timesteps is None:
             raise ValueError(
-                "Number of inference steps is not set, you need to run 'set_timesteps' after creating the scheduler"
+                "`self.timesteps` is not set, you need to run 'set_timesteps' after creating the scheduler"
             )
 
         timestep = timestep * torch.ones(
