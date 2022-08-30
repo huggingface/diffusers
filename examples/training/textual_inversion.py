@@ -445,9 +445,8 @@ def main(args):
     model.freeze_vae()
     model.freeze_unet()
 
-    # scale learning rate (TODO: also use number of GPUs)
     if args.scale_lr:
-        args.learning_rate = args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size
+        args.learning_rate = args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
 
     # initialize the optimizer
     optimizer = torch.optim.AdamW(
