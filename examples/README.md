@@ -32,7 +32,7 @@ point of view very similar, *e.g.* image super-resolution and image modification
 
 We provide **official** examples that cover the most popular tasks of diffusion models.
 *Official* examples are **actively** maintained by the `diffusers` maintainers and we try to rigorously follow our example philosophy as defined above. 
-If you feel like another important should exist, we are more than happy to welcome a [Feature Request](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feature_request.md&title=) or directly a [Pull Request](https://github.com/huggingface/diffusers/compare) from you .
+If you feel like another important example should exist, we are more than happy to welcome a [Feature Request](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feature_request.md&title=) or directly a [Pull Request](https://github.com/huggingface/diffusers/compare) from you!
 
 Training examples show how to pretrain or fine-tune diffusion models for a variety of tasks. Currently we support:
 
@@ -42,7 +42,7 @@ Training examples show how to pretrain or fine-tune diffusion models for a varie
 
 ## Community
 
-In additon, we provide **community** examples, which are examples added and maintained by our community.
+In addition, we provide **community** examples, which are examples added and maintained by our community.
 Community examples can consist of both *training* examples or *inference* pipelines.
 For such examples, we are more lenient regarding the philosophy defined above and also cannot guarantee to provide maintenance for every issue.
 Examples that are useful for the community, but are either not yet deemed popular or not yet following our above philosophy should go into the [community examples](https://github.com/huggingface/diffusers/tree/main/examples/community) folder. The community folder therefore includes training examples and inference pipelines.
@@ -52,8 +52,8 @@ Examples that are useful for the community, but are either not yet deemed popula
 
 To make sure you can successfully run the latest versions of the example scripts, you have to **install the library from source** and install some example-specific requirements. To do this, execute the following steps in a new virtual environment:
 ```bash
-git clone https://github.com/huggingface/transformers
-cd transformers
+git clone https://github.com/huggingface/diffusers
+cd diffusers
 pip install .
 ```
 Then cd in the example folder of your choice and run
