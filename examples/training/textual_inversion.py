@@ -2,7 +2,6 @@ import argparse
 import math
 import os
 import random
-from typing import Any, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -14,7 +13,6 @@ from torch.utils.data import Dataset
 import PIL
 from accelerate import Accelerator
 from accelerate.logging import get_logger
-from datasets import load_dataset
 from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.hub_utils import init_git_repo, push_to_hub
 from diffusers.optimization import get_scheduler
@@ -22,162 +20,27 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import CLIPFeatureExtractor, CLIPPreTrainedModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
-from transformers.modeling_outputs import BaseModelOutputWithPooling
-from transformers.models.clip.modeling_clip import CLIPEncoder, CLIPTextEmbeddings, _expand_mask
-
-
-class CLIPTextTransformer(nn.Module):
-    def __init__(self, config: CLIPTextConfig):
-        super().__init__()
-        self.config = config
-        embed_dim = config.hidden_size
-        self.embeddings = CLIPTextEmbeddings(config)
-        self.encoder = CLIPEncoder(config)
-        self.final_layer_norm = nn.LayerNorm(embed_dim)
-
-    def forward(
-        self,
-        inputs_embeds: Optional[torch.FloatTensor],
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.Tensor] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-    ) -> Union[Tuple, BaseModelOutputWithPooling]:
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        input_shape = inputs_embeds.size()[:-1]
-        hidden_states = self.embeddings(inputs_embeds=inputs_embeds, position_ids=position_ids)
-
-        bsz, seq_len = input_shape
-        # CLIP's text model uses causal mask, prepare it here.
-        # https://github.com/openai/CLIP/blob/cfcffb90e69f37bf2ff1e988237a0fbe41f33c04/clip/model.py#L324
-        causal_attention_mask = self._build_causal_attention_mask(bsz, seq_len, hidden_states.dtype).to(
-            hidden_states.device
-        )
-        # expand attention_mask
-        if attention_mask is not None:
-            # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-            attention_mask = _expand_mask(attention_mask, hidden_states.dtype)
-
-        encoder_outputs = self.encoder(
-            inputs_embeds=hidden_states,
-            attention_mask=attention_mask,
-            causal_attention_mask=causal_attention_mask,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
-
-        last_hidden_state = encoder_outputs[0]
-        last_hidden_state = self.final_layer_norm(last_hidden_state)
-
-        # can't compute pooled_output without input_ids and it's need needed here.
-        pooled_output = None
-
-        if not return_dict:
-            return (last_hidden_state, pooled_output) + encoder_outputs[1:]
-
-        return BaseModelOutputWithPooling(
-            last_hidden_state=last_hidden_state,
-            pooler_output=pooled_output,
-            hidden_states=encoder_outputs.hidden_states,
-            attentions=encoder_outputs.attentions,
-        )
-
-    def _build_causal_attention_mask(self, bsz, seq_len, dtype):
-        # lazily create causal attention mask, with full attention between the vision tokens
-        # pytorch uses additive attention mask; fill with -inf
-        mask = torch.empty(bsz, seq_len, seq_len, dtype=dtype)
-        mask.fill_(torch.tensor(torch.finfo(dtype).min))
-        mask.triu_(1)  # zero out the lower diagonal
-        mask = mask.unsqueeze(1)  # expand mask
-        return mask
-
-
-class CLIPTextualInversionWrapper(CLIPPreTrainedModel):
-    config_class = CLIPTextConfig
-
-    def __init__(self, config: CLIPTextConfig, placeholder_token_id: int, initializer_token_id: int):
-        super().__init__(config)
-        self.text_model = CLIPTextTransformer(config)
-
-        # TODO (patil-suraj): generalize this to n tokens
-        self.concept_embeddings = nn.Parameter(torch.zeros(config.hidden_size))
-
-        self.placeholder_token_id = placeholder_token_id
-        self.initializer_token_id = initializer_token_id
-
-        # Initialize weights and apply final processing
-        self.post_init()
-
-    def get_input_embeddings(self) -> nn.Module:
-        return self.text_model.embeddings.token_embedding
-
-    def set_input_embeddings(self, value):
-        self.text_model.embeddings.token_embedding = value
-
-    def freeze_text_model(self):
-        for param in self.text_model.parameters():
-            param.requires_grad = False
-
-    def init_concept_embeddings(self):
-        """Initialize concept embeddings with embeddings of initializer_token_id"""
-        self.concept_embeddings.data.copy_(self.get_input_embeddings().weight[self.initializer_token_id])
-
-    def merge_concept_embeddings_in_token_embeddings(self):
-        """Update the token embeddings of the placeholder_token to the trained embeddings."""
-        self.get_input_embeddings().weight.data[self.placeholder_token_id] = self.concept_embeddings.data
-
-    def get_concept_embeddings(self):
-        return self.concept_embeddings
-
-    def get_initializer_embeddings(self):
-        return self.get_input_embeddings().weight[self.initializer_token_id]
-
-    def forward(
-        self,
-        input_ids: Optional[torch.Tensor],
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.Tensor] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-    ) -> Union[Tuple, BaseModelOutputWithPooling]:
-
-        inputs_embeds = self.get_input_embeddings()(input_ids)
-        # update the inputs_embeds for concept token embedding
-        placeholder_idx = torch.where(input_ids == self.placeholder_token_id)
-        inputs_embeds[placeholder_idx] = self.concept_embeddings
-
-        return self.text_model(
-            inputs_embeds=inputs_embeds,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
-
-
-#############################################################
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 
 # Simple wrapper module for Stabel Diffusion
 class StableDiffusionWrapper(nn.Module):
-    def __init__(self, text_encoder: CLIPTextualInversionWrapper, vae: AutoencoderKL, unet: UNet2DConditionModel):
+    def __init__(self, text_encoder: CLIPTextModel, vae: AutoencoderKL, unet: UNet2DConditionModel):
         super().__init__()
         self.text_encoder = text_encoder
         self.vae = vae
         self.unet = unet
 
     def freeze_text_encoder(self):
-        self.text_encoder.freeze_text_model()
+        """Freeze the whole text model except the token embeddings"""
+        for param in self.text_encoder.text_model.encoder.parameters():
+            param.requires_grad = False
+
+        for param in self.text_encoder.text_model.final_layer_norm.parameters():
+            param.requires_grad = False
+
+        for param in self.text_encoder.text_model.embeddings.position_embedding.parameters():
+            param.requires_grad = False
 
     def freeze_vae(self):
         for param in self.vae.parameters():
@@ -422,7 +285,9 @@ def main(args):
         )
     elif args.pretrained_model_name_or_path:
         tokenizer = CLIPTokenizer.from_pretrained(
-            args.pretrained_model_name_or_path, additional_special_tokens=[args.placeholder_token], subfolder="tokenizer"
+            args.pretrained_model_name_or_path,
+            additional_special_tokens=[args.placeholder_token],
+            subfolder="tokenizer",
         )
 
     # Convert the initializer_token, placeholder_token to ids
@@ -437,7 +302,7 @@ def main(args):
     # Load models and create wrapper for stable diffusion
     unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
-    text_encoder = CLIPTextualInversionWrapper.from_pretrained(
+    text_encoder = CLIPTextModel.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="text_encoder",
         placeholder_token_id=placeholder_token_id,
@@ -446,9 +311,6 @@ def main(args):
 
     # Resize the token embeddings as we are adding new special tokens to the tokenizer
     text_encoder.resize_token_embeddings(len(tokenizer))
-
-    # Initialize the new concept embeddings with the embeddings of the initializer token
-    text_encoder.init_concept_embeddings()
 
     # Create a wrapper module for Stable Diffusion
     model = StableDiffusionWrapper(text_encoder, vae, unet)
@@ -465,7 +327,7 @@ def main(args):
 
     # Initialize the optimizer
     optimizer = torch.optim.AdamW(
-        [next(model.parameters())],  # only optimize the concept embeddings
+        model.text_encoder.get_input_embeddings().parameters(),  # only optimize the embeddings
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -561,6 +423,14 @@ def main(args):
                     loss += args.embedding_reg_weight * coarse_loss
 
                 accelerator.backward(loss)
+
+                # zero out the gradients for all token embeddings except the newly added
+                # embeddings for the concept, as we only want to optimize the concept embeddings
+                grads = model.text_encoder.get_input_embeddings().weight.grad
+                # Get the index for tokens that we want to zero the grads for
+                index_grads_to_zero = torch.arange(len(tokenizer)) != placeholder_token_id
+                grads.data[index_grads_to_zero, :] = grads.data[index_grads_to_zero, :].fill_(0)
+
                 # accelerator.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 lr_scheduler.step()
@@ -614,17 +484,10 @@ def main(args):
 
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
-        # Load the CLIPTextualInversionWrapper into CLIPTextModel.
-        text_model = accelerator.unwrap_model(model.text_encoder)
-        # Update the token embeddings of the placeholder_token to the trained embeddings.
-        text_model.merge_concept_embeddings_in_token_embeddings()
-        clip = CLIPTextModel(text_model.config)
-        clip.load_state_dict(text_model.state_dict(), strict=False)
-
         pipeline = StableDiffusionPipeline(
             unet=accelerator.unwrap_model(model.unet),
             vae=accelerator.unwrap_model(model.vae),
-            text_encoder=clip,
+            text_encoder=accelerator.unwrap_model(model.text_encoder),
             tokenizer=tokenizer,
             scheduler=PNDMScheduler.from_config(
                 "CompVis/stable-diffusion-v1-4", subfolder="scheduler", use_auth_token=True
