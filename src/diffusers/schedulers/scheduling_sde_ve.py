@@ -162,7 +162,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
 
         if self.timesteps is None:
             raise ValueError(
-                "Number of inference steps is not set, you need to run 'set_timesteps' after creating the scheduler"
+                "`self.timesteps` is not set, you need to run 'set_timesteps' after creating the scheduler"
             )
 
         # For small batch sizes, the paper "suggest replacing norm(z) with sqrt(d), where d is the dim. of z"

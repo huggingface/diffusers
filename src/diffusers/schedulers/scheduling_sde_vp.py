@@ -37,7 +37,7 @@ class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
     def step_pred(self, score, x, t):
         if self.timesteps is None:
             raise ValueError(
-                "Number of inference steps is not set, you need to run 'set_timesteps' after creating the scheduler"
+                "`self.timesteps` is not set, you need to run 'set_timesteps' after creating the scheduler"
             )
 
         # TODO(Patrick) better comments + non-PyTorch
