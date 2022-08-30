@@ -18,8 +18,6 @@ import warnings
 
 import torch
 
-from tqdm.auto import tqdm
-
 from ...pipeline_utils import DiffusionPipeline
 
 
@@ -54,7 +52,7 @@ class PNDMPipeline(DiffusionPipeline):
         image = image.to(self.device)
 
         self.scheduler.set_timesteps(num_inference_steps)
-        for t in tqdm(self.scheduler.timesteps):
+        for t in self.progress_bar(self.scheduler.timesteps):
             model_output = self.unet(image, t)["sample"]
 
             image = self.scheduler.step(model_output, t, image)["prev_sample"]

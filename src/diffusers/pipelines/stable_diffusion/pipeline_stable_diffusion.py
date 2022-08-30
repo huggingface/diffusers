@@ -4,7 +4,6 @@ from typing import List, Optional, Union
 
 import torch
 
-from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
@@ -133,7 +132,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
-        for i, t in tqdm(enumerate(self.scheduler.timesteps)):
+        for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             if isinstance(self.scheduler, LMSDiscreteScheduler):

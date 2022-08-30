@@ -44,6 +44,29 @@ from diffusers.testing_utils import slow, torch_device
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
+def test_progress_bar(capsys):
+    model = UNet2DModel(
+        block_out_channels=(32, 64),
+        layers_per_block=2,
+        sample_size=32,
+        in_channels=3,
+        out_channels=3,
+        down_block_types=("DownBlock2D", "AttnDownBlock2D"),
+        up_block_types=("AttnUpBlock2D", "UpBlock2D"),
+    )
+    scheduler = DDPMScheduler(num_train_timesteps=10)
+
+    ddpm = DDPMPipeline(model, scheduler).to(torch_device)
+    ddpm(output_type="numpy")["sample"]
+    captured = capsys.readouterr()
+    assert "10/10" in captured.err, "Progress bar has to be displayed"
+
+    ddpm.set_progress_bar_config(disable=True)
+    ddpm(output_type="numpy")["sample"]
+    captured = capsys.readouterr()
+    assert captured.err == "", "Progress bar should be disabled"
+
+
 class PipelineTesterMixin(unittest.TestCase):
     def test_from_pretrained_save_pretrained(self):
         # 1. Load models
