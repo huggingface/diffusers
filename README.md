@@ -20,11 +20,12 @@ as a modular toolbox for inference and training of diffusion models.
 
 More precisely, 🤗 Diffusers offers:
 
-- State-of-the-art diffusion pipelines that can be run in inference with just a couple of lines of code (see [src/diffusers/pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines)).
+- State-of-the-art diffusion pipelines that can be run in inference with just a couple of lines of code (see [src/diffusers/pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines)). Check [this overview](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines/README.md#pipelines-summary) to see all supported pipelines and their corresponding official papers.
 - Various noise schedulers that can be used interchangeably for the prefered speed vs. quality trade-off in inference (see [src/diffusers/schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers)).
 - Multiple types of models, such as UNet, can be used as building blocks in an end-to-end diffusion system (see [src/diffusers/models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models)).
 - Training examples to show how to train the most popular diffusion models (see [examples/training](https://github.com/huggingface/diffusers/tree/main/examples/training)).
 - Inference examples to show how to create custom pipelines for advanced tasks such as image2image, in-painting (see [examples/inference](https://github.com/huggingface/diffusers/tree/main/examples/inference))
+
 
 ## Quickstart
 
@@ -32,17 +33,17 @@ In order to get started, we recommend taking a look at two notebooks:
 
 - The [Getting started with Diffusers](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb) notebook, which showcases an end-to-end example of usage for diffusion models, schedulers and pipelines.
   Take a look at this notebook to learn how to use the pipeline abstraction, which takes care of everything (model, scheduler, noise handling) for you, and also to understand each independent building block in the library.
-- The [Training a diffusers model](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb) notebook summarizes diffuser model training methods. This notebook takes a step-by-step approach to training your
-  diffuser model on an image dataset, with explanatory graphics.
+- The [Training a diffusers model](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb) notebook summarizes diffusion models training methods. This notebook takes a step-by-step approach to training your
+  diffusion models on an image dataset, with explanatory graphics. 
   
-## **New 🎨🎨🎨** Stable Diffusion is now fully compatible with `diffusers`! 
-
-Stable Diffusion is a text-to-image latent diffusion model created by the researchers and engineers from [CompVis](https://github.com/CompVis), [Stability AI](https://stability.ai/) and [LAION](https://laion.ai/). It's trained on 512x512 images from a subset of the [LAION-5B](https://laion.ai/blog/laion-5b/) database. This model uses a frozen CLIP ViT-L/14 text encoder to condition the model on text prompts. With its 860M UNet and 123M text encoder, the model is relatively lightweight and runs on a GPU with at least 10GB VRAM.
+  ## **New ** Stable Diffusion is now fully compatible with `diffusers`!  Stable Diffusion is a text-to-image latent diffusion model created by the researchers and engineers from [CompVis](https://github.com/CompVis), [Stability AI](https://stability.ai/) and [LAION](https://laion.ai/). It's trained on 512x512 images from a subset of the [LAION-5B](https://laion.ai/blog/laion-5b/) database. This model uses a frozen CLIP ViT-L/14 text encoder to condition the model on text prompts. With its 860M UNet and 123M text encoder, the model is relatively lightweight and runs on a GPU with at least 10GB VRAM.
 See the [model card](https://huggingface.co/CompVis/stable-diffusion) for more information.
 
 You need to accept the model license before downloading or using the Stable Diffusion weights. Please, visit the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-3), read the license and tick the checkbox if you agree. You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section](https://huggingface.co/docs/hub/security-tokens) of the documentation.
 
-```py
+### Text-to-Image generation with Stable Diffusion
+
+```python
 # make sure you're logged in with `huggingface-cli login`
 from torch import autocast
 from diffusers import StableDiffusionPipeline, LMSDiscreteScheduler
@@ -54,10 +55,13 @@ lms = LMSDiscreteScheduler(
 )
 
 pipe = StableDiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-3", 
+    "CompVis/stable-diffusion-v1-4", 
+    revision="fp16", 
+    torch_dtype=torch.float16,
     scheduler=lms,
     use_auth_token=True
-).to("cuda")
+)
+pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
 with autocast("cuda"):
@@ -65,6 +69,88 @@ with autocast("cuda"):
     
 image.save("astronaut_rides_horse.png")
 ```
+
+### Image-to-Image text-guided generation with Stable Diffusion
+
+The `StableDiffusionImg2ImgPipeline` lets you pass a text prompt and an initial image to condition the generation of new images.
+
+```python
+from torch import autocast
+import requests
+from PIL import Image
+from io import BytesIO
+
+from diffusers import StableDiffusionImg2ImgPipeline
+
+# load the pipeline
+device = "cuda"
+pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+    revision="fp16", 
+    torch_dtype=torch.float16,
+    use_auth_token=True
+)
+pipe = pipe.to(device)
+
+# let's download an initial image
+url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
+
+response = requests.get(url)
+init_image = Image.open(BytesIO(response.content)).convert("RGB")
+init_image = init_image.resize((768, 512))
+
+prompt = "A fantasy landscape, trending on artstation"
+
+with autocast("cuda"):
+    images = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5)["sample"]
+
+images[0].save("fantasy_landscape.png")
+```
+You can also run this example on colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/patil-suraj/Notebooks/blob/master/image_2_image_using_diffusers.ipynb)
+
+### In-painting using Stable Diffusion
+
+The `StableDiffusionInpaintPipeline` lets you edit specific parts of an image by providing a mask and text prompt.
+
+```python
+from io import BytesIO
+
+from torch import autocast
+import requests
+import PIL
+
+from diffusers import StableDiffusionInpaintPipeline
+
+def download_image(url):
+    response = requests.get(url)
+    return PIL.Image.open(BytesIO(response.content)).convert("RGB")
+
+img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+
+init_image = download_image(img_url).resize((512, 512))
+mask_image = download_image(mask_url).resize((512, 512))
+
+device = "cuda"
+pipe = StableDiffusionInpaintPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+    revision="fp16", 
+    torch_dtype=torch.float16,
+    use_auth_token=True
+)
+pipe = pipe.to(device)
+
+prompt = "a cat sitting on a bench"
+with autocast("cuda"):
+    images = pipe(prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75)["sample"]
+
+images[0].save("cat_on_bench.png")
+```
+
+### Tweak prompts reusing seeds and latents
+
+You can generate your own latents to reproduce results, or tweak your prompt on a specific result you liked. [This notebook](stable-diffusion-seeds.ipynb) shows how to do it step by step. You can also run it in Google Colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/pcuenca/diffusers-examples/blob/main/notebooks/stable-diffusion-seeds.ipynb).
+
 
 For more details, check out [the Stable Diffusion notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/stable_diffusion.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/stable_diffusion.ipynb)
 and have a look into the [release notes](https://github.com/huggingface/diffusers/releases/tag/v0.2.0).
