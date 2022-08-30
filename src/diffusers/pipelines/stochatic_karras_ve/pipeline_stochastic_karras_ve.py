@@ -3,8 +3,6 @@ import warnings
 
 import torch
 
-from tqdm.auto import tqdm
-
 from ...models import UNet2DModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import KarrasVeScheduler
