@@ -422,7 +422,7 @@ def main(args):
         )
     elif args.pretrained_model_name_or_path:
         tokenizer = CLIPTokenizer.from_pretrained(
-            args.model_name_or_path, additional_special_tokens=[args.placeholder_token], subfolder="tokenizer"
+            args.pretrained_model_name_or_path, additional_special_tokens=[args.placeholder_token], subfolder="tokenizer"
         )
 
     # Convert the initializer_token, placeholder_token to ids
