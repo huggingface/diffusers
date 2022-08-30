@@ -46,7 +46,7 @@ In additon, we provide **community** examples, which are examples added and main
 Community examples can consist of both *training* examples or *inference* pipelines.
 For such examples, we are more lenient regarding the philosophy defined above and also cannot guarantee to provide maintenance for every issue.
 Examples that are useful for the community, but are either not yet deemed popular or not yet following our above philosophy should go into the [community examples](https://github.com/huggingface/diffusers/tree/main/examples/community) folder. The community folder therefore includes training examples and inference pipelines.
-**Note**: Community examples can be a [great first contribution](https://github.com/huggingface/diffusers/compare) to show to the community how you like to use `diffusers` 🪄.
+**Note**: Community examples can be a [great first contribution](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) to show to the community how you like to use `diffusers` 🪄.
 
 ## Important note
 

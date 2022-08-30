@@ -25,7 +25,6 @@ More precisely, 🤗 Diffusers offers:
 - Multiple types of models, such as UNet, can be used as building blocks in an end-to-end diffusion system (see [src/diffusers/models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models)).
 - Training examples to show how to train the most popular diffusion models (see [examples/training](https://github.com/huggingface/diffusers/tree/main/examples/training)).
 - Inference examples to show how to create custom pipelines for advanced tasks such as image2image, in-painting (see [examples/inference](https://github.com/huggingface/diffusers/tree/main/examples/inference))
-- Most popular diffusion papers are natively supported in 
 
 
 ## Quickstart
