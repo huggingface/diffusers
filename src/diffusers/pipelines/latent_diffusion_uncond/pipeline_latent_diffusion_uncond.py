@@ -3,8 +3,6 @@ import warnings
 
 import torch
 
-from tqdm.auto import tqdm
-
 from ...pipeline_utils import DiffusionPipeline
 
 
@@ -45,7 +43,7 @@ class LDMPipeline(DiffusionPipeline):
         if accepts_eta:
             extra_kwargs["eta"] = eta
 
-        for t in tqdm(self.scheduler.timesteps):
+        for t in self.progress_bar(self.scheduler.timesteps):
             # predict the noise residual
             noise_prediction = self.unet(latents, t)["sample"]
             # compute the previous noisy sample x_t -> x_t-1

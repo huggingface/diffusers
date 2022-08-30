@@ -23,6 +23,7 @@ import torch
 
 from huggingface_hub import snapshot_download
 from PIL import Image
+from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
 from .utils import DIFFUSERS_CACHE, logging
@@ -266,3 +267,16 @@ class DiffusionPipeline(ConfigMixin):
         pil_images = [Image.fromarray(image) for image in images]
 
         return pil_images
+
+    def progress_bar(self, iterable):
+        if not hasattr(self, "_progress_bar_config"):
+            self._progress_bar_config = {}
+        elif not isinstance(self._progress_bar_config, dict):
+            raise ValueError(
+                f"`self._progress_bar_config` should be of type `dict`, but is {type(self._progress_bar_config)}."
+            )
+
+        return tqdm(iterable, **self._progress_bar_config)
+
+    def set_progress_bar_config(self, **kwargs):
+        self._progress_bar_config = kwargs
