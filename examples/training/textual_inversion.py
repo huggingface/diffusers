@@ -266,9 +266,13 @@ def main(args):
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
 
-    text_encoder, vae, unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        text_encoder, vae, unet, optimizer, train_dataloader, lr_scheduler
+    text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        text_encoder, optimizer, train_dataloader, lr_scheduler
     )
+
+    # move vae and unet to device
+    vae.to(accelerator.device)
+    unet.to(accelerator.device)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -310,7 +314,8 @@ def main(args):
             encoder_hidden_states = text_encoder(input_ids)[0]
 
             # Predict the noise residual
-            noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states)
+            noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states)["sample"]
+
             loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
             loss = loss / args.gradient_accumulation_steps
 
@@ -348,8 +353,8 @@ def main(args):
     if accelerator.is_main_process:
         pipeline = StableDiffusionPipeline(
             text_encoder=accelerator.unwrap_model(text_encoder),
-            vae=accelerator.unwrap_model(vae),
-            unet=accelerator.unwrap_model(unet),
+            vae=vae,
+            unet=unet,
             tokenizer=tokenizer,
             scheduler=PNDMScheduler.from_config(
                 "CompVis/stable-diffusion-v1-4", subfolder="scheduler", use_auth_token=True
