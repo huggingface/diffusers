@@ -101,7 +101,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
 
     def set_seed(self, seed):
         warnings.warn(
-            "The method `set_seed` is outdated. Please consider passing a generator instead.", DeprecationWarning
+            "The method `set_seed` is deprecated and will be removed in version `0.4.0`. Please consider passing a generator instead.", DeprecationWarning
         )
         tensor_format = getattr(self, "tensor_format", "pt")
         if tensor_format == "np":
