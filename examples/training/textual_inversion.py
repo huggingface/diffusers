@@ -23,35 +23,6 @@ from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 
-# Simple wrapper module for Stabel Diffusion
-class StableDiffusionWrapper(nn.Module):
-    def __init__(self, text_encoder: CLIPTextModel, vae: AutoencoderKL, unet: UNet2DConditionModel):
-        super().__init__()
-        self.text_encoder = text_encoder
-        self.vae = vae
-        self.unet = unet
-
-    def freeze_text_encoder(self):
-        """Freeze the whole text model except the token embeddings"""
-        for param in self.text_encoder.text_model.encoder.parameters():
-            param.requires_grad = False
-
-        for param in self.text_encoder.text_model.final_layer_norm.parameters():
-            param.requires_grad = False
-
-        for param in self.text_encoder.text_model.embeddings.position_embedding.parameters():
-            param.requires_grad = False
-
-    def freeze_vae(self):
-        for param in self.vae.parameters():
-            param.requires_grad = False
-
-    def freeze_unet(self):
-        for param in self.unet.parameters():
-            param.requires_grad = False
-
-
-#############################################################
 imagenet_templates_small = [
     "a photo of a {}",
     "a rendering of a {}",
@@ -182,6 +153,35 @@ class TextualInversionDataset(Dataset):
 
         example["pixel_values"] = torch.from_numpy(image).permute(2, 0, 1)
         return example
+
+
+class StableDiffusionWrapper(nn.Module):
+    """Simple wrapper module for Stabel Diffusion that holds all the models together"""
+
+    def __init__(self, text_encoder: CLIPTextModel, vae: AutoencoderKL, unet: UNet2DConditionModel):
+        super().__init__()
+        self.text_encoder = text_encoder
+        self.vae = vae
+        self.unet = unet
+
+    def freeze_text_encoder(self):
+        """Freeze the whole text model except the token embeddings"""
+        for param in self.text_encoder.text_model.encoder.parameters():
+            param.requires_grad = False
+
+        for param in self.text_encoder.text_model.final_layer_norm.parameters():
+            param.requires_grad = False
+
+        for param in self.text_encoder.text_model.embeddings.position_embedding.parameters():
+            param.requires_grad = False
+
+    def freeze_vae(self):
+        for param in self.vae.parameters():
+            param.requires_grad = False
+
+    def freeze_unet(self):
+        for param in self.unet.parameters():
+            param.requires_grad = False
 
 
 def main(args):
