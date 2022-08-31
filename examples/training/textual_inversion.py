@@ -1,4 +1,5 @@
 import argparse
+import itertools
 import math
 import os
 import random
@@ -157,58 +158,9 @@ class TextualInversionDataset(Dataset):
         return example
 
 
-class StableDiffusionWrapper(nn.Module):
-    """Simple wrapper module for Stabel Diffusion that holds all the models together"""
-
-    def __init__(
-        self,
-        text_encoder: CLIPTextModel,
-        vae: AutoencoderKL,
-        unet: UNet2DConditionModel,
-        placeholder_token_id: int,
-        initializer_token_id: int,
-    ):
-        super().__init__()
-        self.text_encoder = text_encoder
-        self.vae = vae
-        self.unet = unet
-
-        self.placeholder_token_id = placeholder_token_id
-        self.initializer_token_id = initializer_token_id
-
-    def init_placeholder_token_embeds(self):
-        """Initialize the embedding for the placeholder token with the embeddings of the initializer token"""
-        token_embeds = self.text_encoder.get_input_embeddings().weight.data
-        token_embeds[self.placeholder_token_id] = token_embeds[self.initializer_token_id]
-
-    def freeze_text_encoder(self):
-        """Freeze the whole text model except the token embeddings"""
-        for param in self.text_encoder.text_model.encoder.parameters():
-            param.requires_grad = False
-
-        for param in self.text_encoder.text_model.final_layer_norm.parameters():
-            param.requires_grad = False
-
-        for param in self.text_encoder.text_model.embeddings.position_embedding.parameters():
-            param.requires_grad = False
-
-    def freeze_vae(self):
-        for param in self.vae.parameters():
-            param.requires_grad = False
-
-    def freeze_unet(self):
-        for param in self.unet.parameters():
-            param.requires_grad = False
-
-    def encode_images(self, pixel_values):
-        latents = self.vae.encode(pixel_values).sample()
-        return latents * 0.18215
-
-    def encode_text(self, input_ids):
-        return self.text_encoder(input_ids)[0]
-
-    def predict_noise(self, noisy_latents, timesteps, encoder_hidden_states):
-        return self.unet(noisy_latents, timesteps, encoder_hidden_states)["sample"]
+def freeze_params(params):
+    for param in params:
+        param.requires_grad = False
 
 
 def main(args):
@@ -254,16 +206,20 @@ def main(args):
     # Resize the token embeddings as we are adding new special tokens to the tokenizer
     text_encoder.resize_token_embeddings(len(tokenizer))
 
-    # Create a wrapper module for Stable Diffusion
-    model = StableDiffusionWrapper(text_encoder, vae, unet, placeholder_token_id, initializer_token_id)
-
     # init the newly added placeholder token with the embeddings of the initializer token
-    model.init_placeholder_token_embeds()
+    token_embeds = text_encoder.get_input_embeddings().weight.data
+    token_embeds[placeholder_token_id] = token_embeds[initializer_token_id]
 
-    # Freeze everything except the concept embedding
-    model.freeze_text_encoder()
-    model.freeze_vae()
-    model.freeze_unet()
+    # Freeze vae and unet
+    freeze_params(vae.parameters())
+    freeze_params(unet.parameters())
+    # freeze all parameters except for the token embeddings in text encoder
+    params_to_freeze = itertools.chain(
+        text_encoder.text_model.encoder.parameters(),
+        text_encoder.text_model.final_layer_norm.parameters(),
+        text_encoder.text_model.embeddings.position_embedding.parameters(),
+    )
+    freeze_params(params_to_freeze)
 
     if args.scale_lr:
         args.learning_rate = (
@@ -272,7 +228,7 @@ def main(args):
 
     # Initialize the optimizer
     optimizer = torch.optim.AdamW(
-        model.text_encoder.get_input_embeddings().parameters(),  # only optimize the embeddings
+        text_encoder.get_input_embeddings().parameters(),  # only optimize the embeddings
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -310,8 +266,8 @@ def main(args):
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
 
-    model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        model, optimizer, train_dataloader, lr_scheduler
+    text_encoder, vae, unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        text_encoder, vae, unet, optimizer, train_dataloader, lr_scheduler
     )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -330,57 +286,57 @@ def main(args):
 
     global_step = 0
     for epoch in range(args.num_epochs):
-        model.train()
+        text_encoder.train()
+        vae.train()
+        unet.train()
         progress_bar = tqdm(total=num_update_steps_per_epoch, disable=not accelerator.is_local_main_process)
         progress_bar.set_description(f"Epoch {epoch}")
         for step, batch in enumerate(train_dataloader):
-            with accelerator.accumulate(model):
-                # Convert images to latent space
-                latents = model.encode_images(batch["pixel_values"]).detach()
+            # Convert images to latent space
+            latents = vae.encode(batch["pixel_values"]).sample().detach()
 
-                # Sample noise that we'll add to the latents
-                noise = torch.randn(latents.shape).to(latents.device)
-                bsz = latents.shape[0]
-                # Sample a random timestep for each image
-                timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (bsz,), device=latents.device).long()
+            # Sample noise that we'll add to the latents
+            noise = torch.randn(latents.shape).to(latents.device)
+            bsz = latents.shape[0]
+            # Sample a random timestep for each image
+            timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (bsz,), device=latents.device).long()
 
-                # Add noise to t1`he latents according to the noise magnitude at each timestep
-                # (this is the forward diffusion process)
-                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+            # Add noise to t1`he latents according to the noise magnitude at each timestep
+            # (this is the forward diffusion process)
+            noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                # get the text embedding for conditioning
-                input_ids = batch["input_ids"].reshape(bsz, -1)
-                encoder_hidden_states = model.encode_text(input_ids)
+            # get the text embedding for conditioning
+            input_ids = batch["input_ids"].reshape(bsz, -1)
+            encoder_hidden_states = text_encoder(input_ids)[0]
 
-                # Predict the noise residual
-                noise_pred = model.predict_noise(noisy_latents, timesteps, encoder_hidden_states)
-                loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
+            # Predict the noise residual
+            noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states)
+            loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
+            loss = loss / args.gradient_accumulation_steps
 
-                accelerator.backward(loss)
+            accelerator.backward(loss)
 
-                # zero out the gradients for all token embeddings except the newly added
-                # embeddings for the concept, as we only want to optimize the concept embeddings
-                if accelerator.num_processes > 1:
-                    grads = model.module.text_encoder.get_input_embeddings().weight.grad
-                else:
-                    grads = model.text_encoder.get_input_embeddings().weight.grad
-                # Get the index for tokens that we want to zero the grads for
-                index_grads_to_zero = torch.arange(len(tokenizer)) != placeholder_token_id
-                grads.data[index_grads_to_zero, :] = grads.data[index_grads_to_zero, :].fill_(0)
+            # zero out the gradients for all token embeddings except the newly added
+            # embeddings for the concept, as we only want to optimize the concept embeddings
+            if accelerator.num_processes > 1:
+                grads = text_encoder.module.get_input_embeddings().weight.grad
+            else:
+                grads = text_encoder.get_input_embeddings().weight.grad
+            # Get the index for tokens that we want to zero the grads for
+            index_grads_to_zero = torch.arange(len(tokenizer)) != placeholder_token_id
+            grads.data[index_grads_to_zero, :] = grads.data[index_grads_to_zero, :].fill_(0)
 
-                # accelerator.clip_grad_norm_(model.parameters(), 1.0)
+            if (step + 1) % args.gradient_accumulation_steps == 0:
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
-            # Checks if the accelerator has performed an optimization step behind the scenes
-            if accelerator.sync_gradients:
                 progress_bar.update(1)
                 global_step += 1
 
-            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
-            progress_bar.set_postfix(**logs)
-            accelerator.log(logs, step=global_step)
+                logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
+                progress_bar.set_postfix(**logs)
+                accelerator.log(logs, step=global_step)
 
             if global_step >= args.max_train_steps:
                 break
@@ -390,11 +346,10 @@ def main(args):
 
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
-        model = accelerator.unwrap_model(model)
         pipeline = StableDiffusionPipeline(
-            unet=model.unet,
-            vae=model.vae,
-            text_encoder=model.text_encoder,
+            text_encoder=accelerator.unwrap_model(text_encoder),
+            vae=accelerator.unwrap_model(vae),
+            unet=accelerator.unwrap_model(unet),
             tokenizer=tokenizer,
             scheduler=PNDMScheduler.from_config(
                 "CompVis/stable-diffusion-v1-4", subfolder="scheduler", use_auth_token=True
