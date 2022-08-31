@@ -40,7 +40,6 @@ jobs:
         python -m pip uninstall -y torch torchvision torchtext
         python -m pip install torch --extra-index-url https://download.pytorch.org/whl/cu116
         python -m pip install -e .[quality,test]
-        python -m pip install scipy transformers
 
     - name: Environment
       run: |

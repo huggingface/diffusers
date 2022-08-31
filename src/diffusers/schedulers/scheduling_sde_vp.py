@@ -35,6 +35,11 @@ class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.linspace(1, self.config.sampling_eps, num_inference_steps)
 
     def step_pred(self, score, x, t):
+        if self.timesteps is None:
+            raise ValueError(
+                "`self.timesteps` is not set, you need to run 'set_timesteps' after creating the scheduler"
+            )
+
         # TODO(Patrick) better comments + non-PyTorch
         # postprocess model score
         log_mean_coeff = (

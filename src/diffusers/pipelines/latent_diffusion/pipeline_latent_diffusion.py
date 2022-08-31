@@ -6,7 +6,6 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint
 
-from tqdm.auto import tqdm
 from transformers.activations import ACT2FN
 from transformers.configuration_utils import PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutput
@@ -83,7 +82,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         if accepts_eta:
             extra_kwargs["eta"] = eta
 
-        for t in tqdm(self.scheduler.timesteps):
+        for t in self.progress_bar(self.scheduler.timesteps):
             if guidance_scale == 1.0:
                 # guidance_scale of 1 means no guidance
                 latents_input = latents

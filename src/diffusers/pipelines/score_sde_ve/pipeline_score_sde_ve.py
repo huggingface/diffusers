@@ -4,7 +4,6 @@ import warnings
 import torch
 
 from diffusers import DiffusionPipeline
-from tqdm.auto import tqdm
 
 
 class ScoreSdeVePipeline(DiffusionPipeline):
@@ -37,7 +36,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps)
         self.scheduler.set_sigmas(num_inference_steps)
 
-        for i, t in tqdm(enumerate(self.scheduler.timesteps)):
+        for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             sigma_t = self.scheduler.sigmas[i] * torch.ones(shape[0], device=self.device)
 
             # correction step
