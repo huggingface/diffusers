@@ -357,37 +357,6 @@ def main(args):
 
         accelerator.wait_for_everyone()
 
-        # Generate sample images for visual inspection
-        # if accelerator.is_main_process:
-        #     if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
-        #         pipeline = StableDiffusionPipeline(
-        #             unet=accelerator.unwrap_model(stable_diffusion.unet),
-        #             vae=accelerator.unwrap_model(stable_diffusion.vae),
-        #             text_encoder=accelerator.unwrap_model(stable_diffusion.text_encoder),
-        #             tokenizer=tokenizer,
-        #             scheduler=noise_scheduler,
-        #             safety_checker=StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker"),
-        #             feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32")
-        #         )
-
-        #         generator = torch.manual_seed(0)
-        #         # run pipeline in inference (sample random noise and denoise)
-        #         images = pipeline(generator=generator, batch_size=args.eval_batch_size, output_type="numpy")["sample"]
-
-        #         # denormalize the images and save to tensorboard
-        #         images_processed = (images * 255).round().astype("uint8")
-        #         accelerator.trackers[0].writer.add_images(
-        #             "test_samples", images_processed.transpose(0, 3, 1, 2), epoch
-        #         )
-
-        #     if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
-        #         # save the model
-        #         if args.push_to_hub:
-        #             push_to_hub(args, pipeline, repo, commit_message=f"Epoch {epoch}", blocking=False)
-        #         else:
-        #             pipeline.save_pretrained(args.output_dir)
-        # accelerator.wait_for_everyone()
-
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
         pipeline = StableDiffusionPipeline(
