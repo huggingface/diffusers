@@ -46,6 +46,7 @@ You need to accept the model license before downloading or using the Stable Diff
 ```python
 # make sure you're logged in with `huggingface-cli login`
 from torch import autocast
+import torch
 from diffusers import StableDiffusionPipeline, LMSDiscreteScheduler
 
 lms = LMSDiscreteScheduler(
@@ -77,6 +78,7 @@ The `StableDiffusionImg2ImgPipeline` lets you pass a text prompt and an initial 
 ```python
 from torch import autocast
 import requests
+import torch
 from PIL import Image
 from io import BytesIO
 
@@ -116,6 +118,7 @@ The `StableDiffusionInpaintPipeline` lets you edit specific parts of an image by
 from io import BytesIO
 
 from torch import autocast
+import torch
 import requests
 import PIL
 
