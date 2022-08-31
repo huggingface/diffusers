@@ -77,8 +77,8 @@ def read_init():
                 single_line_import_search = _re_single_line_import.search(line)
                 if single_line_import_search is not None:
                     objects.extend(single_line_import_search.groups()[0].split(", "))
-                elif line.startswith(" " * 12):
-                    objects.append(line[12:-2])
+                elif line.startswith(" " * 8):
+                    objects.append(line[8:-2])
                 line_index += 1
 
             backend_specific_objects[backend] = objects

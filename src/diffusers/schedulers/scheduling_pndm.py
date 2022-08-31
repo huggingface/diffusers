@@ -103,22 +103,24 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             range(0, self.config.num_train_timesteps, self.config.num_train_timesteps // num_inference_steps)
         )
         self._offset = offset
-        self._timesteps = [t + self._offset for t in self._timesteps]
+        self._timesteps = np.array([t + self._offset for t in self._timesteps])
 
         if self.config.skip_prk_steps:
             # for some models like stable diffusion the prk steps can/should be skipped to
             # produce better results. When using PNDM with `self.config.skip_prk_steps` the implementation
             # is based on crowsonkb's PLMS sampler implementation: https://github.com/CompVis/latent-diffusion/pull/51
-            self.prk_timesteps = []
-            self.plms_timesteps = list(reversed(self._timesteps[:-1] + self._timesteps[-2:-1] + self._timesteps[-1:]))
+            self.prk_timesteps = np.array([])
+            self.plms_timesteps = (self._timesteps[:-1] + self._timesteps[-2:-1] + self._timesteps[-1:])[::-1].copy()
         else:
             prk_timesteps = np.array(self._timesteps[-self.pndm_order :]).repeat(2) + np.tile(
                 np.array([0, self.config.num_train_timesteps // num_inference_steps // 2]), self.pndm_order
             )
-            self.prk_timesteps = list(reversed(prk_timesteps[:-1].repeat(2)[1:-1]))
-            self.plms_timesteps = list(reversed(self._timesteps[:-3]))
+            self.prk_timesteps = (prk_timesteps[:-1].repeat(2)[1:-1])[::-1].copy()
+            self.plms_timesteps = self._timesteps[:-3][
+                ::-1
+            ].copy()  # we copy to avoid having negative strides which are not supported by torch.from_numpy
 
-        self.timesteps = self.prk_timesteps + self.plms_timesteps
+        self.timesteps = np.concatenate([self.prk_timesteps, self.plms_timesteps]).astype(np.int64)
 
         self.ets = []
         self.counter = 0
