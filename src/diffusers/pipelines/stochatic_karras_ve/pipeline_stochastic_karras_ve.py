@@ -3,9 +3,7 @@ import warnings
 
 import torch
 
-from ...models import UNet2DModel
 from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import KarrasVeScheduler
 
 
 class KarrasVePipeline(DiffusionPipeline):
@@ -17,9 +15,6 @@ class KarrasVePipeline(DiffusionPipeline):
     https://arxiv.org/abs/2206.00364 [2] Song, Yang, et al. "Score-based generative modeling through stochastic
     differential equations." https://arxiv.org/abs/2011.13456
     """
-
-    unet: UNet2DModel
-    scheduler: KarrasVeScheduler
 
     def __init__(self, unet, scheduler):
         super().__init__()
