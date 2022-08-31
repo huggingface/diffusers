@@ -158,11 +158,26 @@ class TextualInversionDataset(Dataset):
 class StableDiffusionWrapper(nn.Module):
     """Simple wrapper module for Stabel Diffusion that holds all the models together"""
 
-    def __init__(self, text_encoder: CLIPTextModel, vae: AutoencoderKL, unet: UNet2DConditionModel):
+    def __init__(
+        self,
+        text_encoder: CLIPTextModel,
+        vae: AutoencoderKL,
+        unet: UNet2DConditionModel,
+        placeholder_token_id: int,
+        initializer_token_id: int,
+    ):
         super().__init__()
         self.text_encoder = text_encoder
         self.vae = vae
         self.unet = unet
+
+        self.placeholder_token_id = placeholder_token_id
+        self.initializer_token_id = initializer_token_id
+
+    def init_placeholder_token_embeds(self):
+        """Initialize the embedding for the placeholder token with the embeddings of the initializer token"""
+        token_embeds = self.text_encoder.get_input_embeddings().weight.data
+        token_embeds[self.placeholder_token_id] = token_embeds[self.initializer_token_id]
 
     def freeze_text_encoder(self):
         """Freeze the whole text model except the token embeddings"""
@@ -216,20 +231,18 @@ def main(args):
     placeholder_token_id = tokenizer.convert_tokens_to_ids(args.placeholder_token)
 
     # Load models and create wrapper for stable diffusion
-    unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
+    text_encoder = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder")
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
-    text_encoder = CLIPTextModel.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="text_encoder",
-        placeholder_token_id=placeholder_token_id,
-        initializer_token_id=initializer_token_id,
-    )
+    unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
 
     # Resize the token embeddings as we are adding new special tokens to the tokenizer
     text_encoder.resize_token_embeddings(len(tokenizer))
 
     # Create a wrapper module for Stable Diffusion
-    model = StableDiffusionWrapper(text_encoder, vae, unet)
+    model = StableDiffusionWrapper(text_encoder, vae, unet, placeholder_token_id, initializer_token_id)
+
+    # init the newly added placeholder token with the embeddings of the initializer token
+    model.init_placeholder_token_embeds()
 
     # Freeze everything except the concept embedding
     model.freeze_text_encoder()
