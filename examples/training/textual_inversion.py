@@ -8,7 +8,6 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-from torch import nn
 from torch.utils.data import Dataset
 
 import PIL
@@ -216,14 +215,14 @@ def main(args):
     # Resize the token embeddings as we are adding new special tokens to the tokenizer
     text_encoder.resize_token_embeddings(len(tokenizer))
 
-    # init the newly added placeholder token with the embeddings of the initializer token
+    # Initialise the newly added placeholder token with the embeddings of the initializer token
     token_embeds = text_encoder.get_input_embeddings().weight.data
     token_embeds[placeholder_token_id] = token_embeds[initializer_token_id]
 
     # Freeze vae and unet
     freeze_params(vae.parameters())
     freeze_params(unet.parameters())
-    # freeze all parameters except for the token embeddings in text encoder
+    # Freeze all parameters except for the token embeddings in text encoder
     params_to_freeze = itertools.chain(
         text_encoder.text_model.encoder.parameters(),
         text_encoder.text_model.final_layer_norm.parameters(),
@@ -280,7 +279,7 @@ def main(args):
         text_encoder, optimizer, train_dataloader, lr_scheduler
     )
 
-    # move vae and unet to device
+    # Move vae and unet to device
     vae.to(accelerator.device)
     unet.to(accelerator.device)
 
@@ -330,11 +329,11 @@ def main(args):
                 # Sample a random timestep for each image
                 timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (bsz,), device=latents.device).long()
 
-                # Add noise to t1`he latents according to the noise magnitude at each timestep
+                # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                # get the text embedding for conditioning
+                # Get the text embedding for conditioning
                 input_ids = batch["input_ids"].reshape(bsz, -1)
                 encoder_hidden_states = text_encoder(input_ids)[0]
 
@@ -345,7 +344,7 @@ def main(args):
 
                 accelerator.backward(loss)
 
-                # zero out the gradients for all token embeddings except the newly added
+                # Zero out the gradients for all token embeddings except the newly added
                 # embeddings for the concept, as we only want to optimize the concept embeddings
                 if accelerator.num_processes > 1:
                     grads = text_encoder.module.get_input_embeddings().weight.grad
@@ -389,7 +388,7 @@ def main(args):
         pipeline.save_pretrained(args.output_dir)
 
         if args.push_to_hub:
-            push_to_hub(args, pipeline, repo, commit_message=f"End of training", blocking=False, auto_lfs_prune=True)
+            push_to_hub(args, pipeline, repo, commit_message="End of training", blocking=False, auto_lfs_prune=True)
 
     accelerator.end_training()
 
