@@ -19,6 +19,7 @@ class KarrasVePipeline(DiffusionPipeline):
     differential equations." https://arxiv.org/abs/2011.13456
     """
 
+    # add type hints for linting
     unet: UNet2DModel
     scheduler: KarrasVeScheduler
 
