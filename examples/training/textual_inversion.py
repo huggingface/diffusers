@@ -332,7 +332,10 @@ def main(args):
 
                 # zero out the gradients for all token embeddings except the newly added
                 # embeddings for the concept, as we only want to optimize the concept embeddings
-                grads = model.text_encoder.get_input_embeddings().weight.grad
+                if accelerator.num_processes > 1:
+                    grads = accelerator.unwrap_model(model).text_encoder.get_input_embeddings().grad.data
+                else:
+                    grads = model.text_encoder.get_input_embeddings().weight.grad
                 # Get the index for tokens that we want to zero the grads for
                 index_grads_to_zero = torch.arange(len(tokenizer)) != placeholder_token_id
                 grads.data[index_grads_to_zero, :] = grads.data[index_grads_to_zero, :].fill_(0)
