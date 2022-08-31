@@ -187,6 +187,7 @@ def main(args):
             args.pretrained_model_name_or_path,
             additional_special_tokens=[args.placeholder_token],
             subfolder="tokenizer",
+            use_auth_token=args.use_auth_token,
         )
 
     # Convert the initializer_token, placeholder_token to ids
@@ -199,9 +200,15 @@ def main(args):
     placeholder_token_id = tokenizer.convert_tokens_to_ids(args.placeholder_token)
 
     # Load models and create wrapper for stable diffusion
-    text_encoder = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder")
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
-    unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
+    text_encoder = CLIPTextModel.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="text_encoder", use_auth_token=args.use_auth_token
+    )
+    vae = AutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="vae", use_auth_token=args.use_auth_token
+    )
+    unet = UNet2DConditionModel.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="unet", use_auth_token=args.use_auth_token
+    )
 
     # Resize the token embeddings as we are adding new special tokens to the tokenizer
     text_encoder.resize_token_embeddings(len(tokenizer))
@@ -366,6 +373,9 @@ def main(args):
             feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
         )
         pipeline.save_pretrained(args.output_dir)
+
+        if args.push_to_hub:
+            push_to_hub(args, pipeline, repo, commit_message=f"End of training", blocking=False, auto_lfs_prune=True)
 
     accelerator.end_training()
 
