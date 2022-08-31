@@ -200,6 +200,16 @@ class StableDiffusionWrapper(nn.Module):
         for param in self.unet.parameters():
             param.requires_grad = False
 
+    def encode_images(self, pixel_values):
+        latents = self.vae.encode(pixel_values).sample()
+        return latents * 0.18215
+
+    def encode_text(self, input_ids):
+        return self.text_encoder(input_ids)[0]
+
+    def predict_noise(self, noisy_latents, timesteps, encoder_hidden_states):
+        return self.unet(noisy_latents, timesteps, encoder_hidden_states)["sample"]
+
 
 def main(args):
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
@@ -326,8 +336,7 @@ def main(args):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(model):
                 # Convert images to latent space
-                latents = accelerator.unwrap_model(model).vae.encode(batch["pixel_values"]).sample().detach()
-                latents = latents * 0.18215
+                latents = model.encode_images(batch["pixel_values"]).detach()
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn(latents.shape).to(latents.device)
@@ -341,19 +350,20 @@ def main(args):
 
                 # get the text embedding for conditioning
                 input_ids = batch["input_ids"].reshape(bsz, -1)
-                encoder_hidden_states = accelerator.unwrap_model(model).text_encoder(input_ids)[0]
+                encoder_hidden_states = model.encode_text(input_ids)
 
                 # Predict the noise residual
-                noise_pred = accelerator.unwrap_model(model).unet(noisy_latents, timesteps, encoder_hidden_states)[
-                    "sample"
-                ]
+                noise_pred = model.predict_noise(noisy_latents, timesteps, encoder_hidden_states)
                 loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
 
                 accelerator.backward(loss)
 
                 # zero out the gradients for all token embeddings except the newly added
                 # embeddings for the concept, as we only want to optimize the concept embeddings
-                grads = accelerator.unwrap_model(model).text_encoder.get_input_embeddings().weight.grad
+                if accelerator.num_processes > 1:
+                    grads = model.module.text_encoder.get_input_embeddings().weight.grad
+                else:
+                    grads = model.text_encoder.get_input_embeddings().weight.grad
                 # Get the index for tokens that we want to zero the grads for
                 index_grads_to_zero = torch.arange(len(tokenizer)) != placeholder_token_id
                 grads.data[index_grads_to_zero, :] = grads.data[index_grads_to_zero, :].fill_(0)
