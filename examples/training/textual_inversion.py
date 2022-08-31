@@ -326,7 +326,7 @@ def main(args):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(model):
                 # Convert images to latent space
-                latents = model.vae.encode(batch["pixel_values"]).sample().detach()
+                latents = accelerator.unwrap_model(model).vae.encode(batch["pixel_values"]).sample().detach()
                 latents = latents * 0.18215
 
                 # Sample noise that we'll add to the latents
@@ -341,20 +341,19 @@ def main(args):
 
                 # get the text embedding for conditioning
                 input_ids = batch["input_ids"].reshape(bsz, -1)
-                encoder_hidden_states = model.text_encoder(input_ids)[0]
+                encoder_hidden_states = accelerator.unwrap_model(model).text_encoder(input_ids)[0]
 
                 # Predict the noise residual
-                noise_pred = model.unet(noisy_latents, timesteps, encoder_hidden_states)["sample"]
+                noise_pred = accelerator.unwrap_model(model).unet(noisy_latents, timesteps, encoder_hidden_states)[
+                    "sample"
+                ]
                 loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
 
                 accelerator.backward(loss)
 
                 # zero out the gradients for all token embeddings except the newly added
                 # embeddings for the concept, as we only want to optimize the concept embeddings
-                if accelerator.num_processes > 1:
-                    grads = accelerator.unwrap_model(model).text_encoder.get_input_embeddings().grad.data
-                else:
-                    grads = model.text_encoder.get_input_embeddings().weight.grad
+                grads = accelerator.unwrap_model(model).text_encoder.get_input_embeddings().weight.grad
                 # Get the index for tokens that we want to zero the grads for
                 index_grads_to_zero = torch.arange(len(tokenizer)) != placeholder_token_id
                 grads.data[index_grads_to_zero, :] = grads.data[index_grads_to_zero, :].fill_(0)
