@@ -362,10 +362,11 @@ def main(args):
 
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
+        model = accelerator.unwrap_model(model)
         pipeline = StableDiffusionPipeline(
-            unet=accelerator.unwrap_model(model.unet),
-            vae=accelerator.unwrap_model(model.vae),
-            text_encoder=accelerator.unwrap_model(model.text_encoder),
+            unet=model.unet,
+            vae=model.vae,
+            text_encoder=model.text_encoder,
             tokenizer=tokenizer,
             scheduler=PNDMScheduler.from_config(
                 "CompVis/stable-diffusion-v1-4", subfolder="scheduler", use_auth_token=True
