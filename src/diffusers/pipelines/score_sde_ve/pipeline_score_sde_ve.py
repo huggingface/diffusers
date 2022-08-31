@@ -5,17 +5,8 @@ import torch
 
 from diffusers import DiffusionPipeline
 
-from ...models import UNet2DModel
-from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import KarrasVeScheduler
-
 
 class ScoreSdeVePipeline(DiffusionPipeline):
-
-    # add type hints for linting
-    unet: UNet2DModel
-    scheduler: KarrasVeScheduler
-
     def __init__(self, unet, scheduler):
         super().__init__()
         self.register_modules(unet=unet, scheduler=scheduler)
