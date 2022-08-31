@@ -288,13 +288,15 @@ def main(args):
         run = os.path.split(__file__)[-1].split(".")[0]
         accelerator.init_trackers(run)
 
+    # Only show the progress bar once on each machine.
+    progress_bar = tqdm(range(args.max_train_steps), disable=not accelerator.is_local_main_process)
+    progress_bar.set_description("Steps")
     global_step = 0
+
     for epoch in range(args.num_epochs):
         text_encoder.train()
         vae.train()
         unet.train()
-        progress_bar = tqdm(total=num_update_steps_per_epoch, disable=not accelerator.is_local_main_process)
-        progress_bar.set_description(f"Epoch {epoch}")
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(text_encoder):
                 # Convert images to latent space
@@ -341,13 +343,12 @@ def main(args):
                 progress_bar.update(1)
                 global_step += 1
 
-            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
+            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 
             if global_step >= args.max_train_steps:
                 break
-        progress_bar.close()
 
         accelerator.wait_for_everyone()
 
