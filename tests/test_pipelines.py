@@ -352,8 +352,8 @@ class PipelineFastTests(unittest.TestCase):
         sde_ve = ScoreSdeVePipeline(unet=unet, scheduler=scheduler)
         sde_ve.to(torch_device)
 
-        torch.manual_seed(0)
-        image = sde_ve(num_inference_steps=2, output_type="numpy")["sample"]
+        generator = torch.manual_seed(0)
+        image = sde_ve(num_inference_steps=2, output_type="numpy", generator=generator)["sample"]
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -741,14 +741,14 @@ class PipelineTesterMixin(unittest.TestCase):
         sde_ve = ScoreSdeVePipeline(unet=model, scheduler=scheduler)
         sde_ve.to(torch_device)
 
-        torch.manual_seed(0)
-        image = sde_ve(num_inference_steps=300, output_type="numpy")["sample"]
+        generator = torch.manual_seed(0)
+        image = sde_ve(num_inference_steps=50, output_type="numpy", generator=generator)["sample"]
 
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 256, 256, 3)
 
-        expected_slice = np.array([0.35396, 0.31874, 0.0, 0.16337, 0.18218, 0.14668, 0.34573, 0.01166, 0.18164])
+        expected_slice = np.array([1., 0., 0., 0., 0., 0., 0., 0., 1.])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
