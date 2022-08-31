@@ -13,17 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import random
 import tempfile
 import unittest
 
 import numpy as np
-import random
 import torch
 
 import PIL
-from PIL import Image
 from datasets import load_dataset
 from diffusers import (
+    AutoencoderKL,
     DDIMPipeline,
     DDIMScheduler,
     DDPMPipeline,
@@ -40,15 +40,15 @@ from diffusers import (
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
     StableDiffusionPipeline,
-    UNet2DModel,
     UNet2DConditionModel,
+    UNet2DModel,
     VQModel,
-    AutoencoderKL,
 )
 from diffusers.pipeline_utils import DiffusionPipeline
-from diffusers.testing_utils import slow, torch_device, floats_tensor
+from diffusers.testing_utils import floats_tensor, slow, torch_device
+from PIL import Image
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
-from transformers import CLIPTextModel, CLIPTextConfig, CLIPTokenizer
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
@@ -77,7 +77,6 @@ def test_progress_bar(capsys):
 
 
 class PipelineFastTests(unittest.TestCase):
-
     @property
     def dummy_image(self):
         batch_size = 1
@@ -194,7 +193,9 @@ class PipelineFastTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([1.000e+00, 5.717e-01, 4.717e-01, 1.000e+00, 0.000e+00, 1.000e+00, 3.000e-04, 0.000e+00, 9.000e-04])
+        expected_slice = np.array(
+            [1.000e00, 5.717e-01, 4.717e-01, 1.000e00, 0.000e00, 1.000e00, 3.000e-04, 0.000e00, 9.000e-04]
+        )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_pndm_cifar10(self):
@@ -209,7 +210,7 @@ class PipelineFastTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([1., 1., 0., 1., 0., 1., 0., 0., 0.])
+        expected_slice = np.array([1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_ldm_text2img(self):
@@ -236,14 +237,28 @@ class PipelineFastTests(unittest.TestCase):
 
     def test_stable_diffusion_ddim(self):
         unet = self.dummy_cond_unet
-        scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
+        scheduler = DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
 
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionPipeline(unet=unet, scheduler=scheduler, vae=vae, text_encoder=bert, tokenizer=tokenizer, safety_checker=self.dummy_safety_checker, feature_extractor=self.dummy_extractor)
+        sd_pipe = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=self.dummy_safety_checker,
+            feature_extractor=self.dummy_extractor,
+        )
         sd_pipe = sd_pipe.to(torch_device)
 
         prompt = "A painting of a squirrel eating a burger"
@@ -269,7 +284,15 @@ class PipelineFastTests(unittest.TestCase):
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionPipeline(unet=unet, scheduler=scheduler, vae=vae, text_encoder=bert, tokenizer=tokenizer, safety_checker=self.dummy_safety_checker, feature_extractor=self.dummy_extractor)
+        sd_pipe = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=self.dummy_safety_checker,
+            feature_extractor=self.dummy_extractor,
+        )
         sd_pipe = sd_pipe.to(torch_device)
 
         prompt = "A painting of a squirrel eating a burger"
@@ -284,7 +307,7 @@ class PipelineFastTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 128, 128, 3)
-        expected_slice = np.array([0.4937, 0.4649, 0.4716, 0.5145, 0.4889, 0.513 , 0.513 , 0.4905, 0.4738])
+        expected_slice = np.array([0.4937, 0.4649, 0.4716, 0.5145, 0.4889, 0.513, 0.513, 0.4905, 0.4738])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_k_lms(self):
@@ -296,7 +319,15 @@ class PipelineFastTests(unittest.TestCase):
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionPipeline(unet=unet, scheduler=scheduler, vae=vae, text_encoder=bert, tokenizer=tokenizer, safety_checker=self.dummy_safety_checker, feature_extractor=self.dummy_extractor)
+        sd_pipe = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=self.dummy_safety_checker,
+            feature_extractor=self.dummy_extractor,
+        )
         sd_pipe = sd_pipe.to(torch_device)
 
         prompt = "A painting of a squirrel eating a burger"
@@ -311,7 +342,7 @@ class PipelineFastTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 128, 128, 3)
-        expected_slice = np.array([0.5067, 0.4689, 0.4614, 0.5233, 0.4903, 0.5112, 0.524 , 0.5069, 0.4785])
+        expected_slice = np.array([0.5067, 0.4689, 0.4614, 0.5233, 0.4903, 0.5112, 0.524, 0.5069, 0.4785])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_score_sde_ve_pipeline(self):
@@ -328,7 +359,7 @@ class PipelineFastTests(unittest.TestCase):
 
         assert image.shape == (1, 32, 32, 3)
 
-        expected_slice = np.array([0., 1., 0., 0., 0., 1., 0., 0., 0.])
+        expected_slice = np.array([0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_ldm_uncond(self):
@@ -336,7 +367,7 @@ class PipelineFastTests(unittest.TestCase):
         scheduler = DDIMScheduler(tensor_format="pt")
         vae = self.dummy_vq_model
 
-        ldm = LDMPipeline(unet=unet, vae=vae, scheduler=scheduler)
+        ldm = LDMPipeline(unet=unet, vqvae=vae, scheduler=scheduler)
         ldm.to(torch_device)
 
         generator = torch.manual_seed(0)
@@ -344,9 +375,8 @@ class PipelineFastTests(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 256, 256, 3)
-        expected_slice = np.array([0.4399, 0.44975, 0.46825, 0.474, 0.4359, 0.4581, 0.45095, 0.4341, 0.4447])
-        import ipdb; ipdb.set_trace()
+        assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.8512, 0.818, 0.6411, 0.6808, 0.4465, 0.5618, 0.46, 0.6231, 0.5172])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_karras_ve_pipeline(self):
@@ -361,7 +391,7 @@ class PipelineFastTests(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0., 1., 0., 0., 0., 1., 0., 0., 0.])
+        expected_slice = np.array([0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_img2img(self):
@@ -374,14 +404,27 @@ class PipelineFastTests(unittest.TestCase):
         init_image = self.dummy_image
 
         # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionImg2ImgPipeline(unet=unet, scheduler=scheduler, vae=vae, text_encoder=bert, tokenizer=tokenizer, safety_checker=self.dummy_safety_checker, feature_extractor=self.dummy_extractor)
+        sd_pipe = StableDiffusionImg2ImgPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=self.dummy_safety_checker,
+            feature_extractor=self.dummy_extractor,
+        )
         sd_pipe = sd_pipe.to(torch_device)
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.Generator(device=torch_device).manual_seed(0)
         with torch.autocast("cuda"):
             output = sd_pipe(
-                [prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np", init_image=init_image
+                [prompt],
+                generator=generator,
+                guidance_scale=6.0,
+                num_inference_steps=2,
+                output_type="np",
+                init_image=init_image,
             )
 
         image = output["sample"]
@@ -400,18 +443,32 @@ class PipelineFastTests(unittest.TestCase):
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         image = self.dummy_image.permute(0, 2, 3, 1)[0]
-        init_image = Image.fromarray(np.uint8(image)).convert('RGB')
-        mask_image = Image.fromarray(np.uint8(image + 4)).convert('RGB').resize((128, 128))
+        init_image = Image.fromarray(np.uint8(image)).convert("RGB")
+        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((128, 128))
 
         # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionInpaintPipeline(unet=unet, scheduler=scheduler, vae=vae, text_encoder=bert, tokenizer=tokenizer, safety_checker=self.dummy_safety_checker, feature_extractor=self.dummy_extractor)
+        sd_pipe = StableDiffusionInpaintPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=self.dummy_safety_checker,
+            feature_extractor=self.dummy_extractor,
+        )
         sd_pipe = sd_pipe.to(torch_device)
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.Generator(device=torch_device).manual_seed(0)
         with torch.autocast("cuda"):
             output = sd_pipe(
-                [prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np", init_image=init_image, mask_image=mask_image
+                [prompt],
+                generator=generator,
+                guidance_scale=6.0,
+                num_inference_steps=2,
+                output_type="np",
+                init_image=init_image,
+                mask_image=mask_image,
             )
 
         image = output["sample"]
