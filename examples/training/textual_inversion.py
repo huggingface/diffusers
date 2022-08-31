@@ -440,10 +440,8 @@ if __name__ == "__main__":
         "--max_train_steps",
         type=int,
         default=5000,
-        help="Total number of training steps to perform.",
+        help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
     )
-    parser.add_argument("--save_images_epochs", type=int, default=10)
-    parser.add_argument("--save_model_epochs", type=int, default=10)
     parser.add_argument(
         "--gradient_accumulation_steps",
         type=int,
