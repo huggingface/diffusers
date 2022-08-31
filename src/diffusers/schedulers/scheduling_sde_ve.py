@@ -16,7 +16,6 @@
 
 import warnings
 
-# TODO(Patrick, Anton, Suraj) - make scheduler framework indepedent and clean-up a bit
 from typing import Optional, Union
 
 import numpy as np
