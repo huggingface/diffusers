@@ -264,13 +264,14 @@ class DDPMSchedulerTest(SchedulerCommonTest):
 
         model = self.dummy_model()
         sample = self.dummy_sample_deter
+        generator = torch.manual_seed(0)
 
         for t in reversed(range(num_trained_timesteps)):
             # 1. predict noise residual
             residual = model(sample, t)
 
             # 2. predict previous mean of sample x_t-1
-            pred_prev_sample = scheduler.step(residual, t, sample)["prev_sample"]
+            pred_prev_sample = scheduler.step(residual, t, sample, generator=generator)["prev_sample"]
 
             # if t > 0:
             #     noise = self.dummy_sample_deter
@@ -282,11 +283,8 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        # Large tolerance because of differences on GPU/CPU
-        # since tiny initial numerical differences get bigger after diffusion steps
-        # followed by summing and averaging
-        assert abs(result_sum.item() - 259.0883) < 1e1
-        assert abs(result_mean.item() - 0.3374) < 1e-2
+        assert abs(result_sum.item() - 258.9070) < 1e-2
+        assert abs(result_mean.item() - 0.3374) < 1e-3
 
 
 class DDIMSchedulerTest(SchedulerCommonTest):
@@ -699,6 +697,7 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
 
         scheduler.set_sigmas(num_inference_steps)
         scheduler.set_timesteps(num_inference_steps)
+        scheduler.set_seed(0)
 
         for i, t in enumerate(scheduler.timesteps):
             sigma_t = scheduler.sigmas[i]
@@ -717,11 +716,8 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        # Large tolerances because of differences on GPU/CPU
-        # since tiny initial numerical differences get bigger after diffusion steps
-        # followed by summing and averaging
-        assert abs(result_sum.item() - 14379591680.0) < 2.5e3
-        assert abs(result_mean.item() - 18723426.0) < 1e1
+        assert abs(result_sum.item() - 14379591680.0) < 1e-2
+        assert abs(result_mean.item() - 18723426.0) < 1e-3
 
     def test_step_shape(self):
         kwargs = dict(self.forward_default_kwargs)
