@@ -47,6 +47,6 @@ jobs:
 
     - name: Run all (incl. slow) tests on GPU
       env:
-        HF_API_TOKEN: ${{ secrets.HF_API_TOKEN }}
+        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s tests/
