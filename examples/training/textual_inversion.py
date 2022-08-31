@@ -116,6 +116,7 @@ class TextualInversionDataset(Dataset):
         }[interpolation]
 
         self.templates = imagenet_style_templates_small if style == "style" else imagenet_templates_small
+        self.flip_transform = transforms.RandomHorizontalFlip(p=self.flip_p)
 
     def __len__(self):
         return self._length
@@ -148,7 +149,7 @@ class TextualInversionDataset(Dataset):
         image = Image.fromarray(img)
         image = image.resize((self.size, self.size), resample=self.interpolation)
 
-        image = transforms.RandomHorizontalFlip(p=self.flip_p)
+        image = self.flip_transform(image)
         image = np.array(image).astype(np.uint8)
         image = (image / 127.5 - 1.0).astype(np.float32)
 
