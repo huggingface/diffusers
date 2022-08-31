@@ -23,9 +23,7 @@ More precisely, 🤗 Diffusers offers:
 - State-of-the-art diffusion pipelines that can be run in inference with just a couple of lines of code (see [src/diffusers/pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines)). Check [this overview](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines/README.md#pipelines-summary) to see all supported pipelines and their corresponding official papers.
 - Various noise schedulers that can be used interchangeably for the prefered speed vs. quality trade-off in inference (see [src/diffusers/schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers)).
 - Multiple types of models, such as UNet, can be used as building blocks in an end-to-end diffusion system (see [src/diffusers/models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models)).
-- Training examples to show how to train the most popular diffusion models (see [examples/training](https://github.com/huggingface/diffusers/tree/main/examples/training)).
-- Inference examples to show how to create custom pipelines for advanced tasks such as image2image, in-painting (see [examples/inference](https://github.com/huggingface/diffusers/tree/main/examples/inference))
-
+- Training examples to show how to train the most popular diffusion model tasks (see [examples](https://github.com/huggingface/diffusers/tree/main/examples), *e.g.* [unconditional-image-generation](https://github.com/huggingface/diffusers/tree/main/examples/unconditional_image_generation)).
 
 ## Quickstart
 
@@ -48,6 +46,7 @@ You need to accept the model license before downloading or using the Stable Diff
 ```python
 # make sure you're logged in with `huggingface-cli login`
 from torch import autocast
+import torch
 from diffusers import StableDiffusionPipeline, LMSDiscreteScheduler
 
 lms = LMSDiscreteScheduler(
@@ -79,6 +78,7 @@ The `StableDiffusionImg2ImgPipeline` lets you pass a text prompt and an initial 
 ```python
 from torch import autocast
 import requests
+import torch
 from PIL import Image
 from io import BytesIO
 
@@ -118,6 +118,7 @@ The `StableDiffusionInpaintPipeline` lets you edit specific parts of an image by
 from io import BytesIO
 
 from torch import autocast
+import torch
 import requests
 import PIL
 

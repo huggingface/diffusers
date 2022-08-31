@@ -14,8 +14,8 @@
 
 # DISCLAIMER: This file is strongly influenced by https://github.com/yang-song/score_sde_pytorch
 
-# TODO(Patrick, Anton, Suraj) - make scheduler framework indepedent and clean-up a bit
-from typing import Union
+import warnings
+from typing import Optional, Union
 
 import numpy as np
 import torch
@@ -98,6 +98,11 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
 
     def set_seed(self, seed):
+        warnings.warn(
+            "The method `set_seed` is deprecated and will be removed in version `0.4.0`. Please consider passing a"
+            " generator instead.",
+            DeprecationWarning,
+        )
         tensor_format = getattr(self, "tensor_format", "pt")
         if tensor_format == "np":
             np.random.seed(seed)
@@ -111,14 +116,14 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         model_output: Union[torch.FloatTensor, np.ndarray],
         timestep: int,
         sample: Union[torch.FloatTensor, np.ndarray],
-        seed=None,
+        generator: Optional[torch.Generator] = None,
+        **kwargs,
     ):
         """
         Predict the sample at the previous timestep by reversing the SDE.
         """
-        if seed is not None:
-            self.set_seed(seed)
-        # TODO(Patrick) non-PyTorch
+        if "seed" in kwargs and kwargs["seed"] is not None:
+            self.set_seed(kwargs["seed"])
 
         if self.timesteps is None:
             raise ValueError(
@@ -140,7 +145,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         drift = drift - diffusion[:, None, None, None] ** 2 * model_output
 
         #  equation 6: sample noise for the diffusion term of
-        noise = self.randn_like(sample)
+        noise = self.randn_like(sample, generator=generator)
         prev_sample_mean = sample - drift  # subtract because `dt` is a small negative timestep
         # TODO is the variable diffusion the correct scaling term for the noise?
         prev_sample = prev_sample_mean + diffusion[:, None, None, None] * noise  # add impact of diffusion field g
@@ -151,14 +156,15 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         self,
         model_output: Union[torch.FloatTensor, np.ndarray],
         sample: Union[torch.FloatTensor, np.ndarray],
-        seed=None,
+        generator: Optional[torch.Generator] = None,
+        **kwargs,
     ):
         """
         Correct the predicted sample based on the output model_output of the network. This is often run repeatedly
         after making the prediction for the previous timestep.
         """
-        if seed is not None:
-            self.set_seed(seed)
+        if "seed" in kwargs and kwargs["seed"] is not None:
+            self.set_seed(kwargs["seed"])
 
         if self.timesteps is None:
             raise ValueError(
@@ -167,7 +173,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
 
         # For small batch sizes, the paper "suggest replacing norm(z) with sqrt(d), where d is the dim. of z"
         # sample noise for correction
-        noise = self.randn_like(sample)
+        noise = self.randn_like(sample, generator=generator)
 
         # compute step size from the model_output, the noise, and the snr
         grad_norm = self.norm(model_output)

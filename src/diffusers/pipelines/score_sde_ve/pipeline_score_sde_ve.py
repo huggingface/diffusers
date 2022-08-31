@@ -30,7 +30,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
 
         model = self.unet
 
-        sample = torch.randn(*shape) * self.scheduler.config.sigma_max
+        sample = torch.randn(*shape, generator=generator) * self.scheduler.config.sigma_max
         sample = sample.to(self.device)
 
         self.scheduler.set_timesteps(num_inference_steps)
@@ -42,11 +42,11 @@ class ScoreSdeVePipeline(DiffusionPipeline):
             # correction step
             for _ in range(self.scheduler.correct_steps):
                 model_output = self.unet(sample, sigma_t)["sample"]
-                sample = self.scheduler.step_correct(model_output, sample)["prev_sample"]
+                sample = self.scheduler.step_correct(model_output, sample, generator=generator)["prev_sample"]
 
             # prediction step
             model_output = model(sample, sigma_t)["sample"]
-            output = self.scheduler.step_pred(model_output, t, sample)
+            output = self.scheduler.step_pred(model_output, t, sample, generator=generator)
 
             sample, sample_mean = output["prev_sample"], output["prev_sample_mean"]
 
