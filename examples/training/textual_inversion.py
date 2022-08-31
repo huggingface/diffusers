@@ -296,52 +296,53 @@ def main(args):
         progress_bar = tqdm(total=num_update_steps_per_epoch, disable=not accelerator.is_local_main_process)
         progress_bar.set_description(f"Epoch {epoch}")
         for step, batch in enumerate(train_dataloader):
-            # Convert images to latent space
-            latents = vae.encode(batch["pixel_values"]).sample().detach()
+            with accelerator.accumulate(text_encoder):
+                # Convert images to latent space
+                latents = vae.encode(batch["pixel_values"]).sample().detach()
 
-            # Sample noise that we'll add to the latents
-            noise = torch.randn(latents.shape).to(latents.device)
-            bsz = latents.shape[0]
-            # Sample a random timestep for each image
-            timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (bsz,), device=latents.device).long()
+                # Sample noise that we'll add to the latents
+                noise = torch.randn(latents.shape).to(latents.device)
+                bsz = latents.shape[0]
+                # Sample a random timestep for each image
+                timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (bsz,), device=latents.device).long()
 
-            # Add noise to t1`he latents according to the noise magnitude at each timestep
-            # (this is the forward diffusion process)
-            noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+                # Add noise to t1`he latents according to the noise magnitude at each timestep
+                # (this is the forward diffusion process)
+                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-            # get the text embedding for conditioning
-            input_ids = batch["input_ids"].reshape(bsz, -1)
-            encoder_hidden_states = text_encoder(input_ids)[0]
+                # get the text embedding for conditioning
+                input_ids = batch["input_ids"].reshape(bsz, -1)
+                encoder_hidden_states = text_encoder(input_ids)[0]
 
-            # Predict the noise residual
-            noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states)["sample"]
+                # Predict the noise residual
+                noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states)["sample"]
 
-            loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
-            loss = loss / args.gradient_accumulation_steps
+                loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
 
-            accelerator.backward(loss)
+                accelerator.backward(loss)
 
-            # zero out the gradients for all token embeddings except the newly added
-            # embeddings for the concept, as we only want to optimize the concept embeddings
-            if accelerator.num_processes > 1:
-                grads = text_encoder.module.get_input_embeddings().weight.grad
-            else:
-                grads = text_encoder.get_input_embeddings().weight.grad
-            # Get the index for tokens that we want to zero the grads for
-            index_grads_to_zero = torch.arange(len(tokenizer)) != placeholder_token_id
-            grads.data[index_grads_to_zero, :] = grads.data[index_grads_to_zero, :].fill_(0)
+                # zero out the gradients for all token embeddings except the newly added
+                # embeddings for the concept, as we only want to optimize the concept embeddings
+                if accelerator.num_processes > 1:
+                    grads = text_encoder.module.get_input_embeddings().weight.grad
+                else:
+                    grads = text_encoder.get_input_embeddings().weight.grad
+                # Get the index for tokens that we want to zero the grads for
+                index_grads_to_zero = torch.arange(len(tokenizer)) != placeholder_token_id
+                grads.data[index_grads_to_zero, :] = grads.data[index_grads_to_zero, :].fill_(0)
 
-            if (step + 1) % args.gradient_accumulation_steps == 0:
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
+            # Checks if the accelerator has performed an optimization step behind the scenes
+            if accelerator.sync_gradients:
                 progress_bar.update(1)
                 global_step += 1
 
-                logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
-                progress_bar.set_postfix(**logs)
-                accelerator.log(logs, step=global_step)
+            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
+            progress_bar.set_postfix(**logs)
+            accelerator.log(logs, step=global_step)
 
             if global_step >= args.max_train_steps:
                 break
