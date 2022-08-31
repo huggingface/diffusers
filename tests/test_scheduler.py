@@ -497,16 +497,22 @@ class PNDMSchedulerTest(SchedulerCommonTest):
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 scheduler.set_timesteps(num_inference_steps)
                 scheduler_pt.set_timesteps(num_inference_steps)
-                
+
             for key, value in vars(scheduler).items():
                 # we only allow `ets` attr to be a list
-                assert not isinstance(value, list) or key in ["ets"], f"Scheduler is not correctly set to np format, the attribute {key} is {type(value)}"
-                        
+                assert not isinstance(value, list) or key in [
+                    "ets"
+                ], f"Scheduler is not correctly set to np format, the attribute {key} is {type(value)}"
+
             # check if `scheduler.set_format` does convert correctly attrs to pt format
             for key, value in vars(scheduler_pt).items():
                 # we only allow `ets` attr to be a list
-                assert not isinstance(value, list) or key in ["ets"], f"Scheduler is not correctly set to pt format, the attribute {key} is {type(value)}"
-                assert not isinstance(value, np.ndarray), f"Scheduler is not correctly set to pt format, the attribute {key} is {type(value)}"
+                assert not isinstance(value, list) or key in [
+                    "ets"
+                ], f"Scheduler is not correctly set to pt format, the attribute {key} is {type(value)}"
+                assert not isinstance(
+                    value, np.ndarray
+                ), f"Scheduler is not correctly set to pt format, the attribute {key} is {type(value)}"
 
     def test_step_shape(self):
         kwargs = dict(self.forward_default_kwargs)
