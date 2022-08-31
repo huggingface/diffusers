@@ -13,6 +13,7 @@ from torch.utils.data import Dataset
 import PIL
 from accelerate import Accelerator
 from accelerate.logging import get_logger
+from accelerate.utils import set_seed
 from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.hub_utils import init_git_repo, push_to_hub
 from diffusers.optimization import get_scheduler
@@ -208,6 +209,10 @@ def main(args):
         log_with="tensorboard",
         logging_dir=logging_dir,
     )
+
+    # If passed along, set the training seed now.
+    if args.seed is not None:
+        set_seed(args.seed)
 
     # Load the tokenizer and add the placeholder token as a additional special token
     if args.tokenizer_name:
@@ -428,6 +433,7 @@ if __name__ == "__main__":
         default="text-inversion-model",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
+    parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
     parser.add_argument(
         "--resolution",
         type=int,
