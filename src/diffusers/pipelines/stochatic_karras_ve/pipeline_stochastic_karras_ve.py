@@ -30,8 +30,8 @@ class KarrasVePipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        batch_size: Optional[int] = 1,
-        num_inference_steps: Optional[int] = 50,
+        batch_size: int = 1,
+        num_inference_steps: int = 50,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
         **kwargs,
