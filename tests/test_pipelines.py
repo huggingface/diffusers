@@ -273,7 +273,7 @@ class PipelineFastTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 128, 128, 3)
-        expected_slice = np.array([0.5112, 0.4692, 0.4715, 0.5206, 0.4894, 0.5114, 0.5096, 0.4932, 0.4755])
+        expected_slice = np.array([0.6143, 0.523, 0.5845, 0.66, 0.414, 0.609, 0.4082, 0.3987, 0.46])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_pndm(self):
@@ -307,7 +307,7 @@ class PipelineFastTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 128, 128, 3)
-        expected_slice = np.array([0.4937, 0.4649, 0.4716, 0.5145, 0.4889, 0.513, 0.513, 0.4905, 0.4738])
+        expected_slice = np.array([0.6006, 0.5264, 0.5884, 0.6357, 0.4143, 0.5957, 0.413, 0.3933, 0.446])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_k_lms(self):
@@ -342,7 +342,7 @@ class PipelineFastTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 128, 128, 3)
-        expected_slice = np.array([0.5067, 0.4689, 0.4614, 0.5233, 0.4903, 0.5112, 0.524, 0.5069, 0.4785])
+        expected_slice = np.array([0.5674, 0.512, 0.5586, 0.6235, 0.4321, 0.5654, 0.411, 0.4014, 0.4463])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_score_sde_ve_pipeline(self):
@@ -432,7 +432,7 @@ class PipelineFastTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.4492, 0.3865, 0.4222, 0.5854, 0.5139, 0.4379, 0.4193, 0.48, 0.4218])
+        expected_slice = np.array([0.46, 0.4055, 0.375, 0.4458, 0.4316, 0.4792, 0.432, 0.424, 0.4822])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_inpaint(self):
@@ -442,7 +442,7 @@ class PipelineFastTests(unittest.TestCase):
         bert = self.dummy_text_encoder
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        image = self.dummy_image.permute(0, 2, 3, 1)[0]
+        image = self.dummy_image.cpu().permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB")
         mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((128, 128))
 
@@ -476,7 +476,7 @@ class PipelineFastTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.4731, 0.5346, 0.4531, 0.6251, 0.5446, 0.4057, 0.5527, 0.5896, 0.5153])
+        expected_slice = np.array([0.3809, 0.5444, 0.4395, 0.413, 0.576, 0.4224, 0.4912, 0.5635, 0.422])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
@@ -748,7 +748,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
         assert image.shape == (1, 256, 256, 3)
 
-        expected_slice = np.array([1., 0., 0., 0., 0., 0., 0., 0., 1.])
+        expected_slice = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
