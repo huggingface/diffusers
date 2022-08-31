@@ -604,7 +604,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 class ScoreSdeVeSchedulerTest(unittest.TestCase):
     # TODO adapt with class SchedulerCommonTest (scheduler needs Numpy Integration)
     scheduler_classes = (ScoreSdeVeScheduler,)
-    forward_default_kwargs = (("seed", 0),)
+    forward_default_kwargs = ()
 
     @property
     def dummy_sample(self):
