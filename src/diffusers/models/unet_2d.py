@@ -120,7 +120,6 @@ class UNet2DModel(ModelMixin, ConfigMixin):
     def forward(
         self, sample: torch.FloatTensor, timestep: Union[torch.Tensor, float, int]
     ) -> Dict[str, torch.FloatTensor]:
-
         # 0. center input if necessary
         if self.config.center_input_sample:
             sample = 2 * sample - 1.0

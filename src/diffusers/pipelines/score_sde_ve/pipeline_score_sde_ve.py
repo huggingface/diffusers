@@ -11,7 +11,6 @@ from ...schedulers import ScoreSdeVeScheduler
 
 
 class ScoreSdeVePipeline(DiffusionPipeline):
-
     unet: UNet2DModel
     scheduler: ScoreSdeVeScheduler
 

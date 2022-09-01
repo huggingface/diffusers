@@ -121,7 +121,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
     ) -> Dict[str, torch.FloatTensor]:
-
         # 0. center input if necessary
         if self.config.center_input_sample:
             sample = 2 * sample - 1.0
@@ -145,7 +144,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         # 3. down
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
-
             if hasattr(downsample_block, "attentions") and downsample_block.attentions is not None:
                 sample, res_samples = downsample_block(
                     hidden_states=sample, temb=emb, encoder_hidden_states=encoder_hidden_states
@@ -160,7 +158,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
 
         # 5. up
         for upsample_block in self.up_blocks:
-
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
             down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
 

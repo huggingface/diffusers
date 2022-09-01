@@ -947,7 +947,6 @@ class AttnUpBlock2D(nn.Module):
 
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None):
         for resnet, attn in zip(self.resnets, self.attentions):
-
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
@@ -1027,7 +1026,6 @@ class CrossAttnUpBlock2D(nn.Module):
 
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, encoder_hidden_states=None):
         for resnet, attn in zip(self.resnets, self.attentions):
-
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
@@ -1091,7 +1089,6 @@ class UpBlock2D(nn.Module):
 
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None):
         for resnet in self.resnets:
-
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
