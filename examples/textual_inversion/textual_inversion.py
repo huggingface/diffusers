@@ -287,6 +287,10 @@ def main(args):
     vae.to(accelerator.device)
     unet.to(accelerator.device)
 
+    # Keep vae and unet in eval model as we don't train these
+    vae.eval()
+    unet.eval()
+
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
@@ -319,8 +323,6 @@ def main(args):
 
     for epoch in range(args.num_epochs):
         text_encoder.train()
-        vae.train()
-        unet.train()
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(text_encoder):
                 # Convert images to latent space
