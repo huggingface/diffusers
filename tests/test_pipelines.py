@@ -336,7 +336,7 @@ class PipelineFastTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 128, 128, 3)
-        expected_slice = np.array([0.5674, 0.512, 0.5586, 0.6235, 0.4321, 0.5654, 0.411, 0.4014, 0.4463])
+        expected_slice = np.array([0.5067, 0.4689, 0.4614, 0.5233, 0.4903, 0.5112, 0.524, 0.5069, 0.4785])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_score_sde_ve_pipeline(self):
@@ -470,7 +470,7 @@ class PipelineFastTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.3809, 0.5444, 0.4395, 0.413, 0.576, 0.4224, 0.4912, 0.5635, 0.422])
+        expected_slice = np.array([0.4731, 0.5346, 0.4531, 0.6251, 0.5446, 0.4057, 0.5527, 0.5896, 0.5153])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 

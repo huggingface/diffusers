@@ -151,10 +151,10 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
 
         output_slice = output[0, -1, -3:, -3:].flatten().cpu()
         # fmt: off
-        expected_output_slice = torch.tensor([-13.3258, -20.1100, -15.9873, -17.6617, -23.0596, -17.9419, -13.3675, -16.1889, -12.3800])
+        expected_output_slice = torch.tensor([-13.3282, -20.1112, -15.9874, -17.6623, -23.0594, -17.9414, -13.3670, -16.1882, -12.3795])
         # fmt: on
 
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-2))
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
 
 
 #    TODO(Patrick) - Re-add this test after having cleaned up LDM
