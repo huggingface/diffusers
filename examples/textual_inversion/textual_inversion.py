@@ -142,9 +142,6 @@ def parse_args():
         help="The name of the repository to keep in sync with the local `output_dir`.",
     )
     parser.add_argument(
-        "--hub_private_repo", action="store_true", help="Whether the model repository is private or not."
-    )
-    parser.add_argument(
         "--logging_dir",
         type=str,
         default="logs",
@@ -558,9 +555,7 @@ def main():
             vae=vae,
             unet=unet,
             tokenizer=tokenizer,
-            scheduler=PNDMScheduler.from_config(
-                "CompVis/stable-diffusion-v1-4", subfolder="scheduler", use_auth_token=True
-            ),
+            scheduler=PNDMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True),
             safety_checker=StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker"),
             feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
         )
