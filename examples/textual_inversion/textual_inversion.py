@@ -135,8 +135,12 @@ class TextualInversionDataset(Dataset):
         text = random.choice(self.templates).format(placeholder_string)
 
         example["input_ids"] = self.tokenizer(
-            text, padding="max_length", truncation=True, max_length=77, return_tensors="pt"
-        ).input_ids
+            text,
+            padding="max_length",
+            truncation=True,
+            max_length=self.tokenizer.model_max_length,
+            return_tensors="pt",
+        ).input_ids[0]
 
         # default to score-sde preprocessing
         img = np.array(image).astype(np.uint8)
@@ -334,14 +338,12 @@ def main(args):
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # Get the text embedding for conditioning
-                input_ids = batch["input_ids"].reshape(bsz, -1)
-                encoder_hidden_states = text_encoder(input_ids)[0]
+                encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
                 # Predict the noise residual
                 noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states)["sample"]
 
                 loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
-
                 accelerator.backward(loss)
 
                 # Zero out the gradients for all token embeddings except the newly added
