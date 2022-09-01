@@ -426,9 +426,7 @@ class PipelineFastTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array(
-            [0.4491765, 0.3864561, 0.4221732, 0.5853665, 0.51392734, 0.4378748, 0.41928145, 0.48004565, 0.42176163]
-        )
+        expected_slice = np.array([0.4492, 0.3865, 0.4222, 0.5854, 0.5139, 0.4379, 0.4193, 0.48, 0.4218])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_inpaint(self):
