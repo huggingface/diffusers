@@ -73,7 +73,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
     ):
-
         if isinstance(prompt, str):
             batch_size = 1
         elif isinstance(prompt, list):

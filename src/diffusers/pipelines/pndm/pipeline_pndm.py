@@ -23,8 +23,8 @@ from ...models import UNet2DModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import PNDMScheduler
 
-class PNDMPipeline(DiffusionPipeline):
 
+class PNDMPipeline(DiffusionPipeline):
     unet: UNet2DModel
     scheduler: PNDMScheduler
 
@@ -35,11 +35,11 @@ class PNDMPipeline(DiffusionPipeline):
 
     @torch.no_grad()
     def __call__(
-        self, 
-        batch_size: int = 1, 
-        num_inference_steps: int = 50, 
-        generator: Optional[torch.Generator] = None, 
-        output_type: Optional[str] = "pil", 
+        self,
+        batch_size: int = 1,
+        num_inference_steps: int = 50,
+        generator: Optional[torch.Generator] = None,
+        output_type: Optional[str] = "pil",
         **kwargs,
     ):
         # For more information on the sampling method you can take a look at Algorithm 2 of

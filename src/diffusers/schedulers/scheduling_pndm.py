@@ -58,7 +58,6 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         tensor_format="pt",
         skip_prk_steps=False,
     ):
-
         if beta_schedule == "linear":
             self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
         elif beta_schedule == "scaled_linear":
