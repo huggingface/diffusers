@@ -273,7 +273,9 @@ class PipelineFastTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 128, 128, 3)
-        expected_slice = np.array([0.6143, 0.523, 0.5845, 0.66, 0.414, 0.609, 0.4082, 0.3987, 0.46])
+        expected_slice = np.array(
+            [0.51117265, 0.4692378, 0.471545, 0.52064794, 0.48938107, 0.51137197, 0.5095732, 0.49317074, 0.47548753]
+        )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_pndm(self):
@@ -307,7 +309,9 @@ class PipelineFastTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 128, 128, 3)
-        expected_slice = np.array([0.6006, 0.5264, 0.5884, 0.6357, 0.4143, 0.5957, 0.413, 0.3933, 0.446])
+        expected_slice = np.array(
+            [0.49372694, 0.46493652, 0.4715539, 0.5145186, 0.4889127, 0.5129697, 0.51298773, 0.49048442, 0.47375545]
+        )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_k_lms(self):
@@ -432,7 +436,9 @@ class PipelineFastTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.46, 0.4055, 0.375, 0.4458, 0.4316, 0.4792, 0.432, 0.424, 0.4822])
+        expected_slice = np.array(
+            [0.4491765, 0.3864561, 0.4221732, 0.5853665, 0.51392734, 0.4378748, 0.41928145, 0.48004565, 0.42176163]
+        )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_inpaint(self):
