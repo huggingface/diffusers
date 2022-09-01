@@ -18,8 +18,8 @@ import unittest
 import torch
 
 from diffusers import DDIMScheduler, DDPMScheduler, UNet2DModel
-from diffusers.testing_utils import slow, torch_device
-from diffusers.training_utils import enable_full_determinism, set_seed
+from diffusers.testing_utils import slow
+from diffusers.training_utils import set_seed
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -34,8 +34,7 @@ class TrainingTests(unittest.TestCase):
 
     @slow
     def test_training_step_equality(self):
-        enable_full_determinism(0)
-
+        device = "cpu"  # ensure full determinism without setting the CUBLAS_WORKSPACE_CONFIG env variable
         ddpm_scheduler = DDPMScheduler(
             num_train_timesteps=1000,
             beta_start=0.0001,
@@ -57,13 +56,13 @@ class TrainingTests(unittest.TestCase):
 
         # shared batches for DDPM and DDIM
         set_seed(0)
-        clean_images = [torch.randn((4, 3, 32, 32)).clip(-1, 1).to(torch_device) for _ in range(4)]
-        noise = [torch.randn((4, 3, 32, 32)).to(torch_device) for _ in range(4)]
-        timesteps = [torch.randint(0, 1000, (4,)).long().to(torch_device) for _ in range(4)]
+        clean_images = [torch.randn((4, 3, 32, 32)).clip(-1, 1).to(device) for _ in range(4)]
+        noise = [torch.randn((4, 3, 32, 32)).to(device) for _ in range(4)]
+        timesteps = [torch.randint(0, 1000, (4,)).long().to(device) for _ in range(4)]
 
         # train with a DDPM scheduler
         model, optimizer = self.get_model_optimizer(resolution=32)
-        model.train().to(torch_device)
+        model.train().to(device)
         for i in range(4):
             optimizer.zero_grad()
             ddpm_noisy_images = ddpm_scheduler.add_noise(clean_images[i], noise[i], timesteps[i])
@@ -75,7 +74,7 @@ class TrainingTests(unittest.TestCase):
 
         # recreate the model and optimizer, and retry with DDIM
         model, optimizer = self.get_model_optimizer(resolution=32)
-        model.train().to(torch_device)
+        model.train().to(device)
         for i in range(4):
             optimizer.zero_grad()
             ddim_noisy_images = ddim_scheduler.add_noise(clean_images[i], noise[i], timesteps[i])

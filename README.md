@@ -41,13 +41,64 @@ See the [model card](https://huggingface.co/CompVis/stable-diffusion) for more i
 
 You need to accept the model license before downloading or using the Stable Diffusion weights. Please, visit the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-3), read the license and tick the checkbox if you agree. You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section](https://huggingface.co/docs/hub/security-tokens) of the documentation.
 
+
 ### Text-to-Image generation with Stable Diffusion
 
 ```python
 # make sure you're logged in with `huggingface-cli login`
 from torch import autocast
-import torch
-from diffusers import StableDiffusionPipeline, LMSDiscreteScheduler
+from diffusers import StableDiffusionPipeline
+
+pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+pipe = pipe.to("cuda")
+
+prompt = "a photo of an astronaut riding a horse on mars"
+with autocast("cuda"):
+    image = pipe(prompt)["sample"][0]  
+```
+
+**Note**: If you don't want to use the token, you can also simply download the model weights
+(after having [accepted the license](https://huggingface.co/CompVis/stable-diffusion-v1-4)) and pass
+the path to the local folder to the `StableDiffusionPipeline`.
+
+```
+git lfs install
+git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
+```
+
+Assuming the folder is stored locally under `./stable-diffusion-v1-4`, you can also run stable diffusion
+without requiring an authentication token:
+
+```python
+pipe = StableDiffusionPipeline.from_pretrained("./stable-diffusion-v1-4")
+pipe = pipe.to("cuda")
+
+prompt = "a photo of an astronaut riding a horse on mars"
+with autocast("cuda"):
+    image = pipe(prompt)["sample"][0]  
+```
+
+If you are limited by GPU memory, you might want to consider using the model in `fp16`.
+
+```python
+pipe = StableDiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4", 
+    revision="fp16", 
+    torch_dtype=torch.float16,
+    use_auth_token=True
+)
+pipe = pipe.to("cuda")
+
+prompt = "a photo of an astronaut riding a horse on mars"
+with autocast("cuda"):
+    image = pipe(prompt)["sample"][0]  
+```
+
+Finally, if you wish to use a different scheduler, you can simply instantiate
+it before the pipeline and pass it to `from_pretrained`.
+    
+```python
+from diffusers import LMSDiscreteScheduler
 
 lms = LMSDiscreteScheduler(
     beta_start=0.00085, 
@@ -86,12 +137,15 @@ from diffusers import StableDiffusionImg2ImgPipeline
 
 # load the pipeline
 device = "cuda"
+model_id_or_path = "CompVis/stable-diffusion-v1-4"
 pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4",
+    model_id_or_path,
     revision="fp16", 
     torch_dtype=torch.float16,
     use_auth_token=True
 )
+# or download via git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
+# and pass `model_id_or_path="./stable-diffusion-v1-4"` without having to use `use_auth_token=True`.
 pipe = pipe.to(device)
 
 # let's download an initial image
@@ -135,12 +189,15 @@ init_image = download_image(img_url).resize((512, 512))
 mask_image = download_image(mask_url).resize((512, 512))
 
 device = "cuda"
+model_id_or_path = "CompVis/stable-diffusion-v1-4"
 pipe = StableDiffusionInpaintPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4",
+    model_id_or_path,
     revision="fp16", 
     torch_dtype=torch.float16,
     use_auth_token=True
 )
+# or download via git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
+# and pass `model_id_or_path="./stable-diffusion-v1-4"` without having to use `use_auth_token=True`.
 pipe = pipe.to(device)
 
 prompt = "a cat sitting on a bench"
