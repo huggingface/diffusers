@@ -85,7 +85,7 @@ class TextualInversionDataset(Dataset):
         self,
         data_root,
         tokenizer,
-        style="style",  # [concept, style] TODO: better names ?
+        learnable_property="object",  # [object, style]
         size=512,
         repeats=100,
         interpolation="bicubic",
@@ -97,7 +97,7 @@ class TextualInversionDataset(Dataset):
 
         self.data_root = data_root
         self.tokenizer = tokenizer
-        self.style = style
+        self.learnable_property = learnable_property
         self.size = size
         self.placeholder_token = placeholder_token
         self.center_crop = center_crop
@@ -118,7 +118,7 @@ class TextualInversionDataset(Dataset):
             "lanczos": PIL.Image.LANCZOS,
         }[interpolation]
 
-        self.templates = imagenet_style_templates_small if style == "style" else imagenet_templates_small
+        self.templates = imagenet_style_templates_small if learnable_property == "style" else imagenet_templates_small
         self.flip_transform = transforms.RandomHorizontalFlip(p=self.flip_p)
 
     def __len__(self):
@@ -259,7 +259,7 @@ def main(args):
         size=args.resolution,
         placeholder_token=args.placeholder_token,
         repeats=args.repeats,
-        style=args.style,
+        learnable_property=args.learnable_property,
         center_crop=args.center_crop,
         set="train",
     )
@@ -427,7 +427,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--initializer_token", type=str, default=None, required=True, help="A token to use as initializer word."
     )
-    parser.add_argument("--style", type=str, default="concept", help="Choose between 'concept' and 'style'")
+    parser.add_argument("--learnable_property", type=str, default="object", help="Choose between 'object' and 'style'")
     parser.add_argument("--repeats", type=int, default=100, help="How many times to repeat the training data.")
     parser.add_argument(
         "--output_dir",
