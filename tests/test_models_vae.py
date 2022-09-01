@@ -90,8 +90,8 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
             model.config.sample_size,
             model.config.sample_size,
             generator=generator,
-            device=torch_device,
         )
+        image = image.to(torch_device)
         with torch.no_grad():
             output = model(image, sample_posterior=True, generator=generator)
 
