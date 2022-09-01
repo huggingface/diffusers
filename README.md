@@ -41,12 +41,13 @@ conda install -c conda-forge diffusers
 
 ## Contributing
 
-We ❤️  contributions from the open-source communities. If you want to contribute to this library, please have a look at our [Contribution guide](https://github.com/huggingface/diffusers/blob/main/CONTRIBUTING.md) and look out for issues to contribute to:
+We ❤️  contributions from the open-source community! 
+If you want to contribute to this library, please check out (or at least pretend to) our [Contribution guide](https://github.com/huggingface/diffusers/blob/main/CONTRIBUTING.md) and look out for issues to contribute to:
 - See [Good first issues](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) for general opportunities to contribute
 - See [New model/pipeline](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22) to contribute exciting new diffusion models / diffusion pipelines
 - See [New scheduler](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+scheduler%22)
 
-Also, say 👋 in our public Diffusers channel on Discord <a href="https://discord.gg/G7tWnz98XR"><img alt="Join us on Discord" src="https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=white"></a>.
+Also, say 👋 in our public Discord channel <a href="https://discord.gg/G7tWnz98XR"><img alt="Join us on Discord" src="https://img.shields.io/discord/823813159592001537?color=5865F2&logo=discord&logoColor=white"></a> to meet other contributors 🤗.
 
 ## Quickstart
 
