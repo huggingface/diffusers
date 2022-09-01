@@ -12,6 +12,8 @@ The summary of the model is the following:
 
 - Stable Diffusion has the same architecture as [Latent Diffusion](https://arxiv.org/abs/2112.10752) but uses a frozen CLIP Text Encoder instead of training the text encoder jointly with the diffusion model.
 - An in-detail explanation of the Stable Diffusion model can be found under [Stable Diffusion with 🧨 Diffusers](https://huggingface.co/blog/stable_diffusion).
+- If you don't want to rely on the Hugging Face Hub and having to pass a authentification token, you can 
+download the weights with `git lfs install; git clone https://huggingface.co/CompVis/stable-diffusion-v1-4` and instead pass the local path to the cloned folder to `from_pretrained` as shown below.
 - Stable Diffusion can work with a variety of different samplers as is shown below.
 
 ## Available Pipelines:
@@ -23,6 +25,35 @@ The summary of the model is the following:
 | [pipeline_stable_diffusion_inpaint](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_inpaint.py) | *Text-Guided Image Inpainting* | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/patil-suraj/Notebooks/blob/master/in_painting_with_stable_diffusion_using_diffusers.ipynb)
 
 ## Examples:
+
+### Using Stable Diffusion without being logged into the Hub.
+
+If you want to download the model weights using a single Python line, you need to pass the token
+to `use_auth_token` or be logged in via `huggingface-cli login`. 
+For more information on access tokens, please refer to [this section](https://huggingface.co/docs/hub/security-tokens) of the documentation.
+
+Assuming your token is stored under YOUR_TOKEN, you can download the stable diffusion pipeline as follows:
+
+```python
+from diffusers import DiffusionPipeline
+
+pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=YOUR_TOKEN)
+```
+
+This however can make it difficult to build applications on top of `diffusers` as you will always have to pass the token around. A potential way to solve this issue is by downloading the weights to a local path `"./stable-diffusion-v1-4"`:
+
+```
+git lfs install
+git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
+```
+
+and simply passing the local path to `from_pretrained`:
+
+```python
+from diffusers import StableDiffusionPipeline
+
+pipe = StableDiffusionPipeline.from_pretrained("./stable-diffusion-v1-4")
+```
 
 ### Text-to-Image with default PLMS scheduler
 
