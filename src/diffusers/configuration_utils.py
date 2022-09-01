@@ -152,6 +152,7 @@ class ConfigMixin:
                     use_auth_token=use_auth_token,
                     user_agent=user_agent,
                     subfolder=subfolder,
+                    revision=revision,
                 )
 
             except RepositoryNotFoundError:
