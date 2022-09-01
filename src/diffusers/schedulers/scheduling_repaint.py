@@ -151,20 +151,13 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         prev_known_part = self.sqrt(alpha_prod) * original_sample + self.sqrt(1 - alpha_prod) * noise
 
         # add noise to the unknown pixels of the image
-        posterior_mean_coef1 = (
-                beta * self.sqrt(alpha_prod_prev) /
-                (1.0 - alpha_prod)
-        )
-        posterior_mean_coef2 = (
-                (1.0 - alpha_prod_prev)
-                * self.sqrt(alpha)
-                / (1.0 - alpha_prod)
-        )
+        posterior_mean_coef1 = beta * self.sqrt(alpha_prod_prev) / (1.0 - alpha_prod)
+        posterior_mean_coef2 = (1.0 - alpha_prod_prev) * self.sqrt(alpha) / (1.0 - alpha_prod)
         prev_unknown_part = posterior_mean_coef1 * pred_original_sample + posterior_mean_coef2 * sample
         prev_unknown_part = prev_unknown_part + std_dev * noise
-        #pred_sample_direction = self.sqrt(1 - alpha_prod_prev - std_dev ** 2) * model_output
-        #prev_unknown_part = self.sqrt(alpha_prod_prev) * pred_original_sample + pred_sample_direction
-        #prev_unknown_part = prev_unknown_part + std_dev * noise
+        # pred_sample_direction = self.sqrt(1 - alpha_prod_prev - std_dev ** 2) * model_output
+        # prev_unknown_part = self.sqrt(alpha_prod_prev) * pred_original_sample + pred_sample_direction
+        # prev_unknown_part = prev_unknown_part + std_dev * noise
 
         prev_sample = mask * prev_known_part + (1 - mask) * prev_unknown_part
 
