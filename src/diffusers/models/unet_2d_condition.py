@@ -134,7 +134,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             timesteps = timesteps[None].to(sample.device)
 
         # broadcast to batch dimension
-        timesteps = timesteps.broadcast_to(sample.shape[0])
+        timesteps = timesteps * torch.ones(sample.shape[0], dtype=timesteps.dtype)
 
         t_emb = self.time_proj(timesteps)
         emb = self.time_embedding(t_emb)
