@@ -15,11 +15,15 @@
 # limitations under the License.
 
 import importlib
+import inspect
 import os
 from typing import Optional, Union
 
+import torch
+
 from huggingface_hub import snapshot_download
 from PIL import Image
+from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
 from .utils import DIFFUSERS_CACHE, logging
@@ -41,6 +45,7 @@ LOADABLE_CLASSES = {
         "PreTrainedTokenizer": ["save_pretrained", "from_pretrained"],
         "PreTrainedTokenizerFast": ["save_pretrained", "from_pretrained"],
         "PreTrainedModel": ["save_pretrained", "from_pretrained"],
+        "FeatureExtractionMixin": ["save_pretrained", "from_pretrained"],
     },
 }
 
@@ -62,9 +67,9 @@ class DiffusionPipeline(ConfigMixin):
             library = module.__module__.split(".")[0]
 
             # check if the module is a pipeline module
-            pipeline_file = module.__module__.split(".")[-1]
             pipeline_dir = module.__module__.split(".")[-2]
-            is_pipeline_module = pipeline_file == "pipeline_" + pipeline_dir and hasattr(pipelines, pipeline_dir)
+            path = module.__module__.split(".")
+            is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
 
             # if library is not in LOADABLE_CLASSES, then it is a custom module.
             # Or if it's a pipeline module, then the module is inside the pipeline
@@ -111,6 +116,26 @@ class DiffusionPipeline(ConfigMixin):
             save_method = getattr(sub_model, save_method_name)
             save_method(os.path.join(save_directory, pipeline_component_name))
 
+    def to(self, torch_device: Optional[Union[str, torch.device]] = None):
+        if torch_device is None:
+            return self
+
+        module_names, _ = self.extract_init_dict(dict(self.config))
+        for name in module_names.keys():
+            module = getattr(self, name)
+            if isinstance(module, torch.nn.Module):
+                module.to(torch_device)
+        return self
+
+    @property
+    def device(self) -> torch.device:
+        module_names, _ = self.extract_init_dict(dict(self.config))
+        for name in module_names.keys():
+            module = getattr(self, name)
+            if isinstance(module, torch.nn.Module):
+                return module.device
+        return torch.device("cpu")
+
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
         r"""
@@ -122,6 +147,7 @@ class DiffusionPipeline(ConfigMixin):
         local_files_only = kwargs.pop("local_files_only", False)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
+        torch_dtype = kwargs.pop("torch_dtype", None)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -148,6 +174,12 @@ class DiffusionPipeline(ConfigMixin):
             diffusers_module = importlib.import_module(cls.__module__.split(".")[0])
             pipeline_class = getattr(diffusers_module, config_dict["_class_name"])
 
+        # some modules can be passed directly to the init
+        # in this case they are already instantiated in `kwargs`
+        # extract them here
+        expected_modules = set(inspect.signature(pipeline_class.__init__).parameters.keys())
+        passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
+
         init_dict, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
         init_kwargs = {}
@@ -158,8 +190,36 @@ class DiffusionPipeline(ConfigMixin):
         # 3. Load each module in the pipeline
         for name, (library_name, class_name) in init_dict.items():
             is_pipeline_module = hasattr(pipelines, library_name)
+            loaded_sub_model = None
+
             # if the model is in a pipeline module, then we load it from the pipeline
-            if is_pipeline_module:
+            if name in passed_class_obj:
+                # 1. check that passed_class_obj has correct parent class
+                if not is_pipeline_module:
+                    library = importlib.import_module(library_name)
+                    class_obj = getattr(library, class_name)
+                    importable_classes = LOADABLE_CLASSES[library_name]
+                    class_candidates = {c: getattr(library, c) for c in importable_classes.keys()}
+
+                    expected_class_obj = None
+                    for class_name, class_candidate in class_candidates.items():
+                        if issubclass(class_obj, class_candidate):
+                            expected_class_obj = class_candidate
+
+                    if not issubclass(passed_class_obj[name].__class__, expected_class_obj):
+                        raise ValueError(
+                            f"{passed_class_obj[name]} is of type: {type(passed_class_obj[name])}, but should be"
+                            f" {expected_class_obj}"
+                        )
+                else:
+                    logger.warn(
+                        f"You have passed a non-standard module {passed_class_obj[name]}. We cannot verify whether it"
+                        " has the correct type"
+                    )
+
+                # set passed class object
+                loaded_sub_model = passed_class_obj[name]
+            elif is_pipeline_module:
                 pipeline_module = getattr(pipelines, library_name)
                 class_obj = getattr(pipeline_module, class_name)
                 importable_classes = ALL_IMPORTABLE_CLASSES
@@ -171,23 +231,28 @@ class DiffusionPipeline(ConfigMixin):
                 importable_classes = LOADABLE_CLASSES[library_name]
                 class_candidates = {c: getattr(library, c) for c in importable_classes.keys()}
 
-            load_method_name = None
-            for class_name, class_candidate in class_candidates.items():
-                if issubclass(class_obj, class_candidate):
-                    load_method_name = importable_classes[class_name][1]
+            if loaded_sub_model is None:
+                load_method_name = None
+                for class_name, class_candidate in class_candidates.items():
+                    if issubclass(class_obj, class_candidate):
+                        load_method_name = importable_classes[class_name][1]
 
-            load_method = getattr(class_obj, load_method_name)
+                load_method = getattr(class_obj, load_method_name)
 
-            # check if the module is in a subdirectory
-            if os.path.isdir(os.path.join(cached_folder, name)):
-                loaded_sub_model = load_method(os.path.join(cached_folder, name))
-            else:
-                # else load from the root directory
-                loaded_sub_model = load_method(cached_folder)
+                loading_kwargs = {}
+                if issubclass(class_obj, torch.nn.Module):
+                    loading_kwargs["torch_dtype"] = torch_dtype
+
+                # check if the module is in a subdirectory
+                if os.path.isdir(os.path.join(cached_folder, name)):
+                    loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
+                else:
+                    # else load from the root directory
+                    loaded_sub_model = load_method(cached_folder, **loading_kwargs)
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
-        # 5. Instantiate the pipeline
+        # 4. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
         return model
 
@@ -202,3 +267,16 @@ class DiffusionPipeline(ConfigMixin):
         pil_images = [Image.fromarray(image) for image in images]
 
         return pil_images
+
+    def progress_bar(self, iterable):
+        if not hasattr(self, "_progress_bar_config"):
+            self._progress_bar_config = {}
+        elif not isinstance(self._progress_bar_config, dict):
+            raise ValueError(
+                f"`self._progress_bar_config` should be of type `dict`, but is {type(self._progress_bar_config)}."
+            )
+
+        return tqdm(iterable, **self._progress_bar_config)
+
+    def set_progress_bar_config(self, **kwargs):
+        self._progress_bar_config = kwargs

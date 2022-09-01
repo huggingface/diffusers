@@ -426,15 +426,17 @@ class PNDMSchedulerTest(SchedulerCommonTest):
             scheduler = scheduler_class(**scheduler_config)
             scheduler.set_timesteps(num_inference_steps)
 
-            # copy over dummy past residuals
+            # copy over dummy past residuals (must be after setting timesteps)
             scheduler.ets = dummy_past_residuals[:]
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_config(tmpdirname)
                 # copy over dummy past residuals
-                new_scheduler.ets = dummy_past_residuals[:]
                 new_scheduler.set_timesteps(num_inference_steps)
+
+                # copy over dummy past residual (must be after setting timesteps)
+                new_scheduler.ets = dummy_past_residuals[:]
 
             output = scheduler.step_prk(residual, time_step, sample, **kwargs)["prev_sample"]
             new_output = new_scheduler.step_prk(residual, time_step, sample, **kwargs)["prev_sample"]
@@ -461,18 +463,18 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(tensor_format="np", **scheduler_config)
-            # copy over dummy past residuals
-            scheduler.ets = dummy_past_residuals[:]
 
             scheduler_pt = scheduler_class(tensor_format="pt", **scheduler_config)
-            # copy over dummy past residuals
-            scheduler_pt.ets = dummy_past_residuals_pt[:]
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 scheduler.set_timesteps(num_inference_steps)
                 scheduler_pt.set_timesteps(num_inference_steps)
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
+
+            # copy over dummy past residuals (must be done after set_timesteps)
+            scheduler.ets = dummy_past_residuals[:]
+            scheduler_pt.ets = dummy_past_residuals_pt[:]
 
             output = scheduler.step_prk(residual, 1, sample, **kwargs)["prev_sample"]
             output_pt = scheduler_pt.step_prk(residual_pt, 1, sample_pt, **kwargs)["prev_sample"]
@@ -482,6 +484,35 @@ class PNDMSchedulerTest(SchedulerCommonTest):
             output_pt = scheduler_pt.step_plms(residual_pt, 1, sample_pt, **kwargs)["prev_sample"]
 
             assert np.sum(np.abs(output - output_pt.numpy())) < 1e-4, "Scheduler outputs are not identical"
+
+    def test_set_format(self):
+        kwargs = dict(self.forward_default_kwargs)
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
+
+        for scheduler_class in self.scheduler_classes:
+            scheduler_config = self.get_scheduler_config()
+            scheduler = scheduler_class(tensor_format="np", **scheduler_config)
+            scheduler_pt = scheduler_class(tensor_format="pt", **scheduler_config)
+
+            if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
+                scheduler.set_timesteps(num_inference_steps)
+                scheduler_pt.set_timesteps(num_inference_steps)
+
+            for key, value in vars(scheduler).items():
+                # we only allow `ets` attr to be a list
+                assert not isinstance(value, list) or key in [
+                    "ets"
+                ], f"Scheduler is not correctly set to np format, the attribute {key} is {type(value)}"
+
+            # check if `scheduler.set_format` does convert correctly attrs to pt format
+            for key, value in vars(scheduler_pt).items():
+                # we only allow `ets` attr to be a list
+                assert not isinstance(value, list) or key in [
+                    "ets"
+                ], f"Scheduler is not correctly set to pt format, the attribute {key} is {type(value)}"
+                assert not isinstance(
+                    value, np.ndarray
+                ), f"Scheduler is not correctly set to pt format, the attribute {key} is {type(value)}"
 
     def test_step_shape(self):
         kwargs = dict(self.forward_default_kwargs)
@@ -494,14 +525,15 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
             sample = self.dummy_sample
             residual = 0.1 * sample
-            # copy over dummy past residuals
-            dummy_past_residuals = [residual + 0.2, residual + 0.15, residual + 0.1, residual + 0.05]
-            scheduler.ets = dummy_past_residuals[:]
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 scheduler.set_timesteps(num_inference_steps)
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
+
+            # copy over dummy past residuals (must be done after set_timesteps)
+            dummy_past_residuals = [residual + 0.2, residual + 0.15, residual + 0.1, residual + 0.05]
+            scheduler.ets = dummy_past_residuals[:]
 
             output_0 = scheduler.step_prk(residual, 0, sample, **kwargs)["prev_sample"]
             output_1 = scheduler.step_prk(residual, 1, sample, **kwargs)["prev_sample"]
@@ -564,8 +596,8 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 199.1169) < 1e-2
-        assert abs(result_mean.item() - 0.2593) < 1e-3
+        assert abs(result_sum.item() - 428.8788) < 1e-2
+        assert abs(result_mean.item() - 0.5584) < 1e-3
 
 
 class ScoreSdeVeSchedulerTest(unittest.TestCase):

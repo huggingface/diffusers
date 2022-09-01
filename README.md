@@ -20,21 +20,206 @@ as a modular toolbox for inference and training of diffusion models.
 
 More precisely, 🤗 Diffusers offers:
 
-- State-of-the-art diffusion pipelines that can be run in inference with just a couple of lines of code (see [src/diffusers/pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines)).
+- State-of-the-art diffusion pipelines that can be run in inference with just a couple of lines of code (see [src/diffusers/pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines)). Check [this overview](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines/README.md#pipelines-summary) to see all supported pipelines and their corresponding official papers.
 - Various noise schedulers that can be used interchangeably for the prefered speed vs. quality trade-off in inference (see [src/diffusers/schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers)).
 - Multiple types of models, such as UNet, can be used as building blocks in an end-to-end diffusion system (see [src/diffusers/models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models)).
-- Training examples to show how to train the most popular diffusion models (see [examples](https://github.com/huggingface/diffusers/tree/main/examples)).
+- Training examples to show how to train the most popular diffusion model tasks (see [examples](https://github.com/huggingface/diffusers/tree/main/examples), *e.g.* [unconditional-image-generation](https://github.com/huggingface/diffusers/tree/main/examples/unconditional_image_generation)).
 
 ## Quickstart
 
 In order to get started, we recommend taking a look at two notebooks:
 
-- The [Getting started with Diffusers](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb) notebook, which showcases an end-to-end example of usage for diffusion models, schedulers and pipelines.
+- The [Getting started with Diffusers](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/diffusers_intro.ipynb) notebook, which showcases an end-to-end example of usage for diffusion models, schedulers and pipelines.
   Take a look at this notebook to learn how to use the pipeline abstraction, which takes care of everything (model, scheduler, noise handling) for you, and also to understand each independent building block in the library.
-- The [Training a diffusers model](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb) notebook summarizes diffuser model training methods. This notebook takes a step-by-step approach to training your
-  diffuser model on an image dataset, with explanatory graphics.
+- The [Training a diffusers model](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb) notebook summarizes diffusion models training methods. This notebook takes a step-by-step approach to training your
+  diffusion models on an image dataset, with explanatory graphics. 
+  
+## **New** Stable Diffusion is now fully compatible with `diffusers`!  
+
+Stable Diffusion is a text-to-image latent diffusion model created by the researchers and engineers from [CompVis](https://github.com/CompVis), [Stability AI](https://stability.ai/) and [LAION](https://laion.ai/). It's trained on 512x512 images from a subset of the [LAION-5B](https://laion.ai/blog/laion-5b/) database. This model uses a frozen CLIP ViT-L/14 text encoder to condition the model on text prompts. With its 860M UNet and 123M text encoder, the model is relatively lightweight and runs on a GPU with at least 10GB VRAM.
+See the [model card](https://huggingface.co/CompVis/stable-diffusion) for more information.
+
+You need to accept the model license before downloading or using the Stable Diffusion weights. Please, visit the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-3), read the license and tick the checkbox if you agree. You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section](https://huggingface.co/docs/hub/security-tokens) of the documentation.
+
+
+### Text-to-Image generation with Stable Diffusion
+
+```python
+# make sure you're logged in with `huggingface-cli login`
+from torch import autocast
+from diffusers import StableDiffusionPipeline
+
+pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+pipe = pipe.to("cuda")
+
+prompt = "a photo of an astronaut riding a horse on mars"
+with autocast("cuda"):
+    image = pipe(prompt)["sample"][0]  
+```
+
+**Note**: If you don't want to use the token, you can also simply download the model weights
+(after having [accepted the license](https://huggingface.co/CompVis/stable-diffusion-v1-4)) and pass
+the path to the local folder to the `StableDiffusionPipeline`.
+
+```
+git lfs install
+git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
+```
+
+Assuming the folder is stored locally under `./stable-diffusion-v1-4`, you can also run stable diffusion
+without requiring an authentication token:
+
+```python
+pipe = StableDiffusionPipeline.from_pretrained("./stable-diffusion-v1-4")
+pipe = pipe.to("cuda")
+
+prompt = "a photo of an astronaut riding a horse on mars"
+with autocast("cuda"):
+    image = pipe(prompt)["sample"][0]  
+```
+
+If you are limited by GPU memory, you might want to consider using the model in `fp16`.
+
+```python
+pipe = StableDiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4", 
+    revision="fp16", 
+    torch_dtype=torch.float16,
+    use_auth_token=True
+)
+pipe = pipe.to("cuda")
+
+prompt = "a photo of an astronaut riding a horse on mars"
+with autocast("cuda"):
+    image = pipe(prompt)["sample"][0]  
+```
+
+Finally, if you wish to use a different scheduler, you can simply instantiate
+it before the pipeline and pass it to `from_pretrained`.
+    
+```python
+from diffusers import LMSDiscreteScheduler
+
+lms = LMSDiscreteScheduler(
+    beta_start=0.00085, 
+    beta_end=0.012, 
+    beta_schedule="scaled_linear"
+)
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4", 
+    revision="fp16", 
+    torch_dtype=torch.float16,
+    scheduler=lms,
+    use_auth_token=True
+)
+pipe = pipe.to("cuda")
+
+prompt = "a photo of an astronaut riding a horse on mars"
+with autocast("cuda"):
+    image = pipe(prompt)["sample"][0]  
+    
+image.save("astronaut_rides_horse.png")
+```
+
+### Image-to-Image text-guided generation with Stable Diffusion
+
+The `StableDiffusionImg2ImgPipeline` lets you pass a text prompt and an initial image to condition the generation of new images.
+
+```python
+from torch import autocast
+import requests
+import torch
+from PIL import Image
+from io import BytesIO
+
+from diffusers import StableDiffusionImg2ImgPipeline
+
+# load the pipeline
+device = "cuda"
+model_id_or_path = "CompVis/stable-diffusion-v1-4"
+pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
+    model_id_or_path,
+    revision="fp16", 
+    torch_dtype=torch.float16,
+    use_auth_token=True
+)
+# or download via git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
+# and pass `model_id_or_path="./stable-diffusion-v1-4"` without having to use `use_auth_token=True`.
+pipe = pipe.to(device)
+
+# let's download an initial image
+url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
+
+response = requests.get(url)
+init_image = Image.open(BytesIO(response.content)).convert("RGB")
+init_image = init_image.resize((768, 512))
+
+prompt = "A fantasy landscape, trending on artstation"
+
+with autocast("cuda"):
+    images = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5)["sample"]
+
+images[0].save("fantasy_landscape.png")
+```
+You can also run this example on colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/patil-suraj/Notebooks/blob/master/image_2_image_using_diffusers.ipynb)
+
+### In-painting using Stable Diffusion
+
+The `StableDiffusionInpaintPipeline` lets you edit specific parts of an image by providing a mask and text prompt.
+
+```python
+from io import BytesIO
+
+from torch import autocast
+import torch
+import requests
+import PIL
+
+from diffusers import StableDiffusionInpaintPipeline
+
+def download_image(url):
+    response = requests.get(url)
+    return PIL.Image.open(BytesIO(response.content)).convert("RGB")
+
+img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+
+init_image = download_image(img_url).resize((512, 512))
+mask_image = download_image(mask_url).resize((512, 512))
+
+device = "cuda"
+model_id_or_path = "CompVis/stable-diffusion-v1-4"
+pipe = StableDiffusionInpaintPipeline.from_pretrained(
+    model_id_or_path,
+    revision="fp16", 
+    torch_dtype=torch.float16,
+    use_auth_token=True
+)
+# or download via git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
+# and pass `model_id_or_path="./stable-diffusion-v1-4"` without having to use `use_auth_token=True`.
+pipe = pipe.to(device)
+
+prompt = "a cat sitting on a bench"
+with autocast("cuda"):
+    images = pipe(prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75)["sample"]
+
+images[0].save("cat_on_bench.png")
+```
+
+### Tweak prompts reusing seeds and latents
+
+You can generate your own latents to reproduce results, or tweak your prompt on a specific result you liked. [This notebook](https://github.com/pcuenca/diffusers-examples/blob/main/notebooks/stable-diffusion-seeds.ipynb) shows how to do it step by step. You can also run it in Google Colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/pcuenca/diffusers-examples/blob/main/notebooks/stable-diffusion-seeds.ipynb).
+
+
+For more details, check out [the Stable Diffusion notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/stable_diffusion.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/stable_diffusion.ipynb)
+and have a look into the [release notes](https://github.com/huggingface/diffusers/releases/tag/v0.2.0).
   
 ## Examples
+
+There are many ways to try running Diffusers! Here we outline code-focused tools (primarily using `DiffusionPipeline`s and Google Colab) and interactive web-tools.
+
+### Running Code
 
 If you want to run the code yourself 💻, you can try out:
 - [Text-to-Image Latent Diffusion](https://huggingface.co/CompVis/ldm-text2im-large-256)
@@ -74,12 +259,19 @@ image[0].save("ddpm_generated_image.png")
 - [Unconditional Latent Diffusion](https://huggingface.co/CompVis/ldm-celebahq-256)
 - [Unconditional Diffusion with continous scheduler](https://huggingface.co/google/ncsnpp-ffhq-1024)
 
+**Other Notebooks**:
+* [image-to-image generation with Stable Diffusion](https://colab.research.google.com/github/patil-suraj/Notebooks/blob/master/image_2_image_using_diffusers.ipynb) ![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg),
+* [tweak images via repeated Stable Diffusion seeds](https://colab.research.google.com/github/pcuenca/diffusers-examples/blob/main/notebooks/stable-diffusion-seeds.ipynb) ![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg),
+
+### Web Demos
 If you just want to play around with some web demos, you can try out the following 🚀 Spaces:
 | Model                          	| Hugging Face Spaces                                                                                                                                               	|
 |--------------------------------	|-------------------------------------------------------------------------------------------------------------------------------------------------------------------	|
 | Text-to-Image Latent Diffusion 	| [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/CompVis/text2img-latent-diffusion) 	|
 | Faces generator                	| [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/CompVis/celeba-latent-diffusion)    	|
 | DDPM with different schedulers 	| [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/fusing/celeba-diffusion)           	|
+| Conditional generation from sketch  	| [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/huggingface/diffuse-the-rest)           	|
+| Composable diffusion | [![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/Shuang59/Composable-Diffusion)           	|
 
 ## Definitions
 
@@ -120,11 +312,17 @@ The class provides functionality to compute previous image according to alpha, b
 
 ## Installation
 
+**With `pip`**
+    
 ```bash
-pip install diffusers  # should install diffusers 0.1.3
+pip install --upgrade diffusers  # should install diffusers 0.2.4
 ```
 
+**With `conda`**
 
+```sh
+conda install -c conda-forge diffusers
+```
 
 ## In the works
 

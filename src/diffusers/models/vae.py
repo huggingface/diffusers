@@ -40,6 +40,7 @@ class Encoder(nn.Module):
                 out_channels=output_channel,
                 add_downsample=not is_final_block,
                 resnet_eps=1e-6,
+                downsample_padding=0,
                 resnet_act_fn=act_fn,
                 attn_num_head_channels=None,
                 temb_channels=None,
@@ -292,8 +293,8 @@ class DiagonalGaussianDistribution(object):
         if self.deterministic:
             self.var = self.std = torch.zeros_like(self.mean).to(device=self.parameters.device)
 
-    def sample(self):
-        x = self.mean + self.std * torch.randn(self.mean.shape).to(device=self.parameters.device)
+    def sample(self, generator=None):
+        x = self.mean + self.std * torch.randn(self.mean.shape, generator=generator, device=self.parameters.device)
         return x
 
     def kl(self, other=None):

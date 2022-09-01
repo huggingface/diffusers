@@ -21,17 +21,10 @@ import torch
 from torch import Tensor, device
 
 from huggingface_hub import hf_hub_download
+from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
-from .utils import (
-    CONFIG_NAME,
-    DIFFUSERS_CACHE,
-    HUGGINGFACE_CO_RESOLVE_ENDPOINT,
-    EntryNotFoundError,
-    RepositoryNotFoundError,
-    RevisionNotFoundError,
-    logging,
-)
+from .utils import CONFIG_NAME, DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT, logging
 
 
 WEIGHTS_NAME = "diffusion_pytorch_model.bin"
@@ -322,6 +315,7 @@ class ModelMixin(torch.nn.Module):
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
         from_auto_class = kwargs.pop("_from_auto", False)
+        torch_dtype = kwargs.pop("torch_dtype", None)
         subfolder = kwargs.pop("subfolder", None)
 
         user_agent = {"file_type": "model", "framework": "pytorch", "from_auto_class": from_auto_class}
@@ -341,6 +335,14 @@ class ModelMixin(torch.nn.Module):
             subfolder=subfolder,
             **kwargs,
         )
+
+        if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
+            raise ValueError(
+                f"{torch_dtype} needs to be of type `torch.dtype`, e.g. `torch.float16`, but is {type(torch_dtype)}."
+            )
+        elif torch_dtype is not None:
+            model = model.to(torch_dtype)
+
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
         # This variable will flag if we're loading a sharded checkpoint. In this case the archive file is just the
         # Load model
@@ -371,6 +373,7 @@ class ModelMixin(torch.nn.Module):
                     use_auth_token=use_auth_token,
                     user_agent=user_agent,
                     subfolder=subfolder,
+                    revision=revision,
                 )
 
             except RepositoryNotFoundError:
@@ -388,7 +391,7 @@ class ModelMixin(torch.nn.Module):
                 )
             except EntryNotFoundError:
                 raise EnvironmentError(
-                    f"{pretrained_model_name_or_path} does not appear to have a file named {model_file}."
+                    f"{pretrained_model_name_or_path} does not appear to have a file named {WEIGHTS_NAME}."
                 )
             except HTTPError as err:
                 raise EnvironmentError(

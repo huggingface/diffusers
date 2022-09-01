@@ -1,4 +1,5 @@
 import argparse
+import math
 import os
 
 import torch
@@ -7,7 +8,7 @@ import torch.nn.functional as F
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_dataset
-from diffusers import DDIMPipeline, DDIMScheduler, UNet2DModel
+from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.hub_utils import init_git_repo, push_to_hub
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
@@ -29,6 +30,7 @@ logger = get_logger(__name__)
 def main(args):
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     accelerator = Accelerator(
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with="tensorboard",
         logging_dir=logging_dir,
@@ -39,23 +41,25 @@ def main(args):
         in_channels=3,
         out_channels=3,
         layers_per_block=2,
-        block_out_channels=(128, 128, 256, 256, 512),
+        block_out_channels=(128, 128, 256, 256, 512, 512),
         down_block_types=(
             "DownBlock2D",
             "DownBlock2D",
             "DownBlock2D",
             "DownBlock2D",
+            "AttnDownBlock2D",
             "DownBlock2D",
         ),
         up_block_types=(
             "UpBlock2D",
+            "AttnUpBlock2D",
             "UpBlock2D",
             "UpBlock2D",
             "UpBlock2D",
             "UpBlock2D",
         ),
     )
-    noise_scheduler = DDIMScheduler(num_train_timesteps=1000, tensor_format="pt")
+    noise_scheduler = DDPMScheduler(num_train_timesteps=1000, tensor_format="pt")
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
@@ -73,7 +77,17 @@ def main(args):
             Normalize([0.5], [0.5]),
         ]
     )
-    dataset = load_dataset(args.dataset, split="train")
+
+    if args.dataset_name is not None:
+        dataset = load_dataset(
+            args.dataset_name,
+            args.dataset_config_name,
+            cache_dir=args.cache_dir,
+            use_auth_token=True if args.use_auth_token else None,
+            split="train",
+        )
+    else:
+        dataset = load_dataset("imagefolder", data_dir=args.train_data_dir, cache_dir=args.cache_dir, split="train")
 
     def transforms(examples):
         images = [augmentations(image.convert("RGB")) for image in examples["image"]]
@@ -93,6 +107,8 @@ def main(args):
         model, optimizer, train_dataloader, lr_scheduler
     )
 
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+
     ema_model = EMAModel(model, inv_gamma=args.ema_inv_gamma, power=args.ema_power, max_value=args.ema_max_decay)
 
     if args.push_to_hub:
@@ -105,7 +121,7 @@ def main(args):
     global_step = 0
     for epoch in range(args.num_epochs):
         model.train()
-        progress_bar = tqdm(total=len(train_dataloader), disable=not accelerator.is_local_main_process)
+        progress_bar = tqdm(total=num_update_steps_per_epoch, disable=not accelerator.is_local_main_process)
         progress_bar.set_description(f"Epoch {epoch}")
         for step, batch in enumerate(train_dataloader):
             clean_images = batch["input"]
@@ -134,13 +150,16 @@ def main(args):
                     ema_model.step(model)
                 optimizer.zero_grad()
 
-            progress_bar.update(1)
+            # Checks if the accelerator has performed an optimization step behind the scenes
+            if accelerator.sync_gradients:
+                progress_bar.update(1)
+                global_step += 1
+
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
             if args.use_ema:
                 logs["ema_decay"] = ema_model.decay
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
-            global_step += 1
         progress_bar.close()
 
         accelerator.wait_for_everyone()
@@ -148,7 +167,7 @@ def main(args):
         # Generate sample images for visual inspection
         if accelerator.is_main_process:
             if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
-                pipeline = DDIMPipeline(
+                pipeline = DDPMPipeline(
                     unet=accelerator.unwrap_model(ema_model.averaged_model if args.use_ema else model),
                     scheduler=noise_scheduler,
                 )
@@ -177,15 +196,18 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument("--local_rank", type=int, default=-1)
-    parser.add_argument("--dataset", type=str, default="huggan/smithsonian_butterflies_subset")
-    parser.add_argument("--output_dir", type=str, default="ddpm-flowers-64")
+    parser.add_argument("--dataset_name", type=str, default=None)
+    parser.add_argument("--dataset_config_name", type=str, default=None)
+    parser.add_argument("--train_data_dir", type=str, default=None, help="A folder containing the training data.")
+    parser.add_argument("--output_dir", type=str, default="ddpm-model-64")
     parser.add_argument("--overwrite_output_dir", action="store_true")
-    parser.add_argument("--resolution", type=int, default=32)
+    parser.add_argument("--cache_dir", type=str, default=None)
+    parser.add_argument("--resolution", type=int, default=64)
     parser.add_argument("--train_batch_size", type=int, default=16)
     parser.add_argument("--eval_batch_size", type=int, default=16)
     parser.add_argument("--num_epochs", type=int, default=100)
-    parser.add_argument("--save_images_epochs", type=int, default=1)
-    parser.add_argument("--save_model_epochs", type=int, default=100)
+    parser.add_argument("--save_images_epochs", type=int, default=10)
+    parser.add_argument("--save_model_epochs", type=int, default=10)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
     parser.add_argument("--learning_rate", type=float, default=1e-4)
     parser.add_argument("--lr_scheduler", type=str, default="cosine")
@@ -199,6 +221,7 @@ if __name__ == "__main__":
     parser.add_argument("--ema_power", type=float, default=3 / 4)
     parser.add_argument("--ema_max_decay", type=float, default=0.9999)
     parser.add_argument("--push_to_hub", action="store_true")
+    parser.add_argument("--use_auth_token", action="store_true")
     parser.add_argument("--hub_token", type=str, default=None)
     parser.add_argument("--hub_model_id", type=str, default=None)
     parser.add_argument("--hub_private_repo", action="store_true")
@@ -219,5 +242,8 @@ if __name__ == "__main__":
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
+
+    if args.dataset_name is None and args.train_data_dir is None:
+        raise ValueError("You must specify either a dataset name from the hub or a train data directory.")
 
     main(args)
