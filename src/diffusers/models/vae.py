@@ -440,11 +440,16 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         dec = self.decoder(z)
         return dec
 
-    def forward(self, sample, sample_posterior=False):
+    def forward(
+        self,
+        sample,
+        sample_posterior=False,
+        generator=None,
+    ):
         x = sample
         posterior = self.encode(x)
         if sample_posterior:
-            z = posterior.sample()
+            z = posterior.sample(generator=generator)
         else:
             z = posterior.mode()
         dec = self.decode(z)

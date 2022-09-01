@@ -80,17 +80,24 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
         model = model.to(torch_device)
         model.eval()
 
-        torch.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(0)
 
-        image = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
-        image = image.to(torch_device)
+        image = torch.randn(
+            1,
+            model.config.in_channels,
+            model.config.sample_size,
+            model.config.sample_size,
+            generator=generator,
+            device=torch_device,
+        )
         with torch.no_grad():
-            output = model(image, sample_posterior=True)
+            output = model(image, sample_posterior=True, generator=generator)
 
         output_slice = output[0, -1, -3:, -3:].flatten().cpu()
+
         # fmt: off
-        expected_output_slice = torch.tensor([-4.0078e-01, -3.8304e-04, -1.2681e-01, -1.1462e-01, 2.0095e-01, 1.0893e-01, -8.8248e-02, -3.0361e-01, -9.8646e-03])
+        expected_output_slice = torch.tensor([-0.3706, -0.3392, 0.0828, -0.2247, -0.0450, 0.0258, -0.0397, -0.0847, -0.0603])
         # fmt: on
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
