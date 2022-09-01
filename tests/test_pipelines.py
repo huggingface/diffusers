@@ -235,6 +235,7 @@ class PipelineFastTests(unittest.TestCase):
         expected_slice = np.array([0.5074, 0.5026, 0.4998, 0.4056, 0.3523, 0.4649, 0.5289, 0.5299, 0.4897])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    @unittest.skipIf(torch_device != "cpu", "Stable diffusion fast tests need to run on CPU for reproducibility")
     def test_stable_diffusion_ddim(self):
         unet = self.dummy_cond_unet
         scheduler = DDIMScheduler(
@@ -276,6 +277,7 @@ class PipelineFastTests(unittest.TestCase):
         expected_slice = np.array([0.5112, 0.4692, 0.4715, 0.5206, 0.4894, 0.5114, 0.5096, 0.4932, 0.4755])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    @unittest.skipIf(torch_device != "cpu", "Stable diffusion fast tests need to run on CPU for reproducibility")
     def test_stable_diffusion_pndm(self):
         unet = self.dummy_cond_unet
         scheduler = PNDMScheduler(tensor_format="pt", skip_prk_steps=True)
@@ -310,9 +312,9 @@ class PipelineFastTests(unittest.TestCase):
         expected_slice = np.array([0.4937, 0.4649, 0.4716, 0.5145, 0.4889, 0.513, 0.513, 0.4905, 0.4738])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    @unittest.skipIf(torch_device != "cpu", "Stable diffusion fast tests need to run on CPU for reproducibility")
     def test_stable_diffusion_k_lms(self):
         unet = self.dummy_cond_unet
-        scheduler = PNDMScheduler(tensor_format="pt", skip_prk_steps=True)
         scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
@@ -394,6 +396,7 @@ class PipelineFastTests(unittest.TestCase):
         expected_slice = np.array([0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    @unittest.skipIf(torch_device != "cpu", "Stable diffusion fast tests need to run on CPU for reproducibility")
     def test_stable_diffusion_img2img(self):
         unet = self.dummy_cond_unet
         scheduler = PNDMScheduler(tensor_format="pt", skip_prk_steps=True)
@@ -435,6 +438,7 @@ class PipelineFastTests(unittest.TestCase):
         expected_slice = np.array([0.4492, 0.3865, 0.4222, 0.5854, 0.5139, 0.4379, 0.4193, 0.48, 0.4218])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    @unittest.skipIf(torch_device != "cpu", "Stable diffusion fast tests need to run on CPU for reproducibility")
     def test_stable_diffusion_inpaint(self):
         unet = self.dummy_cond_unet
         scheduler = PNDMScheduler(tensor_format="pt", skip_prk_steps=True)
