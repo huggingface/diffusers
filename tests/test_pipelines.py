@@ -49,7 +49,7 @@ from diffusers import (
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.testing_utils import floats_tensor, slow, torch_device
 from PIL import Image
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 
