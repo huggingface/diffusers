@@ -47,7 +47,6 @@ You need to accept the model license before downloading or using the Stable Diff
 ```python
 # make sure you're logged in with `huggingface-cli login`
 from torch import autocast
-import torch
 from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
@@ -67,7 +66,8 @@ git lfs install
 git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
 ```
 
-Assuming the folder is stored locally under `./stable-diffusion-v1-4`
+Assuming the folder is stored locally under `./stable-diffusion-v1-4`, you can also run stable diffusion
+without requiring an authentication token:
 
 ```python
 pipe = StableDiffusionPipeline.from_pretrained("./stable-diffusion-v1-4")
@@ -82,7 +82,7 @@ If you are limited by GPU memory, you might want to consider using the model in 
 
 ```python
 pipe = StableDiffusionPipeline.from_pretrained(
-		"CompVis/stable-diffusion-v1-4", 
+	"CompVis/stable-diffusion-v1-4", 
     revision="fp16", 
     torch_dtype=torch.float16,
     use_auth_token=True
@@ -139,7 +139,7 @@ from diffusers import StableDiffusionImg2ImgPipeline
 device = "cuda"
 model_id_or_path = "CompVis/stable-diffusion-v1-4"
 pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-		model_id_or_path,
+	model_id_or_path,
     revision="fp16", 
     torch_dtype=torch.float16,
     use_auth_token=True
@@ -191,7 +191,7 @@ mask_image = download_image(mask_url).resize((512, 512))
 device = "cuda"
 model_id_or_path = "CompVis/stable-diffusion-v1-4"
 pipe = StableDiffusionInpaintPipeline.from_pretrained(
-		model_id_or_path,
+	model_id_or_path,
     revision="fp16", 
     torch_dtype=torch.float16,
     use_auth_token=True
