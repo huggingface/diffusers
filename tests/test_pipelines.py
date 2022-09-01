@@ -235,8 +235,8 @@ class PipelineFastTests(unittest.TestCase):
         expected_slice = np.array([0.5074, 0.5026, 0.4998, 0.4056, 0.3523, 0.4649, 0.5289, 0.5299, 0.4897])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    @unittest.skipIf(torch_device != "cpu", "Stable diffusion fast tests need to run on CPU for reproducibility")
     def test_stable_diffusion_ddim(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
         scheduler = DDIMScheduler(
             beta_start=0.00085,
@@ -260,14 +260,11 @@ class PipelineFastTests(unittest.TestCase):
             safety_checker=self.dummy_safety_checker,
             feature_extractor=self.dummy_extractor,
         )
-        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe = sd_pipe.to(device)
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        with torch.autocast("cuda"):
-            output = sd_pipe(
-                [prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np"
-            )
+        generator = torch.Generator(device=device).manual_seed(0)
+        output = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
 
         image = output["sample"]
 
@@ -277,8 +274,8 @@ class PipelineFastTests(unittest.TestCase):
         expected_slice = np.array([0.5112, 0.4692, 0.4715, 0.5206, 0.4894, 0.5114, 0.5096, 0.4932, 0.4755])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    @unittest.skipIf(torch_device != "cpu", "Stable diffusion fast tests need to run on CPU for reproducibility")
     def test_stable_diffusion_pndm(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
         scheduler = PNDMScheduler(tensor_format="pt", skip_prk_steps=True)
         vae = self.dummy_vae
@@ -295,14 +292,11 @@ class PipelineFastTests(unittest.TestCase):
             safety_checker=self.dummy_safety_checker,
             feature_extractor=self.dummy_extractor,
         )
-        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe = sd_pipe.to(device)
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        with torch.autocast("cuda"):
-            output = sd_pipe(
-                [prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np"
-            )
+        generator = torch.Generator(device=device).manual_seed(0)
+        output = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
 
         image = output["sample"]
 
@@ -312,8 +306,8 @@ class PipelineFastTests(unittest.TestCase):
         expected_slice = np.array([0.4937, 0.4649, 0.4716, 0.5145, 0.4889, 0.513, 0.513, 0.4905, 0.4738])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    @unittest.skipIf(torch_device != "cpu", "Stable diffusion fast tests need to run on CPU for reproducibility")
     def test_stable_diffusion_k_lms(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
         scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
         vae = self.dummy_vae
@@ -330,14 +324,11 @@ class PipelineFastTests(unittest.TestCase):
             safety_checker=self.dummy_safety_checker,
             feature_extractor=self.dummy_extractor,
         )
-        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe = sd_pipe.to(device)
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        with torch.autocast("cuda"):
-            output = sd_pipe(
-                [prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np"
-            )
+        generator = torch.Generator(device=device).manual_seed(0)
+        output = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
 
         image = output["sample"]
 
@@ -396,15 +387,15 @@ class PipelineFastTests(unittest.TestCase):
         expected_slice = np.array([0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    @unittest.skipIf(torch_device != "cpu", "Stable diffusion fast tests need to run on CPU for reproducibility")
     def test_stable_diffusion_img2img(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
         scheduler = PNDMScheduler(tensor_format="pt", skip_prk_steps=True)
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        init_image = self.dummy_image
+        init_image = self.dummy_image.to(device)
 
         # make sure here that pndm scheduler skips prk
         sd_pipe = StableDiffusionImg2ImgPipeline(
@@ -416,19 +407,18 @@ class PipelineFastTests(unittest.TestCase):
             safety_checker=self.dummy_safety_checker,
             feature_extractor=self.dummy_extractor,
         )
-        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe = sd_pipe.to(device)
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        with torch.autocast("cuda"):
-            output = sd_pipe(
-                [prompt],
-                generator=generator,
-                guidance_scale=6.0,
-                num_inference_steps=2,
-                output_type="np",
-                init_image=init_image,
-            )
+        generator = torch.Generator(device=device).manual_seed(0)
+        output = sd_pipe(
+            [prompt],
+            generator=generator,
+            guidance_scale=6.0,
+            num_inference_steps=2,
+            output_type="np",
+            init_image=init_image,
+        )
 
         image = output["sample"]
 
@@ -438,15 +428,15 @@ class PipelineFastTests(unittest.TestCase):
         expected_slice = np.array([0.4492, 0.3865, 0.4222, 0.5854, 0.5139, 0.4379, 0.4193, 0.48, 0.4218])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    @unittest.skipIf(torch_device != "cpu", "Stable diffusion fast tests need to run on CPU for reproducibility")
     def test_stable_diffusion_inpaint(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
         scheduler = PNDMScheduler(tensor_format="pt", skip_prk_steps=True)
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        image = self.dummy_image.permute(0, 2, 3, 1)[0]
+        image = self.dummy_image.to(device).permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB")
         mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((128, 128))
 
@@ -460,20 +450,19 @@ class PipelineFastTests(unittest.TestCase):
             safety_checker=self.dummy_safety_checker,
             feature_extractor=self.dummy_extractor,
         )
-        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe = sd_pipe.to(device)
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        with torch.autocast("cuda"):
-            output = sd_pipe(
-                [prompt],
-                generator=generator,
-                guidance_scale=6.0,
-                num_inference_steps=2,
-                output_type="np",
-                init_image=init_image,
-                mask_image=mask_image,
-            )
+        generator = torch.Generator(device=device).manual_seed(0)
+        output = sd_pipe(
+            [prompt],
+            generator=generator,
+            guidance_scale=6.0,
+            num_inference_steps=2,
+            output_type="np",
+            init_image=init_image,
+            mask_image=mask_image,
+        )
 
         image = output["sample"]
 
