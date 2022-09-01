@@ -386,6 +386,10 @@ def main(args):
             feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
         )
         pipeline.save_pretrained(args.output_dir)
+        # Also save the newly trained embeddings
+        learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_id]
+        learned_embeds_dict = {args.placeholder_token: learned_embeds}
+        torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
 
         if args.push_to_hub:
             push_to_hub(args, pipeline, repo, commit_message="End of training", blocking=False, auto_lfs_prune=True)
