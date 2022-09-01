@@ -54,7 +54,7 @@ from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 
 # don't pollute logs with tqdm progress bars on new lines
-tqdm.__init__ = partialmethod(tqdm.__init__, position=0, leave=True)
+tqdm.__init__ = partialmethod(tqdm.__init__, disable=None)
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
