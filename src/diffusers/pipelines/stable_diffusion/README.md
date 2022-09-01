@@ -40,7 +40,7 @@ from diffusers import DiffusionPipeline
 pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=YOUR_TOKEN)
 ```
 
-This however can make it difficult to build applications on top of `diffusers` as you will always have to passthe token around. A potential way to solve this issue is by downloading the weights to a local path `"./stable-diffusion-v1-4"`:
+This however can make it difficult to build applications on top of `diffusers` as you will always have to pass the token around. A potential way to solve this issue is by downloading the weights to a local path `"./stable-diffusion-v1-4"`:
 
 ```
 git lfs install
@@ -49,7 +49,7 @@ git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
 
 and simply passing the local path to `from_pretrained`:
 
-```
+```python
 from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained("./stable-diffusion-v1-4")
