@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..modeling_utils import ModelMixin
+from ..modeling_utils import ModelMixin, BaseModelOutput
 from .embeddings import TimestepEmbedding, Timesteps
 from .unet_blocks import UNetMidBlock2DCrossAttn, get_down_block, get_up_block
 
@@ -120,6 +120,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         sample: torch.FloatTensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
+        return_dict: bool = True,
     ) -> Dict[str, torch.FloatTensor]:
         # 0. center input if necessary
         if self.config.center_input_sample:
@@ -178,6 +179,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         sample = self.conv_act(sample)
         sample = self.conv_out(sample)
 
-        output = {"sample": sample}
+        if not return_dict:
+            return (sample,)
 
-        return output
+        return BaseModelOutput(sample=sample)
