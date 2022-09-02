@@ -120,7 +120,6 @@ class UNet2DModel(ModelMixin, ConfigMixin):
     def forward(
         self, sample: torch.FloatTensor, timestep: Union[torch.Tensor, float, int]
     ) -> Dict[str, torch.FloatTensor]:
-
         # 0. center input if necessary
         if self.config.center_input_sample:
             sample = 2 * sample - 1.0
@@ -132,7 +131,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)
 
-        # broadcast to batch dimension
+        # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps * torch.ones(sample.shape[0], dtype=timesteps.dtype)
 
         t_emb = self.time_proj(timesteps)
