@@ -30,7 +30,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         norm_eps=1e-5,
         cross_attention_dim=1280,
         attention_head_dim=8,
-    ):
+    ) -> None:
         super().__init__()
 
         self.sample_size = sample_size

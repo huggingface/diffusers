@@ -30,7 +30,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         attention_head_dim=8,
         norm_num_groups=32,
         norm_eps=1e-5,
-    ):
+    ) -> None:
         super().__init__()
 
         self.sample_size = sample_size
