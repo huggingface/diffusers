@@ -81,10 +81,7 @@ def parse_args():
     parser.add_argument(
         "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
     )
-    parser.add_argument(
-        "--eval_batch_size", type=int, default=16, help="Batch size (per device) for the evaluation dataloader."
-    )
-    parser.add_argument("--num_epochs", type=int, default=100)
+    parser.add_argument("--num_train_epochs", type=int, default=100)
     parser.add_argument(
         "--max_train_steps",
         type=int,
@@ -444,7 +441,7 @@ def main():
     overrode_max_train_steps = False
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if args.max_train_steps is None:
-        args.max_train_steps = args.num_epochs * num_update_steps_per_epoch
+        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
 
     lr_scheduler = get_scheduler(
@@ -469,9 +466,9 @@ def main():
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
-        args.max_train_steps = args.num_epochs * num_update_steps_per_epoch
+        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
-    args.num_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
+    args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
 
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
@@ -483,7 +480,7 @@ def main():
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
-    logger.info(f"  Num Epochs = {args.num_epochs}")
+    logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
@@ -493,7 +490,7 @@ def main():
     progress_bar.set_description("Steps")
     global_step = 0
 
-    for epoch in range(args.num_epochs):
+    for epoch in range(args.num_train_epochs):
         text_encoder.train()
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(text_encoder):
@@ -555,7 +552,9 @@ def main():
             vae=vae,
             unet=unet,
             tokenizer=tokenizer,
-            scheduler=PNDMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True),
+            scheduler=PNDMScheduler(
+                beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True
+            ),
             safety_checker=StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker"),
             feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
         )
