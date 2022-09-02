@@ -60,6 +60,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         clip_sample=True,
         tensor_format="pt",
     ):
+
         if trained_betas is not None:
             self.betas = np.asarray(trained_betas)
         elif beta_schedule == "linear":

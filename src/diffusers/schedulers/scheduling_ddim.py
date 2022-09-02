@@ -62,6 +62,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         set_alpha_to_one=True,
         tensor_format="pt",
     ):
+
         if beta_schedule == "linear":
             self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
         elif beta_schedule == "scaled_linear":
