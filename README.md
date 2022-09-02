@@ -42,7 +42,7 @@ conda install -c conda-forge diffusers
 ## Contributing
 
 We ❤️  contributions from the open-source community! 
-If you want to contribute to this library, please check out (or at least pretend to) our [Contribution guide](https://github.com/huggingface/diffusers/blob/main/CONTRIBUTING.md).
+If you want to contribute to this library, please check out our [Contribution guide](https://github.com/huggingface/diffusers/blob/main/CONTRIBUTING.md).
 You can look out for [issues](https://github.com/huggingface/diffusers/issues) you'd like to tackle to contribute to the library.
 - See [Good first issues](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) for general opportunities to contribute
 - See [New model/pipeline](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22New+pipeline%2Fmodel%22) to contribute exciting new diffusion models / diffusion pipelines
