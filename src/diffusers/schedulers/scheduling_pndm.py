@@ -15,8 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 import math
-from typing import Union
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import torch
@@ -266,10 +265,10 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         return prev_sample
 
     def add_noise(
-        self, 
-        original_samples: Union[torch.FloatTensor, np.ndarray], 
-        noise: Union[torch.FloatTensor, np.ndarray], 
-        timesteps: Union[torch.FloatTensor, np.ndarray]
+        self,
+        original_samples: Union[torch.FloatTensor, np.ndarray],
+        noise: Union[torch.FloatTensor, np.ndarray],
+        timesteps: Union[torch.FloatTensor, np.ndarray],
     ):
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
