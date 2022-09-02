@@ -1,4 +1,7 @@
-# Textual Inversion fine-tuning example
+## Textual Inversion fine-tuning example
+
+[Textual inversion](https://arxiv.org/abs/2208.01618) is a method to personalize text2image models like stable diffusion on your own images using just 3-5 examples.
+The `textual_inversion.py` script shows how to implement the training procedure and adapt it for stable diffusion.
 
 ### Installing the dependencies
 
@@ -17,8 +20,23 @@ accelerate config
 
 ### Cat toy example
 
-First, download 3-4 images from [here](https://drive.google.com/drive/folders/1fmJMs25nxS_rSNqS5hTcRdLem_YQXbq5) and save them in a directory. This will be our training data.
+You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-4`, so you'll need to visit [its card](https://huggingface.co/CompVis/stable-diffusion-v1-4), read the license and tick the checkbox if you agree. 
 
+You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section of the documentation](https://huggingface.co/docs/hub/security-tokens).
+
+Run the following command to autheticate your token
+
+```bash
+huggingface-cli login
+```
+
+If you have already cloned the repo, then you won't need to go through these steps. You can simple remove the `--use_auth_token` arg from the following command.
+
+<br>
+
+Now let's get our dataset.Download 3-4 images from [here](https://drive.google.com/drive/folders/1fmJMs25nxS_rSNqS5hTcRdLem_YQXbq5) and save them in a directory. This will be our training data.
+
+And launch the training using
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
@@ -40,3 +58,25 @@ accelerate launch textual_inversion.py \
 ```
 
 A full training run takes ~1 hour on one V100 GPU.
+
+
+### Inference
+
+Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline`. Make sure to include the `placeholder_token` in your prompt.
+
+
+```python
+
+from torch import autocast
+from diffusers import StableDiffusionPipeline
+
+model_id = "path-to-your-trained-model"
+pipe = pipe = StableDiffusionPipeline.from_pretrained(model_id,torch_dtype=torch.float16).to("cuda")
+
+prompt = "A <cat-toy> backpack"
+
+with autocast("cuda"):
+    image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5)["sample"][0]
+
+image.save("cat-backpack.png")
+```
