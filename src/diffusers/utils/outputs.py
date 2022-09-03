@@ -125,6 +125,7 @@ class ModelOutput(OrderedDict):
                     " `'images'` instead.",
                     DeprecationWarning,
                 )
+                return inner_dict["images"]
             return inner_dict[k]
         else:
             return self.to_tuple()[k]
