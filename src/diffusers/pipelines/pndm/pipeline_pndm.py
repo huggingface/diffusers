@@ -20,7 +20,7 @@ from typing import Optional
 import torch
 
 from ...models import UNet2DModel
-from ...pipeline_utils import DiffusionPipeline
+from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import PNDMScheduler
 
 
@@ -40,6 +40,7 @@ class PNDMPipeline(DiffusionPipeline):
         num_inference_steps: int = 50,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
+        return_dict: bool = True,
         **kwargs,
     ):
         # For more information on the sampling method you can take a look at Algorithm 2 of
@@ -75,4 +76,7 @@ class PNDMPipeline(DiffusionPipeline):
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
-        return {"sample": image}
+        if not return_dict:
+            return (sample,)
+
+        return ImagePipelineOutput(sample=sample)

@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import os
+from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
@@ -24,8 +25,7 @@ from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
-from .utils import CONFIG_NAME, DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT, logging, ModelOutput
-from dataclasses import dataclass
+from .utils import CONFIG_NAME, DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT, ModelOutput, logging
 
 
 WEIGHTS_NAME = "diffusion_pytorch_model.bin"
@@ -40,7 +40,7 @@ class BaseModelOutput(ModelOutput):
     Base class for model's outputs.
 
     Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`):
+        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
             Denoised output sample of the model. Output of the last layer of the model.
     """
 

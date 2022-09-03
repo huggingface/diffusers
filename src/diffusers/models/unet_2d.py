@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..modeling_utils import ModelMixin, BaseModelOutput
+from ..modeling_utils import BaseModelOutput, ModelMixin
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from .unet_blocks import UNetMidBlock2D, get_down_block, get_up_block
 
@@ -118,7 +118,10 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, 3, padding=1)
 
     def forward(
-        self, sample: torch.FloatTensor, timestep: Union[torch.Tensor, float, int], return_dict: bool = True,
+        self,
+        sample: torch.FloatTensor,
+        timestep: Union[torch.Tensor, float, int],
+        return_dict: bool = True,
     ) -> Dict[str, torch.FloatTensor]:
         # 0. center input if necessary
         if self.config.center_input_sample:

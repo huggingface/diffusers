@@ -18,7 +18,7 @@ import warnings
 
 import torch
 
-from ...pipeline_utils import DiffusionPipeline
+from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 class DDPMPipeline(DiffusionPipeline):
@@ -28,7 +28,7 @@ class DDPMPipeline(DiffusionPipeline):
         self.register_modules(unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
-    def __call__(self, batch_size=1, generator=None, output_type="pil", **kwargs):
+    def __call__(self, batch_size=1, generator=None, output_type="pil", return_dict: bool = True, **kwargs):
         if "torch_device" in kwargs:
             device = kwargs.pop("torch_device")
             warnings.warn(
@@ -63,4 +63,7 @@ class DDPMPipeline(DiffusionPipeline):
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
-        return {"sample": image}
+        if not return_dict:
+            return (sample,)
+
+        return ImagePipelineOutput(sample=sample)

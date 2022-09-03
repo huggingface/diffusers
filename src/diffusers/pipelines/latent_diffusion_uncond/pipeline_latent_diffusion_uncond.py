@@ -5,7 +5,7 @@ from typing import Optional
 import torch
 
 from ...models import UNet2DModel, VQModel
-from ...pipeline_utils import DiffusionPipeline
+from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler
 
 
@@ -28,6 +28,7 @@ class LDMPipeline(DiffusionPipeline):
         eta: float = 0.0,
         num_inference_steps: int = 50,
         output_type: Optional[str] = "pil",
+        return_dict: bool = True,
         **kwargs,
     ):
         # eta corresponds to η in paper and should be between [0, 1]
@@ -73,4 +74,7 @@ class LDMPipeline(DiffusionPipeline):
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
-        return {"sample": image}
+        if not return_dict:
+            return (sample,)
+
+        return ImagePipelineOutput(sample=sample)

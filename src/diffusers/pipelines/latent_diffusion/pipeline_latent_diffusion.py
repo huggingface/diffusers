@@ -12,7 +12,7 @@ from transformers.modeling_outputs import BaseModelOutput
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import logging
 
-from ...pipeline_utils import DiffusionPipeline
+from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 class LDMTextToImagePipeline(DiffusionPipeline):
@@ -32,6 +32,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
+        return_dict: bool = True,
         **kwargs,
     ):
         # eta corresponds to η in paper and should be between [0, 1]
@@ -113,7 +114,10 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
-        return {"sample": image}
+        if not return_dict:
+            return (sample,)
+
+        return ImagePipelineOutput(sample=sample)
 
 
 ################################################################################

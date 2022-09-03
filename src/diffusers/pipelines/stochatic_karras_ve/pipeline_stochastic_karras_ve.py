@@ -5,7 +5,7 @@ from typing import Optional
 import torch
 
 from ...models import UNet2DModel
-from ...pipeline_utils import DiffusionPipeline
+from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import KarrasVeScheduler
 
 
@@ -35,6 +35,7 @@ class KarrasVePipeline(DiffusionPipeline):
         num_inference_steps: int = 50,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
+        return_dict: bool = True,
         **kwargs,
     ):
         if "torch_device" in kwargs:
@@ -96,4 +97,7 @@ class KarrasVePipeline(DiffusionPipeline):
         if output_type == "pil":
             sample = self.numpy_to_pil(sample)
 
-        return {"sample": sample}
+        if not return_dict:
+            return (sample,)
+
+        return ImagePipelineOutput(sample=sample)

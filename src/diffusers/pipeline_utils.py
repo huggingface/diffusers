@@ -17,8 +17,10 @@
 import importlib
 import inspect
 import os
-from typing import Optional, Union
+from dataclasses import dataclass
+from typing import PIL, List, Optional, Union
 
+import numpy as np
 import torch
 
 from huggingface_hub import snapshot_download
@@ -26,7 +28,7 @@ from PIL import Image
 from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
-from .utils import DIFFUSERS_CACHE, logging
+from .utils import DIFFUSERS_CACHE, ModelOutput, logging
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
@@ -52,6 +54,20 @@ LOADABLE_CLASSES = {
 ALL_IMPORTABLE_CLASSES = {}
 for library in LOADABLE_CLASSES:
     ALL_IMPORTABLE_CLASSES.update(LOADABLE_CLASSES[library])
+
+
+@dataclass
+class ImagePipelineOutput(ModelOutput):
+    """
+    Output class for image pipelines.
+
+    Args:
+        sample (`List[PIL.Image]` or `np.ndarray`)
+            List of denoised PIL images of length `batch_size` or numpy array of shape `(batch_size, height, width,
+            num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
+    """
+
+    sample: Union[List[PIL.Images], np.ndarray] = None
 
 
 class DiffusionPipeline(ConfigMixin):

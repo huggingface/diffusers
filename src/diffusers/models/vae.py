@@ -1,14 +1,13 @@
+from dataclasses import dataclass
+
 import numpy as np
 import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
-from ..hub_utils import ModelOutput
+from ..utils import ModelOutput
 from .unet_blocks import UNetMidBlock2D, get_down_block, get_up_block
-
-
-from dataclasses import dataclass
 
 
 @dataclass
@@ -17,7 +16,7 @@ class DecoderOutput(ModelOutput):
     Output of decoding method.
 
     Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`):
+        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
             Decoded output sample of the model. Output of the last layer of the model.
     """
 
@@ -30,7 +29,7 @@ class VQEncoderOutput(ModelOutput):
     Output of VQModel encoding method.
 
     Args:
-        latents (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`):
+        latents (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
             Encoded output sample of the model. Output of the last layer of the model.
     """
 

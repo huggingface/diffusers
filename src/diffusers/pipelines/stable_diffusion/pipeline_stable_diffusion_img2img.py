@@ -11,6 +11,7 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, PNDMScheduler
+from . import StableDiffusionOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
 
@@ -58,6 +59,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
+        return_dict: bool = True,
     ):
 
         if isinstance(prompt, str):
@@ -167,4 +169,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
-        return {"sample": image, "nsfw_content_detected": has_nsfw_concept}
+        if not return_dict:
+            return (image, has_nsfw_concept)
+
+        return StableDiffusionOutput(sample=image, nsfw_content_detected=has_nsfw_concept)

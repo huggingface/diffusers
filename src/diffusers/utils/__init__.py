@@ -32,8 +32,8 @@ from .import_utils import (
     is_unidecode_available,
     requires_backends,
 )
-from .outputs import ModelOutput
 from .logging import get_logger
+from .outputs import ModelOutput
 
 
 logger = get_logger(__name__)

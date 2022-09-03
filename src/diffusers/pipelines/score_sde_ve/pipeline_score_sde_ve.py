@@ -4,9 +4,8 @@ from typing import Optional
 
 import torch
 
-from diffusers import DiffusionPipeline
-
 from ...models import UNet2DModel
+from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import ScoreSdeVeScheduler
 
 
@@ -26,6 +25,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
         num_inference_steps: int = 2000,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
+        return_dict: bool = True,
         **kwargs,
     ):
         if "torch_device" in kwargs:
@@ -70,4 +70,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
         if output_type == "pil":
             sample = self.numpy_to_pil(sample)
 
-        return {"sample": sample}
+        if not return_dict:
+            return (sample,)
+
+        return ImagePipelineOutput(sample=sample)
