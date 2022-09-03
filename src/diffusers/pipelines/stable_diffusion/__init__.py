@@ -25,7 +25,6 @@ class StableDiffusionOutput(ModelOutput):
 
     images: Union[List[PIL.Image.Image], np.ndarray] = None
     nsfw_content_detected: bool = None
-    sample: Union[List[PIL.Image.Image], np.ndarray] = None
 
 
 if is_transformers_available():

@@ -96,14 +96,6 @@ class ModelOutput(OrderedDict):
                 if v is not None:
                     self[field.name] = v
 
-                # TODO(Patrick) - remove in 0.4.0
-                # Make sure that `sample` cannot be accessed via `.` operation
-                if (
-                    self.__class__.__name__ in ["StableDiffusionOutput", "ImagePipelineOutput"]
-                    and field.name == "sample"
-                ):
-                    delattr(self, field.name)
-
     def __delitem__(self, *args, **kwargs):
         raise Exception(f"You cannot use ``__delitem__`` on a {self.__class__.__name__} instance.")
 

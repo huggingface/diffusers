@@ -69,7 +69,6 @@ class ImagePipelineOutput(ModelOutput):
     """
 
     images: Union[List[PIL.Image.Image], np.ndarray] = None
-    sample: Union[List[PIL.Image.Image], np.ndarray] = None
 
 
 class DiffusionPipeline(ConfigMixin):
