@@ -39,12 +39,12 @@ class ModelTesterMixin:
         with torch.no_grad():
             image = model(**inputs_dict)
             if isinstance(image, dict):
-                image = image["sample"]
+                image = image.sample
 
             new_image = new_model(**inputs_dict)
 
             if isinstance(new_image, dict):
-                new_image = new_image["sample"]
+                new_image = new_image.sample
 
         max_diff = (image - new_image).abs().sum().item()
         self.assertLessEqual(max_diff, 5e-5, "Models give different forward passes")
@@ -57,11 +57,11 @@ class ModelTesterMixin:
         with torch.no_grad():
             first = model(**inputs_dict)
             if isinstance(first, dict):
-                first = first["sample"]
+                first = first.sample
 
             second = model(**inputs_dict)
             if isinstance(second, dict):
-                second = second["sample"]
+                second = second.sample
 
         out_1 = first.cpu().numpy()
         out_2 = second.cpu().numpy()
@@ -80,7 +80,7 @@ class ModelTesterMixin:
             output = model(**inputs_dict)
 
             if isinstance(output, dict):
-                output = output["sample"]
+                output = output.sample
 
         self.assertIsNotNone(output)
         expected_shape = inputs_dict["sample"].shape
@@ -122,12 +122,12 @@ class ModelTesterMixin:
             output_1 = model(**inputs_dict)
 
             if isinstance(output_1, dict):
-                output_1 = output_1["sample"]
+                output_1 = output_1.sample
 
             output_2 = new_model(**inputs_dict)
 
             if isinstance(output_2, dict):
-                output_2 = output_2["sample"]
+                output_2 = output_2.sample
 
         self.assertEqual(output_1.shape, output_2.shape)
 
@@ -140,7 +140,7 @@ class ModelTesterMixin:
         output = model(**inputs_dict)
 
         if isinstance(output, dict):
-            output = output["sample"]
+            output = output.sample
 
         noise = torch.randn((inputs_dict["sample"].shape[0],) + self.output_shape).to(torch_device)
         loss = torch.nn.functional.mse_loss(output, noise)
@@ -157,7 +157,7 @@ class ModelTesterMixin:
         output = model(**inputs_dict)
 
         if isinstance(output, dict):
-            output = output["sample"]
+            output = output.sample
 
         noise = torch.randn((inputs_dict["sample"].shape[0],) + self.output_shape).to(torch_device)
         loss = torch.nn.functional.mse_loss(output, noise)

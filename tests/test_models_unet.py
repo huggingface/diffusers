@@ -77,7 +77,7 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
 #        time_step = torch.tensor([10])
 #
 #        with torch.no_grad():
-#            output = model(noise, time_step)["sample"]
+#            output = model(noise, time_step).sample
 #
 #        output_slice = output[0, -1, -3:, -3:].flatten()
 # fmt: off
@@ -129,7 +129,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertEqual(len(loading_info["missing_keys"]), 0)
 
         model.to(torch_device)
-        image = model(**self.dummy_input)["sample"]
+        image = model(**self.dummy_input).sample
 
         assert image is not None, "Make sure output is not None"
 
@@ -147,7 +147,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         time_step = torch.tensor([10] * noise.shape[0]).to(torch_device)
 
         with torch.no_grad():
-            output = model(noise, time_step)["sample"]
+            output = model(noise, time_step).sample
 
         output_slice = output[0, -1, -3:, -3:].flatten().cpu()
         # fmt: off
@@ -258,7 +258,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         time_step = torch.tensor(batch_size * [1e-4]).to(torch_device)
 
         with torch.no_grad():
-            output = model(noise, time_step)["sample"]
+            output = model(noise, time_step).sample
 
         output_slice = output[0, -3:, -3:, -1].flatten().cpu()
         # fmt: off
@@ -283,7 +283,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         time_step = torch.tensor(batch_size * [1e-4]).to(torch_device)
 
         with torch.no_grad():
-            output = model(noise, time_step)["sample"]
+            output = model(noise, time_step).sample
 
         output_slice = output[0, -3:, -3:, -1].flatten().cpu()
         # fmt: off
