@@ -73,4 +73,4 @@ class ScoreSdeVePipeline(DiffusionPipeline):
         if not return_dict:
             return (sample,)
 
-        return ImagePipelineOutput(images=sample, sample=sample)
+        return ImagePipelineOutput(images=sample)
