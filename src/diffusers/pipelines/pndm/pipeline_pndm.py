@@ -67,9 +67,9 @@ class PNDMPipeline(DiffusionPipeline):
 
         self.scheduler.set_timesteps(num_inference_steps)
         for t in self.progress_bar(self.scheduler.timesteps):
-            model_output = self.unet(image, t)["sample"]
+            model_output = self.unet(image, t).sample
 
-            image = self.scheduler.step(model_output, t, image)["prev_sample"]
+            image = self.scheduler.step(model_output, t, image).prev_sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
@@ -79,4 +79,4 @@ class PNDMPipeline(DiffusionPipeline):
         if not return_dict:
             return (image,)
 
-        return ImagePipelineOutput(image=image, sample=image)
+        return ImagePipelineOutput(images=image, sample=image)

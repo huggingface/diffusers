@@ -96,14 +96,14 @@ class LDMTextToImagePipeline(DiffusionPipeline):
                 context = torch.cat([uncond_embeddings, text_embeddings])
 
             # predict the noise residual
-            noise_pred = self.unet(latents_input, t, encoder_hidden_states=context)["sample"]
+            noise_pred = self.unet(latents_input, t, encoder_hidden_states=context).sample
             # perform guidance
             if guidance_scale != 1.0:
                 noise_pred_uncond, noise_prediction_text = noise_pred.chunk(2)
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_prediction_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, **extra_kwargs)["prev_sample"]
+            latents = self.scheduler.step(noise_pred, t, latents, **extra_kwargs).prev_sample
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
@@ -117,7 +117,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         if not return_dict:
             return (image,)
 
-        return ImagePipelineOutput(image=image, sample=image)
+        return ImagePipelineOutput(images=image, sample=image)
 
 
 ################################################################################

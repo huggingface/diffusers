@@ -94,7 +94,7 @@ pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
 with autocast("cuda"):
-    image = pipe(prompt)["sample"][0]  
+    image = pipe(prompt).images[0]  
     
 image.save("astronaut_rides_horse.png")
 ```
@@ -130,7 +130,7 @@ init_image = init_image.resize((768, 512))
 prompt = "A fantasy landscape, trending on artstation"
 
 with autocast("cuda"):
-    images = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5)["sample"]
+    images = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5).images
 
 images[0].save("fantasy_landscape.png")
 ```
@@ -174,7 +174,7 @@ pipe = StableDiffusionInpaintPipeline.from_pretrained(
 
 prompt = "a cat sitting on a bench"
 with autocast("cuda"):
-    images = pipe(prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75)["sample"]
+    images = pipe(prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75).images
 
 images[0].save("cat_on_bench.png")
 ```

@@ -62,9 +62,9 @@ class LDMPipeline(DiffusionPipeline):
 
         for t in self.progress_bar(self.scheduler.timesteps):
             # predict the noise residual
-            noise_prediction = self.unet(latents, t)["sample"]
+            noise_prediction = self.unet(latents, t).sample
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_prediction, t, latents, **extra_kwargs)["prev_sample"]
+            latents = self.scheduler.step(noise_prediction, t, latents, **extra_kwargs).prev_sample
 
         # decode the image latents with the VAE
         image = self.vqvae.decode(latents)
@@ -77,4 +77,4 @@ class LDMPipeline(DiffusionPipeline):
         if not return_dict:
             return (image,)
 
-        return ImagePipelineOutput(image=image, sample=image)
+        return ImagePipelineOutput(images=image, sample=image)

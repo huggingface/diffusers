@@ -56,14 +56,14 @@ class ScoreSdeVePipeline(DiffusionPipeline):
 
             # correction step
             for _ in range(self.scheduler.correct_steps):
-                model_output = self.unet(sample, sigma_t)["sample"]
-                sample = self.scheduler.step_correct(model_output, sample, generator=generator)["prev_sample"]
+                model_output = self.unet(sample, sigma_t).sample
+                sample = self.scheduler.step_correct(model_output, sample, generator=generator).prev_sample
 
             # prediction step
-            model_output = model(sample, sigma_t)["sample"]
+            model_output = model(sample, sigma_t).sample
             output = self.scheduler.step_pred(model_output, t, sample, generator=generator)
 
-            sample, sample_mean = output["prev_sample"], output["prev_sample_mean"]
+            sample, sample_mean = output.prev_sample, output["prev_sample_mean"]
 
         sample = sample_mean.clamp(0, 1)
         sample = sample.cpu().permute(0, 2, 3, 1).numpy()
@@ -73,4 +73,4 @@ class ScoreSdeVePipeline(DiffusionPipeline):
         if not return_dict:
             return (sample,)
 
-        return ImagePipelineOutput(image=sample, sample=sample)
+        return ImagePipelineOutput(images=sample, sample=sample)
