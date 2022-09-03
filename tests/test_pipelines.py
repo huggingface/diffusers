@@ -198,13 +198,18 @@ class PipelineFastTests(unittest.TestCase):
         generator = torch.manual_seed(0)
         image = ddpm(generator=generator, num_inference_steps=2, output_type="numpy").images
 
+        generator = torch.manual_seed(0)
+        image_from_tuple = ddpm(generator=generator, num_inference_steps=2, output_type="numpy", return_dict=False)[0]
+
         image_slice = image[0, -3:, -3:, -1]
+        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array(
             [1.000e00, 5.717e-01, 4.717e-01, 1.000e00, 0.000e00, 1.000e00, 3.000e-04, 0.000e00, 9.000e-04]
         )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_pndm_cifar10(self):
         unet = self.dummy_uncond_unet
@@ -213,14 +218,20 @@ class PipelineFastTests(unittest.TestCase):
         pndm = PNDMPipeline(unet=unet, scheduler=scheduler)
         pndm.to(torch_device)
         pndm.set_progress_bar_config(disable=None)
+
         generator = torch.manual_seed(0)
         image = pndm(generator=generator, num_inference_steps=20, output_type="numpy").images
 
+        generator = torch.manual_seed(0)
+        image_from_tuple = pndm(generator=generator, num_inference_steps=20, output_type="numpy", return_dict=False)[0]
+
         image_slice = image[0, -3:, -3:, -1]
+        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_ldm_text2img(self):
         unet = self.dummy_cond_unet
@@ -239,11 +250,16 @@ class PipelineFastTests(unittest.TestCase):
             "sample"
         ]
 
+        generator = torch.manual_seed(0)
+        image_from_tuple = ldm([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="numpy", return_dict=False)[0]
+
         image_slice = image[0, -3:, -3:, -1]
+        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5074, 0.5026, 0.4998, 0.4056, 0.3523, 0.4649, 0.5289, 0.5299, 0.4897])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_ddim(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -274,16 +290,21 @@ class PipelineFastTests(unittest.TestCase):
         sd_pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger"
+
         generator = torch.Generator(device=device).manual_seed(0)
         output = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
-
         image = output.images
 
+        generator = torch.Generator(device=device).manual_seed(0)
+        image_from_tuple = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np", return_dict=False)[0]
+
         image_slice = image[0, -3:, -3:, -1]
+        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 128, 128, 3)
         expected_slice = np.array([0.5112, 0.4692, 0.4715, 0.5206, 0.4894, 0.5114, 0.5096, 0.4932, 0.4755])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_pndm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -312,11 +333,16 @@ class PipelineFastTests(unittest.TestCase):
 
         image = output.images
 
+        generator = torch.Generator(device=device).manual_seed(0)
+        image_from_tuple = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np", return_dict=False)[0]
+
         image_slice = image[0, -3:, -3:, -1]
+        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 128, 128, 3)
         expected_slice = np.array([0.4937, 0.4649, 0.4716, 0.5145, 0.4889, 0.513, 0.513, 0.4905, 0.4738])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_k_lms(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -345,11 +371,16 @@ class PipelineFastTests(unittest.TestCase):
 
         image = output.images
 
+        generator = torch.Generator(device=device).manual_seed(0)
+        image_from_tuple = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np", return_dict=False)[0]
+
         image_slice = image[0, -3:, -3:, -1]
+        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 128, 128, 3)
         expected_slice = np.array([0.5067, 0.4689, 0.4614, 0.5233, 0.4903, 0.5112, 0.524, 0.5069, 0.4785])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_score_sde_ve_pipeline(self):
         unet = self.dummy_uncond_unet
@@ -362,12 +393,17 @@ class PipelineFastTests(unittest.TestCase):
         torch.manual_seed(0)
         image = sde_ve(num_inference_steps=2, output_type="numpy").images
 
+        torch.manual_seed(0)
+        image_from_tuple = sde_ve(num_inference_steps=2, output_type="numpy", return_dict=False)[0]
+
         image_slice = image[0, -3:, -3:, -1]
+        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
 
         expected_slice = np.array([0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_ldm_uncond(self):
         unet = self.dummy_uncond_unet
@@ -381,11 +417,16 @@ class PipelineFastTests(unittest.TestCase):
         generator = torch.manual_seed(0)
         image = ldm(generator=generator, num_inference_steps=2, output_type="numpy").images
 
+        generator = torch.manual_seed(0)
+        image_from_tuple = ldm(generator=generator, num_inference_steps=2, output_type="numpy", return_dict=False)[0]
+
         image_slice = image[0, -3:, -3:, -1]
+        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.8512, 0.818, 0.6411, 0.6808, 0.4465, 0.5618, 0.46, 0.6231, 0.5172])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_karras_ve_pipeline(self):
         unet = self.dummy_uncond_unet
@@ -398,10 +439,16 @@ class PipelineFastTests(unittest.TestCase):
         generator = torch.manual_seed(0)
         image = pipe(num_inference_steps=2, generator=generator, output_type="numpy").images
 
+        generator = torch.manual_seed(0)
+        image_from_tuple = pipe(num_inference_steps=2, generator=generator, output_type="numpy", return_dict=False)[0]
+
         image_slice = image[0, -3:, -3:, -1]
+        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
+
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_img2img(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -439,11 +486,24 @@ class PipelineFastTests(unittest.TestCase):
 
         image = output.images
 
+        generator = torch.Generator(device=device).manual_seed(0)
+        image_from_tuple = sd_pipe(
+            [prompt],
+            generator=generator,
+            guidance_scale=6.0,
+            num_inference_steps=2,
+            output_type="np",
+            init_image=init_image,
+            return_dict=False
+        )[0]
+
         image_slice = image[0, -3:, -3:, -1]
+        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.4492, 0.3865, 0.4222, 0.5854, 0.5139, 0.4379, 0.4193, 0.48, 0.4218])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_inpaint(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -484,11 +544,25 @@ class PipelineFastTests(unittest.TestCase):
 
         image = output.images
 
+        generator = torch.Generator(device=device).manual_seed(0)
+        image_from_tuple = sd_pipe(
+            [prompt],
+            generator=generator,
+            guidance_scale=6.0,
+            num_inference_steps=2,
+            output_type="np",
+            init_image=init_image,
+            mask_image=mask_image,
+            return_dict=False,
+        )[0]
+
         image_slice = image[0, -3:, -3:, -1]
+        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.4731, 0.5346, 0.4531, 0.6251, 0.5446, 0.4057, 0.5527, 0.5896, 0.5153])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
 
 class PipelineTesterMixin(unittest.TestCase):
