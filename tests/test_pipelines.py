@@ -251,7 +251,14 @@ class PipelineFastTests(unittest.TestCase):
         ]
 
         generator = torch.manual_seed(0)
-        image_from_tuple = ldm([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="numpy", return_dict=False)[0]
+        image_from_tuple = ldm(
+            [prompt],
+            generator=generator,
+            guidance_scale=6.0,
+            num_inference_steps=2,
+            output_type="numpy",
+            return_dict=False,
+        )[0]
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
@@ -296,7 +303,14 @@ class PipelineFastTests(unittest.TestCase):
         image = output.images
 
         generator = torch.Generator(device=device).manual_seed(0)
-        image_from_tuple = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np", return_dict=False)[0]
+        image_from_tuple = sd_pipe(
+            [prompt],
+            generator=generator,
+            guidance_scale=6.0,
+            num_inference_steps=2,
+            output_type="np",
+            return_dict=False,
+        )[0]
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
@@ -334,7 +348,14 @@ class PipelineFastTests(unittest.TestCase):
         image = output.images
 
         generator = torch.Generator(device=device).manual_seed(0)
-        image_from_tuple = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np", return_dict=False)[0]
+        image_from_tuple = sd_pipe(
+            [prompt],
+            generator=generator,
+            guidance_scale=6.0,
+            num_inference_steps=2,
+            output_type="np",
+            return_dict=False,
+        )[0]
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
@@ -372,7 +393,14 @@ class PipelineFastTests(unittest.TestCase):
         image = output.images
 
         generator = torch.Generator(device=device).manual_seed(0)
-        image_from_tuple = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np", return_dict=False)[0]
+        image_from_tuple = sd_pipe(
+            [prompt],
+            generator=generator,
+            guidance_scale=6.0,
+            num_inference_steps=2,
+            output_type="np",
+            return_dict=False,
+        )[0]
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
@@ -494,7 +522,7 @@ class PipelineFastTests(unittest.TestCase):
             num_inference_steps=2,
             output_type="np",
             init_image=init_image,
-            return_dict=False
+            return_dict=False,
         )[0]
 
         image_slice = image[0, -3:, -3:, -1]

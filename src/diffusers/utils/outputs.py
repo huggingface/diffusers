@@ -15,10 +15,10 @@
 Generic utilities
 """
 
+import warnings
 from collections import OrderedDict
 from dataclasses import fields
 from typing import Any, Tuple
-import warnings
 
 import numpy as np
 
@@ -98,7 +98,10 @@ class ModelOutput(OrderedDict):
 
                 # TODO(Patrick) - remove in 0.4.0
                 # Make sure that `sample` cannot be accessed via `.` operation
-                if self.__class__.__name__ in ["StableDiffusionOutput", "ImagePipelineOutput"] and field.name == "sample":
+                if (
+                    self.__class__.__name__ in ["StableDiffusionOutput", "ImagePipelineOutput"]
+                    and field.name == "sample"
+                ):
                     delattr(self, field.name)
 
     def __delitem__(self, *args, **kwargs):
@@ -118,7 +121,8 @@ class ModelOutput(OrderedDict):
             inner_dict = {k: v for (k, v) in self.items()}
             if self.__class__.__name__ in ["StableDiffusionOutput", "ImagePipelineOutput"] and k == "sample":
                 warnings.warn(
-                    "The keyword 'samples' is deprecated and will be removed in version 0.4.0. Please use `.images` or `'images'` instead.",
+                    "The keyword 'samples' is deprecated and will be removed in version 0.4.0. Please use `.images` or"
+                    " `'images'` instead.",
                     DeprecationWarning,
                 )
             return inner_dict[k]
