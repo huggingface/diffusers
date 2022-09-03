@@ -268,7 +268,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         self,
         original_samples: Union[torch.FloatTensor, np.ndarray],
         noise: Union[torch.FloatTensor, np.ndarray],
-        timesteps: Union[torch.FloatTensor, np.ndarray],
+        timesteps: Union[torch.IntTensor, np.ndarray],
     ):
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
