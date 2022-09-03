@@ -15,6 +15,7 @@
 
 
 import warnings
+from typing import Tuple, Union
 
 import torch
 
@@ -37,7 +38,7 @@ class DDIMPipeline(DiffusionPipeline):
         output_type="pil",
         return_dict: bool = True,
         **kwargs,
-    ):
+    ) -> Union[ImagePipelineOutput, Tuple]:
 
         if "torch_device" in kwargs:
             device = kwargs.pop("torch_device")
@@ -77,6 +78,6 @@ class DDIMPipeline(DiffusionPipeline):
             image = self.numpy_to_pil(image)
 
         if not return_dict:
-            return (sample,)
+            return (image,)
 
-        return ImagePipelineOutput(sample=sample)
+        return ImagePipelineOutput(sample=image)

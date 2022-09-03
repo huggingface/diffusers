@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import warnings
-from typing import Optional
+from typing import Optional, Tuple, Union
 
 import torch
 
@@ -27,7 +27,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         **kwargs,
-    ):
+    ) -> Union[ImagePipelineOutput, Tuple]:
         if "torch_device" in kwargs:
             device = kwargs.pop("torch_device")
             warnings.warn(
@@ -73,4 +73,4 @@ class ScoreSdeVePipeline(DiffusionPipeline):
         if not return_dict:
             return (sample,)
 
-        return ImagePipelineOutput(sample=sample)
+        return ImagePipelineOutput(image=sample, sample=sample)

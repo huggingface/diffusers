@@ -1,6 +1,6 @@
 import inspect
 import warnings
-from typing import Optional
+from typing import Optional, Tuple, Union
 
 import torch
 
@@ -30,7 +30,7 @@ class LDMPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         **kwargs,
-    ):
+    ) -> Union[Tuple, ImagePipelineOutput]:
         # eta corresponds to η in paper and should be between [0, 1]
 
         if "torch_device" in kwargs:
@@ -75,6 +75,6 @@ class LDMPipeline(DiffusionPipeline):
             image = self.numpy_to_pil(image)
 
         if not return_dict:
-            return (sample,)
+            return (image,)
 
-        return ImagePipelineOutput(sample=sample)
+        return ImagePipelineOutput(image=image, sample=image)

@@ -62,11 +62,12 @@ class ImagePipelineOutput(ModelOutput):
     Output class for image pipelines.
 
     Args:
-        sample (`List[PIL.Image]` or `np.ndarray`)
+        image (`List[PIL.Image]` or `np.ndarray`)
             List of denoised PIL images of length `batch_size` or numpy array of shape `(batch_size, height, width,
             num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
     """
 
+    image: Union[List[PIL.Images], np.ndarray] = None
     sample: Union[List[PIL.Images], np.ndarray] = None
 
 

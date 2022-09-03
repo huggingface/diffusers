@@ -15,6 +15,7 @@
 
 
 import warnings
+from typing import Tuple, Union
 
 import torch
 
@@ -28,7 +29,9 @@ class DDPMPipeline(DiffusionPipeline):
         self.register_modules(unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
-    def __call__(self, batch_size=1, generator=None, output_type="pil", return_dict: bool = True, **kwargs):
+    def __call__(
+        self, batch_size=1, generator=None, output_type="pil", return_dict: bool = True, **kwargs
+    ) -> Union[ImagePipelineOutput, Tuple]:
         if "torch_device" in kwargs:
             device = kwargs.pop("torch_device")
             warnings.warn(
@@ -64,6 +67,6 @@ class DDPMPipeline(DiffusionPipeline):
             image = self.numpy_to_pil(image)
 
         if not return_dict:
-            return (sample,)
+            return (image,)
 
-        return ImagePipelineOutput(sample=sample)
+        return ImagePipelineOutput(sample=image)

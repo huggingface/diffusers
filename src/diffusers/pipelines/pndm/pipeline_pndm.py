@@ -15,7 +15,7 @@
 
 
 import warnings
-from typing import Optional
+from typing import Optional, Tuple, Union
 
 import torch
 
@@ -42,7 +42,7 @@ class PNDMPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         **kwargs,
-    ):
+    ) -> Union[ImagePipelineOutput, Tuple]:
         # For more information on the sampling method you can take a look at Algorithm 2 of
         # the official paper: https://arxiv.org/pdf/2202.09778.pdf
 
@@ -77,6 +77,6 @@ class PNDMPipeline(DiffusionPipeline):
             image = self.numpy_to_pil(image)
 
         if not return_dict:
-            return (sample,)
+            return (image,)
 
-        return ImagePipelineOutput(sample=sample)
+        return ImagePipelineOutput(image=image, sample=image)

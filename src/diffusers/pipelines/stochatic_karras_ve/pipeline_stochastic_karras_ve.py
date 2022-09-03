@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import warnings
-from typing import Optional
+from typing import Optional, Tuple, Union
 
 import torch
 
@@ -37,7 +37,7 @@ class KarrasVePipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         **kwargs,
-    ):
+    ) -> Union[Tuple, ImagePipelineOutput]:
         if "torch_device" in kwargs:
             device = kwargs.pop("torch_device")
             warnings.warn(
@@ -93,11 +93,11 @@ class KarrasVePipeline(DiffusionPipeline):
             sample = step_output["prev_sample"]
 
         sample = (sample / 2 + 0.5).clamp(0, 1)
-        sample = sample.cpu().permute(0, 2, 3, 1).numpy()
+        image = sample.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "pil":
-            sample = self.numpy_to_pil(sample)
+            image = self.numpy_to_pil(sample)
 
         if not return_dict:
-            return (sample,)
+            return (image,)
 
-        return ImagePipelineOutput(sample=sample)
+        return ImagePipelineOutput(image=image, sample=image)
