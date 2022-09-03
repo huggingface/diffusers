@@ -18,11 +18,12 @@ import importlib
 import inspect
 import os
 from dataclasses import dataclass
-from typing import PIL, List, Optional, Union
+from typing import List, Optional, Union
 
 import numpy as np
 import torch
 
+import PIL
 from huggingface_hub import snapshot_download
 from PIL import Image
 from tqdm.auto import tqdm
@@ -62,13 +63,13 @@ class ImagePipelineOutput(ModelOutput):
     Output class for image pipelines.
 
     Args:
-        images (`List[PIL.Image]` or `np.ndarray`)
+        images (`List[PIL.Image.Image]` or `np.ndarray`)
             List of denoised PIL images of length `batch_size` or numpy array of shape `(batch_size, height, width,
             num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
     """
 
-    images: Union[List[PIL.Images], np.ndarray] = None
-    sample: Union[List[PIL.Images], np.ndarray] = None
+    images: Union[List[PIL.Image.Image], np.ndarray] = None
+    sample: Union[List[PIL.Image.Image], np.ndarray] = None
 
 
 class DiffusionPipeline(ConfigMixin):

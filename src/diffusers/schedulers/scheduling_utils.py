@@ -17,7 +17,7 @@ from typing import Union
 import numpy as np
 import torch
 
-from .utils import ModelOutput
+from ..utils import ModelOutput
 
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"

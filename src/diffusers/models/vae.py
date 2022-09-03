@@ -33,7 +33,7 @@ class VQEncoderOutput(ModelOutput):
             Encoded output sample of the model. Output of the last layer of the model.
     """
 
-    sample: torch.FloatTensor = None
+    latents: torch.FloatTensor = None
 
 
 @dataclass
@@ -435,8 +435,8 @@ class VQModel(ModelMixin, ConfigMixin):
 
     def forward(self, sample, return_dict: bool = True):
         x = sample
-        h = self.encode(x)
-        dec = self.decode(h)
+        h = self.encode(x).latents
+        dec = self.decode(h).sample
 
         if not return_dict:
             return (dec,)
@@ -505,12 +505,12 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
 
     def forward(self, sample, sample_posterior=False, return_dict: bool = True):
         x = sample
-        posterior = self.encode(x)
+        posterior = self.encode(x).latent_dist
         if sample_posterior:
             z = posterior.sample()
         else:
             z = posterior.mode()
-        dec = self.decode(z)
+        dec = self.decode(z).sample
 
         if not return_dict:
             return (dec,)

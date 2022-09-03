@@ -86,7 +86,8 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             init_image = preprocess(init_image)
 
         # encode the init image into latents and scale the latents
-        init_latents = self.vae.encode(init_image.to(self.device)).sample(generator=generator)
+        init_latent_dist = self.vae.encode(init_image.to(self.device)).latent_dist
+        init_latents = init_latent_dist.sample(generator=generator)
         init_latents = 0.18215 * init_latents
 
         # expand init_latents for batch_size
@@ -157,7 +158,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
-        image = self.vae.decode(latents)
+        image = self.vae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()

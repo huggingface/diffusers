@@ -67,12 +67,12 @@ def test_progress_bar(capsys):
     scheduler = DDPMScheduler(num_train_timesteps=10)
 
     ddpm = DDPMPipeline(model, scheduler).to(torch_device)
-    ddpm(output_type="numpy")["sample"]
+    ddpm(output_type="numpy").images
     captured = capsys.readouterr()
     assert "10/10" in captured.err, "Progress bar has to be displayed"
 
     ddpm.set_progress_bar_config(disable=True)
-    ddpm(output_type="numpy")["sample"]
+    ddpm(output_type="numpy").images
     captured = capsys.readouterr()
     assert captured.err == "", "Progress bar should be disabled"
 
@@ -196,7 +196,7 @@ class PipelineFastTests(unittest.TestCase):
         ddpm.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        image = ddpm(generator=generator, num_inference_steps=2, output_type="numpy")["sample"]
+        image = ddpm(generator=generator, num_inference_steps=2, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -214,7 +214,7 @@ class PipelineFastTests(unittest.TestCase):
         pndm.to(torch_device)
         pndm.set_progress_bar_config(disable=None)
         generator = torch.manual_seed(0)
-        image = pndm(generator=generator, num_inference_steps=20, output_type="numpy")["sample"]
+        image = pndm(generator=generator, num_inference_steps=20, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -277,7 +277,7 @@ class PipelineFastTests(unittest.TestCase):
         generator = torch.Generator(device=device).manual_seed(0)
         output = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
 
-        image = output["sample"]
+        image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -310,7 +310,7 @@ class PipelineFastTests(unittest.TestCase):
         generator = torch.Generator(device=device).manual_seed(0)
         output = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
 
-        image = output["sample"]
+        image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -343,7 +343,7 @@ class PipelineFastTests(unittest.TestCase):
         generator = torch.Generator(device=device).manual_seed(0)
         output = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
 
-        image = output["sample"]
+        image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -360,7 +360,7 @@ class PipelineFastTests(unittest.TestCase):
         sde_ve.set_progress_bar_config(disable=None)
 
         torch.manual_seed(0)
-        image = sde_ve(num_inference_steps=2, output_type="numpy")["sample"]
+        image = sde_ve(num_inference_steps=2, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -379,7 +379,7 @@ class PipelineFastTests(unittest.TestCase):
         ldm.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        image = ldm(generator=generator, num_inference_steps=2, output_type="numpy")["sample"]
+        image = ldm(generator=generator, num_inference_steps=2, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -396,7 +396,7 @@ class PipelineFastTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        image = pipe(num_inference_steps=2, generator=generator, output_type="numpy")["sample"]
+        image = pipe(num_inference_steps=2, generator=generator, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 32, 32, 3)
@@ -437,7 +437,7 @@ class PipelineFastTests(unittest.TestCase):
             init_image=init_image,
         )
 
-        image = output["sample"]
+        image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -482,7 +482,7 @@ class PipelineFastTests(unittest.TestCase):
             mask_image=mask_image,
         )
 
-        image = output["sample"]
+        image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -522,9 +522,9 @@ class PipelineTesterMixin(unittest.TestCase):
 
         generator = torch.manual_seed(0)
 
-        image = ddpm(generator=generator, output_type="numpy")["sample"]
+        image = ddpm(generator=generator, output_type="numpy").images
         generator = generator.manual_seed(0)
-        new_image = new_ddpm(generator=generator, output_type="numpy")["sample"]
+        new_image = new_ddpm(generator=generator, output_type="numpy").images
 
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
 
@@ -543,9 +543,9 @@ class PipelineTesterMixin(unittest.TestCase):
 
         generator = torch.manual_seed(0)
 
-        image = ddpm(generator=generator, output_type="numpy")["sample"]
+        image = ddpm(generator=generator, output_type="numpy").images
         generator = generator.manual_seed(0)
-        new_image = ddpm_from_hub(generator=generator, output_type="numpy")["sample"]
+        new_image = ddpm_from_hub(generator=generator, output_type="numpy").images
 
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
 
@@ -567,9 +567,9 @@ class PipelineTesterMixin(unittest.TestCase):
 
         generator = torch.manual_seed(0)
 
-        image = ddpm_from_hub_custom_model(generator=generator, output_type="numpy")["sample"]
+        image = ddpm_from_hub_custom_model(generator=generator, output_type="numpy").images
         generator = generator.manual_seed(0)
-        new_image = ddpm_from_hub(generator=generator, output_type="numpy")["sample"]
+        new_image = ddpm_from_hub(generator=generator, output_type="numpy").images
 
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't give the same forward pass"
 
@@ -582,17 +582,17 @@ class PipelineTesterMixin(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        images = pipe(generator=generator, output_type="numpy")["sample"]
+        images = pipe(generator=generator, output_type="numpy").images
         assert images.shape == (1, 32, 32, 3)
         assert isinstance(images, np.ndarray)
 
-        images = pipe(generator=generator, output_type="pil")["sample"]
+        images = pipe(generator=generator, output_type="pil").images
         assert isinstance(images, list)
         assert len(images) == 1
         assert isinstance(images[0], PIL.Image.Image)
 
         # use PIL by default
-        images = pipe(generator=generator)["sample"]
+        images = pipe(generator=generator).images
         assert isinstance(images, list)
         assert isinstance(images[0], PIL.Image.Image)
 
@@ -609,7 +609,7 @@ class PipelineTesterMixin(unittest.TestCase):
         ddpm.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        image = ddpm(generator=generator, output_type="numpy")["sample"]
+        image = ddpm(generator=generator, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -629,7 +629,7 @@ class PipelineTesterMixin(unittest.TestCase):
         ddpm.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        image = ddpm(generator=generator, output_type="numpy")["sample"]
+        image = ddpm(generator=generator, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -649,7 +649,7 @@ class PipelineTesterMixin(unittest.TestCase):
         ddim.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        image = ddim(generator=generator, eta=0.0, output_type="numpy")["sample"]
+        image = ddim(generator=generator, eta=0.0, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -668,7 +668,7 @@ class PipelineTesterMixin(unittest.TestCase):
         pndm.to(torch_device)
         pndm.set_progress_bar_config(disable=None)
         generator = torch.manual_seed(0)
-        image = pndm(generator=generator, output_type="numpy")["sample"]
+        image = pndm(generator=generator, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -702,7 +702,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
-        image = ldm(prompt, generator=generator, num_inference_steps=1, output_type="numpy")["sample"]
+        image = ldm(prompt, generator=generator, num_inference_steps=1, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -725,7 +725,7 @@ class PipelineTesterMixin(unittest.TestCase):
                 [prompt], generator=generator, guidance_scale=6.0, num_inference_steps=20, output_type="np"
             )
 
-        image = output["sample"]
+        image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -754,7 +754,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
         with torch.autocast("cuda"):
             output = sd_pipe([prompt], generator=generator, num_inference_steps=2, output_type="numpy")
-        image = output["sample"]
+        image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -774,7 +774,7 @@ class PipelineTesterMixin(unittest.TestCase):
         sde_ve.set_progress_bar_config(disable=None)
 
         torch.manual_seed(0)
-        image = sde_ve(num_inference_steps=300, output_type="numpy")["sample"]
+        image = sde_ve(num_inference_steps=300, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -790,7 +790,7 @@ class PipelineTesterMixin(unittest.TestCase):
         ldm.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        image = ldm(generator=generator, num_inference_steps=5, output_type="numpy")["sample"]
+        image = ldm(generator=generator, num_inference_steps=5, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -814,10 +814,10 @@ class PipelineTesterMixin(unittest.TestCase):
         ddim.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        ddpm_image = ddpm(generator=generator, output_type="numpy")["sample"]
+        ddpm_image = ddpm(generator=generator, output_type="numpy").images
 
         generator = torch.manual_seed(0)
-        ddim_image = ddim(generator=generator, num_inference_steps=1000, eta=1.0, output_type="numpy")["sample"]
+        ddim_image = ddim(generator=generator, num_inference_steps=1000, eta=1.0, output_type="numpy").images
 
         # the values aren't exactly equal, but the images look the same visually
         assert np.abs(ddpm_image - ddim_image).max() < 1e-1
@@ -839,7 +839,7 @@ class PipelineTesterMixin(unittest.TestCase):
         ddim.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        ddpm_images = ddpm(batch_size=4, generator=generator, output_type="numpy")["sample"]
+        ddpm_images = ddpm(batch_size=4, generator=generator, output_type="numpy").images
 
         generator = torch.manual_seed(0)
         ddim_images = ddim(batch_size=4, generator=generator, num_inference_steps=1000, eta=1.0, output_type="numpy")[
@@ -860,7 +860,7 @@ class PipelineTesterMixin(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        image = pipe(num_inference_steps=20, generator=generator, output_type="numpy")["sample"]
+        image = pipe(num_inference_steps=20, generator=generator, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 256, 256, 3)
@@ -937,7 +937,7 @@ class PipelineTesterMixin(unittest.TestCase):
             strength=0.75,
             guidance_scale=7.5,
             generator=generator,
-        )["sample"][0]
+        ).images[0]
 
         expected_array = np.array(output_image)
         sampled_array = np.array(image)

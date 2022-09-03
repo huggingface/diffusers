@@ -69,4 +69,4 @@ class DDPMPipeline(DiffusionPipeline):
         if not return_dict:
             return (image,)
 
-        return ImagePipelineOutput(sample=image)
+        return ImagePipelineOutput(images=image, sample=image)

@@ -38,6 +38,7 @@ class KarrasVeOutput(ModelOutput):
     """
 
     prev_sample: torch.FloatTensor = None
+    derivative: torch.FloatTensor = None
 
 
 class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
