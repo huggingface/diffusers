@@ -117,7 +117,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         if not return_dict:
             return (image,)
 
-        return ImagePipelineOutput(images=image, sample=image)
+        return ImagePipelineOutput(images=image)
 
 
 ################################################################################
