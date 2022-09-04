@@ -26,7 +26,7 @@ body:
       label: Logs
       description: "Please include the Python logs if you can."
       render: shell
- - type: textarea
+  - type: textarea
     id: system-info
     attributes:
       label: System Info
