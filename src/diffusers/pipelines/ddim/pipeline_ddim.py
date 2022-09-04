@@ -15,6 +15,7 @@
 
 
 import warnings
+from typing import Optional
 
 import torch
 
@@ -28,7 +29,15 @@ class DDIMPipeline(DiffusionPipeline):
         self.register_modules(unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
-    def __call__(self, batch_size=1, generator=None, eta=0.0, num_inference_steps=50, output_type="pil", **kwargs):
+    def __call__(
+        self,
+        batch_size: int = 1,
+        generator: Optional[torch.Generator] = None,
+        eta: float = 0.0,
+        num_inference_steps: int = 50,
+        output_type: Optional[str] = "pil",
+        **kwargs,
+    ):
 
         if "torch_device" in kwargs:
             device = kwargs.pop("torch_device")
