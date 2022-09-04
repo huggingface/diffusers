@@ -140,6 +140,9 @@ class ModelTesterMixin:
         self.assertEqual(output_1.shape, output_2.shape)
 
     def test_training(self):
+        if torch_device == "mps":
+            return
+
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
@@ -155,6 +158,9 @@ class ModelTesterMixin:
         loss.backward()
 
     def test_ema_training(self):
+        if torch_device == "mps":
+            return
+
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
