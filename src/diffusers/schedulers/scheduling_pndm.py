@@ -72,13 +72,13 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        num_train_timesteps=1000,
-        beta_start=0.0001,
-        beta_end=0.02,
-        beta_schedule="linear",
+        num_train_timesteps: int = 1000,
+        beta_start: float = 0.0001,
+        beta_end: float = 0.02,
+        beta_schedule: str = "linear",
         trained_betas=None,
-        tensor_format="pt",
-        skip_prk_steps=False,
+        tensor_format: str = "pt",
+        skip_prk_steps: bool = False,
     ):
         if trained_betas is not None:
             self.betas = np.asarray(trained_betas)
