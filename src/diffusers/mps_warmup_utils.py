@@ -60,8 +60,5 @@ class MPSWarmupMixin:
         with torch.no_grad():
             w_inputs = self.warmup_inputs(batch_size)
             w_inputs = [w.to("mps") for w in w_inputs]
-            w_shapes = [w.shape for w in w_inputs]
-            print(f"Will perform warmup with shapes {w_shapes}")
             self.__call__(*w_inputs)
-            print("Done")
         
