@@ -7,6 +7,14 @@ body:
       value: |
         Thanks for taking the time to fill out this bug report!
   - type: textarea
+    id: system-info
+    attributes:
+      label: System Info
+      description: Please share your system info with us. You can run the command `diffusers-cli env` and copy-paste its output below.
+      placeholder: diffusers version, platform, python version, ...
+    validations:
+      required: true
+  - type: textarea
     id: bug-description
     attributes:
       label: Describe the bug
