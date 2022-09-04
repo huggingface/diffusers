@@ -49,7 +49,7 @@ class MPSWarmupMixin:
             """
         )
 
-    def warmup(self, batch_size=None):
+    def warmup(self, batch_size=None, **kwargs):
         r"""
         Applies the warmup using `warmup_inputs`.
         Assumes this class implements `__call__` and has a `device` property.
@@ -60,5 +60,5 @@ class MPSWarmupMixin:
         with torch.no_grad():
             w_inputs = self.warmup_inputs(batch_size)
             w_inputs = [w.to("mps") for w in w_inputs]
-            self.__call__(*w_inputs)
+            self.__call__(*w_inputs, **kwargs)
         

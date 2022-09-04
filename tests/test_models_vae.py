@@ -79,9 +79,9 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
     def test_output_pretrained(self):
         model = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy")
         model = model.to(torch_device)
-        if isinstance(model, MPSWarmupMixin):
-            model.warmup()
         model.eval()
+        if isinstance(model, MPSWarmupMixin):
+            model.warmup(1, sample_posterior=True)
 
         torch.manual_seed(0)
         if torch.cuda.is_available():
