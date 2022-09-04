@@ -453,6 +453,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, MPSWarmupMixin):
         dec = self.decode(z)
         return dec
 
-    def warmup_inputs(self) -> Tuple:
-        w_sample = torch.randn((4, self.in_channels, self.sample_size, self.sample_size))
+    def warmup_inputs(self, batch_size) -> Tuple:
+        batch_size = 4 if batch_size is None else batch_size
+        w_sample = torch.randn((batch_size, self.in_channels, self.sample_size, self.sample_size))
         return (w_sample,)

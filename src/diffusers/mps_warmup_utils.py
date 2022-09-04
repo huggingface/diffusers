@@ -35,7 +35,7 @@ class MPSWarmupMixin:
     warmup will be applied.
     """
 
-    def warmup_inputs(self) -> Tuple:
+    def warmup_inputs(self, batch_size=None) -> Tuple:
         r"""
         Return inputs suitable for the forward pass of this module.
         These will usually be a tuple of tensors. They will be automatically moved to the `mps` device on warmup.
@@ -49,7 +49,7 @@ class MPSWarmupMixin:
             """
         )
 
-    def warmup(self):
+    def warmup(self, batch_size=None):
         r"""
         Applies the warmup using `warmup_inputs`.
         Assumes this class implements `__call__` and has a `device` property.
@@ -58,7 +58,7 @@ class MPSWarmupMixin:
             return
 
         with torch.no_grad():
-            w_inputs = self.warmup_inputs()
+            w_inputs = self.warmup_inputs(batch_size)
             w_inputs = [w.to("mps") for w in w_inputs]
             w_shapes = [w.shape for w in w_inputs]
             print(f"Will perform warmup with shapes {w_shapes}")

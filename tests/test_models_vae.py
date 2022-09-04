@@ -18,6 +18,7 @@ import unittest
 import torch
 
 from diffusers import AutoencoderKL
+from diffusers.mps_warmup_utils import MPSWarmupMixin
 from diffusers.testing_utils import floats_tensor, torch_device
 
 from .test_modeling_common import ModelTesterMixin
@@ -78,6 +79,8 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
     def test_output_pretrained(self):
         model = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy")
         model = model.to(torch_device)
+        if isinstance(model, MPSWarmupMixin):
+            model.warmup()
         model.eval()
 
         torch.manual_seed(0)
