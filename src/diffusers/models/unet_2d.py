@@ -1,15 +1,16 @@
-from typing import Dict, Union
+from typing import Dict, Union, Tuple
 
 import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..mps_warmup_utils import MPSWarmupMixin
 from ..modeling_utils import ModelMixin
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from .unet_blocks import UNetMidBlock2D, get_down_block, get_up_block
 
 
-class UNet2DModel(ModelMixin, ConfigMixin):
+class UNet2DModel(ModelMixin, ConfigMixin, MPSWarmupMixin):
     @register_to_config
     def __init__(
         self,
@@ -185,3 +186,8 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         output = {"sample": sample}
 
         return output
+
+    def warmup_inputs(self) -> Tuple:
+        w_sample = torch.randn((1, self.in_channels, 32, 32))
+        t = torch.tensor([10], dtype=torch.long)
+        return (w_sample, t)

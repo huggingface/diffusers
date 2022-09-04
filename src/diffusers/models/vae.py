@@ -2,7 +2,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from typing import Dict, Union, Tuple
+
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..mps_warmup_utils import MPSWarmupMixin
 from ..modeling_utils import ModelMixin
 from .unet_blocks import UNetMidBlock2D, get_down_block, get_up_block
 
@@ -389,7 +392,7 @@ class VQModel(ModelMixin, ConfigMixin):
         return dec
 
 
-class AutoencoderKL(ModelMixin, ConfigMixin):
+class AutoencoderKL(ModelMixin, ConfigMixin, MPSWarmupMixin):
     @register_to_config
     def __init__(
         self,
@@ -449,3 +452,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             z = posterior.mode()
         dec = self.decode(z)
         return dec
+
+    def warmup_inputs(self) -> Tuple:
+        w_sample = torch.randn((4, self.in_channels, self.sample_size, self.sample_size))
+        return (w_sample,)

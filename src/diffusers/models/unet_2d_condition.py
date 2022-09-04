@@ -1,15 +1,16 @@
-from typing import Dict, Union
+from typing import Dict, Union, Tuple
 
 import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..mps_warmup_utils import MPSWarmupMixin
 from ..modeling_utils import ModelMixin
 from .embeddings import TimestepEmbedding, Timesteps
 from .unet_blocks import UNetMidBlock2DCrossAttn, get_down_block, get_up_block
 
 
-class UNet2DConditionModel(ModelMixin, ConfigMixin):
+class UNet2DConditionModel(ModelMixin, ConfigMixin, MPSWarmupMixin):
     @register_to_config
     def __init__(
         self,
@@ -184,3 +185,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         output = {"sample": sample}
 
         return output
+
+    def warmup_inputs(self) -> Tuple:
+        batch_size = 1
+        w_sample = torch.randn((batch_size, self.in_channels, 64, 64))
+        t = torch.tensor([10], dtype=torch.long)
+        w_encoded = torch.rand((batch_size, 77, 768))
+        return (w_sample, t, w_encoded)
