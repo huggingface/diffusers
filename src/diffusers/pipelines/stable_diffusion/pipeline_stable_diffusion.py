@@ -104,12 +104,11 @@ class StableDiffusionPipeline(DiffusionPipeline):
             latents = torch.randn(
                 latents_shape,
                 generator=generator,
-                device=self.device,
             )
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
-            latents = latents.to(self.device)
+        latents = latents.to(self.device)
 
         # set timesteps
         accepts_offset = "offset" in set(inspect.signature(self.scheduler.set_timesteps).parameters.keys())
