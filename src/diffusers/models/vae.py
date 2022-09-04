@@ -293,7 +293,7 @@ class DiagonalGaussianDistribution(object):
         if self.deterministic:
             self.var = self.std = torch.zeros_like(self.mean).to(device=self.parameters.device)
 
-    def sample(self, generator=None):
+    def sample(self, generator=None) -> torch.Tensor:
         x = self.mean + self.std * torch.randn(self.mean.shape, generator=generator, device=self.parameters.device)
         return x
 
@@ -429,18 +429,18 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         self.quant_conv = torch.nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1)
         self.post_quant_conv = torch.nn.Conv2d(latent_channels, latent_channels, 1)
 
-    def encode(self, x):
+    def encode(self, x: torch.FloatTensor) -> DiagonalGaussianDistribution:
         h = self.encoder(x)
         moments = self.quant_conv(h)
         posterior = DiagonalGaussianDistribution(moments)
         return posterior
 
-    def decode(self, z):
+    def decode(self, z: torch.Tensor) -> torch.FloatTensor:
         z = self.post_quant_conv(z)
         dec = self.decoder(z)
         return dec
 
-    def forward(self, sample, sample_posterior=False):
+    def forward(self, sample: torch.FloatTensor, sample_posterior=False):
         x = sample
         posterior = self.encode(x)
         if sample_posterior:
