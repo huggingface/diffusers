@@ -15,7 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 import math
-from typing import Optional, Union
+from typing import Union
 
 import numpy as np
 import torch
