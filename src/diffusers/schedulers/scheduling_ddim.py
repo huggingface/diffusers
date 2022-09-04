@@ -201,8 +201,11 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (prev_sample,)
 
+<<<<<<< HEAD
         return SchedulerOutput(prev_sample=prev_sample)
 
+=======
+>>>>>>> 5095a1d ([Type hint] scheduling ddim (#343))
     def add_noise(
         self,
         original_samples: Union[torch.FloatTensor, np.ndarray],
