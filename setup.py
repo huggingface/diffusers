@@ -83,7 +83,7 @@ _deps = [
     "filelock",
     "flake8>=3.8.3",
     "hf-doc-builder>=0.3.0",
-    "huggingface-hub>=0.8.1,<1.0",
+    "huggingface-hub>=0.8.1",
     "importlib_metadata",
     "isort>=5.5.4",
     "modelcards==0.1.4",
@@ -91,10 +91,12 @@ _deps = [
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
+    "scipy",
     "regex!=2019.12.17",
     "requests",
     "tensorboard",
     "torch>=1.4",
+    "transformers>=4.21.0",
 ]
 
 # this is a lookup table with items like:
