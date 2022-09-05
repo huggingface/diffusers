@@ -585,7 +585,6 @@ class ModelMixin(torch.nn.Module):
         else:
             return sum(p.numel() for p in self.parameters() if p.requires_grad or not only_trainable)
 
-
     def _mps_warmup_inputs(self, batch_size=None) -> Optional[Tuple]:
         r"""
         Temporary procedure to run a one-time forward pass on some models, when using the `mps` device.
@@ -596,11 +595,10 @@ class ModelMixin(torch.nn.Module):
 
         Return inputs suitable for the forward pass of this model.
         These will usually be a tuple of tensors that will be automatically moved to the `mps` device on warmup.
-        
+
         Return `None` if no warmup is required.
         """
         return None
-
 
     def _mps_warmup(self, batch_size=None, **kwargs):
         r"""
@@ -617,7 +615,6 @@ class ModelMixin(torch.nn.Module):
                 return
             w_inputs = [w.to("mps") for w in w_inputs]
             self.__call__(*w_inputs, **kwargs)
-
 
 
 def unwrap_model(model: torch.nn.Module) -> torch.nn.Module:
