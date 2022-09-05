@@ -24,6 +24,7 @@ from typing import Any, Dict, Tuple, Union
 
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
+import accelerate
 from requests import HTTPError
 
 from . import __version__
@@ -90,11 +91,18 @@ class ConfigMixin:
 
     @classmethod
     def from_config(cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs):
-        config_dict = cls.get_config_dict(pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs)
-
-        init_dict, unused_kwargs = cls.extract_init_dict(config_dict, **kwargs)
-
-        model = cls(**init_dict)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", None)
+        device_map = kwargs.pop("device_map", None)
+        if low_cpu_mem_usage:
+            with accelerate.init_empty_weights():
+                config_dict = cls.get_config_dict(pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs)
+                init_dict, unused_kwargs = cls.extract_init_dict(config_dict, **kwargs)
+                model = cls(**init_dict)
+                    
+        else:
+            config_dict = cls.get_config_dict(pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs)
+            init_dict, unused_kwargs = cls.extract_init_dict(config_dict, **kwargs)
+            model = cls(**init_dict)
 
         if return_unused_kwargs:
             return model, unused_kwargs

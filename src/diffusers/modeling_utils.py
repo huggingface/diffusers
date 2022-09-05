@@ -22,6 +22,7 @@ from torch import Tensor, device
 
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
+import accelerate
 from requests import HTTPError
 
 from .utils import CONFIG_NAME, DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT, logging
@@ -317,6 +318,8 @@ class ModelMixin(torch.nn.Module):
         from_auto_class = kwargs.pop("_from_auto", False)
         torch_dtype = kwargs.pop("torch_dtype", None)
         subfolder = kwargs.pop("subfolder", None)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", None)
+        device_map = kwargs.pop("device_map", None)
 
         user_agent = {"file_type": "model", "framework": "pytorch", "from_auto_class": from_auto_class}
 
@@ -333,6 +336,8 @@ class ModelMixin(torch.nn.Module):
             use_auth_token=use_auth_token,
             revision=revision,
             subfolder=subfolder,
+            low_cpu_mem_usage=low_cpu_mem_usage,
+            device_map=device_map,
             **kwargs,
         )
 
@@ -415,25 +420,41 @@ class ModelMixin(torch.nn.Module):
                 )
 
             # restore default dtype
-        state_dict = load_state_dict(model_file)
-        model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
-            model,
-            state_dict,
-            model_file,
-            pretrained_model_name_or_path,
-            ignore_mismatched_sizes=ignore_mismatched_sizes,
-        )
 
-        # Set model in evaluation mode to deactivate DropOut modules by default
-        model.eval()
+        if low_cpu_mem_usage:            
+            accelerate.load_checkpoint_and_dispatch(
+                model,
+                model_file,
+                device_map
+            )
+            loading_info = {
+                "missing_keys": [],
+                "unexpected_keys": [],
+                "mismatched_keys": [],
+                "error_msgs": [],
+            }
 
-        if output_loading_info:
+        else:
+            
+            state_dict = load_state_dict(model_file)
+            model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
+                model,
+                state_dict,
+                model_file,
+                pretrained_model_name_or_path,
+                ignore_mismatched_sizes=ignore_mismatched_sizes,
+            )
+
             loading_info = {
                 "missing_keys": missing_keys,
                 "unexpected_keys": unexpected_keys,
                 "mismatched_keys": mismatched_keys,
                 "error_msgs": error_msgs,
             }
+
+        # Set model in evaluation mode to deactivate DropOut modules by default
+        model.eval()
+        if output_loading_info:
             return model, loading_info
 
         return model
