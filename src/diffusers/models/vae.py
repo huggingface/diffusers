@@ -6,7 +6,6 @@ import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
-from ..mps_warmup_utils import MPSWarmupMixin
 from .unet_blocks import UNetMidBlock2D, get_down_block, get_up_block
 
 
@@ -395,7 +394,7 @@ class VQModel(ModelMixin, ConfigMixin):
         return dec
 
 
-class AutoencoderKL(ModelMixin, ConfigMixin, MPSWarmupMixin):
+class AutoencoderKL(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
@@ -456,7 +455,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, MPSWarmupMixin):
         dec = self.decode(z)
         return dec
 
-    def warmup_inputs(self, batch_size) -> Tuple:
+    def _mps_warmup_inputs(self, batch_size) -> Tuple:
         batch_size = 4 if batch_size is None else batch_size
         w_sample = torch.randn((batch_size, self.in_channels, self.sample_size, self.sample_size))
         return (w_sample,)

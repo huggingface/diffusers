@@ -26,7 +26,6 @@ from PIL import Image
 from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
-from .mps_warmup_utils import MPSWarmupMixin
 from .utils import DIFFUSERS_CACHE, logging
 
 
@@ -125,8 +124,6 @@ class DiffusionPipeline(ConfigMixin):
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
                 module.to(torch_device)
-                if isinstance(module, MPSWarmupMixin):
-                    module.warmup()
         return self
 
     @property

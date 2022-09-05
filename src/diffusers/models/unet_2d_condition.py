@@ -5,12 +5,11 @@ import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
-from ..mps_warmup_utils import MPSWarmupMixin
 from .embeddings import TimestepEmbedding, Timesteps
 from .unet_blocks import UNetMidBlock2DCrossAttn, get_down_block, get_up_block
 
 
-class UNet2DConditionModel(ModelMixin, ConfigMixin, MPSWarmupMixin):
+class UNet2DConditionModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
@@ -188,7 +187,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, MPSWarmupMixin):
 
         return output
 
-    def warmup_inputs(self, batch_size) -> Tuple:
+    def _mps_warmup_inputs(self, batch_size) -> Tuple:
         batch_size = 1 if batch_size is None else batch_size
         w_sample = torch.randn((batch_size, self.in_channels, 64, 64))
         t = torch.tensor([10], dtype=torch.int32)

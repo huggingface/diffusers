@@ -18,8 +18,8 @@ import tempfile
 
 import numpy as np
 import torch
+from diffusers.modeling_utils import ModelMixin
 
-from diffusers.mps_warmup_utils import MPSWarmupMixin
 from diffusers.testing_utils import torch_device
 from diffusers.training_utils import EMAModel
 
@@ -30,16 +30,16 @@ class ModelTesterMixin:
 
         model = self.model_class(**init_dict)
         model.to(torch_device)
-        if isinstance(model, MPSWarmupMixin):
-            model.warmup()
+        if isinstance(model, ModelMixin):
+            model._mps_warmup()
         model.eval()
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_pretrained(tmpdirname)
             new_model = self.model_class.from_pretrained(tmpdirname)
             new_model.to(torch_device)
-            if isinstance(new_model, MPSWarmupMixin):
-                model.warmup(inputs_dict["sample"].shape[0])
+            if isinstance(new_model, ModelMixin):
+                model._mps_warmup(inputs_dict["sample"].shape[0])
 
         with torch.no_grad():
             image = model(**inputs_dict)
@@ -59,8 +59,8 @@ class ModelTesterMixin:
         model = self.model_class(**init_dict)
         model.to(torch_device)
         model.eval()
-        if isinstance(model, MPSWarmupMixin):
-            model.warmup(inputs_dict["sample"].shape[0])
+        if isinstance(model, ModelMixin):
+            model._mps_warmup(inputs_dict["sample"].shape[0])
 
         with torch.no_grad():
             first = model(**inputs_dict)
