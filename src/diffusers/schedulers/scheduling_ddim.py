@@ -16,13 +16,13 @@
 # and https://github.com/hojonathanho/diffusion
 
 import math
-from typing import Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
@@ -52,15 +52,15 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        num_train_timesteps=1000,
-        beta_start=0.0001,
-        beta_end=0.02,
-        beta_schedule="linear",
-        trained_betas=None,
-        timestep_values=None,
-        clip_sample=True,
-        set_alpha_to_one=True,
-        tensor_format="pt",
+        num_train_timesteps: int = 1000,
+        beta_start: float = 0.0001,
+        beta_end: float = 0.02,
+        beta_schedule: str = "linear",
+        trained_betas: Optional[np.ndarray] = None,
+        timestep_values: Optional[np.ndarray] = None,
+        clip_sample: bool = True,
+        set_alpha_to_one: bool = True,
+        tensor_format: str = "pt",
     ):
 
         if beta_schedule == "linear":
@@ -100,7 +100,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
-    def set_timesteps(self, num_inference_steps, offset=0):
+    def set_timesteps(self, num_inference_steps: int, offset: int = 0):
         self.num_inference_steps = num_inference_steps
         self.timesteps = np.arange(
             0, self.config.num_train_timesteps, self.config.num_train_timesteps // self.num_inference_steps
@@ -116,7 +116,9 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         eta: float = 0.0,
         use_clipped_model_output: bool = False,
         generator=None,
-    ):
+        return_dict: bool = True,
+    ) -> Union[SchedulerOutput, Tuple]:
+
         if self.num_inference_steps is None:
             raise ValueError(
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
@@ -174,9 +176,17 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
             prev_sample = prev_sample + variance
 
-        return {"prev_sample": prev_sample}
+        if not return_dict:
+            return (prev_sample,)
 
-    def add_noise(self, original_samples, noise, timesteps):
+        return SchedulerOutput(prev_sample=prev_sample)
+
+    def add_noise(
+        self,
+        original_samples: Union[torch.FloatTensor, np.ndarray],
+        noise: Union[torch.FloatTensor, np.ndarray],
+        timesteps: Union[torch.IntTensor, np.ndarray],
+    ) -> Union[torch.FloatTensor, np.ndarray]:
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
         sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Union
+from typing import Tuple, Union
 
 import numpy as np
 import torch
@@ -20,7 +20,7 @@ import torch
 from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
 class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
@@ -100,7 +100,8 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: Union[torch.FloatTensor, np.ndarray],
         order: int = 4,
-    ):
+        return_dict: bool = True,
+    ) -> Union[SchedulerOutput, Tuple]:
         sigma = self.sigmas[timestep]
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
@@ -121,7 +122,10 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             coeff * derivative for coeff, derivative in zip(lms_coeffs, reversed(self.derivatives))
         )
 
-        return {"prev_sample": prev_sample}
+        if not return_dict:
+            return (prev_sample,)
+
+        return SchedulerOutput(prev_sample=prev_sample)
 
     def add_noise(self, original_samples, noise, timesteps):
         sigmas = self.match_shape(self.sigmas[timesteps], noise)

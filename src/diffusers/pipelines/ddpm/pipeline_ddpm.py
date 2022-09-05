@@ -15,11 +15,11 @@
 
 
 import warnings
-from typing import Optional
+from typing import Optional, Tuple, Union
 
 import torch
 
-from ...pipeline_utils import DiffusionPipeline
+from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 class DDPMPipeline(DiffusionPipeline):
@@ -35,7 +35,7 @@ class DDPMPipeline(DiffusionPipeline):
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
         **kwargs,
-    ):
+    ) -> Union[ImagePipelineOutput, Tuple]:
         if "torch_device" in kwargs:
             device = kwargs.pop("torch_device")
             warnings.warn(
@@ -60,14 +60,17 @@ class DDPMPipeline(DiffusionPipeline):
 
         for t in self.progress_bar(self.scheduler.timesteps):
             # 1. predict noise model_output
-            model_output = self.unet(image, t)["sample"]
+            model_output = self.unet(image, t).sample
 
             # 2. compute previous image: x_t -> t_t-1
-            image = self.scheduler.step(model_output, t, image, generator=generator)["prev_sample"]
+            image = self.scheduler.step(model_output, t, image, generator=generator).prev_sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
-        return {"sample": image}
+        if not return_dict:
+            return (image,)
+
+        return ImagePipelineOutput(images=image)
