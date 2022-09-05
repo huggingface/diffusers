@@ -29,7 +29,7 @@ from .scheduling_utils import SchedulerMixin, SchedulerOutput
 @dataclass
 class SdeVeOutput(ModelOutput):
     """
-    Output class for the scheduler's step function output.
+    Output class for the ScoreSdeVeScheduler's step function output.
 
     Args:
         prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):

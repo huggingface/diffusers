@@ -11,20 +11,20 @@ from ...utils import ModelOutput, is_transformers_available
 
 
 @dataclass
-class StableDiffusionOutput(ModelOutput):
+class StableDiffusionPipelineOutput(ModelOutput):
     """
-    Output class for image pipelines.
+    Output class for Stable Diffusion pipelines.
 
     Args:
         images (`List[PIL.Image.Image]` or `np.ndarray`)
             List of denoised PIL images of length `batch_size` or numpy array of shape `(batch_size, height, width,
             num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
-        nsfw_content_detected (`bool`)
-            Flag stating whether generating images likely represent "not-safe-for-work" (nsfw) content.
+        nsfw_content_detected (`List[bool]`)
+            List of flags denoting whether the corresponding generated image likely represents "not-safe-for-work" (nsfw) content.
     """
 
     images: Union[List[PIL.Image.Image], np.ndarray] = None
-    nsfw_content_detected: bool = None
+    nsfw_content_detected: List[bool]
 
 
 if is_transformers_available():

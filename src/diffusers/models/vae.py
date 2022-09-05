@@ -39,7 +39,7 @@ class VQEncoderOutput(ModelOutput):
 @dataclass
 class AutoEncoderKLOutput(ModelOutput):
     """
-    Output of VQModel encoding method.
+    Output of AutoencoderKL encoding method.
 
     Args:
         latent_dist (`DiagonalGaussianDistribution`):
@@ -492,7 +492,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         if not return_dict:
             return (posterior,)
 
-        return AutoEncoderKLOutput(latent_dist=posterior)
+        return AutoencoderKLOutput(latent_dist=posterior)
 
     def decode(self, z, return_dict: bool = True):
         z = self.post_quant_conv(z)
