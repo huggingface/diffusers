@@ -15,7 +15,7 @@
 
 
 import warnings
-from typing import Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 
@@ -31,11 +31,11 @@ class DDIMPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        batch_size=1,
-        generator=None,
-        eta=0.0,
-        num_inference_steps=50,
-        output_type="pil",
+        batch_size: int = 1,
+        generator: Optional[torch.Generator] = None,
+        eta: float = 0.0,
+        num_inference_steps: int = 50,
+        output_type: Optional[str] = "pil",
         return_dict: bool = True,
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:

@@ -10,13 +10,23 @@ from transformers.activations import ACT2FN
 from transformers.configuration_utils import PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutput
 from transformers.modeling_utils import PreTrainedModel
+from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.utils import logging
 
+from ...models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 
 
 class LDMTextToImagePipeline(DiffusionPipeline):
-    def __init__(self, vqvae, bert, tokenizer, unet, scheduler):
+    def __init__(
+        self,
+        vqvae: Union[VQModel, AutoencoderKL],
+        bert: PreTrainedModel,
+        tokenizer: PreTrainedTokenizer,
+        unet: Union[UNet2DModel, UNet2DConditionModel],
+        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+    ):
         super().__init__()
         scheduler = scheduler.set_format("pt")
         self.register_modules(vqvae=vqvae, bert=bert, tokenizer=tokenizer, unet=unet, scheduler=scheduler)
@@ -618,7 +628,7 @@ class LDMBertEncoder(LDMBertPreTrainedModel):
 
 
 class LDMBertModel(LDMBertPreTrainedModel):
-    def __init__(self, config):
+    def __init__(self, config: LDMBertConfig):
         super().__init__(config)
         self.model = LDMBertEncoder(config)
         self.to_logits = nn.Linear(config.hidden_size, config.vocab_size)
