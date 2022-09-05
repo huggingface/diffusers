@@ -805,8 +805,8 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert np.isclose(result_sum.item(), 14379591680.0)
-        assert np.isclose(result_mean.item(), 18723426.0)
+        assert np.isclose(result_sum.item(), 14372758528.0)
+        assert np.isclose(result_mean.item(), 18714530.0)
 
     def test_step_shape(self):
         kwargs = dict(self.forward_default_kwargs)
