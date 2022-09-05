@@ -56,7 +56,6 @@ for library in LOADABLE_CLASSES:
 
 
 class DiffusionPipeline(ConfigMixin):
-
     config_name = "model_index.json"
 
     def register_modules(self, **kwargs):
@@ -128,7 +127,7 @@ class DiffusionPipeline(ConfigMixin):
                 module.to(torch_device)
                 if isinstance(module, MPSWarmupMixin):
                     module.warmup()
-        return self        
+        return self
 
     @property
     def device(self) -> torch.device:

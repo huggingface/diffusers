@@ -16,6 +16,7 @@
 import torch
 from typing import Tuple
 
+
 class MPSWarmupMixin:
     r"""
     Temporary class to perform a 1-time warmup operation on some models, when they are moved to the `mps` device.
@@ -61,4 +62,3 @@ class MPSWarmupMixin:
             w_inputs = self.warmup_inputs(batch_size)
             w_inputs = [w.to("mps") for w in w_inputs]
             self.__call__(*w_inputs, **kwargs)
-        

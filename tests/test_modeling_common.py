@@ -39,7 +39,7 @@ class ModelTesterMixin:
             new_model = self.model_class.from_pretrained(tmpdirname)
             new_model.to(torch_device)
             if isinstance(new_model, MPSWarmupMixin):
-                model.warmup(inputs_dict['sample'].shape[0])
+                model.warmup(inputs_dict["sample"].shape[0])
 
         with torch.no_grad():
             image = model(**inputs_dict)
@@ -59,7 +59,7 @@ class ModelTesterMixin:
         model = self.model_class(**init_dict)
         model.to(torch_device)
         if isinstance(model, MPSWarmupMixin):
-                model.warmup(inputs_dict['sample'].shape[0])
+            model.warmup(inputs_dict["sample"].shape[0])
 
         model.eval()
         with torch.no_grad():
