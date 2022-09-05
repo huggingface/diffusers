@@ -1,9 +1,11 @@
 import argparse
 import math
 import os
+import random
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
@@ -53,6 +55,15 @@ def parse_args():
     parser.add_argument("--train_data_dir", type=str, default=None, help="A folder containing the training data.")
     parser.add_argument(
         "--validation_data_dir", type=str, default=None, help="A folder containing the validation data."
+    )
+    parser.add_argument(
+        "--image_column", type=str, default="image", help="The column of the dataset containing an image."
+    )
+    parser.add_argument(
+        "--caption_column",
+        type=str,
+        default="text",
+        help="The column of the dataset containing a caption or a list of captions.",
     )
     parser.add_argument(
         "--max_train_samples",
@@ -352,16 +363,24 @@ def main():
 
     # Preprocessing the datasets.
     # We need to tokenize input captions and transform the images.
-    def tokenize_captions(examples):
-        captions = [caption for caption in examples[caption_column]]
-        examples["input_ids"] = tokenizer(
-            captions, max_length=tokenizer.model_max_length, padding=True, truncation=True
-        ).input_ids
-        return examples
+    def tokenize_captions(examples, is_train=True):
+        captions = []
+        for caption in examples[caption_column]:
+            if isinstance(caption, str):
+                captions.append(caption)
+            elif isinstance(caption, (list, np.ndarray)):
+                # take a random caption if there are multiple
+                captions.append(random.choice(caption) if is_train else caption[0])
+            else:
+                raise ValueError(
+                    f"Caption column `{caption_column}` should contain either strings or lists of strings."
+                )
+        input_ids = tokenizer(captions, max_length=tokenizer.model_max_length, padding=True, truncation=True).input_ids
+        return input_ids
 
     train_transforms = transforms.Compose(
         [
-            transforms.Resize(args.resolution, interpolation=PIL.InterpolationMode.BILINEAR),
+            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
             transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
@@ -369,7 +388,7 @@ def main():
     )
     val_transforms = transforms.Compose(
         [
-            transforms.Resize(args.resolution, interpolation=PIL.InterpolationMode.BILINEAR),
+            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
             transforms.CenterCrop(args.resolution),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
@@ -377,39 +396,47 @@ def main():
     )
 
     def preprocess_train(examples):
-        images = [read_image(image_file, mode=ImageReadMode.RGB) for image_file in examples[image_column]]
+        images = [image.convert("RGB") for image in examples[image_column]]
         examples["pixel_values"] = [train_transforms(image) for image in images]
+        examples["input_ids"] = tokenize_captions(examples)
+
         return examples
 
     def preprocess_val(examples):
-        images = [read_image(image_file, mode=ImageReadMode.RGB) for image_file in examples[image_column]]
+        images = [image.convert("RGB") for image in examples[image_column]]
         examples["pixel_values"] = [val_transforms(image) for image in images]
+        examples["input_ids"] = tokenize_captions(examples, is_train=False)
         return examples
 
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
             dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
         # Set the training transforms
-        train_dataset = dataset["train"].with_transform(tokenize_captions).with_transform(preprocess_train)
+        train_dataset = dataset["train"].with_transform(preprocess_train)
         if args.max_eval_samples is not None:
             dataset["validation"] = dataset["validation"].shuffle(seed=args.seed).select(range(args.max_eval_samples))
         # Set the validation transforms
-        eval_dataset = dataset["validation"].with_transform(tokenize_captions).with_transform(preprocess_val)
+        eval_dataset = dataset["validation"].with_transform(preprocess_val)
 
     def collate_fn(examples):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
-        input_ids = torch.tensor([example["input_ids"] for example in examples], dtype=torch.long)
+        input_ids = [example["input_ids"] for example in examples]
+        padded_tokens = tokenizer.pad(
+            {"input_ids": input_ids},
+            padding="max_length",
+            max_length=tokenizer.model_max_length,
+            return_tensors="pt",
+        )
         return {
             "pixel_values": pixel_values,
-            "input_ids": input_ids,
+            "input_ids": padded_tokens.input_ids,
+            "attention_mask": padded_tokens.attention_mask,
         }
 
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, shuffle=True, collate_fn=collate_fn, batch_size=args.per_device_train_batch_size
+        train_dataset, shuffle=True, collate_fn=collate_fn, batch_size=args.train_batch_size
     )
-    eval_dataloader = torch.utils.data.DataLoader(
-        eval_dataset, collate_fn=collate_fn, batch_size=args.per_device_eval_batch_size
-    )
+    eval_dataloader = torch.utils.data.DataLoader(eval_dataset, collate_fn=collate_fn, batch_size=args.eval_batch_size)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
