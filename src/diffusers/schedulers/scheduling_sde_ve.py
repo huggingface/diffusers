@@ -39,8 +39,8 @@ class SdeVeOutput(ModelOutput):
             Mean averaged `prev_sample`. Same as `prev_sample`, only mean-averaged over previous timesteps.
     """
 
-    prev_sample: torch.FloatTensor = None
-    prev_sample_mean: torch.FloatTensor = None
+    prev_sample: torch.FloatTensor
+    prev_sample_mean: torch.FloatTensor
 
 
 class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):

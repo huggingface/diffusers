@@ -20,7 +20,7 @@ class DecoderOutput(ModelOutput):
             Decoded output sample of the model. Output of the last layer of the model.
     """
 
-    sample: torch.FloatTensor = None
+    sample: torch.FloatTensor
 
 
 @dataclass
@@ -33,7 +33,7 @@ class VQEncoderOutput(ModelOutput):
             Encoded output sample of the model. Output of the last layer of the model.
     """
 
-    latents: torch.FloatTensor = None
+    latents: torch.FloatTensor
 
 
 @dataclass
@@ -47,7 +47,7 @@ class AutoencoderKLOutput(ModelOutput):
             `DiagonalGaussianDistribution` allows for sampling latents from the distribution.
     """
 
-    latent_dist: torch.FloatTensor = None
+    latent_dist: "DiagonalGaussianDistribution" = None
 
 
 class Encoder(nn.Module):

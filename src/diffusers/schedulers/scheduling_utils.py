@@ -34,7 +34,7 @@ class SchedulerOutput(ModelOutput):
             denoising loop.
     """
 
-    prev_sample: torch.FloatTensor = None
+    prev_sample: torch.FloatTensor
 
 
 class SchedulerMixin:

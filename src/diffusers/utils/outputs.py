@@ -111,7 +111,7 @@ class ModelOutput(OrderedDict):
     def __getitem__(self, k):
         if isinstance(k, str):
             inner_dict = {k: v for (k, v) in self.items()}
-            if self.__class__.__name__ in ["StableDiffusionOutput", "ImagePipelineOutput"] and k == "sample":
+            if self.__class__.__name__ in ["StableDiffusionPipelineOutput", "ImagePipelineOutput"] and k == "sample":
                 warnings.warn(
                     "The keyword 'samples' is deprecated and will be removed in version 0.4.0. Please use `.images` or"
                     " `'images'` instead.",

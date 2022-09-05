@@ -37,7 +37,7 @@ class KarrasVeOutput(ModelOutput):
             Derivate of predicted original image sample (x_0).
     """
 
-    prev_sample: torch.FloatTensor = None
+    prev_sample: torch.FloatTensor
     derivative: torch.FloatTensor = None
 
 

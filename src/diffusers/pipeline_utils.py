@@ -68,7 +68,7 @@ class ImagePipelineOutput(ModelOutput):
             num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
     """
 
-    images: Union[List[PIL.Image.Image], np.ndarray] = None
+    images: Union[List[PIL.Image.Image], np.ndarray]
 
 
 class DiffusionPipeline(ConfigMixin):

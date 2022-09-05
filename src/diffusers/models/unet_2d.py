@@ -19,7 +19,7 @@ class UNet2DOutput(ModelOutput):
             Hidden states output. Output of last layer of model.
     """
 
-    sample: torch.FloatTensor = None
+    sample: torch.FloatTensor
 
 
 class UNet2DModel(ModelMixin, ConfigMixin):
