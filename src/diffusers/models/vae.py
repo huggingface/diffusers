@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -336,7 +337,7 @@ class DiagonalGaussianDistribution(object):
         if self.deterministic:
             self.var = self.std = torch.zeros_like(self.mean).to(device=self.parameters.device)
 
-    def sample(self, generator=None):
+    def sample(self, generator: Optional[torch.Generator] = None) -> torch.FloatTensor:
         x = self.mean + self.std * torch.randn(self.mean.shape, generator=generator, device=self.parameters.device)
         return x
 
@@ -370,16 +371,16 @@ class VQModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        in_channels=3,
-        out_channels=3,
-        down_block_types=("DownEncoderBlock2D",),
-        up_block_types=("UpDecoderBlock2D",),
-        block_out_channels=(64,),
-        layers_per_block=1,
-        act_fn="silu",
-        latent_channels=3,
-        sample_size=32,
-        num_vq_embeddings=256,
+        in_channels: int = 3,
+        out_channels: int = 3,
+        down_block_types: Tuple[str] = ("DownEncoderBlock2D",),
+        up_block_types: Tuple[str] = ("UpDecoderBlock2D",),
+        block_out_channels: Tuple[int] = (64,),
+        layers_per_block: int = 1,
+        act_fn: str = "silu",
+        latent_channels: int = 3,
+        sample_size: int = 32,
+        num_vq_embeddings: int = 256,
     ):
         super().__init__()
 
@@ -419,7 +420,9 @@ class VQModel(ModelMixin, ConfigMixin):
 
         return VQEncoderOutput(latents=h)
 
-    def decode(self, h, force_not_quantize=False, return_dict: bool = True):
+    def decode(
+        self, h: torch.FloatTensor, force_not_quantize: bool = False, return_dict: bool = True
+    ) -> Union[DecoderOutput, torch.FloatTensor]:
         # also go through quantization layer
         if not force_not_quantize:
             quant, emb_loss, info = self.quantize(h)
@@ -433,7 +436,7 @@ class VQModel(ModelMixin, ConfigMixin):
 
         return DecoderOutput(sample=dec)
 
-    def forward(self, sample, return_dict: bool = True):
+    def forward(self, sample: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
         x = sample
         h = self.encode(x).latents
         dec = self.decode(h).sample
@@ -448,15 +451,15 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        in_channels=3,
-        out_channels=3,
-        down_block_types=("DownEncoderBlock2D",),
-        up_block_types=("UpDecoderBlock2D",),
-        block_out_channels=(64,),
-        layers_per_block=1,
-        act_fn="silu",
-        latent_channels=4,
-        sample_size=32,
+        in_channels: int = 3,
+        out_channels: int = 3,
+        down_block_types: Tuple[str] = ("DownEncoderBlock2D",),
+        up_block_types: Tuple[str] = ("UpDecoderBlock2D",),
+        block_out_channels: Tuple[int] = (64,),
+        layers_per_block: int = 1,
+        act_fn: str = "silu",
+        latent_channels: int = 4,
+        sample_size: int = 32,
     ):
         super().__init__()
 
@@ -494,7 +497,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
 
         return AutoencoderKLOutput(latent_dist=posterior)
 
-    def decode(self, z, return_dict: bool = True):
+    def decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
         z = self.post_quant_conv(z)
         dec = self.decoder(z)
 
@@ -503,7 +506,9 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
 
         return DecoderOutput(sample=dec)
 
-    def forward(self, sample, sample_posterior=False, return_dict: bool = True):
+    def forward(
+        self, sample: torch.FloatTensor, sample_posterior: bool = False, return_dict: bool = True
+    ) -> Union[DecoderOutput, torch.FloatTensor]:
         x = sample
         posterior = self.encode(x).latent_dist
         if sample_posterior:
