@@ -36,19 +36,59 @@ def parse_args():
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
-        "--tokenizer_name",
+        "--dataset_name",
         type=str,
         default=None,
-        help="Pretrained tokenizer name or path if not the same as model_name",
+        help=(
+            "The name of the Dataset (from the HuggingFace hub) to train on (could be your own, possibly private,"
+            " dataset)."
+        ),
     )
     parser.add_argument(
-        "--train_data_dir", type=str, default=None, required=True, help="A folder containing the training data."
+        "--dataset_config_name",
+        type=str,
+        default=None,
+        help="The config of the Dataset, leave as None if there's only one config.",
+    )
+    parser.add_argument("--train_data_dir", type=str, default=None, help="A folder containing the training data.")
+    parser.add_argument(
+        "--validation_data_dir", type=str, default=None, help="A folder containing the validation data."
+    )
+    parser.add_argument(
+        "--max_train_samples",
+        type=int,
+        default=None,
+        help=(
+            "For debugging purposes or quicker training, truncate the number of training examples to this "
+            "value if set."
+        ),
+    )
+    parser.add_argument(
+        "--max_eval_samples",
+        type=int,
+        default=None,
+        help=(
+            "For debugging purposes or quicker training, truncate the number of evaluation examples to this "
+            "value if set."
+        ),
+    )
+    parser.add_argument(
+        "--train_val_split",
+        type=float,
+        default=0.15,
+        help="Percent to split off of train for validation",
     )
     parser.add_argument(
         "--output_dir",
         type=str,
         default="sd-model-finetuned",
         help="The output directory where the model predictions and checkpoints will be written.",
+    )
+    parser.add_argument(
+        "--cache_dir",
+        type=str,
+        default=None,
+        help="The directory where the downloaded models and datasets will be stored.",
     )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
     parser.add_argument(
@@ -61,10 +101,15 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution"
+        "--center_crop",
+        action="store_true",
+        help="Whether to center crop images before resizing to resolution (if not set, use random crop)",
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
+    )
+    parser.add_argument(
+        "--eval_batch_size", type=int, default=16, help="Batch size (per device) for the eval dataloader."
     )
     parser.add_argument("--num_train_epochs", type=int, default=100)
     parser.add_argument(
@@ -150,8 +195,9 @@ def parse_args():
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
 
-    if args.train_data_dir is None:
-        raise ValueError("You must specify a train data directory.")
+    # Sanity checks
+    if args.dataset_name is None and args.train_data_dir is None and args.validation_data_dir is None:
+        raise ValueError("Need either a dataset name or a training/validation folder.")
 
     return args
 
@@ -208,17 +254,12 @@ def main():
         elif args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
-    # Load the tokenizer and add the placeholder token as a additional special token
-    if args.tokenizer_name:
-        tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_name)
-    elif args.pretrained_model_name_or_path:
-        tokenizer = CLIPTokenizer.from_pretrained(
-            args.pretrained_model_name_or_path,
-            subfolder="tokenizer",
-            use_auth_token=args.use_auth_token,
-        )
-
     # Load models and create wrapper for stable diffusion
+    tokenizer = CLIPTokenizer.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer",
+        use_auth_token=args.use_auth_token,
+    )
     text_encoder = CLIPTextModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", use_auth_token=args.use_auth_token
     )
@@ -247,27 +288,48 @@ def main():
         eps=args.adam_epsilon,
     )
 
-    # TODO (patil-suraj): laod scheduler using args
+    # TODO (patil-suraj): load scheduler using args
     noise_scheduler = DDPMScheduler(
         beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000, tensor_format="pt"
     )
 
+    # Get the datasets: you can either provide your own training and evaluation files (see below)
+    # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
+
+    # In distributed training, the load_dataset function guarantees that only one local process can concurrently
+    # download the dataset.
     if args.dataset_name is not None:
-        train_dataset = load_dataset(
+        # Downloading and loading a dataset from the hub.
+        dataset = load_dataset(
             args.dataset_name,
             args.dataset_config_name,
             cache_dir=args.cache_dir,
             use_auth_token=True if args.use_auth_token else None,
-            split="train",
         )
     else:
-        train_dataset = load_dataset(
-            "imagefolder", data_dir=args.train_data_dir, cache_dir=args.cache_dir, split="train"
+        data_files = {}
+        if args.train_dir is not None:
+            data_files["train"] = os.path.join(args.train_dir, "**")
+        if args.validation_dir is not None:
+            data_files["validation"] = os.path.join(args.validation_dir, "**")
+        dataset = load_dataset(
+            "imagefolder",
+            data_files=data_files,
+            cache_dir=args.cache_dir,
         )
+        # See more about loading custom images at
+        # https://huggingface.co/docs/datasets/v2.4.0/en/image_process#imagefolder.
+
+    # If we don't have a validation split, split off a percentage of train as validation.
+    args.train_val_split = None if "validation" in dataset.keys() else args.train_val_split
+    if isinstance(args.train_val_split, float) and args.train_val_split > 0.0:
+        split = dataset["train"].train_test_split(args.train_val_split)
+        dataset["train"] = split["train"]
+        dataset["validation"] = split["test"]
 
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
-    column_names = train_dataset["train"].column_names
+    column_names = dataset["train"].column_names
 
     # 6. Get the column names for input/target.
     dataset_columns = dataset_name_mapping.get(args.dataset_name, None)
@@ -297,23 +359,42 @@ def main():
         ).input_ids
         return examples
 
-    preprocess = transforms.Compose(
+    train_transforms = transforms.Compose(
         [
             transforms.Resize(args.resolution, interpolation=PIL.InterpolationMode.BILINEAR),
-            # transforms.CenterCrop(args.resolution),
+            transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
             transforms.ToTensor(),
-            lambda tensor: tensor.to(torch.uint8),  # TODO: why ?
-            lambda tensor: (tensor / 127.5 - 1.0).to(torch.float32),
+            transforms.Normalize([0.5], [0.5]),
+        ]
+    )
+    val_transforms = transforms.Compose(
+        [
+            transforms.Resize(args.resolution, interpolation=PIL.InterpolationMode.BILINEAR),
+            transforms.CenterCrop(args.resolution),
+            transforms.ToTensor(),
+            transforms.Normalize([0.5], [0.5]),
         ]
     )
 
-    def preprocess_images(examples):
+    def preprocess_train(examples):
         images = [read_image(image_file, mode=ImageReadMode.RGB) for image_file in examples[image_column]]
-        examples["pixel_values"] = [preprocess(image) for image in images]
+        examples["pixel_values"] = [train_transforms(image) for image in images]
         return examples
 
-    train_dataset.set_transform(tokenize_captions)
-    train_dataset.set_transform(preprocess_images)
+    def preprocess_val(examples):
+        images = [read_image(image_file, mode=ImageReadMode.RGB) for image_file in examples[image_column]]
+        examples["pixel_values"] = [val_transforms(image) for image in images]
+        return examples
+
+    with accelerator.main_process_first():
+        if args.max_train_samples is not None:
+            dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
+        # Set the training transforms
+        train_dataset = dataset["train"].with_transform(tokenize_captions).with_transform(preprocess_train)
+        if args.max_eval_samples is not None:
+            dataset["validation"] = dataset["validation"].shuffle(seed=args.seed).select(range(args.max_eval_samples))
+        # Set the validation transforms
+        eval_dataset = dataset["validation"].with_transform(tokenize_captions).with_transform(preprocess_val)
 
     def collate_fn(examples):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
@@ -324,7 +405,10 @@ def main():
         }
 
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn
+        train_dataset, shuffle=True, collate_fn=collate_fn, batch_size=args.per_device_train_batch_size
+    )
+    eval_dataloader = torch.utils.data.DataLoader(
+        eval_dataset, collate_fn=collate_fn, batch_size=args.per_device_eval_batch_size
     )
 
     # Scheduler and math around the number of training steps.
@@ -424,7 +508,7 @@ def main():
 
         accelerator.wait_for_everyone()
 
-    # Create the pipeline using using the trained modules and save it.
+    # Create the pipeline using the trained modules and save it.
     if accelerator.is_main_process:
         pipeline = StableDiffusionPipeline(
             text_encoder=accelerator.unwrap_model(text_encoder),
