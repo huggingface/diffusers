@@ -37,7 +37,7 @@ class VQEncoderOutput(ModelOutput):
 
 
 @dataclass
-class AutoEncoderKLOutput(ModelOutput):
+class AutoencoderKLOutput(ModelOutput):
     """
     Output of AutoencoderKL encoding method.
 
