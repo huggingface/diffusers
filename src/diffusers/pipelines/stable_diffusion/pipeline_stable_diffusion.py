@@ -69,7 +69,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
-        use_safety: bool = True,
+        use_safety: bool = False,
         weights: Optional[List[float]] = None,
         start_img: Optional[torch.Tensor] = None,
         noise_strength: Optional[float] = None,
@@ -78,7 +78,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         seed=None,
         verbose=True,
         dynamic_thresholding_quant: float = 0.0,
-        t_start: Optional[int] = None,
+        t_start: Optional[int] = 0,
         noise_strength_before_encode = None,
         **kwargs,
     ):
@@ -140,7 +140,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             offset = 1
             extra_set_kwargs["offset"] = offset
         self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
-        
+        print("Num timesteps: ", len(self.scheduler.timesteps))
         init_timestep = num_inference_steps
         offset = 0
         # create starting image/noise
@@ -159,22 +159,24 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 # old method to add noise:
                 latents = latents * (1 - noise_strength) + noise * noise_strength
             elif noise_step is not None and noise_step > 0:
+                print("Noise step: ", noise_step)
                 # now we use the scheduler to add noise
                 latents = self.scheduler.add_noise(latents, noise, noise_step)
             elif img2img_strength is not None and img2img_strength != 0:
                 init_timestep = int(num_inference_steps * img2img_strength) + offset
-                init_timestep = min(init_timestep, num_inference_steps)
-                print("init_timestep:", init_timestep)
+                t_start = num_inference_steps - init_timestep + offset
+                print("init_timestep:", init_timestep, "t_start: ", t_start)
                 timesteps = int(self.scheduler.timesteps[-init_timestep])
-                print("timesteps:", timesteps)
                 timesteps = torch.tensor([timesteps] * batch_size, dtype=torch.long, device=self.device)
                 # add noise to latents using the timesteps
                 noise = torch.randn(latents.shape, generator=generator, device=self.device)
                 latents = self.scheduler.add_noise(latents, noise, timesteps)
         
+        print("t_start:", t_start)
+        
         # if we use LMSDiscreteScheduler, let's make sure latents are mulitplied by sigmas
         if isinstance(self.scheduler, LMSDiscreteScheduler):
-            latents = latents * self.scheduler.sigmas[0]
+            latents = latents * self.scheduler.sigmas[t_start]
             
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -185,12 +187,14 @@ class StableDiffusionPipeline(DiffusionPipeline):
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
-        if t_start is None:
-            t_start = max(num_inference_steps - init_timestep + offset, 0)
-        print("t_start:", t_start)
+
+        latent_list = [latents]
+        
+        print("Num timesteps: ", len(self.scheduler.timesteps))
+
         for i, t in tqdm(enumerate(self.scheduler.timesteps[t_start:]), disable=not verbose):
             if isinstance(self.scheduler, LMSDiscreteScheduler):
-                count = i
+                count = i + t_start
             else:
                 count = t
                 
@@ -208,15 +212,39 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
                 
-                
             # add dynamic thresholding
             if dynamic_thresholding_quant > 0:
                 noise_pred = dynamic_thresholding_torch(noise_pred, dynamic_thresholding_quant)
                 #dynamic_thresholding_(noise_pred, dynamic_thresholding_quant * 100)
-
+            # TODO: dynamic and static thresholding could simply be applied to decoded latent (==img)
+            
+            
+            # TODO: in plazma, generate all frames directly instead of only at low fps +  latent space interpolation. Interpolation does not allow for effects/movement. Might be better to just generate every nth frame, interpolate between them and apply effects to interpolations.
+            
+            # TODO: can do guidance based off of lpips for additional similarity
+            # additional guidance for decreased contrast could be interesting
+            """
+            #### ADDITIONAL GUIDANCE ###
+            # Requires grad on the latents
+            latents = latents.detach().requires_grad_()
+            # Get the predicted x0:
+            latents_x0 = latents - sigma * noise_pred
+            # Decode to image space
+            denoised_images = vae.decode((1 / 0.18215) * latents_x0) / 2 + 0.5 # (0, 1)
+            # Calculate loss
+            loss = blue_loss(denoised_images) * blue_loss_scale
+            if i%10==0:
+                print(i, 'loss:', loss.item())
+            # Get gradient
+            cond_grad = -torch.autograd.grad(loss, latents)[0]
+            # Modify the latents based on this gradient
+            latents = latents.detach() + cond_grad * sigma**2
+            """
+                
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(noise_pred, count, latents, **extra_step_kwargs)["prev_sample"]
-
+            latent_list.append(latents.cpu())
+        
         
         # scale and decode the image latents with vae
         image = self.decode_image(latents, output_type=output_type)
@@ -229,7 +257,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         else:
             has_nsfw_concept = False
 
-        return {"sample": image, "nsfw_content_detected": has_nsfw_concept}
+        return {"sample": image, "nsfw_content_detected": has_nsfw_concept, "latents": latent_list}
     
     def embed_prompts(self, prompts, weights=None, device=None):
         if device is None:

@@ -32,7 +32,7 @@ def save_image(image, prompt):
     path = f"stable_outs/{pathify_prompt(prompt)}.jpg"
     image.save(path, quality=95, subsample=False)
     
-    
+
 seed = 0
 prompt_list = ["Neural dust penetrates the mind and soul", 
                "Neural dust penetrates the mind and soul. A masterpiece", 
