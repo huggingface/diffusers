@@ -189,5 +189,5 @@ class UNet2DModel(ModelMixin, ConfigMixin, MPSWarmupMixin):
     def warmup_inputs(self, batch_size) -> Tuple:
         batch_size = 1 if batch_size is None else batch_size
         w_sample = torch.randn((batch_size, self.in_channels, 32, 32))
-        t = torch.tensor([10], dtype=torch.long)
+        t = torch.tensor([10], dtype=torch.int32)
         return (w_sample, t)

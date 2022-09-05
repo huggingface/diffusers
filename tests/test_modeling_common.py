@@ -58,10 +58,10 @@ class ModelTesterMixin:
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
         model.to(torch_device)
+        model.eval()
         if isinstance(model, MPSWarmupMixin):
             model.warmup(inputs_dict["sample"].shape[0])
 
-        model.eval()
         with torch.no_grad():
             first = model(**inputs_dict)
             if isinstance(first, dict):

@@ -191,7 +191,9 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         num_channels = 3
 
         noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor(batch_size * [10]).to(torch_device)
+        time_step = torch.tensor(batch_size * [10]).to(device=torch_device)
+        if torch_device == "mps":
+            time_step = time_step.to(dtype=torch.int32)
 
         return {"sample": noise, "timestep": time_step}
 
