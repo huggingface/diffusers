@@ -34,6 +34,7 @@ class DDPMPipeline(DiffusionPipeline):
         batch_size: int = 1,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
+        return_dict: bool = True,
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         if "torch_device" in kwargs:

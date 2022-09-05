@@ -36,6 +36,7 @@ class DDIMPipeline(DiffusionPipeline):
         eta: float = 0.0,
         num_inference_steps: int = 50,
         output_type: Optional[str] = "pil",
+        return_dict: bool = True,
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
 
