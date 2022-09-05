@@ -11,6 +11,7 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, PNDMScheduler
+from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
 
@@ -72,6 +73,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
+        return_dict: bool = True,
     ):
 
         if isinstance(prompt, str):
@@ -98,7 +100,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         init_image = preprocess_image(init_image).to(self.device)
 
         # encode the init image into latents and scale the latents
-        init_latents = self.vae.encode(init_image).sample(generator=generator)
+        init_latent_dist = self.vae.encode(init_image.to(self.device)).latent_dist
+        init_latents = init_latent_dist.sample(generator=generator)
+
         init_latents = 0.18215 * init_latents
 
         # Expand init_latents for batch_size
@@ -166,7 +170,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
             # predict the noise residual
-            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings)["sample"]
+            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
 
             # perform guidance
             if do_classifier_free_guidance:
@@ -174,7 +178,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs)["prev_sample"]
+            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
             # masking
             init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, t)
@@ -182,7 +186,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
-        image = self.vae.decode(latents)
+        image = self.vae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
@@ -194,4 +198,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
-        return {"sample": image, "nsfw_content_detected": has_nsfw_concept}
+        if not return_dict:
+            return (image, has_nsfw_concept)
+
+        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)

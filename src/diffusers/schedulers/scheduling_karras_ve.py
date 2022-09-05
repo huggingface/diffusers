@@ -13,13 +13,32 @@
 # limitations under the License.
 
 
-from typing import Union
+from dataclasses import dataclass
+from typing import Tuple, Union
 
 import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils import BaseOutput
 from .scheduling_utils import SchedulerMixin
+
+
+@dataclass
+class KarrasVeOutput(BaseOutput):
+    """
+    Output class for the scheduler's step function output.
+
+    Args:
+        prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+            Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
+            denoising loop.
+        derivative (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+            Derivate of predicted original image sample (x_0).
+    """
+
+    prev_sample: torch.FloatTensor
+    derivative: torch.FloatTensor
 
 
 class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
@@ -102,12 +121,17 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         sigma_hat: float,
         sigma_prev: float,
         sample_hat: Union[torch.FloatTensor, np.ndarray],
-    ):
+        return_dict: bool = True,
+    ) -> Union[KarrasVeOutput, Tuple]:
+
         pred_original_sample = sample_hat + sigma_hat * model_output
         derivative = (sample_hat - pred_original_sample) / sigma_hat
         sample_prev = sample_hat + (sigma_prev - sigma_hat) * derivative
 
-        return {"prev_sample": sample_prev, "derivative": derivative}
+        if not return_dict:
+            return (sample_prev, derivative)
+
+        return KarrasVeOutput(prev_sample=sample_prev, derivative=derivative)
 
     def step_correct(
         self,
@@ -117,11 +141,17 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         sample_hat: Union[torch.FloatTensor, np.ndarray],
         sample_prev: Union[torch.FloatTensor, np.ndarray],
         derivative: Union[torch.FloatTensor, np.ndarray],
-    ):
+        return_dict: bool = True,
+    ) -> Union[KarrasVeOutput, Tuple]:
+
         pred_original_sample = sample_prev + sigma_prev * model_output
         derivative_corr = (sample_prev - pred_original_sample) / sigma_prev
         sample_prev = sample_hat + (sigma_prev - sigma_hat) * (0.5 * derivative + 0.5 * derivative_corr)
-        return {"prev_sample": sample_prev, "derivative": derivative_corr}
+
+        if not return_dict:
+            return (sample_prev, derivative)
+
+        return KarrasVeOutput(prev_sample=sample_prev, derivative=derivative)
 
     def add_noise(self, original_samples, noise, timesteps):
         raise NotImplementedError()

@@ -498,7 +498,7 @@ def main():
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(text_encoder):
                 # Convert images to latent space
-                latents = vae.encode(batch["pixel_values"]).sample().detach()
+                latents = vae.encode(batch["pixel_values"]).latent_dist.sample().detach()
                 latents = latents * 0.18215
 
                 # Sample noise that we'll add to the latents
@@ -515,7 +515,7 @@ def main():
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
                 # Predict the noise residual
-                noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states)["sample"]
+                noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
 
                 loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
                 accelerator.backward(loss)

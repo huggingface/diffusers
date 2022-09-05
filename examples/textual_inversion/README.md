@@ -76,7 +76,7 @@ pipe = pipe = StableDiffusionPipeline.from_pretrained(model_id,torch_dtype=torch
 prompt = "A <cat-toy> backpack"
 
 with autocast("cuda"):
-    image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5)["sample"][0]
+    image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
 
 image.save("cat-backpack.png")
 ```

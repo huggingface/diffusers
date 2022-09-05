@@ -11,13 +11,30 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from dataclasses import dataclass
 from typing import Union
 
 import numpy as np
 import torch
 
+from ..utils import BaseOutput
+
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
+
+
+@dataclass
+class SchedulerOutput(BaseOutput):
+    """
+    Base class for the scheduler's step function output.
+
+    Args:
+        prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+            Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
+            denoising loop.
+    """
+
+    prev_sample: torch.FloatTensor
 
 
 class SchedulerMixin:

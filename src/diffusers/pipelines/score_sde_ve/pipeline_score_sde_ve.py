@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 import warnings
-from typing import Optional
+from typing import Optional, Tuple, Union
 
 import torch
 
-from diffusers import DiffusionPipeline
-
 from ...models import UNet2DModel
+from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import ScoreSdeVeScheduler
 
 
@@ -26,8 +25,9 @@ class ScoreSdeVePipeline(DiffusionPipeline):
         num_inference_steps: int = 2000,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
+        return_dict: bool = True,
         **kwargs,
-    ):
+    ) -> Union[ImagePipelineOutput, Tuple]:
         if "torch_device" in kwargs:
             device = kwargs.pop("torch_device")
             warnings.warn(
@@ -56,18 +56,21 @@ class ScoreSdeVePipeline(DiffusionPipeline):
 
             # correction step
             for _ in range(self.scheduler.correct_steps):
-                model_output = self.unet(sample, sigma_t)["sample"]
-                sample = self.scheduler.step_correct(model_output, sample, generator=generator)["prev_sample"]
+                model_output = self.unet(sample, sigma_t).sample
+                sample = self.scheduler.step_correct(model_output, sample, generator=generator).prev_sample
 
             # prediction step
-            model_output = model(sample, sigma_t)["sample"]
+            model_output = model(sample, sigma_t).sample
             output = self.scheduler.step_pred(model_output, t, sample, generator=generator)
 
-            sample, sample_mean = output["prev_sample"], output["prev_sample_mean"]
+            sample, sample_mean = output.prev_sample, output.prev_sample_mean
 
         sample = sample_mean.clamp(0, 1)
         sample = sample.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "pil":
             sample = self.numpy_to_pil(sample)
 
-        return {"sample": sample}
+        if not return_dict:
+            return (sample,)
+
+        return ImagePipelineOutput(images=sample)
