@@ -15,13 +15,13 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 import math
-from typing import Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
@@ -51,14 +51,14 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        num_train_timesteps=1000,
-        beta_start=0.0001,
-        beta_end=0.02,
-        beta_schedule="linear",
-        trained_betas=None,
-        variance_type="fixed_small",
-        clip_sample=True,
-        tensor_format="pt",
+        num_train_timesteps: int = 1000,
+        beta_start: float = 0.0001,
+        beta_end: float = 0.02,
+        beta_schedule: str = "linear",
+        trained_betas: Optional[np.ndarray] = None,
+        variance_type: str = "fixed_small",
+        clip_sample: bool = True,
+        tensor_format: str = "pt",
     ):
 
         if trained_betas is not None:
@@ -87,7 +87,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         self.variance_type = variance_type
 
-    def set_timesteps(self, num_inference_steps):
+    def set_timesteps(self, num_inference_steps: int):
         num_inference_steps = min(self.config.num_train_timesteps, num_inference_steps)
         self.num_inference_steps = num_inference_steps
         self.timesteps = np.arange(
@@ -135,7 +135,9 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         sample: Union[torch.FloatTensor, np.ndarray],
         predict_epsilon=True,
         generator=None,
-    ):
+        return_dict: bool = True,
+    ) -> Union[SchedulerOutput, Tuple]:
+
         t = timestep
 
         if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
@@ -177,9 +179,18 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         pred_prev_sample = pred_prev_sample + variance
 
-        return {"prev_sample": pred_prev_sample}
+        if not return_dict:
+            return (pred_prev_sample,)
 
-    def add_noise(self, original_samples, noise, timesteps):
+        return SchedulerOutput(prev_sample=pred_prev_sample)
+
+    def add_noise(
+        self,
+        original_samples: Union[torch.FloatTensor, np.ndarray],
+        noise: Union[torch.FloatTensor, np.ndarray],
+        timesteps: Union[torch.IntTensor, np.ndarray],
+    ) -> Union[torch.FloatTensor, np.ndarray]:
+
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
         sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5

@@ -10,13 +10,23 @@ from transformers.activations import ACT2FN
 from transformers.configuration_utils import PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutput
 from transformers.modeling_utils import PreTrainedModel
+from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.utils import logging
 
-from ...pipeline_utils import DiffusionPipeline
+from ...models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
+from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 
 
 class LDMTextToImagePipeline(DiffusionPipeline):
-    def __init__(self, vqvae, bert, tokenizer, unet, scheduler):
+    def __init__(
+        self,
+        vqvae: Union[VQModel, AutoencoderKL],
+        bert: PreTrainedModel,
+        tokenizer: PreTrainedTokenizer,
+        unet: Union[UNet2DModel, UNet2DConditionModel],
+        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+    ):
         super().__init__()
         scheduler = scheduler.set_format("pt")
         self.register_modules(vqvae=vqvae, bert=bert, tokenizer=tokenizer, unet=unet, scheduler=scheduler)
@@ -32,8 +42,9 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
+        return_dict: bool = True,
         **kwargs,
-    ):
+    ) -> Union[Tuple, ImagePipelineOutput]:
         # eta corresponds to η in paper and should be between [0, 1]
 
         if "torch_device" in kwargs:
@@ -95,25 +106,28 @@ class LDMTextToImagePipeline(DiffusionPipeline):
                 context = torch.cat([uncond_embeddings, text_embeddings])
 
             # predict the noise residual
-            noise_pred = self.unet(latents_input, t, encoder_hidden_states=context)["sample"]
+            noise_pred = self.unet(latents_input, t, encoder_hidden_states=context).sample
             # perform guidance
             if guidance_scale != 1.0:
                 noise_pred_uncond, noise_prediction_text = noise_pred.chunk(2)
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_prediction_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, **extra_kwargs)["prev_sample"]
+            latents = self.scheduler.step(noise_pred, t, latents, **extra_kwargs).prev_sample
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
-        image = self.vqvae.decode(latents)
+        image = self.vqvae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
-        return {"sample": image}
+        if not return_dict:
+            return (image,)
+
+        return ImagePipelineOutput(images=image)
 
 
 ################################################################################
@@ -525,7 +539,7 @@ class LDMBertEncoder(LDMBertPreTrainedModel):
                 Whether or not to return the hidden states of all layers. See `hidden_states` under returned tensors
                 for more detail.
             return_dict (`bool`, *optional*):
-                Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
+                Whether or not to return a [`~utils.BaseModelOutput`] instead of a plain tuple.
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -614,7 +628,7 @@ class LDMBertEncoder(LDMBertPreTrainedModel):
 
 
 class LDMBertModel(LDMBertPreTrainedModel):
-    def __init__(self, config):
+    def __init__(self, config: LDMBertConfig):
         super().__init__(config)
         self.model = LDMBertEncoder(config)
         self.to_logits = nn.Linear(config.hidden_size, config.vocab_size)

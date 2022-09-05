@@ -30,8 +30,7 @@ body:
     id: system-info
     attributes:
       label: System Info
-      description: Please share your system info with us,
-      render: shell
-      placeholder: diffusers version, Python Version, etc
+      description: Please share your system info with us. You can run the command `diffusers-cli env` and copy-paste its output below.
+      placeholder: diffusers version, platform, python version, ...
     validations:
       required: true

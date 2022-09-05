@@ -85,7 +85,7 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
         image = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
         image = image.to(torch_device)
         with torch.no_grad():
-            output = model(image)
+            output = model(image).sample
 
         output_slice = output[0, -1, -3:, -3:].flatten().cpu()
         # fmt: off

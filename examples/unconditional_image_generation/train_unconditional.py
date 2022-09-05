@@ -139,7 +139,7 @@ def main(args):
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
-                noise_pred = model(noisy_images, timesteps)["sample"]
+                noise_pred = model(noisy_images, timesteps).sample
                 loss = F.mse_loss(noise_pred, noise)
                 accelerator.backward(loss)
 
@@ -174,7 +174,7 @@ def main(args):
 
                 generator = torch.manual_seed(0)
                 # run pipeline in inference (sample random noise and denoise)
-                images = pipeline(generator=generator, batch_size=args.eval_batch_size, output_type="numpy")["sample"]
+                images = pipeline(generator=generator, batch_size=args.eval_batch_size, output_type="numpy").images
 
                 # denormalize the images and save to tensorboard
                 images_processed = (images * 255).round().astype("uint8")

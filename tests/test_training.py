@@ -66,7 +66,7 @@ class TrainingTests(unittest.TestCase):
         for i in range(4):
             optimizer.zero_grad()
             ddpm_noisy_images = ddpm_scheduler.add_noise(clean_images[i], noise[i], timesteps[i])
-            ddpm_noise_pred = model(ddpm_noisy_images, timesteps[i])["sample"]
+            ddpm_noise_pred = model(ddpm_noisy_images, timesteps[i]).sample
             loss = torch.nn.functional.mse_loss(ddpm_noise_pred, noise[i])
             loss.backward()
             optimizer.step()
@@ -78,7 +78,7 @@ class TrainingTests(unittest.TestCase):
         for i in range(4):
             optimizer.zero_grad()
             ddim_noisy_images = ddim_scheduler.add_noise(clean_images[i], noise[i], timesteps[i])
-            ddim_noise_pred = model(ddim_noisy_images, timesteps[i])["sample"]
+            ddim_noise_pred = model(ddim_noisy_images, timesteps[i]).sample
             loss = torch.nn.functional.mse_loss(ddim_noise_pred, noise[i])
             loss.backward()
             optimizer.step()

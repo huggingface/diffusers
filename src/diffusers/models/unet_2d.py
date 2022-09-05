@@ -1,35 +1,48 @@
-from typing import Dict, Union
+from dataclasses import dataclass
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
+from ..utils import BaseOutput
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from .unet_blocks import UNetMidBlock2D, get_down_block, get_up_block
+
+
+@dataclass
+class UNet2DOutput(BaseOutput):
+    """
+    Args:
+        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+            Hidden states output. Output of last layer of model.
+    """
+
+    sample: torch.FloatTensor
 
 
 class UNet2DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        sample_size=None,
-        in_channels=3,
-        out_channels=3,
-        center_input_sample=False,
-        time_embedding_type="positional",
-        freq_shift=0,
-        flip_sin_to_cos=True,
-        down_block_types=("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"),
-        up_block_types=("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"),
-        block_out_channels=(224, 448, 672, 896),
-        layers_per_block=2,
-        mid_block_scale_factor=1,
-        downsample_padding=1,
-        act_fn="silu",
-        attention_head_dim=8,
-        norm_num_groups=32,
-        norm_eps=1e-5,
+        sample_size: Optional[int] = None,
+        in_channels: int = 3,
+        out_channels: int = 3,
+        center_input_sample: bool = False,
+        time_embedding_type: str = "positional",
+        freq_shift: int = 0,
+        flip_sin_to_cos: bool = True,
+        down_block_types: Tuple[str] = ("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"),
+        up_block_types: Tuple[str] = ("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"),
+        block_out_channels: Tuple[int] = (224, 448, 672, 896),
+        layers_per_block: int = 2,
+        mid_block_scale_factor: float = 1,
+        downsample_padding: int = 1,
+        act_fn: str = "silu",
+        attention_head_dim: int = 8,
+        norm_num_groups: int = 32,
+        norm_eps: float = 1e-5,
     ):
         super().__init__()
 
@@ -118,9 +131,11 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, 3, padding=1)
 
     def forward(
-        self, sample: torch.FloatTensor, timestep: Union[torch.Tensor, float, int]
-    ) -> Dict[str, torch.FloatTensor]:
-
+        self,
+        sample: torch.FloatTensor,
+        timestep: Union[torch.Tensor, float, int],
+        return_dict: bool = True,
+    ) -> Union[UNet2DOutput, Tuple]:
         # 0. center input if necessary
         if self.config.center_input_sample:
             sample = 2 * sample - 1.0
@@ -132,8 +147,8 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)
 
-        # broadcast to batch dimension
-        timesteps = timesteps.broadcast_to(sample.shape[0])
+        # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+        timesteps = timesteps * torch.ones(sample.shape[0], dtype=timesteps.dtype, device=timesteps.device)
 
         t_emb = self.time_proj(timesteps)
         emb = self.time_embedding(t_emb)
@@ -182,6 +197,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             timesteps = timesteps.reshape((sample.shape[0], *([1] * len(sample.shape[1:]))))
             sample = sample / timesteps
 
-        output = {"sample": sample}
+        if not return_dict:
+            return (sample,)
 
-        return output
+        return UNet2DOutput(sample=sample)

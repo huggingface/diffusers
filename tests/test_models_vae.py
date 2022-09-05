@@ -93,7 +93,7 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
             device=torch_device,
         )
         with torch.no_grad():
-            output = model(image, sample_posterior=True, generator=generator)
+            output = model(image, sample_posterior=True, generator=generator).sample
 
         output_slice = output[0, -1, -3:, -3:].flatten().cpu()
 
