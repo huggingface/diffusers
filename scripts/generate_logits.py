@@ -119,7 +119,7 @@ for mod in models:
         noise = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
         time_step = torch.tensor([10] * noise.shape[0])
         with torch.no_grad():
-            logits = model(noise, time_step)["sample"]
+            logits = model(noise, time_step).sample
 
         assert torch.allclose(
             logits[0, 0, 0, :30], results["_".join("_".join(mod.modelId.split("/")).split("-"))], atol=1e-3

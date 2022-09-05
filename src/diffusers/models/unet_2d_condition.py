@@ -1,12 +1,25 @@
-from typing import Dict, Optional, Tuple, Union
+from dataclasses import dataclass
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
+from ..utils import BaseOutput
 from .embeddings import TimestepEmbedding, Timesteps
 from .unet_blocks import UNetMidBlock2DCrossAttn, get_down_block, get_up_block
+
+
+@dataclass
+class UNet2DConditionOutput(BaseOutput):
+    """
+    Args:
+        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+            Hidden states conditioned on `encoder_hidden_states` input. Output of last layer of model.
+    """
+
+    sample: torch.FloatTensor
 
 
 class UNet2DConditionModel(ModelMixin, ConfigMixin):
@@ -125,7 +138,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         sample: torch.FloatTensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
-    ) -> Dict[str, torch.FloatTensor]:
+        return_dict: bool = True,
+    ) -> Union[UNet2DConditionOutput, Tuple]:
         # 0. center input if necessary
         if self.config.center_input_sample:
             sample = 2 * sample - 1.0
@@ -183,6 +197,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         sample = self.conv_act(sample)
         sample = self.conv_out(sample)
 
-        output = {"sample": sample}
+        if not return_dict:
+            return (sample,)
 
-        return output
+        return UNet2DConditionOutput(sample=sample)

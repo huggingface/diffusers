@@ -80,7 +80,7 @@ pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
 with autocast("cuda"):
-    image = pipe(prompt)["sample"][0]  
+    image = pipe(prompt).images[0]  
 ```
 
 **Note**: If you don't want to use the token, you can also simply download the model weights
@@ -101,7 +101,7 @@ pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
 with autocast("cuda"):
-    image = pipe(prompt)["sample"][0]  
+    image = pipe(prompt).images[0]  
 ```
 
 If you are limited by GPU memory, you might want to consider using the model in `fp16`.
@@ -117,7 +117,7 @@ pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
 with autocast("cuda"):
-    image = pipe(prompt)["sample"][0]  
+    image = pipe(prompt).images[0]  
 ```
 
 Finally, if you wish to use a different scheduler, you can simply instantiate
@@ -143,7 +143,7 @@ pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
 with autocast("cuda"):
-    image = pipe(prompt)["sample"][0]  
+    image = pipe(prompt).images[0]  
     
 image.save("astronaut_rides_horse.png")
 ```
@@ -184,7 +184,7 @@ init_image = init_image.resize((768, 512))
 prompt = "A fantasy landscape, trending on artstation"
 
 with autocast("cuda"):
-    images = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5)["sample"]
+    images = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5).images
 
 images[0].save("fantasy_landscape.png")
 ```
@@ -228,7 +228,7 @@ pipe = pipe.to(device)
 
 prompt = "a cat sitting on a bench"
 with autocast("cuda"):
-    images = pipe(prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75)["sample"]
+    images = pipe(prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75).images
 
 images[0].save("cat_on_bench.png")
 ```
@@ -260,7 +260,7 @@ ldm = DiffusionPipeline.from_pretrained(model_id)
 
 # run pipeline in inference (sample random noise and denoise)
 prompt = "A painting of a squirrel eating a burger"
-images = ldm([prompt], num_inference_steps=50, eta=0.3, guidance_scale=6)["sample"]
+images = ldm([prompt], num_inference_steps=50, eta=0.3, guidance_scale=6).images
 
 # save images
 for idx, image in enumerate(images):
@@ -277,7 +277,7 @@ model_id = "google/ddpm-celebahq-256"
 ddpm = DDPMPipeline.from_pretrained(model_id)  # you can replace DDPMPipeline with DDIMPipeline or PNDMPipeline for faster inference
 
 # run pipeline in inference (sample random noise and denoise)
-image = ddpm()["sample"]
+image = ddpm().images
 
 # save image
 image[0].save("ddpm_generated_image.png")
