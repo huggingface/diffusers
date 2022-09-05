@@ -1,6 +1,6 @@
 ## How to use Stable Diffusion in Apple Silicon (M1/M2)
 
-🤗 Diffusers is compatible with Apple silicon for inference, using the PyTorch `mps` device. These are the steps you need to follow to use your M1 or M2 computer with Stable Diffusion.
+🤗 Diffusers is compatible with Apple silicon for Stable Diffusion inference, using the PyTorch `mps` device. These are the steps you need to follow to use your M1 or M2 computer with Stable Diffusion.
 
 ### Requirements
 
@@ -40,5 +40,7 @@ image = pipe(prompt)["sample"][0]
 
 These are the results we got on a M1 Max MacBook Pro with 64 GB of RAM, running macOS Ventura Version 13.0 Beta (22A5331f). We performed Stable Diffusion text-to-image generation of the same prompt for 50 inference steps, using a guidance scale of 7.5.
 
-- CPU: 213.46s
-- MPS:  30.81s
+| Device | Steps | Time    |
+|--------|-------|---------|
+| CPU    | 50    | 213.46s |
+| MPS    | 50    | 30.81s  |
