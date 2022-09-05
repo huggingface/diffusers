@@ -7,11 +7,11 @@ import numpy as np
 import PIL
 from PIL import Image
 
-from ...utils import ModelOutput, is_transformers_available
+from ...utils import BaseOutput, is_transformers_available
 
 
 @dataclass
-class StableDiffusionPipelineOutput(ModelOutput):
+class StableDiffusionPipelineOutput(BaseOutput):
     """
     Output class for Stable Diffusion pipelines.
 

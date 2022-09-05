@@ -29,7 +29,7 @@ from PIL import Image
 from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
-from .utils import DIFFUSERS_CACHE, ModelOutput, logging
+from .utils import DIFFUSERS_CACHE, BaseOutput, logging
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
@@ -58,7 +58,7 @@ for library in LOADABLE_CLASSES:
 
 
 @dataclass
-class ImagePipelineOutput(ModelOutput):
+class ImagePipelineOutput(BaseOutput):
     """
     Output class for image pipelines.
 

@@ -63,7 +63,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
             model_output = model(sample, sigma_t).sample
             output = self.scheduler.step_pred(model_output, t, sample, generator=generator)
 
-            sample, sample_mean = output.prev_sample, output["prev_sample_mean"]
+            sample, sample_mean = output.prev_sample, output.prev_sample_mean
 
         sample = sample_mean.clamp(0, 1)
         sample = sample.cpu().permute(0, 2, 3, 1).numpy()

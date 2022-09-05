@@ -22,12 +22,12 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import ModelOutput
+from ..utils import BaseOutput
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
 @dataclass
-class SdeVeOutput(ModelOutput):
+class SdeVeOutput(BaseOutput):
     """
     Output class for the ScoreSdeVeScheduler's step function output.
 

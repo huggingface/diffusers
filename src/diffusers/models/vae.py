@@ -6,12 +6,12 @@ import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
-from ..utils import ModelOutput
+from ..utils import BaseOutput
 from .unet_blocks import UNetMidBlock2D, get_down_block, get_up_block
 
 
 @dataclass
-class DecoderOutput(ModelOutput):
+class DecoderOutput(BaseOutput):
     """
     Output of decoding method.
 
@@ -24,7 +24,7 @@ class DecoderOutput(ModelOutput):
 
 
 @dataclass
-class VQEncoderOutput(ModelOutput):
+class VQEncoderOutput(BaseOutput):
     """
     Output of VQModel encoding method.
 
@@ -37,7 +37,7 @@ class VQEncoderOutput(ModelOutput):
 
 
 @dataclass
-class AutoencoderKLOutput(ModelOutput):
+class AutoencoderKLOutput(BaseOutput):
     """
     Output of AutoencoderKL encoding method.
 
@@ -47,7 +47,7 @@ class AutoencoderKLOutput(ModelOutput):
             `DiagonalGaussianDistribution` allows for sampling latents from the distribution.
     """
 
-    latent_dist: "DiagonalGaussianDistribution" = None
+    latent_dist: "DiagonalGaussianDistribution"
 
 
 class Encoder(nn.Module):

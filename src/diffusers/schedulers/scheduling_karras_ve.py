@@ -20,12 +20,12 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import ModelOutput
+from ..utils import BaseOutput
 from .scheduling_utils import SchedulerMixin
 
 
 @dataclass
-class KarrasVeOutput(ModelOutput):
+class KarrasVeOutput(BaseOutput):
     """
     Output class for the scheduler's step function output.
 
@@ -38,7 +38,7 @@ class KarrasVeOutput(ModelOutput):
     """
 
     prev_sample: torch.FloatTensor
-    derivative: torch.FloatTensor = None
+    derivative: torch.FloatTensor
 
 
 class KarrasVeScheduler(SchedulerMixin, ConfigMixin):

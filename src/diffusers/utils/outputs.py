@@ -38,7 +38,7 @@ def is_tensor(x):
     return isinstance(x, np.ndarray)
 
 
-class ModelOutput(OrderedDict):
+class BaseOutput(OrderedDict):
     """
     Base class for all model outputs as dataclass. Has a `__getitem__` that allows indexing by integer or slice (like a
     tuple) or strings (like a dictionary) that will ignore the `None` attributes. Otherwise behaves like a regular
@@ -46,7 +46,7 @@ class ModelOutput(OrderedDict):
 
     <Tip warning={true}>
 
-    You can't unpack a `ModelOutput` directly. Use the [`~utils.ModelOutput.to_tuple`] method to convert it to a tuple
+    You can't unpack a `BaseOutput` directly. Use the [`~utils.BaseOutput.to_tuple`] method to convert it to a tuple
     before.
 
     </Tip>
@@ -58,8 +58,6 @@ class ModelOutput(OrderedDict):
         # Safety and consistency checks
         if not len(class_fields):
             raise ValueError(f"{self.__class__.__name__} has no fields.")
-        if not all(field.default is None for field in class_fields[1:]):
-            raise ValueError(f"{self.__class__.__name__} should not have more than one required field.")
 
         first_field = getattr(self, class_fields[0].name)
         other_fields_are_none = all(getattr(self, field.name) is None for field in class_fields[1:])

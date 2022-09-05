@@ -792,7 +792,7 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
                 model_output = model(sample, sigma_t)
 
             output = scheduler.step_pred(model_output, t, sample, **kwargs)
-            sample, _ = output.prev_sample, output["prev_sample_mean"]
+            sample, _ = output.prev_sample, output.prev_sample_mean
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
