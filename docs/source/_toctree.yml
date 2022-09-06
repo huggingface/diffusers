@@ -26,8 +26,8 @@
       title: Models
     title: Main Classes
   - sections:
-    - local: pipelines/glide
-      title: "Glide"
+    - local: pipelines/latent_diffusion
+      title: "Latent Diffusion"
     title: Pipelines
   - sections:
     - local: schedulers/ddpm
