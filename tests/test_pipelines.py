@@ -917,7 +917,7 @@ class PipelineTesterMixin(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.8354, 0.83, 0.866, 0.838, 0.8315, 0.867, 0.836, 0.8584, 0.869])
+        expected_slice = np.array([0.9326, 0.923, 0.951, 0.9365, 0.9214, 0.951, 0.9365, 0.9414, 0.918])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     @slow
@@ -1054,19 +1054,24 @@ class PipelineTesterMixin(unittest.TestCase):
         output_image = ds[0]["image"].resize((768, 512))
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(model_id, use_auth_token=True)
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
+            model_id,
+            revision="fp16",  # fp16 to infer 768x512 images with 16GB of VRAM
+            torch_dtype=torch.float16,
+            use_auth_token=True,
+        )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A fantasy landscape, trending on artstation"
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5, generator=generator)[
-            "sample"
-        ][0]
+        with torch.autocast("cuda"):
+            output = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5, generator=generator)
+        image = output.images[0]
 
-        expected_array = np.array(output_image)
-        sampled_array = np.array(image)
+        expected_array = np.array(output_image) / 255.0
+        sampled_array = np.array(image) / 255.0
 
         assert sampled_array.shape == (512, 768, 3)
         assert np.max(np.abs(sampled_array - expected_array)) < 1e-4
@@ -1082,25 +1087,32 @@ class PipelineTesterMixin(unittest.TestCase):
         lms = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(model_id, scheduler=lms, use_auth_token=True)
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
+            model_id,
+            scheduler=lms,
+            revision="fp16",  # fp16 to infer 768x512 images with 16GB of VRAM
+            torch_dtype=torch.float16,
+            use_auth_token=True,
+        )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A fantasy landscape, trending on artstation"
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5, generator=generator)
+        with torch.autocast("cuda"):
+            output = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5, generator=generator)
         image = output.images[0]
 
-        expected_array = np.array(output_image)
-        sampled_array = np.array(image)
+        expected_array = np.array(output_image) / 255.0
+        sampled_array = np.array(image) / 255.0
 
         assert sampled_array.shape == (512, 768, 3)
         assert np.max(np.abs(sampled_array - expected_array)) < 1e-4
 
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
-    def test_stable_diffusion_in_paint_pipeline(self):
+    def test_stable_diffusion_inpaint_pipeline(self):
         ds = load_dataset("hf-internal-testing/diffusers-images", split="train")
 
         init_image = ds[3]["image"].resize((768, 512))
@@ -1108,24 +1120,31 @@ class PipelineTesterMixin(unittest.TestCase):
         output_image = ds[5]["image"].resize((768, 512))
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionInpaintPipeline.from_pretrained(model_id, use_auth_token=True)
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(
+            model_id,
+            revision="fp16",  # fp16 to infer 768x512 images in 16GB of VRAM
+            torch_dtype=torch.float16,
+            use_auth_token=True,
+        )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A red cat sitting on a parking bench"
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = pipe(
-            prompt=prompt,
-            init_image=init_image,
-            mask_image=mask_image,
-            strength=0.75,
-            guidance_scale=7.5,
-            generator=generator,
-        ).images[0]
+        with torch.autocast("cuda"):
+            output = pipe(
+                prompt=prompt,
+                init_image=init_image,
+                mask_image=mask_image,
+                strength=0.75,
+                guidance_scale=7.5,
+                generator=generator,
+            )
+        image = output.images[0]
 
-        expected_array = np.array(output_image)
-        sampled_array = np.array(image)
+        expected_array = np.array(output_image) / 255.0
+        sampled_array = np.array(image) / 255.0
 
         assert sampled_array.shape == (512, 768, 3)
         assert np.max(np.abs(sampled_array - expected_array)) < 1e-3
