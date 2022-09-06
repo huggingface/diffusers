@@ -18,6 +18,7 @@ import unittest
 import torch
 
 from diffusers import VQModel
+from diffusers.modeling_utils import ModelMixin
 from diffusers.testing_utils import floats_tensor, torch_device
 
 from .test_modeling_common import ModelTesterMixin
@@ -77,6 +78,8 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
     def test_output_pretrained(self):
         model = VQModel.from_pretrained("fusing/vqgan-dummy")
         model.to(torch_device).eval()
+        if isinstance(model, ModelMixin):
+            model._mps_warmup(1)
 
         torch.manual_seed(0)
         if torch.cuda.is_available():
