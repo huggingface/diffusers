@@ -104,7 +104,9 @@ with autocast("cuda"):
     image = pipe(prompt).images[0]  
 ```
 
-If you are limited by GPU memory, you might want to consider using the model in `fp16`.
+If you are limited by GPU memory, you might want to consider using the model in `fp16` as 
+well as chunking the attention computation.
+The following snippet should result in less than 4GB VRAM.
 
 ```python
 pipe = StableDiffusionPipeline.from_pretrained(
@@ -116,6 +118,7 @@ pipe = StableDiffusionPipeline.from_pretrained(
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
+pipe.enable_attention_slicing()
 with autocast("cuda"):
     image = pipe(prompt).images[0]  
 ```

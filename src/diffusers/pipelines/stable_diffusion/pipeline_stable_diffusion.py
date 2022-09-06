@@ -36,6 +36,17 @@ class StableDiffusionPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
 
+    def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
+        if slice_size == "auto":
+            # half the attention head size is usually a good trade-off between
+            # speed and memory
+            slice_size = self.unet.config.attention_head_dim // 2
+        self.unet.set_attention_slice(slice_size)
+
+    def disable_attention_slicing(self):
+        # set slice_size = `None` to disable `set_attention_slice`
+        self.enable_attention_slice(None)
+
     @torch.no_grad()
     def __call__(
         self,
