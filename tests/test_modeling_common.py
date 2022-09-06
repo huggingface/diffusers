@@ -181,8 +181,13 @@ class ModelTesterMixin:
 
     def test_scheduler_outputs_equivalence(self):
         def set_nan_tensor_to_zero(t):
+            # Temporary fallback until `aten::_index_put_impl_` is implemented in mps
+            # Track progress in https://github.com/pytorch/pytorch/issues/77764
+            device = t.device
+            if device.type == "mps":
+                t = t.to("cpu")
             t[t != t] = 0
-            return t
+            return t.to(device)
 
         def recursive_check(tuple_object, dict_object):
             if isinstance(tuple_object, (List, Tuple)):
@@ -211,8 +216,11 @@ class ModelTesterMixin:
         model = self.model_class(**init_dict)
         model.to(torch_device)
         model.eval()
+        if isinstance(model, ModelMixin):
+            model._mps_warmup(inputs_dict['sample'].shape[0])
 
-        outputs_dict = model(**inputs_dict)
-        outputs_tuple = model(**inputs_dict, return_dict=False)
+        with torch.no_grad():
+            outputs_dict = model(**inputs_dict)
+            outputs_tuple = model(**inputs_dict, return_dict=False)
 
         recursive_check(outputs_tuple, outputs_dict)
