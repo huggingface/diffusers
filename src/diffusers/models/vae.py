@@ -411,7 +411,7 @@ class VQModel(ModelMixin, ConfigMixin):
             act_fn=act_fn,
         )
 
-    def encode(self, x, return_dict: bool = True):
+    def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> VQEncoderOutput:
         h = self.encoder(x)
         h = self.quant_conv(h)
 
