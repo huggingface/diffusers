@@ -32,7 +32,9 @@ def preprocess_mask(mask):
     mask = np.array(mask).astype(np.float32) / 255.0
     mask = np.tile(mask, (4, 1, 1))
     mask = mask[None].transpose(0, 1, 2, 3)  # what does this step do?
-    mask[np.where(mask != 0.0 )] = 1.0 # make sure mask is properly valid
+    # make sure mask is properly valid
+    mask[mask < 0.5] = 0.0
+    mask[mask >= 0.5] = 1.0
     mask = 1 - mask  # repaint white, keep black
     mask = torch.from_numpy(mask)
     return mask
