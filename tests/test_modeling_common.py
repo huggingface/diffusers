@@ -18,10 +18,10 @@ import tempfile
 from typing import Dict, List, Tuple
 
 import numpy as np
-import pytest
 import torch
-from diffusers.modeling_utils import ModelMixin
 
+import pytest
+from diffusers.modeling_utils import ModelMixin
 from diffusers.testing_utils import torch_device
 from diffusers.training_utils import EMAModel
 
