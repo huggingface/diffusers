@@ -80,6 +80,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         dynamic_thresholding_quant: float = 0.0,
         t_start: Optional[int] = 0,
         noise_strength_before_encode = None,
+        loss_callbacks: Optional[List] = None,
         **kwargs,
     ):
         # set seed 
@@ -172,7 +173,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 noise = torch.randn(latents.shape, generator=generator, device=self.device)
                 latents = self.scheduler.add_noise(latents, noise, timesteps)
         
-        print("t_start:", t_start)
+        #print("t_start:", t_start)
         
         # if we use LMSDiscreteScheduler, let's make sure latents are mulitplied by sigmas
         if isinstance(self.scheduler, LMSDiscreteScheduler):
@@ -190,7 +191,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         latent_list = [latents]
         
-        print("Num timesteps: ", len(self.scheduler.timesteps))
+        #print("Num timesteps: ", len(self.scheduler.timesteps))
 
         for i, t in tqdm(enumerate(self.scheduler.timesteps[t_start:]), disable=not verbose):
             if isinstance(self.scheduler, LMSDiscreteScheduler):
@@ -223,23 +224,25 @@ class StableDiffusionPipeline(DiffusionPipeline):
             
             # TODO: can do guidance based off of lpips for additional similarity
             # additional guidance for decreased contrast could be interesting
-            """
+            
             #### ADDITIONAL GUIDANCE ###
-            # Requires grad on the latents
-            latents = latents.detach().requires_grad_()
-            # Get the predicted x0:
-            latents_x0 = latents - sigma * noise_pred
-            # Decode to image space
-            denoised_images = vae.decode((1 / 0.18215) * latents_x0) / 2 + 0.5 # (0, 1)
-            # Calculate loss
-            loss = blue_loss(denoised_images) * blue_loss_scale
-            if i%10==0:
-                print(i, 'loss:', loss.item())
-            # Get gradient
-            cond_grad = -torch.autograd.grad(loss, latents)[0]
-            # Modify the latents based on this gradient
-            latents = latents.detach() + cond_grad * sigma**2
-            """
+            if loss_callbacks is not None:
+                with torch.enable_grad():
+                    for callback_dict in loss_callbacks:
+                        if callback_dict["frequency"] is None or i % callback_dict["frequency"] == 0:
+                            # Requires grad on the latents
+                            latents = latents.detach().requires_grad_()
+                            # Get the predicted x0:
+                            latents_x0 = latents - sigma * noise_pred
+                            # Decode to image space
+                            denoised_images = self.vae.decode((1 / 0.18215) * latents_x0) / 2 + 0.5 # (0, 1)
+                            # Calculate loss
+                            loss = callback_dict["loss_function"](denoised_images) * callback_dict["weight"]
+                            # Get gradient
+                            cond_grad = -torch.autograd.grad(loss, latents)[0]
+                            # Modify the latents based on this gradient
+                            latents = latents.detach() + cond_grad * sigma**2
+            
                 
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(noise_pred, count, latents, **extra_step_kwargs)["prev_sample"]
