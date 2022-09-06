@@ -590,7 +590,7 @@ class ModelMixin(torch.nn.Module):
         Temporary procedure to run a one-time forward pass on some models, when using the `mps` device.
 
         It has been observed that the output of some models (`unet`, `vae`) is different the first time they run than the
-        rest, for the same inputs. We are investigating the root cause of the problem, but meanwhile these methods cand be
+        rest, for the same inputs. We are investigating the root cause of the problem, but meanwhile these methods can be
         used, if desired, to warmup those modules so their outputs are consistent.
 
         Return inputs suitable for the forward pass of this model.
