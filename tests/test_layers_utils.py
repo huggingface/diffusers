@@ -22,6 +22,7 @@ import torch
 from diffusers.models.attention import AttentionBlock, SpatialTransformer
 from diffusers.models.embeddings import get_timestep_embedding
 from diffusers.models.resnet import Downsample2D, Upsample2D
+from diffusers.testing_utils import torch_device
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -222,14 +223,17 @@ class Downsample2DBlockTests(unittest.TestCase):
 class AttentionBlockTests(unittest.TestCase):
     def test_attention_block_default(self):
         torch.manual_seed(0)
-        sample = torch.randn(1, 32, 64, 64)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        sample = torch.randn(1, 32, 64, 64).to(torch_device)
         attentionBlock = AttentionBlock(
             channels=32,
             num_head_channels=1,
             rescale_output_factor=1.0,
             eps=1e-6,
             num_groups=32,
-        )
+        ).to(torch_device)
         with torch.no_grad():
             attention_scores = attentionBlock(sample)
 
@@ -237,20 +241,23 @@ class AttentionBlockTests(unittest.TestCase):
         output_slice = attention_scores[0, -1, -3:, -3:]
 
         expected_slice = torch.tensor([-1.4975, -0.0038, -0.7847, -1.4567, 1.1220, -0.8962, -1.7394, 1.1319, -0.5427])
-        assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-1)
+        assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
 
 
 class SpatialTransformerTests(unittest.TestCase):
     def test_spatial_transformer_default(self):
         torch.manual_seed(0)
-        sample = torch.randn(1, 32, 64, 64)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        sample = torch.randn(1, 32, 64, 64).to(torch_device)
         spatialTransformerBlock = SpatialTransformer(
             in_channels=32,
             n_heads=1,
             d_head=32,
             dropout=0.0,
             context_dim=None,
-        )
+        ).to(torch_device)
         with torch.no_grad():
             attention_scores = spatialTransformerBlock(sample)
 
@@ -258,4 +265,49 @@ class SpatialTransformerTests(unittest.TestCase):
         output_slice = attention_scores[0, -1, -3:, -3:]
 
         expected_slice = torch.tensor([-1.2447, -0.0137, -0.9559, -1.5223, 0.6991, -1.0126, -2.0974, 0.8921, -1.0201])
-        assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-1)
+        assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
+
+    def test_spatial_transformer_context_dim(self):
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        torch.manual_seed(0)
+        sample = torch.randn(1, 64, 64, 64).to(torch_device)
+        spatialTransformerBlock = SpatialTransformer(
+            in_channels=64,
+            n_heads=2,
+            d_head=32,
+            dropout=0.0,
+            context_dim=64,
+        ).to(torch_device)
+        with torch.no_grad():
+            attention_scores = spatialTransformerBlock(sample)
+
+        assert attention_scores.shape == (1, 64, 64, 64)
+        output_slice = attention_scores[0, -1, -3:, -3:]
+
+        expected_slice = torch.tensor([-0.0278, -0.7288, -2.2825, -2.0128, 1.4513, 0.2600, -0.2489, -1.4279, 0.1277])
+        assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
+
+    def test_spatial_transformer_dropout(self):
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        sample = torch.randn(1, 32, 64, 64).to(torch_device)
+        spatialTransformerBlock = SpatialTransformer(
+            in_channels=32,
+            n_heads=2,
+            d_head=16,
+            dropout=0.3,
+            context_dim=None,
+        ).to(torch_device)
+        with torch.no_grad():
+            attention_scores = spatialTransformerBlock(sample)
+
+        assert attention_scores.shape == (1, 32, 64, 64)
+        output_slice = attention_scores[0, -1, -3:, -3:]
+
+        expected_slice = torch.tensor([-1.4387, 0.0335, -0.9627, -1.4815, 0.6288, -1.0577, -2.1272, 0.8841, -1.0216])
+        assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
