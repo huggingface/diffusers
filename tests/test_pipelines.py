@@ -247,6 +247,14 @@ class PipelineFastTests(unittest.TestCase):
         ldm.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger"
+
+        # Skip first when using mps (see #372)
+        if torch_device == "mps":
+            generator = torch.manual_seed(0)
+            _ = ldm([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=1, output_type="numpy")[
+                "sample"
+            ]
+
         generator = torch.manual_seed(0)
         image = ldm([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="numpy")[
             "sample"
@@ -443,6 +451,11 @@ class PipelineFastTests(unittest.TestCase):
         ldm = LDMPipeline(unet=unet, vqvae=vae, scheduler=scheduler)
         ldm.to(torch_device)
         ldm.set_progress_bar_config(disable=None)
+        
+        # Skip first when using mps (see #372)
+        if torch_device == "mps":
+            generator = torch.manual_seed(0)
+            _ = ldm(generator=generator, num_inference_steps=1, output_type="numpy").images
 
         generator = torch.manual_seed(0)
         image = ldm(generator=generator, num_inference_steps=2, output_type="numpy").images
