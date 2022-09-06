@@ -47,12 +47,17 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
     """
     The variance exploding stochastic differential equation (SDE) scheduler.
 
-    :param snr: coefficient weighting the step from the model_output sample (from the network) to the random noise.
-    :param sigma_min: initial noise scale for sigma sequence in sampling procedure. The minimum sigma should mirror the
-            distribution of the data.
-    :param sigma_max: :param sampling_eps: the end value of sampling, where timesteps decrease progessively from 1 to
-    epsilon. :param correct_steps: number of correction steps performed on a produced sample. :param tensor_format:
-    "np" or "pt" for the expected format of samples passed to the Scheduler.
+    Args:
+        snr (`float`):
+            coefficient weighting the step from the model_output sample (from the network) to the random noise.
+        sigma_min (`float`):
+                initial noise scale for sigma sequence in sampling procedure. The minimum sigma should mirror the
+                distribution of the data.
+        sigma_max (`float`): TODO
+        sampling_eps (`float`): the end value of sampling, where timesteps decrease progessively from 1 to
+        epsilon.
+        correct_steps (`int`): number of correction steps performed on a produced sample.
+        tensor_format (`str`): "np" or "pt" for the expected format of samples passed to the Scheduler.
     """
 
     @register_to_config
@@ -66,11 +71,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         correct_steps=1,
         tensor_format="pt",
     ):
-        # self.sigmas = None
-        # self.discrete_sigmas = None
-        #
-        # # setable values
-        # self.num_inference_steps = None
+        # setable values
         self.timesteps = None
 
         self.set_sigmas(num_train_timesteps, sigma_min, sigma_max, sampling_eps)
