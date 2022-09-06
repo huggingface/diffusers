@@ -165,6 +165,7 @@ class DiffusionPipeline(ConfigMixin):
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
+        channels_last = kwargs.pop("channels_last", False)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -266,6 +267,11 @@ class DiffusionPipeline(ConfigMixin):
                 else:
                     # else load from the root directory
                     loaded_sub_model = load_method(cached_folder, **loading_kwargs)
+
+                if channels_last and issubclass(class_obj, torch.nn.Module) and name == "unet":
+                    #TODO(nouamane): it seems we don't need to specify inputs' memory format for 
+                    # se we only apply this to the model
+                    loaded_sub_model = loaded_sub_model.to(memory_format=torch.channels_last)
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 

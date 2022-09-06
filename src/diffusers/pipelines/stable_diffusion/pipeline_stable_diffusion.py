@@ -30,7 +30,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             vae=vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
-            unet=unet.to(memory_format=torch.channels_last),
+            unet=unet,
             scheduler=scheduler,
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
@@ -138,7 +138,6 @@ class StableDiffusionPipeline(DiffusionPipeline):
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-            latent_model_input = latent_model_input.to(memory_format=torch.channels_last)
             if isinstance(self.scheduler, LMSDiscreteScheduler):
                 sigma = self.scheduler.sigmas[i]
                 # the model input needs to be scaled to match the continuous ODE formulation in K-LMS
