@@ -7,12 +7,7 @@
 - Mac computer with Apple silicon (M1/M2) hardware.
 - macOS 12.3 or later.
 - arm64 version of Python.
-
-### Install PyTorch Nightly 
-
-Install the latest [Preview (Nightly) build of PyTorch](https://pytorch.org/get-started/locally/) on your Apple silicon Mac. Please, make sure it meets the requirements above.
-
-We have tested inference using PyTorch version `1.13.0.dev20220830`. After installing, please verify that your version is at least that one.
+- PyTorch [Preview (Nightly)](https://pytorch.org/get-started/locally/), version `1.13.0.dev20220830` or later.
 
 ### Inference Pipeline
 
