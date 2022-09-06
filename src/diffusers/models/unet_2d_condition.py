@@ -210,4 +210,3 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         t = torch.tensor([10], dtype=torch.int32)
         w_encoded = torch.rand((batch_size, 77, 768))
         return (w_sample, t, w_encoded)
-

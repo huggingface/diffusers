@@ -111,7 +111,9 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             return np.where(timesteps == 0, np.zeros_like(t), self.discrete_sigmas[timesteps - 1])
         elif tensor_format == "pt":
             return torch.where(
-                timesteps == 0, torch.zeros_like(t.to(timesteps.device)), self.discrete_sigmas[timesteps - 1].to(timesteps.device)
+                timesteps == 0,
+                torch.zeros_like(t.to(timesteps.device)),
+                self.discrete_sigmas[timesteps - 1].to(timesteps.device),
             )
 
         raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")

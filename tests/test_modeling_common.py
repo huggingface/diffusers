@@ -218,7 +218,7 @@ class ModelTesterMixin:
         model.to(torch_device)
         model.eval()
         if isinstance(model, ModelMixin):
-            model._mps_warmup(inputs_dict['sample'].shape[0])
+            model._mps_warmup(inputs_dict["sample"].shape[0])
 
         with torch.no_grad():
             outputs_dict = model(**inputs_dict)

@@ -207,4 +207,3 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         w_sample = torch.randn((batch_size, self.in_channels, 32, 32))
         t = torch.tensor([10], dtype=torch.int32)
         return (w_sample, t)
-

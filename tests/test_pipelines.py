@@ -451,7 +451,7 @@ class PipelineFastTests(unittest.TestCase):
         ldm = LDMPipeline(unet=unet, vqvae=vae, scheduler=scheduler)
         ldm.to(torch_device)
         ldm.set_progress_bar_config(disable=None)
-        
+
         # Skip first when using mps (see #372)
         if torch_device == "mps":
             generator = torch.manual_seed(0)
