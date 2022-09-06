@@ -120,6 +120,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             extra_set_kwargs["offset"] = 1
 
         self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
+        self.scheduler.timesteps = self.scheduler.timesteps.to(self.device)
 
         # if we use LMSDiscreteScheduler, let's make sure latents are mulitplied by sigmas
         if isinstance(self.scheduler, LMSDiscreteScheduler):
