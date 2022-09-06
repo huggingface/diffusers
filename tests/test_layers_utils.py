@@ -19,6 +19,7 @@ import unittest
 import numpy as np
 import torch
 
+from diffusers.models.attention import AttentionBlock, SpatialTransformer
 from diffusers.models.embeddings import get_timestep_embedding
 from diffusers.models.resnet import Downsample2D, Upsample2D
 
@@ -216,3 +217,45 @@ class Downsample2DBlockTests(unittest.TestCase):
         output_slice = downsampled[0, -1, -3:, -3:]
         expected_slice = torch.tensor([-0.6586, 0.5985, 0.0721, 0.1256, -0.1492, 0.4436, -0.2544, 0.5021, 1.1522])
         assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
+
+
+class AttentionBlockTests(unittest.TestCase):
+    def test_attention_block_default(self):
+        torch.manual_seed(0)
+        sample = torch.randn(1, 32, 64, 64)
+        attentionBlock = AttentionBlock(
+            channels=32,
+            num_head_channels=1,
+            rescale_output_factor=1.0,
+            eps=1e-6,
+            num_groups=32,
+        )
+        with torch.no_grad():
+            attention_scores = attentionBlock(sample)
+
+        assert attention_scores.shape == (1, 32, 64, 64)
+        output_slice = attention_scores[0, -1, -3:, -3:]
+
+        expected_slice = torch.tensor([-1.4975, -0.0038, -0.7847, -1.4567, 1.1220, -0.8962, -1.7394, 1.1319, -0.5427])
+        assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-1)
+
+
+class SpatialTransformerTests(unittest.TestCase):
+    def test_spatial_transformer_default(self):
+        torch.manual_seed(0)
+        sample = torch.randn(1, 32, 64, 64)
+        spatialTransformerBlock = SpatialTransformer(
+            in_channels=32,
+            n_heads=1,
+            d_head=32,
+            dropout=0.0,
+            context_dim=None,
+        )
+        with torch.no_grad():
+            attention_scores = spatialTransformerBlock(sample)
+
+        assert attention_scores.shape == (1, 32, 64, 64)
+        output_slice = attention_scores[0, -1, -3:, -3:]
+
+        expected_slice = torch.tensor([-1.2447, -0.0137, -0.9559, -1.5223, 0.6991, -1.0126, -2.0974, 0.8921, -1.0201])
+        assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-1)
