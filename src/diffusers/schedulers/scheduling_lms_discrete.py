@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -20,20 +20,20 @@ import torch
 from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
 class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        num_train_timesteps=1000,
-        beta_start=0.0001,
-        beta_end=0.02,
-        beta_schedule="linear",
-        trained_betas=None,
-        timestep_values=None,
-        tensor_format="pt",
+        num_train_timesteps: int = 1000,
+        beta_start: float = 0.0001,
+        beta_end: float = 0.02,
+        beta_schedule: str = "linear",
+        trained_betas: Optional[np.ndarray] = None,
+        timestep_values: Optional[np.ndarray] = None,
+        tensor_format: str = "pt",
     ):
         """
         Linear Multistep Scheduler for discrete beta schedules. Based on the original k-diffusion implementation by
@@ -79,7 +79,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         return integrated_coeff
 
-    def set_timesteps(self, num_inference_steps):
+    def set_timesteps(self, num_inference_steps: int):
         self.num_inference_steps = num_inference_steps
         self.timesteps = np.linspace(self.num_train_timesteps - 1, 0, num_inference_steps, dtype=float)
 
@@ -100,7 +100,8 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: Union[torch.FloatTensor, np.ndarray],
         order: int = 4,
-    ):
+        return_dict: bool = True,
+    ) -> Union[SchedulerOutput, Tuple]:
         sigma = self.sigmas[timestep]
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
@@ -121,9 +122,17 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             coeff * derivative for coeff, derivative in zip(lms_coeffs, reversed(self.derivatives))
         )
 
-        return {"prev_sample": prev_sample}
+        if not return_dict:
+            return (prev_sample,)
 
-    def add_noise(self, original_samples, noise, timesteps):
+        return SchedulerOutput(prev_sample=prev_sample)
+
+    def add_noise(
+        self,
+        original_samples: Union[torch.FloatTensor, np.ndarray],
+        noise: Union[torch.FloatTensor, np.ndarray],
+        timesteps: Union[torch.IntTensor, np.ndarray],
+    ) -> Union[torch.FloatTensor, np.ndarray]:
         sigmas = self.match_shape(self.sigmas[timesteps], noise)
         noisy_samples = original_samples + noise * sigmas
 

@@ -15,13 +15,13 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 import math
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
@@ -135,7 +135,9 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         sample: Union[torch.FloatTensor, np.ndarray],
         predict_epsilon=True,
         generator=None,
-    ):
+        return_dict: bool = True,
+    ) -> Union[SchedulerOutput, Tuple]:
+
         t = timestep
 
         if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
@@ -177,7 +179,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         pred_prev_sample = pred_prev_sample + variance
 
-        return {"prev_sample": pred_prev_sample}
+        if not return_dict:
+            return (pred_prev_sample,)
+
+        return SchedulerOutput(prev_sample=pred_prev_sample)
 
     def add_noise(
         self,

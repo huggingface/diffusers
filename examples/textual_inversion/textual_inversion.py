@@ -357,15 +357,18 @@ def main():
 
     # Load the tokenizer and add the placeholder token as a additional special token
     if args.tokenizer_name:
-        tokenizer = CLIPTokenizer.from_pretrained(
-            args.tokenizer_name, additional_special_tokens=[args.placeholder_token]
-        )
+        tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_name)
     elif args.pretrained_model_name_or_path:
         tokenizer = CLIPTokenizer.from_pretrained(
-            args.pretrained_model_name_or_path,
-            additional_special_tokens=[args.placeholder_token],
-            subfolder="tokenizer",
-            use_auth_token=args.use_auth_token,
+            args.pretrained_model_name_or_path, subfolder="tokenizer", use_auth_token=args.use_auth_token
+        )
+
+    # Add the placeholder token in tokenizer
+    num_added_tokens = tokenizer.add_tokens(args.placeholder_token)
+    if num_added_tokens == 0:
+        raise ValueError(
+            f"The tokenizer already contains the token {args.placeholder_token}. Please pass a different"
+            " `placeholder_token` that is not already in the tokenizer."
         )
 
     # Convert the initializer_token, placeholder_token to ids
@@ -495,7 +498,7 @@ def main():
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(text_encoder):
                 # Convert images to latent space
-                latents = vae.encode(batch["pixel_values"]).sample().detach()
+                latents = vae.encode(batch["pixel_values"]).latent_dist.sample().detach()
                 latents = latents * 0.18215
 
                 # Sample noise that we'll add to the latents
@@ -512,7 +515,7 @@ def main():
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
                 # Predict the noise residual
-                noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states)["sample"]
+                noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
 
                 loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
                 accelerator.backward(loss)

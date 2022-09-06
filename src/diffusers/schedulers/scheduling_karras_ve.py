@@ -13,13 +13,32 @@
 # limitations under the License.
 
 
-from typing import Union
+from dataclasses import dataclass
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils import BaseOutput
 from .scheduling_utils import SchedulerMixin
+
+
+@dataclass
+class KarrasVeOutput(BaseOutput):
+    """
+    Output class for the scheduler's step function output.
+
+    Args:
+        prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+            Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
+            denoising loop.
+        derivative (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+            Derivate of predicted original image sample (x_0).
+    """
+
+    prev_sample: torch.FloatTensor
+    derivative: torch.FloatTensor
 
 
 class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
@@ -35,13 +54,13 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        sigma_min=0.02,
-        sigma_max=100,
-        s_noise=1.007,
-        s_churn=80,
-        s_min=0.05,
-        s_max=50,
-        tensor_format="pt",
+        sigma_min: float = 0.02,
+        sigma_max: float = 100,
+        s_noise: float = 1.007,
+        s_churn: float = 80,
+        s_min: float = 0.05,
+        s_max: float = 50,
+        tensor_format: str = "pt",
     ):
         """
         For more details on the parameters, see the original paper's Appendix E.: "Elucidating the Design Space of
@@ -68,7 +87,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         self.tensor_format = tensor_format
         self.set_format(tensor_format=tensor_format)
 
-    def set_timesteps(self, num_inference_steps):
+    def set_timesteps(self, num_inference_steps: int):
         self.num_inference_steps = num_inference_steps
         self.timesteps = np.arange(0, self.num_inference_steps)[::-1].copy()
         self.schedule = [
@@ -79,7 +98,9 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
 
         self.set_format(tensor_format=self.tensor_format)
 
-    def add_noise_to_input(self, sample, sigma, generator=None):
+    def add_noise_to_input(
+        self, sample: Union[torch.FloatTensor, np.ndarray], sigma: float, generator: Optional[torch.Generator] = None
+    ) -> Tuple[Union[torch.FloatTensor, np.ndarray], float]:
         """
         Explicit Langevin-like "churn" step of adding noise to the sample according to a factor gamma_i ≥ 0 to reach a
         higher noise level sigma_hat = sigma_i + gamma_i*sigma_i.
@@ -102,12 +123,17 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         sigma_hat: float,
         sigma_prev: float,
         sample_hat: Union[torch.FloatTensor, np.ndarray],
-    ):
+        return_dict: bool = True,
+    ) -> Union[KarrasVeOutput, Tuple]:
+
         pred_original_sample = sample_hat + sigma_hat * model_output
         derivative = (sample_hat - pred_original_sample) / sigma_hat
         sample_prev = sample_hat + (sigma_prev - sigma_hat) * derivative
 
-        return {"prev_sample": sample_prev, "derivative": derivative}
+        if not return_dict:
+            return (sample_prev, derivative)
+
+        return KarrasVeOutput(prev_sample=sample_prev, derivative=derivative)
 
     def step_correct(
         self,
@@ -117,11 +143,17 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         sample_hat: Union[torch.FloatTensor, np.ndarray],
         sample_prev: Union[torch.FloatTensor, np.ndarray],
         derivative: Union[torch.FloatTensor, np.ndarray],
-    ):
+        return_dict: bool = True,
+    ) -> Union[KarrasVeOutput, Tuple]:
+
         pred_original_sample = sample_prev + sigma_prev * model_output
         derivative_corr = (sample_prev - pred_original_sample) / sigma_prev
         sample_prev = sample_hat + (sigma_prev - sigma_hat) * (0.5 * derivative + 0.5 * derivative_corr)
-        return {"prev_sample": sample_prev, "derivative": derivative_corr}
+
+        if not return_dict:
+            return (sample_prev, derivative)
+
+        return KarrasVeOutput(prev_sample=sample_prev, derivative=derivative)
 
     def add_noise(self, original_samples, noise, timesteps):
         raise NotImplementedError()

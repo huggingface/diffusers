@@ -1,11 +1,11 @@
 import inspect
 import warnings
-from typing import Optional
+from typing import Optional, Tuple, Union
 
 import torch
 
 from ...models import UNet2DModel, VQModel
-from ...pipeline_utils import DiffusionPipeline
+from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler
 
 
@@ -28,8 +28,9 @@ class LDMPipeline(DiffusionPipeline):
         eta: float = 0.0,
         num_inference_steps: int = 50,
         output_type: Optional[str] = "pil",
+        return_dict: bool = True,
         **kwargs,
-    ):
+    ) -> Union[Tuple, ImagePipelineOutput]:
         # eta corresponds to η in paper and should be between [0, 1]
 
         if "torch_device" in kwargs:
@@ -61,16 +62,19 @@ class LDMPipeline(DiffusionPipeline):
 
         for t in self.progress_bar(self.scheduler.timesteps):
             # predict the noise residual
-            noise_prediction = self.unet(latents, t)["sample"]
+            noise_prediction = self.unet(latents, t).sample
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_prediction, t, latents, **extra_kwargs)["prev_sample"]
+            latents = self.scheduler.step(noise_prediction, t, latents, **extra_kwargs).prev_sample
 
         # decode the image latents with the VAE
-        image = self.vqvae.decode(latents)
+        image = self.vqvae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
-        return {"sample": image}
+        if not return_dict:
+            return (image,)
+
+        return ImagePipelineOutput(images=image)
