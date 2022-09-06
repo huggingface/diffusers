@@ -108,9 +108,9 @@ class SpatialTransformer(nn.Module):
 
         self.proj_out = nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
 
-    def _set_attention_chunk_size(self, chunk_size):
+    def _set_attention_chunk(self, chunk_size):
         for block in self.transformer_blocks:
-            block._set_attention_chunk_size(chunk_size)
+            block._set_attention_chunk(chunk_size)
 
     def forward(self, x, context=None):
         # note: if no context is given, cross-attention defaults to self-attention
@@ -141,7 +141,7 @@ class BasicTransformerBlock(nn.Module):
         self.norm3 = nn.LayerNorm(dim)
         self.checkpoint = checkpoint
 
-    def _set_attention_chunk_size(self, chunk_size):
+    def _set_attention_chunk(self, chunk_size):
         self.attn1._chunk_size = chunk_size
         self.attn2._chunk_size = chunk_size
 
@@ -162,7 +162,7 @@ class CrossAttention(nn.Module):
         self.heads = heads
         # for chunk_size > 0 the attention score computation
         # is split across the batch axis to save memory
-        # You can set chunk_size with `set_attention_chunk_size`
+        # You can set chunk_size with `set_attention_chunk`
         self._chunk_size = None
 
         self.to_q = nn.Linear(query_dim, inner_dim, bias=False)

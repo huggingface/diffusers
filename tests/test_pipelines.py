@@ -436,7 +436,7 @@ class PipelineFastTests(unittest.TestCase):
         output_1 = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
 
         # make sure chunking the attention yields the same result
-        sd_pipe.set_attention_chunk_size(chunk_size=1)
+        sd_pipe.set_attention_chunk(chunk_size=1)
         generator = torch.Generator(device=device).manual_seed(0)
         output_2 = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
 
@@ -1090,7 +1090,7 @@ class PipelineTesterMixin(unittest.TestCase):
         prompt = "a photograph of an astronaut riding a horse"
 
         # make attention efficient
-        pipe.set_attention_chunk_size()
+        pipe.set_attention_chunk()
         generator = torch.Generator(device=torch_device).manual_seed(0)
         with torch.autocast(torch_device):
             output_chunked = pipe(
@@ -1104,7 +1104,7 @@ class PipelineTesterMixin(unittest.TestCase):
         assert mem_bytes < 3.75 * 10**9
 
         # disable chunking
-        pipe.set_attention_chunk_size(chunk_size=None)
+        pipe.set_attention_chunk(chunk_size=None)
         generator = torch.Generator(device=torch_device).manual_seed(0)
         with torch.autocast(torch_device):
             output = pipe(

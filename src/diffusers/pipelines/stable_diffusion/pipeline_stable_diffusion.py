@@ -36,13 +36,13 @@ class StableDiffusionPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
 
-    def set_attention_chunk_size(self, chunk_size: Optional[Union[str, int]] = "auto"):
-        # set chunk_size = `None` to disable `set_attention_chunk_size`
+    def set_attention_chunk(self, chunk_size: Optional[Union[str, int]] = "auto"):
+        # set chunk_size = `None` to disable `set_attention_chunk`
         if chunk_size == "auto":
             # half the attention head size is usually a good trade-off between
             # speed and memory
             chunk_size = self.unet.config.attention_head_dim // 2
-        self.unet.set_attention_chunk_size(chunk_size)
+        self.unet.set_attention_chunk(chunk_size)
 
     @torch.no_grad()
     def __call__(

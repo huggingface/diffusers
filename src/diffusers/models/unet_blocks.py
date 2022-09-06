@@ -343,7 +343,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
-    def set_attention_chunk_size(self, chunk_size):
+    def set_attention_chunk(self, chunk_size):
         if chunk_size is not None and self.attn_num_head_channels % chunk_size != 0:
             raise ValueError(
                 f"Make sure chunk_size {chunk_size} is a divisor of "
@@ -356,7 +356,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
             )
 
         for attn in self.attentions:
-            attn._set_attention_chunk_size(chunk_size)
+            attn._set_attention_chunk(chunk_size)
 
     def forward(self, hidden_states, temb=None, encoder_hidden_states=None):
         hidden_states = self.resnets[0](hidden_states, temb)
@@ -514,7 +514,7 @@ class CrossAttnDownBlock2D(nn.Module):
         else:
             self.downsamplers = None
 
-    def set_attention_chunk_size(self, chunk_size):
+    def set_attention_chunk(self, chunk_size):
         if chunk_size is not None and self.attn_num_head_channels % chunk_size != 0:
             raise ValueError(
                 f"Make sure chunk_size {chunk_size} is a divisor of "
@@ -527,7 +527,7 @@ class CrossAttnDownBlock2D(nn.Module):
             )
 
         for attn in self.attentions:
-            attn._set_attention_chunk_size(chunk_size)
+            attn._set_attention_chunk(chunk_size)
 
     def forward(self, hidden_states, temb=None, encoder_hidden_states=None):
         output_states = ()
@@ -1058,7 +1058,7 @@ class CrossAttnUpBlock2D(nn.Module):
         else:
             self.upsamplers = None
 
-    def set_attention_chunk_size(self, chunk_size):
+    def set_attention_chunk(self, chunk_size):
         if chunk_size is not None and self.attn_num_head_channels % chunk_size != 0:
             raise ValueError(
                 f"Make sure chunk_size {chunk_size} is a divisor of "
@@ -1071,7 +1071,7 @@ class CrossAttnUpBlock2D(nn.Module):
             )
 
         for attn in self.attentions:
-            attn._set_attention_chunk_size(chunk_size)
+            attn._set_attention_chunk(chunk_size)
 
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, encoder_hidden_states=None):
         for resnet, attn in zip(self.resnets, self.attentions):
