@@ -343,20 +343,20 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
-    def set_attention_chunk(self, chunk_size):
-        if chunk_size is not None and self.attn_num_head_channels % chunk_size != 0:
+    def set_attention_slice(self, slice_size):
+        if slice_size is not None and self.attn_num_head_channels % slice_size != 0:
             raise ValueError(
-                f"Make sure chunk_size {chunk_size} is a divisor of "
+                f"Make sure slice_size {slice_size} is a divisor of "
                 f"the number of heads used in cross_attention {self.attn_num_head_channels}"
             )
-        if chunk_size is not None and chunk_size > self.attn_num_head_channels:
+        if slice_size is not None and slice_size > self.attn_num_head_channels:
             raise ValueError(
-                f"Chunk_size {chunk_size} has to be smaller or equal to "
+                f"Chunk_size {slice_size} has to be smaller or equal to "
                 f"the number of heads used in cross_attention {self.attn_num_head_channels}"
             )
 
         for attn in self.attentions:
-            attn._set_attention_chunk(chunk_size)
+            attn._set_attention_slice(slice_size)
 
     def forward(self, hidden_states, temb=None, encoder_hidden_states=None):
         hidden_states = self.resnets[0](hidden_states, temb)
@@ -514,20 +514,20 @@ class CrossAttnDownBlock2D(nn.Module):
         else:
             self.downsamplers = None
 
-    def set_attention_chunk(self, chunk_size):
-        if chunk_size is not None and self.attn_num_head_channels % chunk_size != 0:
+    def set_attention_slice(self, slice_size):
+        if slice_size is not None and self.attn_num_head_channels % slice_size != 0:
             raise ValueError(
-                f"Make sure chunk_size {chunk_size} is a divisor of "
+                f"Make sure slice_size {slice_size} is a divisor of "
                 f"the number of heads used in cross_attention {self.attn_num_head_channels}"
             )
-        if chunk_size is not None and chunk_size > self.attn_num_head_channels:
+        if slice_size is not None and slice_size > self.attn_num_head_channels:
             raise ValueError(
-                f"Chunk_size {chunk_size} has to be smaller or equal to "
+                f"Chunk_size {slice_size} has to be smaller or equal to "
                 f"the number of heads used in cross_attention {self.attn_num_head_channels}"
             )
 
         for attn in self.attentions:
-            attn._set_attention_chunk(chunk_size)
+            attn._set_attention_slice(slice_size)
 
     def forward(self, hidden_states, temb=None, encoder_hidden_states=None):
         output_states = ()
@@ -1058,20 +1058,20 @@ class CrossAttnUpBlock2D(nn.Module):
         else:
             self.upsamplers = None
 
-    def set_attention_chunk(self, chunk_size):
-        if chunk_size is not None and self.attn_num_head_channels % chunk_size != 0:
+    def set_attention_slice(self, slice_size):
+        if slice_size is not None and self.attn_num_head_channels % slice_size != 0:
             raise ValueError(
-                f"Make sure chunk_size {chunk_size} is a divisor of "
+                f"Make sure slice_size {slice_size} is a divisor of "
                 f"the number of heads used in cross_attention {self.attn_num_head_channels}"
             )
-        if chunk_size is not None and chunk_size > self.attn_num_head_channels:
+        if slice_size is not None and slice_size > self.attn_num_head_channels:
             raise ValueError(
-                f"Chunk_size {chunk_size} has to be smaller or equal to "
+                f"Chunk_size {slice_size} has to be smaller or equal to "
                 f"the number of heads used in cross_attention {self.attn_num_head_channels}"
             )
 
         for attn in self.attentions:
-            attn._set_attention_chunk(chunk_size)
+            attn._set_attention_slice(slice_size)
 
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, encoder_hidden_states=None):
         for resnet, attn in zip(self.resnets, self.attentions):

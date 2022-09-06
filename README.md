@@ -118,7 +118,7 @@ pipe = StableDiffusionPipeline.from_pretrained(
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
-pipe.set_attention_chunk()
+pipe.set_attention_slice()
 with autocast("cuda"):
     image = pipe(prompt).images[0]  
 ```

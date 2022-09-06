@@ -108,9 +108,9 @@ class SpatialTransformer(nn.Module):
 
         self.proj_out = nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
 
-    def _set_attention_chunk(self, chunk_size):
+    def _set_attention_slice(self, slice_size):
         for block in self.transformer_blocks:
-            block._set_attention_chunk(chunk_size)
+            block._set_attention_slice(slice_size)
 
     def forward(self, x, context=None):
         # note: if no context is given, cross-attention defaults to self-attention
@@ -141,9 +141,9 @@ class BasicTransformerBlock(nn.Module):
         self.norm3 = nn.LayerNorm(dim)
         self.checkpoint = checkpoint
 
-    def _set_attention_chunk(self, chunk_size):
-        self.attn1._chunk_size = chunk_size
-        self.attn2._chunk_size = chunk_size
+    def _set_attention_slice(self, slice_size):
+        self.attn1._slice_size = slice_size
+        self.attn2._slice_size = slice_size
 
     def forward(self, x, context=None):
         x = self.attn1(self.norm1(x)) + x
@@ -160,10 +160,10 @@ class CrossAttention(nn.Module):
 
         self.scale = dim_head**-0.5
         self.heads = heads
-        # for chunk_size > 0 the attention score computation
+        # for slice_size > 0 the attention score computation
         # is split across the batch axis to save memory
-        # You can set chunk_size with `set_attention_chunk`
-        self._chunk_size = None
+        # You can set slice_size with `set_attention_slice`
+        self._slice_size = None
 
         self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
         self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
@@ -209,10 +209,10 @@ class CrossAttention(nn.Module):
         hidden_states = torch.zeros(
             (batch_size_attention, sequence_length, dim // self.heads), device=query.device, dtype=query.dtype
         )
-        chunk_size = self._chunk_size if self._chunk_size is not None else hidden_states.shape[0]
-        for i in range(hidden_states.shape[0] // chunk_size):
-            start_idx = i * chunk_size
-            end_idx = (i + 1) * chunk_size
+        slice_size = self._slice_size if self._slice_size is not None else hidden_states.shape[0]
+        for i in range(hidden_states.shape[0] // slice_size):
+            start_idx = i * slice_size
+            end_idx = (i + 1) * slice_size
             attn_slice = (
                 torch.einsum("b i d, b j d -> b i j", query[start_idx:end_idx], key[start_idx:end_idx]) * self.scale
             )
