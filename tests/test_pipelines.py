@@ -1093,9 +1093,10 @@ class PipelineTesterMixin(unittest.TestCase):
         pipe.set_attention_chunk_size()
         generator = torch.Generator(device=torch_device).manual_seed(0)
         with torch.autocast(torch_device):
-            image_chunked = pipe(
+            output_chunked = pipe(
                 [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
-            )["sample"]
+            )
+            image_chunked = output_chunked.images
 
         mem_bytes = torch.cuda.max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
@@ -1106,9 +1107,10 @@ class PipelineTesterMixin(unittest.TestCase):
         pipe.set_attention_chunk_size(chunk_size=None)
         generator = torch.Generator(device=torch_device).manual_seed(0)
         with torch.autocast(torch_device):
-            image = pipe(
+            output = pipe(
                 [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
-            )["sample"]
+            )
+            image = output.images
 
         # make sure that more than 3.75 GB is allocated
         mem_bytes = torch.cuda.max_memory_allocated()
