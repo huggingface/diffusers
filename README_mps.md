@@ -33,7 +33,7 @@ prompt = "a photo of an astronaut riding a horse on mars"
 _ = pipe(prompt, num_inference_steps=1)
 
 # Results match those from the CPU device after the warmup pass.
-image = pipe(prompt)["sample"][0]  
+image = pipe(prompt).images[0]
 ```
 
 ### Performance
