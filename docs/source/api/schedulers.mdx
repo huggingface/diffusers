@@ -10,19 +10,78 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Models
+# Schedulers
 
-Diffusers contains pretrained models for popular algorithms and modules for creating the next set of diffusion models.
-The primary function of these models is to denoise an input sample, by modeling the distribution $p_\theta(\mathbf{x}_{t-1}|\mathbf{x}_t)$.
-The models are built on the base class ['ModelMixin'] that is a `torch.nn.module` with basic functionality for saving and loading models both locally and from the HuggingFace hub.
+The base class ['SchedulerMixin'] implements low level utilities used by multiple schedulers.
+At a high level:
+- Schedulers are the algorithms to use diffusion models in inference as well as for training. They include the noise schedules and define algorithm-specific diffusion steps.
+- Schedulers can be used interchangable between diffusion models in inference to find the preferred tradef-off between speed and generation quality.
+- Schedulers are available in numpy, but can easily be transformed into PyTorch.
+
+## What is a scheduler?
+TODO(Nathan)
+
+## Designing Re-usable schedulers
+TODO(Nathan)
+
+## Discrete versus Continuous schedulers
+TODO(Nathan)
 
 ## API
 
-Models should provide the `def forward` function and initialization of the model.
-All saving, loading, and utilities should be in the base ['ModelMixin'] class.
+- Schedulers should provide one or more `def step(...)` functions that should be called iteratively to unroll the diffusion loop during
+the forward pass.
+- Schedulers should be framework-agonstic, but provide a simple functionality to convert the scheduler into a specific framework, such as PyTorch
+with a `set_format(...)` method.
 
-## Examples
+## Core
 
-- The ['UNetModel'] was proposed in [TODO](https://arxiv.org/) and has been used in paper1, paper2, paper3.
-- Extensions of the ['UNetModel'] include the ['UNetGlideModel'] that uses attention and timestep embeddings for the [GLIDE](https://arxiv.org/abs/2112.10741) paper, the ['UNetGradTTS'] model from this [paper](https://arxiv.org/abs/2105.06337) for text-to-speech, ['UNetLDMModel'] for latent-diffusion models in this [paper](https://arxiv.org/abs/2112.10752), and the ['TemporalUNet'] used for time-series prediciton in this reinforcement learning [paper](https://arxiv.org/abs/2205.09991).
-- TODO: mention VAE / SDE score estimation
+[[autodoc]] SchedulerMixin
+
+## Existing Classes
+
+### DDIM
+
+DDIM is a scheduler.
+
+[[autodoc]] schedulers.scheduling_ddim.DDIMScheduler
+
+### DDPM
+
+DDPM is a scheduler.
+
+[[autodoc]] schedulers.scheduling_ddpm.DDPMScheduler
+
+### KerrasVE
+
+KerrasVE is a scheduler.
+
+[[autodoc]] schedulers.scheduling_karras_ve.KarrasVeScheduler
+
+### LMSDiscrete
+
+LMSDiscrete is a scheduler.
+
+[[autodoc]] schedulers.scheduling_lms_discrete.LMSDiscreteScheduler
+
+### PNDM
+
+PNDMDiscrete is a scheduler.
+
+[[autodoc]] schedulers.scheduling_pndm.PNDMScheduler
+
+### Score SDE-VE
+
+Score SDE-VE is a scheduler.
+
+[[autodoc]] schedulers.scheduling_sde_ve.ScoreSdeVeScheduler
+
+### Score SDE-VP
+
+<Tip warning={true}>
+
+Score SDE-VP is under construction.
+
+</Tip>
+
+[[autodoc]] schedulers.scheduling_sde_vp.ScoreSdeVpScheduler

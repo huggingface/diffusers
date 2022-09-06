@@ -49,8 +49,24 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
     [1] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models."
     https://arxiv.org/abs/2206.00364 [2] Song, Yang, et al. "Score-based generative modeling through stochastic
     differential equations." https://arxiv.org/abs/2011.13456
-    """
 
+    For more details on the parameters, see the original paper's Appendix E.: "Elucidating the Design Space of
+    Diffusion-Based Generative Models." https://arxiv.org/abs/2206.00364. The grid search values used to find the
+    optimal {s_noise, s_churn, s_min, s_max} for a specific model are described in Table 5 of the paper.
+
+    Args:
+        sigma_min (`float`): minimum noise magnitude
+        sigma_max (`float`): maximum noise magnitude
+        s_noise (`float`): the amount of additional noise to counteract loss of detail during sampling.
+            A reasonable range is [1.000, 1.011].
+        s_churn (`float`): the parameter controlling the overall amount of stochasticity.
+            A reasonable range is [0, 100].
+        s_min (`float`): the start value of the sigma range where we add noise (enable stochasticity).
+            A reasonable range is [0, 10].
+        s_max (`float`): the end value of the sigma range where we add noise.
+            A reasonable range is [0.2, 80].
+
+    """
     @register_to_config
     def __init__(
         self,
@@ -62,23 +78,6 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         s_max: float = 50,
         tensor_format: str = "pt",
     ):
-        """
-        For more details on the parameters, see the original paper's Appendix E.: "Elucidating the Design Space of
-        Diffusion-Based Generative Models." https://arxiv.org/abs/2206.00364. The grid search values used to find the
-        optimal {s_noise, s_churn, s_min, s_max} for a specific model are described in Table 5 of the paper.
-
-        Args:
-            sigma_min (`float`): minimum noise magnitude
-            sigma_max (`float`): maximum noise magnitude
-            s_noise (`float`): the amount of additional noise to counteract loss of detail during sampling.
-                A reasonable range is [1.000, 1.011].
-            s_churn (`float`): the parameter controlling the overall amount of stochasticity.
-                A reasonable range is [0, 100].
-            s_min (`float`): the start value of the sigma range where we add noise (enable stochasticity).
-                A reasonable range is [0, 10].
-            s_max (`float`): the end value of the sigma range where we add noise.
-                A reasonable range is [0.2, 80].
-        """
         # setable values
         self.num_inference_steps = None
         self.timesteps = None
