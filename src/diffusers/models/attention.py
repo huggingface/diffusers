@@ -108,6 +108,10 @@ class SpatialTransformer(nn.Module):
 
         self.proj_out = nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
 
+    def _set_attention_chunk_size(self, chunk_size):
+        for block in self.transformer_blocks:
+            block._set_attention_chunk_size(chunk_size)
+
     def forward(self, x, context=None):
         # note: if no context is given, cross-attention defaults to self-attention
         b, c, h, w = x.shape
@@ -137,6 +141,10 @@ class BasicTransformerBlock(nn.Module):
         self.norm3 = nn.LayerNorm(dim)
         self.checkpoint = checkpoint
 
+    def _set_attention_chunk_size(self, chunk_size):
+        self.attn1._chunk_size = chunk_size
+        self.attn2._chunk_size = chunk_size
+
     def forward(self, x, context=None):
         x = self.attn1(self.norm1(x)) + x
         x = self.attn2(self.norm2(x), context=context) + x
@@ -152,7 +160,10 @@ class CrossAttention(nn.Module):
 
         self.scale = dim_head**-0.5
         self.heads = heads
-        self.chunk_size = None
+        # for chunk_size > 0 the attention score computation
+        # is split across the batch axis to save memory
+        # You can set chunk_size with `set_attention_chunk_size`
+        self._chunk_size = None
 
         self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
         self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
@@ -177,8 +188,6 @@ class CrossAttention(nn.Module):
     def forward(self, x, context=None, mask=None):
         batch_size, sequence_length, dim = x.shape
 
-        h = self.heads
-
         q = self.to_q(x)
         context = context if context is not None else x
         k = self.to_k(context)
@@ -188,29 +197,33 @@ class CrossAttention(nn.Module):
         k = self.reshape_heads_to_batch_dim(k)
         v = self.reshape_heads_to_batch_dim(v)
 
-        if mask is not None:
-            # TODO(PVP) - this will fail when we supply a mask
-            # which we don't do yet though
-            mask = mask.reshape(batch_size, -1)
-            max_neg_value = -torch.finfo(sim.dtype).max
-            mask = mask[:, None, :].repeat(h, 1, 1)
-            sim.masked_fill_(~mask, max_neg_value)
-
-        batch_size_attention = q.shape[0]
-        chunk_size = self.chunk_size if self.chunk_size is not None else q.shape[0]
-        chunk_size = 1
+        # TODO(PVP) - mask is currently never used. Remember to re-implement when used
 
         # attention, what we cannot get enough of
-        hidden_states = torch.zeros((batch_size_attention, sequence_length, dim // self.heads), device=q.device, dtype=q.dtype)
-        for i in range(hidden_states.shape[0] // chunk_size):
-            attn_slice = torch.einsum("b i d, b j d -> b i j", q[i:i+chunk_size], k[i:i+chunk_size]) * self.scale
-            attn_slice = attn_slice.softmax(dim=-1)
-            attn_slice = torch.einsum("b i j, b j d -> b i d", attn_slice, v[i:i+chunk_size])
+        hidden_states = self._attention(q, k, v, sequence_length, dim)
 
-            hidden_states[i:i+chunk_size] = attn_slice
-
-        hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
         return self.to_out(hidden_states)
+
+    def _attention(self, query, key, value, sequence_length, dim):
+        batch_size_attention = query.shape[0]
+        hidden_states = torch.zeros(
+            (batch_size_attention, sequence_length, dim // self.heads), device=query.device, dtype=query.dtype
+        )
+        chunk_size = self._chunk_size if self._chunk_size is not None else hidden_states.shape[0]
+        for i in range(hidden_states.shape[0] // chunk_size):
+            start_idx = i * chunk_size
+            end_idx = (i + 1) * chunk_size
+            attn_slice = (
+                torch.einsum("b i d, b j d -> b i j", query[start_idx:end_idx], key[start_idx:end_idx]) * self.scale
+            )
+            attn_slice = attn_slice.softmax(dim=-1)
+            attn_slice = torch.einsum("b i j, b j d -> b i d", attn_slice, value[start_idx:end_idx])
+
+            hidden_states[start_idx:end_idx] = attn_slice
+
+        # reshape hidden_states
+        hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
+        return hidden_states
 
 
 class FeedForward(nn.Module):

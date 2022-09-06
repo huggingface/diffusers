@@ -133,6 +133,28 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         self.conv_act = nn.SiLU()
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, 3, padding=1)
 
+    def set_attention_chunk_size(self, chunk_size):
+        if chunk_size is not None and self.config.attention_head_dim % chunk_size != 0:
+            raise ValueError(
+                f"Make sure chunk_size {chunk_size} is a divisor of "
+                f"the number of heads used in cross_attention {self.config.attention_head_dim}"
+            )
+        if chunk_size is not None and chunk_size > self.config.attention_head_dim:
+            raise ValueError(
+                f"Chunk_size {chunk_size} has to be smaller or equal to "
+                f"the number of heads used in cross_attention {self.config.attention_head_dim}"
+            )
+
+        for block in self.down_blocks:
+            if hasattr(block, "attentions") and block.attentions is not None:
+                block.set_attention_chunk_size(chunk_size)
+
+        self.mid_block.set_attention_chunk_size(chunk_size)
+
+        for block in self.up_blocks:
+            if hasattr(block, "attentions") and block.attentions is not None:
+                block.set_attention_chunk_size(chunk_size)
+
     def forward(
         self,
         sample: torch.FloatTensor,
