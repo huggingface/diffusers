@@ -18,6 +18,7 @@ import tempfile
 from typing import Dict, List, Tuple
 
 import numpy as np
+import pytest
 import torch
 from diffusers.modeling_utils import ModelMixin
 
@@ -142,7 +143,7 @@ class ModelTesterMixin:
 
     def test_training(self):
         if torch_device == "mps":
-            return
+            pytest.skip("mps: unsupported training device")
 
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -160,7 +161,7 @@ class ModelTesterMixin:
 
     def test_ema_training(self):
         if torch_device == "mps":
-            return
+            pytest.skip("mps: unsupported training device")
 
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
