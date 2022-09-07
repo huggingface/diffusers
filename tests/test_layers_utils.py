@@ -289,25 +289,3 @@ class SpatialTransformerTests(unittest.TestCase):
 
         expected_slice = torch.tensor([-0.0278, -0.7288, -2.2825, -2.0128, 1.4513, 0.2600, -0.2489, -1.4279, 0.1277])
         assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
-
-    def test_spatial_transformer_dropout(self):
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
-
-        sample = torch.randn(1, 32, 64, 64).to(torch_device)
-        spatialTransformerBlock = SpatialTransformer(
-            in_channels=32,
-            n_heads=2,
-            d_head=16,
-            dropout=0.3,
-            context_dim=None,
-        ).to(torch_device)
-        with torch.no_grad():
-            attention_scores = spatialTransformerBlock(sample)
-
-        assert attention_scores.shape == (1, 32, 64, 64)
-        output_slice = attention_scores[0, -1, -3:, -3:]
-
-        expected_slice = torch.tensor([-1.4387, 0.0335, -0.9627, -1.4815, 0.6288, -1.0577, -2.1272, 0.8841, -1.0216])
-        assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
