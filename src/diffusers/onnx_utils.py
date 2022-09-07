@@ -220,7 +220,7 @@ class OnnxModel:
                 except NameError:
                     pass
 
-    def git_config_username_and_email(self, git_user: str = None, git_email: str = None):
+    def _git_config_username_and_email(self, git_user: str = None, git_email: str = None):
         """
         Set git user name and email (only in the current repo)
         """
