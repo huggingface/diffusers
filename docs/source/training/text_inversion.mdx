@@ -12,21 +12,35 @@ specific language governing permissions and limitations under the License.
 
 
 
-# Quicktour
+# Textual Inversion
 
-Start using Diffusers🧨 quickly!
-To start, use the [`DiffusionPipeline`] for quick inference and sample generations!
+Textual Inversion is a technique for capturing novel concepts from a small number of example images in a way that can later be used to steer image generation using diffusion models. It does so by learning new 'words' in the embedding space of the text encoder component of a text-to-image pipeline. These special words can then be used within text prompts to achieve very fine-grained control of the resulting images. 
 
-```
-pip install diffusers
-```
+![Textual Inversion example](https://textual-inversion.github.io/static/images/editing/colorful_teapot.JPG)
+_By using just 3-5 images you can teach new concepts to a model such as Stable Diffusion for personalized image generation ([image source](https://github.com/rinongal/textual_inversion))._
 
-## Main classes
-
-### Models
-
-### Schedulers
-
-### Pipeliens
+This technique was introduced in [An Image is Worth One Word: Personalizing Text-to-Image Generation using Textual Inversion](https://arxiv.org/abs/2208.01618). The paper demonstrated with concept using a [latent diffusion model](https://github.com/CompVis/latent-diffusion) but the idea has since been applied to other variants such as Stable Diffusion (todo link).
 
 
+## How It Works
+
+![Diagram from the paper showing overview](https://textual-inversion.github.io/static/images/training/training.JPG)
+_Architecture Overview from the [textual inversion blog post](https://textual-inversion.github.io/)_
+
+Before a text prompt can be used in a diffusion model, it must first be processed into a numerical representation. This typically involves tokenizing the text, converting each token to an embedding and then feeding those embeddings through a mode (typically a transformer) whose output will be used as the conditioning for the diffusion model. 
+
+Textual inversion learns a new token embedding (v* in the diagram above). A prompt the includes a token which will be mapped to this new embedding is used in conjunction with a noised version of one or more training images as inputs to the generator model, which attempts to predict the denoised version of the image. The embedding is optimized based on how well the model does at this task - an embedding that better captures the object or style shown by the image will result in more useful information for the diffusion model and this a lower denoising loss. After many steps (typically several thousand) with a variety of prompt and image variants the learned embedding should hopefully capture the essence of the new concept being taught.
+
+## Usage
+
+To train your own textual inversions, see the [example script here](https://github.com/huggingface/diffusers/tree/main/examples/textual_inversion). 
+
+There is also a notebook for training:
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_textual_inversion_training.ipynb)
+
+And one for inference:
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/stable_conceptualizer_inference.ipynb)
+
+### The Stable Diffusion Public Concepts Library
+
+In addition to using concepts you have trained yourself, there is a community-created collection of trained textual inversions in the new [Stable Diffusion public concepts library](https://huggingface.co/sd-concepts-library) which you can also use from the inference notebook above. Over time this will hopefully grow into a useful resource as more examples are added.
