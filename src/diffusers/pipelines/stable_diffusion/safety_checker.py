@@ -13,7 +13,7 @@ logger = logging.get_logger(__name__)
 def cosine_distance(image_embeds, text_embeds):
     normalized_image_embeds = nn.functional.normalize(image_embeds)
     normalized_text_embeds = nn.functional.normalize(text_embeds)
-    return torch.mm(normalized_image_embeds, normalized_text_embeds.T)
+    return torch.mm(normalized_image_embeds, normalized_text_embeds.t())
 
 
 class StableDiffusionSafetyChecker(PreTrainedModel):
@@ -33,10 +33,6 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
     @torch.no_grad()
     def forward(self, clip_input, images):
-        is_input_numpy = isinstance(images, np.ndarray)
-        if is_input_numpy:
-            images = torch.from_numpy(images)
-
         pooled_output = self.vision_model(clip_input)[1]  # pooled_output
         image_embeds = self.visual_projection(pooled_output)
 
@@ -73,7 +69,7 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
         for idx, has_nsfw_concept in enumerate(has_nsfw_concepts):
             if has_nsfw_concept:
-                images[idx] = torch.zeros(images[idx].shape)  # black image
+                images[idx] = np.zeros(images[idx].shape)  # black image
 
         if any(has_nsfw_concepts):
             logger.warning(
@@ -81,8 +77,30 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
                 " Try again with a different prompt and/or seed."
             )
 
-        if is_input_numpy:
-            images = images.numpy()
-            has_nsfw_concepts = has_nsfw_concepts.numpy()
+        return images, has_nsfw_concepts
+
+    @torch.no_grad()
+    def forward_onnx(self, clip_input: torch.FloatTensor, images: torch.FloatTensor):
+        pooled_output = self.vision_model(clip_input)[1]  # pooled_output
+        image_embeds = self.visual_projection(pooled_output)
+
+        special_cos_dist = cosine_distance(image_embeds, self.special_care_embeds)
+        cos_dist = cosine_distance(image_embeds, self.concept_embeds)
+
+        # increase this value to create a stronger `nsfw` filter
+        # at the cost of increasing the possibility of filtering benign images
+        adjustment = 0.0
+
+        special_scores = special_cos_dist - self.special_care_embeds_weights + adjustment
+        # special_scores = special_scores.round(decimals=3)
+        special_care = torch.any(special_scores > 0, dim=1)
+        special_adjustment = special_care * 0.01
+        special_adjustment = special_adjustment.unsqueeze(1).expand(-1, cos_dist.shape[1])
+
+        concept_scores = (cos_dist - self.concept_embeds_weights) + special_adjustment
+        # concept_scores = concept_scores.round(decimals=3)
+        has_nsfw_concepts = torch.any(concept_scores > 0, dim=1)
+
+        images[has_nsfw_concepts] = 0.0  # black image
 
         return images, has_nsfw_concepts

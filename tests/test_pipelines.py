@@ -1160,5 +1160,5 @@ class PipelineTesterMixin(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.8887, 0.915, 0.91, 0.894, 0.909, 0.912, 0.919, 0.925, 0.883])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        expected_slice = np.array([0.0385, 0.0252, 0.0234, 0.0287, 0.0358, 0.0287, 0.0276, 0.0235, 0.0010])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
