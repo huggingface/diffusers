@@ -27,8 +27,8 @@ class DDPMPipeline(DiffusionPipeline):
     Parameters:
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
-        unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
-        scheduler ([`SchedulerMixin`]):
+        unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents. scheduler
+        ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
             [`DDPMScheduler`], or [`DDIMScheduler`].
     """
