@@ -27,14 +27,14 @@ The [`DiffusionPipeline`] is the easiest way to use a pre-trained diffusion syst
 
 | **Task**                     | **Description**                                                                                              | **Pipeline**
 |------------------------------|--------------------------------------------------------------------------------------------------------------|-----------------|
-| Unconditional Image Generation          | generate an image from gaussian noise | [unconditional_image_generation](./using-diffusers/unconditional_image_generation.mdx`) |
-| Text-Guided Image Generation | generate an image given a text prompt | [conditional_image_generation](./using-diffusers/conditional_image_generation.mdx) |
-| Text-Guided Image-to-Image Translation     | generate an image given an original image and a text prompt | [img2img](./using-diffusers/img2img.mdx) |
-| Text-Guided Image-Inpainting          | fill the masked part of an image given the image, the mask and a text prompt | [inpaint](./using-diffusers/inpaint.mdx) |
+| Unconditional Image Generation          | generate an image from gaussian noise | [unconditional_image_generation](./using-diffusers/unconditional_image_generation`) |
+| Text-Guided Image Generation | generate an image given a text prompt | [conditional_image_generation](./using-diffusers/conditional_image_generation) |
+| Text-Guided Image-to-Image Translation     | generate an image given an original image and a text prompt | [img2img](./using-diffusers/img2img) |
+| Text-Guided Image-Inpainting          | fill the masked part of an image given the image, the mask and a text prompt | [inpaint](./using-diffusers/inpaint) |
 
-For more in-detail information on how diffusion pipelines function for the different tasks, please have a look at the **Using Diffusers** section.
+For more in-detail information on how diffusion pipelines function for the different tasks, please have a look at the [**Using Diffusers**](./using-diffusers/overview) section.
 
-As an example, start by creating an instance of [`DiffusionPipeline`] and specify which pipeline checkpoint you would like to download. 
+As an example, start by creating an instance of [`DiffusionPipeline`] and specify which pipeline checkpoint you would like to download.
 You can use the [`DiffusionPipeline`] for any [Diffusers' checkpoint](https://huggingface.co/models?library=diffusers&sort=downloads).
 In this guide though, you'll use [`DiffusionPipeline`] for text-to-image generation with [Latent Diffusion](https://huggingface.co/CompVis/ldm-text2im-large-256):
 
@@ -114,7 +114,7 @@ Running the pipeline is then identical to the code above as it's the same model 
 >>> image.save("image_of_squirrel_painting.png")
 ```
 
-Diffusion systems can be used with multiple different [schedulers]("api/schedulers.mdx") each with their
+Diffusion systems can be used with multiple different [schedulers]("api/schedulers") each with their
 pros and cons. By default, Stable Diffusion runs with [`PNDMScheduler`], but it's very simple to 
 use a different scheduler. *E.g.* if you would instead like to use the [`LMSDiscreteScheduler`] scheduler,
 you could use it as follows:
@@ -131,20 +131,16 @@ you could use it as follows:
 
 [Stability AI's](https://stability.ai/) Stable Diffusion model is an impressive image generation model
 and can do much more than just generating images from text. We have dedicated a whole documentation page,
-just for Stable Diffusion [here]("./conceptual/stable_diffusion.mdx").
+just for Stable Diffusion [here]("./conceptual/stable_diffusion").
 
 If you want to know how to optimize Stable Diffusion to run on less memory, higher inference speeds, on specific hardware, such as Mac, or with [ONNX Runtime](https://onnxruntime.ai/), please have a look at our 
 optimization pages:
 
-- [Optimized PyTorch on GPU]("./optimization/fp16.mdx")
-- [Mac OS with PyTorch]("./optimization/mps.mdx")
-- [ONNX]("./optimization/onnx.mdx)
-- [Other clever optimization tricks]("./optimization/other.mdx)
+- [Optimized PyTorch on GPU]("./optimization/fp16")
+- [Mac OS with PyTorch]("./optimization/mps")
+- [ONNX]("./optimization/onnx)
+- [Other clever optimization tricks]("./optimization/other)
 
-If you want to fine-tune or train your diffusion model, please have a look at the training section:
-
-- [Unconditional Training]("./training/unconditional_training.mdx")
-- [Text-to-Image Training]("./training/text2image.mdx")
-- [Text Inversion]("./training/text_inversion.mdx")
+If you want to fine-tune or train your diffusion model, please have a look at the [**training section**](./training/overview)
 
 Finally, please be considerate when distributing generated images publicly 🤗.
