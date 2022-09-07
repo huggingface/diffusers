@@ -43,6 +43,7 @@ LOADABLE_CLASSES = {
         "ModelMixin": ["save_pretrained", "from_pretrained"],
         "SchedulerMixin": ["save_config", "from_config"],
         "DiffusionPipeline": ["save_pretrained", "from_pretrained"],
+        "OnnxModel": ["save_pretrained", "from_pretrained"],
     },
     "transformers": {
         "PreTrainedTokenizer": ["save_pretrained", "from_pretrained"],

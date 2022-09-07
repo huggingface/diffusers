@@ -18,7 +18,7 @@ from pathlib import Path
 import torch
 from torch.onnx import export
 
-from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionOnnxPipeline, StableDiffusionPipeline
 from diffusers.onnx_utils import OnnxModel
 from onnxruntime.capi.onnxruntime_pybind11_state import RuntimeException
 from packaging import version
@@ -66,32 +66,9 @@ def onnx_export(
         )
 
 
-def verify(path: Path):
-    try:
-        _ = OnnxModel.from_pretrained(str(path))
-        print(f"Model {path} correctly loaded")
-    except RuntimeException as re:
-        print(f"Error while loading the model {re}")
-
-
 @torch.no_grad()
 def convert_models(model_path: str, opset: int, output_path: Path):
     pipeline = StableDiffusionPipeline.from_pretrained(model_path, use_auth_token=True)
-
-    ## SAFETY CHECKER ##
-    onnx_export(
-        pipeline.safety_checker,
-        model_args=(torch.randn(1, 3, 224, 224), torch.randn(1, 512, 512, 3)),
-        output_path=output_path / "safety_checker" / "model.onnx",
-        ordered_input_names=["clip_input", "images"],
-        output_names=["images", "has_nsfw_concepts"],
-        dynamic_axes={
-            "clip_input": {0: "batch", 1: "channels", 2: "height", 3: "width"},
-            "images": {0: "batch", 1: "channels", 2: "height", 3: "width"},
-        },
-        opset=opset,
-    )
-    verify(output_path / "safety_checker")
 
     ## TEXT ENCODER ##
     text_input = pipeline.tokenizer(
@@ -113,7 +90,6 @@ def convert_models(model_path: str, opset: int, output_path: Path):
         },
         opset=opset,
     )
-    verify(output_path / "text_encoder")
 
     ## UNET ##
     onnx_export(
@@ -130,7 +106,6 @@ def convert_models(model_path: str, opset: int, output_path: Path):
         opset=opset,
         use_external_data_format=True,  # UNet id > 2GB, so the weights need to be split
     )
-    verify(output_path / "unet")
 
     ## VAE ENCODER ##
     vae_encoder = pipeline.vae
@@ -147,7 +122,6 @@ def convert_models(model_path: str, opset: int, output_path: Path):
         },
         opset=opset,
     )
-    verify(output_path / "vae_encoder")
 
     ## VAE DECODER ##
     vae_decoder = pipeline.vae
@@ -164,7 +138,36 @@ def convert_models(model_path: str, opset: int, output_path: Path):
         },
         opset=opset,
     )
-    verify(output_path / "vae_decoder")
+
+    ## SAFETY CHECKER ##
+    onnx_export(
+        pipeline.safety_checker,
+        model_args=(torch.randn(1, 3, 224, 224), torch.randn(1, 512, 512, 3)),
+        output_path=output_path / "safety_checker" / "model.onnx",
+        ordered_input_names=["clip_input", "images"],
+        output_names=["images", "has_nsfw_concepts"],
+        dynamic_axes={
+            "clip_input": {0: "batch", 1: "channels", 2: "height", 3: "width"},
+            "images": {0: "batch", 1: "channels", 2: "height", 3: "width"},
+        },
+        opset=opset,
+    )
+
+    onnx_pipeline = StableDiffusionOnnxPipeline(
+        vae_decoder=OnnxModel.from_pretrained(output_path / "vae_decoder"),
+        text_encoder=OnnxModel.from_pretrained(output_path / "text_encoder"),
+        tokenizer=pipeline.tokenizer,
+        unet=OnnxModel.from_pretrained(output_path / "unet"),
+        scheduler=pipeline.scheduler,
+        safety_checker=OnnxModel.from_pretrained(output_path / "safety_checker"),
+        feature_extractor=pipeline.feature_extractor,
+    )
+
+    onnx_pipeline.save_pretrained(output_path)
+    print("ONNX pipeline saved to", output_path)
+
+    _ = StableDiffusionOnnxPipeline.from_pretrained(output_path)
+    print("ONNX pipeline is loadable", output_path)
 
 
 if __name__ == "__main__":

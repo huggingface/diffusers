@@ -24,7 +24,6 @@ from typing import Optional, Union
 import numpy as np
 
 import onnxruntime as ort
-import requests
 from huggingface_hub import HfApi, HfFolder, hf_hub_download
 
 from .utils import logging
@@ -81,7 +80,8 @@ class OnnxModel:
 
         src_path = self.model_save_dir.joinpath(self.latest_model_name)
         dst_path = Path(save_directory).joinpath(model_file_name)
-        shutil.copyfile(src_path, dst_path)
+        if not src_path.samefile(dst_path):
+            shutil.copyfile(src_path, dst_path)
 
     def save_pretrained(
         self,
@@ -131,7 +131,7 @@ class OnnxModel:
     ):
         """
         Arguments:
-        Load a model and its configuration file from a directory or the HF Hub. Implements:
+        Load a model from a directory or the HF Hub. Implements:
         https:
             //github.com/huggingface/huggingface_hub/blob/e67de48368bc1843e40afc1cc9d236402b9609ee/src/huggingface_hub/hub_mixin.py#L73
             model_id (`str` or `Path`):
