@@ -126,7 +126,7 @@ class OnnxModel:
             model_id (`str` or `Path`):
                 Directory from which to load
             use_auth_token (`str` or `bool`):
-                Is needed to load models from a private repository
+                Is needed to load models from a private or gated repository
             revision (`str`):
                 Revision is the specific model version to use. It can be a branch name, a tag name, or a commit id
             cache_dir (`Union[str, Path]`, *optional*):
