@@ -87,8 +87,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
         Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go
         back to computing attention in one step.
         """
-        # set slice_size = `None` to disable `set_attention_slice`
-        self.enable_attention_slice(None)
+        # set slice_size = `None` to disable `attention slicing`
+        self.enable_attention_slicing(None)
 
     @torch.no_grad()
     def __call__(
