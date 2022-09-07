@@ -55,6 +55,21 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
 
 
 class DDIMScheduler(SchedulerMixin, ConfigMixin):
+    """
+    Denoising diffusion implicit models is a scheduler that extends the denoising procedure introduced in denoising diffusion probabilistic models (DDPMs) with non-Markovian guidance.
+
+    For more details, see the original paper: https://arxiv.org/abs/2010.02502
+
+    Args:
+        num_train_timesteps (`int`): number of diffusion steps used to train the model.
+        beta_start (`float`): the starting `beta` value of inference.
+        beta_end (`float`): the final `beta` value.
+        beta_schedule (`str`): the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
+        trained_betas (): TODO
+        clip_sample (`bool`, default `True`): option to clip predicted sample between -1 and 1 for numerical stability
+        set_alpha_to_one (`bool`, default `True`): if alpha for final step is 1 or the final alpha of the "non-previous" one
+        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays
+    """
     @register_to_config
     def __init__(
         self,
@@ -68,7 +83,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         set_alpha_to_one: bool = True,
         tensor_format: str = "pt",
     ):
-
+        if trained_betas is not None:
+            self.betas = np.asarray(trained_betas)
         if beta_schedule == "linear":
             self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
         elif beta_schedule == "scaled_linear":

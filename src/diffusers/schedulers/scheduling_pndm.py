@@ -54,17 +54,34 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
 
 
 class PNDMScheduler(SchedulerMixin, ConfigMixin):
+    """
+    Pseudo numerical methods for diffusion models (PNDM) proposes using more advanced ODE integration techniques, namely Runge-Kutta method and a linear multi-step method.
+
+    For more details, see the original paper: https://arxiv.org/abs/2202.09778
+
+    Args:
+        num_train_timesteps (`int`): number of diffusion steps used to train the model.
+        beta_start (`float`): the starting `beta` value of inference.
+        beta_end (`float`): the final `beta` value.
+        beta_schedule (`str`): the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
+        trained_betas (): TODO
+        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays
+        skip_prk_steps (`bool`): allows the scheduler to skip the Runge-Kutta steps that are defined in the original paper as being required before plms steps; defaults to `False`.
+    """
+
     @register_to_config
     def __init__(
         self,
-        num_train_timesteps: int = 1000,
-        beta_start: float = 0.0001,
-        beta_end: float = 0.02,
-        beta_schedule: str = "linear",
-        tensor_format: str = "pt",
-        skip_prk_steps: bool = False,
+        num_train_timesteps=1000,
+        beta_start=0.0001,
+        beta_end=0.02,
+        beta_schedule="linear",
+        trained_betas=None,
+        tensor_format="pt",
+        skip_prk_steps=False,
     ):
-
+        if trained_betas is not None:
+            self.betas = np.asarray(trained_betas)
         if beta_schedule == "linear":
             self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
         elif beta_schedule == "scaled_linear":

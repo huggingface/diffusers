@@ -54,6 +54,22 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
 
 
 class DDPMScheduler(SchedulerMixin, ConfigMixin):
+    """
+    Denoising diffusion probabilistic models (DDPMs) explores the connections between denoising score matching and Langevin dynamics sampling.
+
+    For more details, see the original paper: https://arxiv.org/abs/2006.11239
+
+    Args:
+        num_train_timesteps (`int`): number of diffusion steps used to train the model.
+        beta_start (`float`): the starting `beta` value of inference.
+        beta_end (`float`): the final `beta` value.
+        beta_schedule (`str`): the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
+        trained_betas (): TODO
+        variance_type (`str`): options to clip the variance used when adding noise to the denoised sample. Choose from `fixed_small`, `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
+        clip_sample (`bool`, default `True`): option to clip predicted sample between -1 and 1 for numerical stability
+        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays
+    """
+
     @register_to_config
     def __init__(
         self,
