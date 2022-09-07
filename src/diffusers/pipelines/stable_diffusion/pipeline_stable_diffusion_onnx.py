@@ -58,18 +58,6 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
         return_dict: bool = True,
         **kwargs,
     ):
-        if "torch_device" in kwargs:
-            device = kwargs.pop("torch_device")
-            warnings.warn(
-                "`torch_device` is deprecated as an input argument to `__call__` and will be removed in v0.3.0."
-                " Consider using `pipe.to(torch_device)` instead."
-            )
-
-            # Set device as before (to be removed in 0.3.0)
-            if device is None:
-                device = "cuda" if torch.cuda.is_available() else "cpu"
-            self.to(device)
-
         if isinstance(prompt, str):
             batch_size = 1
         elif isinstance(prompt, list):
@@ -172,8 +160,8 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
         image = image.cpu().permute(0, 2, 3, 1).numpy()
 
         # run safety checker
-        safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
-        image, has_nsfw_concept = self.safety_checker(clip_input=safety_cheker_input.pixel_values, images=image)
+        safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
+        image, has_nsfw_concept = self.safety_checker(clip_input=safety_checker_input.pixel_values, images=image)
 
         if output_type == "pil":
             image = self.numpy_to_pil(image)
