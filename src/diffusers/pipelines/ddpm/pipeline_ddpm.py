@@ -24,11 +24,13 @@ from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 class DDPMPipeline(DiffusionPipeline):
     r"""
+    Parameters:
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
-    Parameters:
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
-        scheduler ([`SchedulerMixin`]): A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of [`DDPMScheduler`], or [`DDIMScheduler`].
+        scheduler ([`SchedulerMixin`]):
+            A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
+            [`DDPMScheduler`], or [`DDIMScheduler`].
     """
 
     def __init__(self, unet, scheduler):
@@ -50,9 +52,11 @@ class DDPMPipeline(DiffusionPipeline):
             batch_size (:obj:`int`, *optional*, defaults to 1):
                 The number of images to generate.
             generator (:obj:`torch.Generator`, *optional*):
-                A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation deterministic.
+                A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
+                deterministic.
             output_type (:obj:`str`, *optional*, defaults to :obj:`"pil"`):
-                The output format of the generate image. Choose between [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `nd.array`.
+                The output format of the generate image. Choose between
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `nd.array`.
             return_dict (:obj:`bool`, *optional*, defaults to :obj:`True`):
                 Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
         """
