@@ -96,7 +96,7 @@ def convert_models(model_path: str, opset: int, output_path: Path):
         model_args=(torch.randn(2, 4, 64, 64), torch.LongTensor([0, 1]), torch.randn(2, 77, 768), False),
         output_path=output_path / "unet" / "model.onnx",
         ordered_input_names=["sample", "timestep", "encoder_hidden_states", "return_dict"],
-        output_names=["sample"],
+        output_names=["out_sample"],  # has to be different from "sample" for correct tracing
         dynamic_axes={
             "sample": {0: "batch", 1: "channels", 2: "height", 3: "width"},
             "timestep": {0: "batch"},
@@ -144,7 +144,7 @@ def convert_models(model_path: str, opset: int, output_path: Path):
         model_args=(torch.randn(1, 3, 224, 224), torch.randn(1, 512, 512, 3)),
         output_path=output_path / "safety_checker" / "model.onnx",
         ordered_input_names=["clip_input", "images"],
-        output_names=["images", "has_nsfw_concepts"],
+        output_names=["out_images", "has_nsfw_concepts"],
         dynamic_axes={
             "clip_input": {0: "batch", 1: "channels", 2: "height", 3: "width"},
             "images": {0: "batch", 1: "channels", 2: "height", 3: "width"},

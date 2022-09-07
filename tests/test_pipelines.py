@@ -40,6 +40,7 @@ from diffusers import (
     ScoreSdeVeScheduler,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
+    StableDiffusionOnnxPipeline,
     StableDiffusionPipeline,
     UNet2DConditionModel,
     UNet2DModel,
@@ -1148,3 +1149,16 @@ class PipelineTesterMixin(unittest.TestCase):
 
         assert sampled_array.shape == (512, 768, 3)
         assert np.max(np.abs(sampled_array - expected_array)) < 1e-3
+
+    def test_stable_diffusion_onnx(self):
+        sd_pipe = StableDiffusionOnnxPipeline.from_pretrained("scripts/sd_onnx")
+
+        prompt = "A painting of a squirrel eating a burger"
+        output = sd_pipe([prompt], seed=0, guidance_scale=6.0, num_inference_steps=20, output_type="np")
+        image = output.images
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.8887, 0.915, 0.91, 0.894, 0.909, 0.912, 0.919, 0.925, 0.883])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
