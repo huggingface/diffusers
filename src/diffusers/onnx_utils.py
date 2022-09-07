@@ -194,7 +194,7 @@ class OnnxModel:
         api = HfApi()
 
         user = api.whoami(huggingface_token)
-        self.git_config_username_and_email(git_email=user["email"], git_user=user["fullname"])
+        self._git_config_username_and_email(git_email=user["email"], git_user=user["fullname"])
 
         api.create_repo(
             token=huggingface_token,
