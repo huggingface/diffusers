@@ -17,13 +17,12 @@
 
 import os
 import shutil
-import subprocess
 from pathlib import Path
 from typing import Optional, Union
 
 import numpy as np
 
-from huggingface_hub import HfApi, HfFolder, hf_hub_download
+from huggingface_hub import hf_hub_download
 
 from .utils import is_onnx_available, logging
 
@@ -42,6 +41,7 @@ class OnnxModel:
     base_model_prefix = "onnx_model"
 
     def __init__(self, model=None, **kwargs):
+        logger.info("`diffusers.OnnxModel` is experimental and might change in the future.")
         self.model = model
         self.model_save_dir = kwargs.get("model_save_dir", None)
         self.latest_model_name = kwargs.get("latest_model_name", "model.onnx")
@@ -89,7 +89,6 @@ class OnnxModel:
     def save_pretrained(
         self,
         save_directory: Union[str, os.PathLike],
-        push_to_hub: bool = False,
         **kwargs,
     ):
         """
@@ -97,16 +96,6 @@ class OnnxModel:
         Save a model to a directory, so that it can be re-loaded using the [`~OnnxModel.from_pretrained`] class method.:
             save_directory (`str` or `os.PathLike`):
                 Directory to which to save. Will be created if it doesn't exist.
-            push_to_hub (`bool`, *optional*, defaults to `False`):
-                Whether or not to push your model to the Hugging Face model hub after saving it.
-
-                <Tip warning={true}>
-
-                Using `push_to_hub=True` will synchronize the repository you are pushing to with `save_directory`,
-                which requires `save_directory` to be a local clone of the repo you are pushing to if it's an existing
-                folder. Pass along `temp_dir=True` to use a temporary directory instead.
-
-                </Tip>
         """
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
@@ -116,9 +105,6 @@ class OnnxModel:
 
         # saving model weights/files
         self._save_pretrained(save_directory, **kwargs)
-
-        if push_to_hub:
-            return self.push_to_hub(save_directory, **kwargs)
 
     @classmethod
     def _from_pretrained(
@@ -177,72 +163,6 @@ class OnnxModel:
             kwargs["latest_model_name"] = Path(model_cache_path).name
             model = OnnxModel.load_model(model_cache_path, provider=provider)
         return cls(model=model, **kwargs)
-
-    def push_to_hub(
-        self,
-        save_directory: str = None,
-        repository_id: Optional[str] = None,
-        private: Optional[bool] = None,
-        use_auth_token: Optional[Union[bool, str]] = None,
-    ) -> str:
-        if isinstance(use_auth_token, str):
-            huggingface_token = use_auth_token
-        elif use_auth_token:
-            huggingface_token = HfFolder.get_token()
-        else:
-            raise ValueError("You need to proivde `use_auth_token` to be able to push to the hub")
-        api = HfApi()
-
-        user = api.whoami(huggingface_token)
-        self._git_config_username_and_email(git_email=user["email"], git_user=user["fullname"])
-
-        api.create_repo(
-            token=huggingface_token,
-            name=repository_id,
-            organization=user["name"],
-            exist_ok=True,
-            private=private,
-        )
-        for path, subdirs, files in os.walk(save_directory):
-            for name in files:
-                local_file_path = os.path.join(path, name)
-                _, hub_file_path = os.path.split(local_file_path)
-                # FIXME: when huggingface_hub fixes the return of upload_file
-                try:
-                    api.upload_file(
-                        token=huggingface_token,
-                        repo_id=f"{user['name']}/{repository_id}",
-                        path_or_fileobj=os.path.join(os.getcwd(), local_file_path),
-                        path_in_repo=hub_file_path,
-                    )
-                except KeyError:
-                    pass
-                except NameError:
-                    pass
-
-    def _git_config_username_and_email(self, git_user: str = None, git_email: str = None):
-        """
-        Set git user name and email (only in the current repo)
-        """
-        try:
-            if git_user is not None:
-                subprocess.run(
-                    ["git", "config", "--global", "user.name", git_user],
-                    stderr=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    check=True,
-                    encoding="utf-8",
-                )
-            if git_email is not None:
-                subprocess.run(
-                    ["git", "config", "--global", "user.email", git_email],
-                    stderr=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    check=True,
-                    encoding="utf-8",
-                )
-        except subprocess.CalledProcessError as exc:
-            raise EnvironmentError(exc.stderr)
 
     @classmethod
     def from_pretrained(
