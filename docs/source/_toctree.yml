@@ -91,5 +91,4 @@
     - local: api/pipelines/stochastic_karras_ve
       title: "Stochastic Karras VE"
     title: "Pipelines"
-    
-  titel: "API"
+  title: "API"
