@@ -27,7 +27,7 @@ This technique was introduced in [An Image is Worth One Word: Personalizing Text
 ![Diagram from the paper showing overview](https://textual-inversion.github.io/static/images/training/training.JPG)
 _Architecture Overview from the [textual inversion blog post](https://textual-inversion.github.io/)_
 
-Before a text prompt can be used in a diffusion model, it must first be processed into a numerical representation. This typically involves tokenizing the text, converting each token to an embedding and then feeding those embeddings through a mode (typically a transformer) whose output will be used as the conditioning for the diffusion model. 
+Before a text prompt can be used in a diffusion model, it must first be processed into a numerical representation. This typically involves tokenizing the text, converting each token to an embedding and then feeding those embeddings through a model (typically a transformer) whose output will be used as the conditioning for the diffusion model. 
 
 Textual inversion learns a new token embedding (v* in the diagram above). A prompt the includes a token which will be mapped to this new embedding is used in conjunction with a noised version of one or more training images as inputs to the generator model, which attempts to predict the denoised version of the image. The embedding is optimized based on how well the model does at this task - an embedding that better captures the object or style shown by the image will result in more useful information for the diffusion model and this a lower denoising loss. After many steps (typically several thousand) with a variety of prompt and image variants the learned embedding should hopefully capture the essence of the new concept being taught.
 
