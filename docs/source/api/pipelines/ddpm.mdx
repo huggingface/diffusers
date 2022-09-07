@@ -9,7 +9,7 @@ The abstract of the paper is the following:
 
 We present high quality image synthesis results using diffusion probabilistic models, a class of latent variable models inspired by considerations from nonequilibrium thermodynamics. Our best results are obtained by training on a weighted variational bound designed according to a novel connection between diffusion probabilistic models and denoising score matching with Langevin dynamics, and our models naturally admit a progressive lossy decompression scheme that can be interpreted as a generalization of autoregressive decoding. On the unconditional CIFAR10 dataset, we obtain an Inception score of 9.46 and a state-of-the-art FID score of 3.17. On 256x256 LSUN, we obtain sample quality similar to ProgressiveGAN.
 
- The original codebase of this paper can be found [here](https://github.com/hojonathanho/diffusion).
+The original codebase of this paper can be found [here](https://github.com/hojonathanho/diffusion).
 
 
 ## Available Pipelines:
@@ -21,5 +21,5 @@ We present high quality image synthesis results using diffusion probabilistic mo
 
 ## API
 
-[[autodoc]] pipelines.ddpm.ddpm.DDPMPipeline
+[[autodoc]] pipelines.ddpm.pipeline_ddpm.DDPMPipeline
     - __call__
