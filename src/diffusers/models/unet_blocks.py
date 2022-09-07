@@ -295,6 +295,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         super().__init__()
 
         self.attention_type = attention_type
+        self.attn_num_head_channels = attn_num_head_channels
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
 
         # there is always at least one resnet
@@ -341,6 +342,21 @@ class UNetMidBlock2DCrossAttn(nn.Module):
 
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
+
+    def set_attention_slice(self, slice_size):
+        if slice_size is not None and self.attn_num_head_channels % slice_size != 0:
+            raise ValueError(
+                f"Make sure slice_size {slice_size} is a divisor of "
+                f"the number of heads used in cross_attention {self.attn_num_head_channels}"
+            )
+        if slice_size is not None and slice_size > self.attn_num_head_channels:
+            raise ValueError(
+                f"Chunk_size {slice_size} has to be smaller or equal to "
+                f"the number of heads used in cross_attention {self.attn_num_head_channels}"
+            )
+
+        for attn in self.attentions:
+            attn._set_attention_slice(slice_size)
 
     def forward(self, hidden_states, temb=None, encoder_hidden_states=None):
         hidden_states = self.resnets[0](hidden_states, temb)
@@ -457,6 +473,7 @@ class CrossAttnDownBlock2D(nn.Module):
         attentions = []
 
         self.attention_type = attention_type
+        self.attn_num_head_channels = attn_num_head_channels
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -496,6 +513,21 @@ class CrossAttnDownBlock2D(nn.Module):
             )
         else:
             self.downsamplers = None
+
+    def set_attention_slice(self, slice_size):
+        if slice_size is not None and self.attn_num_head_channels % slice_size != 0:
+            raise ValueError(
+                f"Make sure slice_size {slice_size} is a divisor of "
+                f"the number of heads used in cross_attention {self.attn_num_head_channels}"
+            )
+        if slice_size is not None and slice_size > self.attn_num_head_channels:
+            raise ValueError(
+                f"Chunk_size {slice_size} has to be smaller or equal to "
+                f"the number of heads used in cross_attention {self.attn_num_head_channels}"
+            )
+
+        for attn in self.attentions:
+            attn._set_attention_slice(slice_size)
 
     def forward(self, hidden_states, temb=None, encoder_hidden_states=None):
         output_states = ()
@@ -989,6 +1021,7 @@ class CrossAttnUpBlock2D(nn.Module):
         attentions = []
 
         self.attention_type = attention_type
+        self.attn_num_head_channels = attn_num_head_channels
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -1024,6 +1057,21 @@ class CrossAttnUpBlock2D(nn.Module):
             self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
+
+    def set_attention_slice(self, slice_size):
+        if slice_size is not None and self.attn_num_head_channels % slice_size != 0:
+            raise ValueError(
+                f"Make sure slice_size {slice_size} is a divisor of "
+                f"the number of heads used in cross_attention {self.attn_num_head_channels}"
+            )
+        if slice_size is not None and slice_size > self.attn_num_head_channels:
+            raise ValueError(
+                f"Chunk_size {slice_size} has to be smaller or equal to "
+                f"the number of heads used in cross_attention {self.attn_num_head_channels}"
+            )
+
+        for attn in self.attentions:
+            attn._set_attention_slice(slice_size)
 
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, encoder_hidden_states=None):
         for resnet, attn in zip(self.resnets, self.attentions):
