@@ -1,40 +1,90 @@
 - sections:
   - local: index
-    title: 🧨 Diffusers
+    title: "🧨 Diffusers"
   - local: quicktour
-    title: Quicktour
-  - local: philosophy
-    title: Philosophy
-  title: Get started
+    title: "Quicktour"
+  - local: installation
+    title: "Installation"
+  title: "Get started"
 - sections:
   - sections:
-    - local: examples/diffusers_for_vision
-      title: Diffusers for Vision
-    - local: examples/diffusers_for_audio
-      title: Diffusers for Audio
-    - local: examples/diffusers_for_other
-      title: Diffusers for Other Modalities
-    title: Examples
-  title: Using Diffusers
+    - local: using-diffusers/loading
+      title: "Loading Pipelines, Models, and Schedulers"
+    - local: using-diffusers/configuration
+      title: "Configuring Pipelines, Models, and Schedulers"
+    title: "Loading"
+  - sections:
+    - local: using-diffusers/unconditional_image_generation
+      title: "Unconditional Image Generation"
+    - local: using-diffusers/conditional_image_generation
+      title: "Text-to-Image Generation"
+    - local: using-diffusers/img2img
+      title: "Text-Guided Image-to-Image"
+    - local: using-diffusers/inpaint
+      title: "Text-Guided Image-Inpainting"
+    - local: using-diffusers/custom
+      title: "Create a custom pipeline"
+    title: "Pipelines for Inference"
+  title: "Using Diffusers"
+- sections:
+  - local: optimization/fp16
+    title: "Torch Float16"
+  - local: optimization/onnx
+    title: "ONNX"
+  - local: optimization/open_vino
+    title: "Open Vino"
+  - local: optimization/mps
+    title: "MPS"
+  - local: optimization/other
+    title: "Other"
+  title: "Optimization/Special Hardware"
+- sections:
+  - local: training/unconditional_training
+    title: "Unconditional Image Generation"
+  - local: training/text_inversion
+    title: "Text Inversion"
+  - local: training/text2image
+    title: "Text-to-image"
+  title: "Training"
+- sections:
+  - local: conceptual/stable_diffusion
+    title: "Stable Diffusion"
+  - local: conceptual/philosophy
+    title: "Philosophy"
+  - local: conceptual/contribution
+    title: "How to contribute?"
+  title: "Conceptual Guides"
 - sections:
   - sections:
-    - local: pipelines
-      title: Pipelines
-    - local: schedulers
-      title: Schedulers
-    - local: models
-      title: Models
-    title: Main Classes
+    - local: api/models
+      title: "Models"
+    - local: api/schedulers
+      title: "Schedulers"
+    - local: api/diffusion_pipeline
+      title: "Diffusion Pipeline"
+    - local: api/logging
+      title: "Logging"
+    - local: api/configuration
+      title: "Configuration"
+    - local: api/outputs
+      title: "Outputs"
+    title: "Main Classes"
   - sections:
-    - local: pipelines/glide
-      title: "Glide"
-    title: Pipelines
-  - sections:
-    - local: schedulers/ddpm
+    - local: api/pipelines/ddim
+      title: "DDIM"
+    - local: api/pipelines/ddpm
       title: "DDPM"
-    title: Schedulers
-  - sections:
-    - local: models/unet
-      title: "Unet"
-    title: Models
-  title: API
+    - local: api/pipelines/latent_diffusion
+      title: "Latent Diffusion"
+    - local: api/pipelines/latent_diffusion_uncond
+      title: "Unconditional Latent Diffusion"
+    - local: api/pipelines/pndm
+      title: "PNDM"
+    - local: api/pipelines/score_sde_ve
+      title: "Score SDE VE"
+    - local: api/pipelines/stable_diffusion
+      title: "Stable Diffusion"
+    - local: api/pipelines/stochastic_karras_ve
+      title: "Stochastic Karras VE"
+    title: "Pipelines"
+  titel: "API"
