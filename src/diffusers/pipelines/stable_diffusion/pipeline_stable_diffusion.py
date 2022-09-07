@@ -14,6 +14,15 @@ from .safety_checker import StableDiffusionSafetyChecker
 
 
 class StableDiffusionPipeline(DiffusionPipeline):
+    r"""
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+    Parameters:
+        vae ([`AutoencoderKL`]):
+            Something something. Check out the
+            [`~PreTrainedModel.from_pretrained`] method to load the model weights.
+    """
+
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -62,6 +71,12 @@ class StableDiffusionPipeline(DiffusionPipeline):
         return_dict: bool = True,
         **kwargs,
     ):
+        r"""
+        This is the call docstring.
+        Parameters:
+            prompt:
+                Something.
+        """
         if "torch_device" in kwargs:
             device = kwargs.pop("torch_device")
             warnings.warn(
