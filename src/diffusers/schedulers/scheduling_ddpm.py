@@ -67,12 +67,14 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule (`str`):
             the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
-        trained_betas (): TODO
+        trained_betas (`np.ndarray`, optional): TODO
         variance_type (`str`):
             options to clip the variance used when adding noise to the denoised sample. Choose from `fixed_small`,
             `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
-        clip_sample (`bool`, default `True`): option to clip predicted sample between -1 and 1 for numerical stability
-        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays
+        clip_sample (`bool`, default `True`):
+            option to clip predicted sample between -1 and 1 for numerical stability.
+        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays.
+
     """
 
     @register_to_config

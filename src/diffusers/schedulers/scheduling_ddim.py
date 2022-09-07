@@ -70,10 +70,12 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
         trained_betas (`np.ndarray`, optional): TODO
         timestep_values (`np.ndarray`, optional): TODO
-        clip_sample (`bool`, default `True`): option to clip predicted sample between -1 and 1 for numerical stability
+        clip_sample (`bool`, default `True`):
+            option to clip predicted sample between -1 and 1 for numerical stability.
         set_alpha_to_one (`bool`, default `True`):
-            if alpha for final step is 1 or the final alpha of the "non-previous" one
-        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays
+            if alpha for final step is 1 or the final alpha of the "non-previous" one.
+        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays.
+
     """
 
     @register_to_config

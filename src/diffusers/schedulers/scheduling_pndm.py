@@ -67,11 +67,12 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule (`str`):
             the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
-        trained_betas (): TODO
+        trained_betas (`np.ndarray`, optional): TODO
         tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays
         skip_prk_steps (`bool`):
             allows the scheduler to skip the Runge-Kutta steps that are defined in the original paper as being required
             before plms steps; defaults to `False`.
+
     """
 
     @register_to_config

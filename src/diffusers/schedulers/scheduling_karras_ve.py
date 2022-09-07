@@ -65,7 +65,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
             A reasonable range is [0, 10].
         s_max (`float`): the end value of the sigma range where we add noise.
             A reasonable range is [0.2, 80].
-        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays
+        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays.
 
     """
 
