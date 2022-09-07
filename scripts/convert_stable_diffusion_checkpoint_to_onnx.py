@@ -20,7 +20,6 @@ from torch.onnx import export
 
 from diffusers import StableDiffusionOnnxPipeline, StableDiffusionPipeline
 from diffusers.onnx_utils import OnnxModel
-from onnxruntime.capi.onnxruntime_pybind11_state import RuntimeException
 from packaging import version
 
 
@@ -166,8 +165,8 @@ def convert_models(model_path: str, opset: int, output_path: Path):
     onnx_pipeline.save_pretrained(output_path)
     print("ONNX pipeline saved to", output_path)
 
-    _ = StableDiffusionOnnxPipeline.from_pretrained(output_path)
-    print("ONNX pipeline is loadable", output_path)
+    _ = StableDiffusionOnnxPipeline.from_pretrained(output_path, provider="CPUExecutionProvider")
+    print("ONNX pipeline is loadable")
 
 
 if __name__ == "__main__":

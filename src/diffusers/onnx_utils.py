@@ -23,10 +23,13 @@ from typing import Optional, Union
 
 import numpy as np
 
-import onnxruntime as ort
 from huggingface_hub import HfApi, HfFolder, hf_hub_download
 
-from .utils import logging
+from .utils import is_onnx_available, logging
+
+
+if is_onnx_available():
+    import onnxruntime as ort
 
 
 ONNX_WEIGHTS_NAME = "model.onnx"
