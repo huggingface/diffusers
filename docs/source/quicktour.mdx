@@ -10,23 +10,141 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-
-
 # Quicktour
 
-Start using Diffusers🧨 quickly!
-To start, use the [`DiffusionPipeline`] for quick inference and sample generations!
+Get up and running with 🧨 Diffusers quickly!
+Whether you're a developer or an everyday user, this quick tour will help you get started and show you how to use [`DiffusionPipeline`] for inference.
+
+Before you begin, make sure you have all the necessary libraries installed:
+
+```bash
+pip install --upgrade diffusers
+```
+
+## DiffusionPipeline
+
+The [`DiffusionPipeline`] is the easiest way to use a pre-trained diffusion system for inference. You can use the [`DiffusionPipeline`] out-of-the-box for many tasks across different modalities. Take a look at the table below for some supported tasks:
+
+| **Task**                     | **Description**                                                                                              | **Pipeline**
+|------------------------------|--------------------------------------------------------------------------------------------------------------|-----------------|
+| Unconditional Image Generation          | generate an image from gaussian noise | [unconditional_image_generation](./using-diffusers/unconditional_image_generation.mdx`) |
+| Text-Guided Image Generation | generate an image given a text prompt | [conditional_image_generation](./using-diffusers/conditional_image_generation.mdx) |
+| Text-Guided Image-to-Image Translation     | generate an image given an original image and a text prompt | [img2img](./using-diffusers/img2img.mdx) |
+| Text-Guided Image-Inpainting          | fill the masked part of an image given the image, the mask and a text prompt | [inpaint](./using-diffusers/inpaint.mdx) |
+
+For more in-detail information on how diffusion pipelines function for the different tasks, please have a look at the **Using Diffusers** section.
+
+As an example, start by creating an instance of [`DiffusionPipeline`] and specify which pipeline checkpoint you would like to download. 
+You can use the [`DiffusionPipeline`] for any [Diffusers' checkpoint](https://huggingface.co/models?library=diffusers&sort=downloads).
+In this guide though, you'll use [`DiffusionPipeline`] for text-to-image generation with [Latent Diffusion](https://huggingface.co/CompVis/ldm-text2im-large-256):
+
+```python
+>>> from diffusers import DiffusionPipeline
+
+>>> generator = DiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large-256")
+```
+
+The [`DiffusionPipeline`] downloads and caches all modeling, tokenization, and scheduling components. 
+Because the model consists of roughly 1.4 billion parameters, we strongly recommend running it on GPU.
+You can move the generator object to GPU, just like you would in PyTorch.
+
+```python
+>>> generator.to("cuda")
+```
+
+Now you can use the `generator` on your text prompt:
+
+```python
+>>> image = generator("An image of a squirrel in Picasso style").images[0]
+```
+
+The output is by default wrapped into a [PIL Image object](https://pillow.readthedocs.io/en/stable/reference/Image.html?highlight=image#the-image-class).
+
+You can save the image by simply calling:
+
+```python
+>>> image.save("image_of_squirrel_painting.png")
+```
+
+More advanced models, like [Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion) require you to accept a [license](https://huggingface.co/spaces/CompVis/stable-diffusion-license) before running the model.
+This is due to the improved image generation capabilities of the model and the potentially harmful content that could be produced with it.
+Long story short: Head over to your stable diffusion model of choice, *e.g.* [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4), read through the license and click-accept to get 
+access to the model. 
+You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section of the documentation](https://huggingface.co/docs/hub/security-tokens).
+Having "click-accepted" the license, you can save your token:
+
+```python
+AUTH_TOKEN = "<please-fill-with-your-token>"
+```
+
+You can then load [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4) 
+just like we did before only that now you need to pass your `AUTH_TOKEN`:
+
+```python
+>>> from diffusers import DiffusionPipeline
+
+>>> generator = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=AUTH_TOKEN)
+```
+
+If you do not pass your authentification token you will see that the diffusion system will not be correctly 
+downloaded. Forcing the user to pass an authentification token ensures that it can be verified that the 
+user has indeed read and accepted the license, which also means that an internet connection is required.
+
+**Note**: If you do not want to be forced to pass an authentification token, you can also simply download 
+the weights locally via:
 
 ```
-pip install diffusers
+git lfs install
+git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
 ```
 
-## Main classes
+and then load locally saved weights into the pipeline. This way, you do not need to pass an authentification
+token. Assuming that `"./stable-diffusion-v1-4"` is the local path to the cloned stable-diffusion-v1-4 repo,
+you can also load the pipeline as follows:
 
-### Models
+```python
+>>> generator = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-4")
+```
 
-### Schedulers
+Running the pipeline is then identical to the code above as it's the same model architecture.
 
-### Pipeliens
+```python
+>>> generator.to("cuda")
+>>> image = generator("An image of a squirrel in Picasso style").images[0]
+>>> image.save("image_of_squirrel_painting.png")
+```
 
+Diffusion systems can be used with multiple different [schedulers]("api/schedulers.mdx") each with their
+pros and cons. By default, Stable Diffusion runs with [`PNDMScheduler`], but it's very simple to 
+use a different scheduler. *E.g.* if you would instead like to use the [`LMSDiscreteScheduler`] scheduler,
+you could use it as follows:
 
+```python
+>>> from diffusers import LMSDiscreteScheduler
+
+>>> scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
+
+>>> generator = StableDiffusionPipeline.from_pretrained(
+...     "CompVis/stable-diffusion-v1-4", scheduler=scheduler, use_auth_token=AUTH_TOKEN
+... )
+```
+
+[Stability AI's](https://stability.ai/) Stable Diffusion model is an impressive image generation model
+and can do much more than just generating images from text. We have dedicated a whole documentation page,
+just for Stable Diffusion [here]("./conceptual/stable_diffusion.mdx").
+
+If you want to know how to optimize Stable Diffusion to run on less memory, higher inference speeds, on specific hardware, such as Mac, or with [ONNX Runtime](https://onnxruntime.ai/), please have a look at our 
+optimization pages:
+
+- [Optimized PyTorch on GPU]("./optimization/fp16.mdx")
+- [Mac OS with PyTorch]("./optimization/mps.mdx")
+- [ONNX]("./optimization/onnx.mdx)
+- [Other clever optimization tricks]("./optimization/other.mdx)
+
+If you want to fine-tune or train your diffusion model, please have a look at the training section:
+
+- [Unconditional Training]("./training/unconditional_training.mdx")
+- [Text-to-Image Training]("./training/text2image.mdx")
+- [Text Inversion]("./training/text_inversion.mdx")
+
+Finally, please be considerate when distributing generated images publicly 🤗.
