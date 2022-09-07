@@ -33,6 +33,10 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
     @torch.no_grad()
     def forward(self, clip_input, images):
+        is_input_numpy = isinstance(images, np.ndarray)
+        if is_input_numpy:
+            images = torch.from_numpy(images)
+
         pooled_output = self.vision_model(clip_input)[1]  # pooled_output
         image_embeds = self.visual_projection(pooled_output)
 
@@ -65,16 +69,20 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
             result.append(result_img)
 
-        has_nsfw_concepts = [len(res["bad_concepts"]) > 0 for res in result]
+        has_nsfw_concepts = torch.tensor([len(res["bad_concepts"]) > 0 for res in result])
 
         for idx, has_nsfw_concept in enumerate(has_nsfw_concepts):
             if has_nsfw_concept:
-                images[idx] = np.zeros(images[idx].shape)  # black image
+                images[idx] = torch.zeros(images[idx].shape)  # black image
 
         if any(has_nsfw_concepts):
             logger.warning(
                 "Potential NSFW content was detected in one or more images. A black image will be returned instead."
                 " Try again with a different prompt and/or seed."
             )
+
+        if is_input_numpy:
+            images = images.numpy()
+            has_nsfw_concepts = has_nsfw_concepts.numpy()
 
         return images, has_nsfw_concepts
