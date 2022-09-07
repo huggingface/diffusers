@@ -28,7 +28,7 @@ The [`DiffusionPipeline`] is the easiest way to use a pre-trained diffusion syst
 | **Task**                     | **Description**                                                                                              | **Pipeline**
 |------------------------------|--------------------------------------------------------------------------------------------------------------|-----------------|
 | Unconditional Image Generation          | generate an image from gaussian noise | [unconditional_image_generation](./using-diffusers/unconditional_image_generation.mdx`) |
-| Text-Guided Image Generation | generate    | generate an image given a text prompt | [conditional_image_generation](./using-diffusers/conditional_image_generation.mdx) |
+| Text-Guided Image Generation | generate an image given a text prompt | [conditional_image_generation](./using-diffusers/conditional_image_generation.mdx) |
 | Text-Guided Image-to-Image Translation     | generate an image given an original image and a text prompt | [img2img](./using-diffusers/img2img.mdx) |
 | Text-Guided Image-Inpainting          | fill the masked part of an image given the image, the mask and a text prompt | [inpaint](./using-diffusers/inpaint.mdx) |
 
@@ -38,7 +38,7 @@ As an example, start by creating an instance of [`DiffusionPipeline`] and specif
 You can use the [`DiffusionPipeline`] for any [Diffusers' checkpoint](https://huggingface.co/models?library=diffusers&sort=downloads).
 In this guide though, you'll use [`DiffusionPipeline`] for text-to-image generation with [Latent Diffusion](https://huggingface.co/CompVis/ldm-text2im-large-256):
 
-```py
+```python
 >>> from diffusers import DiffusionPipeline
 
 >>> generator = DiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large-256")
@@ -48,13 +48,13 @@ The [`DiffusionPipeline`] downloads and caches all modeling, tokenization, and s
 Because the model consists of roughly 1.4 billion parameters, we strongly recommend running it on GPU.
 You can move the generator object to GPU, just like you would in PyTorch.
 
-```py
+```python
 >>> generator.to("cuda")
 ```
 
 Now you can use the `generator` on your text prompt:
 
-```py
+```python
 >>> image = generator("An image of a squirrel in Picasso style").images[0]
 ```
 
@@ -62,7 +62,7 @@ The output is by default wrapped into a [PIL Image object](https://pillow.readth
 
 You can save the image by simply calling:
 
-```py
+```python
 >>> image.save("image_of_squirrel_painting.png")
 ```
 
@@ -73,14 +73,14 @@ access to the model.
 You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section of the documentation](https://huggingface.co/docs/hub/security-tokens).
 Having "click-accepted" the license, you can save your token:
 
-```py
+```python
 AUTH_TOKEN = "<please-fill-with-your-token>"
 ```
 
 You can then load [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4) 
 just like we did before only that now you need to pass your `AUTH_TOKEN`:
 
-```py
+```python
 >>> from diffusers import DiffusionPipeline
 
 >>> generator = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=AUTH_TOKEN)
@@ -102,24 +102,24 @@ and then load locally saved weights into the pipeline. This way, you do not need
 token. Assuming that `"./stable-diffusion-v1-4"` is the local path to the cloned stable-diffusion-v1-4 repo,
 you can also load the pipeline as follows:
 
-```py
+```python
 >>> generator = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-4")
 ```
 
 Running the pipeline is then identical to the code above as it's the same model architecture.
 
-```py
+```python
 >>> generator.to("cuda")
 >>> image = generator("An image of a squirrel in Picasso style").images[0]
 >>> image.save("image_of_squirrel_painting.png")
 ```
 
-Diffusion systems can be used with multiple different [schedulers]("./api/schedulers.mdx") each with their
+Diffusion systems can be used with multiple different [schedulers]("api/schedulers.mdx") each with their
 pros and cons. By default, Stable Diffusion runs with [`PNDMScheduler`], but it's very simple to 
 use a different scheduler. *E.g.* if you would instead like to use the [`LMSDiscreteScheduler`] scheduler,
 you could use it as follows:
 
-```py
+```python
 >>> from diffusers import LMSDiscreteScheduler
 
 >>> scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
