@@ -20,7 +20,8 @@ class KarrasVePipeline(DiffusionPipeline):
 
     Parameters:
         unet ([`UNet2DModel`]): U-Net architecture to denoise the encoded image.
-        scheduler ([`KarrasVeScheduler`]): Scheduler for the diffusion process to be used in combination with `unet` to denoise the encoded image.
+        scheduler ([`KarrasVeScheduler`]):
+            Scheduler for the diffusion process to be used in combination with `unet` to denoise the encoded image.
     """
 
     # add type hints for linting
