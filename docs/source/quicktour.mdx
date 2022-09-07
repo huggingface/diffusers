@@ -10,16 +10,59 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-
-
 # Quicktour
 
-Start using Diffusers🧨 quickly!
-To start, use the [`DiffusionPipeline`] for quick inference and sample generations!
+Get up and running with 🧨 Diffusers quickly!
+Whether you're a developer or an everyday user, this quick tour will help you get started and show you how to use [`DiffusionPipeline`] for inference.
 
+Before you begin, make sure you have all the necessary libraries installed:
+
+```bash
+pip install --upgrade diffusers
 ```
-pip install diffusers
+
+## DiffusionPipeline
+
+The [`DiffusionPipeline`] is the easiest way to use a pretrained diffusion system for inference. You can use the [`DiffusionPipeline`] out-of-the-box for many tasks across different modalities. Take a look at the table below for some supported tasks:
+
+| **Task**                     | **Description**                                                                                              | **Pipeline**
+|------------------------------|--------------------------------------------------------------------------------------------------------------|-----------------|
+| Unconditional Image Generation          | generate an image from gaussian noise | [unconditional_image_generation](./using-diffusers/unconditional_image_generation.mdx`) |
+| Text-Guided Image Generation | generate    | generate an image given a text prompt | [conditional_image_generation](./using-diffusers/conditional_image_generation.mdx) |
+| Text-Guided Image-to-Image Translation     | generate an image given an original image and a text prompt | [img2img](./using-diffusers/img2img.mdx) |
+| Text-Guided Image-Inpainting          | fill the masked part of an image given the image, the mask and a text prompt | [inpaint](./using-diffusers/inpaint.mdx) |
+
+Start by creating an instance of [`DiffusionPipeline`] and specifying which pipeline checkpoint you would like to download. You can use the [`DiffusionPipeline`] for any [Diffusers' checkpoint](https://huggingface.co/models?library=diffusers&sort=downloads). In this guide though, you'll use [`DiffusionPipeline`] for text-to-image generation with [Latent Diffusion](https://huggingface.co/CompVis/ldm-text2im-large-256):
+
+```py
+>>> from diffusers import DiffusionPipeline
+
+>>> generator = DiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large-256")
 ```
+
+The [`DiffusionPipeline`] downloads and caches all modeling, tokenization and scheduling components. 
+Because the model consists of roughly 1.4 billion parameters, we strongly recommend running it on GPU.
+You can move the generator object to GPU, just like you would in PyTorch.
+
+```py
+>>> generator.to("cuda")
+```
+
+Now you can use the `generator` on your text prompt:
+
+```py
+>>> image = generator("An image of a squirrel in Picasso style").images[0]
+```
+
+The output is by default wrapped into a [PIL Image object](https://pillow.readthedocs.io/en/stable/reference/Image.html?highlight=image#the-image-class).
+
+You can save the image by simply calling:
+
+```py
+>>> image.save("image_of_squirrel_painting.png")
+```
+
+More advanced models, like [Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion) require you to accept a [license](https://huggingface.co/spaces/CompVis/stable-diffusion-license) before running the model due to the improved image generation capabilities of the model.
 
 ## Main classes
 
@@ -28,5 +71,6 @@ pip install diffusers
 ### Schedulers
 
 ### Pipeliens
+
 
 
