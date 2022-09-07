@@ -25,6 +25,16 @@ from ...schedulers import PNDMScheduler
 
 
 class PNDMPipeline(DiffusionPipeline):
+    r"""
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    Parameters:
+        unet (:obj:`UNet2DModel`): U-Net architecture to denoise the encoded image latents.
+        scheduler ([`SchedulerMixin`]):
+            The `PNDMScheduler` to be used in combination with `unet` to denoise the encoded image.
+    """
+
     unet: UNet2DModel
     scheduler: PNDMScheduler
 
@@ -43,6 +53,23 @@ class PNDMPipeline(DiffusionPipeline):
         return_dict: bool = True,
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
+        r"""
+        Args:
+            batch_size (:obj:`int`, `optional`, defaults to 1): The number of images to generate.
+            num_inference_steps (:
+                obj:`int`, `optional`, defaults to 50): The number of denoising steps. More denoising steps usually
+                lead to a higher quality image at the expense of slower inference.
+            generator (:
+                obj:`torch.Generator`, `optional`): A [torch
+                generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
+                deterministic.
+            output_type (:
+                obj:`str`, `optional`, defaults to :obj:`"pil"`): The output format of the generate image. Choose
+                between [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `nd.array`.
+            return_dict (:
+                obj:`bool`, `optional`, defaults to :obj:`True`): Whether or not to return a
+                [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
+        """
         # For more information on the sampling method you can take a look at Algorithm 2 of
         # the official paper: https://arxiv.org/pdf/2202.09778.pdf
 
