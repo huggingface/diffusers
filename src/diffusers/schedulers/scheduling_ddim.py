@@ -131,6 +131,14 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         return variance
 
     def set_timesteps(self, num_inference_steps: int, offset: int = 0):
+        """
+        Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
+
+        Args:
+            num_inference_steps (`int`):
+                the number of diffusion steps used when generating samples with a pre-trained model.
+            offset (`int`): TODO
+        """
         self.num_inference_steps = num_inference_steps
         self.timesteps = np.arange(
             0, self.config.num_train_timesteps, self.config.num_train_timesteps // self.num_inference_steps
@@ -148,7 +156,24 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         generator=None,
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
+        """
+        Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
+        process from the learned model outputs (most often the predicted noise).
 
+        Args:
+            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            timestep (`int`): current discrete timestep in the diffusion chain.
+            sample (`torch.FloatTensor` or `np.ndarray`):
+                current instance of sample being created by diffusion process.
+            eta (`float`): weight of noise for added noise in diffusion step.
+            use_clipped_model_output (`bool`): TODO
+            generator: random number generator.
+            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+
+        Returns:
+            `SchedulerOutput`: updated sample in the diffusion chain.
+
+        """
         if self.num_inference_steps is None:
             raise ValueError(
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"

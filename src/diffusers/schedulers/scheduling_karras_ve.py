@@ -89,6 +89,14 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         self.set_format(tensor_format=tensor_format)
 
     def set_timesteps(self, num_inference_steps: int):
+        """
+        Sets the continuous timesteps used for the diffusion chain. Supporting function to be run before inference.
+
+        Args:
+            num_inference_steps (`int`):
+                the number of diffusion steps used when generating samples with a pre-trained model.
+
+        """
         self.num_inference_steps = num_inference_steps
         self.timesteps = np.arange(0, self.num_inference_steps)[::-1].copy()
         self.schedule = [
@@ -105,6 +113,8 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         """
         Explicit Langevin-like "churn" step of adding noise to the sample according to a factor gamma_i ≥ 0 to reach a
         higher noise level sigma_hat = sigma_i + gamma_i*sigma_i.
+
+        TODO Args:
         """
         if self.s_min <= sigma <= self.s_max:
             gamma = min(self.s_churn / self.num_inference_steps, 2**0.5 - 1)
@@ -126,6 +136,21 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         sample_hat: Union[torch.FloatTensor, np.ndarray],
         return_dict: bool = True,
     ) -> Union[KarrasVeOutput, Tuple]:
+        """
+        Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
+        process from the learned model outputs (most often the predicted noise).
+
+        Args:
+            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            sigma_hat (`float`): TODO
+            sigma_prev (`float`): TODO
+            sample_hat (`torch.FloatTensor` or `np.ndarray`): TODO
+            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+
+        Returns:
+            KarrasVeOutput: updated sample in the diffusion chain and derivative (TODO double check).
+
+        """
 
         pred_original_sample = sample_hat + sigma_hat * model_output
         derivative = (sample_hat - pred_original_sample) / sigma_hat
@@ -146,7 +171,22 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         derivative: Union[torch.FloatTensor, np.ndarray],
         return_dict: bool = True,
     ) -> Union[KarrasVeOutput, Tuple]:
+        """
+        Correct the predicted sample based on the output model_output of the network. TODO complete description
 
+        Args:
+            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            sigma_hat (`float`): TODO
+            sigma_prev (`float`): TODO
+            sample_hat (`torch.FloatTensor` or `np.ndarray`): TODO
+            sample_prev (`torch.FloatTensor` or `np.ndarray`): TODO
+            derivative (`torch.FloatTensor` or `np.ndarray`): TODO
+            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+
+        Returns:
+            prev_sample (TODO): updated sample in the diffusion chain. derivative (TODO): TODO
+
+        """
         pred_original_sample = sample_prev + sigma_prev * model_output
         derivative_corr = (sample_prev - pred_original_sample) / sigma_prev
         sample_prev = sample_hat + (sigma_prev - sigma_hat) * (0.5 * derivative + 0.5 * derivative_corr)

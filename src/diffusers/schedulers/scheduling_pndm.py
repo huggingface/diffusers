@@ -127,6 +127,14 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         self.set_format(tensor_format=tensor_format)
 
     def set_timesteps(self, num_inference_steps: int, offset: int = 0) -> torch.FloatTensor:
+        """
+        Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
+
+        Args:
+            num_inference_steps (`int`):
+                the number of diffusion steps used when generating samples with a pre-trained model.
+            offset (`int`): TODO
+        """
         self.num_inference_steps = num_inference_steps
         self._timesteps = list(
             range(0, self.config.num_train_timesteps, self.config.num_train_timesteps // num_inference_steps)
@@ -164,7 +172,23 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         sample: Union[torch.FloatTensor, np.ndarray],
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
+        """
+        Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
+        process from the learned model outputs (most often the predicted noise).
 
+        This function calls `step_prk()` or `step_plms()` depending on the internal variable `counter`.
+
+        Args:
+            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            timestep (`int`): current discrete timestep in the diffusion chain.
+            sample (`torch.FloatTensor` or `np.ndarray`):
+                current instance of sample being created by diffusion process.
+            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+
+        Returns:
+            `SchedulerOutput`: updated sample in the diffusion chain.
+
+        """
         if self.counter < len(self.prk_timesteps) and not self.config.skip_prk_steps:
             return self.step_prk(model_output=model_output, timestep=timestep, sample=sample, return_dict=return_dict)
         else:
@@ -180,6 +204,17 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         """
         Step function propagating the sample with the Runge-Kutta method. RK takes 4 forward passes to approximate the
         solution to the differential equation.
+
+        Args:
+            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            timestep (`int`): current discrete timestep in the diffusion chain.
+            sample (`torch.FloatTensor` or `np.ndarray`):
+                current instance of sample being created by diffusion process.
+            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+
+        Returns:
+            prev_sample (`SchedulerOutput` or `Tuple`): updated sample in the diffusion chain.
+
         """
         if self.num_inference_steps is None:
             raise ValueError(
@@ -223,6 +258,17 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         """
         Step function propagating the sample with the linear multi-step method. This has one forward pass with multiple
         times to approximate the solution.
+
+        Args:
+            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            timestep (`int`): current discrete timestep in the diffusion chain.
+            sample (`torch.FloatTensor` or `np.ndarray`):
+                current instance of sample being created by diffusion process.
+            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+
+        Returns:
+            prev_sample (`SchedulerOutput` or `Tuple`): updated sample in the diffusion chain.
+
         """
         if self.num_inference_steps is None:
             raise ValueError(
