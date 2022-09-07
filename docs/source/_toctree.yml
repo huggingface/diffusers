@@ -39,6 +39,8 @@
     title: "Other"
   title: "Optimization/Special Hardware"
 - sections:
+  - local: training/overview
+    title: "Overview"
   - local: training/unconditional_training
     title: "Unconditional Image Generation"
   - local: training/text_inversion
@@ -70,6 +72,8 @@
       title: "Outputs"
     title: "Main Classes"
   - sections:
+    - local: api/pipelines/overview
+      title: "Overview"
     - local: api/pipelines/ddim
       title: "DDIM"
     - local: api/pipelines/ddpm
@@ -87,4 +91,5 @@
     - local: api/pipelines/stochastic_karras_ve
       title: "Stochastic Karras VE"
     title: "Pipelines"
+    
   titel: "API"

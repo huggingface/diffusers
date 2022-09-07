@@ -18,93 +18,32 @@ specific language governing permissions and limitations under the License.
 
 # 🧨 Diffusers
 
-
-🤗 Diffusers provides pretrained diffusion models across multiple modalities, such as vision and audio, and serves
-as a modular toolbox for inference and training of diffusion models.
+🤗 Diffusers provides pretrained vision diffusion models, and serves as a modular toolbox for inference and training.
 
 More precisely, 🤗 Diffusers offers:
 
-- State-of-the-art diffusion pipelines that can be run in inference with just a couple of lines of code (see [src/diffusers/pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines)).
-- Various noise schedulers that can be used interchangeably for the prefered speed vs. quality trade-off in inference (see [src/diffusers/schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers)).
-- Multiple types of models, such as UNet, that can be used as building blocks in an end-to-end diffusion system (see [src/diffusers/models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models)).
-- Training examples to show how to train the most popular diffusion models (see [examples](https://github.com/huggingface/diffusers/tree/main/examples)).
+- State-of-the-art diffusion pipelines that can be run in inference with just a couple of lines of code (see [**Using Diffusers**](./using-diffusers/conditional_image_generation)) or have a look at [**Pipelines**](#pipelines) to get an overview of all supported pipelines and their corresponding papers.
+- Various noise schedulers that can be used interchangeably for the prefered speed vs. quality trade-off in inference. For more information see [**Schedulers**](./api/schedulers).
+- Multiple types of models, such as UNet, can be used as building blocks in an end-to-end diffusion system. See [**Models**](./api/models) for more details 
+- Training examples to show how to train the most popular diffusion model tasks. For more information see [**Training**](./training/overview).
 
-# Installation
+## 🧨 Diffusers Pipelines
 
-Install Diffusers for with PyTorch. Support for other libraries will come in the future
+The following table summarizes all officially supported pipelines, their corresponding paper, and if 
+available a colab notebook to directly try them out.
 
-🤗 Diffusers is tested on Python 3.6+, and PyTorch 1.4.0+.
+| Pipeline | Paper | Tasks | Colab
+|---|---|:---:|:---:|
+| [ddpm](./api/pipelines/ddpm) | [**Denoising Diffusion Probabilistic Models**](https://arxiv.org/abs/2006.11239) | Unconditional Image Generation |
+| [ddim](./api/pipelines/ddim) | [**Denoising Diffusion Implicit Models**](https://arxiv.org/abs/2010.02502) | Unconditional Image Generation | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb)
+| [latent_diffusion](./api/pipelines/latent_diffusion) | [**High-Resolution Image Synthesis with Latent Diffusion Models**](https://arxiv.org/abs/2112.10752)| Text-to-Image Generation | 
+| [latent_diffusion_uncond](./api/pipelines/latent_diffusion_uncond) | [**High-Resolution Image Synthesis with Latent Diffusion Models**](https://arxiv.org/abs/2112.10752) | Unconditional Image Generation | 
+| [pndm](./api/pipelines/pndm) | [**Pseudo Numerical Methods for Diffusion Models on Manifolds**](https://arxiv.org/abs/2202.09778) | Unconditional Image Generation | 
+| [score_sde_ve](./api/pipelines/score_sde_ve) | [**Score-Based Generative Modeling through Stochastic Differential Equations**](https://openreview.net/forum?id=PxTIG12RRHS) | Unconditional Image Generation | 
+| [score_sde_vp](./api/pipelines/score_sde_vp) | [**Score-Based Generative Modeling through Stochastic Differential Equations**](https://openreview.net/forum?id=PxTIG12RRHS) | Unconditional Image Generation | 
+| [stable_diffusion](./api/pipelines/stable_diffusion) | [**Stable Diffusion**](https://stability.ai/blog/stable-diffusion-public-release) | Text-to-Image Generation | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb)
+| [stable_diffusion](./api/pipelines/stable_diffusion) | [**Stable Diffusion**](https://stability.ai/blog/stable-diffusion-public-release) | Image-to-Image Text-Guided Generation | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/patil-suraj/Notebooks/blob/master/image_2_image_using_diffusers.ipynb)
+| [stable_diffusion](./api/pipelines/stable_diffusion) | [**Stable Diffusion**](https://stability.ai/blog/stable-diffusion-public-release) | Text-Guided Image Inpainting | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/patil-suraj/Notebooks/blob/master/in_painting_with_stable_diffusion_using_diffusers.ipynb)
+| [stochatic_karras_ve](./api/pipelines/stochatic_karras_ve) | [**Elucidating the Design Space of Diffusion-Based Generative Models**](https://arxiv.org/abs/2206.00364) | Unconditional Image Generation | 
 
-## Install with pip
-
-You should install 🤗 Diffusers in a [virtual environment](https://docs.python.org/3/library/venv.html).
-If you're unfamiliar with Python virtual environments, take a look at this [guide](https://packaging.python.org/guides/installing-using-pip-and-virtual-environments/).
-A virtual environment makes it easier to manage different projects, and avoid compatibility issues between dependencies.
-
-Start by creating a virtual environment in your project directory:
-
-```bash
-python -m venv .env
-```
-
-Activate the virtual environment:
-
-```bash
-source .env/bin/activate
-```
-
-Now you're ready to install 🤗 Diffusers with the following command:
-
-```bash
-pip install diffusers
-```
-
-## Install from source
-
-Install 🤗 Diffusers from source with the following command:
-
-```bash
-pip install git+https://github.com/huggingface/diffusers
-```
-
-This command installs the bleeding edge `main` version rather than the latest `stable` version.
-The `main` version is useful for staying up-to-date with the latest developments.
-For instance, if a bug has been fixed since the last official release but a new release hasn't been rolled out yet.
-However, this means the `main` version may not always be stable.
-We strive to keep the `main` version operational, and most issues are usually resolved within a few hours or a day.
-If you run into a problem, please open an [Issue](https://github.com/huggingface/transformers/issues) so we can fix it even sooner!
-
-## Editable install
-
-You will need an editable install if you'd like to:
-
-* Use the `main` version of the source code.
-* Contribute to 🤗 Diffusers and need to test changes in the code.
-
-Clone the repository and install 🤗 Diffusers with the following commands:
-
-```bash
-git clone https://github.com/huggingface/diffusers.git
-cd transformers
-pip install -e .
-```
-
-These commands will link the folder you cloned the repository to and your Python library paths.
-Python will now look inside the folder you cloned to in addition to the normal library paths.
-For example, if your Python packages are typically installed in `~/anaconda3/envs/main/lib/python3.7/site-packages/`, Python will also search the folder you cloned to: `~/diffusers/`.
-
-<Tip warning={true}>
-
-You must keep the `diffusers` folder if you want to keep using the library.
-
-</Tip>
-
-Now you can easily update your clone to the latest version of 🤗 Diffusers with the following command:
-
-```bash
-cd ~/diffusers/
-git pull
-```
-
-Your Python environment will find the `main` version of 🤗 Diffuers on the next run.
-
+**Note**: Pipelines are simple examples of how to play around with the diffusion systems as described in the corresponding papers. 
