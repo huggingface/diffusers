@@ -1,3 +1,16 @@
 # DDPM
 
-DDPM is a scheduler.
+## Overview
+
+[Denoising Diffusion Probabilistic Models](https://arxiv.org/abs/2006.11239) 
+ (DDPM) by Jonathan Ho, Ajay Jain and Pieter Abbeel proposes the diffusion based model of the same name, but in the context of the 🤗 Diffusers library, DDPM refers to the discrete denoising scheduler from the paper.
+
+ The original codebase of this paper can be found [here](https://github.com/hojonathanho/diffusion).
+
+
+ ## Details
+
+ The DDPM scheduler defined in `DDPMScheduler` is given by a discrete number of steps given by `num_train_timesteps` together with a pre-defined process of adding noise to the data for these steps. The noising process is defined by variances which increase from  `beta_start` till `beta_end` either `linearly` (given by the `beta_schedule` argument), `scaled_linear`  or `squaredcos_cap_v2`. 
+
+The resulting variance for each step is further modified for training stability via the `variance_type` argument which allows one to clip the variance or even have the noise variance become trainable.
+
