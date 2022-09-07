@@ -15,7 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 import math
-from typing import Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -41,7 +41,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     Returns:
         betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
     """
-    
+
     def alpha_bar(time_step):
         return math.cos((time_step + 0.008) / 1.008 * math.pi / 2) ** 2
 
@@ -55,7 +55,8 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
 
 class PNDMScheduler(SchedulerMixin, ConfigMixin):
     """
-    Pseudo numerical methods for diffusion models (PNDM) proposes using more advanced ODE integration techniques, namely Runge-Kutta method and a linear multi-step method.
+    Pseudo numerical methods for diffusion models (PNDM) proposes using more advanced ODE integration techniques,
+    namely Runge-Kutta method and a linear multi-step method.
 
     For more details, see the original paper: https://arxiv.org/abs/2202.09778
 
@@ -63,10 +64,14 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         num_train_timesteps (`int`): number of diffusion steps used to train the model.
         beta_start (`float`): the starting `beta` value of inference.
         beta_end (`float`): the final `beta` value.
-        beta_schedule (`str`): the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
+        beta_schedule (`str`):
+            the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
+            `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
         trained_betas (): TODO
         tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays
-        skip_prk_steps (`bool`): allows the scheduler to skip the Runge-Kutta steps that are defined in the original paper as being required before plms steps; defaults to `False`.
+        skip_prk_steps (`bool`):
+            allows the scheduler to skip the Runge-Kutta steps that are defined in the original paper as being required
+            before plms steps; defaults to `False`.
     """
 
     @register_to_config
@@ -76,7 +81,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas=None,
+        trained_betas: Optional[np.ndarray] = None,
         tensor_format: str = "pt",
         skip_prk_steps: bool = False,
     ):
