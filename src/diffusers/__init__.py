@@ -24,6 +24,7 @@ from .schedulers import (
     SchedulerMixin,
     ScoreSdeVeScheduler,
 )
+from .utils import logging
 
 
 if is_scipy_available():
