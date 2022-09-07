@@ -92,11 +92,14 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         r"""
         Enable sliced attention computation.
 
-        When this option is enabled, the attention module will split the input batch in slices, to compute attention in several steps. This is useful to save some memory in exchange for a small speed decrease.
+        When this option is enabled, the attention module will split the input batch in slices, to compute attention in
+        several steps. This is useful to save some memory in exchange for a small speed decrease.
 
         Args:
             slice_size (`str` or `int`, *optional*, defaults to `"auto"`):
-                When `"auto"`, halves the input batch to the attention heads, so attention will be computed in two steps. If a number is provided, use as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim` must be a multiple of `slice_size`.
+                When `"auto"`, halves the input batch to the attention heads, so attention will be computed in two
+                steps. If a number is provided, use as many slices as `attention_head_dim // slice_size`. In this case,
+                `attention_head_dim` must be a multiple of `slice_size`.
         """
         if slice_size == "auto":
             # half the attention head size is usually a good trade-off between
@@ -106,7 +109,8 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
     def disable_attention_slicing(self):
         r"""
-        Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go back to computing attention in one step.
+        Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go
+        back to computing attention in one step.
         """
         # set slice_size = `None` to disable `set_attention_slice`
         self.enable_attention_slice(None)
@@ -132,13 +136,20 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
             init_image (`torch.FloatTensor` or `PIL.Image.Image`):
-                `Image`, or tensor representing an image batch, that will be used as the starting point for the process. This is the image whose masked region will be inpainted.
+                `Image`, or tensor representing an image batch, that will be used as the starting point for the
+                process. This is the image whose masked region will be inpainted.
             mask_image (`torch.FloatTensor` or `PIL.Image.Image`):
-                `Image`, or tensor representing an image batch, to mask `init_image`. White pixels in the mask will be replaced by noise and therefore repainted, while black pixels will be preserved. The mask image will be converted to a single channel (luminance) before use.
+                `Image`, or tensor representing an image batch, to mask `init_image`. White pixels in the mask will be
+                replaced by noise and therefore repainted, while black pixels will be preserved. The mask image will be
+                converted to a single channel (luminance) before use.
             strength (`float`, *optional*, defaults to 0.8):
-                Conceptually, indicates how much to inpaint the masked area. Must be between 0 and 1. When `strength` is 1, the denoising process will be run on the masked area for the full number of iterations specified in `num_inference_steps`. `init_image` will be used as a reference for the masked area, adding more noise to that region the larger the `strength`. If `strength` is 0, no inpainting will occur.
+                Conceptually, indicates how much to inpaint the masked area. Must be between 0 and 1. When `strength`
+                is 1, the denoising process will be run on the masked area for the full number of iterations specified
+                in `num_inference_steps`. `init_image` will be used as a reference for the masked area, adding more
+                noise to that region the larger the `strength`. If `strength` is 0, no inpainting will occur.
             num_inference_steps (`int`, *optional*, defaults to 50):
-                The reference number of denoising steps. More denoising steps usually lead to a higher quality image at the expense of slower inference. This parameter will be modulated by `strength`, as explained above.
+                The reference number of denoising steps. More denoising steps usually lead to a higher quality image at
+                the expense of slower inference. This parameter will be modulated by `strength`, as explained above.
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen

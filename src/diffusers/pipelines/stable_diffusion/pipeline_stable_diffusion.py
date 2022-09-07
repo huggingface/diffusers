@@ -16,7 +16,7 @@ from .safety_checker import StableDiffusionSafetyChecker
 class StableDiffusionPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
-    
+
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
@@ -67,11 +67,14 @@ class StableDiffusionPipeline(DiffusionPipeline):
         r"""
         Enable sliced attention computation.
 
-        When this option is enabled, the attention module will split the input batch in slices, to compute attention in several steps. This is useful to save some memory in exchange for a small speed decrease.
+        When this option is enabled, the attention module will split the input batch in slices, to compute attention in
+        several steps. This is useful to save some memory in exchange for a small speed decrease.
 
         Args:
             slice_size (`str` or `int`, *optional*, defaults to `"auto"`):
-                When `"auto"`, halves the input batch to the attention heads, so attention will be computed in two steps. If a number is provided, use as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim` must be a multiple of `slice_size`.
+                When `"auto"`, halves the input batch to the attention heads, so attention will be computed in two
+                steps. If a number is provided, use as many slices as `attention_head_dim // slice_size`. In this case,
+                `attention_head_dim` must be a multiple of `slice_size`.
         """
         if slice_size == "auto":
             # half the attention head size is usually a good trade-off between
@@ -81,7 +84,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
     def disable_attention_slicing(self):
         r"""
-        Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go back to computing attention in one step.
+        Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go
+        back to computing attention in one step.
         """
         # set slice_size = `None` to disable `set_attention_slice`
         self.enable_attention_slice(None)
