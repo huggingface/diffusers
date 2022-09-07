@@ -19,6 +19,17 @@ from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 
 
 class LDMTextToImagePipeline(DiffusionPipeline):
+    r"""
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    Parameters:
+        vqvae ([`VQModel`]): Vector-quantized (VQ) Model to encode and decode images to and from latent representations.
+        bert ([`LDMBertModel`]): Text-encoder model based on [BERT](ttps://huggingface.co/docs/transformers/model_doc/bert) architecture.
+        tokenizer (`transformers.BertTokenizer`): Tokenizer of class [BertTokenizer](https://huggingface.co/docs/transformers/model_doc/bert#transformers.BertTokenizer).
+        unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
+        scheduler ([`SchedulerMixin`]): A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
+    """
     def __init__(
         self,
         vqvae: Union[VQModel, AutoencoderKL],
@@ -63,7 +74,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `nd.array`.
             return_dict (`bool`, *optional*):
-                Whether or not to return a [`~utils.BaseOutput`] instead of a plain tuple.
+                Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
         """
         if "torch_device" in kwargs:
             device = kwargs.pop("torch_device")
