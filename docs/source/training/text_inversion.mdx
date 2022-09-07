@@ -12,21 +12,114 @@ specific language governing permissions and limitations under the License.
 
 
 
-# Quicktour
+# Textual Inversion
 
-Start using Diffusers🧨 quickly!
-To start, use the [`DiffusionPipeline`] for quick inference and sample generations!
+Textual Inversion is a technique for capturing novel concepts from a small number of example images in a way that can later be used to control text-to-image pipelines. It does so by learning new 'words' in the embedding space of the pipeline's text encoder. These special words can then be used within text prompts to achieve very fine-grained control of the resulting images. 
 
+![Textual Inversion example](https://textual-inversion.github.io/static/images/editing/colorful_teapot.JPG)
+_By using just 3-5 images you can teach new concepts to a model such as Stable Diffusion for personalized image generation ([image source](https://github.com/rinongal/textual_inversion))._
+
+This technique was introduced in [An Image is Worth One Word: Personalizing Text-to-Image Generation using Textual Inversion](https://arxiv.org/abs/2208.01618). The paper demonstrated the concept using a [latent diffusion model](https://github.com/CompVis/latent-diffusion) but the idea has since been applied to other variants such as [Stable Diffusion](https://huggingface.co/docs/diffusers/main/en/conceptual/stable_diffusion).
+
+
+## How It Works
+
+![Diagram from the paper showing overview](https://textual-inversion.github.io/static/images/training/training.JPG)
+_Architecture Overview from the [textual inversion blog post](https://textual-inversion.github.io/)_
+
+Before a text prompt can be used in a diffusion model, it must first be processed into a numerical representation. This typically involves tokenizing the text, converting each token to an embedding and then feeding those embeddings through a model (typically a transformer) whose output will be used as the conditioning for the diffusion model. 
+
+Textual inversion learns a new token embedding (v* in the diagram above). A prompt (that includes a token which will be mapped to this new embedding) is used in conjunction with a noised version of one or more training images as inputs to the generator model, which attempts to predict the denoised version of the image. The embedding is optimized based on how well the model does at this task - an embedding that better captures the object or style shown by the training images will give more useful information to the diffusion model and thus result in a lower denoising loss. After many steps (typically several thousand) with a variety of prompt and image variants the learned embedding should hopefully capture the essence of the new concept being taught.
+
+## Usage
+
+To train your own textual inversions, see the [example script here](https://github.com/huggingface/diffusers/tree/main/examples/textual_inversion). 
+
+There is also a notebook for training:
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_textual_inversion_training.ipynb)
+
+And one for inference:
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/stable_conceptualizer_inference.ipynb)
+
+In addition to using concepts you have trained yourself, there is a community-created collection of trained textual inversions in the new [Stable Diffusion public concepts library](https://huggingface.co/sd-concepts-library) which you can also use from the inference notebook above. Over time this will hopefully grow into a useful resource as more examples are added.
+
+## Example: Running locally 
+
+The `textual_inversion.py` script [here](https://github.com/huggingface/diffusers/blob/main/examples/textual_inversion) shows how to implement the training procedure and adapt it for stable diffusion.
+
+### Installing the dependencies
+
+Before running the scipts, make sure to install the library's training dependencies:
+
+```bash
+pip install diffusers[training] accelerate transformers
 ```
-pip install diffusers
+
+And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
+
+```bash
+accelerate config
 ```
 
-## Main classes
 
-### Models
+### Cat toy example
 
-### Schedulers
+You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-4`, so you'll need to visit [its card](https://huggingface.co/CompVis/stable-diffusion-v1-4), read the license and tick the checkbox if you agree. 
 
-### Pipeliens
+You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section of the documentation](https://huggingface.co/docs/hub/security-tokens).
+
+Run the following command to autheticate your token
+
+```bash
+huggingface-cli login
+```
+
+If you have already cloned the repo, then you won't need to go through these steps. You can simple remove the `--use_auth_token` arg from the following command.
+
+<br>
+
+Now let's get our dataset.Download 3-4 images from [here](https://drive.google.com/drive/folders/1fmJMs25nxS_rSNqS5hTcRdLem_YQXbq5) and save them in a directory. This will be our training data.
+
+And launch the training using
+
+```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export DATA_DIR="path-to-dir-containing-images"
+
+accelerate launch textual_inversion.py \
+  --pretrained_model_name_or_path=$MODEL_NAME --use_auth_token \
+  --train_data_dir=$DATA_DIR \
+  --learnable_property="object" \
+  --placeholder_token="<cat-toy>" --initializer_token="toy" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --gradient_accumulation_steps=4 \
+  --max_train_steps=3000 \
+  --learning_rate=5.0e-04 --scale_lr \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --output_dir="textual_inversion_cat"
+```
+
+A full training run takes ~1 hour on one V100 GPU.
 
 
+### Inference
+
+Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline`. Make sure to include the `placeholder_token` in your prompt.
+
+```python
+
+from torch import autocast
+from diffusers import StableDiffusionPipeline
+
+model_id = "path-to-your-trained-model"
+pipe = pipe = StableDiffusionPipeline.from_pretrained(model_id,torch_dtype=torch.float16).to("cuda")
+
+prompt = "A <cat-toy> backpack"
+
+with autocast("cuda"):
+    image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+
+image.save("cat-backpack.png")
+```
