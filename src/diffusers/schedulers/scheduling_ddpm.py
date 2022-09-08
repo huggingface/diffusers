@@ -29,11 +29,17 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
 
-    :param num_diffusion_timesteps: the number of betas to produce. :param alpha_bar: a lambda that takes an argument t
-    from 0 to 1 and
-                      produces the cumulative product of (1-beta) up to that part of the diffusion process.
-    :param max_beta: the maximum beta to use; use values lower than 1 to
+    Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
+    to that part of the diffusion process.
+
+
+    Args:
+        num_diffusion_timesteps (`int`): the number of betas to produce.
+        max_beta (`float`): the maximum beta to use; use values lower than 1 to
                      prevent singularities.
+
+    Returns:
+        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
     """
 
     def alpha_bar(time_step):
@@ -48,6 +54,29 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
 
 
 class DDPMScheduler(SchedulerMixin, ConfigMixin):
+    """
+    Denoising diffusion probabilistic models (DDPMs) explores the connections between denoising score matching and
+    Langevin dynamics sampling.
+
+    For more details, see the original paper: https://arxiv.org/abs/2006.11239
+
+    Args:
+        num_train_timesteps (`int`): number of diffusion steps used to train the model.
+        beta_start (`float`): the starting `beta` value of inference.
+        beta_end (`float`): the final `beta` value.
+        beta_schedule (`str`):
+            the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
+            `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
+        trained_betas (`np.ndarray`, optional): TODO
+        variance_type (`str`):
+            options to clip the variance used when adding noise to the denoised sample. Choose from `fixed_small`,
+            `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
+        clip_sample (`bool`, default `True`):
+            option to clip predicted sample between -1 and 1 for numerical stability.
+        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays.
+
+    """
+
     @register_to_config
     def __init__(
         self,
@@ -88,6 +117,13 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         self.variance_type = variance_type
 
     def set_timesteps(self, num_inference_steps: int):
+        """
+        Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
+
+        Args:
+            num_inference_steps (`int`):
+                the number of diffusion steps used when generating samples with a pre-trained model.
+        """
         num_inference_steps = min(self.config.num_train_timesteps, num_inference_steps)
         self.num_inference_steps = num_inference_steps
         self.timesteps = np.arange(
@@ -137,7 +173,25 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         generator=None,
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
+        """
+        Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
+        process from the learned model outputs (most often the predicted noise).
 
+        Args:
+            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            timestep (`int`): current discrete timestep in the diffusion chain.
+            sample (`torch.FloatTensor` or `np.ndarray`):
+                current instance of sample being created by diffusion process.
+            eta (`float`): weight of noise for added noise in diffusion step.
+            predict_epsilon (`bool`):
+                optional flag to use when model predicts the samples directly instead of the noise, epsilon.
+            generator: random number generator.
+            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+
+        Returns:
+            `SchedulerOutput`: updated sample in the diffusion chain.
+
+        """
         t = timestep
 
         if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:

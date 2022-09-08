@@ -49,6 +49,24 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
     [1] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models."
     https://arxiv.org/abs/2206.00364 [2] Song, Yang, et al. "Score-based generative modeling through stochastic
     differential equations." https://arxiv.org/abs/2011.13456
+
+    For more details on the parameters, see the original paper's Appendix E.: "Elucidating the Design Space of
+    Diffusion-Based Generative Models." https://arxiv.org/abs/2206.00364. The grid search values used to find the
+    optimal {s_noise, s_churn, s_min, s_max} for a specific model are described in Table 5 of the paper.
+
+    Args:
+        sigma_min (`float`): minimum noise magnitude
+        sigma_max (`float`): maximum noise magnitude
+        s_noise (`float`): the amount of additional noise to counteract loss of detail during sampling.
+            A reasonable range is [1.000, 1.011].
+        s_churn (`float`): the parameter controlling the overall amount of stochasticity.
+            A reasonable range is [0, 100].
+        s_min (`float`): the start value of the sigma range where we add noise (enable stochasticity).
+            A reasonable range is [0, 10].
+        s_max (`float`): the end value of the sigma range where we add noise.
+            A reasonable range is [0.2, 80].
+        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays.
+
     """
 
     @register_to_config
@@ -62,23 +80,6 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         s_max: float = 50,
         tensor_format: str = "pt",
     ):
-        """
-        For more details on the parameters, see the original paper's Appendix E.: "Elucidating the Design Space of
-        Diffusion-Based Generative Models." https://arxiv.org/abs/2206.00364. The grid search values used to find the
-        optimal {s_noise, s_churn, s_min, s_max} for a specific model are described in Table 5 of the paper.
-
-        Args:
-            sigma_min (`float`): minimum noise magnitude
-            sigma_max (`float`): maximum noise magnitude
-            s_noise (`float`): the amount of additional noise to counteract loss of detail during sampling.
-                A reasonable range is [1.000, 1.011].
-            s_churn (`float`): the parameter controlling the overall amount of stochasticity.
-                A reasonable range is [0, 100].
-            s_min (`float`): the start value of the sigma range where we add noise (enable stochasticity).
-                A reasonable range is [0, 10].
-            s_max (`float`): the end value of the sigma range where we add noise.
-                A reasonable range is [0.2, 80].
-        """
         # setable values
         self.num_inference_steps = None
         self.timesteps = None
@@ -88,6 +89,14 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         self.set_format(tensor_format=tensor_format)
 
     def set_timesteps(self, num_inference_steps: int):
+        """
+        Sets the continuous timesteps used for the diffusion chain. Supporting function to be run before inference.
+
+        Args:
+            num_inference_steps (`int`):
+                the number of diffusion steps used when generating samples with a pre-trained model.
+
+        """
         self.num_inference_steps = num_inference_steps
         self.timesteps = np.arange(0, self.num_inference_steps)[::-1].copy()
         self.schedule = [
@@ -104,6 +113,8 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         """
         Explicit Langevin-like "churn" step of adding noise to the sample according to a factor gamma_i ≥ 0 to reach a
         higher noise level sigma_hat = sigma_i + gamma_i*sigma_i.
+
+        TODO Args:
         """
         if self.s_min <= sigma <= self.s_max:
             gamma = min(self.s_churn / self.num_inference_steps, 2**0.5 - 1)
@@ -125,6 +136,21 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         sample_hat: Union[torch.FloatTensor, np.ndarray],
         return_dict: bool = True,
     ) -> Union[KarrasVeOutput, Tuple]:
+        """
+        Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
+        process from the learned model outputs (most often the predicted noise).
+
+        Args:
+            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            sigma_hat (`float`): TODO
+            sigma_prev (`float`): TODO
+            sample_hat (`torch.FloatTensor` or `np.ndarray`): TODO
+            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+
+        Returns:
+            KarrasVeOutput: updated sample in the diffusion chain and derivative (TODO double check).
+
+        """
 
         pred_original_sample = sample_hat + sigma_hat * model_output
         derivative = (sample_hat - pred_original_sample) / sigma_hat
@@ -145,7 +171,22 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         derivative: Union[torch.FloatTensor, np.ndarray],
         return_dict: bool = True,
     ) -> Union[KarrasVeOutput, Tuple]:
+        """
+        Correct the predicted sample based on the output model_output of the network. TODO complete description
 
+        Args:
+            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            sigma_hat (`float`): TODO
+            sigma_prev (`float`): TODO
+            sample_hat (`torch.FloatTensor` or `np.ndarray`): TODO
+            sample_prev (`torch.FloatTensor` or `np.ndarray`): TODO
+            derivative (`torch.FloatTensor` or `np.ndarray`): TODO
+            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+
+        Returns:
+            prev_sample (TODO): updated sample in the diffusion chain. derivative (TODO): TODO
+
+        """
         pred_original_sample = sample_prev + sigma_prev * model_output
         derivative_corr = (sample_prev - pred_original_sample) / sigma_prev
         sample_prev = sample_hat + (sigma_prev - sigma_hat) * (0.5 * derivative + 0.5 * derivative_corr)
