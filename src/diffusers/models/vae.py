@@ -458,6 +458,12 @@ class VQModel(ModelMixin, ConfigMixin):
         return DecoderOutput(sample=dec)
 
     def forward(self, sample: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
+        r"""
+        Args:
+            sample (:obj:`torch.FloatTensor`): Input sample.
+            return_dict (:obj:`bool`, *optional*, defaults to :obj:`True`):
+                Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+        """
         x = sample
         h = self.encode(x).latents
         dec = self.decode(h).sample
@@ -550,6 +556,13 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
     def forward(
         self, sample: torch.FloatTensor, sample_posterior: bool = False, return_dict: bool = True
     ) -> Union[DecoderOutput, torch.FloatTensor]:
+        r"""
+        Args:
+            sample (:obj:`torch.FloatTensor`): Input sample.
+            sample_posterior (:obj:`bool`, *optional*, defaults to :obj:`False`): Whether to sample from the posterior.
+            return_dict (:obj:`bool`, *optional*, defaults to :obj:`True`):
+                Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+        """
         x = sample
         posterior = self.encode(x).latent_dist
         if sample_posterior:
