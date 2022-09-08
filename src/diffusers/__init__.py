@@ -9,6 +9,7 @@ from .utils import (
 
 __version__ = "0.3.0.dev0"
 
+from .configuration_utils import ConfigMixin
 from .modeling_utils import ModelMixin
 from .models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
 from .onnx_utils import OnnxRuntimeModel

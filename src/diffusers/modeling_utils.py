@@ -119,8 +119,6 @@ class ModelMixin(torch.nn.Module):
     [`ModelMixin`] takes care of storing the configuration of the models and handles methods for loading, downloading
     and saving models.
 
-    Class attributes:
-
         - **config_name** ([`str`]) -- A filename under which the model should be stored when calling
           [`~modeling_utils.ModelMixin.save_pretrained`].
     """
@@ -200,10 +198,9 @@ class ModelMixin(torch.nn.Module):
                 Can be either:
 
                     - A string, the *model id* of a pretrained model hosted inside a model repo on huggingface.co.
-                      Valid model ids can be located at the root-level, like `bert-base-uncased`, or namespaced under a
-                      user or organization name, like `dbmdz/bert-base-german-cased`.
-                    - A path to a *directory* containing model weights saved using [`~ModelMixin.save_pretrained`],
-                      e.g., `./my_model_directory/`.
+                      Valid model ids should have an organization name, like `google/ddpm-celebahq-256`.
+                    - A path to a *directory* containing model weights saved using [`~ModelMixin.save_config`], e.g.,
+                      `./my_model_directory/`.
 
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory in which a downloaded pretrained model configuration should be cached if the
@@ -235,9 +232,6 @@ class ModelMixin(torch.nn.Module):
                 Mirror source to accelerate downloads in China. If you are from China and have an accessibility
                 problem, you can set this option to resolve it. Note that we do not guarantee the timeliness or safety.
                 Please refer to the mirror site for more information.
-
-            kwargs (remaining dictionary of keyword arguments, *optional*):
-                Can be used to update the [`ConfigMixin`] of the model (after it being loaded).
 
         <Tip>
 
