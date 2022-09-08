@@ -36,11 +36,11 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         freq_shift (`int`, *optional*, defaults to 0): Frequency shift for fourier time embedding.
         flip_sin_to_cos (`bool`, *optional*, defaults to :
             obj:`False`): Whether to flip sin to cos for fourier time embedding.
-        down_block_types (`List[str]`, *optional*, defaults to :
-            obj:`["conv", "resnet"]`): List of downsample block types.
-        up_block_types (`List[str]`, *optional*, defaults to :obj:`["conv", "resnet"]`): List of upsample block types.
-        block_out_channels (`List[int]`, *optional*, defaults to :
-            obj:`[64, 128, 256, 512]`): List of block output channels.
+        down_block_types (`Tuple[str]`, *optional*, defaults to :
+            obj:`("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D")`): Tuple of downsample block types.
+        up_block_types (`Tuple[str]`, *optional*, defaults to :obj:`("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D")`): Tuple of upsample block types.
+        block_out_channels (`Tuple[int]`, *optional*, defaults to :
+            obj:`(224, 448, 672, 896)`): Tuple of block output channels.
         layers_per_block (`int`, *optional*, defaults to :obj:`2`): The number of layers per block.
         mid_block_scale_factor (`float`, *optional*, defaults to :obj:`1`): The scale factor for the mid block.
         downsample_padding (`int`, *optional*, defaults to :obj:`1`): The padding for the downsample convolution.
