@@ -267,7 +267,7 @@ ldm = ldm.to(device)
 # run pipeline in inference (sample random noise and denoise)
 prompt = "A painting of a squirrel eating a burger"
 with autocast(device):
-    image = ldm([prompt], num_inference_steps=50, eta=0.3, guidance_scale=6)
+    image = ldm([prompt], num_inference_steps=50, eta=0.3, guidance_scale=6).images[0]
 
 # save image
 image['sample'][0].save("squirrel.png")
