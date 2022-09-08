@@ -287,7 +287,7 @@ with autocast("cuda"):
     image = ddpm().images[0]
 
 # save image
-image['sample'][0].save("ddpm_generated_image.png")
+image.save("ddpm_generated_image.png")
 ```
 - [Unconditional Latent Diffusion](https://huggingface.co/CompVis/ldm-celebahq-256)
 - [Unconditional Diffusion with continous scheduler](https://huggingface.co/google/ncsnpp-ffhq-1024)
