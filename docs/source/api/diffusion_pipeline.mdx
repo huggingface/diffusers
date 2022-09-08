@@ -10,19 +10,24 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Models
+# Diffusion Pipeline
 
-Diffusers contains pretrained models for popular algorithms and modules for creating the next set of diffusion models.
-The primary function of these models is to denoise an input sample, by modeling the distribution $p_\theta(\mathbf{x}_{t-1}|\mathbf{x}_t)$.
-The models are built on the base class ['ModelMixin'] that is a `torch.nn.module` with basic functionality for saving and loading models both locally and from the HuggingFace hub.
+The [`DiffusionPipeline`] is the easiest way to load any pretrained diffusion pipeline from the [Hub](https://huggingface.co/models?library=diffusers) and to use it in inference.
 
-## API
+<Tip>
+	
+	One should not use the Diffusion Pipeline class for training or fine-tuning a diffusion model. Individual 
+	components of diffusion pipelines are usually trained individually, so we suggest to directly work 
+	with [`UNetModel`] and [`UNetConditionModel`].
 
-Models should provide the `def forward` function and initialization of the model.
-All saving, loading, and utilities should be in the base ['ModelMixin'] class.
+</Tip>
 
-## Examples
+Any diffusion pipeline that is loaded with [`~DiffusionPipeline.from_pretrained`] will automatically 
+detect the pipeline type, *e.g.* [`StableDiffusionPipeline`] and consequently load each component of the 
+pipeline and pass them into the `__init__` function of the pipeline, *e.g.* [`~StableDiffusionPipeline.__init__`].
 
-- The ['UNetModel'] was proposed in [TODO](https://arxiv.org/) and has been used in paper1, paper2, paper3.
-- Extensions of the ['UNetModel'] include the ['UNetGlideModel'] that uses attention and timestep embeddings for the [GLIDE](https://arxiv.org/abs/2112.10741) paper, the ['UNetGradTTS'] model from this [paper](https://arxiv.org/abs/2105.06337) for text-to-speech, ['UNetLDMModel'] for latent-diffusion models in this [paper](https://arxiv.org/abs/2112.10752), and the ['TemporalUNet'] used for time-series prediciton in this reinforcement learning [paper](https://arxiv.org/abs/2205.09991).
-- TODO: mention VAE / SDE score estimation
+Any pipeline object can be saved locally with [`~DiffusionPipeline.save_pretrained`].
+
+[[autodoc]] DiffusionPipeline
+	- from_pretrained
+	- save_pretrained
