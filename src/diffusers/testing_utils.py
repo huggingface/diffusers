@@ -8,6 +8,7 @@ import torch
 
 global_rng = random.Random()
 torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+torch_device = "mps" if torch.backends.mps.is_available() else torch_device
 
 
 def parse_flag_from_env(key, default=False):

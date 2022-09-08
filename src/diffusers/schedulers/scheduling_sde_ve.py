@@ -139,7 +139,9 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             return np.where(timesteps == 0, np.zeros_like(t), self.discrete_sigmas[timesteps - 1])
         elif tensor_format == "pt":
             return torch.where(
-                timesteps == 0, torch.zeros_like(t), self.discrete_sigmas[timesteps - 1].to(timesteps.device)
+                timesteps == 0,
+                torch.zeros_like(t.to(timesteps.device)),
+                self.discrete_sigmas[timesteps - 1].to(timesteps.device),
             )
 
         raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
@@ -196,8 +198,11 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         )  # torch.repeat_interleave(timestep, sample.shape[0])
         timesteps = (timestep * (len(self.timesteps) - 1)).long()
 
+        # mps requires indices to be in the same device, so we use cpu as is the default with cuda
+        timesteps = timesteps.to(self.discrete_sigmas.device)
+
         sigma = self.discrete_sigmas[timesteps].to(sample.device)
-        adjacent_sigma = self.get_adjacent_sigma(timesteps, timestep)
+        adjacent_sigma = self.get_adjacent_sigma(timesteps, timestep).to(sample.device)
         drift = self.zeros_like(sample)
         diffusion = (sigma**2 - adjacent_sigma**2) ** 0.5
 

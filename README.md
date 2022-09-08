@@ -39,6 +39,10 @@ pip install --upgrade diffusers  # should install diffusers 0.2.4
 conda install -c conda-forge diffusers
 ```
 
+**Apple Silicon (M1/M2) support**
+
+Please, refer to [the documentation](https://huggingface.co/docs/diffusers/optimization/mps).
+
 ## Contributing
 
 We ❤️  contributions from the open-source community! 

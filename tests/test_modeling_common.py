@@ -15,11 +15,13 @@
 
 import inspect
 import tempfile
+import unittest
 from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
 
+from diffusers.modeling_utils import ModelMixin
 from diffusers.testing_utils import torch_device
 from diffusers.training_utils import EMAModel
 
@@ -38,6 +40,11 @@ class ModelTesterMixin:
             new_model.to(torch_device)
 
         with torch.no_grad():
+            # Warmup pass when using mps (see #372)
+            if torch_device == "mps" and isinstance(model, ModelMixin):
+                _ = model(**self.dummy_input)
+                _ = new_model(**self.dummy_input)
+
             image = model(**inputs_dict)
             if isinstance(image, dict):
                 image = image.sample
@@ -55,7 +62,12 @@ class ModelTesterMixin:
         model = self.model_class(**init_dict)
         model.to(torch_device)
         model.eval()
+
         with torch.no_grad():
+            # Warmup pass when using mps (see #372)
+            if torch_device == "mps" and isinstance(model, ModelMixin):
+                model(**self.dummy_input)
+
             first = model(**inputs_dict)
             if isinstance(first, dict):
                 first = first.sample
@@ -132,6 +144,7 @@ class ModelTesterMixin:
 
         self.assertEqual(output_1.shape, output_2.shape)
 
+    @unittest.skipIf(torch_device == "mps", "Training is not supported in mps")
     def test_training(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -147,6 +160,7 @@ class ModelTesterMixin:
         loss = torch.nn.functional.mse_loss(output, noise)
         loss.backward()
 
+    @unittest.skipIf(torch_device == "mps", "Training is not supported in mps")
     def test_ema_training(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -167,8 +181,13 @@ class ModelTesterMixin:
 
     def test_scheduler_outputs_equivalence(self):
         def set_nan_tensor_to_zero(t):
+            # Temporary fallback until `aten::_index_put_impl_` is implemented in mps
+            # Track progress in https://github.com/pytorch/pytorch/issues/77764
+            device = t.device
+            if device.type == "mps":
+                t = t.to("cpu")
             t[t != t] = 0
-            return t
+            return t.to(device)
 
         def recursive_check(tuple_object, dict_object):
             if isinstance(tuple_object, (List, Tuple)):
@@ -198,7 +217,12 @@ class ModelTesterMixin:
         model.to(torch_device)
         model.eval()
 
-        outputs_dict = model(**inputs_dict)
-        outputs_tuple = model(**inputs_dict, return_dict=False)
+        with torch.no_grad():
+            # Warmup pass when using mps (see #372)
+            if torch_device == "mps" and isinstance(model, ModelMixin):
+                model(**self.dummy_input)
+
+            outputs_dict = model(**inputs_dict)
+            outputs_tuple = model(**inputs_dict, return_dict=False)
 
         recursive_check(outputs_tuple, outputs_dict)

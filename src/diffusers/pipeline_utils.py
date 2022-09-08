@@ -72,7 +72,6 @@ class ImagePipelineOutput(BaseOutput):
 
 
 class DiffusionPipeline(ConfigMixin):
-
     config_name = "model_index.json"
 
     def register_modules(self, **kwargs):
