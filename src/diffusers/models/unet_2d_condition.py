@@ -195,11 +195,16 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
     ) -> Union[UNet2DConditionOutput, Tuple]:
         """r
         Args:
-            sample (:obj:`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
-            timestep (:obj:`torch.FloatTensor` or :obj:`float` or :obj:`int): (batch) timesteps
-            encoder_hidden_states (:obj:`torch.FloatTensor`): (batch, channel, height, width) encoder hidden states
-            return_dict (:obj:`bool`, *optional*, defaults to :obj:`True`):
-                Whether or not to return a [`UNet2DConditionOutput`] instead of a plain tuple.
+            sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
+            timestep (`torch.FloatTensor` or `float` or `int): (batch) timesteps
+            encoder_hidden_states (`torch.FloatTensor`): (batch, channel, height, width) encoder hidden states
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
+            [`~models.unet_2d_condition.UNet2DConditionOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            returning a tuple, the first element is the sample tensor.
         """
         # 0. center input if necessary
         if self.config.center_input_sample:

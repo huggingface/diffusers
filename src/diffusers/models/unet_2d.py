@@ -34,8 +34,8 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             Input sample size.
         in_channels (`int`, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (`int`, *optional*, defaults to 3): Number of channels in the output.
-        center_input_sample (`bool`, *optional*, defaults to :obj:`False`): Whether to center the input sample.
-        time_embedding_type (`str`, *optional*, defaults to :obj:`"positional"`): Type of time embedding to use.
+        center_input_sample (`bool`, *optional*, defaults to `False`): Whether to center the input sample.
+        time_embedding_type (`str`, *optional*, defaults to `"positional"`): Type of time embedding to use.
         freq_shift (`int`, *optional*, defaults to 0): Frequency shift for fourier time embedding.
         flip_sin_to_cos (`bool`, *optional*, defaults to :
             obj:`False`): Whether to flip sin to cos for fourier time embedding.
@@ -46,13 +46,13 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             obj:`("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D")`): Tuple of upsample block types.
         block_out_channels (`Tuple[int]`, *optional*, defaults to :
             obj:`(224, 448, 672, 896)`): Tuple of block output channels.
-        layers_per_block (`int`, *optional*, defaults to :obj:`2`): The number of layers per block.
-        mid_block_scale_factor (`float`, *optional*, defaults to :obj:`1`): The scale factor for the mid block.
-        downsample_padding (`int`, *optional*, defaults to :obj:`1`): The padding for the downsample convolution.
-        act_fn (`str`, *optional*, defaults to :obj:`"silu"`): The activation function to use.
-        attention_head_dim (`int`, *optional*, defaults to :obj:`8`): The attention head dimension.
-        norm_num_groups (`int`, *optional*, defaults to :obj:`32`): The number of groups for the normalization.
-        norm_eps (`float`, *optional*, defaults to :obj:`1e-5`): The epsilon for the normalization.
+        layers_per_block (`int`, *optional*, defaults to `2`): The number of layers per block.
+        mid_block_scale_factor (`float`, *optional*, defaults to `1`): The scale factor for the mid block.
+        downsample_padding (`int`, *optional*, defaults to `1`): The padding for the downsample convolution.
+        act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
+        attention_head_dim (`int`, *optional*, defaults to `8`): The attention head dimension.
+        norm_num_groups (`int`, *optional*, defaults to `32`): The number of groups for the normalization.
+        norm_eps (`float`, *optional*, defaults to `1e-5`): The epsilon for the normalization.
     """
 
     @register_to_config
@@ -170,10 +170,15 @@ class UNet2DModel(ModelMixin, ConfigMixin):
     ) -> Union[UNet2DOutput, Tuple]:
         """r
         Args:
-            sample (:obj:`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
-            timestep(:obj:`torch.FloatTensor` or :obj:`float` or :obj:`int): (batch) timesteps
-            return_dict (:obj:`bool`, *optional*, defaults to :obj:`True`):
-                Whether or not to return a [`UNet2DOutput`] instead of a plain tuple.
+            sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
+            timestep (`torch.FloatTensor` or `float` or `int): (batch) timesteps
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.unet_2d.UNet2DOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.unet_2d.UNet2DOutput`] or `tuple`:
+            [`~models.unet_2d.UNet2DOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            returning a tuple, the first element is the sample tensor.
         """
         # 0. center input if necessary
         if self.config.center_input_sample:

@@ -386,10 +386,10 @@ class VQModel(ModelMixin, ConfigMixin):
             obj:`("UpDecoderBlock2D",)`): Tuple of upsample block types.
         block_out_channels (`Tuple[int]`, *optional*, defaults to :
             obj:`(64,)`): Tuple of block output channels.
-        act_fn (`str`, *optional*, defaults to :obj:`"silu"`): The activation function to use.
-        latent_channels (`int`, *optional*, defaults to :obj:`3`): Number of channels in the latent space.
-        sample_size (`int`, *optional*, defaults to :obj:`32`): TODO
-        num_vq_embeddings (`int`, *optional*, defaults to :obj:`256`): Number of codebook vectors in the VQ-VAE.
+        act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
+        latent_channels (`int`, *optional*, defaults to `3`): Number of channels in the latent space.
+        sample_size (`int`, *optional*, defaults to `32`): TODO
+        num_vq_embeddings (`int`, *optional*, defaults to `256`): Number of codebook vectors in the VQ-VAE.
     """
 
     @register_to_config
@@ -463,8 +463,8 @@ class VQModel(ModelMixin, ConfigMixin):
     def forward(self, sample: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
         r"""
         Args:
-            sample (:obj:`torch.FloatTensor`): Input sample.
-            return_dict (:obj:`bool`, *optional*, defaults to :obj:`True`):
+            sample (`torch.FloatTensor`): Input sample.
+            return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
         """
         x = sample
@@ -493,9 +493,9 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             obj:`("UpDecoderBlock2D",)`): Tuple of upsample block types.
         block_out_channels (`Tuple[int]`, *optional*, defaults to :
             obj:`(64,)`): Tuple of block output channels.
-        act_fn (`str`, *optional*, defaults to :obj:`"silu"`): The activation function to use.
-        latent_channels (`int`, *optional*, defaults to :obj:`4`): Number of channels in the latent space.
-        sample_size (`int`, *optional*, defaults to :obj:`32`): TODO
+        act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
+        latent_channels (`int`, *optional*, defaults to `4`): Number of channels in the latent space.
+        sample_size (`int`, *optional*, defaults to `32`): TODO
     """
 
     @register_to_config
@@ -561,10 +561,10 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
     ) -> Union[DecoderOutput, torch.FloatTensor]:
         r"""
         Args:
-            sample (:obj:`torch.FloatTensor`): Input sample.
-            sample_posterior (:obj:`bool`, *optional*, defaults to :obj:`False`):
+            sample (`torch.FloatTensor`): Input sample.
+            sample_posterior (`bool`, *optional*, defaults to `False`):
                 Whether to sample from the posterior.
-            return_dict (:obj:`bool`, *optional*, defaults to :obj:`True`):
+            return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
         """
         x = sample
