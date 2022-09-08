@@ -16,7 +16,7 @@ We present some techniques and ideas to optimize 🤗 Diffusers _inference_ for 
 
 ## CUDA `autocast`
 
-If you use a CUDA GPU, you can take advantage of `torch.autocast` to perform much faster inference. All you need to do is put your inference call inside an `autocast` context manager. The following example shows how to do it using Stable Diffusion text-to-image generation as an example:
+If you use a CUDA GPU, you can take advantage of `torch.autocast` to perform inference roughly twice as fast at the cost of slightly lower precision. All you need to do is put your inference call inside an `autocast` context manager. The following example shows how to do it using Stable Diffusion text-to-image generation as an example:
 
 ```Python
 from torch import autocast
@@ -32,7 +32,7 @@ with autocast("cuda"):
 
 ## Half precision weights
 
-In order to save a big chunk of GPU memory, you can load the model weights in half precision. This involves loading the float16 version of the weights, which was saved to a branch named `fp16`, and telling PyTorch to use the `float16` type when loading them:
+To save more GPU memory, you can load the model weights directly in half precision. This involves loading the float16 version of the weights, which was saved to a branch named `fp16`, and telling PyTorch to use the `float16` type when loading them:
 
 ```Python
 pipe = StableDiffusionPipeline.from_pretrained(
@@ -45,7 +45,9 @@ pipe = StableDiffusionPipeline.from_pretrained(
 
 ## Sliced attention for additional memory savings
 
-For even additional memory savings, you can use a sliced version of attention that performs the computation in steps instead of all at once. You only need to invoke `enable_attention_slicing()` in your pipeline before inference, like here:
+For even additional memory savings, you can use a sliced version of attention that performs the computation in steps instead of all at once. 
+**Note**: Attention slicing is useful even if a batch size of just 1 is used - as long as the model uses more than one attention head. If there is more than one attention head the *QK^T* attention matrix can be computed sequentially for each head which can save a significant amount of memory.
+To perform the attention computation sequentially over each head, you only need to invoke `enable_attention_slicing()` in your pipeline before inference, like here:
 
 ```Python
 import torch
