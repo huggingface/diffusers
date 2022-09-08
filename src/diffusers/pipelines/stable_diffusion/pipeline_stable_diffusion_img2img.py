@@ -152,7 +152,8 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 plain tuple.
 
         Returns:
-            `~pipelines.stable_diffusion.StableDiffusionPipelineOutput` if `return_dict` is True, otherwise a tuple.
+            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
+            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
             When returning a tuple, the first element is a list with the generated images, and the second element is a
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
