@@ -78,7 +78,7 @@ from setuptools import find_packages, setup
 _deps = [
     "Pillow",
     "accelerate>=0.11.0",
-    "black==22.3",
+    "black==22.8",
     "datasets",
     "filelock",
     "flake8>=3.8.3",
