@@ -41,7 +41,7 @@ conda install -c conda-forge diffusers
 
 **Apple Silicon (M1/M2) support**
 
-See [README_mps.md](README_mps.md).
+Please, refer to [the documentation](https://huggingface.co/docs/diffusers/optimization/mps).
 
 ## Contributing
 
