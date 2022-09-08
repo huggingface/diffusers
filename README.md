@@ -263,11 +263,10 @@ ldm = DiffusionPipeline.from_pretrained(model_id)
 
 # run pipeline in inference (sample random noise and denoise)
 prompt = "A painting of a squirrel eating a burger"
-images = ldm([prompt], num_inference_steps=50, eta=0.3, guidance_scale=6).images
+image = ldm([prompt], num_inference_steps=50, eta=0.3, guidance_scale=6)
 
-# save images
-for idx, image in enumerate(images):
-    image.save(f"squirrel-{idx}.png")
+# save image
+image['sample'][0].save("squirrel.png")
 ```
 - [Unconditional Diffusion with discrete scheduler](https://huggingface.co/google/ddpm-celebahq-256)
 ```python
