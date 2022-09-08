@@ -63,18 +63,19 @@ class AttentionBlock(nn.Module):
 
         # get scores
         scale = 1 / math.sqrt(math.sqrt(self.channels / self.num_heads))
+
         attention_scores = torch.matmul(query_states * scale, key_states.transpose(-1, -2) * scale)
         attention_probs = torch.softmax(attention_scores.float(), dim=-1).type(attention_scores.dtype)
 
         # compute attention output
-        context_states = torch.matmul(attention_probs, value_states)
+        hidden_states = torch.matmul(attention_probs, value_states)
 
-        context_states = context_states.permute(0, 2, 1, 3).contiguous()
-        new_context_states_shape = context_states.size()[:-2] + (self.channels,)
-        context_states = context_states.view(new_context_states_shape)
+        hidden_states = hidden_states.permute(0, 2, 1, 3).contiguous()
+        new_hidden_states_shape = hidden_states.size()[:-2] + (self.channels,)
+        hidden_states = hidden_states.view(new_hidden_states_shape)
 
         # compute next hidden_states
-        hidden_states = self.proj_attn(context_states)
+        hidden_states = self.proj_attn(hidden_states)
         hidden_states = hidden_states.transpose(-1, -2).reshape(batch, channel, height, width)
 
         # res connect and rescale
@@ -107,6 +108,10 @@ class SpatialTransformer(nn.Module):
 
         self.proj_out = nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
 
+    def _set_attention_slice(self, slice_size):
+        for block in self.transformer_blocks:
+            block._set_attention_slice(slice_size)
+
     def forward(self, x, context=None):
         # note: if no context is given, cross-attention defaults to self-attention
         b, c, h, w = x.shape
@@ -136,6 +141,10 @@ class BasicTransformerBlock(nn.Module):
         self.norm3 = nn.LayerNorm(dim)
         self.checkpoint = checkpoint
 
+    def _set_attention_slice(self, slice_size):
+        self.attn1._slice_size = slice_size
+        self.attn2._slice_size = slice_size
+
     def forward(self, x, context=None):
         x = self.attn1(self.norm1(x)) + x
         x = self.attn2(self.norm2(x), context=context) + x
@@ -151,6 +160,10 @@ class CrossAttention(nn.Module):
 
         self.scale = dim_head**-0.5
         self.heads = heads
+        # for slice_size > 0 the attention score computation
+        # is split across the batch axis to save memory
+        # You can set slice_size with `set_attention_slice`
+        self._slice_size = None
 
         self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
         self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
@@ -175,8 +188,6 @@ class CrossAttention(nn.Module):
     def forward(self, x, context=None, mask=None):
         batch_size, sequence_length, dim = x.shape
 
-        h = self.heads
-
         q = self.to_q(x)
         context = context if context is not None else x
         k = self.to_k(context)
@@ -186,20 +197,33 @@ class CrossAttention(nn.Module):
         k = self.reshape_heads_to_batch_dim(k)
         v = self.reshape_heads_to_batch_dim(v)
 
-        sim = torch.einsum("b i d, b j d -> b i j", q, k) * self.scale
-
-        if mask is not None:
-            mask = mask.reshape(batch_size, -1)
-            max_neg_value = -torch.finfo(sim.dtype).max
-            mask = mask[:, None, :].repeat(h, 1, 1)
-            sim.masked_fill_(~mask, max_neg_value)
+        # TODO(PVP) - mask is currently never used. Remember to re-implement when used
 
         # attention, what we cannot get enough of
-        attn = sim.softmax(dim=-1)
+        hidden_states = self._attention(q, k, v, sequence_length, dim)
 
-        out = torch.einsum("b i j, b j d -> b i d", attn, v)
-        out = self.reshape_batch_dim_to_heads(out)
-        return self.to_out(out)
+        return self.to_out(hidden_states)
+
+    def _attention(self, query, key, value, sequence_length, dim):
+        batch_size_attention = query.shape[0]
+        hidden_states = torch.zeros(
+            (batch_size_attention, sequence_length, dim // self.heads), device=query.device, dtype=query.dtype
+        )
+        slice_size = self._slice_size if self._slice_size is not None else hidden_states.shape[0]
+        for i in range(hidden_states.shape[0] // slice_size):
+            start_idx = i * slice_size
+            end_idx = (i + 1) * slice_size
+            attn_slice = (
+                torch.einsum("b i d, b j d -> b i j", query[start_idx:end_idx], key[start_idx:end_idx]) * self.scale
+            )
+            attn_slice = attn_slice.softmax(dim=-1)
+            attn_slice = torch.einsum("b i j, b j d -> b i d", attn_slice, value[start_idx:end_idx])
+
+            hidden_states[start_idx:end_idx] = attn_slice
+
+        # reshape hidden_states
+        hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
+        return hidden_states
 
 
 class FeedForward(nn.Module):

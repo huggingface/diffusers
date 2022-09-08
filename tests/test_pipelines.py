@@ -153,7 +153,6 @@ class PipelineFastTests(unittest.TestCase):
         torch.manual_seed(0)
         config = CLIPTextConfig(
             bos_token_id=0,
-            chunk_size_feed_forward=0,
             eos_token_id=2,
             hidden_size=32,
             intermediate_size=37,
@@ -409,6 +408,38 @@ class PipelineFastTests(unittest.TestCase):
         expected_slice = np.array([0.5067, 0.4689, 0.4614, 0.5233, 0.4903, 0.5112, 0.524, 0.5069, 0.4785])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_stable_diffusion_attention_chunk(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        unet = self.dummy_cond_unet
+        scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        # make sure here that pndm scheduler skips prk
+        sd_pipe = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=self.dummy_safety_checker,
+            feature_extractor=self.dummy_extractor,
+        )
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A painting of a squirrel eating a burger"
+        generator = torch.Generator(device=device).manual_seed(0)
+        output_1 = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
+
+        # make sure chunking the attention yields the same result
+        sd_pipe.enable_attention_slicing(slice_size=1)
+        generator = torch.Generator(device=device).manual_seed(0)
+        output_2 = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
+
+        assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 1e-4
 
     def test_score_sde_ve_pipeline(self):
         unet = self.dummy_uncond_unet
@@ -917,7 +948,7 @@ class PipelineTesterMixin(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.8354, 0.83, 0.866, 0.838, 0.8315, 0.867, 0.836, 0.8584, 0.869])
+        expected_slice = np.array([0.9326, 0.923, 0.951, 0.9365, 0.9214, 0.951, 0.9365, 0.9414, 0.918])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     @slow
@@ -1047,6 +1078,46 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    def test_stable_diffusion_memory_chunking(self):
+        torch.cuda.reset_peak_memory_stats()
+        model_id = "CompVis/stable-diffusion-v1-4"
+        pipe = StableDiffusionPipeline.from_pretrained(
+            model_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True
+        ).to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "a photograph of an astronaut riding a horse"
+
+        # make attention efficient
+        pipe.enable_attention_slicing()
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        with torch.autocast(torch_device):
+            output_chunked = pipe(
+                [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
+            )
+            image_chunked = output_chunked.images
+
+        mem_bytes = torch.cuda.max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
+        # make sure that less than 3.75 GB is allocated
+        assert mem_bytes < 3.75 * 10**9
+
+        # disable chunking
+        pipe.disable_attention_slicing()
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        with torch.autocast(torch_device):
+            output = pipe(
+                [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
+            )
+            image = output.images
+
+        # make sure that more than 3.75 GB is allocated
+        mem_bytes = torch.cuda.max_memory_allocated()
+        assert mem_bytes > 3.75 * 10**9
+        assert np.abs(image_chunked.flatten() - image.flatten()).max() < 1e-3
+
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_img2img_pipeline(self):
         ds = load_dataset("hf-internal-testing/diffusers-images", split="train")
 
@@ -1054,19 +1125,24 @@ class PipelineTesterMixin(unittest.TestCase):
         output_image = ds[0]["image"].resize((768, 512))
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(model_id, use_auth_token=True)
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
+            model_id,
+            revision="fp16",  # fp16 to infer 768x512 images with 16GB of VRAM
+            torch_dtype=torch.float16,
+            use_auth_token=True,
+        )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A fantasy landscape, trending on artstation"
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5, generator=generator)[
-            "sample"
-        ][0]
+        with torch.autocast("cuda"):
+            output = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5, generator=generator)
+        image = output.images[0]
 
-        expected_array = np.array(output_image)
-        sampled_array = np.array(image)
+        expected_array = np.array(output_image) / 255.0
+        sampled_array = np.array(image) / 255.0
 
         assert sampled_array.shape == (512, 768, 3)
         assert np.max(np.abs(sampled_array - expected_array)) < 1e-4
@@ -1082,25 +1158,32 @@ class PipelineTesterMixin(unittest.TestCase):
         lms = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(model_id, scheduler=lms, use_auth_token=True)
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
+            model_id,
+            scheduler=lms,
+            revision="fp16",  # fp16 to infer 768x512 images with 16GB of VRAM
+            torch_dtype=torch.float16,
+            use_auth_token=True,
+        )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A fantasy landscape, trending on artstation"
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5, generator=generator)
+        with torch.autocast("cuda"):
+            output = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5, generator=generator)
         image = output.images[0]
 
-        expected_array = np.array(output_image)
-        sampled_array = np.array(image)
+        expected_array = np.array(output_image) / 255.0
+        sampled_array = np.array(image) / 255.0
 
         assert sampled_array.shape == (512, 768, 3)
         assert np.max(np.abs(sampled_array - expected_array)) < 1e-4
 
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
-    def test_stable_diffusion_in_paint_pipeline(self):
+    def test_stable_diffusion_inpaint_pipeline(self):
         ds = load_dataset("hf-internal-testing/diffusers-images", split="train")
 
         init_image = ds[3]["image"].resize((768, 512))
@@ -1108,24 +1191,31 @@ class PipelineTesterMixin(unittest.TestCase):
         output_image = ds[5]["image"].resize((768, 512))
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionInpaintPipeline.from_pretrained(model_id, use_auth_token=True)
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(
+            model_id,
+            revision="fp16",  # fp16 to infer 768x512 images in 16GB of VRAM
+            torch_dtype=torch.float16,
+            use_auth_token=True,
+        )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A red cat sitting on a parking bench"
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = pipe(
-            prompt=prompt,
-            init_image=init_image,
-            mask_image=mask_image,
-            strength=0.75,
-            guidance_scale=7.5,
-            generator=generator,
-        ).images[0]
+        with torch.autocast("cuda"):
+            output = pipe(
+                prompt=prompt,
+                init_image=init_image,
+                mask_image=mask_image,
+                strength=0.75,
+                guidance_scale=7.5,
+                generator=generator,
+            )
+        image = output.images[0]
 
-        expected_array = np.array(output_image)
-        sampled_array = np.array(image)
+        expected_array = np.array(output_image) / 255.0
+        sampled_array = np.array(image) / 255.0
 
         assert sampled_array.shape == (512, 768, 3)
         assert np.max(np.abs(sampled_array - expected_array)) < 1e-3

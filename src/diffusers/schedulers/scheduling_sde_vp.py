@@ -24,6 +24,15 @@ from .scheduling_utils import SchedulerMixin
 
 
 class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
+    """
+    The variance preserving stochastic differential equation (SDE) scheduler.
+
+    For more information, see the original paper: https://arxiv.org/abs/2011.13456
+
+    UNDER CONSTRUCTION
+
+    """
+
     @register_to_config
     def __init__(self, num_train_timesteps=2000, beta_min=0.1, beta_max=20, sampling_eps=1e-3, tensor_format="np"):
 

@@ -30,11 +30,17 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
 
-    :param num_diffusion_timesteps: the number of betas to produce. :param alpha_bar: a lambda that takes an argument t
-    from 0 to 1 and
-                      produces the cumulative product of (1-beta) up to that part of the diffusion process.
-    :param max_beta: the maximum beta to use; use values lower than 1 to
+    Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
+    to that part of the diffusion process.
+
+
+    Args:
+        num_diffusion_timesteps (`int`): the number of betas to produce.
+        max_beta (`float`): the maximum beta to use; use values lower than 1 to
                      prevent singularities.
+
+    Returns:
+        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
     """
 
     def alpha_bar(time_step):
@@ -49,6 +55,29 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
 
 
 class DDIMScheduler(SchedulerMixin, ConfigMixin):
+    """
+    Denoising diffusion implicit models is a scheduler that extends the denoising procedure introduced in denoising
+    diffusion probabilistic models (DDPMs) with non-Markovian guidance.
+
+    For more details, see the original paper: https://arxiv.org/abs/2010.02502
+
+    Args:
+        num_train_timesteps (`int`): number of diffusion steps used to train the model.
+        beta_start (`float`): the starting `beta` value of inference.
+        beta_end (`float`): the final `beta` value.
+        beta_schedule (`str`):
+            the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
+            `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
+        trained_betas (`np.ndarray`, optional): TODO
+        timestep_values (`np.ndarray`, optional): TODO
+        clip_sample (`bool`, default `True`):
+            option to clip predicted sample between -1 and 1 for numerical stability.
+        set_alpha_to_one (`bool`, default `True`):
+            if alpha for final step is 1 or the final alpha of the "non-previous" one.
+        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays.
+
+    """
+
     @register_to_config
     def __init__(
         self,
@@ -62,7 +91,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         set_alpha_to_one: bool = True,
         tensor_format: str = "pt",
     ):
-
+        if trained_betas is not None:
+            self.betas = np.asarray(trained_betas)
         if beta_schedule == "linear":
             self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
         elif beta_schedule == "scaled_linear":
@@ -101,6 +131,14 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         return variance
 
     def set_timesteps(self, num_inference_steps: int, offset: int = 0):
+        """
+        Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
+
+        Args:
+            num_inference_steps (`int`):
+                the number of diffusion steps used when generating samples with a pre-trained model.
+            offset (`int`): TODO
+        """
         self.num_inference_steps = num_inference_steps
         self.timesteps = np.arange(
             0, self.config.num_train_timesteps, self.config.num_train_timesteps // self.num_inference_steps
@@ -118,7 +156,24 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         generator=None,
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
+        """
+        Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
+        process from the learned model outputs (most often the predicted noise).
 
+        Args:
+            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            timestep (`int`): current discrete timestep in the diffusion chain.
+            sample (`torch.FloatTensor` or `np.ndarray`):
+                current instance of sample being created by diffusion process.
+            eta (`float`): weight of noise for added noise in diffusion step.
+            use_clipped_model_output (`bool`): TODO
+            generator: random number generator.
+            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+
+        Returns:
+            `SchedulerOutput`: updated sample in the diffusion chain.
+
+        """
         if self.num_inference_steps is None:
             raise ValueError(
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
