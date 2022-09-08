@@ -35,8 +35,6 @@
     title: "Open Vino"
   - local: optimization/mps
     title: "MPS"
-  - local: optimization/other
-    title: "Other"
   title: "Optimization/Special Hardware"
 - sections:
   - local: training/overview

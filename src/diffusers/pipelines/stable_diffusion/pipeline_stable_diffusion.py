@@ -198,17 +198,22 @@ class StableDiffusionPipeline(DiffusionPipeline):
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
 
         # get the initial random noise unless the user supplied it
+
+        # Unlike in other pipelines, latents need to be generated in the target device
+        # for 1-to-1 results reproducibility with the CompVis implementation.
+        # However this currently doesn't work in `mps`.
+        latents_device = "cpu" if self.device.type == "mps" else self.device
         latents_shape = (batch_size, self.unet.in_channels, height // 8, width // 8)
         if latents is None:
             latents = torch.randn(
                 latents_shape,
                 generator=generator,
-                device=self.device,
+                device=latents_device,
             )
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
-            latents = latents.to(self.device)
+        latents = latents.to(self.device)
 
         # set timesteps
         accepts_offset = "offset" in set(inspect.signature(self.scheduler.set_timesteps).parameters.keys())
