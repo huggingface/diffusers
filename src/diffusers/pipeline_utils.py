@@ -28,6 +28,7 @@ from huggingface_hub import snapshot_download
 from PIL import Image
 from tqdm.auto import tqdm
 
+import diffusers
 from .configuration_utils import ConfigMixin
 from .utils import DIFFUSERS_CACHE, BaseOutput, logging
 
@@ -166,6 +167,7 @@ class DiffusionPipeline(ConfigMixin):
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
+        provider = kwargs.pop("provider", None)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -260,6 +262,8 @@ class DiffusionPipeline(ConfigMixin):
                 loading_kwargs = {}
                 if issubclass(class_obj, torch.nn.Module):
                     loading_kwargs["torch_dtype"] = torch_dtype
+                if issubclass(class_obj, diffusers.OnnxRuntimeModel):
+                    loading_kwargs["provider"] = provider
 
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):

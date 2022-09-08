@@ -1150,11 +1150,18 @@ class PipelineTesterMixin(unittest.TestCase):
         assert sampled_array.shape == (512, 768, 3)
         assert np.max(np.abs(sampled_array - expected_array)) < 1e-3
 
+    @slow
     def test_stable_diffusion_onnx(self):
-        sd_pipe = StableDiffusionOnnxPipeline.from_pretrained("scripts/sd_onnx")
+        from scripts.convert_stable_diffusion_checkpoint_to_onnx import convert_models
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            convert_models("CompVis/stable-diffusion-v1-4", tmpdirname, opset=14)
+
+            sd_pipe = StableDiffusionOnnxPipeline.from_pretrained(tmpdirname, provider="CUDAExecutionProvider")
 
         prompt = "A painting of a squirrel eating a burger"
-        output = sd_pipe([prompt], seed=0, guidance_scale=6.0, num_inference_steps=20, output_type="np")
+        np.random.seed(0)
+        output = sd_pipe([prompt], guidance_scale=6.0, num_inference_steps=20, output_type="np")
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]

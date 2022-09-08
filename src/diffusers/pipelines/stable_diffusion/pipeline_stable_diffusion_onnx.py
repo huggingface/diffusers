@@ -50,7 +50,6 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
         eta: Optional[float] = 0.0,
-        seed: int = None,
         latents: Optional[np.ndarray] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -94,7 +93,6 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
             text_embeddings = np.concatenate([uncond_embeddings, text_embeddings])
 
         # get the initial random noise unless the user supplied it
-        np.random.seed(seed)
         latents_shape = (batch_size, 4, height // 8, width // 8)
         if latents is None:
             latents = np.random.randn(*latents_shape).astype(np.float32)

@@ -79,7 +79,7 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
 
         return images, has_nsfw_concepts
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def forward_onnx(self, clip_input: torch.FloatTensor, images: torch.FloatTensor):
         pooled_output = self.vision_model(clip_input)[1]  # pooled_output
         image_embeds = self.visual_projection(pooled_output)

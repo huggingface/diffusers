@@ -148,7 +148,7 @@ class OnnxRuntimeModel:
         model_file_name = file_name if file_name is not None else ONNX_WEIGHTS_NAME
         # load model from local directory
         if os.path.isdir(model_id):
-            model = OnnxRuntimeModel.load_model(os.path.join(model_id, model_file_name))
+            model = OnnxRuntimeModel.load_model(os.path.join(model_id, model_file_name), provider=provider)
             kwargs["model_save_dir"] = Path(model_id)
         # load model from hub
         else:

@@ -66,8 +66,9 @@ def onnx_export(
 
 
 @torch.no_grad()
-def convert_models(model_path: str, opset: int, output_path: Path):
+def convert_models(model_path: str, output_path: str, opset: int):
     pipeline = StableDiffusionPipeline.from_pretrained(model_path, use_auth_token=True)
+    output_path = Path(output_path)
 
     # TEXT ENCODER
     text_input = pipeline.tokenizer(
@@ -124,7 +125,7 @@ def convert_models(model_path: str, opset: int, output_path: Path):
 
     # VAE DECODER
     vae_decoder = pipeline.vae
-    # need to get the raw tensor output (sample) from the encoder
+    # forward only through the decoder part
     vae_decoder.forward = vae_encoder.decode
     onnx_export(
         vae_decoder,
@@ -192,5 +193,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    output_path = Path(args.output_path)
-    convert_models(args.model_path, args.opset, output_path)
+    convert_models(args.model_path, args.output_path, args.opset)
