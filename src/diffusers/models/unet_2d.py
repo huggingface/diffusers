@@ -37,8 +37,10 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         flip_sin_to_cos (`bool`, *optional*, defaults to :
             obj:`False`): Whether to flip sin to cos for fourier time embedding.
         down_block_types (`Tuple[str]`, *optional*, defaults to :
-            obj:`("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D")`): Tuple of downsample block types.
-        up_block_types (`Tuple[str]`, *optional*, defaults to :obj:`("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D")`): Tuple of upsample block types.
+            obj:`("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D")`): Tuple of downsample block
+            types.
+        up_block_types (`Tuple[str]`, *optional*, defaults to :
+            obj:`("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D")`): Tuple of upsample block types.
         block_out_channels (`Tuple[int]`, *optional*, defaults to :
             obj:`(224, 448, 672, 896)`): Tuple of block output channels.
         layers_per_block (`int`, *optional*, defaults to :obj:`2`): The number of layers per block.
