@@ -2,9 +2,10 @@ import os
 import random
 import unittest
 from distutils.util import strtobool
-from packaging import version
 
 import torch
+
+from packaging import version
 
 
 global_rng = random.Random()
