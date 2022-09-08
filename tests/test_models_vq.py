@@ -78,8 +78,6 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
     def test_output_pretrained(self):
         model = VQModel.from_pretrained("fusing/vqgan-dummy")
         model.to(torch_device).eval()
-        if isinstance(model, ModelMixin):
-            model._mps_warmup(1)
 
         torch.manual_seed(0)
         if torch.cuda.is_available():
@@ -88,6 +86,9 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
         image = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
         image = image.to(torch_device)
         with torch.no_grad():
+            # Warmup pass when using mps (see #372)
+            if torch_device == "mps":
+                _ = model(image)
             output = model(image).sample
 
         output_slice = output[0, -1, -3:, -3:].flatten().cpu()

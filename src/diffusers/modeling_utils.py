@@ -585,37 +585,6 @@ class ModelMixin(torch.nn.Module):
         else:
             return sum(p.numel() for p in self.parameters() if p.requires_grad or not only_trainable)
 
-    def _mps_warmup_inputs(self, batch_size=None) -> Optional[Tuple]:
-        r"""
-        Temporary procedure to run a one-time forward pass on some models, when using the `mps` device.
-
-        It has been observed that the output of some models (`unet`, `vae`) is different the first time they run than the
-        rest, for the same inputs. We are investigating the root cause of the problem, but meanwhile these methods can be
-        used, if desired, to warmup those modules so their outputs are consistent.
-
-        Return inputs suitable for the forward pass of this model.
-        These will usually be a tuple of tensors that will be automatically moved to the `mps` device on warmup.
-
-        Return `None` if no warmup is required.
-        """
-        return None
-
-    def _mps_warmup(self, batch_size=None, **kwargs):
-        r"""
-        Temporary procedure to run a one-time forward pass on some models, when using the `mps` device.
-
-        Applies the warmup using `warmup_inputs`.
-        """
-        if self.device.type != "mps":
-            return
-
-        with torch.no_grad():
-            w_inputs = self._mps_warmup_inputs(batch_size)
-            if w_inputs is None:
-                return
-            w_inputs = [w.to("mps") for w in w_inputs]
-            self.__call__(*w_inputs, **kwargs)
-
 
 def unwrap_model(model: torch.nn.Module) -> torch.nn.Module:
     """

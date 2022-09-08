@@ -194,7 +194,10 @@ class PipelineFastTests(unittest.TestCase):
         ddpm = DDIMPipeline(unet=unet, scheduler=scheduler)
         ddpm.to(torch_device)
         ddpm.set_progress_bar_config(disable=None)
-        ddpm.unet._mps_warmup()
+
+        # Warmup pass when using mps (see #372)
+        if torch_device == "mps":
+            _ = ddpm(num_inference_steps=1)
 
         generator = torch.manual_seed(0)
         image = ddpm(generator=generator, num_inference_steps=2, output_type="numpy").images
@@ -209,7 +212,7 @@ class PipelineFastTests(unittest.TestCase):
         expected_slice = np.array(
             [1.000e00, 5.717e-01, 4.717e-01, 1.000e00, 0.000e00, 1.000e00, 3.000e-04, 0.000e00, 9.000e-04]
         )
-        tolerance = 1e-2 if torch_device != "mps" else 2.5e-2
+        tolerance = 1e-2 if torch_device != "mps" else 3e-2
         assert np.abs(image_slice.flatten() - expected_slice).max() < tolerance
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < tolerance
 
@@ -248,7 +251,7 @@ class PipelineFastTests(unittest.TestCase):
 
         prompt = "A painting of a squirrel eating a burger"
 
-        # Skip first when using mps (see #372)
+        # Warmup pass when using mps (see #372)
         if torch_device == "mps":
             generator = torch.manual_seed(0)
             _ = ldm([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=1, output_type="numpy")[
@@ -452,7 +455,7 @@ class PipelineFastTests(unittest.TestCase):
         ldm.to(torch_device)
         ldm.set_progress_bar_config(disable=None)
 
-        # Skip first when using mps (see #372)
+        # Warmup pass when using mps (see #372)
         if torch_device == "mps":
             generator = torch.manual_seed(0)
             _ = ldm(generator=generator, num_inference_steps=1, output_type="numpy").images

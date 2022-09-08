@@ -80,8 +80,13 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
         model = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy")
         model = model.to(torch_device)
         model.eval()
-        if isinstance(model, ModelMixin):
-            model._mps_warmup(1, sample_posterior=True)
+
+        # One-time warmup pass (see #372)
+        if torch_device == "mps" and isinstance(model, ModelMixin):
+            image = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
+            image = image.to(torch_device)
+            with torch.no_grad():
+                _ = model(image, sample_posterior=True).sample
 
         torch.manual_seed(0)
         if torch.cuda.is_available():

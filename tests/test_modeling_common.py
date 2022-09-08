@@ -32,18 +32,19 @@ class ModelTesterMixin:
 
         model = self.model_class(**init_dict)
         model.to(torch_device)
-        if isinstance(model, ModelMixin):
-            model._mps_warmup()
         model.eval()
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             model.save_pretrained(tmpdirname)
             new_model = self.model_class.from_pretrained(tmpdirname)
             new_model.to(torch_device)
-            if isinstance(new_model, ModelMixin):
-                model._mps_warmup(inputs_dict["sample"].shape[0])
 
         with torch.no_grad():
+            # Warmup pass when using mps (see #372)
+            if torch_device == "mps" and isinstance(model, ModelMixin):
+                _  = model(**self.dummy_input)
+                _ = new_model(**self.dummy_input)
+
             image = model(**inputs_dict)
             if isinstance(image, dict):
                 image = image.sample
@@ -61,10 +62,12 @@ class ModelTesterMixin:
         model = self.model_class(**init_dict)
         model.to(torch_device)
         model.eval()
-        if isinstance(model, ModelMixin):
-            model._mps_warmup(inputs_dict["sample"].shape[0])
 
         with torch.no_grad():
+            # Warmup pass when using mps (see #372)
+            if torch_device == "mps" and isinstance(model, ModelMixin):
+                model(**self.dummy_input)
+
             first = model(**inputs_dict)
             if isinstance(first, dict):
                 first = first.sample
@@ -142,6 +145,7 @@ class ModelTesterMixin:
         self.assertEqual(output_1.shape, output_2.shape)
 
     def test_training(self):
+        # Warmup pass when using mps (see #372)
         if torch_device == "mps":
             pytest.skip("mps: unsupported training device")
 
@@ -160,6 +164,7 @@ class ModelTesterMixin:
         loss.backward()
 
     def test_ema_training(self):
+        # Warmup pass when using mps (see #372)
         if torch_device == "mps":
             pytest.skip("mps: unsupported training device")
 
@@ -217,10 +222,12 @@ class ModelTesterMixin:
         model = self.model_class(**init_dict)
         model.to(torch_device)
         model.eval()
-        if isinstance(model, ModelMixin):
-            model._mps_warmup(inputs_dict["sample"].shape[0])
 
         with torch.no_grad():
+            # Warmup pass when using mps (see #372)
+            if torch_device == "mps" and isinstance(model, ModelMixin):
+                model(**self.dummy_input)
+
             outputs_dict = model(**inputs_dict)
             outputs_tuple = model(**inputs_dict, return_dict=False)
 
