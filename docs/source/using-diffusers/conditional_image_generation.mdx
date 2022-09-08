@@ -12,21 +12,39 @@ specific language governing permissions and limitations under the License.
 
 
 
-# Quicktour
+# Conditional Image Generation
 
-Start using Diffusers🧨 quickly!
-To start, use the [`DiffusionPipeline`] for quick inference and sample generations!
+The [`DiffusionPipeline`] is the easiest way to use a pre-trained diffusion system for inference
 
+Start by creating an instance of [`DiffusionPipeline`] and specify which pipeline checkpoint you would like to download.
+You can use the [`DiffusionPipeline`] for any [Diffusers' checkpoint](https://huggingface.co/models?library=diffusers&sort=downloads).
+In this guide though, you'll use [`DiffusionPipeline`] for text-to-image generation with [Latent Diffusion](https://huggingface.co/CompVis/ldm-text2im-large-256):
+
+```python
+>>> from diffusers import DiffusionPipeline
+
+>>> generator = DiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large-256")
 ```
-pip install diffusers
+The [`DiffusionPipeline`] downloads and caches all modeling, tokenization, and scheduling components. 
+Because the model consists of roughly 1.4 billion parameters, we strongly recommend running it on GPU.
+You can move the generator object to GPU, just like you would in PyTorch.
+
+```python
+>>> generator.to("cuda")
 ```
 
-## Main classes
+Now you can use the `generator` on your text prompt:
 
-### Models
+```python
+>>> image = generator("An image of a squirrel in Picasso style").images[0]
+```
 
-### Schedulers
+The output is by default wrapped into a [PIL Image object](https://pillow.readthedocs.io/en/stable/reference/Image.html?highlight=image#the-image-class).
 
-### Pipeliens
+You can save the image by simply calling:
+
+```python
+>>> image.save("image_of_squirrel_painting.png")
+```
 
 
