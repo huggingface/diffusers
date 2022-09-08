@@ -124,13 +124,13 @@ class ModelMixin(torch.nn.Module):
 
     Class attributes (overridden by derived classes):
 
-        - **config_class** ([`ConfigMixin`]) -- A subclass of [`ConfigMixin`] to use as configuration class for this
+        - **config_class** ([`ModelMixin`]) -- A subclass of [`ConfigMixin`] to use as configuration class for this
           model architecture.
         - **load_tf_weights** (`Callable`) -- A python *method* for loading a TensorFlow checkpoint in a PyTorch model,
           taking as arguments:
 
             - **model** ([`ModelMixin`]) -- An instance of the model on which to load the TensorFlow checkpoint.
-            - **config** ([`PreTrainedConfigMixin`]) -- An instance of the configuration associated to the model.
+            - **config** ([`PreTrainedModelMixin`]) -- An instance of the configuration associated to the model.
             - **path** (`str`) -- A path to the TensorFlow checkpoint.
 
         - **base_model_prefix** (`str`) -- A string indicating the attribute associated to the base model in derived
@@ -219,35 +219,13 @@ class ModelMixin(torch.nn.Module):
                 Can be either:
 
                     - A string, the *model id* of a pretrained model hosted inside a model repo on huggingface.co.
-                      Valid model ids can be located at the root-level, like `bert-base-uncased`, or namespaced under a
-                      user or organization name, like `dbmdz/bert-base-german-cased`.
-                    - A path to a *directory* containing model weights saved using [`~ModelMixin.save_pretrained`],
+                      Valid model ids should have an organization name, like `google/ddpm-celebahq-256`.
+                    - A path to a *directory* containing model weights saved using [`~ModelMixin.save_config`],
                       e.g., `./my_model_directory/`.
 
-            config (`Union[ConfigMixin, str, os.PathLike]`, *optional*):
-                Can be either:
-
-                    - an instance of a class derived from [`ConfigMixin`],
-                    - a string or path valid as input to [`~ConfigMixin.from_pretrained`].
-
-                ConfigMixinuration for the model to use instead of an automatically loaded configuration.
-                ConfigMixinuration can be automatically loaded when:
-
-                    - The model is a model provided by the library (loaded with the *model id* string of a pretrained
-                      model).
-                    - The model was saved using [`~ModelMixin.save_pretrained`] and is reloaded by supplying the save
-                      directory.
-                    - The model is loaded by supplying a local directory as `pretrained_model_name_or_path` and a
-                      configuration JSON file named *config.json* is found in the directory.
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory in which a downloaded pretrained model configuration should be cached if the
                 standard cache should not be used.
-            from_tf (`bool`, *optional*, defaults to `False`):
-                Load the model weights from a TensorFlow checkpoint save file (see docstring of
-                `pretrained_model_name_or_path` argument).
-            from_flax (`bool`, *optional*, defaults to `False`):
-                Load the model weights from a Flax checkpoint save file (see docstring of
-                `pretrained_model_name_or_path` argument).
             ignore_mismatched_sizes (`bool`, *optional*, defaults to `False`):
                 Whether or not to raise an error if some of the weights from the checkpoint do not have the same size
                 as the weights of the model (if for instance, you are instantiating a model with 10 labels from a
@@ -286,7 +264,7 @@ class ModelMixin(torch.nn.Module):
                       underlying model's `__init__` method (we assume all relevant updates to the configuration have
                       already been done)
                     - If a configuration is not provided, `kwargs` will be first passed to the configuration class
-                      initialization function ([`~ConfigMixin.from_pretrained`]). Each key of `kwargs` that corresponds
+                      initialization function ([`~ModelMixin.from_pretrained`]). Each key of `kwargs` that corresponds
                       to a configuration attribute will be used to override said attribute with the supplied `kwargs`
                       value. Remaining keys that do not correspond to any configuration attribute will be passed to the
                       underlying model's `__init__` function.
