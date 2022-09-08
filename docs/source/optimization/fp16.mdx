@@ -32,7 +32,7 @@ with autocast("cuda"):
 
 ## Half precision weights
 
-In order to save a big chunk of GPU memory, you can load the model weights in half precision. This involves loading the float16 version of the weights, which was saved to a branch named `fp16`, and telling PyTorch to use the `float16` type when loading them:
+To save more GPU memory, you can load the model weights directly in half precision. This involves loading the float16 version of the weights, which was saved to a branch named `fp16`, and telling PyTorch to use the `float16` type when loading them:
 
 ```Python
 pipe = StableDiffusionPipeline.from_pretrained(
