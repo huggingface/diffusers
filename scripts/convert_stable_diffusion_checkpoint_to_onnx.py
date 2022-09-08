@@ -19,7 +19,7 @@ import torch
 from torch.onnx import export
 
 from diffusers import StableDiffusionOnnxPipeline, StableDiffusionPipeline
-from diffusers.onnx_utils import OnnxModel
+from diffusers.onnx_utils import OnnxRuntimeModel
 from packaging import version
 
 
@@ -69,7 +69,7 @@ def onnx_export(
 def convert_models(model_path: str, opset: int, output_path: Path):
     pipeline = StableDiffusionPipeline.from_pretrained(model_path, use_auth_token=True)
 
-    ## TEXT ENCODER ##
+    # TEXT ENCODER
     text_input = pipeline.tokenizer(
         "A sample prompt",
         padding="max_length",
@@ -90,7 +90,7 @@ def convert_models(model_path: str, opset: int, output_path: Path):
         opset=opset,
     )
 
-    ## UNET ##
+    # UNET
     onnx_export(
         pipeline.unet,
         model_args=(torch.randn(2, 4, 64, 64), torch.LongTensor([0, 1]), torch.randn(2, 77, 768), False),
@@ -103,10 +103,10 @@ def convert_models(model_path: str, opset: int, output_path: Path):
             "encoder_hidden_states": {0: "batch", 1: "sequence"},
         },
         opset=opset,
-        use_external_data_format=True,  # UNet id > 2GB, so the weights need to be split
+        use_external_data_format=True,  # UNet is > 2GB, so the weights need to be split
     )
 
-    ## VAE ENCODER ##
+    # VAE ENCODER
     vae_encoder = pipeline.vae
     # need to get the raw tensor output (sample) from the encoder
     vae_encoder.forward = lambda sample, return_dict: vae_encoder.encode(sample, return_dict)[0].sample()
@@ -122,7 +122,7 @@ def convert_models(model_path: str, opset: int, output_path: Path):
         opset=opset,
     )
 
-    ## VAE DECODER ##
+    # VAE DECODER
     vae_decoder = pipeline.vae
     # need to get the raw tensor output (sample) from the encoder
     vae_decoder.forward = vae_encoder.decode
@@ -138,7 +138,9 @@ def convert_models(model_path: str, opset: int, output_path: Path):
         opset=opset,
     )
 
-    ## SAFETY CHECKER ##
+    # SAFETY CHECKER
+    safety_checker = pipeline.safety_checker
+    safety_checker.forward = safety_checker.forward_onnx
     onnx_export(
         pipeline.safety_checker,
         model_args=(torch.randn(1, 3, 224, 224), torch.randn(1, 512, 512, 3)),
@@ -153,12 +155,12 @@ def convert_models(model_path: str, opset: int, output_path: Path):
     )
 
     onnx_pipeline = StableDiffusionOnnxPipeline(
-        vae_decoder=OnnxModel.from_pretrained(output_path / "vae_decoder"),
-        text_encoder=OnnxModel.from_pretrained(output_path / "text_encoder"),
+        vae_decoder=OnnxRuntimeModel.from_pretrained(output_path / "vae_decoder"),
+        text_encoder=OnnxRuntimeModel.from_pretrained(output_path / "text_encoder"),
         tokenizer=pipeline.tokenizer,
-        unet=OnnxModel.from_pretrained(output_path / "unet"),
+        unet=OnnxRuntimeModel.from_pretrained(output_path / "unet"),
         scheduler=pipeline.scheduler,
-        safety_checker=OnnxModel.from_pretrained(output_path / "safety_checker"),
+        safety_checker=OnnxRuntimeModel.from_pretrained(output_path / "safety_checker"),
         feature_extractor=pipeline.feature_extractor,
     )
 

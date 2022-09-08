@@ -11,7 +11,7 @@ __version__ = "0.3.0.dev0"
 
 from .modeling_utils import ModelMixin
 from .models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
-from .onnx_utils import OnnxModel
+from .onnx_utils import OnnxRuntimeModel
 from .optimization import (
     get_constant_schedule,
     get_constant_schedule_with_warmup,

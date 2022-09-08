@@ -4,7 +4,7 @@
 from ..utils import DummyObject, requires_backends
 
 
-class StableDiffusionPipeline(metaclass=DummyObject):
+class StableDiffusionOnnxPipeline(metaclass=DummyObject):
     _backends = ["transformers", "onnx"]
 
     def __init__(self, *args, **kwargs):

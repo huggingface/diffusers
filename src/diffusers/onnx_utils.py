@@ -37,7 +37,7 @@ ONNX_WEIGHTS_NAME = "model.onnx"
 logger = logging.get_logger(__name__)
 
 
-class OnnxModel:
+class OnnxRuntimeModel:
     base_model_prefix = "onnx_model"
 
     def __init__(self, model=None, **kwargs):
@@ -53,26 +53,27 @@ class OnnxModel:
     @staticmethod
     def load_model(path: Union[str, Path], provider=None):
         """
+        Loads an ONNX Inference session with an ExecutionProvider. Default provider is `CPUExecutionProvider`
+
         Arguments:
-        loads ONNX Inference session with Provider. Default Provider is if CUDAExecutionProvider GPU available else
-        `CPUExecutionProvider`
             path (`str` or `Path`):
                 Directory from which to load
             provider(`str`, *optional*):
-                Onnxruntime provider to use for loading the model, defaults to `CUDAExecutionProvider` if GPU is
-                available else `CPUExecutionProvider`
+                Onnxruntime execution provider to use for loading the model, defaults to `CPUExecutionProvider`
         """
         if provider is None:
+            logger.info("No onnxruntime provider specified, using CPUExecutionProvider")
             provider = "CPUExecutionProvider"
 
         return ort.InferenceSession(path, providers=[provider])
 
     def _save_pretrained(self, save_directory: Union[str, Path], file_name: Optional[str] = None, **kwargs):
         """
-        Arguments:
         Save a model and its configuration file to a directory, so that it can be re-loaded using the
         [`~optimum.onnxruntime.modeling_ort.ORTModel.from_pretrained`] class method. It will always save the
         latest_model_name.
+
+        Arguments:
             save_directory (`str` or `Path`):
                 Directory where to save the model file.
             file_name(`str`, *optional*):
@@ -92,8 +93,10 @@ class OnnxModel:
         **kwargs,
     ):
         """
+        Save a model to a directory, so that it can be re-loaded using the [`~OnnxModel.from_pretrained`] class
+        method.:
+
         Arguments:
-        Save a model to a directory, so that it can be re-loaded using the [`~OnnxModel.from_pretrained`] class method.:
             save_directory (`str` or `os.PathLike`):
                 Directory to which to save. Will be created if it doesn't exist.
         """
@@ -119,10 +122,9 @@ class OnnxModel:
         **kwargs,
     ):
         """
+        Load a model from a directory or the HF Hub.
+
         Arguments:
-        Load a model from a directory or the HF Hub. Implements:
-        https:
-            //github.com/huggingface/huggingface_hub/blob/e67de48368bc1843e40afc1cc9d236402b9609ee/src/huggingface_hub/hub_mixin.py#L73
             model_id (`str` or `Path`):
                 Directory from which to load
             use_auth_token (`str` or `bool`):
@@ -146,7 +148,7 @@ class OnnxModel:
         model_file_name = file_name if file_name is not None else ONNX_WEIGHTS_NAME
         # load model from local directory
         if os.path.isdir(model_id):
-            model = OnnxModel.load_model(os.path.join(model_id, model_file_name))
+            model = OnnxRuntimeModel.load_model(os.path.join(model_id, model_file_name))
             kwargs["model_save_dir"] = Path(model_id)
         # load model from hub
         else:
@@ -161,7 +163,7 @@ class OnnxModel:
             )
             kwargs["model_save_dir"] = Path(model_cache_path).parent
             kwargs["latest_model_name"] = Path(model_cache_path).name
-            model = OnnxModel.load_model(model_cache_path, provider=provider)
+            model = OnnxRuntimeModel.load_model(model_cache_path, provider=provider)
         return cls(model=model, **kwargs)
 
     @classmethod

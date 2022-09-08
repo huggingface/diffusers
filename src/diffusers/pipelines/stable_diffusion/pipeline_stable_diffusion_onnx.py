@@ -5,29 +5,29 @@ import numpy as np
 
 from transformers import CLIPFeatureExtractor, CLIPTokenizer
 
-from ...onnx_utils import OnnxModel
+from ...onnx_utils import OnnxRuntimeModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from . import StableDiffusionPipelineOutput
 
 
 class StableDiffusionOnnxPipeline(DiffusionPipeline):
-    vae_decoder: OnnxModel
-    text_encoder: OnnxModel
+    vae_decoder: OnnxRuntimeModel
+    text_encoder: OnnxRuntimeModel
     tokenizer: CLIPTokenizer
-    unet: OnnxModel
+    unet: OnnxRuntimeModel
     scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler]
-    safety_checker: OnnxModel
+    safety_checker: OnnxRuntimeModel
     feature_extractor: CLIPFeatureExtractor
 
     def __init__(
         self,
-        vae_decoder: OnnxModel,
-        text_encoder: OnnxModel,
+        vae_decoder: OnnxRuntimeModel,
+        text_encoder: OnnxRuntimeModel,
         tokenizer: CLIPTokenizer,
-        unet: OnnxModel,
+        unet: OnnxRuntimeModel,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
-        safety_checker: OnnxModel,
+        safety_checker: OnnxRuntimeModel,
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
