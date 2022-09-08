@@ -279,18 +279,22 @@ image.save("squirrel.png")
 - [Unconditional Diffusion with discrete scheduler](https://huggingface.co/google/ddpm-celebahq-256)
 ```python
 # !pip install diffusers
+from torch import autocast
 from diffusers import DDPMPipeline, DDIMPipeline, PNDMPipeline
 
 model_id = "google/ddpm-celebahq-256"
+device = "cuda"
 
 # load model and scheduler
 ddpm = DDPMPipeline.from_pretrained(model_id)  # you can replace DDPMPipeline with DDIMPipeline or PNDMPipeline for faster inference
+ddpm.to(device)
 
 # run pipeline in inference (sample random noise and denoise)
-image = ddpm().images
+with autocast("cuda"):
+    image = ddpm().images[0]
 
 # save image
-image[0].save("ddpm_generated_image.png")
+image.save("ddpm_generated_image.png")
 ```
 - [Unconditional Latent Diffusion](https://huggingface.co/CompVis/ldm-celebahq-256)
 - [Unconditional Diffusion with continous scheduler](https://huggingface.co/google/ncsnpp-ffhq-1024)
