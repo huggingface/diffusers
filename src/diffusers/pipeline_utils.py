@@ -72,6 +72,20 @@ class ImagePipelineOutput(BaseOutput):
 
 
 class DiffusionPipeline(ConfigMixin):
+    r"""
+    Base class for all models.
+
+    [`DiffusionPipeline`] takes care of storing all components (models, schedulers, processors) for diffusion pipelines
+    and handles methods for loading, downloading and saving models as well as a few methods common to all pipelines to:
+
+        - move all PyTorch modules to the device of your choice
+        - enabling/disabling the progress bar for the denoising iteration
+
+    Class attributes:
+
+        - **config_name** ([`str`]) -- name of the config file that will store the class and module names of all
+          compenents of the diffusion pipeline.
+    """
     config_name = "model_index.json"
 
     def register_modules(self, **kwargs):
@@ -105,6 +119,15 @@ class DiffusionPipeline(ConfigMixin):
             setattr(self, name, module)
 
     def save_pretrained(self, save_directory: Union[str, os.PathLike]):
+        """
+        Save all variables of the pipeline that can be saved and loaded as well as the pipelines configuration file to
+        a directory. A pipeline variable can be saved and loaded if its class implements both a save and loading
+        method. The pipeline can easily be re-loaded using the `[`~DiffusionPipeline.from_pretrained`]` class method.
+
+        Arguments:
+            save_directory (`str` or `os.PathLike`):
+                Directory to which to save. Will be created if it doesn't exist.
+        """
         self.save_config(save_directory)
 
         model_index_dict = dict(self.config)
@@ -145,6 +168,10 @@ class DiffusionPipeline(ConfigMixin):
 
     @property
     def device(self) -> torch.device:
+        r"""
+        Returns:
+            `torch.device`: The torch device on which the pipeline is located.
+        """
         module_names, _ = self.extract_init_dict(dict(self.config))
         for name in module_names.keys():
             module = getattr(self, name)
@@ -155,7 +182,94 @@ class DiffusionPipeline(ConfigMixin):
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
         r"""
-        Add docstrings
+        Instantiate a PyTorch diffusion pipeline from pre-trained pipeline weights.
+
+        The pipeline is set in evaluation mode by default using `model.eval()` (Dropout modules are deactivated).
+
+        The warning *Weights from XXX not initialized from pretrained model* means that the weights of XXX do not come
+        pretrained with the rest of the model. It is up to you to train those weights with a downstream fine-tuning
+        task.
+
+        The warning *Weights from XXX not used in YYY* means that the layer XXX is not used by YYY, therefore those
+        weights are discarded.
+
+        Parameters:
+            pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
+                Can be either:
+
+                    - A string, the *repo id* of a pretrained pipeline hosted inside a model repo on
+                      https://huggingface.co/ Valid repo ids have to be located under a user or organization name, like
+                      `CompVis/ldm-text2im-large-256`.
+                    - A path to a *directory* containing pipeline weights saved using
+                      [`~DiffusionPipeline.save_pretrained`], e.g., `./my_pipeline_directory/`.
+            torch_dtype (`str` or `torch.dtype`, *optional*):
+                Override the default `torch.dtype` and load the model under this dtype. If `"auto"` is passed the dtype
+                will be automatically derived from the model's weights.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
+            resume_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to delete incompletely received files. Will attempt to resume the download if such a
+                file exists.
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
+                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+            output_loading_info(`bool`, *optional*, defaults to `False`):
+                Whether ot not to also return a dictionary containing missing keys, unexpected keys and error messages.
+            local_files_only(`bool`, *optional*, defaults to `False`):
+                Whether or not to only look at local files (i.e., do not try to download the model).
+            use_auth_token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, will use the token generated
+                when running `huggingface-cli login` (stored in `~/.huggingface`).
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
+                git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
+                identifier allowed by git.
+            mirror (`str`, *optional*):
+                Mirror source to accelerate downloads in China. If you are from China and have an accessibility
+                problem, you can set this option to resolve it. Note that we do not guarantee the timeliness or safety.
+                Please refer to the mirror site for more information. specify the folder name here.
+
+            kwargs (remaining dictionary of keyword arguments, *optional*):
+                Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
+                speficic pipeline class. The overritten components are then directly passed to the pipelines `__init__`
+                method. See example below for more information.
+
+        <Tip>
+
+        Passing `use_auth_token=True`` is required when you want to use a private model, *e.g.*
+        `"CompVis/stable-diffusion-v1-4"`
+
+        </Tip>
+
+        <Tip>
+
+        Activate the special ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to use
+        this method in a firewalled environment.
+
+        </Tip>
+
+        Examples:
+
+        ```py
+        >>> from diffusers import DiffusionPipeline
+
+        >>> # Download pipeline from huggingface.co and cache.
+        >>> pipeline = DiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large-256")
+
+        >>> # Download pipeline that requires an authorization token
+        >>> # For more information on access tokens, please refer to this section
+        >>> # of the documentation](https://huggingface.co/docs/hub/security-tokens)
+        >>> pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+
+        >>> # Download pipeline, but overwrite scheduler
+        >>> from diffusers import LMSDiscreteScheduler
+
+        >>> scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
+        >>> pipeline = DiffusionPipeline.from_pretrained(
+        ...     "CompVis/stable-diffusion-v1-4", scheduler=scheduler, use_auth_token=True
+        ... )
+        ```
         """
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         resume_download = kwargs.pop("resume_download", False)
