@@ -238,7 +238,6 @@ class TextualInversionDataset(Dataset):
         placeholder_token="*",
         center_crop=False,
     ):
-
         self.data_root = data_root
         self.tokenizer = tokenizer
         self.learnable_property = learnable_property
