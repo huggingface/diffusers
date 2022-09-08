@@ -47,12 +47,19 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
     """
     The variance exploding stochastic differential equation (SDE) scheduler.
 
-    :param snr: coefficient weighting the step from the model_output sample (from the network) to the random noise.
-    :param sigma_min: initial noise scale for sigma sequence in sampling procedure. The minimum sigma should mirror the
-            distribution of the data.
-    :param sigma_max: :param sampling_eps: the end value of sampling, where timesteps decrease progessively from 1 to
-    epsilon. :param correct_steps: number of correction steps performed on a produced sample. :param tensor_format:
-    "np" or "pt" for the expected format of samples passed to the Scheduler.
+    For more information, see the original paper: https://arxiv.org/abs/2011.13456
+
+    Args:
+        snr (`float`):
+            coefficient weighting the step from the model_output sample (from the network) to the random noise.
+        sigma_min (`float`):
+                initial noise scale for sigma sequence in sampling procedure. The minimum sigma should mirror the
+                distribution of the data.
+        sigma_max (`float`): maximum value used for the range of continuous timesteps passed into the model.
+        sampling_eps (`float`): the end value of sampling, where timesteps decrease progessively from 1 to
+        epsilon.
+        correct_steps (`int`): number of correction steps performed on a produced sample.
+        tensor_format (`str`): "np" or "pt" for the expected format of samples passed to the Scheduler.
     """
 
     @register_to_config
@@ -66,11 +73,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         correct_steps=1,
         tensor_format="pt",
     ):
-        # self.sigmas = None
-        # self.discrete_sigmas = None
-        #
-        # # setable values
-        # self.num_inference_steps = None
+        # setable values
         self.timesteps = None
 
         self.set_sigmas(num_train_timesteps, sigma_min, sigma_max, sampling_eps)
@@ -79,6 +82,15 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         self.set_format(tensor_format=tensor_format)
 
     def set_timesteps(self, num_inference_steps, sampling_eps=None):
+        """
+        Sets the continuous timesteps used for the diffusion chain. Supporting function to be run before inference.
+
+        Args:
+            num_inference_steps (`int`):
+                the number of diffusion steps used when generating samples with a pre-trained model.
+            sampling_eps (`float`, optional): final timestep value (overrides value given at Scheduler instantiation).
+
+        """
         sampling_eps = sampling_eps if sampling_eps is not None else self.config.sampling_eps
         tensor_format = getattr(self, "tensor_format", "pt")
         if tensor_format == "np":
@@ -89,6 +101,20 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
 
     def set_sigmas(self, num_inference_steps, sigma_min=None, sigma_max=None, sampling_eps=None):
+        """
+        Sets the noise scales used for the diffusion chain. Supporting function to be run before inference.
+
+        The sigmas control the weight of the `drift` and `diffusion` components of sample update.
+
+        Args:
+            num_inference_steps (`int`):
+                the number of diffusion steps used when generating samples with a pre-trained model.
+            sigma_min (`float`, optional):
+                initial noise scale value (overrides value given at Scheduler instantiation).
+            sigma_max (`float`, optional): final noise scale value (overrides value given at Scheduler instantiation).
+            sampling_eps (`float`, optional): final timestep value (overrides value given at Scheduler instantiation).
+
+        """
         sigma_min = sigma_min if sigma_min is not None else self.config.sigma_min
         sigma_max = sigma_max if sigma_max is not None else self.config.sigma_max
         sampling_eps = sampling_eps if sampling_eps is not None else self.config.sampling_eps
@@ -140,7 +166,20 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         **kwargs,
     ) -> Union[SdeVeOutput, Tuple]:
         """
-        Predict the sample at the previous timestep by reversing the SDE.
+        Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
+        process from the learned model outputs (most often the predicted noise).
+
+        Args:
+            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            timestep (`int`): current discrete timestep in the diffusion chain.
+            sample (`torch.FloatTensor` or `np.ndarray`):
+                current instance of sample being created by diffusion process.
+            generator: random number generator.
+            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+
+        Returns:
+            prev_sample (`SchedulerOutput` or `Tuple`): updated sample in the diffusion chain.
+
         """
         if "seed" in kwargs and kwargs["seed"] is not None:
             self.set_seed(kwargs["seed"])
@@ -186,6 +225,17 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         """
         Correct the predicted sample based on the output model_output of the network. This is often run repeatedly
         after making the prediction for the previous timestep.
+
+        Args:
+            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            sample (`torch.FloatTensor` or `np.ndarray`):
+                current instance of sample being created by diffusion process.
+            generator: random number generator.
+            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+
+        Returns:
+            prev_sample (`SchedulerOutput` or `Tuple`): updated sample in the diffusion chain.
+
         """
         if "seed" in kwargs and kwargs["seed"] is not None:
             self.set_seed(kwargs["seed"])

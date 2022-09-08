@@ -24,6 +24,26 @@ from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
 class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
+    """
+    Linear Multistep Scheduler for discrete beta schedules. Based on the original k-diffusion implementation by
+    Katherine Crowson:
+    https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L181
+
+    Args:
+        num_train_timesteps (`int`): number of diffusion steps used to train the model.
+        beta_start (`float`): the starting `beta` value of inference.
+        beta_end (`float`): the final `beta` value.
+        beta_schedule (`str`):
+            the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
+            `linear` or `scaled_linear`.
+        trained_betas (`np.ndarray`, optional): TODO
+            options to clip the variance used when adding noise to the denoised sample. Choose from `fixed_small`,
+            `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
+        timestep_values (`np.ndarry`, optional): TODO
+        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays.
+
+    """
+
     @register_to_config
     def __init__(
         self,
@@ -35,12 +55,8 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timestep_values: Optional[np.ndarray] = None,
         tensor_format: str = "pt",
     ):
-        """
-        Linear Multistep Scheduler for discrete beta schedules. Based on the original k-diffusion implementation by
-        Katherine Crowson:
-        https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L181
-        """
-
+        if trained_betas is not None:
+            self.betas = np.asarray(trained_betas)
         if beta_schedule == "linear":
             self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
         elif beta_schedule == "scaled_linear":
@@ -64,7 +80,12 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     def get_lms_coefficient(self, order, t, current_order):
         """
-        Compute a linear multistep coefficient
+        Compute a linear multistep coefficient.
+
+        Args:
+            order (TODO):
+            t (TODO):
+            current_order (TODO):
         """
 
         def lms_derivative(tau):
@@ -80,6 +101,13 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         return integrated_coeff
 
     def set_timesteps(self, num_inference_steps: int):
+        """
+        Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
+
+        Args:
+            num_inference_steps (`int`):
+                the number of diffusion steps used when generating samples with a pre-trained model.
+        """
         self.num_inference_steps = num_inference_steps
         self.timesteps = np.linspace(self.num_train_timesteps - 1, 0, num_inference_steps, dtype=float)
 
@@ -102,6 +130,22 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         order: int = 4,
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
+        """
+        Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
+        process from the learned model outputs (most often the predicted noise).
+
+        Args:
+            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            timestep (`int`): current discrete timestep in the diffusion chain.
+            sample (`torch.FloatTensor` or `np.ndarray`):
+                current instance of sample being created by diffusion process.
+            order: coefficient for multi-step inference.
+            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+
+        Returns:
+            prev_sample (`SchedulerOutput` or `Tuple`): updated sample in the diffusion chain.
+
+        """
         sigma = self.sigmas[timestep]
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
