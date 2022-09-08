@@ -371,6 +371,9 @@ class VQModel(ModelMixin, ConfigMixin):
     r"""VQ-VAE model from the paper Neural Discrete Representation Learning by Aaron van den Oord, Oriol Vinyals and Koray
     Kavukcuoglu.
 
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
+    implements for all the model (such as downloading or saving, etc.)
+
     Parameters:
         in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
@@ -468,6 +471,9 @@ class VQModel(ModelMixin, ConfigMixin):
 class AutoencoderKL(ModelMixin, ConfigMixin):
     r"""Variational Autoencoder (VAE) model with KL loss from the paper Auto-Encoding Variational Bayes by Diederik P. Kingma
     and Max Welling.
+
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
+    implements for all the model (such as downloading or saving, etc.)
 
     Parameters:
         in_channels (int, *optional*, defaults to 3): Number of channels in the input image.

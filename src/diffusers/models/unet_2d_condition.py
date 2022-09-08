@@ -24,8 +24,11 @@ class UNet2DConditionOutput(BaseOutput):
 
 class UNet2DConditionModel(ModelMixin, ConfigMixin):
     r"""
-    UNet2DConditionModel is a condtional 2D UNet model that takes in a noisy sample, conditional state, and a timestep
+    UNet2DConditionModel is a conditional 2D UNet model that takes in a noisy sample, conditional state, and a timestep
     and returns sample shaped output.
+
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
+    implements for all the model (such as downloading or saving, etc.)
 
     Parameters:
         sample_size (`int`, *optional*): The size of the input sample.
@@ -190,6 +193,14 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.Tensor,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
+        """r
+        Args:
+            sample (:obj:`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
+            timestep (:obj:`torch.FloatTensor` or :obj:`float` or :obj:`int): (batch) timesteps
+            encoder_hidden_states (:obj:`torch.FloatTensor`): (batch, channel, height, width) encoder hidden states
+            return_dict (:obj:`bool`, *optional*, defaults to :obj:`True`):
+                Whether or not to return a [`UNet2DConditionOutput`] instead of a plain tuple.
+        """
         # 0. center input if necessary
         if self.config.center_input_sample:
             sample = 2 * sample - 1.0

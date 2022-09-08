@@ -168,6 +168,13 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         timestep: Union[torch.Tensor, float, int],
         return_dict: bool = True,
     ) -> Union[UNet2DOutput, Tuple]:
+        """r
+        Args:
+            sample (:obj:`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
+            timestep(:obj:`torch.FloatTensor` or :obj:`float` or :obj:`int): (batch) timesteps
+            return_dict (:obj:`bool`, *optional*, defaults to :obj:`True`):
+                Whether or not to return a [`UNet2DOutput`] instead of a plain tuple.
+        """
         # 0. center input if necessary
         if self.config.center_input_sample:
             sample = 2 * sample - 1.0
