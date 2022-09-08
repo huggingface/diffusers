@@ -258,20 +258,23 @@ If you want to run the code yourself 💻, you can try out:
 - [Text-to-Image Latent Diffusion](https://huggingface.co/CompVis/ldm-text2im-large-256)
 ```python
 # !pip install diffusers transformers
+from torch import autocast
 from diffusers import DiffusionPipeline
 
+device = "cuda"
 model_id = "CompVis/ldm-text2im-large-256"
 
 # load model and scheduler
 ldm = DiffusionPipeline.from_pretrained(model_id)
+ldm = ldm.to(device)
 
 # run pipeline in inference (sample random noise and denoise)
 prompt = "A painting of a squirrel eating a burger"
-images = ldm([prompt], num_inference_steps=50, eta=0.3, guidance_scale=6).images
+with autocast(device):
+    image = ldm([prompt], num_inference_steps=50, eta=0.3, guidance_scale=6).images[0]
 
-# save images
-for idx, image in enumerate(images):
-    image.save(f"squirrel-{idx}.png")
+# save image
+image.save("squirrel.png")
 ```
 - [Unconditional Diffusion with discrete scheduler](https://huggingface.co/google/ddpm-celebahq-256)
 ```python
