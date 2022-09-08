@@ -58,6 +58,11 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
     Pseudo numerical methods for diffusion models (PNDM) proposes using more advanced ODE integration techniques,
     namely Runge-Kutta method and a linear multi-step method.
 
+    [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
+    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
+    [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
+    [`~ConfigMixin.from_config`] functios.
+
     For more details, see the original paper: https://arxiv.org/abs/2202.09778
 
     Args:
@@ -186,7 +191,9 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
-            `SchedulerOutput`: updated sample in the diffusion chain.
+            [`~schedulers.scheduling_utils.SchedulerOutput`] or `tuple`:
+            [`~schedulers.scheduling_utils.SchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            returning a tuple, the first element is the sample tensor.
 
         """
         if self.counter < len(self.prk_timesteps) and not self.config.skip_prk_steps:
@@ -213,7 +220,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
-            prev_sample (`SchedulerOutput` or `Tuple`): updated sample in the diffusion chain.
+            [`~scheduling_utils.SchedulerOutput`] or `tuple`: [`~scheduling_utils.SchedulerOutput`] if `return_dict` is
+            True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         if self.num_inference_steps is None:
@@ -267,7 +275,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
-            prev_sample (`SchedulerOutput` or `Tuple`): updated sample in the diffusion chain.
+            [`~scheduling_utils.SchedulerOutput`] or `tuple`: [`~scheduling_utils.SchedulerOutput`] if `return_dict` is
+            True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         if self.num_inference_steps is None:
