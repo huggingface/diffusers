@@ -18,7 +18,6 @@ import unittest
 import torch
 
 from diffusers import VQModel
-from diffusers.modeling_utils import ModelMixin
 from diffusers.testing_utils import floats_tensor, torch_device
 
 from .test_modeling_common import ModelTesterMixin
