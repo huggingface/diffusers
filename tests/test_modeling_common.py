@@ -42,7 +42,7 @@ class ModelTesterMixin:
         with torch.no_grad():
             # Warmup pass when using mps (see #372)
             if torch_device == "mps" and isinstance(model, ModelMixin):
-                _  = model(**self.dummy_input)
+                _ = model(**self.dummy_input)
                 _ = new_model(**self.dummy_input)
 
             image = model(**inputs_dict)
