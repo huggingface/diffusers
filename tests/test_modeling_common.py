@@ -15,12 +15,12 @@
 
 import inspect
 import tempfile
+import unittest
 from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
 
-import pytest
 from diffusers.modeling_utils import ModelMixin
 from diffusers.testing_utils import torch_device
 from diffusers.training_utils import EMAModel
@@ -144,11 +144,8 @@ class ModelTesterMixin:
 
         self.assertEqual(output_1.shape, output_2.shape)
 
+    @unittest.skipIf(torch_device == "mps", "Training is not supported in mps")
     def test_training(self):
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            pytest.skip("mps: unsupported training device")
-
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
@@ -163,11 +160,8 @@ class ModelTesterMixin:
         loss = torch.nn.functional.mse_loss(output, noise)
         loss.backward()
 
+    @unittest.skipIf(torch_device == "mps", "Training is not supported in mps")
     def test_ema_training(self):
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            pytest.skip("mps: unsupported training device")
-
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
