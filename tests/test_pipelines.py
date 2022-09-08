@@ -1158,11 +1158,10 @@ class PipelineTesterMixin(unittest.TestCase):
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
             model_id,
-            revision="fp16",  # fp16 to infer 768x512 images with 16GB of VRAM
-            torch_dtype=torch.float16,
             use_auth_token=True,
         )
         pipe.to(torch_device)
+        pipe.enable_attention_slicing()
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A fantasy landscape, trending on artstation"
@@ -1204,10 +1203,9 @@ class PipelineTesterMixin(unittest.TestCase):
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
             model_id,
             scheduler=lms,
-            revision="fp16",  # fp16 to infer 768x512 images with 16GB of VRAM
-            torch_dtype=torch.float16,
             use_auth_token=True,
         )
+        pipe.enable_attention_slicing()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -1252,11 +1250,10 @@ class PipelineTesterMixin(unittest.TestCase):
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             model_id,
-            revision="fp16",  # fp16 to infer 768x512 images in 16GB of VRAM
-            torch_dtype=torch.float16,
             use_auth_token=True,
         )
         pipe.to(torch_device)
+        pipe.enable_attention_slicing()
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A red cat sitting on a parking bench"
