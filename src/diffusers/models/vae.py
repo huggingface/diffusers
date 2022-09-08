@@ -559,7 +559,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         r"""
         Args:
             sample (:obj:`torch.FloatTensor`): Input sample.
-            sample_posterior (:obj:`bool`, *optional*, defaults to :obj:`False`): Whether to sample from the posterior.
+            sample_posterior (:obj:`bool`, *optional*, defaults to :obj:`False`):
+                Whether to sample from the posterior.
             return_dict (:obj:`bool`, *optional*, defaults to :obj:`True`):
                 Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
         """
