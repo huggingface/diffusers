@@ -369,11 +369,11 @@ class DiagonalGaussianDistribution(object):
 
 class VQModel(ModelMixin, ConfigMixin):
     r"""VQ-VAE model from the paper Neural Discrete Representation Learning by Aaron van den Oord, Oriol Vinyals and Koray
-Kavukcuoglu.
+    Kavukcuoglu.
 
     Parameters:
-        in_channels (int): Number of channels in the input image.
-        out_channels (int): Number of channels in the output.
+        in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
+        out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
         down_block_types (`Tuple[str]`, *optional*, defaults to :
             obj:`("DownEncoderBlock2D",)`): Tuple of downsample block types.
         up_block_types (`Tuple[str]`, *optional*, defaults to :
@@ -466,6 +466,23 @@ Kavukcuoglu.
 
 
 class AutoencoderKL(ModelMixin, ConfigMixin):
+    r"""Variational Autoencoder (VAE) model with KL loss from the paper Auto-Encoding Variational Bayes by Diederik P. Kingma
+    and Max Welling.
+
+    Parameters:
+        in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
+        out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
+        down_block_types (`Tuple[str]`, *optional*, defaults to :
+            obj:`("DownEncoderBlock2D",)`): Tuple of downsample block types.
+        up_block_types (`Tuple[str]`, *optional*, defaults to :
+            obj:`("UpDecoderBlock2D",)`): Tuple of upsample block types.
+        block_out_channels (`Tuple[int]`, *optional*, defaults to :
+            obj:`(64,)`): Tuple of block output channels.
+        act_fn (`str`, *optional*, defaults to :obj:`"silu"`): The activation function to use.
+        latent_channels (`int`, *optional*, defaults to :obj:`4`): Number of channels in the latent space.
+        sample_size (`int`, *optional*, defaults to :obj:`32`): TODO
+    """
+
     @register_to_config
     def __init__(
         self,
