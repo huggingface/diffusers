@@ -23,12 +23,12 @@ from typing import List, Optional, Union
 import numpy as np
 import torch
 
+import diffusers
 import PIL
 from huggingface_hub import snapshot_download
 from PIL import Image
 from tqdm.auto import tqdm
 
-import diffusers
 from .configuration_utils import ConfigMixin
 from .utils import DIFFUSERS_CACHE, BaseOutput, logging
 
