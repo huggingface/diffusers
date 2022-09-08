@@ -117,27 +117,12 @@ class ModelMixin(torch.nn.Module):
     Base class for all models.
 
     [`ModelMixin`] takes care of storing the configuration of the models and handles methods for loading, downloading
-    and saving models as well as a few methods common to all models to:
+    and saving models.
 
-        - resize the input embeddings,
-        - prune heads in the self-attention heads.
+    Class attributes:
 
-    Class attributes (overridden by derived classes):
-
-        - **config_class** ([`ConfigMixin`]) -- A subclass of [`ConfigMixin`] to use as configuration class for this
-          model architecture.
-        - **load_tf_weights** (`Callable`) -- A python *method* for loading a TensorFlow checkpoint in a PyTorch model,
-          taking as arguments:
-
-            - **model** ([`ModelMixin`]) -- An instance of the model on which to load the TensorFlow checkpoint.
-            - **config** ([`PreTrainedConfigMixin`]) -- An instance of the configuration associated to the model.
-            - **path** (`str`) -- A path to the TensorFlow checkpoint.
-
-        - **base_model_prefix** (`str`) -- A string indicating the attribute associated to the base model in derived
-          classes of the same architecture adding modules on top of the base model.
-        - **is_parallelizable** (`bool`) -- A flag indicating whether this model supports model parallelization.
-        - **main_input_name** (`str`) -- The name of the principal input to the model (often `input_ids` for NLP
-          models, `pixel_values` for vision models and `input_values` for speech models).
+        - **config_name** ([`str`]) -- A filename under which the model should be stored when calling
+          [`~modeling_utils.ModelMixin.save_pretrained`].
     """
     config_name = CONFIG_NAME
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
@@ -150,11 +135,10 @@ class ModelMixin(torch.nn.Module):
         save_directory: Union[str, os.PathLike],
         is_main_process: bool = True,
         save_function: Callable = torch.save,
-        **kwargs,
     ):
         """
         Save a model and its configuration file to a directory, so that it can be re-loaded using the
-        `[`~ModelMixin.from_pretrained`]` class method.
+        `[`~modeling_utils.ModelMixin.from_pretrained`]` class method.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -166,9 +150,6 @@ class ModelMixin(torch.nn.Module):
             save_function (`Callable`):
                 The function to use to save the state dictionary. Useful on distributed training like TPUs when one
                 need to replace `torch.save` by another method.
-
-            kwargs:
-                Additional key word arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
@@ -224,34 +205,12 @@ class ModelMixin(torch.nn.Module):
                     - A path to a *directory* containing model weights saved using [`~ModelMixin.save_pretrained`],
                       e.g., `./my_model_directory/`.
 
-            config (`Union[ConfigMixin, str, os.PathLike]`, *optional*):
-                Can be either:
-
-                    - an instance of a class derived from [`ConfigMixin`],
-                    - a string or path valid as input to [`~ConfigMixin.from_pretrained`].
-
-                ConfigMixinuration for the model to use instead of an automatically loaded configuration.
-                ConfigMixinuration can be automatically loaded when:
-
-                    - The model is a model provided by the library (loaded with the *model id* string of a pretrained
-                      model).
-                    - The model was saved using [`~ModelMixin.save_pretrained`] and is reloaded by supplying the save
-                      directory.
-                    - The model is loaded by supplying a local directory as `pretrained_model_name_or_path` and a
-                      configuration JSON file named *config.json* is found in the directory.
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory in which a downloaded pretrained model configuration should be cached if the
                 standard cache should not be used.
-            from_tf (`bool`, *optional*, defaults to `False`):
-                Load the model weights from a TensorFlow checkpoint save file (see docstring of
-                `pretrained_model_name_or_path` argument).
-            from_flax (`bool`, *optional*, defaults to `False`):
-                Load the model weights from a Flax checkpoint save file (see docstring of
-                `pretrained_model_name_or_path` argument).
-            ignore_mismatched_sizes (`bool`, *optional*, defaults to `False`):
-                Whether or not to raise an error if some of the weights from the checkpoint do not have the same size
-                as the weights of the model (if for instance, you are instantiating a model with 10 labels from a
-                checkpoint with 3 labels).
+            torch_dtype (`str` or `torch.dtype`, *optional*):
+                Override the default `torch.dtype` and load the model under this dtype. If `"auto"` is passed the dtype
+                will be automatically derived from the model's weights.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
@@ -267,7 +226,7 @@ class ModelMixin(torch.nn.Module):
                 Whether or not to only look at local files (i.e., do not try to download the model).
             use_auth_token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, will use the token generated
-                when running `transformers-cli login` (stored in `~/.huggingface`).
+                when running `diffusers-cli login` (stored in `~/.huggingface`).
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
                 git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
@@ -278,18 +237,7 @@ class ModelMixin(torch.nn.Module):
                 Please refer to the mirror site for more information.
 
             kwargs (remaining dictionary of keyword arguments, *optional*):
-                Can be used to update the configuration object (after it being loaded) and initiate the model (e.g.,
-                `output_attentions=True`). Behaves differently depending on whether a `config` is provided or
-                automatically loaded:
-
-                    - If a configuration is provided with `config`, `**kwargs` will be directly passed to the
-                      underlying model's `__init__` method (we assume all relevant updates to the configuration have
-                      already been done)
-                    - If a configuration is not provided, `kwargs` will be first passed to the configuration class
-                      initialization function ([`~ConfigMixin.from_pretrained`]). Each key of `kwargs` that corresponds
-                      to a configuration attribute will be used to override said attribute with the supplied `kwargs`
-                      value. Remaining keys that do not correspond to any configuration attribute will be passed to the
-                      underlying model's `__init__` function.
+                Can be used to update the [`ConfigMixin`] of the model (after it being loaded).
 
         <Tip>
 
@@ -299,8 +247,8 @@ class ModelMixin(torch.nn.Module):
 
         <Tip>
 
-        Activate the special ["offline-mode"](https://huggingface.co/transformers/installation.html#offline-mode) to
-        use this method in a firewalled environment.
+        Activate the special ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to use
+        this method in a firewalled environment.
 
         </Tip>
 
@@ -404,7 +352,7 @@ class ModelMixin(torch.nn.Module):
                     f" in the cached files and it looks like {pretrained_model_name_or_path} is not the path to a"
                     f" directory containing a file named {WEIGHTS_NAME} or"
                     " \nCheckout your internet connection or see how to run the library in"
-                    " offline mode at 'https://huggingface.co/docs/transformers/installation#offline-mode'."
+                    " offline mode at 'https://huggingface.co/docs/diffusers/installation#offline-mode'."
                 )
             except EnvironmentError:
                 raise EnvironmentError(

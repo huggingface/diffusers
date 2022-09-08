@@ -1,4 +1,5 @@
 import math
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -10,16 +11,24 @@ class AttentionBlock(nn.Module):
     An attention block that allows spatial positions to attend to each other. Originally ported from here, but adapted
     to the N-d case.
     https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py#L66.
-    Uses three q, k, v linear layers to compute attention
+    Uses three q, k, v linear layers to compute attention.
+
+    Parameters:
+        channels (:obj:`int`): The number of channels in the input and output.
+        num_head_channels (:obj:`int`, *optional*):
+            The number of channels in each head. If None, then `num_heads` = 1.
+        num_groups (:obj:`int`, *optional*, defaults to 32): The number of groups to use for group norm.
+        rescale_output_factor (:obj:`float`, *optional*, defaults to 1.0): The factor to rescale the output by.
+        eps (:obj:`float`, *optional*, defaults to 1e-5): The epsilon value to use for group norm.
     """
 
     def __init__(
         self,
-        channels,
-        num_head_channels=None,
-        num_groups=32,
-        rescale_output_factor=1.0,
-        eps=1e-5,
+        channels: int,
+        num_head_channels: Optional[int] = None,
+        num_groups: int = 32,
+        rescale_output_factor: float = 1.0,
+        eps: float = 1e-5,
     ):
         super().__init__()
         self.channels = channels
@@ -86,10 +95,26 @@ class AttentionBlock(nn.Module):
 class SpatialTransformer(nn.Module):
     """
     Transformer block for image-like data. First, project the input (aka embedding) and reshape to b, t, d. Then apply
-    standard transformer action. Finally, reshape to image
+    standard transformer action. Finally, reshape to image.
+
+    Parameters:
+        in_channels (:obj:`int`): The number of channels in the input and output.
+        n_heads (:obj:`int`): The number of heads to use for multi-head attention.
+        d_head (:obj:`int`): The number of channels in each head.
+        depth (:obj:`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
+        dropout (:obj:`float`, *optional*, defaults to 0.1): The dropout probability to use.
+        context_dim (:obj:`int`, *optional*): The number of context dimensions to use.
     """
 
-    def __init__(self, in_channels, n_heads, d_head, depth=1, dropout=0.0, context_dim=None):
+    def __init__(
+        self,
+        in_channels: int,
+        n_heads: int,
+        d_head: int,
+        depth: int = 1,
+        dropout: float = 0.0,
+        context_dim: Optional[int] = None,
+    ):
         super().__init__()
         self.n_heads = n_heads
         self.d_head = d_head
@@ -127,7 +152,29 @@ class SpatialTransformer(nn.Module):
 
 
 class BasicTransformerBlock(nn.Module):
-    def __init__(self, dim, n_heads, d_head, dropout=0.0, context_dim=None, gated_ff=True, checkpoint=True):
+    r"""
+    A basic Transformer block.
+
+    Parameters:
+        dim (:obj:`int`): The number of channels in the input and output.
+        n_heads (:obj:`int`): The number of heads to use for multi-head attention.
+        d_head (:obj:`int`): The number of channels in each head.
+        dropout (:obj:`float`, *optional*, defaults to 0.0): The dropout probability to use.
+        context_dim (:obj:`int`, *optional*): The size of the context vector for cross attention.
+        gated_ff (:obj:`bool`, *optional*, defaults to :obj:`False`): Whether to use a gated feed-forward network.
+        checkpoint (:obj:`bool`, *optional*, defaults to :obj:`False`): Whether to use checkpointing.
+    """
+
+    def __init__(
+        self,
+        dim: int,
+        n_heads: int,
+        d_head: int,
+        dropout=0.0,
+        context_dim: Optional[int] = None,
+        gated_ff: bool = True,
+        checkpoint: bool = True,
+    ):
         super().__init__()
         self.attn1 = CrossAttention(
             query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout
@@ -154,7 +201,21 @@ class BasicTransformerBlock(nn.Module):
 
 
 class CrossAttention(nn.Module):
-    def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.0):
+    r"""
+    A cross attention layer.
+
+    Parameters:
+        query_dim (:obj:`int`): The number of channels in the query.
+        context_dim (:obj:`int`, *optional*):
+            The number of channels in the context. If not given, defaults to `query_dim`.
+        heads (:obj:`int`,  *optional*, defaults to 8): The number of heads to use for multi-head attention.
+        dim_head (:obj:`int`,  *optional*, defaults to 64): The number of channels in each head.
+        dropout (:obj:`float`, *optional*, defaults to 0.0): The dropout probability to use.
+    """
+
+    def __init__(
+        self, query_dim: int, context_dim: Optional[int] = None, heads: int = 8, dim_head: int = 64, dropout: int = 0.0
+    ):
         super().__init__()
         inner_dim = dim_head * heads
         context_dim = context_dim if context_dim is not None else query_dim
@@ -228,7 +289,20 @@ class CrossAttention(nn.Module):
 
 
 class FeedForward(nn.Module):
-    def __init__(self, dim, dim_out=None, mult=4, glu=False, dropout=0.0):
+    r"""
+    A feed-forward layer.
+
+    Parameters:
+        dim (:obj:`int`): The number of channels in the input.
+        dim_out (:obj:`int`, *optional*): The number of channels in the output. If not given, defaults to `dim`.
+        mult (:obj:`int`, *optional*, defaults to 4): The multiplier to use for the hidden dimension.
+        glu (:obj:`bool`, *optional*, defaults to :obj:`False`): Whether to use GLU activation.
+        dropout (:obj:`float`, *optional*, defaults to 0.0): The dropout probability to use.
+    """
+
+    def __init__(
+        self, dim: int, dim_out: Optional[int] = None, mult: int = 4, glu: bool = False, dropout: float = 0.0
+    ):
         super().__init__()
         inner_dim = int(dim * mult)
         dim_out = dim_out if dim_out is not None else dim
@@ -242,7 +316,15 @@ class FeedForward(nn.Module):
 
 # feedforward
 class GEGLU(nn.Module):
-    def __init__(self, dim_in, dim_out):
+    r"""
+    A variant of the gated linear unit activation function from https://arxiv.org/abs/2002.05202.
+
+    Parameters:
+        dim_in (:obj:`int`): The number of channels in the input.
+        dim_out (:obj:`int`): The number of channels in the output.
+    """
+
+    def __init__(self, dim_in: int, dim_out: int):
         super().__init__()
         self.proj = nn.Linear(dim_in, dim_out * 2)
 

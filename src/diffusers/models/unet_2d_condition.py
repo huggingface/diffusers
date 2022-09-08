@@ -23,6 +23,37 @@ class UNet2DConditionOutput(BaseOutput):
 
 
 class UNet2DConditionModel(ModelMixin, ConfigMixin):
+    r"""
+    UNet2DConditionModel is a conditional 2D UNet model that takes in a noisy sample, conditional state, and a timestep
+    and returns sample shaped output.
+
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
+    implements for all the model (such as downloading or saving, etc.)
+
+    Parameters:
+        sample_size (`int`, *optional*): The size of the input sample.
+        in_channels (`int`, *optional*, defaults to 4): The number of channels in the input sample.
+        out_channels (`int`, *optional*, defaults to 4): The number of channels in the output.
+        center_input_sample (`bool`, *optional*, defaults to `False`): Whether to center the input sample.
+        flip_sin_to_cos (`bool`, *optional*, defaults to `False`):
+            Whether to flip the sin to cos in the time embedding.
+        freq_shift (`int`, *optional*, defaults to 0): The frequency shift to apply to the time embedding.
+        down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
+            The tuple of downsample blocks to use.
+        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D",)`):
+            The tuple of upsample blocks to use.
+        block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
+            The tuple of output channels for each block.
+        layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
+        downsample_padding (`int`, *optional*, defaults to 1): The padding to use for the downsampling convolution.
+        mid_block_scale_factor (`float`, *optional*, defaults to 1.0): The scale factor to use for the mid block.
+        act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
+        norm_num_groups (`int`, *optional*, defaults to 32): The number of groups to use for the normalization.
+        norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon to use for the normalization.
+        cross_attention_dim (`int`, *optional*, defaults to 1280): The dimension of the cross attention features.
+        attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
+    """
+
     @register_to_config
     def __init__(
         self,
@@ -162,6 +193,19 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.Tensor,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
+        """r
+        Args:
+            sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
+            timestep (`torch.FloatTensor` or `float` or `int): (batch) timesteps
+            encoder_hidden_states (`torch.FloatTensor`): (batch, channel, height, width) encoder hidden states
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
+            [`~models.unet_2d_condition.UNet2DConditionOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            returning a tuple, the first element is the sample tensor.
+        """
         # 0. center input if necessary
         if self.config.center_input_sample:
             sample = 2 * sample - 1.0

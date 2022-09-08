@@ -371,6 +371,27 @@ class DiagonalGaussianDistribution(object):
 
 
 class VQModel(ModelMixin, ConfigMixin):
+    r"""VQ-VAE model from the paper Neural Discrete Representation Learning by Aaron van den Oord, Oriol Vinyals and Koray
+    Kavukcuoglu.
+
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
+    implements for all the model (such as downloading or saving, etc.)
+
+    Parameters:
+        in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
+        out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
+        down_block_types (`Tuple[str]`, *optional*, defaults to :
+            obj:`("DownEncoderBlock2D",)`): Tuple of downsample block types.
+        up_block_types (`Tuple[str]`, *optional*, defaults to :
+            obj:`("UpDecoderBlock2D",)`): Tuple of upsample block types.
+        block_out_channels (`Tuple[int]`, *optional*, defaults to :
+            obj:`(64,)`): Tuple of block output channels.
+        act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
+        latent_channels (`int`, *optional*, defaults to `3`): Number of channels in the latent space.
+        sample_size (`int`, *optional*, defaults to `32`): TODO
+        num_vq_embeddings (`int`, *optional*, defaults to `256`): Number of codebook vectors in the VQ-VAE.
+    """
+
     @register_to_config
     def __init__(
         self,
@@ -440,6 +461,12 @@ class VQModel(ModelMixin, ConfigMixin):
         return DecoderOutput(sample=dec)
 
     def forward(self, sample: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
+        r"""
+        Args:
+            sample (`torch.FloatTensor`): Input sample.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+        """
         x = sample
         h = self.encode(x).latents
         dec = self.decode(h).sample
@@ -451,6 +478,26 @@ class VQModel(ModelMixin, ConfigMixin):
 
 
 class AutoencoderKL(ModelMixin, ConfigMixin):
+    r"""Variational Autoencoder (VAE) model with KL loss from the paper Auto-Encoding Variational Bayes by Diederik P. Kingma
+    and Max Welling.
+
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
+    implements for all the model (such as downloading or saving, etc.)
+
+    Parameters:
+        in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
+        out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
+        down_block_types (`Tuple[str]`, *optional*, defaults to :
+            obj:`("DownEncoderBlock2D",)`): Tuple of downsample block types.
+        up_block_types (`Tuple[str]`, *optional*, defaults to :
+            obj:`("UpDecoderBlock2D",)`): Tuple of upsample block types.
+        block_out_channels (`Tuple[int]`, *optional*, defaults to :
+            obj:`(64,)`): Tuple of block output channels.
+        act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
+        latent_channels (`int`, *optional*, defaults to `4`): Number of channels in the latent space.
+        sample_size (`int`, *optional*, defaults to `32`): TODO
+    """
+
     @register_to_config
     def __init__(
         self,
@@ -512,6 +559,14 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
     def forward(
         self, sample: torch.FloatTensor, sample_posterior: bool = False, return_dict: bool = True
     ) -> Union[DecoderOutput, torch.FloatTensor]:
+        r"""
+        Args:
+            sample (`torch.FloatTensor`): Input sample.
+            sample_posterior (`bool`, *optional*, defaults to `False`):
+                Whether to sample from the posterior.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+        """
         x = sample
         posterior = self.encode(x).latent_dist
         if sample_posterior:
