@@ -16,7 +16,7 @@ We present some techniques and ideas to optimize 🤗 Diffusers _inference_ for 
 
 ## CUDA `autocast`
 
-If you use a CUDA GPU, you can take advantage of `torch.autocast` to perform much faster inference. All you need to do is put your inference call inside an `autocast` context manager. The following example shows how to do it using Stable Diffusion text-to-image generation as an example:
+If you use a CUDA GPU, you can take advantage of `torch.autocast` to perform inference roughly twice as fast at the cost of slightly lower precision. All you need to do is put your inference call inside an `autocast` context manager. The following example shows how to do it using Stable Diffusion text-to-image generation as an example:
 
 ```Python
 from torch import autocast
