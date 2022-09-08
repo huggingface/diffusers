@@ -30,7 +30,7 @@ More precisely, 🤗 Diffusers offers:
 **With `pip`**
     
 ```bash
-pip install --upgrade diffusers  # should install diffusers 0.2.4
+pip install --upgrade diffusers
 ```
 
 **With `conda`**
