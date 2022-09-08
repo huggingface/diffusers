@@ -11,22 +11,33 @@ specific language governing permissions and limitations under the License.
 -->
 
 
+# How to use the ONNX Runtime for inference
 
-# Quicktour
+🤗 Diffusers provides a Stable Diffusion pipeline compatible with the ONNX Runtime. This allows you to run Stable Diffusion on any hardware that supports ONNX (including CPUs), and where an accelerated version of PyTorch is not available.
 
-Start using Diffusers🧨 quickly!
-To start, use the [`DiffusionPipeline`] for quick inference and sample generations!
+## Installation
 
+- TODO
+
+## Stable Diffusion Inference
+
+The snippet below demonstrates how to use the ONNX runtime. You need to use `StableDiffusionOnnxPipeline` instead of `StableDiffusionPipeline`. You also need to download the weights from the `onnx` branch of the repository, and indicate the runtime provider you want to use.
+
+```python
+# make sure you're logged in with `huggingface-cli login`
+from diffusers import StableDiffusionOnnxPipeline
+
+pipe = StableDiffusionOnnxPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+    revision="onnx",
+    provider="CUDAExecutionProvider",
+    use_auth_token=True,
+)
+
+prompt = "a photo of an astronaut riding a horse on mars"
+image = pipe(prompt).images[0]
 ```
-pip install diffusers
-```
 
-## Main classes
+## Known Issues
 
-### Models
-
-### Schedulers
-
-### Pipeliens
-
-
+- Generating multiple prompts in a batch seems to take too much memory. While we look into it, you may need to iterate instead of batching.
