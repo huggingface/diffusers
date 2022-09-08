@@ -30,6 +30,8 @@ with autocast("cuda"):
     image = pipe(prompt).images[0]  
 ```
 
+Despite the precision loss, in our experience the final image results look the same as the `float32` versions. Feel free to experiment and report back!
+
 ## Half precision weights
 
 To save more GPU memory, you can load the model weights directly in half precision. This involves loading the float16 version of the weights, which was saved to a branch named `fp16`, and telling PyTorch to use the `float16` type when loading them:
