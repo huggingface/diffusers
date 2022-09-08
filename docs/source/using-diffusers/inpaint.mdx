@@ -10,23 +10,41 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
+# Text-Guided Image-Inpainting
+
+The [`StableDiffusionInpaintPipeline`] lets you edit specific parts of an image by providing a mask and text prompt.
+
+```python
+from io import BytesIO
+
+from torch import autocast
+import requests
+import PIL
+
+from diffusers import StableDiffusionInpaintPipeline
 
 
-# Quicktour
+def download_image(url):
+    response = requests.get(url)
+    return PIL.Image.open(BytesIO(response.content)).convert("RGB")
 
-Start using Diffusers🧨 quickly!
-To start, use the [`DiffusionPipeline`] for quick inference and sample generations!
 
+img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+
+init_image = download_image(img_url).resize((512, 512))
+mask_image = download_image(mask_url).resize((512, 512))
+
+device = "cuda"
+pipe = StableDiffusionInpaintPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16, use_auth_token=True
+).to(device)
+
+prompt = "a cat sitting on a bench"
+with autocast("cuda"):
+    images = pipe(prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75).images
+
+images[0].save("cat_on_bench.png")
 ```
-pip install diffusers
-```
 
-## Main classes
-
-### Models
-
-### Schedulers
-
-### Pipeliens
-
-
+You can also run this example on colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/patil-suraj/Notebooks/blob/master/in_painting_with_stable_diffusion_using_diffusers.ipynb)
