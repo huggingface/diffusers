@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Diffusion Pipeline
+# Pipelines
 
 The [`DiffusionPipeline`] is the easiest way to load any pretrained diffusion pipeline from the [Hub](https://huggingface.co/models?library=diffusers) and to use it in inference.
 
@@ -28,6 +28,12 @@ pipeline and pass them into the `__init__` function of the pipeline, *e.g.* [`~S
 
 Any pipeline object can be saved locally with [`~DiffusionPipeline.save_pretrained`].
 
+## DiffusionPipeline
 [[autodoc]] DiffusionPipeline
 	- from_pretrained
 	- save_pretrained
+
+## ImagePipelineOutput
+By default diffusion pipelines return an object of class
+
+[[autodoc]] pipeline_utils.ImagePipelineOutput

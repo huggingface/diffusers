@@ -49,6 +49,11 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
 
     For more information, see the original paper: https://arxiv.org/abs/2011.13456
 
+    [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
+    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
+    [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
+    [`~ConfigMixin.from_config`] functios.
+
     Args:
         snr (`float`):
             coefficient weighting the step from the model_output sample (from the network) to the random noise.
@@ -182,7 +187,8 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
-            prev_sample (`SchedulerOutput` or `Tuple`): updated sample in the diffusion chain.
+            [`~schedulers.scheduling_sde_ve.SdeVeOutput`] or `tuple`: [`~schedulers.scheduling_sde_ve.SdeVeOutput`] if
+            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         if "seed" in kwargs and kwargs["seed"] is not None:
@@ -241,7 +247,8 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
-            prev_sample (`SchedulerOutput` or `Tuple`): updated sample in the diffusion chain.
+            [`~schedulers.scheduling_sde_ve.SdeVeOutput`] or `tuple`: [`~schedulers.scheduling_sde_ve.SdeVeOutput`] if
+            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         if "seed" in kwargs and kwargs["seed"] is not None:

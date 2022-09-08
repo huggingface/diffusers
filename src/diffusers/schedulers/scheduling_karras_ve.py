@@ -50,6 +50,11 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
     https://arxiv.org/abs/2206.00364 [2] Song, Yang, et al. "Score-based generative modeling through stochastic
     differential equations." https://arxiv.org/abs/2011.13456
 
+    [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
+    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
+    [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
+    [`~ConfigMixin.from_config`] functios.
+
     For more details on the parameters, see the original paper's Appendix E.: "Elucidating the Design Space of
     Diffusion-Based Generative Models." https://arxiv.org/abs/2206.00364. The grid search values used to find the
     optimal {s_noise, s_churn, s_min, s_max} for a specific model are described in Table 5 of the paper.
@@ -147,8 +152,11 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
             sample_hat (`torch.FloatTensor` or `np.ndarray`): TODO
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
-        Returns:
             KarrasVeOutput: updated sample in the diffusion chain and derivative (TODO double check).
+        Returns:
+            [`~schedulers.scheduling_karras_ve.KarrasVeOutput`] or `tuple`:
+            [`~schedulers.scheduling_karras_ve.KarrasVeOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            returning a tuple, the first element is the sample tensor.
 
         """
 
