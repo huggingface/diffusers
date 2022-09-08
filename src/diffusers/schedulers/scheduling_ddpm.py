@@ -94,7 +94,6 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         clip_sample: bool = True,
         tensor_format: str = "pt",
     ):
-
         if trained_betas is not None:
             self.betas = np.asarray(trained_betas)
         elif beta_schedule == "linear":
@@ -251,7 +250,6 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         noise: Union[torch.FloatTensor, np.ndarray],
         timesteps: Union[torch.IntTensor, np.ndarray],
     ) -> Union[torch.FloatTensor, np.ndarray]:
-
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
         sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5

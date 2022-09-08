@@ -38,7 +38,6 @@ class LDMPipeline(DiffusionPipeline):
         return_dict: bool = True,
         **kwargs,
     ) -> Union[Tuple, ImagePipelineOutput]:
-
         r"""
         Args:
             batch_size (`int`, *optional*, defaults to 1):

@@ -691,7 +691,6 @@ class LDMBertModel(LDMBertPreTrainedModel):
         output_hidden_states=None,
         return_dict=None,
     ):
-
         outputs = self.model(
             input_ids,
             attention_mask=attention_mask,
