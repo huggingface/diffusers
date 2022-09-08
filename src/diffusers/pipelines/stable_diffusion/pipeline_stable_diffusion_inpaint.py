@@ -11,8 +11,12 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, PNDMScheduler
+from ...utils import logging
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
+
+
+logger = logging.get_logger(__name__)
 
 
 def preprocess_image(image):
@@ -78,6 +82,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
     ):
         super().__init__()
         scheduler = scheduler.set_format("pt")
+        logger.info("`StableDiffusionInpaintPipeline` is experimental and will very likely change in the future.")
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
