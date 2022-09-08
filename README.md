@@ -284,7 +284,7 @@ ddpm.to(device)
 
 # run pipeline in inference (sample random noise and denoise)
 with autocast("cuda"):
-    image = ddpm()
+    image = ddpm().images[0]
 
 # save image
 image['sample'][0].save("ddpm_generated_image.png")
