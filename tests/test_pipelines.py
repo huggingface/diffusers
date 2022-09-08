@@ -40,6 +40,7 @@ from diffusers import (
     ScoreSdeVeScheduler,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
+    StableDiffusionOnnxPipeline,
     StableDiffusionPipeline,
     UNet2DConditionModel,
     UNet2DModel,
@@ -1277,3 +1278,23 @@ class PipelineTesterMixin(unittest.TestCase):
 
         assert sampled_array.shape == (512, 768, 3)
         assert np.max(np.abs(sampled_array - expected_array)) < 1e-3
+
+    @slow
+    def test_stable_diffusion_onnx(self):
+        from scripts.convert_stable_diffusion_checkpoint_to_onnx import convert_models
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            convert_models("CompVis/stable-diffusion-v1-4", tmpdirname, opset=14)
+
+            sd_pipe = StableDiffusionOnnxPipeline.from_pretrained(tmpdirname, provider="CUDAExecutionProvider")
+
+        prompt = "A painting of a squirrel eating a burger"
+        np.random.seed(0)
+        output = sd_pipe([prompt], guidance_scale=6.0, num_inference_steps=20, output_type="np")
+        image = output.images
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.0385, 0.0252, 0.0234, 0.0287, 0.0358, 0.0287, 0.0276, 0.0235, 0.0010])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3

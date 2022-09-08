@@ -23,6 +23,7 @@ from typing import List, Optional, Union
 import numpy as np
 import torch
 
+import diffusers
 import PIL
 from huggingface_hub import snapshot_download
 from PIL import Image
@@ -43,6 +44,7 @@ LOADABLE_CLASSES = {
         "ModelMixin": ["save_pretrained", "from_pretrained"],
         "SchedulerMixin": ["save_config", "from_config"],
         "DiffusionPipeline": ["save_pretrained", "from_pretrained"],
+        "OnnxRuntimeModel": ["save_pretrained", "from_pretrained"],
     },
     "transformers": {
         "PreTrainedTokenizer": ["save_pretrained", "from_pretrained"],
@@ -278,6 +280,7 @@ class DiffusionPipeline(ConfigMixin):
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
+        provider = kwargs.pop("provider", None)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -372,6 +375,8 @@ class DiffusionPipeline(ConfigMixin):
                 loading_kwargs = {}
                 if issubclass(class_obj, torch.nn.Module):
                     loading_kwargs["torch_dtype"] = torch_dtype
+                if issubclass(class_obj, diffusers.OnnxRuntimeModel):
+                    loading_kwargs["provider"] = provider
 
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
