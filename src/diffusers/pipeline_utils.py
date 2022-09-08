@@ -51,7 +51,6 @@ LOADABLE_CLASSES = {
         "FeatureExtractionMixin": ["save_pretrained", "from_pretrained"],
     },
 }
-_LOADABLE_CLASSES_STRING = {k: list(v.keys()) for k, v in LOADABLE_CLASSES.items()}
 
 ALL_IMPORTABLE_CLASSES = {}
 for library in LOADABLE_CLASSES:
@@ -121,20 +120,14 @@ class DiffusionPipeline(ConfigMixin):
 
     def save_pretrained(self, save_directory: Union[str, os.PathLike]):
         """
-        Save all variables of the pipeline that can be saved and loaded. A pipeline variable can be saved and loaded if
-        its class is or inherits from one of the following:
-
-        {}
-
-        as well as the pipelines configuration file to a directory. The pipeline can easily be re-loaded using the
-        `[`~DiffusionPipeline.from_pretrained`]` class method.
+        Save all variables of the pipeline that can be saved and loaded as well as the pipelines configuration file to
+        a directory. A pipeline variable can be saved and loaded if its class implements both a save and loading
+        method. The pipeline can easily be re-loaded using the `[`~DiffusionPipeline.from_pretrained`]` class method.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
                 Directory to which to save. Will be created if it doesn't exist.
-        """.format(
-            {k: list(v.keys()) for k, v in LOADABLE_CLASSES.items()}
-        )
+        """
         self.save_config(save_directory)
 
         model_index_dict = dict(self.config)
@@ -258,7 +251,7 @@ class DiffusionPipeline(ConfigMixin):
 
         Examples:
 
-        ```python
+        ```py
         >>> from diffusers import DiffusionPipeline
 
         >>> # Download pipeline from huggingface.co and cache.

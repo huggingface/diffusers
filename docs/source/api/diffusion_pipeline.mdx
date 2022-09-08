@@ -16,7 +16,7 @@ The [`DiffusionPipeline`] is the easiest way to load any pretrained diffusion pi
 
 <Tip>
 	
-	[`DiffusionPipeline`] should not be used when training, fine-tuning a diffusion model. Individual 
+	One should not use the Diffusion Pipeline class for training or fine-tuning a diffusion model. Individual 
 	components of diffusion pipelines are usually trained individually, so we suggest to directly work 
 	with [`UNetModel`] and [`UNetConditionModel`].
 
