@@ -10,23 +10,67 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
+# Memory and speed
 
+We present some techniques and ideas to optimize 🤗 Diffusers _inference_ for memory or speed.
 
-# Quicktour
+## CUDA `autocast`
 
-Start using Diffusers🧨 quickly!
-To start, use the [`DiffusionPipeline`] for quick inference and sample generations!
+If you use a CUDA GPU, you can take advantage of `torch.autocast` to perform inference roughly twice as fast at the cost of slightly lower precision. All you need to do is put your inference call inside an `autocast` context manager. The following example shows how to do it using Stable Diffusion text-to-image generation as an example:
 
+```Python
+from torch import autocast
+from diffusers import StableDiffusionPipeline
+
+pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+pipe = pipe.to("cuda")
+
+prompt = "a photo of an astronaut riding a horse on mars"
+with autocast("cuda"):
+    image = pipe(prompt).images[0]  
 ```
-pip install diffusers
+
+Despite the precision loss, in our experience the final image results look the same as the `float32` versions. Feel free to experiment and report back!
+
+## Half precision weights
+
+To save more GPU memory, you can load the model weights directly in half precision. This involves loading the float16 version of the weights, which was saved to a branch named `fp16`, and telling PyTorch to use the `float16` type when loading them:
+
+```Python
+pipe = StableDiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+    revision="fp16",
+    torch_dtype=torch.float16,
+    use_auth_token=True
+)
 ```
 
-## Main classes
+## Sliced attention for additional memory savings
 
-### Models
+For even additional memory savings, you can use a sliced version of attention that performs the computation in steps instead of all at once. 
 
-### Schedulers
+<Tip>
+Attention slicing is useful even if a batch size of just 1 is used - as long as the model uses more than one attention head. If there is more than one attention head the *QK^T* attention matrix can be computed sequentially for each head which can save a significant amount of memory.
+</Tip>
 
-### Pipeliens
+To perform the attention computation sequentially over each head, you only need to invoke [`~StableDiffusionPipeline.enable_attention_slicing`] in your pipeline before inference, like here:
 
+```Python
+import torch
+from diffusers import StableDiffusionPipeline
 
+pipe = StableDiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+    revision="fp16",
+    torch_dtype=torch.float16,
+    use_auth_token=True
+)
+pipe = pipe.to("cuda")
+
+prompt = "a photo of an astronaut riding a horse on mars"
+pipe.enable_attention_slicing()
+with torch.autocast("cuda"):
+    image = pipe(prompt).images[0]  
+```
+
+There's a small performance penalty of about 10% slower inference times, but this method allows you to use Stable Diffusion in as little as 3.2 GB of VRAM! 
