@@ -98,8 +98,8 @@ class SpatialTransformer(nn.Module):
     standard transformer action. Finally, reshape to image.
 
     Parameters:
-        channels (:obj:`int`): The number of channels in the input and output.
-        num_heads (:obj:`int`): The number of heads to use for multi-head attention.
+        in_channels (:obj:`int`): The number of channels in the input and output.
+        n_heads (:obj:`int`): The number of heads to use for multi-head attention.
         d_head (:obj:`int`): The number of channels in each head.
         depth (:obj:`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
         dropout (:obj:`float`, *optional*, defaults to 0.1): The dropout probability to use.
@@ -161,7 +161,7 @@ class BasicTransformerBlock(nn.Module):
         d_head (:obj:`int`): The number of channels in each head.
         dropout (:obj:`float`, *optional*, defaults to 0.0): The dropout probability to use.
         context_dim (:obj:`int`, *optional*): The size of the context vector for cross attention.
-        gated_ffn (:obj:`bool`, *optional*, defaults to :obj:`False`): Whether to use a gated feed-forward network.
+        gated_ff (:obj:`bool`, *optional*, defaults to :obj:`False`): Whether to use a gated feed-forward network.
         checkpoint (:obj:`bool`, *optional*, defaults to :obj:`False`): Whether to use checkpointing.
     """
 
@@ -320,7 +320,7 @@ class GEGLU(nn.Module):
     A variant of the gated linear unit activation function from https://arxiv.org/abs/2002.05202.
 
     Parameters:
-        dim (:obj:`int`): The number of channels in the input.
+        dim_in (:obj:`int`): The number of channels in the input.
         dim_out (:obj:`int`): The number of channels in the output.
     """
 

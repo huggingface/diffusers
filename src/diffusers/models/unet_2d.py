@@ -30,7 +30,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
     implements for all the model (such as downloading or saving, etc.)
 
     Parameters:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`, *optional*):
+        sample_size (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`, *optional*):
             Input sample size.
         in_channels (`int`, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (`int`, *optional*, defaults to 3): Number of channels in the output.
