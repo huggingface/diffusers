@@ -37,15 +37,16 @@ _re_configuration_file = re.compile(r"config\.(.*)\.json")
 
 class ConfigMixin:
     r"""
-    Base class for all configuration classes. Stores all configuration parameters under `self.config`
-    Also handles all methods for loading/downloading/saving classes inheriting from [`ConfigMixin`] with
-        - [~`ConfigMixin.from_config`]
-        - [~`ConfigMixin.save_config`]
+    Base class for all configuration classes. Stores all configuration parameters under `self.config` Also handles all
+    methods for loading/downloading/saving classes inheriting from [`ConfigMixin`] with
+        - [`~ConfigMixin.from_config`]
+        - [`~ConfigMixin.save_config`]
 
     Class attributes:
         - **config_name** (`str`) -- A filename under which the config should stored when calling
           [`~ConfigMixin.save_config`] (should be overriden by parent class).
-        - **ignore_for_config** (`List[str]`) -- A list of attributes that should not be saved in the config (should be overriden by parent class).
+        - **ignore_for_config** (`List[str]`) -- A list of attributes that should not be saved in the config (should be
+          overriden by parent class).
     """
     config_name = None
     ignore_for_config = []
@@ -101,10 +102,10 @@ class ConfigMixin:
             pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
                 Can be either:
 
-                    - A string, the *model id* of a model repo on huggingface.co.
-                      Valid model ids should have an organization name, like `google/ddpm-celebahq-256`.
-                    - A path to a *directory* containing model weights saved using [`~ConfigMixin.save_config`],
-                      e.g., `./my_model_directory/`.
+                    - A string, the *model id* of a model repo on huggingface.co. Valid model ids should have an
+                      organization name, like `google/ddpm-celebahq-256`.
+                    - A path to a *directory* containing model weights saved using [`~ConfigMixin.save_config`], e.g.,
+                      `./my_model_directory/`.
 
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory in which a downloaded pretrained model configuration should be cached if the
@@ -361,9 +362,9 @@ class FrozenDict(OrderedDict):
 
 def register_to_config(init):
     r"""
-    Decorator to apply on the init of classes inheriting from [`ConfigMixin`] so that all the arguments are automatically
-    sent to `self.register_for_config`. To ignore a specific argument accepted by the init but that shouldn't be
-    registered in the config, use the `ignore_for_config` class variable
+    Decorator to apply on the init of classes inheriting from [`ConfigMixin`] so that all the arguments are
+    automatically sent to `self.register_for_config`. To ignore a specific argument accepted by the init but that
+    shouldn't be registered in the config, use the `ignore_for_config` class variable
 
     Warning: Once decorated, all private arguments (beginning with an underscore) are trashed and not sent to the init!
     """
