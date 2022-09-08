@@ -18,6 +18,7 @@ import unittest
 import torch
 
 from diffusers import AutoencoderKL
+from diffusers.modeling_utils import ModelMixin
 from diffusers.testing_utils import floats_tensor, torch_device
 
 from .test_modeling_common import ModelTesterMixin
@@ -79,6 +80,13 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
         model = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy")
         model = model.to(torch_device)
         model.eval()
+
+        # One-time warmup pass (see #372)
+        if torch_device == "mps" and isinstance(model, ModelMixin):
+            image = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
+            image = image.to(torch_device)
+            with torch.no_grad():
+                _ = model(image, sample_posterior=True).sample
 
         torch.manual_seed(0)
         if torch.cuda.is_available():
