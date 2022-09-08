@@ -25,6 +25,9 @@ class UNet2DOutput(BaseOutput):
 class UNet2DModel(ModelMixin, ConfigMixin):
     r"""
     UNet2DModel is a 2D UNet model that takes in a noisy sample and a timestep and returns sample shaped output.
+    
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the
+    library implements for all the model (such as downloading or saving, etc.)
 
     Parameters:
         sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`, *optional*):
