@@ -23,6 +23,33 @@ class UNet2DOutput(BaseOutput):
 
 
 class UNet2DModel(ModelMixin, ConfigMixin):
+    r"""
+    UNet2DModel is a 2D UNet model that takes in a noisy sample and a timestep and returns sample shaped output.
+
+    Parameters:
+        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`, *optional*):
+            Input sample size.
+        in_channels (`int`, *optional*, defaults to 3): Number of channels in the input image.
+        out_channels (`int`, *optional*, defaults to 3): Number of channels in the output.
+        center_input_sample (`bool`, *optional*, defaults to :obj:`False`): Whether to center the input sample.
+        time_embedding_type (`str`, *optional*, defaults to :obj:`"positional"`): Type of time embedding to use.
+        freq_shift (`int`, *optional*, defaults to 0): Frequency shift for fourier time embedding.
+        flip_sin_to_cos (`bool`, *optional*, defaults to :
+            obj:`False`): Whether to flip sin to cos for fourier time embedding.
+        down_block_types (`List[str]`, *optional*, defaults to :
+            obj:`["conv", "resnet"]`): List of downsample block types.
+        up_block_types (`List[str]`, *optional*, defaults to :obj:`["conv", "resnet"]`): List of upsample block types.
+        block_out_channels (`List[int]`, *optional*, defaults to :
+            obj:`[64, 128, 256, 512]`): List of block output channels.
+        layers_per_block (`int`, *optional*, defaults to :obj:`2`): The number of layers per block.
+        mid_block_scale_factor (`float`, *optional*, defaults to :obj:`1`): The scale factor for the mid block.
+        downsample_padding (`int`, *optional*, defaults to :obj:`1`): The padding for the downsample convolution.
+        act_fn (`str`, *optional*, defaults to :obj:`"silu"`): The activation function to use.
+        attention_head_dim (`int`, *optional*, defaults to :obj:`8`): The attention head dimension.
+        norm_num_groups (`int`, *optional*, defaults to :obj:`32`): The number of groups for the normalization.
+        norm_eps (`float`, *optional*, defaults to :obj:`1e-5`): The epsilon for the normalization.
+    """
+
     @register_to_config
     def __init__(
         self,
