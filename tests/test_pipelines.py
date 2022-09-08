@@ -967,7 +967,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.9326, 0.923, 0.951, 0.9365, 0.9214, 0.951, 0.9365, 0.9414, 0.918])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
     def test_score_sde_ve_pipeline(self):
@@ -1137,10 +1137,22 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_img2img_pipeline(self):
-        ds = load_dataset("hf-internal-testing/diffusers-images", split="train")
+        ds = load_dataset(
+            "imagefolder",
+            data_files={
+                "input": [
+                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                    "/img2img/sketch-mountains-input.jpg"
+                ],
+                "output": [
+                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                    "/img2img/fantasy_landscape.png"
+                ],
+            },
+        )
 
-        init_image = ds[2]["image"].resize((768, 512))
-        output_image = ds[0]["image"].resize((768, 512))
+        init_image = ds["input"]["image"][0].resize((768, 512))
+        output_image = ds["output"]["image"][0].resize((768, 512))
 
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
@@ -1168,10 +1180,22 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_img2img_pipeline_k_lms(self):
-        ds = load_dataset("hf-internal-testing/diffusers-images", split="train")
+        ds = load_dataset(
+            "imagefolder",
+            data_files={
+                "input": [
+                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                    "/img2img/sketch-mountains-input.jpg"
+                ],
+                "output": [
+                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                    "/img2img/fantasy_landscape_k_lms.png"
+                ],
+            },
+        )
 
-        init_image = ds[2]["image"].resize((768, 512))
-        output_image = ds[1]["image"].resize((768, 512))
+        init_image = ds["input"]["image"][0].resize((768, 512))
+        output_image = ds["output"]["image"][0].resize((768, 512))
 
         lms = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
 
@@ -1202,11 +1226,27 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_inpaint_pipeline(self):
-        ds = load_dataset("hf-internal-testing/diffusers-images", split="train")
+        ds = load_dataset(
+            "imagefolder",
+            data_files={
+                "input": [
+                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                    "/in_paint/overture-creations-5sI6fQgYIuo.png"
+                ],
+                "mask": [
+                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                    "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
+                ],
+                "output": [
+                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                    "/in_paint/red_cat_sitting_on_a_parking_bench.png"
+                ],
+            },
+        )
 
-        init_image = ds[3]["image"].resize((768, 512))
-        mask_image = ds[4]["image"].resize((768, 512))
-        output_image = ds[5]["image"].resize((768, 512))
+        init_image = ds["input"]["image"][0].resize((768, 512))
+        mask_image = ds["mask"]["image"][0].resize((768, 512))
+        output_image = ds["output"]["image"][0].resize((768, 512))
 
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
