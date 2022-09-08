@@ -29,6 +29,11 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
     Katherine Crowson:
     https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L181
 
+    [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
+    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
+    [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
+    [`~ConfigMixin.from_config`] functios.
+
     Args:
         num_train_timesteps (`int`): number of diffusion steps used to train the model.
         beta_start (`float`): the starting `beta` value of inference.
@@ -143,7 +148,9 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
-            prev_sample (`SchedulerOutput` or `Tuple`): updated sample in the diffusion chain.
+            [`~schedulers.scheduling_utils.SchedulerOutput`] or `tuple`:
+            [`~schedulers.scheduling_utils.SchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            returning a tuple, the first element is the sample tensor.
 
         """
         sigma = self.sigmas[timestep]

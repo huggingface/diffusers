@@ -23,6 +23,38 @@ class UNet2DOutput(BaseOutput):
 
 
 class UNet2DModel(ModelMixin, ConfigMixin):
+    r"""
+    UNet2DModel is a 2D UNet model that takes in a noisy sample and a timestep and returns sample shaped output.
+
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
+    implements for all the model (such as downloading or saving, etc.)
+
+    Parameters:
+        sample_size (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`, *optional*):
+            Input sample size.
+        in_channels (`int`, *optional*, defaults to 3): Number of channels in the input image.
+        out_channels (`int`, *optional*, defaults to 3): Number of channels in the output.
+        center_input_sample (`bool`, *optional*, defaults to `False`): Whether to center the input sample.
+        time_embedding_type (`str`, *optional*, defaults to `"positional"`): Type of time embedding to use.
+        freq_shift (`int`, *optional*, defaults to 0): Frequency shift for fourier time embedding.
+        flip_sin_to_cos (`bool`, *optional*, defaults to :
+            obj:`False`): Whether to flip sin to cos for fourier time embedding.
+        down_block_types (`Tuple[str]`, *optional*, defaults to :
+            obj:`("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D")`): Tuple of downsample block
+            types.
+        up_block_types (`Tuple[str]`, *optional*, defaults to :
+            obj:`("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D")`): Tuple of upsample block types.
+        block_out_channels (`Tuple[int]`, *optional*, defaults to :
+            obj:`(224, 448, 672, 896)`): Tuple of block output channels.
+        layers_per_block (`int`, *optional*, defaults to `2`): The number of layers per block.
+        mid_block_scale_factor (`float`, *optional*, defaults to `1`): The scale factor for the mid block.
+        downsample_padding (`int`, *optional*, defaults to `1`): The padding for the downsample convolution.
+        act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
+        attention_head_dim (`int`, *optional*, defaults to `8`): The attention head dimension.
+        norm_num_groups (`int`, *optional*, defaults to `32`): The number of groups for the normalization.
+        norm_eps (`float`, *optional*, defaults to `1e-5`): The epsilon for the normalization.
+    """
+
     @register_to_config
     def __init__(
         self,
@@ -136,6 +168,17 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         timestep: Union[torch.Tensor, float, int],
         return_dict: bool = True,
     ) -> Union[UNet2DOutput, Tuple]:
+        """r
+        Args:
+            sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
+            timestep (`torch.FloatTensor` or `float` or `int): (batch) timesteps
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.unet_2d.UNet2DOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.unet_2d.UNet2DOutput`] or `tuple`: [`~models.unet_2d.UNet2DOutput`] if `return_dict` is True,
+            otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
+        """
         # 0. center input if necessary
         if self.config.center_input_sample:
             sample = 2 * sample - 1.0

@@ -45,19 +45,24 @@ class KarrasVePipeline(DiffusionPipeline):
     ) -> Union[Tuple, ImagePipelineOutput]:
         r"""
         Args:
-            batch_size (:obj:`int`, *optional*, defaults to 1):
+            batch_size (`int`, *optional*, defaults to 1):
                 The number of images to generate.
-            generator (:obj:`torch.Generator`, *optional*):
+            generator (`torch.Generator`, *optional*):
                 A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
                 deterministic.
-            num_inference_steps (:obj:`int`, *optional*, defaults to 50):
+            num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            output_type (:obj:`str`, *optional*, defaults to :obj:`"pil"`):
+            output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `nd.array`.
-            return_dict (:obj:`bool`, *optional*, defaults to :obj:`True`):
+            return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~pipeline_utils.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if
+            `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
+            generated images.
         """
         if "torch_device" in kwargs:
             device = kwargs.pop("torch_device")

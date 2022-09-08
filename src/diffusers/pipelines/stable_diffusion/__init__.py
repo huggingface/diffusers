@@ -1,4 +1,3 @@
-# flake8: noqa
 from dataclasses import dataclass
 from typing import List, Union
 
@@ -7,7 +6,7 @@ import numpy as np
 import PIL
 from PIL import Image
 
-from ...utils import BaseOutput, is_transformers_available
+from ...utils import BaseOutput, is_onnx_available, is_transformers_available
 
 
 @dataclass
@@ -33,3 +32,6 @@ if is_transformers_available():
     from .pipeline_stable_diffusion_img2img import StableDiffusionImg2ImgPipeline
     from .pipeline_stable_diffusion_inpaint import StableDiffusionInpaintPipeline
     from .safety_checker import StableDiffusionSafetyChecker
+
+if is_transformers_available() and is_onnx_available():
+    from .pipeline_stable_diffusion_onnx import StableDiffusionOnnxPipeline

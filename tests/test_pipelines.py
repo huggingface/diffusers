@@ -40,6 +40,7 @@ from diffusers import (
     ScoreSdeVeScheduler,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
+    StableDiffusionOnnxPipeline,
     StableDiffusionPipeline,
     UNet2DConditionModel,
     UNet2DModel,
@@ -967,7 +968,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.9326, 0.923, 0.951, 0.9365, 0.9214, 0.951, 0.9365, 0.9414, 0.918])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
     def test_score_sde_ve_pipeline(self):
@@ -1137,19 +1138,30 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_img2img_pipeline(self):
-        ds = load_dataset("hf-internal-testing/diffusers-images", split="train")
+        ds = load_dataset(
+            "imagefolder",
+            data_files={
+                "input": [
+                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                    "/img2img/sketch-mountains-input.jpg"
+                ],
+                "output": [
+                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                    "/img2img/fantasy_landscape.png"
+                ],
+            },
+        )
 
-        init_image = ds[2]["image"].resize((768, 512))
-        output_image = ds[0]["image"].resize((768, 512))
+        init_image = ds["input"]["image"][0].resize((768, 512))
+        output_image = ds["output"]["image"][0].resize((768, 512))
 
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
             model_id,
-            revision="fp16",  # fp16 to infer 768x512 images with 16GB of VRAM
-            torch_dtype=torch.float16,
             use_auth_token=True,
         )
         pipe.to(torch_device)
+        pipe.enable_attention_slicing()
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A fantasy landscape, trending on artstation"
@@ -1168,10 +1180,22 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_img2img_pipeline_k_lms(self):
-        ds = load_dataset("hf-internal-testing/diffusers-images", split="train")
+        ds = load_dataset(
+            "imagefolder",
+            data_files={
+                "input": [
+                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                    "/img2img/sketch-mountains-input.jpg"
+                ],
+                "output": [
+                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                    "/img2img/fantasy_landscape_k_lms.png"
+                ],
+            },
+        )
 
-        init_image = ds[2]["image"].resize((768, 512))
-        output_image = ds[1]["image"].resize((768, 512))
+        init_image = ds["input"]["image"][0].resize((768, 512))
+        output_image = ds["output"]["image"][0].resize((768, 512))
 
         lms = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
 
@@ -1179,10 +1203,9 @@ class PipelineTesterMixin(unittest.TestCase):
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
             model_id,
             scheduler=lms,
-            revision="fp16",  # fp16 to infer 768x512 images with 16GB of VRAM
-            torch_dtype=torch.float16,
             use_auth_token=True,
         )
+        pipe.enable_attention_slicing()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -1202,20 +1225,35 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_inpaint_pipeline(self):
-        ds = load_dataset("hf-internal-testing/diffusers-images", split="train")
+        ds = load_dataset(
+            "imagefolder",
+            data_files={
+                "input": [
+                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                    "/in_paint/overture-creations-5sI6fQgYIuo.png"
+                ],
+                "mask": [
+                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                    "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
+                ],
+                "output": [
+                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+                    "/in_paint/red_cat_sitting_on_a_parking_bench.png"
+                ],
+            },
+        )
 
-        init_image = ds[3]["image"].resize((768, 512))
-        mask_image = ds[4]["image"].resize((768, 512))
-        output_image = ds[5]["image"].resize((768, 512))
+        init_image = ds["input"]["image"][0].resize((768, 512))
+        mask_image = ds["mask"]["image"][0].resize((768, 512))
+        output_image = ds["output"]["image"][0].resize((768, 512))
 
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             model_id,
-            revision="fp16",  # fp16 to infer 768x512 images in 16GB of VRAM
-            torch_dtype=torch.float16,
             use_auth_token=True,
         )
         pipe.to(torch_device)
+        pipe.enable_attention_slicing()
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A red cat sitting on a parking bench"
@@ -1237,3 +1275,23 @@ class PipelineTesterMixin(unittest.TestCase):
 
         assert sampled_array.shape == (512, 768, 3)
         assert np.max(np.abs(sampled_array - expected_array)) < 1e-3
+
+    @slow
+    def test_stable_diffusion_onnx(self):
+        from scripts.convert_stable_diffusion_checkpoint_to_onnx import convert_models
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            convert_models("CompVis/stable-diffusion-v1-4", tmpdirname, opset=14)
+
+            sd_pipe = StableDiffusionOnnxPipeline.from_pretrained(tmpdirname, provider="CUDAExecutionProvider")
+
+        prompt = "A painting of a squirrel eating a burger"
+        np.random.seed(0)
+        output = sd_pipe([prompt], guidance_scale=6.0, num_inference_steps=20, output_type="np")
+        image = output.images
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.0385, 0.0252, 0.0234, 0.0287, 0.0358, 0.0287, 0.0276, 0.0235, 0.0010])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
