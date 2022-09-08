@@ -35,7 +35,7 @@ You can contribute in so many ways! Just to name a few:
 
 *All are equally valuable to the community.*
 
-### Browse github issues for suggestions
+### Browse GitHub issues for suggestions
 
 If you need inspiration, you can look out for [issues](https://github.com/huggingface/diffusers/issues) you'd like to tackle to contribute to the library. There are a few filters that can be helpful:
 
@@ -56,7 +56,7 @@ The 🧨 Diffusers library is robust and reliable thanks to the users who notify
 the problems they encounter. So thank you for reporting an issue.
 
 First, we would really appreciate it if you could **make sure the bug was not
-already reported** (use the search bar on Github under Issues).
+already reported** (use the search bar on GitHub under Issues).
 
 ### Do you want to implement a new diffusion pipeline / diffusion model?
 
@@ -127,7 +127,7 @@ Follow these steps to start contributing ([supported Python versions](https://gi
    $ pip install -e ".[dev]"
    ```
 
-   (If diffusers was already installed in the virtual environment, remove
+   (If Diffusers was already installed in the virtual environment, remove
    it with `pip uninstall diffusers` before reinstalling it in editable
    mode with the `-e` flag.)
 
@@ -231,7 +231,7 @@ Follow these steps to start contributing ([supported Python versions](https://gi
      `RUN_SLOW=1 python -m pytest tests/test_my_new_model.py`.
    - If you are adding a new tokenizer, write tests, and make sure
      `RUN_SLOW=1 python -m pytest tests/test_tokenization_{your_model_name}.py` passes.
-   CircleCI does not run the slow tests, but github actions does every night!
+   CircleCI does not run the slow tests, but GitHub actions does every night!
 6. All public methods must have informative docstrings that work nicely with sphinx. See `[pipeline_latent_diffusion.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/latent_diffusion/pipeline_latent_diffusion.py)` for an example.
 7. Due to the rapidly growing repository, it is important to make sure that no files that would significantly weigh down the repository are added. This includes images, videos and other non-text files. We prefer to leverage a hf.co hosted `dataset` like
    the ones hosted on [`hf-internal-testing`](https://huggingface.co/hf-internal-testing) in which to place these files and reference or [huggingface/documentation-images](https://huggingface.co/datasets/huggingface/documentation-images).
@@ -274,7 +274,7 @@ $ python -m unittest discover -s examples -t examples -v
 
 To avoid pinging the upstream repository which adds reference notes to each upstream PR and sends unnecessary notifications to the developers involved in these PRs,
 when syncing the main branch of a forked repository, please, follow these steps:
-1. When possible, avoid syncing with the upstream using a branch and PR on the forked repository. Instead merge directly into the forked main.
+1. When possible, avoid syncing with the upstream using a branch and PR on the forked repository. Instead, merge directly into the forked main.
 2. If a PR is absolutely necessary, use the following steps after checking out your branch:
 ```
 $ git checkout -b your-branch-for-syncing
