@@ -121,7 +121,8 @@ class ModelMixin(torch.nn.Module):
 
     Class attributes:
 
-        - **config_name** ([`str`]) -- A filename under which the model should be stored when calling [`~modeling_utils.ModelMixin.save_pretrained`].
+        - **config_name** ([`str`]) -- A filename under which the model should be stored when calling
+          [`~modeling_utils.ModelMixin.save_pretrained`].
     """
     config_name = CONFIG_NAME
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
@@ -246,8 +247,8 @@ class ModelMixin(torch.nn.Module):
 
         <Tip>
 
-        Activate the special ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to
-        use this method in a firewalled environment.
+        Activate the special ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to use
+        this method in a firewalled environment.
 
         </Tip>
 

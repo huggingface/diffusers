@@ -176,9 +176,8 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 Whether or not to return a [`~models.unet_2d.UNet2DOutput`] instead of a plain tuple.
 
         Returns:
-            [`~models.unet_2d.UNet2DOutput`] or `tuple`:
-            [`~models.unet_2d.UNet2DOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is the sample tensor.
+            [`~models.unet_2d.UNet2DOutput`] or `tuple`: [`~models.unet_2d.UNet2DOutput`] if `return_dict` is True,
+            otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
         """
         # 0. center input if necessary
         if self.config.center_input_sample:
