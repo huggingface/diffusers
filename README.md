@@ -270,7 +270,7 @@ with autocast(device):
     image = ldm([prompt], num_inference_steps=50, eta=0.3, guidance_scale=6).images[0]
 
 # save image
-image['sample'][0].save("squirrel.png")
+image.save("squirrel.png")
 ```
 - [Unconditional Diffusion with discrete scheduler](https://huggingface.co/google/ddpm-celebahq-256)
 ```python
