@@ -51,7 +51,7 @@ with open("target.json", "w") as fp:
 
 import torch
 
-ckpt = "checkpoints/256x256_diffusion_uncond.pt"
+ckpt = "guided-diffusion/256x256_diffusion_uncond.pt"
 model = torch.load(ckpt)
 # print(model)
 # print(model.keys())
