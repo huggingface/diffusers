@@ -140,7 +140,7 @@ class SpatialTransformer(nn.Module):
     def forward(self, hidden_states, context=None):
         # note: if no context is given, cross-attention defaults to self-attention
         batch, channel, height, weight = hidden_states.shape
-        residual_in = hidden_states
+        residual = hidden_states
         hidden_states = self.norm(hidden_states)
         hidden_states = self.proj_in(hidden_states)
         hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * weight, channel)
