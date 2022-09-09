@@ -43,7 +43,7 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
 
     @property
     def input_shape(self):
-        return (3, 32, 32)
+        return (3, 31, 31)
 
     @property
     def output_shape(self):
@@ -51,7 +51,8 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "block_out_channels": (32, 64),
+            "block_out_channels": (16, 32),
+            "norm_num_groups": 16,
             "down_block_types": ("DownBlock2D", "AttnDownBlock2D"),
             "up_block_types": ("AttnUpBlock2D", "UpBlock2D"),
             "attention_head_dim": None,

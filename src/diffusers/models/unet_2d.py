@@ -114,6 +114,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 add_downsample=not is_final_block,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
+                resnet_groups=norm_num_groups,
                 attn_num_head_channels=attention_head_dim,
                 downsample_padding=downsample_padding,
             )
@@ -151,12 +152,14 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 add_upsample=not is_final_block,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
+                resnet_groups=norm_num_groups,
                 attn_num_head_channels=attention_head_dim,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
 
         # out
+        print(norm_num_groups)
         num_groups_out = norm_num_groups if norm_num_groups is not None else min(block_out_channels[0] // 4, 32)
         self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=num_groups_out, eps=norm_eps)
         self.conv_act = nn.SiLU()
