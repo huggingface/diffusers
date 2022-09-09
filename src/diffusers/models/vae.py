@@ -62,6 +62,7 @@ class Encoder(nn.Module):
         norm_num_groups=32,
         act_fn="silu",
         double_z=True,
+        resnet_time_scale_shift: str = "default",
     ):
         super().__init__()
         self.layers_per_block = layers_per_block
@@ -99,7 +100,7 @@ class Encoder(nn.Module):
             resnet_eps=1e-6,
             resnet_act_fn=act_fn,
             output_scale_factor=1,
-            resnet_time_scale_shift="default",
+            resnet_time_scale_shift=resnet_time_scale_shift,
             attn_num_head_channels=None,
             resnet_groups=norm_num_groups,
             temb_channels=None,
@@ -141,6 +142,7 @@ class Decoder(nn.Module):
         layers_per_block=2,
         norm_num_groups=32,
         act_fn="silu",
+        resnet_time_scale_shift: str = "default",
     ):
         super().__init__()
         self.layers_per_block = layers_per_block
@@ -156,7 +158,7 @@ class Decoder(nn.Module):
             resnet_eps=1e-6,
             resnet_act_fn=act_fn,
             output_scale_factor=1,
-            resnet_time_scale_shift="default",
+            resnet_time_scale_shift=resnet_time_scale_shift,
             attn_num_head_channels=None,
             resnet_groups=norm_num_groups,
             temb_channels=None,
