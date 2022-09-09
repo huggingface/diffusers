@@ -276,7 +276,7 @@ class CrossAttention(nn.Module):
             start_idx = i * slice_size
             end_idx = (i + 1) * slice_size
             attn_slice = torch.matmul(query[start_idx:end_idx], key[start_idx:end_idx].transpose(1, 2)) * self.scale
-            attn_slice = attn_slice.softmax()
+            attn_slice = attn_slice.softmax(dim=-1)
             attn_slice = torch.matmul(attn_slice, value[start_idx:end_idx])
 
             hidden_states[start_idx:end_idx] = attn_slice
