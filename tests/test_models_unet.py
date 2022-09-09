@@ -43,7 +43,7 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
 
     @property
     def input_shape(self):
-        return (3, 31, 31)
+        return (3, 32, 32)
 
     @property
     def output_shape(self):
@@ -51,8 +51,7 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "block_out_channels": (16, 32),
-            "norm_num_groups": 16,
+            "block_out_channels": (32, 64),
             "down_block_types": ("DownBlock2D", "AttnDownBlock2D"),
             "up_block_types": ("AttnUpBlock2D", "UpBlock2D"),
             "attention_head_dim": None,
@@ -293,3 +292,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         # fmt: on
 
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
+
+    def test_forward_with_norm_groups(self):
+        # not required for this model
+        pass
