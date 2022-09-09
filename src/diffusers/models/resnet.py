@@ -291,9 +291,9 @@ class ResnetBlock2D(nn.Module):
         else:
             self.time_emb_proj = None
 
-        if time_embedding_norm == "default" and temb_channels > 0:
+        if time_embedding_norm == "default" and temb_channels is not None and temb_channels > 0:
             self.temb_proj = torch.nn.Linear(temb_channels, out_channels)
-        elif time_embedding_norm == "scale_shift" and temb_channels > 0:
+        elif time_embedding_norm == "scale_shift" and temb_channels is not None and temb_channels > 0:
             self.temb_proj = torch.nn.Linear(temb_channels, 2 * out_channels)
 
         self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
