@@ -287,14 +287,14 @@ class ResnetBlock2D(nn.Module):
         self.conv1 = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         if temb_channels is not None:
-            self.time_emb_proj = torch.nn.Linear(temb_channels, out_channels)
+            if time_embedding_norm == "default":
+                self.time_emb_proj = torch.nn.Linear(temb_channels, out_channels)
+            elif time_embedding_norm == "scale_shift":
+                self.temb_proj = torch.nn.Linear(temb_channels, 2 * out_channels)
+            else:
+                self.time_emb_proj = torch.nn.Linear(temb_channels, out_channels)
         else:
             self.time_emb_proj = None
-
-        if time_embedding_norm == "default" and temb_channels is not None and temb_channels > 0:
-            self.temb_proj = torch.nn.Linear(temb_channels, out_channels)
-        elif time_embedding_norm == "scale_shift" and temb_channels is not None and temb_channels > 0:
-            self.temb_proj = torch.nn.Linear(temb_channels, 2 * out_channels)
 
         self.norm2 = torch.nn.GroupNorm(num_groups=groups_out, num_channels=out_channels, eps=eps, affine=True)
         self.dropout = torch.nn.Dropout(dropout)
