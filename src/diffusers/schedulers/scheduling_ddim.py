@@ -25,7 +25,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
-def betas_for_alpha_bar(num_diffusion_timesteps: int, max_beta: float=0.999)-> np.ndarray:
+def betas_for_alpha_bar(num_diffusion_timesteps: int, max_beta: float = 0.999) -> np.ndarray:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
