@@ -159,7 +159,6 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             prev_output_channel = output_channel
 
         # out
-        print(norm_num_groups)
         num_groups_out = norm_num_groups if norm_num_groups is not None else min(block_out_channels[0] // 4, 32)
         self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=num_groups_out, eps=norm_eps)
         self.conv_act = nn.SiLU()
