@@ -16,10 +16,15 @@ config["block_out_channels"] = [
     1024,
     1024,
   ]
+config["resnet_time_scale_shift"] = "scale_shift"
 model = UNet2DModel(**config)
 
 print(model)
 model.save_pretrained("ddpm-church-256-custom")
+
+config = dict(model.config)
+print(config)
+print(config["resnet_time_scale_shift"])
 
 # --------------------------------------------------------------------------------
 # diffusers/src
