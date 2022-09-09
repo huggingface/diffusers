@@ -139,14 +139,14 @@ class SpatialTransformer(nn.Module):
 
     def forward(self, x, context=None):
         # note: if no context is given, cross-attention defaults to self-attention
-        b, c, h, w = x.shape
+        batch, channel, height, weight = x.shape
         x_in = x
         x = self.norm(x)
         x = self.proj_in(x)
-        x = x.permute(0, 2, 3, 1).reshape(b, h * w, c)
+        x = x.permute(0, 2, 3, 1).reshape(batch, height * weight, channel)
         for block in self.transformer_blocks:
             x = block(x, context=context)
-        x = x.reshape(b, h, w, c).permute(0, 3, 1, 2)
+        x = x.reshape(batch, height, weight, channel).permute(0, 3, 1, 2)
         x = self.proj_out(x)
         return x + x_in
 
@@ -250,19 +250,19 @@ class CrossAttention(nn.Module):
     def forward(self, x, context=None, mask=None):
         batch_size, sequence_length, dim = x.shape
 
-        q = self.to_q(x)
+        query = self.to_q(x)
         context = context if context is not None else x
-        k = self.to_k(context)
-        v = self.to_v(context)
+        key = self.to_k(context)
+        value = self.to_v(context)
 
-        q = self.reshape_heads_to_batch_dim(q)
-        k = self.reshape_heads_to_batch_dim(k)
-        v = self.reshape_heads_to_batch_dim(v)
+        query = self.reshape_heads_to_batch_dim(q)
+        key = self.reshape_heads_to_batch_dim(k)
+        value = self.reshape_heads_to_batch_dim(v)
 
         # TODO(PVP) - mask is currently never used. Remember to re-implement when used
 
         # attention, what we cannot get enough of
-        hidden_states = self._attention(q, k, v, sequence_length, dim)
+        hidden_states = self._attention(query, key, value, sequence_length, dim)
 
         return self.to_out(hidden_states)
 
