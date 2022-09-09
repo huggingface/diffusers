@@ -79,7 +79,7 @@ from torch import autocast
 from diffusers import StableDiffusionPipeline
 
 model_id = "path-to-your-trained-model"
-pipe = pipe = StableDiffusionPipeline.from_pretrained(model_id,torch_dtype=torch.float16).to("cuda")
+pipe = StableDiffusionPipeline.from_pretrained(model_id,torch_dtype=torch.float16).to("cuda")
 
 prompt = "A <cat-toy> backpack"
 

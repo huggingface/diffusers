@@ -38,6 +38,9 @@ class SchedulerOutput(BaseOutput):
 
 
 class SchedulerMixin:
+    """
+    Mixin containing common functions for the schedulers.
+    """
 
     config_name = SCHEDULER_CONFIG_NAME
     ignore_for_config = ["tensor_format"]
