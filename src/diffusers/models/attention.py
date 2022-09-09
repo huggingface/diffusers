@@ -255,9 +255,9 @@ class CrossAttention(nn.Module):
         key = self.to_k(context)
         value = self.to_v(context)
 
-        query = self.reshape_heads_to_batch_dim(q)
-        key = self.reshape_heads_to_batch_dim(k)
-        value = self.reshape_heads_to_batch_dim(v)
+        query = self.reshape_heads_to_batch_dim(query)
+        key = self.reshape_heads_to_batch_dim(key)
+        value = self.reshape_heads_to_batch_dim(value)
 
         # TODO(PVP) - mask is currently never used. Remember to re-implement when used
 
