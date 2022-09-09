@@ -87,9 +87,10 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
             image = image.to(torch_device)
             with torch.no_grad():
                 _ = model(image, sample_posterior=True).sample
-        
-        
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
+
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(0)
 
