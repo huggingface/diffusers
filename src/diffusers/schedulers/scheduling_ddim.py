@@ -16,7 +16,7 @@
 # and https://github.com/hojonathanho/diffusion
 
 import math
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, List
 
 import numpy as np
 import torch
@@ -25,7 +25,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
-def betas_for_alpha_bar(num_diffusion_timesteps: int, max_beta: float=0.999):
+def betas_for_alpha_bar(num_diffusion_timesteps: int, max_beta: float=0.999)-> np.ndarray:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
@@ -43,10 +43,10 @@ def betas_for_alpha_bar(num_diffusion_timesteps: int, max_beta: float=0.999):
         betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
     """
 
-    def calculate_alpha_bar(time_step: float):
+    def calculate_alpha_bar(time_step: float) -> float:
         return math.cos((time_step + 0.008) / 1.008 * math.pi / 2) ** 2
 
-    betas: list[float] = []
+    betas: List[float] = []
     for diffusion_timestep in range(num_diffusion_timesteps):
         lower_timestep = diffusion_timestep / num_diffusion_timesteps
         upper_timestep = (diffusion_timestep + 1) / num_diffusion_timesteps
@@ -99,17 +99,17 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         if trained_betas is not None:
             self.betas: np.ndarray = np.asarray(trained_betas)
         if beta_schedule == "linear":
-            self.betas: np.ndarray = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
+            self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas: np.ndarray = np.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=np.float32) ** 2
+            self.betas = np.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=np.float32) ** 2
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
-            self.betas: np.ndarray = betas_for_alpha_bar(num_train_timesteps)
+            self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
-        self.alphas: float = 1.0 - self.betas
+        self.alphas: np.ndarray = 1.0 - self.betas
         self.alphas_cumprod: np.ndarray = np.cumprod(self.alphas, axis=0)
 
         # At every step in ddim, we are looking into the previous alphas_cumprod
@@ -119,10 +119,10 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         self.final_alpha_cumprod = np.array(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
 
         # setable values
-        self.num_inference_steps = None
-        self.timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
+        self.num_inference_steps: int = 0
+        self.timesteps: np.ndarray = np.arange(0, num_train_timesteps)[::-1].copy()
 
-        self.tensor_format = tensor_format
+        self.tensor_format: str = tensor_format
         self.set_format(tensor_format=tensor_format)
 
     def _get_variance(self, timestep, prev_timestep):
@@ -135,7 +135,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
-    def set_timesteps(self, num_inference_steps: int, offset: int = 0):
+    def set_timesteps(self, num_inference_steps: int, offset: int = 0) -> None:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
