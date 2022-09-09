@@ -113,6 +113,7 @@ class SpatialTransformer(nn.Module):
         d_head: int,
         depth: int = 1,
         dropout: float = 0.0,
+        num_groups: int = 32,
         context_dim: Optional[int] = None,
     ):
         super().__init__()
@@ -120,7 +121,7 @@ class SpatialTransformer(nn.Module):
         self.d_head = d_head
         self.in_channels = in_channels
         inner_dim = n_heads * d_head
-        self.norm = torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
+        self.norm = torch.nn.GroupNorm(num_groups=num_groups, num_channels=in_channels, eps=1e-6, affine=True)
 
         self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
 

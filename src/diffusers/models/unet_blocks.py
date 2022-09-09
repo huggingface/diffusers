@@ -333,6 +333,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                     in_channels // attn_num_head_channels,
                     depth=1,
                     context_dim=cross_attention_dim,
+                    num_groups=resnet_groups,
                 )
             )
             resnets.append(
@@ -509,6 +510,7 @@ class CrossAttnDownBlock2D(nn.Module):
                     out_channels // attn_num_head_channels,
                     depth=1,
                     context_dim=cross_attention_dim,
+                    num_groups=resnet_groups,
                 )
             )
         self.attentions = nn.ModuleList(attentions)
@@ -1059,6 +1061,7 @@ class CrossAttnUpBlock2D(nn.Module):
                     out_channels // attn_num_head_channels,
                     depth=1,
                     context_dim=cross_attention_dim,
+                    num_groups=resnet_groups,
                 )
             )
         self.attentions = nn.ModuleList(attentions)
