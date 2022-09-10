@@ -265,7 +265,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                     hidden_states=sample,
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
-                    gradient_checkpointing=gradient_checkpointing,
                 )
 
         # 6. post-process
