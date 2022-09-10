@@ -529,12 +529,26 @@ class CrossAttnDownBlock2D(nn.Module):
         for attn in self.attentions:
             attn._set_attention_slice(slice_size)
 
-    def forward(self, hidden_states, temb=None, encoder_hidden_states=None):
+    def forward(self, hidden_states, temb=None, encoder_hidden_states=None, gradient_checkpointing=False):
         output_states = ()
 
         for resnet, attn in zip(self.resnets, self.attentions):
-            hidden_states = resnet(hidden_states, temb)
-            hidden_states = attn(hidden_states, context=encoder_hidden_states)
+            if self.training and gradient_checkpointing:
+
+                def create_custom_forward(module):
+                    def custom_forward(*inputs):
+                        return module(*inputs)
+
+                    return custom_forward
+
+                hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(attn), hidden_states, encoder_hidden_states
+                )
+            else:
+                hidden_states = resnet(hidden_states, temb)
+                hidden_states = attn(hidden_states, context=encoder_hidden_states)
+
             output_states += (hidden_states,)
 
         if self.downsamplers is not None:
@@ -1072,15 +1086,35 @@ class CrossAttnUpBlock2D(nn.Module):
         for attn in self.attentions:
             attn._set_attention_slice(slice_size)
 
-    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, encoder_hidden_states=None):
+    def forward(
+        self,
+        hidden_states,
+        res_hidden_states_tuple,
+        temb=None,
+        encoder_hidden_states=None,
+        gradient_checkpointing=False,
+    ):
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
-            hidden_states = resnet(hidden_states, temb)
-            hidden_states = attn(hidden_states, context=encoder_hidden_states)
+            if self.training and gradient_checkpointing:
+
+                def create_custom_forward(module):
+                    def custom_forward(*inputs):
+                        return module(*inputs)
+
+                    return custom_forward
+
+                hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(attn), hidden_states, encoder_hidden_states
+                )
+            else:
+                hidden_states = resnet(hidden_states, temb)
+                hidden_states = attn(hidden_states, context=encoder_hidden_states)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:

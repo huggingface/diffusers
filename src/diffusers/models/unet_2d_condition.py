@@ -233,35 +233,14 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "attentions") and downsample_block.attentions is not None:
-                if self.training and gradient_checkpointing:
-
-                    def create_custom_forward(module):
-                        def custom_forward(*inputs):
-                            return module(*inputs)
-
-                        return custom_forward
-
-                    sample, res_samples = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(downsample_block), sample, emb, encoder_hidden_states
-                    )
-                else:
-                    sample, res_samples = downsample_block(
-                        hidden_states=sample, temb=emb, encoder_hidden_states=encoder_hidden_states
-                    )
+                sample, res_samples = downsample_block(
+                    hidden_states=sample,
+                    temb=emb,
+                    encoder_hidden_states=encoder_hidden_states,
+                    gradient_checkpointing=gradient_checkpointing,
+                )
             else:
-                if self.training and gradient_checkpointing:
-
-                    def create_custom_forward(module):
-                        def custom_forward(*inputs):
-                            return module(*inputs)
-
-                        return custom_forward
-
-                    sample, res_samples = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(downsample_block), sample, emb
-                    )
-                else:
-                    sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
+                sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
 
             down_block_res_samples += res_samples
 
@@ -279,9 +258,15 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
                     encoder_hidden_states=encoder_hidden_states,
+                    gradient_checkpointing=gradient_checkpointing,
                 )
             else:
-                sample = upsample_block(hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples)
+                sample = upsample_block(
+                    hidden_states=sample,
+                    temb=emb,
+                    res_hidden_states_tuple=res_samples,
+                    gradient_checkpointing=gradient_checkpointing,
+                )
 
         # 6. post-process
         # make sure hidden states is in float32
