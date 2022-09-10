@@ -61,7 +61,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
                 initial noise scale for sigma sequence in sampling procedure. The minimum sigma should mirror the
                 distribution of the data.
         sigma_max (`float`): maximum value used for the range of continuous timesteps passed into the model.
-        sampling_eps (`float`): the end value of sampling, where timesteps decrease progessively from 1 to
+        sampling_eps (`float`): the end value of sampling, where timesteps decrease progressively from 1 to
         epsilon.
         correct_steps (`int`): number of correction steps performed on a produced sample.
         tensor_format (`str`): "np" or "pt" for the expected format of samples passed to the Scheduler.
