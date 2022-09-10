@@ -240,7 +240,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                     gradient_checkpointing=gradient_checkpointing,
                 )
             else:
-                sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
+                sample, res_samples = downsample_block(
+                    hidden_states=sample, temb=emb, gradient_checkpointing=gradient_checkpointing
+                )
 
             down_block_res_samples += res_samples
 
@@ -265,6 +267,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                     hidden_states=sample,
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
+                    gradient_checkpointing=gradient_checkpointing,
                 )
 
         # 6. post-process
