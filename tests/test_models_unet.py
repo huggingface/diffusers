@@ -18,7 +18,7 @@ import unittest
 
 import torch
 
-from diffusers import UNet2DModel
+from diffusers import UNet2DModel, UNet2DConditionModel
 from diffusers.testing_utils import floats_tensor, torch_device
 
 from .test_modeling_common import ModelTesterMixin
@@ -155,6 +155,46 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         # fmt: on
 
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+
+
+class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
+    model_class = UNet2DConditionModel
+
+    @property
+    def dummy_input(self):
+        batch_size = 4
+        num_channels = 4
+        sizes = (32, 32)
+
+        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        time_step = torch.tensor([10]).to(torch_device)
+        encoder_hidden_states = floats_tensor((batch_size, 4, 32)).to(torch_device)
+
+        return {"sample": noise, "timestep": time_step, "encoder_hidden_states": encoder_hidden_states}
+
+    @property
+    def input_shape(self):
+        return (4, 32, 32)
+
+    @property
+    def output_shape(self):
+        return (4, 32, 32)
+
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = {
+            "block_out_channels": (32, 64),
+            "down_block_types": ("CrossAttnDownBlock2D", "DownBlock2D"),
+            "up_block_types": ("UpBlock2D", "CrossAttnUpBlock2D"),
+            "cross_attention_dim": 32,
+            "attention_head_dim": 8,
+            "out_channels": 4,
+            "in_channels": 4,
+            "layers_per_block": 2,
+            "sample_size": 32,
+        }
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+
 
 
 #    TODO(Patrick) - Re-add this test after having cleaned up LDM
