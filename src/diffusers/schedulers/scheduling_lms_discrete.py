@@ -32,7 +32,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
     [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
-    [`~ConfigMixin.from_config`] functios.
+    [`~ConfigMixin.from_config`] functions.
 
     Args:
         num_train_timesteps (`int`): number of diffusion steps used to train the model.
@@ -41,10 +41,10 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule (`str`):
             the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
             `linear` or `scaled_linear`.
-        trained_betas (`np.ndarray`, optional): TODO
+        trained_betas (`np.ndarray`, optional):
+            option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
             options to clip the variance used when adding noise to the denoised sample. Choose from `fixed_small`,
             `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
-        timestep_values (`np.ndarry`, optional): TODO
         tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays.
 
     """
@@ -57,7 +57,6 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
         trained_betas: Optional[np.ndarray] = None,
-        timestep_values: Optional[np.ndarray] = None,
         tensor_format: str = "pt",
     ):
         if trained_betas is not None:
