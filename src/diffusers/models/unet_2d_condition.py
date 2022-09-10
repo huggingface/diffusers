@@ -3,6 +3,7 @@ from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
+import torch.utils.checkpoint
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
@@ -191,6 +192,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         sample: torch.FloatTensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
+        gradient_checkpointing: bool = False,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         """r
@@ -231,11 +233,35 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "attentions") and downsample_block.attentions is not None:
-                sample, res_samples = downsample_block(
-                    hidden_states=sample, temb=emb, encoder_hidden_states=encoder_hidden_states
-                )
+                if self.training and gradient_checkpointing:
+
+                    def create_custom_forward(module):
+                        def custom_forward(*inputs):
+                            return module(*inputs)
+
+                        return custom_forward
+
+                    sample, res_samples = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(downsample_block), sample, emb, encoder_hidden_states
+                    )
+                else:
+                    sample, res_samples = downsample_block(
+                        hidden_states=sample, temb=emb, encoder_hidden_states=encoder_hidden_states
+                    )
             else:
-                sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
+                if self.training and gradient_checkpointing:
+
+                    def create_custom_forward(module):
+                        def custom_forward(*inputs):
+                            return module(*inputs)
+
+                        return custom_forward
+
+                    sample, res_samples = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(downsample_block), sample, emb
+                    )
+                else:
+                    sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
 
             down_block_res_samples += res_samples
 
