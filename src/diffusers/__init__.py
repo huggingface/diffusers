@@ -30,6 +30,7 @@ if is_torch_available():
     )
     from .pipeline_utils import DiffusionPipeline
     from .pipelines import (
+        AbsorbingDiffusionPipeline,
         DanceDiffusionPipeline,
         DDIMPipeline,
         DDPMPipeline,
@@ -64,6 +65,7 @@ else:
 
 if is_torch_available() and is_transformers_available():
     from .pipelines import (
+        AbsorbingDiffusionPipeline,
         CycleDiffusionPipeline,
         LDMTextToImagePipeline,
         StableDiffusionImg2ImgPipeline,
