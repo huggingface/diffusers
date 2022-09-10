@@ -43,7 +43,7 @@ model = torch.load(ckpt)
 
 info = {k: str(list(v.shape)) for k, v in model.items()}
 import json
-with open("ddpm-256-custom.json", "w") as fp:
+with open("ddpm_256_custom.json", "w") as fp:
     json.dump(info, fp, indent=4)
 
 # --------------------------------------------------------------------------------
@@ -51,7 +51,7 @@ with open("ddpm-256-custom.json", "w") as fp:
 
 import torch
 
-ckpt = "guided-diffusion/256x256_diffusion_uncond.pt"
+ckpt = "blended-diffusion/256x256_diffusion_uncond.pt"
 model = torch.load(ckpt)
 # print(model)
 # print(model.keys())
@@ -62,5 +62,5 @@ model = torch.load(ckpt)
 
 info = {k: str(list(v.shape)) for k, v in model.items()}
 import json
-with open("guided-diffusion.json", "w") as fp:
+with open("blended_diffusion.json", "w") as fp:
     json.dump(info, fp, indent=4)
