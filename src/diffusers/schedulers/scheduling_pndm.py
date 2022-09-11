@@ -141,9 +141,10 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             offset (`int`): TODO
         """
         self.num_inference_steps = num_inference_steps
-        self._timesteps = list(
-            range(0, self.config.num_train_timesteps, self.config.num_train_timesteps // num_inference_steps)
-        )
+        step_ratio = self.config.num_train_timesteps // self.num_inference_steps
+        # creates integer timesteps by multiplying by ratio
+        # casting to int to avoid issues when num_inference_step is power of 3
+        self._timesteps = (np.arange(0, num_inference_steps) * step_ratio).astype(int).tolist()
         self._offset = offset
         self._timesteps = np.array([t + self._offset for t in self._timesteps])
 

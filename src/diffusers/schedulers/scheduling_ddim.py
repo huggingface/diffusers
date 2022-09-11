@@ -146,7 +146,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         """
         self.num_inference_steps = num_inference_steps
         step_ratio = self.config.num_train_timesteps // self.num_inference_steps
-        # creates integer timesteps by multipling by ratio
+        # creates integer timesteps by multiplying by ratio
         # casting to int to avoid issues when num_inference_step is power of 3
         self.timesteps = (np.arange(0, num_inference_steps) * step_ratio).astype(int)[::-1].copy()
         self.timesteps += offset
