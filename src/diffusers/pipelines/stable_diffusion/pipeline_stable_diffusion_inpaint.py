@@ -201,6 +201,10 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
         self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
 
+        # preprocess mask
+        mask = preprocess_mask(mask_image).to(self.device)
+        mask = torch.cat([mask] * batch_size)
+
         # preprocess image
         init_image = preprocess_image(init_image).to(self.device)
 
@@ -208,15 +212,21 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         init_latent_dist = self.vae.encode(init_image.to(self.device)).latent_dist
         init_latents = init_latent_dist.sample(generator=generator)
 
+        # adding noise to the masked areas depending on strength
+        rand_latents = torch.randn(
+            init_latents.shape,
+            generator=generator,
+            device=self.device,
+        )
+        init_latents_noised = init_latents * mask + rand_latents * (1 - mask)
+        init_latents = init_latents * (1 - strength) + init_latents_noised * strength
+
+        # multiply by scale_factor
         init_latents = 0.18215 * init_latents
 
         # Expand init_latents for batch_size
         init_latents = torch.cat([init_latents] * batch_size)
         init_latents_orig = init_latents
-
-        # preprocess mask
-        mask = preprocess_mask(mask_image).to(self.device)
-        mask = torch.cat([mask] * batch_size)
 
         # check sizes
         if not mask.shape == init_latents.shape:
