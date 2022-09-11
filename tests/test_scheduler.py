@@ -19,7 +19,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import torch
 
-from diffusers import DDIMScheduler, DDPMScheduler, PNDMScheduler, ScoreSdeVeScheduler
+from diffusers import DDIMScheduler, DDPMScheduler, LMSDiscreteScheduler, PNDMScheduler, ScoreSdeVeScheduler
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -853,3 +853,73 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
 
             self.assertEqual(output_0.shape, sample.shape)
             self.assertEqual(output_0.shape, output_1.shape)
+
+
+class LMSDiscreteSchedulerTest(SchedulerCommonTest):
+    scheduler_classes = (LMSDiscreteScheduler,)
+
+    def get_scheduler_config(self, **kwargs):
+        config = {
+            "num_train_timesteps": 1100,
+            "beta_start": 0.0001,
+            "beta_end": 0.02,
+            "beta_schedule": "linear",
+            "trained_betas": None,
+            "timestep_values": None,
+            "tensor_format": "pt",
+        }
+
+        config.update(**kwargs)
+        return config
+
+    def test_timesteps(self):
+        for timesteps in [10, 50, 100, 1000]:
+            self.check_over_configs(num_train_timesteps=timesteps)
+
+    def test_betas(self):
+        for beta_start, beta_end in zip([0.0001, 0.001, 0.01, 0.1], [0.002, 0.02, 0.2, 2]):
+            self.check_over_configs(beta_start=beta_start, beta_end=beta_end)
+
+    def test_schedules(self):
+        for schedule in ["linear"]:
+            self.check_over_configs(beta_schedule=schedule)
+
+    def test_time_indices(self):
+        for t in [0, 500, 800]:
+            self.check_over_forward(time_step=t)
+
+    def test_pytorch_equal_numpy(self):
+        pass
+
+    def test_full_loop_no_noise(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        num_trained_timesteps = len(scheduler)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter
+
+        for t in reversed(range(num_trained_timesteps - 1)):
+            # 1. predict noise residual
+            residual = model(sample, t)
+            # print("residual: ")
+            # print(residual)
+
+            # 2. predict previous mean of sample x_t-1
+            pred_prev_sample = scheduler.step(residual, t, sample).prev_sample
+
+            # if t > 0:
+            #     noise = self.dummy_sample_deter
+            #     variance = scheduler.get_variance(t) ** (0.5) * noise
+            #
+            # sample = pred_prev_sample + variance
+            sample = pred_prev_sample
+        print("Result sample: ")
+        print(sample)
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_sum.item() - 259.0883) < 1e-2
+        assert abs(result_mean.item() - 0.3374) < 1e-3
