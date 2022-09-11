@@ -34,6 +34,7 @@ def get_down_block(
     resnet_groups=None,
     cross_attention_dim=None,
     downsample_padding=None,
+    resnet_time_scale_shift: str = "default",
 ):
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
     if down_block_type == "DownBlock2D":
@@ -44,6 +45,7 @@ def get_down_block(
             temb_channels=temb_channels,
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
+            resnet_time_scale_shift=resnet_time_scale_shift,
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
