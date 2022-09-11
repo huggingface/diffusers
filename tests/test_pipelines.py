@@ -694,7 +694,9 @@ class PipelineFastTests(unittest.TestCase):
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.4731, 0.5346, 0.4531, 0.6251, 0.5446, 0.4057, 0.5527, 0.5896, 0.5153])
+        expected_slice = np.array(
+            [0.4893303, 0.5381786, 0.46649122, 0.62859786, 0.53987336, 0.39735478, 0.5483682, 0.59601367, 0.5178648]
+        )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
