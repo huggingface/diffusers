@@ -1,3 +1,18 @@
+# # diffusers/src
+#
+# from diffusers import UNet2DModel
+# import json
+#
+# with open("ddpm_256_custom_config.json") as fp:
+#     config = json.load(fp)
+# model = UNet2DModel(**config)
+# print(model)
+#
+# config = dict(model.config)
+# print(config)
+# print(config["resnet_time_scale_shift"])
+#
+# exit(0)
 # --------------------------------------------------------------------------------
 # diffusers/src
 
