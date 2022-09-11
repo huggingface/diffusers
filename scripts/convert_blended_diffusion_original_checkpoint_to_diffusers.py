@@ -102,18 +102,22 @@ def convert_ddpm_checkpoint(checkpoint, config):
     """
     new_checkpoint = {}
 
-    new_checkpoint["time_embedding.linear_1.weight"] = checkpoint["temb.dense.0.weight"]
-    new_checkpoint["time_embedding.linear_1.bias"] = checkpoint["temb.dense.0.bias"]
-    new_checkpoint["time_embedding.linear_2.weight"] = checkpoint["temb.dense.1.weight"]
-    new_checkpoint["time_embedding.linear_2.bias"] = checkpoint["temb.dense.1.bias"]
+    new_checkpoint["time_embedding.linear_1.weight"] = checkpoint["time_embed.0.weight"]
+    new_checkpoint["time_embedding.linear_1.bias"] = checkpoint["time_embed.0.bias"]
+    new_checkpoint["time_embedding.linear_2.weight"] = checkpoint["time_embed.2.weight"]
+    new_checkpoint["time_embedding.linear_2.bias"] = checkpoint["time_embed.2.weight"]
+
+    new_checkpoint["conv_in.weight"] = checkpoint["input_blocks.0.0.weight"]
+    new_checkpoint["conv_in.bias"] = checkpoint["input_blocks.0.0.bias"]
+
+    exit(0)
+
+    new_checkpoint["conv_out.weight"] = checkpoint["conv_out.weight"]
+    new_checkpoint["conv_out.bias"] = checkpoint["conv_out.bias"]
 
     new_checkpoint["conv_norm_out.weight"] = checkpoint["norm_out.weight"]
     new_checkpoint["conv_norm_out.bias"] = checkpoint["norm_out.bias"]
 
-    new_checkpoint["conv_in.weight"] = checkpoint["conv_in.weight"]
-    new_checkpoint["conv_in.bias"] = checkpoint["conv_in.bias"]
-    new_checkpoint["conv_out.weight"] = checkpoint["conv_out.weight"]
-    new_checkpoint["conv_out.bias"] = checkpoint["conv_out.bias"]
 
     num_down_blocks = len({".".join(layer.split(".")[:2]) for layer in checkpoint if "down" in layer})
     down_blocks = {
