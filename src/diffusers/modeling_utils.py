@@ -318,7 +318,6 @@ class ModelMixin(torch.nn.Module):
         from_auto_class = kwargs.pop("_from_auto", False)
         torch_dtype = kwargs.pop("torch_dtype", None)
         subfolder = kwargs.pop("subfolder", None)
-        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", None)
         device_map = kwargs.pop("device_map", None)
 
         user_agent = {"file_type": "model", "framework": "pytorch", "from_auto_class": from_auto_class}
@@ -336,7 +335,6 @@ class ModelMixin(torch.nn.Module):
             use_auth_token=use_auth_token,
             revision=revision,
             subfolder=subfolder,
-            low_cpu_mem_usage=low_cpu_mem_usage,
             device_map=device_map,
             **kwargs,
         )
@@ -421,7 +419,7 @@ class ModelMixin(torch.nn.Module):
 
             # restore default dtype
 
-        if low_cpu_mem_usage:            
+        if device_map is not None:            
             accelerate.load_checkpoint_and_dispatch(
                 model,
                 model_file,
