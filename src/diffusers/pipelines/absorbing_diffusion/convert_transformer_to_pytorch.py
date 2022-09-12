@@ -72,7 +72,7 @@ def convert_transformer_checkpoint(model_name, checkpoint_path, pytorch_dump_fol
     # load weights
     model.load_state_dict(new_state_dict)
 
-    # verify outputs on dummy input
+    # TODO verify outputs on dummy input
     input_ids = torch.randint(0, 1024, (1, 256))
 
     output = model(input_ids)

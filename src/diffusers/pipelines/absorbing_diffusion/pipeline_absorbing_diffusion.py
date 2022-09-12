@@ -40,24 +40,17 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
         self,
         vae: VQModel,
         transformer: Transformer,
-        # TODO determine whether the following attributes are necessary,
-        # and whether they should be in call or here
-        mask_id=1024,
-        latent_shape=[1, 16, 16],
-        codebook_size=1024,
-        emb_dim=256,
-        temp=1.0,
     ):
         super().__init__()
         self.register_modules(
             vae=vae,
             transformer=transformer,
         )
-        self.mask_id = mask_id
-        self.latent_shape = latent_shape
-        self.codebook_size = codebook_size
-        self.emb_dim = emb_dim
-        self.temp = temp
+        # TODO make these attributes configurable?
+        self.mask_id = 1024
+        self.latent_shape = [1, 16, 16]
+        self.codebook_size = self.transformer.vocab_size
+        self.emb_dim = self.vae.latent_channels
 
     @torch.no_grad()
     def embed(self, z):
@@ -77,6 +70,7 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
         batch_size: int = 1,
         generator: Optional[torch.Generator] = None,
         num_inference_steps: int = 256,
+        temp=1.0,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         **kwargs,
@@ -132,7 +126,7 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
 
             x_0_logits = self.transformer(x_t, t=t)
             # scale by temperature
-            x_0_logits = x_0_logits / self.temp
+            x_0_logits = x_0_logits / temp
             x_0_dist = dists.Categorical(logits=x_0_logits)
             x_0_hat = x_0_dist.sample().long()
             x_t[changes] = x_0_hat[changes]
@@ -145,7 +139,7 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
 
         # if output_type == "pil":
         #     images = self.numpy_to_pil(images)
-        utils.save_image(images, "results.png", nrow = batch_size)
+        utils.save_image(images, "results.png", nrow=batch_size)
 
         if not return_dict:
             return (images,)
