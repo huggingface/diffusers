@@ -184,6 +184,7 @@ class FlaxUNet2DModule(nn.Module):
 class FlaxUNet2DConditionModel(nn.Module, ConfigMixin, FlaxModelMixin):
     base_model_prefix = "model"
     module_class = FlaxUNet2DModule
+    ignore_for_config = ["input_shape", "seed", "dtype", "_do_init"]
 
     @register_to_config
     def __init__(
@@ -200,7 +201,7 @@ class FlaxUNet2DConditionModel(nn.Module, ConfigMixin, FlaxModelMixin):
         cross_attention_dim=768,
         dropout=0.1,
 
-        # model args - to be ignored for config
+        # model args
         input_shape: Tuple = (1, 32, 32, 4),
         seed: int = 0,
         dtype: jnp.dtype = jnp.float32,
