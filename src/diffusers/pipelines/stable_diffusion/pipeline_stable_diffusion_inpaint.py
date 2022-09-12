@@ -193,7 +193,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
-        offset = 1
 
         # preprocess image
         init_image = preprocess_image(init_image).to(self.device)
@@ -217,6 +216,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             raise ValueError("The mask and init_image should be the same size!")
 
         # get the original timestep using init_timestep
+        offset = self.scheduler.config.get("steps_offset", 0)
         init_timestep = int(num_inference_steps * strength) + offset
         init_timestep = min(init_timestep, num_inference_steps)
         timesteps = self.scheduler.timesteps[-init_timestep]

@@ -170,7 +170,6 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
-        offset = 1
 
         if not isinstance(init_image, torch.FloatTensor):
             init_image = preprocess(init_image)
@@ -184,6 +183,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         init_latents = torch.cat([init_latents] * batch_size)
 
         # get the original timestep using init_timestep
+        offset = self.scheduler.config.get("steps_offset", 0)
         init_timestep = int(num_inference_steps * strength) + offset
         init_timestep = min(init_timestep, num_inference_steps)
         if isinstance(self.scheduler, LMSDiscreteScheduler):
