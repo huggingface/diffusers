@@ -242,10 +242,10 @@ def convert_vqgan_checkpoint(model_name, checkpoint_path, pytorch_dump_folder_pa
     )
     pixel_values = image_transformations(prepare_img()).unsqueeze(0)
 
+    # we forward through the encoder, quantizer and decoder separately
+    # since Absorbing Diffusion's VQ-GAN doesn't have quant_conv and post_quant_conv
     encoder_output = model.encoder(pixel_values)
-
     quant, emb_loss, info = model.quantize(encoder_output)
-
     decoder_output = model.decoder(quant)
 
     # verify encoder output
