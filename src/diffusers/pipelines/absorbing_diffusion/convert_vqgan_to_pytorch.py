@@ -22,6 +22,8 @@ from pathlib import Path
 
 import torch
 
+from huggingface_hub import HfApi
+
 import requests
 from diffusers import VQModel
 from PIL import Image
@@ -259,7 +261,18 @@ def convert_vqgan_checkpoint(model_name, checkpoint_path, pytorch_dump_folder_pa
         model.save_pretrained(pytorch_dump_folder_path)
 
     if push_to_hub:
-        model.push_to_hub("nielsr/" + model_name)
+        # save the model
+        pytorch_dump_folder_path = "/Users/nielsrogge/Documents/AbsorbingDiffusion/churches/test/vae"
+        model.save_pretrained(pytorch_dump_folder_path)
+
+        # push to the hub
+        api = HfApi()
+        api.upload_folder(
+            folder_path=pytorch_dump_folder_path,
+            path_in_repo="vae",
+            repo_id="nielsr/absorbing-diffusion-churches",
+            repo_type="model",
+        )
 
 
 if __name__ == "__main__":

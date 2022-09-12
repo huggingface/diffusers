@@ -10,7 +10,5 @@ transformer = Transformer.from_pretrained("/Users/nielsrogge/Documents/Absorbing
 # 3. create pipeline
 pipe = AbsorbingDiffusionPipeline(vae=vae, transformer=transformer)
 
-pipe.push_to_hub("nielsr/test")
-
 # generate images
 # pipe(batch_size=1, height=512, width=512, num_inference_steps=256)

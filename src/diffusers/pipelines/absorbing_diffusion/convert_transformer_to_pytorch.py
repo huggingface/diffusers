@@ -24,6 +24,8 @@ import torch
 
 from diffusers import Transformer
 
+from huggingface_hub import HfApi
+
 
 def remove_ignore_keys(state_dict):
     ignore_keys = [
@@ -85,9 +87,18 @@ def convert_transformer_checkpoint(model_name, checkpoint_path, pytorch_dump_fol
         model.save_pretrained(pytorch_dump_folder_path)
 
     if push_to_hub:
-        print("Pushing to the hub...")
-        model_name = "nielsr/test"
-        model.push_to_hub(model_name)
+        # save the model
+        pytorch_dump_folder_path = "/Users/nielsrogge/Documents/AbsorbingDiffusion/churches/test/transformer"
+        model.save_pretrained(pytorch_dump_folder_path)
+
+        # push to the hub
+        api = HfApi()
+        api.upload_folder(
+            folder_path=pytorch_dump_folder_path,
+            path_in_repo="transformer",
+            repo_id="nielsr/absorbing-diffusion-churches",
+            repo_type="model",
+        )
 
 
 if __name__ == "__main__":

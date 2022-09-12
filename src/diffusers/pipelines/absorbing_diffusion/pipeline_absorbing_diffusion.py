@@ -17,19 +17,6 @@ def latent_ids_to_onehot(latent_ids, latent_shape, codebook_size):
     return one_hot.reshape(one_hot.shape[0], -1, codebook_size)
 
 
-@torch.no_grad()
-def embed(self, z):
-    z_flattened = z.view(-1, self.codebook_size)  # B*H*W, codebook_size
-    embedded = (
-        torch.matmul(z_flattened, self.embedding_weight)
-        .view(z.size(0), self.latent_shape[1], self.latent_shape[2], self.emb_dim)
-        .permute(0, 3, 1, 2)
-        .contiguous()
-    )
-
-    return embedded
-
-
 class AbsorbingDiffusionPipeline(DiffusionPipeline):
     r"""
     Pipeline for unconditional image generation using Absorbing Diffusion.
@@ -68,6 +55,18 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
         self.codebook_size = codebook_size
         self.temp = temp
 
+    @torch.no_grad()
+    def embed(self, z):
+        z_flattened = z.view(-1, self.codebook_size)  # B*H*W, codebook_size
+        embedded = (
+            torch.matmul(z_flattened, self.embedding_weight)
+            .view(z.size(0), self.latent_shape[1], self.latent_shape[2], self.emb_dim)
+            .permute(0, 3, 1, 2)
+            .contiguous()
+        )
+
+        return embedded
+    
     @torch.no_grad()
     def __call__(
         self,
@@ -137,8 +136,8 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
         # decode the image latents with the VAE decoder
         latents = x_t
         latents_one_hot = latent_ids_to_onehot(latents, self.latent_shape, self.codebook_size)
-        q = embed(latents_one_hot)
-        images = self.vae.decode(q.float())
+        q = self.embed(latents_one_hot)
+        images = self.vae.decoder(q.float())
 
         if output_type == "pil":
             images = self.numpy_to_pil(images)
