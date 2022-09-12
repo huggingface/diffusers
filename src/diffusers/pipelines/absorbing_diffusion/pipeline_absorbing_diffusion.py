@@ -51,7 +51,7 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
         self,
         vae: VQModel,
         transformer: Transformer,
-        # TODO determine whether these attributes are necessary,
+        # TODO determine whether the following attributes are necessary,
         # and whether they should be in call or here
         mask_id=1024,
         latent_shape=[1, 16, 16],
@@ -72,8 +72,6 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
     def __call__(
         self,
         batch_size: int = 1,
-        height: Optional[int] = 512,
-        width: Optional[int] = 512,
         generator: Optional[torch.Generator] = None,
         num_inference_steps: int = 256,
         output_type: Optional[str] = "pil",
@@ -84,10 +82,6 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
         Args:
             batch_size (`int`, *optional*, defaults to 1):
                 Number of images to generate.
-            height (`int`, *optional*, defaults to 512):
-                The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to 512):
-                The width in pixels of the generated image.
             generator (`torch.Generator`, *optional*):
                 A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
                 deterministic.
@@ -118,15 +112,16 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
                 device = "cuda" if torch.cuda.is_available() else "cpu"
             self.to(device)
 
-        shape = (height, width)
-        x_t = torch.ones((batch_size, np.prod(shape)), device=device).long() * self.mask_id
-        unmasked = torch.zeros_like(x_t, device=device).bool()
+        x_t = torch.ones((batch_size, np.prod(self.latent_shape)), device=self.device).long() * self.mask_id
+        unmasked = torch.zeros_like(x_t, device=self.device).bool()
 
-        for t in self.progress_bar(num_inference_steps):
-            t = torch.full((batch_size,), t, device=device, dtype=torch.long)
+        sample_steps = list(range(1, num_inference_steps + 1))
+
+        for t in reversed(sample_steps):
+            t = torch.full((batch_size,), t, device=self.device, dtype=torch.long)
 
             # where to unmask
-            changes = torch.rand(x_t.shape, generator=generator, device=device) < 1 / t.float().unsqueeze(-1)
+            changes = torch.rand(x_t.shape, generator=generator, device=self.device) < 1 / t.float().unsqueeze(-1)
             # don't unmask somewhere already unmasked
             changes = torch.bitwise_xor(changes, torch.bitwise_and(changes, unmasked))
             # update mask with changes

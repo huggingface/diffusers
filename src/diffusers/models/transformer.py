@@ -4,6 +4,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ..configuration_utils import ConfigMixin, register_to_config
+from ..modeling_utils import ModelMixin
+
 
 class CausalSelfAttention(nn.Module):
     """
@@ -90,9 +93,10 @@ class Block(nn.Module):
         return x
 
 
-class Transformer(nn.Module):
+class Transformer(ModelMixin, ConfigMixin):
     """the full GPT language model, with a context size of block_size"""
 
+    @register_to_config
     def __init__(
         self,
         vocab_size=1024,
@@ -137,7 +141,7 @@ class Transformer(nn.Module):
         )
         # decoder head
         self.ln_f = nn.LayerNorm(self.hidden_size)
-        self.head = nn.Linear(self.hidden_size, self.vocab_size, bias=False)
+        self.head = nn.Linear(self.hidden_size, self.vocab_size - 1, bias=False)
 
     def _init_weights(self, module):
         if isinstance(module, (nn.Linear, nn.Embedding)):

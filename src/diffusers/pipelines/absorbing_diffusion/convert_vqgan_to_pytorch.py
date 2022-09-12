@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Convert Absorbing Diffusion checkpoints from the original repository.
+"""Convert Absorbing Diffusion VQGAN checkpoints from the original repository.
 
 URL: https://github.com/samb-t/unleashing-transformers"""
 
@@ -26,18 +26,6 @@ import requests
 from diffusers import VQModel
 from PIL import Image
 from torchvision.transforms import Compose, Normalize, Resize, ToTensor
-
-
-def remove_ignore_keys_(state_dict):
-    ignore_keys = [
-        "encoder.version",
-        "decoder.version",
-        "model.encoder.version",
-        "model.decoder.version",
-        "_float_tensor",
-    ]
-    for k in ignore_keys:
-        state_dict.pop(k, None)
 
 
 def rename_key(name):
@@ -159,7 +147,7 @@ def rename_key(name):
     return name
 
 
-def convert_state_dict(orig_state_dict, model):
+def convert_state_dict(orig_state_dict):
     for key in orig_state_dict.copy().keys():
         val = orig_state_dict.pop(key)
 
@@ -199,8 +187,9 @@ def convert_vqgan_checkpoint(model_name, checkpoint_path, pytorch_dump_folder_pa
     """
     Copy/paste/tweak model's weights to our VQGAN structure.
     """
-    # load original state dict
+    # load original state dict, convert
     state_dict = torch.load(checkpoint_path, map_location="cpu")
+    new_state_dict = convert_state_dict(state_dict)
 
     # load 🤗 model
     model = VQModel(
@@ -230,7 +219,6 @@ def convert_vqgan_checkpoint(model_name, checkpoint_path, pytorch_dump_folder_pa
     )
 
     model.eval()
-    new_state_dict = convert_state_dict(state_dict, model)
 
     missing_keys, unexpected_keys = model.load_state_dict(new_state_dict, strict=False)
     assert missing_keys == ["quant_conv.weight", "quant_conv.bias", "post_quant_conv.weight", "post_quant_conv.bias"]
@@ -271,9 +259,7 @@ def convert_vqgan_checkpoint(model_name, checkpoint_path, pytorch_dump_folder_pa
         model.save_pretrained(pytorch_dump_folder_path)
 
     if push_to_hub:
-        print("Pushing to the hub...")
-        model_name = "nielsr/test"
-        model.push_to_hub(model_name)
+        model.push_to_hub("nielsr/" + model_name)
 
 
 if __name__ == "__main__":
@@ -287,7 +273,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--checkpoint_path",
-        default="/Users/nielsrogge/Documents/AbsorbingDiffusion/vqgan_ema_2200000.th",
+        default="/Users/nielsrogge/Documents/AbsorbingDiffusion/churches/vqgan_ema_2200000.th",
         type=str,
         help="Path to the original state dict (.pth file).",
     )
