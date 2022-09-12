@@ -23,10 +23,9 @@ from pathlib import Path
 import torch
 
 import requests
-from diffusers.models.vae import Encoder
+from diffusers.models.vae import Decoder, Encoder
 from PIL import Image
-
-from torchvision.transforms import Compose, Resize, ToTensor, Normalize
+from torchvision.transforms import Compose, Normalize, Resize, ToTensor
 
 
 def remove_ignore_keys_(state_dict):
@@ -152,8 +151,8 @@ def convert_yolos_checkpoint(model_name, checkpoint_path, pytorch_dump_folder_pa
     # load original state dict
     state_dict = torch.load(checkpoint_path, map_location="cpu")
 
-    # load 🤗 model
-    model = Encoder(
+    # load 🤗 encoder
+    encoder = Encoder(
         in_channels=3,
         out_channels=256,
         down_block_types=(
@@ -169,30 +168,56 @@ def convert_yolos_checkpoint(model_name, checkpoint_path, pytorch_dump_folder_pa
         double_z=False,
         final_activation=False,
     )
-    model.eval()
-    new_state_dict = convert_state_dict(state_dict, model)
+    encoder.eval()
+    new_state_dict = convert_state_dict(state_dict, encoder)
 
-    model.load_state_dict(new_state_dict)
+    encoder.load_state_dict(new_state_dict)
 
     # verify outputs on an image
-    image_transformations = Compose([Resize((256,256)),
-                                 ToTensor(),
-                                 Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+    image_transformations = Compose(
+        [Resize((256, 256)), ToTensor(), Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]
+    )
     pixel_values = image_transformations(prepare_img()).unsqueeze(0)
 
-    outputs = model(pixel_values)
-    print(outputs.shape)
-    print("First values:", outputs[0, 0, :3, :3])
+    encoder_out = encoder(pixel_values)
+
+    assert encoder_out.shape == (1, 256, 16, 16)
+    assert torch.allclose(
+        encoder_out[0, 0, :3, :3],
+        torch.tensor([[-1.2561, -1.1712, -1.0690], [-1.3602, -1.3631, -1.3604], [-1.3849, 0.5701, 1.2044]]),
+        atol=1e-3,
+    )
+    print("Looks ok!")
+
+    # load 🤗 decoder
+    decoder = Decoder(
+        in_channels=256,
+        out_channels=3,
+        up_block_types=(
+            "AttnUpDecoderBlock2D",
+            "UpDecoderBlock2D",
+            "UpDecoderBlock2D",
+            "UpDecoderBlock2D",
+            "UpDecoderBlock2D",
+        ),
+        block_out_channels=(512, 256, 256, 128, 128),
+        layers_per_block=2,
+        act_fn="swish",
+    )
+
+    decoder.eval()
+    decoder_out = decoder(encoder_out)
+    print("Shape of decoder output:", decoder_out.shape)
 
     if pytorch_dump_folder_path is not None:
         Path(pytorch_dump_folder_path).mkdir(exist_ok=True)
-        print(f"Saving model {model_name} to {pytorch_dump_folder_path}")
-        model.save_pretrained(pytorch_dump_folder_path)
+        print(f"Saving encoder {model_name} to {pytorch_dump_folder_path}")
+        encoder.save_pretrained(pytorch_dump_folder_path)
 
     if push_to_hub:
         print("Pushing to the hub...")
         model_name = "nielsr/test"
-        model.push_to_hub(model_name)
+        encoder.push_to_hub(model_name)
 
 
 if __name__ == "__main__":
