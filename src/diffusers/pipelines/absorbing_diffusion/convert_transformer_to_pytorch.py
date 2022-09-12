@@ -72,11 +72,16 @@ def convert_transformer_checkpoint(model_name, checkpoint_path, pytorch_dump_fol
     # load weights
     model.load_state_dict(new_state_dict)
 
-    # TODO verify outputs on dummy input
-    input_ids = torch.randint(0, 1024, (1, 256))
+    # Verify outputs on dummy input
+    dummy_input = torch.tensor([[1024, 1024, 1024]])
+    output = model(dummy_input, t=2)
 
-    output = model(input_ids)
-    print(output.shape)
+    assert output.shape == (1, 3, 1024)
+    assert torch.allclose(
+        output[0, :3, :3],
+        torch.tensor([[-0.1161, 0.4330, -13.3936], [-0.0973, 0.4164, -13.3616], [-0.1220, 0.4098, -13.3992]]),
+        atol=1e-4,
+    )
 
     print("Looks ok!")
 
