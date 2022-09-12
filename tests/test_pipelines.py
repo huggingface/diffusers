@@ -984,13 +984,13 @@ class PipelineTesterMixin(unittest.TestCase):
         sde_ve.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        image = sde_ve(num_inference_steps=300, output_type="numpy", generator=generator).images
+        image = sde_ve(num_inference_steps=10, output_type="numpy", generator=generator).images
 
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 256, 256, 3)
 
-        expected_slice = np.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0])
+        expected_slice = np.array([0., 1., 1., 1., 1., 1., 1., 0., 0.])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
