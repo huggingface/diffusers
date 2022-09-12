@@ -169,14 +169,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
         # set timesteps
-        accepts_offset = "offset" in set(inspect.signature(self.scheduler.set_timesteps).parameters.keys())
-        extra_set_kwargs = {}
-        offset = 0
-        if accepts_offset:
-            offset = 1
-            extra_set_kwargs["offset"] = 1
-
-        self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
+        self.scheduler.set_timesteps(num_inference_steps)
 
         if not isinstance(init_image, torch.FloatTensor):
             init_image = preprocess(init_image)

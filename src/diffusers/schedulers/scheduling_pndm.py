@@ -16,6 +16,7 @@
 
 import math
 from typing import Optional, Tuple, Union
+import warnings
 
 import numpy as np
 import torch
@@ -73,10 +74,17 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
         trained_betas (`np.ndarray`, optional): TODO
-        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays
         skip_prk_steps (`bool`):
             allows the scheduler to skip the Runge-Kutta steps that are defined in the original paper as being required
             before plms steps; defaults to `False`.
+        set_alpha_to_one (`bool`, default `True`):
+            each diffusion step uses the value of alphas product at that step and at the previous one.
+            For the final step there is no previous alpha. When this option is `True` the previous alpha
+            product is fixed to `1`, otherwise it uses the value of alpha at step 0.
+        steps_offset (`int`, default `0`):
+            an offset added to the inference steps. You can use a combination of `offset=1` and `set_alpha_to_one=False`,
+            to make the last step use step 0 for the previous alpha product.
+        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays
 
     """
 
@@ -88,8 +96,10 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
         trained_betas: Optional[np.ndarray] = None,
-        tensor_format: str = "pt",
         skip_prk_steps: bool = False,
+        set_alpha_to_one: bool = True,
+        steps_offset: int = 0,
+        tensor_format: str = "pt",
     ):
         if trained_betas is not None:
             self.betas = np.asarray(trained_betas)
@@ -107,6 +117,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
 
+        self.final_alpha_cumprod = np.array(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
+
         self.one = np.array(1.0)
 
         # For now we only support F-PNDM, i.e. the runge-kutta method
@@ -123,7 +135,6 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         # setable values
         self.num_inference_steps = None
         self._timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
-        self._offset = 0
         self.prk_timesteps = None
         self.plms_timesteps = None
         self.timesteps = None
@@ -131,21 +142,30 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         self.tensor_format = tensor_format
         self.set_format(tensor_format=tensor_format)
 
-    def set_timesteps(self, num_inference_steps: int, offset: int = 0) -> torch.FloatTensor:
+    def set_timesteps(self, num_inference_steps: int, **kwargs) -> torch.FloatTensor:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
         Args:
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
-            offset (`int`): TODO
         """
+
+        offset = self.config.steps_offset
+
+        if "offset" in kwargs:
+            warnings.warn(
+                "`offset` is deprecated as an input argument to `set_timesteps` and will be removed in v0.4.0."
+                " Please pass `steps_offset` to `__init__` instead."
+            )
+
+            offset = kwargs["offset"]
+
         self.num_inference_steps = num_inference_steps
         self._timesteps = list(
             range(0, self.config.num_train_timesteps, self.config.num_train_timesteps // num_inference_steps)
         )
-        self._offset = offset
-        self._timesteps = np.array([t + self._offset for t in self._timesteps])
+        self._timesteps = np.array(self._timesteps) + offset
 
         if self.config.skip_prk_steps:
             # for some models like stable diffusion the prk steps can/should be skipped to
@@ -322,7 +342,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         return SchedulerOutput(prev_sample=prev_sample)
 
-    def _get_prev_sample(self, sample, timestep, timestep_prev, model_output):
+    def _get_prev_sample(self, sample, timestep, prev_timestep, model_output):
         # See formula (9) of PNDM paper https://arxiv.org/pdf/2202.09778.pdf
         # this function computes x_(t−δ) using the formula of (9)
         # Note that x_t needs to be added to both sides of the equation
@@ -335,8 +355,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         # sample -> x_t
         # model_output -> e_θ(x_t, t)
         # prev_sample -> x_(t−δ)
-        alpha_prod_t = self.alphas_cumprod[timestep + 1 - self._offset]
-        alpha_prod_t_prev = self.alphas_cumprod[timestep_prev + 1 - self._offset]
+        alpha_prod_t = self.alphas_cumprod[timestep]
+        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
