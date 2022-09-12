@@ -125,6 +125,9 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
             # update mask with changes
             unmasked = torch.bitwise_or(unmasked, changes)
 
+            print("Shape of Transformer input:", x_t.shape)
+            print("First values:", x_t[0, :3])
+
             x_0_logits = self.transformer(x_t, t=t)
 
             print("Shape of x_0_logits:", x_0_logits.shape)
