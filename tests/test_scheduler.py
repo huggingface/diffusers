@@ -380,21 +380,6 @@ class DDIMSchedulerTest(SchedulerCommonTest):
         for t, num_inference_steps in zip([1, 10, 50], [10, 50, 500]):
             self.check_over_forward(time_step=t, num_inference_steps=num_inference_steps)
 
-    def test_pow_of_3_inference_steps(self):
-        num_inference_steps = 27
-
-        for scheduler_class in self.scheduler_classes:
-            sample = self.dummy_sample
-            residual = 0.1 * sample
-
-            scheduler_config = self.get_scheduler_config()
-            scheduler = scheduler_class(**scheduler_config)
-
-            scheduler.set_timesteps(num_inference_steps)
-
-            for i, t in enumerate(scheduler.timesteps):
-                sample = scheduler.step(residual, i, sample).prev_sample
-
     def test_eta(self):
         for t, eta in zip([1, 10, 49], [0.0, 0.5, 1.0]):
             self.check_over_forward(time_step=t, eta=eta)
@@ -649,7 +634,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
             scheduler.set_timesteps(num_inference_steps)
 
             for i, t in enumerate(scheduler.prk_timesteps):
-                sample = scheduler.step_prk(residual, i, sample).prev_sample
+                sample = scheduler.step_prk(residual, t, sample).prev_sample
 
     def test_inference_plms_no_past_residuals(self):
         with self.assertRaises(ValueError):
