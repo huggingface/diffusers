@@ -115,6 +115,7 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
         sample_steps = list(range(1, num_inference_steps + 1))
 
         for t in reversed(sample_steps):
+            print("Time step:", t)
             t = torch.full((batch_size,), t, device=self.device, dtype=torch.long)
 
             # where to unmask
@@ -125,6 +126,10 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
             unmasked = torch.bitwise_or(unmasked, changes)
 
             x_0_logits = self.transformer(x_t, t=t)
+
+            print("Shape of x_0_logits:", x_0_logits.shape)
+            print("First values of logits:", x_0_logits[0, :3, :3])
+
             # scale by temperature
             x_0_logits = x_0_logits / temp
             x_0_dist = dists.Categorical(logits=x_0_logits)
