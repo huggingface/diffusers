@@ -1,6 +1,6 @@
 name: Check typos
 
-on
+on:
   push:
   pull_request:
     branches:
