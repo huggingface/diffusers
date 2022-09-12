@@ -5,6 +5,8 @@ import numpy as np
 import torch
 import torch.distributions as dists
 
+from torchvision import utils
+
 from ...models import Transformer, VQModel
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
@@ -141,8 +143,9 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
         q = self.embed(latents_one_hot)
         images = self.vae.decoder(q.float())
 
-        if output_type == "pil":
-            images = self.numpy_to_pil(images)
+        # if output_type == "pil":
+        #     images = self.numpy_to_pil(images)
+        utils.save_image(images, "results.png", nrow = batch_size)
 
         if not return_dict:
             return (images,)
