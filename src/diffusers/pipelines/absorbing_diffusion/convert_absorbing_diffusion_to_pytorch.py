@@ -88,7 +88,56 @@ def rename_key(name):
         name = name.replace("ae.encoder.blocks.20", "encoder.conv_norm_out")
     elif "ae.encoder.blocks.21" in name:
         name = name.replace("ae.encoder.blocks.21", "encoder.conv_out")
-    # attentions of encoder blocks
+    # decoder blocks
+    elif "ae.generator.blocks.0" in name:
+        name = name.replace("ae.generator.blocks.0", "decoder.conv_in")
+    elif "ae.generator.blocks.1." in name:
+        name = name.replace("ae.generator.blocks.1", "decoder.mid_block.resnets.0")
+    elif "ae.generator.blocks.2." in name:
+        name = name.replace("ae.generator.blocks.2", "decoder.mid_block.attentions.0")
+    elif "ae.generator.blocks.3." in name:
+        name = name.replace("ae.generator.blocks.3", "decoder.mid_block.resnets.1")
+    elif "ae.generator.blocks.4." in name:
+        name = name.replace("ae.generator.blocks.4", "decoder.up_blocks.0.resnets.0")
+    elif "ae.generator.blocks.5." in name:
+        name = name.replace("ae.generator.blocks.5", "decoder.up_blocks.0.attentions.0")
+    elif "ae.generator.blocks.6." in name:
+        name = name.replace("ae.generator.blocks.6", "decoder.up_blocks.0.resnets.1")
+    elif "ae.generator.blocks.7." in name:
+        name = name.replace("ae.generator.blocks.7", "decoder.up_blocks.0.attentions.1")
+    elif "ae.generator.blocks.8." in name:
+        name = name.replace("ae.generator.blocks.8", "decoder.up_blocks.0.upsamplers.0")
+    elif "ae.generator.blocks.9." in name:
+        name = name.replace("ae.generator.blocks.9", "decoder.up_blocks.1.resnets.0")
+    elif "ae.generator.blocks.10." in name:
+        name = name.replace("ae.generator.blocks.10", "decoder.up_blocks.1.resnets.1")
+    elif "ae.generator.blocks.11." in name:
+        name = name.replace("ae.generator.blocks.11", "decoder.up_blocks.1.upsamplers.0")
+    elif "ae.generator.blocks.12." in name:
+        name = name.replace("ae.generator.blocks.12", "decoder.up_blocks.2.resnets.0")
+    elif "ae.generator.blocks.13." in name:
+        name = name.replace("ae.generator.blocks.13", "decoder.up_blocks.2.resnets.1")
+    elif "ae.generator.blocks.14." in name:
+        name = name.replace("ae.generator.blocks.14", "decoder.up_blocks.2.upsamplers.0")
+    elif "ae.generator.blocks.15." in name:
+        name = name.replace("ae.generator.blocks.15", "decoder.up_blocks.3.resnets.0")
+    elif "ae.generator.blocks.16." in name:
+        name = name.replace("ae.generator.blocks.16", "decoder.up_blocks.3.resnets.1")
+    elif "ae.generator.blocks.17." in name:
+        name = name.replace("ae.generator.blocks.17", "decoder.up_blocks.3.upsamplers.0")
+    elif "ae.generator.blocks.18." in name:
+        name = name.replace("ae.generator.blocks.18", "decoder.up_blocks.4.resnets.0")
+    elif "ae.generator.blocks.19." in name:
+        name = name.replace("ae.generator.blocks.19", "decoder.up_blocks.4.resnets.1")
+    elif "ae.generator.blocks.20." in name:
+        name = name.replace("ae.generator.blocks.20", "decoder.conv_norm_out")
+    elif "ae.generator.blocks.21." in name:
+        name = name.replace("ae.generator.blocks.21", "decoder.conv_out")
+    # quantizer
+    elif "ae.quantize" in name:
+        name = name.replace("ae.quantize", "quantize")
+
+    # attentions of encoder + decoder blocks
     if "attentions" in name:
         if "norm" in name:
             name = name.replace("norm", "group_norm")
@@ -114,7 +163,7 @@ def convert_state_dict(orig_state_dict, model):
     for key in orig_state_dict.copy().keys():
         val = orig_state_dict.pop(key)
 
-        if key.startswith("ae.encoder"):
+        if key.startswith("ae"):
             new_key = rename_key(key)
             if (
                 "query.weight" in new_key
@@ -123,14 +172,16 @@ def convert_state_dict(orig_state_dict, model):
                 or "proj_attn.weight" in new_key
             ):
                 val = val.squeeze()
-            if "conv_shortcut" in new_key and (
-                "down_blocks.2.resnets.0" not in new_key and "down_blocks.4.resnets.0" not in new_key
-            ):
-                pass
-            else:
-                orig_state_dict[new_key] = val
+            if "conv_shortcut" in new_key:
+                if (
+                    "down_blocks.2.resnets.0" not in new_key
+                    and "down_blocks.4.resnets.0" not in new_key
+                    and "decoder.up_blocks.1.resnets.0" not in new_key
+                    and "decoder.up_blocks.3.resnets.0" not in new_key
+                ):
+                    continue
+            orig_state_dict[new_key] = val
         else:
-            # TODO decoder, quantizer, transformer
             pass
 
     return orig_state_dict
@@ -174,12 +225,15 @@ def convert_vqgan_checkpoint(model_name, checkpoint_path, pytorch_dump_folder_pa
         act_fn="swish",
         final_encoder_activation=False,
         latent_channels=256,
+        num_vq_embeddings=1024,
     )
 
     model.eval()
     new_state_dict = convert_state_dict(state_dict, model)
 
     missing_keys, unexpected_keys = model.load_state_dict(new_state_dict, strict=False)
+    assert missing_keys == ["quant_conv.weight", "quant_conv.bias", "post_quant_conv.weight", "post_quant_conv.bias"]
+    assert len(unexpected_keys) == 0
 
     # verify outputs on an image
     image_transformations = Compose(

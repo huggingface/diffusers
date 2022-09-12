@@ -187,7 +187,7 @@ class Decoder(nn.Module):
 
             up_block = get_up_block(
                 up_block_type,
-                num_layers=self.layers_per_block + 1,
+                num_layers=self.layers_per_block,
                 in_channels=prev_output_channel,
                 out_channels=output_channel,
                 prev_output_channel=None,
