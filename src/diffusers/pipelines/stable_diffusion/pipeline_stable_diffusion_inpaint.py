@@ -193,6 +193,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
+        offset = 1
 
         # preprocess image
         init_image = preprocess_image(init_image).to(self.device)

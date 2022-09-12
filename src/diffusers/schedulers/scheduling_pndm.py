@@ -15,8 +15,8 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 import math
-from typing import Optional, Tuple, Union
 import warnings
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -78,12 +78,12 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             allows the scheduler to skip the Runge-Kutta steps that are defined in the original paper as being required
             before plms steps; defaults to `False`.
         set_alpha_to_one (`bool`, default `True`):
-            each diffusion step uses the value of alphas product at that step and at the previous one.
-            For the final step there is no previous alpha. When this option is `True` the previous alpha
-            product is fixed to `1`, otherwise it uses the value of alpha at step 0.
+            each diffusion step uses the value of alphas product at that step and at the previous one. For the final
+            step there is no previous alpha. When this option is `True` the previous alpha product is fixed to `1`,
+            otherwise it uses the value of alpha at step 0.
         steps_offset (`int`, default `0`):
-            an offset added to the inference steps. You can use a combination of `offset=1` and `set_alpha_to_one=False`,
-            to make the last step use step 0 for the previous alpha product.
+            an offset added to the inference steps. You can use a combination of `offset=1` and
+            `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product.
         tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays
 
     """
