@@ -30,7 +30,7 @@ More precisely, 🤗 Diffusers offers:
 **With `pip`**
     
 ```bash
-pip install --upgrade diffusers  # should install diffusers 0.2.4
+pip install --upgrade diffusers
 ```
 
 **With `conda`**
@@ -38,6 +38,10 @@ pip install --upgrade diffusers  # should install diffusers 0.2.4
 ```sh
 conda install -c conda-forge diffusers
 ```
+
+**Apple Silicon (M1/M2) support**
+
+Please, refer to [the documentation](https://huggingface.co/docs/diffusers/optimization/mps).
 
 ## Contributing
 
@@ -104,7 +108,9 @@ with autocast("cuda"):
     image = pipe(prompt).images[0]  
 ```
 
-If you are limited by GPU memory, you might want to consider using the model in `fp16`.
+If you are limited by GPU memory, you might want to consider using the model in `fp16` as 
+well as chunking the attention computation.
+The following snippet should result in less than 4GB VRAM.
 
 ```python
 pipe = StableDiffusionPipeline.from_pretrained(
@@ -116,6 +122,7 @@ pipe = StableDiffusionPipeline.from_pretrained(
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
+pipe.enable_attention_slicing()
 with autocast("cuda"):
     image = pipe(prompt).images[0]  
 ```
@@ -188,7 +195,7 @@ with autocast("cuda"):
 
 images[0].save("fantasy_landscape.png")
 ```
-You can also run this example on colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/patil-suraj/Notebooks/blob/master/image_2_image_using_diffusers.ipynb)
+You can also run this example on colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/image_2_image_using_diffusers.ipynb)
 
 ### In-painting using Stable Diffusion
 
@@ -251,42 +258,49 @@ If you want to run the code yourself 💻, you can try out:
 - [Text-to-Image Latent Diffusion](https://huggingface.co/CompVis/ldm-text2im-large-256)
 ```python
 # !pip install diffusers transformers
+from torch import autocast
 from diffusers import DiffusionPipeline
 
+device = "cuda"
 model_id = "CompVis/ldm-text2im-large-256"
 
 # load model and scheduler
 ldm = DiffusionPipeline.from_pretrained(model_id)
+ldm = ldm.to(device)
 
 # run pipeline in inference (sample random noise and denoise)
 prompt = "A painting of a squirrel eating a burger"
-images = ldm([prompt], num_inference_steps=50, eta=0.3, guidance_scale=6).images
+with autocast(device):
+    image = ldm([prompt], num_inference_steps=50, eta=0.3, guidance_scale=6).images[0]
 
-# save images
-for idx, image in enumerate(images):
-    image.save(f"squirrel-{idx}.png")
+# save image
+image.save("squirrel.png")
 ```
 - [Unconditional Diffusion with discrete scheduler](https://huggingface.co/google/ddpm-celebahq-256)
 ```python
 # !pip install diffusers
+from torch import autocast
 from diffusers import DDPMPipeline, DDIMPipeline, PNDMPipeline
 
 model_id = "google/ddpm-celebahq-256"
+device = "cuda"
 
 # load model and scheduler
 ddpm = DDPMPipeline.from_pretrained(model_id)  # you can replace DDPMPipeline with DDIMPipeline or PNDMPipeline for faster inference
+ddpm.to(device)
 
 # run pipeline in inference (sample random noise and denoise)
-image = ddpm().images
+with autocast("cuda"):
+    image = ddpm().images[0]
 
 # save image
-image[0].save("ddpm_generated_image.png")
+image.save("ddpm_generated_image.png")
 ```
 - [Unconditional Latent Diffusion](https://huggingface.co/CompVis/ldm-celebahq-256)
 - [Unconditional Diffusion with continous scheduler](https://huggingface.co/google/ncsnpp-ffhq-1024)
 
 **Other Notebooks**:
-* [image-to-image generation with Stable Diffusion](https://colab.research.google.com/github/patil-suraj/Notebooks/blob/master/image_2_image_using_diffusers.ipynb) ![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg),
+* [image-to-image generation with Stable Diffusion](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/image_2_image_using_diffusers.ipynb) ![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg),
 * [tweak images via repeated Stable Diffusion seeds](https://colab.research.google.com/github/pcuenca/diffusers-examples/blob/main/notebooks/stable-diffusion-seeds.ipynb) ![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg),
 
 ### Web Demos

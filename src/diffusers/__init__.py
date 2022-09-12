@@ -1,10 +1,18 @@
-from .utils import is_inflect_available, is_scipy_available, is_transformers_available, is_unidecode_available
+from .utils import (
+    is_inflect_available,
+    is_onnx_available,
+    is_scipy_available,
+    is_transformers_available,
+    is_unidecode_available,
+)
 
 
-__version__ = "0.3.0.dev0"
+__version__ = "0.4.0.dev0"
 
+from .configuration_utils import ConfigMixin
 from .modeling_utils import ModelMixin
 from .models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
+from .onnx_utils import OnnxRuntimeModel
 from .optimization import (
     get_constant_schedule,
     get_constant_schedule_with_warmup,
@@ -24,6 +32,7 @@ from .schedulers import (
     SchedulerMixin,
     ScoreSdeVeScheduler,
 )
+from .utils import logging
 
 
 if is_scipy_available():
@@ -43,3 +52,9 @@ if is_transformers_available():
     )
 else:
     from .utils.dummy_transformers_objects import *  # noqa F403
+
+
+if is_transformers_available() and is_onnx_available():
+    from .pipelines import StableDiffusionOnnxPipeline
+else:
+    from .utils.dummy_transformers_and_onnx_objects import *  # noqa F403

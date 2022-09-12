@@ -318,13 +318,14 @@ class DDPMSchedulerTest(SchedulerCommonTest):
 
         model = self.dummy_model()
         sample = self.dummy_sample_deter
+        generator = torch.manual_seed(0)
 
         for t in reversed(range(num_trained_timesteps)):
             # 1. predict noise residual
             residual = model(sample, t)
 
             # 2. predict previous mean of sample x_t-1
-            pred_prev_sample = scheduler.step(residual, t, sample).prev_sample
+            pred_prev_sample = scheduler.step(residual, t, sample, generator=generator).prev_sample
 
             # if t > 0:
             #     noise = self.dummy_sample_deter
@@ -336,7 +337,7 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 259.0883) < 1e-2
+        assert abs(result_sum.item() - 258.9070) < 1e-2
         assert abs(result_mean.item() - 0.3374) < 1e-3
 
 
@@ -657,7 +658,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 class ScoreSdeVeSchedulerTest(unittest.TestCase):
     # TODO adapt with class SchedulerCommonTest (scheduler needs Numpy Integration)
     scheduler_classes = (ScoreSdeVeScheduler,)
-    forward_default_kwargs = (("seed", 0),)
+    forward_default_kwargs = ()
 
     @property
     def dummy_sample(self):
@@ -718,13 +719,19 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_config(tmpdirname)
 
-            output = scheduler.step_pred(residual, time_step, sample, **kwargs).prev_sample
-            new_output = new_scheduler.step_pred(residual, time_step, sample, **kwargs).prev_sample
+            output = scheduler.step_pred(
+                residual, time_step, sample, generator=torch.manual_seed(0), **kwargs
+            ).prev_sample
+            new_output = new_scheduler.step_pred(
+                residual, time_step, sample, generator=torch.manual_seed(0), **kwargs
+            ).prev_sample
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-            output = scheduler.step_correct(residual, sample, **kwargs).prev_sample
-            new_output = new_scheduler.step_correct(residual, sample, **kwargs).prev_sample
+            output = scheduler.step_correct(residual, sample, generator=torch.manual_seed(0), **kwargs).prev_sample
+            new_output = new_scheduler.step_correct(
+                residual, sample, generator=torch.manual_seed(0), **kwargs
+            ).prev_sample
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler correction are not identical"
 
@@ -743,13 +750,19 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_config(tmpdirname)
 
-            output = scheduler.step_pred(residual, time_step, sample, **kwargs).prev_sample
-            new_output = new_scheduler.step_pred(residual, time_step, sample, **kwargs).prev_sample
+            output = scheduler.step_pred(
+                residual, time_step, sample, generator=torch.manual_seed(0), **kwargs
+            ).prev_sample
+            new_output = new_scheduler.step_pred(
+                residual, time_step, sample, generator=torch.manual_seed(0), **kwargs
+            ).prev_sample
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-            output = scheduler.step_correct(residual, sample, **kwargs).prev_sample
-            new_output = new_scheduler.step_correct(residual, sample, **kwargs).prev_sample
+            output = scheduler.step_correct(residual, sample, generator=torch.manual_seed(0), **kwargs).prev_sample
+            new_output = new_scheduler.step_correct(
+                residual, sample, generator=torch.manual_seed(0), **kwargs
+            ).prev_sample
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler correction are not identical"
 
@@ -779,6 +792,7 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
 
         scheduler.set_sigmas(num_inference_steps)
         scheduler.set_timesteps(num_inference_steps)
+        generator = torch.manual_seed(0)
 
         for i, t in enumerate(scheduler.timesteps):
             sigma_t = scheduler.sigmas[i]
@@ -786,19 +800,19 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
             for _ in range(scheduler.correct_steps):
                 with torch.no_grad():
                     model_output = model(sample, sigma_t)
-                sample = scheduler.step_correct(model_output, sample, **kwargs).prev_sample
+                sample = scheduler.step_correct(model_output, sample, generator=generator, **kwargs).prev_sample
 
             with torch.no_grad():
                 model_output = model(sample, sigma_t)
 
-            output = scheduler.step_pred(model_output, t, sample, **kwargs)
+            output = scheduler.step_pred(model_output, t, sample, generator=generator, **kwargs)
             sample, _ = output.prev_sample, output.prev_sample_mean
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 14379591680.0) < 1e-2
-        assert abs(result_mean.item() - 18723426.0) < 1e-3
+        assert np.isclose(result_sum.item(), 14372758528.0)
+        assert np.isclose(result_mean.item(), 18714530.0)
 
     def test_step_shape(self):
         kwargs = dict(self.forward_default_kwargs)
@@ -817,8 +831,8 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
-            output_0 = scheduler.step_pred(residual, 0, sample, **kwargs).prev_sample
-            output_1 = scheduler.step_pred(residual, 1, sample, **kwargs).prev_sample
+            output_0 = scheduler.step_pred(residual, 0, sample, generator=torch.manual_seed(0), **kwargs).prev_sample
+            output_1 = scheduler.step_pred(residual, 1, sample, generator=torch.manual_seed(0), **kwargs).prev_sample
 
             self.assertEqual(output_0.shape, sample.shape)
             self.assertEqual(output_0.shape, output_1.shape)

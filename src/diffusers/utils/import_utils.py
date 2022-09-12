@@ -136,6 +136,14 @@ except importlib_metadata.PackageNotFoundError:
     _modelcards_available = False
 
 
+_onnx_available = importlib.util.find_spec("onnxruntime") is not None
+try:
+    _onnxruntime_version = importlib_metadata.version("onnxruntime")
+    logger.debug(f"Successfully imported onnxruntime version {_onnxruntime_version}")
+except importlib_metadata.PackageNotFoundError:
+    _onnx_available = False
+
+
 _scipy_available = importlib.util.find_spec("scipy") is not None
 try:
     _scipy_version = importlib_metadata.version("scipy")
@@ -172,6 +180,10 @@ def is_modelcards_available():
     return _modelcards_available
 
 
+def is_onnx_available():
+    return _onnx_available
+
+
 def is_scipy_available():
     return _scipy_available
 
@@ -192,6 +204,12 @@ inflect`
 PYTORCH_IMPORT_ERROR = """
 {0} requires the PyTorch library but it was not found in your environment. Checkout the instructions on the
 installation page: https://pytorch.org/get-started/locally/ and follow the ones that match your environment.
+"""
+
+# docstyle-ignore
+ONNX_IMPORT_ERROR = """
+{0} requires the onnxruntime library but it was not found in your environment. You can install it with pip: `pip
+install onnxruntime`
 """
 
 # docstyle-ignore
@@ -223,6 +241,7 @@ BACKENDS_MAPPING = OrderedDict(
     [
         ("flax", (is_flax_available, FLAX_IMPORT_ERROR)),
         ("inflect", (is_inflect_available, INFLECT_IMPORT_ERROR)),
+        ("onnx", (is_onnx_available, ONNX_IMPORT_ERROR)),
         ("scipy", (is_scipy_available, SCIPY_IMPORT_ERROR)),
         ("tf", (is_tf_available, TENSORFLOW_IMPORT_ERROR)),
         ("torch", (is_torch_available, PYTORCH_IMPORT_ERROR)),

@@ -145,11 +145,13 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         model.eval()
         model.to(torch_device)
 
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
-
-        noise = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
+        noise = torch.randn(
+            1,
+            model.config.in_channels,
+            model.config.sample_size,
+            model.config.sample_size,
+            generator=torch.manual_seed(0),
+        )
         noise = noise.to(torch_device)
         time_step = torch.tensor([10] * noise.shape[0]).to(torch_device)
 
@@ -161,7 +163,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         expected_output_slice = torch.tensor([-13.3258, -20.1100, -15.9873, -17.6617, -23.0596, -17.9419, -13.3675, -16.1889, -12.3800])
         # fmt: on
 
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))
 
 
 #    TODO(Patrick) - Re-add this test after having cleaned up LDM
@@ -198,7 +200,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         num_channels = 3
 
         noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor(batch_size * [10]).to(torch_device)
+        time_step = torch.tensor(batch_size * [10]).to(dtype=torch.int32, device=torch_device)
 
         return {"sample": noise, "timestep": time_step}
 
