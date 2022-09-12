@@ -557,7 +557,11 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         return DecoderOutput(sample=dec)
 
     def forward(
-        self, sample: torch.FloatTensor, sample_posterior: bool = False, return_dict: bool = True
+        self,
+        sample: torch.FloatTensor,
+        sample_posterior: bool = False,
+        return_dict: bool = True,
+        generator: Optional[torch.Generator] = None,
     ) -> Union[DecoderOutput, torch.FloatTensor]:
         r"""
         Args:
@@ -570,7 +574,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         x = sample
         posterior = self.encode(x).latent_dist
         if sample_posterior:
-            z = posterior.sample()
+            z = posterior.sample(generator=generator)
         else:
             z = posterior.mode()
         dec = self.decode(z).sample
