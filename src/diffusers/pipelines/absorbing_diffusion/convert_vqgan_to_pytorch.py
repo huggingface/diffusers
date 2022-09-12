@@ -22,10 +22,9 @@ from pathlib import Path
 
 import torch
 
-from huggingface_hub import HfApi
-
 import requests
 from diffusers import VQModel
+from huggingface_hub import HfApi
 from PIL import Image
 from torchvision.transforms import Compose, Normalize, Resize, ToTensor
 
