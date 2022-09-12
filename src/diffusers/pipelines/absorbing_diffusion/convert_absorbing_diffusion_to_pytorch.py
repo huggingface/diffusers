@@ -224,6 +224,7 @@ def convert_vqgan_checkpoint(model_name, checkpoint_path, pytorch_dump_folder_pa
         layers_per_block=2,
         act_fn="swish",
         final_encoder_activation=False,
+        final_decoder_activation=False,
         latent_channels=256,
         num_vq_embeddings=1024,
     )
@@ -241,14 +242,27 @@ def convert_vqgan_checkpoint(model_name, checkpoint_path, pytorch_dump_folder_pa
     )
     pixel_values = image_transformations(prepare_img()).unsqueeze(0)
 
-    output = model.encoder(pixel_values)
+    encoder_output = model.encoder(pixel_values)
 
-    assert output.shape == (1, 256, 16, 16)
+    quant, emb_loss, info = model.quantize(encoder_output)
+
+    decoder_output = model.decoder(quant)
+
+    # verify encoder output
+    assert encoder_output.shape == (1, 256, 16, 16)
     assert torch.allclose(
-        output[0, 0, :3, :3],
+        encoder_output[0, 0, :3, :3],
         torch.tensor([[-1.2561, -1.1712, -1.0690], [-1.3602, -1.3631, -1.3604], [-1.3849, 0.5701, 1.2044]]),
-        atol=1e-3,
+        atol=1e-4,
     )
+    # verify decoder output
+    assert decoder_output.shape == (1, 3, 256, 256)
+    assert torch.allclose(
+        decoder_output[0, 0, :3, :3],
+        torch.tensor([[0.0985, 0.0838, 0.0922], [0.0892, 0.0787, 0.0870], [0.0840, 0.0913, 0.0964]]),
+        atol=1e-4,
+    )
+
     print("Looks ok!")
 
     if pytorch_dump_folder_path is not None:

@@ -155,6 +155,7 @@ class Decoder(nn.Module):
         layers_per_block=2,
         norm_num_groups=32,
         act_fn="silu",
+        final_activation=True,
     ):
         super().__init__()
         self.layers_per_block = layers_per_block
@@ -203,7 +204,7 @@ class Decoder(nn.Module):
 
         # out
         self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-6)
-        self.conv_act = nn.SiLU()
+        self.conv_act = nn.SiLU() if final_activation else nn.Identity()
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, 3, padding=1)
 
     def forward(self, z):
@@ -431,6 +432,7 @@ class VQModel(ModelMixin, ConfigMixin):
         norm_num_groups: int = 32,
         vq_embed_dim: Optional[int] = None,
         final_encoder_activation=True,
+        final_decoder_activation=True,
     ):
         super().__init__()
 
@@ -462,6 +464,7 @@ class VQModel(ModelMixin, ConfigMixin):
             layers_per_block=layers_per_block,
             act_fn=act_fn,
             norm_num_groups=norm_num_groups,
+            final_activation=final_decoder_activation,
         )
 
     def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> VQEncoderOutput:
