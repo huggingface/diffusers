@@ -43,6 +43,7 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
         mask_id=1024,
         latent_shape=[1, 16, 16],
         codebook_size=1024,
+        emb_dim=256,
         temp=1.0,
     ):
         super().__init__()
@@ -53,6 +54,7 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
         self.mask_id = mask_id
         self.latent_shape = latent_shape
         self.codebook_size = codebook_size
+        self.emb_dim = emb_dim
         self.temp = temp
 
     @torch.no_grad()
