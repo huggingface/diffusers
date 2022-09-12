@@ -467,6 +467,7 @@ class PipelineFastTests(unittest.TestCase):
         generator = torch.manual_seed(0)
         image = sde_ve(num_inference_steps=2, output_type="numpy", generator=generator).images
 
+        generator = torch.manual_seed(0)
         image_from_tuple = sde_ve(num_inference_steps=2, output_type="numpy", generator=generator, return_dict=False)[
             0
         ]
@@ -475,7 +476,6 @@ class PipelineFastTests(unittest.TestCase):
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-
         expected_slice = np.array([0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
@@ -731,8 +731,8 @@ class PipelineTesterMixin(unittest.TestCase):
             new_ddpm.to(torch_device)
 
         generator = torch.manual_seed(0)
-
         image = ddpm(generator=generator, output_type="numpy").images
+
         generator = generator.manual_seed(0)
         new_image = new_ddpm(generator=generator, output_type="numpy").images
 
@@ -752,8 +752,8 @@ class PipelineTesterMixin(unittest.TestCase):
         ddpm_from_hub.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-
         image = ddpm(generator=generator, output_type="numpy").images
+
         generator = generator.manual_seed(0)
         new_image = ddpm_from_hub(generator=generator, output_type="numpy").images
 
@@ -776,8 +776,8 @@ class PipelineTesterMixin(unittest.TestCase):
         ddpm_from_hub_custom_model.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-
         image = ddpm_from_hub_custom_model(generator=generator, output_type="numpy").images
+
         generator = generator.manual_seed(0)
         new_image = ddpm_from_hub(generator=generator, output_type="numpy").images
 
