@@ -5,6 +5,7 @@ import numpy as np
 
 import PIL
 from PIL import Image
+from transformers import BatchEncoding
 
 from ...utils import BaseOutput, is_flax_available, is_onnx_available, is_transformers_available
 
@@ -21,10 +22,13 @@ class StableDiffusionPipelineOutput(BaseOutput):
         nsfw_content_detected (`List[bool]`)
             List of flags denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content.
+        enoded_text_input (`transformers.BatchEncoding`)
+            Encoded text by the tokenizer
     """
 
     images: Union[List[PIL.Image.Image], np.ndarray]
     nsfw_content_detected: List[bool]
+    enoded_text_input: BatchEncoding
 
 
 if is_transformers_available():
