@@ -23,7 +23,7 @@ from pathlib import Path
 import torch
 
 import requests
-from diffusers.models.vae import Decoder, Encoder
+from diffusers import VQModel
 from PIL import Image
 from torchvision.transforms import Compose, Normalize, Resize, ToTensor
 
@@ -41,53 +41,53 @@ def remove_ignore_keys_(state_dict):
 
 
 def rename_key(name):
-    # encoder blocks
     if "conv_out" in name:
         name = name.replace("conv_out", "conv_shortcut")
+    # encoder blocks
     if "ae.encoder.blocks.0" in name:
-        name = name.replace("ae.encoder.blocks.0", "conv_in")
+        name = name.replace("ae.encoder.blocks.0", "encoder.conv_in")
     elif "ae.encoder.blocks.1." in name:
-        name = name.replace("ae.encoder.blocks.1", "down_blocks.0.resnets.0")
+        name = name.replace("ae.encoder.blocks.1", "encoder.down_blocks.0.resnets.0")
     elif "ae.encoder.blocks.2." in name:
-        name = name.replace("ae.encoder.blocks.2", "down_blocks.0.resnets.1")
+        name = name.replace("ae.encoder.blocks.2", "encoder.down_blocks.0.resnets.1")
     elif "ae.encoder.blocks.3." in name:
-        name = name.replace("ae.encoder.blocks.3", "down_blocks.0.downsamplers.0")
+        name = name.replace("ae.encoder.blocks.3", "encoder.down_blocks.0.downsamplers.0")
     elif "ae.encoder.blocks.4." in name:
-        name = name.replace("ae.encoder.blocks.4", "down_blocks.1.resnets.0")
+        name = name.replace("ae.encoder.blocks.4", "encoder.down_blocks.1.resnets.0")
     elif "ae.encoder.blocks.5." in name:
-        name = name.replace("ae.encoder.blocks.5", "down_blocks.1.resnets.1")
+        name = name.replace("ae.encoder.blocks.5", "encoder.down_blocks.1.resnets.1")
     elif "ae.encoder.blocks.6." in name:
-        name = name.replace("ae.encoder.blocks.6", "down_blocks.1.downsamplers.0")
+        name = name.replace("ae.encoder.blocks.6", "encoder.down_blocks.1.downsamplers.0")
     elif "ae.encoder.blocks.7." in name:
-        name = name.replace("ae.encoder.blocks.7", "down_blocks.2.resnets.0")
+        name = name.replace("ae.encoder.blocks.7", "encoder.down_blocks.2.resnets.0")
     elif "ae.encoder.blocks.8." in name:
-        name = name.replace("ae.encoder.blocks.8", "down_blocks.2.resnets.1")
+        name = name.replace("ae.encoder.blocks.8", "encoder.down_blocks.2.resnets.1")
     elif "ae.encoder.blocks.9." in name:
-        name = name.replace("ae.encoder.blocks.9", "down_blocks.2.downsamplers.0")
+        name = name.replace("ae.encoder.blocks.9", "encoder.down_blocks.2.downsamplers.0")
     elif "ae.encoder.blocks.10" in name:
-        name = name.replace("ae.encoder.blocks.10", "down_blocks.3.resnets.0")
+        name = name.replace("ae.encoder.blocks.10", "encoder.down_blocks.3.resnets.0")
     elif "ae.encoder.blocks.11" in name:
-        name = name.replace("ae.encoder.blocks.11", "down_blocks.3.resnets.1")
+        name = name.replace("ae.encoder.blocks.11", "encoder.down_blocks.3.resnets.1")
     elif "ae.encoder.blocks.12" in name:
-        name = name.replace("ae.encoder.blocks.12", "down_blocks.3.downsamplers.0")
+        name = name.replace("ae.encoder.blocks.12", "encoder.down_blocks.3.downsamplers.0")
     elif "ae.encoder.blocks.13" in name:
-        name = name.replace("ae.encoder.blocks.13", "down_blocks.4.resnets.0")
+        name = name.replace("ae.encoder.blocks.13", "encoder.down_blocks.4.resnets.0")
     elif "ae.encoder.blocks.14" in name:
-        name = name.replace("ae.encoder.blocks.14", "down_blocks.4.attentions.0")
+        name = name.replace("ae.encoder.blocks.14", "encoder.down_blocks.4.attentions.0")
     elif "ae.encoder.blocks.15" in name:
-        name = name.replace("ae.encoder.blocks.15", "down_blocks.4.resnets.1")
+        name = name.replace("ae.encoder.blocks.15", "encoder.down_blocks.4.resnets.1")
     elif "ae.encoder.blocks.16" in name:
-        name = name.replace("ae.encoder.blocks.16", "down_blocks.4.attentions.1")
+        name = name.replace("ae.encoder.blocks.16", "encoder.down_blocks.4.attentions.1")
     elif "ae.encoder.blocks.17" in name:
-        name = name.replace("ae.encoder.blocks.17", "mid_block.resnets.0")
+        name = name.replace("ae.encoder.blocks.17", "encoder.mid_block.resnets.0")
     elif "ae.encoder.blocks.18" in name:
-        name = name.replace("ae.encoder.blocks.18", "mid_block.attentions.0")
+        name = name.replace("ae.encoder.blocks.18", "encoder.mid_block.attentions.0")
     elif "ae.encoder.blocks.19" in name:
-        name = name.replace("ae.encoder.blocks.19", "mid_block.resnets.1")
+        name = name.replace("ae.encoder.blocks.19", "encoder.mid_block.resnets.1")
     elif "ae.encoder.blocks.20" in name:
-        name = name.replace("ae.encoder.blocks.20", "conv_norm_out")
+        name = name.replace("ae.encoder.blocks.20", "encoder.conv_norm_out")
     elif "ae.encoder.blocks.21" in name:
-        name = name.replace("ae.encoder.blocks.21", "conv_out")
+        name = name.replace("ae.encoder.blocks.21", "encoder.conv_out")
     # attentions of encoder blocks
     if "attentions" in name:
         if "norm" in name:
@@ -144,17 +144,17 @@ def prepare_img():
 
 
 @torch.no_grad()
-def convert_yolos_checkpoint(model_name, checkpoint_path, pytorch_dump_folder_path, push_to_hub=False):
+def convert_vqgan_checkpoint(model_name, checkpoint_path, pytorch_dump_folder_path, push_to_hub=False):
     """
-    Copy/paste/tweak model's weights to our Absorbing Diffusion structure.
+    Copy/paste/tweak model's weights to our VQGAN structure.
     """
     # load original state dict
     state_dict = torch.load(checkpoint_path, map_location="cpu")
 
-    # load 🤗 encoder
-    encoder = Encoder(
+    # load 🤗 model
+    model = VQModel(
         in_channels=3,
-        out_channels=256,
+        out_channels=3,
         down_block_types=(
             "DownEncoderBlock2D",
             "DownEncoderBlock2D",
@@ -162,37 +162,6 @@ def convert_yolos_checkpoint(model_name, checkpoint_path, pytorch_dump_folder_pa
             "DownEncoderBlock2D",
             "AttnDownEncoderBlock2D",
         ),
-        block_out_channels=(128, 128, 256, 256, 512),
-        layers_per_block=2,
-        act_fn="swish",
-        double_z=False,
-        final_activation=False,
-    )
-    encoder.eval()
-    new_state_dict = convert_state_dict(state_dict, encoder)
-
-    encoder.load_state_dict(new_state_dict)
-
-    # verify outputs on an image
-    image_transformations = Compose(
-        [Resize((256, 256)), ToTensor(), Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]
-    )
-    pixel_values = image_transformations(prepare_img()).unsqueeze(0)
-
-    encoder_out = encoder(pixel_values)
-
-    assert encoder_out.shape == (1, 256, 16, 16)
-    assert torch.allclose(
-        encoder_out[0, 0, :3, :3],
-        torch.tensor([[-1.2561, -1.1712, -1.0690], [-1.3602, -1.3631, -1.3604], [-1.3849, 0.5701, 1.2044]]),
-        atol=1e-3,
-    )
-    print("Looks ok!")
-
-    # load 🤗 decoder
-    decoder = Decoder(
-        in_channels=256,
-        out_channels=3,
         up_block_types=(
             "AttnUpDecoderBlock2D",
             "UpDecoderBlock2D",
@@ -200,24 +169,43 @@ def convert_yolos_checkpoint(model_name, checkpoint_path, pytorch_dump_folder_pa
             "UpDecoderBlock2D",
             "UpDecoderBlock2D",
         ),
-        block_out_channels=(512, 256, 256, 128, 128),
+        block_out_channels=(128, 128, 256, 256, 512),
         layers_per_block=2,
         act_fn="swish",
+        final_encoder_activation=False,
+        latent_channels=256,
     )
 
-    decoder.eval()
-    decoder_out = decoder(encoder_out)
-    print("Shape of decoder output:", decoder_out.shape)
+    model.eval()
+    new_state_dict = convert_state_dict(state_dict, model)
+
+    missing_keys, unexpected_keys = model.load_state_dict(new_state_dict, strict=False)
+
+    # verify outputs on an image
+    image_transformations = Compose(
+        [Resize((256, 256)), ToTensor(), Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]
+    )
+    pixel_values = image_transformations(prepare_img()).unsqueeze(0)
+
+    output = model.encoder(pixel_values)
+
+    assert output.shape == (1, 256, 16, 16)
+    assert torch.allclose(
+        output[0, 0, :3, :3],
+        torch.tensor([[-1.2561, -1.1712, -1.0690], [-1.3602, -1.3631, -1.3604], [-1.3849, 0.5701, 1.2044]]),
+        atol=1e-3,
+    )
+    print("Looks ok!")
 
     if pytorch_dump_folder_path is not None:
         Path(pytorch_dump_folder_path).mkdir(exist_ok=True)
-        print(f"Saving encoder {model_name} to {pytorch_dump_folder_path}")
-        encoder.save_pretrained(pytorch_dump_folder_path)
+        print(f"Saving model {model_name} to {pytorch_dump_folder_path}")
+        model.save_pretrained(pytorch_dump_folder_path)
 
     if push_to_hub:
         print("Pushing to the hub...")
         model_name = "nielsr/test"
-        encoder.push_to_hub(model_name)
+        model.push_to_hub(model_name)
 
 
 if __name__ == "__main__":
@@ -227,7 +215,7 @@ if __name__ == "__main__":
         "--model_name",
         default="vqgan_churches",
         type=str,
-        help="Name of the model you'd like to convert.",
+        help="Name of the VQGAN model you'd like to convert.",
     )
     parser.add_argument(
         "--checkpoint_path",
@@ -243,4 +231,4 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    convert_yolos_checkpoint(args.model_name, args.checkpoint_path, args.pytorch_dump_folder_path, args.push_to_hub)
+    convert_vqgan_checkpoint(args.model_name, args.checkpoint_path, args.pytorch_dump_folder_path, args.push_to_hub)

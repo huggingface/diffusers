@@ -430,6 +430,7 @@ class VQModel(ModelMixin, ConfigMixin):
         num_vq_embeddings: int = 256,
         norm_num_groups: int = 32,
         vq_embed_dim: Optional[int] = None,
+        final_encoder_activation=True,
     ):
         super().__init__()
 
@@ -443,6 +444,7 @@ class VQModel(ModelMixin, ConfigMixin):
             act_fn=act_fn,
             norm_num_groups=norm_num_groups,
             double_z=False,
+            final_activation=final_encoder_activation,
         )
 
         vq_embed_dim = vq_embed_dim if vq_embed_dim is not None else latent_channels
