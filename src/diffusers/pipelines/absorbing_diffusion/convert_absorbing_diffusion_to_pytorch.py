@@ -26,6 +26,8 @@ import requests
 from diffusers.models.vae import Encoder
 from PIL import Image
 
+from torchvision.transforms import Compose, Resize, ToTensor, Normalize
+
 
 def remove_ignore_keys_(state_dict):
     ignore_keys = [
@@ -165,16 +167,22 @@ def convert_yolos_checkpoint(model_name, checkpoint_path, pytorch_dump_folder_pa
         layers_per_block=2,
         act_fn="swish",
         double_z=False,
+        final_activation=False,
     )
     model.eval()
     new_state_dict = convert_state_dict(state_dict, model)
 
     model.load_state_dict(new_state_dict)
 
-    # TODO verify outputs on an image
-    pixel_values = torch.randn(1, 3, 224, 224)
+    # verify outputs on an image
+    image_transformations = Compose([Resize((256,256)),
+                                 ToTensor(),
+                                 Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+    pixel_values = image_transformations(prepare_img()).unsqueeze(0)
+
     outputs = model(pixel_values)
     print(outputs.shape)
+    print("First values:", outputs[0, 0, :3, :3])
 
     if pytorch_dump_folder_path is not None:
         Path(pytorch_dump_folder_path).mkdir(exist_ok=True)
