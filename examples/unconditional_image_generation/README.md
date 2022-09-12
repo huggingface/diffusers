@@ -4,7 +4,7 @@ Creating a training image set is [described in a different document](https://hug
 
 ### Installing the dependencies
 
-Before running the scipts, make sure to install the library's training dependencies:
+Before running the scripts, make sure to install the library's training dependencies:
 
 ```bash
 pip install diffusers[training] accelerate datasets
@@ -102,7 +102,7 @@ from datasets import load_dataset
 # example 1: local folder
 dataset = load_dataset("imagefolder", data_dir="path_to_your_folder")
 
-# example 2: local files (suppoted formats are tar, gzip, zip, xz, rar, zstd)
+# example 2: local files (supported formats are tar, gzip, zip, xz, rar, zstd)
 dataset = load_dataset("imagefolder", data_files="path_to_zip_file")
 
 # example 3: remote files (supported formats are tar, gzip, zip, xz, rar, zstd)

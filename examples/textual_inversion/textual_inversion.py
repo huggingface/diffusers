@@ -422,7 +422,7 @@ def main():
         eps=args.adam_epsilon,
     )
 
-    # TODO (patil-suraj): laod scheduler using args
+    # TODO (patil-suraj): load scheduler using args
     noise_scheduler = DDPMScheduler(
         beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000, tensor_format="pt"
     )

@@ -44,7 +44,7 @@ To this end, the design of schedulers is such that:
 The core API for any new scheduler must follow a limited structure.
 - Schedulers should provide one or more `def step(...)` functions that should be called to update the generated sample iteratively.
 - Schedulers should provide a `set_timesteps(...)` method that configures the parameters of a schedule function for a specific inference task.
-- Schedulers should be framework-agonstic, but provide a simple functionality to convert the scheduler into a specific framework, such as PyTorch
+- Schedulers should be framework-agnostic, but provide a simple functionality to convert the scheduler into a specific framework, such as PyTorch
 with a `set_format(...)` method.
 
 The base class [`SchedulerMixin`] implements low level utilities used by multiple schedulers.
@@ -53,7 +53,7 @@ The base class [`SchedulerMixin`] implements low level utilities used by multipl
 [[autodoc]] SchedulerMixin
 
 ### SchedulerOutput
-The class [`SchedulerOutput`] contains the ouputs from any schedulers `step(...)` call.
+The class [`SchedulerOutput`] contains the outputs from any schedulers `step(...)` call.
 
 [[autodoc]] schedulers.scheduling_utils.SchedulerOutput
 
@@ -71,7 +71,7 @@ Original paper can be found [here](https://arxiv.org/abs/2010.02502).
 
 [[autodoc]] DDPMScheduler
 
-#### Varience exploding, stochastic sampling from Karras et. al
+#### Variance exploding, stochastic sampling from Karras et. al
 
 Original paper can be found [here](https://arxiv.org/abs/2006.11239).
 

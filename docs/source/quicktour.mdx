@@ -86,11 +86,11 @@ just like we did before only that now you need to pass your `AUTH_TOKEN`:
 >>> generator = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=AUTH_TOKEN)
 ```
 
-If you do not pass your authentification token you will see that the diffusion system will not be correctly 
-downloaded. Forcing the user to pass an authentification token ensures that it can be verified that the 
+If you do not pass your authentication token you will see that the diffusion system will not be correctly 
+downloaded. Forcing the user to pass an authentication token ensures that it can be verified that the 
 user has indeed read and accepted the license, which also means that an internet connection is required.
 
-**Note**: If you do not want to be forced to pass an authentification token, you can also simply download 
+**Note**: If you do not want to be forced to pass an authentication token, you can also simply download 
 the weights locally via:
 
 ```
@@ -98,7 +98,7 @@ git lfs install
 git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
 ```
 
-and then load locally saved weights into the pipeline. This way, you do not need to pass an authentification
+and then load locally saved weights into the pipeline. This way, you do not need to pass an authentication
 token. Assuming that `"./stable-diffusion-v1-4"` is the local path to the cloned stable-diffusion-v1-4 repo,
 you can also load the pipeline as follows:
 
