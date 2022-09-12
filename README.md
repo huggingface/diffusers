@@ -84,7 +84,15 @@ pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
 with autocast("cuda"):
-    image = pipe(prompt).images[0]  
+    pipeline_output = pipe(prompt)
+    image = pipeline_output.images[0]
+    used_prompt = pipe.tokenizer.batch_decode(
+        pipeline_output.enoded_text_input["input_ids"],
+        skip_special_tokens=True,
+    )[0]
+    if used_prompt != prompt:
+        # Too long prompt will be truncated
+        print(f"""The used prompt "{used_prompt}" differs from the given prompt "{prompt}".""")
 ```
 
 **Note**: If you don't want to use the token, you can also simply download the model weights
@@ -105,7 +113,15 @@ pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
 with autocast("cuda"):
-    image = pipe(prompt).images[0]  
+    pipeline_output = pipe(prompt)
+    image = pipeline_output.images[0]
+    used_prompt = pipe.tokenizer.batch_decode(
+        pipeline_output.enoded_text_input["input_ids"],
+        skip_special_tokens=True,
+    )[0]
+    if used_prompt != prompt:
+        # Too long prompt will be truncated
+        print(f"""The used prompt "{used_prompt}" differs from the given prompt "{prompt}".""")
 ```
 
 If you are limited by GPU memory, you might want to consider using the model in `fp16` as 
@@ -124,7 +140,15 @@ pipe = pipe.to("cuda")
 prompt = "a photo of an astronaut riding a horse on mars"
 pipe.enable_attention_slicing()
 with autocast("cuda"):
-    image = pipe(prompt).images[0]  
+    pipeline_output = pipe(prompt)
+    image = pipeline_output.images[0]
+    used_prompt = pipe.tokenizer.batch_decode(
+        pipeline_output.enoded_text_input["input_ids"],
+        skip_special_tokens=True,
+    )[0]
+    if used_prompt != prompt:
+        # Too long prompt will be truncated
+        print(f"""The used prompt "{used_prompt}" differs from the given prompt "{prompt}".""")
 ```
 
 Finally, if you wish to use a different scheduler, you can simply instantiate
@@ -150,7 +174,15 @@ pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
 with autocast("cuda"):
-    image = pipe(prompt).images[0]  
+    pipeline_output = pipe(prompt)
+    image = pipeline_output.images[0]
+    used_prompt = pipe.tokenizer.batch_decode(
+        pipeline_output.enoded_text_input["input_ids"],
+        skip_special_tokens=True,
+    )[0]
+    if used_prompt != prompt:
+        # Too long prompt will be truncated
+        print(f"""The used prompt "{used_prompt}" differs from the given prompt "{prompt}".""")
     
 image.save("astronaut_rides_horse.png")
 ```
@@ -191,8 +223,15 @@ init_image = init_image.resize((768, 512))
 prompt = "A fantasy landscape, trending on artstation"
 
 with autocast("cuda"):
-    images = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5).images
-
+    pipeline_output = pipe(prompt)
+    image = pipeline_output.images[0]
+    used_prompt = pipe.tokenizer.batch_decode(
+        pipeline_output.enoded_text_input["input_ids"],
+        skip_special_tokens=True,
+    )[0]
+    if used_prompt != prompt:
+        # Too long prompt will be truncated
+        print(f"""The used prompt "{used_prompt}" differs from the given prompt "{prompt}".""")
 images[0].save("fantasy_landscape.png")
 ```
 You can also run this example on colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/image_2_image_using_diffusers.ipynb)
