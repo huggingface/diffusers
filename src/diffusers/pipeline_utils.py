@@ -44,7 +44,7 @@ LOADABLE_CLASSES = {
         "ModelMixin": ["save_pretrained", "from_pretrained"],
         "SchedulerMixin": ["save_config", "from_config"],
         "DiffusionPipeline": ["save_pretrained", "from_pretrained"],
-        "OnnxRuntimeModel": ["save_pretrained", "from_pretrained"],
+        # "OnnxRuntimeModel": ["save_pretrained", "from_pretrained"],
     },
     "transformers": {
         "PreTrainedTokenizer": ["save_pretrained", "from_pretrained"],
@@ -375,8 +375,8 @@ class DiffusionPipeline(ConfigMixin):
                 loading_kwargs = {}
                 if issubclass(class_obj, torch.nn.Module):
                     loading_kwargs["torch_dtype"] = torch_dtype
-                if issubclass(class_obj, diffusers.OnnxRuntimeModel):
-                    loading_kwargs["provider"] = provider
+                # if issubclass(class_obj, diffusers.OnnxRuntimeModel):
+                #     loading_kwargs["provider"] = provider
 
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
