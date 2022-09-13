@@ -147,15 +147,19 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             # produce better results. When using PNDM with `self.config.skip_prk_steps` the implementation
             # is based on crowsonkb's PLMS sampler implementation: https://github.com/CompVis/latent-diffusion/pull/51
             self.prk_timesteps = np.array([])
-            self.plms_timesteps = (self._timesteps[:-1] + self._timesteps[-2:-1] + self._timesteps[-1:])[::-1].copy() 
+            self.plms_timesteps = np.concatenate([self._timesteps[:-1], self._timesteps[-2:-1], self._timesteps[-1:]])[
+                ::-1
+            ].copy()
         else:
             prk_timesteps = np.array(self._timesteps[-self.pndm_order :]).repeat(2) + np.tile(
                 np.array([0, self.config.num_train_timesteps // num_inference_steps // 2]), self.pndm_order
             )
             self.prk_timesteps = (prk_timesteps[:-1].repeat(2)[1:-1])[::-1].copy()
-            self.plms_timesteps = self._timesteps[:-3][::-1].copy() # we copy to avoid having negative strides which are not supported by torch.from_numpy
+            self.plms_timesteps = self._timesteps[:-3][
+                ::-1
+            ].copy()  # we copy to avoid having negative strides which are not supported by torch.from_numpy
 
-        self.timesteps = np.concatenate([self.prk_timesteps, self.plms_timesteps])
+        self.timesteps = np.concatenate([self.prk_timesteps, self.plms_timesteps]).astype(np.int64)
 
         self.ets = []
         self.counter = 0
@@ -212,8 +216,13 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             prev_sample (`SchedulerOutput` or `Tuple`): updated sample in the diffusion chain.
 
         """
-        diff_to_prev = 0 if self.counter % 2 else self.config.num_train_timesteps // self.num_inference_steps // 2 #TODO: check if we still have condition in cuda graph
-        prev_timestep = torch.max(torch.tensor(timestep - diff_to_prev), self.prk_timesteps[-1])
+        if self.num_inference_steps is None:
+            raise ValueError(
+                "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
+            )
+
+        diff_to_prev = 0 if self.counter % 2 else self.config.num_train_timesteps // self.num_inference_steps // 2
+        prev_timestep = max(timestep - diff_to_prev, self.prk_timesteps[-1])
         timestep = self.prk_timesteps[self.counter // 4 * 4]
 
         if self.counter % 4 == 0:
@@ -274,7 +283,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
                 "for more information."
             )
 
-        prev_timestep = torch.max(timestep - self.config.num_train_timesteps // self.num_inference_steps, torch.tensor(0))
+        prev_timestep = max(timestep - self.config.num_train_timesteps // self.num_inference_steps, 0)
 
         if self.counter != 1:
             self.ets.append(model_output)
