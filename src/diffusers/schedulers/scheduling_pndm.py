@@ -77,7 +77,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         skip_prk_steps (`bool`):
             allows the scheduler to skip the Runge-Kutta steps that are defined in the original paper as being required
             before plms steps; defaults to `False`.
-        set_alpha_to_one (`bool`, default `True`):
+        set_alpha_to_one (`bool`, default `False`):
             each diffusion step uses the value of alphas product at that step and at the previous one. For the final
             step there is no previous alpha. When this option is `True` the previous alpha product is fixed to `1`,
             otherwise it uses the value of alpha at step 0.
@@ -97,7 +97,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule: str = "linear",
         trained_betas: Optional[np.ndarray] = None,
         skip_prk_steps: bool = False,
-        set_alpha_to_one: bool = True,
+        set_alpha_to_one: bool = False,
         steps_offset: int = 0,
         tensor_format: str = "pt",
     ):
