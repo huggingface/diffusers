@@ -881,7 +881,7 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
             self.check_over_configs(beta_start=beta_start, beta_end=beta_end)
 
     def test_schedules(self):
-        for schedule in ["linear"]:
+        for schedule in ["linear", "scaled_linear"]:
             self.check_over_configs(beta_schedule=schedule)
 
     def test_time_indices(self):
@@ -896,30 +896,22 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
         scheduler_config = self.get_scheduler_config()
         scheduler = scheduler_class(**scheduler_config)
 
-        num_trained_timesteps = len(scheduler)
+        num_inference_steps = 10
+        scheduler.set_timesteps(num_inference_steps)
 
         model = self.dummy_model()
-        sample = self.dummy_sample_deter
+        sample = self.dummy_sample_deter * scheduler.sigmas[0]
 
-        for t in reversed(range(num_trained_timesteps - 1)):
-            # 1. predict noise residual
-            residual = model(sample, t)
-            # print("residual: ")
-            # print(residual)
+        for i, t in enumerate(scheduler.timesteps):
+            sample = sample / ((scheduler.sigmas[i] ** 2 + 1) ** 0.5)
 
-            # 2. predict previous mean of sample x_t-1
-            pred_prev_sample = scheduler.step(residual, t, sample).prev_sample
+            model_output = model(sample, t)
 
-            # if t > 0:
-            #     noise = self.dummy_sample_deter
-            #     variance = scheduler.get_variance(t) ** (0.5) * noise
-            #
-            # sample = pred_prev_sample + variance
-            sample = pred_prev_sample
-        print("Result sample: ")
-        print(sample)
+            output = scheduler.step(model_output, i, sample)
+            sample = output.prev_sample
+
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 259.0883) < 1e-2
-        assert abs(result_mean.item() - 0.3374) < 1e-3
+        assert abs(result_sum.item() - 1006.388) < 1e-2
+        assert abs(result_mean.item() - 1.31) < 1e-3
