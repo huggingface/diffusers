@@ -4,7 +4,6 @@
 [default.extend-identifiers]
 
 [default.extend-words]
-# Don't correct following words
 nin="nin"
 nd="np" # nd may be np (numpy)
 
