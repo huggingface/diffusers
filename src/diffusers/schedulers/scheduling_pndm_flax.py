@@ -71,7 +71,7 @@ class PNDMSchedulerState:
     cur_model_output: Optional[jnp.ndarray] = None
     counter: int = 0
     cur_sample: Optional[jnp.ndarray] = None
-    ets: List = []
+    ets: jnp.array = jnp.array([])
 
     @property
     def alphas(self) -> jnp.array:
@@ -82,9 +82,9 @@ class PNDMSchedulerState:
         return jnp.cumprod(self.alphas, axis=0)
 
     @classmethod
-    def create(cls, beta: jnp.array, num_train_timesteps: int):
+    def create(cls, betas: jnp.array, num_train_timesteps: int):
         state = cls(
-            betas=beta,
+            betas=betas,
             _timesteps=jnp.arange(0, num_train_timesteps)[::-1].copy(),
         )
 
