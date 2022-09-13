@@ -622,6 +622,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
             self.check_over_forward(time_step=t, num_inference_steps=num_inference_steps)
 
     def test_pow_of_3_inference_steps(self):
+        # earlier version of set_timesteps() caused an error indexing alpha's with inference steps as power of 3
         num_inference_steps = 27
 
         for scheduler_class in self.scheduler_classes:
@@ -633,7 +634,8 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
             scheduler.set_timesteps(num_inference_steps)
 
-            for i, t in enumerate(scheduler.prk_timesteps):
+            # before power of 3 fix, would error on first step, so we only need to do two
+            for i, t in enumerate(scheduler.prk_timesteps[:2]):
                 sample = scheduler.step_prk(residual, t, sample).prev_sample
 
     def test_inference_plms_no_past_residuals(self):
