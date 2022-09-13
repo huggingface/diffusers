@@ -152,7 +152,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         if "offset" in kwargs:
             warnings.warn(
                 "`offset` is deprecated as an input argument to `set_timesteps` and will be removed in v0.4.0."
-                " Please pass `steps_offset` to `__init__` instead."
+                " Please pass `steps_offset` to `__init__` instead.",
+                DeprecationWarning
             )
 
             offset = kwargs["offset"]
