@@ -178,7 +178,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             truncation=True,
             return_tensors="pt",
         )
-        text_embeddings = self.text_encoder(text_input.input_ids.to(self.device, non_blocking=True))[0]
+        text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
