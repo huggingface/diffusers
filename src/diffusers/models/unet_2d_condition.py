@@ -177,7 +177,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         timesteps = timesteps.expand(sample.shape[0])
 
         t_emb = self.time_proj(timesteps)
-        emb = self.time_embedding(t_emb)
+        emb = self.time_embedding(t_emb.to(self.dtype))
 
         # 2. pre-process
         sample = self.conv_in(sample)
@@ -215,7 +215,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         # 6. post-process
         # make sure hidden states is in float32
         # when running in half-precision
-        sample = self.conv_norm_out(sample.float()).type(sample.dtype)
+        sample = self.conv_norm_out.float()(sample.float()).type(sample.dtype)
         sample = self.conv_act(sample)
         sample = self.conv_out(sample)
 

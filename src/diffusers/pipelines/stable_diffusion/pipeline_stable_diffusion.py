@@ -204,6 +204,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 latents_shape,
                 generator=generator,
                 device=self.device,
+                dtype=text_embeddings.dtype,
             )
         else:
             if latents.shape != latents_shape:
@@ -263,7 +264,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         # run safety checker
         safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
-        image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_cheker_input.pixel_values)
+        image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_cheker_input.pixel_values.to(text_embeddings.dtype))
 
         if output_type == "pil":
             image = self.numpy_to_pil(image)
