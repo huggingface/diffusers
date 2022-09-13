@@ -72,7 +72,7 @@ def convert_state_dict(orig_state_dict):
 
 
 @torch.no_grad()
-def convert_transformer_checkpoint(model_name, checkpoint_path, pytorch_dump_folder_path, push_to_hub=False):
+def convert_transformer_checkpoint(checkpoint_path, pytorch_dump_folder_path, push_to_hub=False):
     """
     Copy/paste/tweak model's weights to our Transformer structure.
     """
@@ -103,7 +103,7 @@ def convert_transformer_checkpoint(model_name, checkpoint_path, pytorch_dump_fol
 
     if pytorch_dump_folder_path is not None:
         Path(pytorch_dump_folder_path).mkdir(exist_ok=True)
-        print(f"Saving model {model_name} to {pytorch_dump_folder_path}")
+        print(f"Saving model to {pytorch_dump_folder_path}")
         model.save_pretrained(pytorch_dump_folder_path)
 
     if push_to_hub:
@@ -125,16 +125,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # Required parameters
     parser.add_argument(
-        "--model_name",
-        default="transformer_churches",
-        type=str,
-        help="Name of the Transformer encoder model you'd like to convert.",
-    )
-    parser.add_argument(
         "--checkpoint_path",
         default="/Users/nielsrogge/Documents/AbsorbingDiffusion/churches/absorbing_ema_2000000.th",
         type=str,
-        help="Path to the original state dict (.pth file).",
+        help="Path to the original state dict (.th file).",
     )
     parser.add_argument(
         "--pytorch_dump_folder_path", default=None, type=str, help="Path to the output PyTorch model directory."
@@ -144,6 +138,4 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    convert_transformer_checkpoint(
-        args.model_name, args.checkpoint_path, args.pytorch_dump_folder_path, args.push_to_hub
-    )
+    convert_transformer_checkpoint(args.checkpoint_path, args.pytorch_dump_folder_path, args.push_to_hub)

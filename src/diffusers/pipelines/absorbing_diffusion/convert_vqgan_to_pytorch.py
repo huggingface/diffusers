@@ -22,9 +22,8 @@ from pathlib import Path
 
 import torch
 
-import requests
 from diffusers import VQModel
-from huggingface_hub import HfApi
+from huggingface_hub import HfApi, hf_hub_download
 from PIL import Image
 from torchvision.transforms import Compose, Normalize, Resize, ToTensor
 
@@ -178,13 +177,13 @@ def convert_state_dict(orig_state_dict):
 
 # We will verify our results on an image of cute cats
 def prepare_img():
-    url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-    im = Image.open(requests.get(url, stream=True).raw)
-    return im
+    file_path = hf_hub_download(repo_id="huggingface/cats-image", repo_type="dataset", filename="cats_image.jpeg")
+    image = Image.open(file_path).convert("RGB")
+    return image
 
 
 @torch.no_grad()
-def convert_vqgan_checkpoint(model_name, checkpoint_path, pytorch_dump_folder_path, push_to_hub=False):
+def convert_vqgan_checkpoint(checkpoint_path, pytorch_dump_folder_path, push_to_hub=False):
     """
     Copy/paste/tweak model's weights to our VQGAN structure.
     """
@@ -256,7 +255,7 @@ def convert_vqgan_checkpoint(model_name, checkpoint_path, pytorch_dump_folder_pa
 
     if pytorch_dump_folder_path is not None:
         Path(pytorch_dump_folder_path).mkdir(exist_ok=True)
-        print(f"Saving model {model_name} to {pytorch_dump_folder_path}")
+        print(f"Saving model to {pytorch_dump_folder_path}")
         model.save_pretrained(pytorch_dump_folder_path)
 
     if push_to_hub:
@@ -278,12 +277,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # Required parameters
     parser.add_argument(
-        "--model_name",
-        default="vqgan_churches",
-        type=str,
-        help="Name of the VQGAN model you'd like to convert.",
-    )
-    parser.add_argument(
         "--checkpoint_path",
         default="/Users/nielsrogge/Documents/AbsorbingDiffusion/churches/vqgan_ema_2200000.th",
         type=str,
@@ -297,4 +290,4 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    convert_vqgan_checkpoint(args.model_name, args.checkpoint_path, args.pytorch_dump_folder_path, args.push_to_hub)
+    convert_vqgan_checkpoint(args.checkpoint_path, args.pytorch_dump_folder_path, args.push_to_hub)
