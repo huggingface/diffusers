@@ -164,10 +164,11 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             offset = kwargs["offset"]
 
         self.num_inference_steps = num_inference_steps
-        self._timesteps = list(
-            range(0, self.config.num_train_timesteps, self.config.num_train_timesteps // num_inference_steps)
-        )
-        self._timesteps = np.array(self._timesteps) + offset
+        step_ratio = self.config.num_train_timesteps // self.num_inference_steps
+        # creates integer timesteps by multiplying by ratio
+        # casting to int to avoid issues when num_inference_step is power of 3
+        self._timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()
+        self._timesteps += offset
 
         if self.config.skip_prk_steps:
             # for some models like stable diffusion the prk steps can/should be skipped to
