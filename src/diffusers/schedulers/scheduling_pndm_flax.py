@@ -87,6 +87,7 @@ class PNDMSchedulerState:
             betas=betas,
             _timesteps=jnp.arange(0, num_train_timesteps)[::-1].copy(),
         )
+        return state
 
 
 @dataclass
