@@ -807,7 +807,7 @@ class AttnSkipDownBlock2D(nn.Module):
                 non_linearity=resnet_act_fn,
                 output_scale_factor=output_scale_factor,
                 pre_norm=resnet_pre_norm,
-                use_nin_shortcut=True,
+                use_in_shortcut=True,
                 down=True,
                 kernel="fir",
             )
@@ -887,7 +887,7 @@ class SkipDownBlock2D(nn.Module):
                 non_linearity=resnet_act_fn,
                 output_scale_factor=output_scale_factor,
                 pre_norm=resnet_pre_norm,
-                use_nin_shortcut=True,
+                use_in_shortcut=True,
                 down=True,
                 kernel="fir",
             )
@@ -1340,7 +1340,7 @@ class AttnSkipUpBlock2D(nn.Module):
                 non_linearity=resnet_act_fn,
                 output_scale_factor=output_scale_factor,
                 pre_norm=resnet_pre_norm,
-                use_nin_shortcut=True,
+                use_in_shortcut=True,
                 up=True,
                 kernel="fir",
             )
@@ -1437,7 +1437,7 @@ class SkipUpBlock2D(nn.Module):
                 non_linearity=resnet_act_fn,
                 output_scale_factor=output_scale_factor,
                 pre_norm=resnet_pre_norm,
-                use_nin_shortcut=True,
+                use_in_shortcut=True,
                 up=True,
                 kernel="fir",
             )
