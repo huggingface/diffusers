@@ -112,7 +112,8 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule (`str`):
             the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
-        trained_betas (`np.ndarray`, optional): TODO
+        trained_betas (`np.ndarray`, optional):
+            option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
         tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays
         skip_prk_steps (`bool`):
             allows the scheduler to skip the Runge-Kutta steps that are defined in the original paper as being required
@@ -164,7 +165,8 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
                 the PNDMScheduler state data class instance.
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
-            offset (`int`): TODO
+            offset (`int`):
+                optional value to shift timestep values up by. A value of 1 is used in stable diffusion for inference.
         """
         step_ratio = self.config.num_train_timesteps // num_inference_steps
         # creates integer timesteps by multiplying by ratio
