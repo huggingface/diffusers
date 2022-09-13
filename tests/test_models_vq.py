@@ -94,4 +94,4 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
         # fmt: off
         expected_output_slice = torch.tensor([-0.0153, -0.4044, -0.1880, -0.5161, -0.2418, -0.4072, -0.1612, -0.0633, -0.0143])
         # fmt: on
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))

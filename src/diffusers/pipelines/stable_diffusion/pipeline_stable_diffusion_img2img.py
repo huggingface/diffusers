@@ -178,7 +178,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
 
-        if not isinstance(init_image, torch.FloatTensor):
+        if isinstance(init_image, PIL.Image.Image):
             init_image = preprocess(init_image)
 
         # encode the init image into latents and scale the latents
