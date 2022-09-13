@@ -39,6 +39,22 @@ def remove_ignore_keys(state_dict):
 def rename_key(name):
     if "_denoise_fn." in name:
         name = name.replace("_denoise_fn.", "")
+    if "tok_emb" in name:
+        name = name.replace("tok_emb", "token_embeddings")
+    if "pos_emb" in name:
+        name = name.replace("pos_emb", "position_embeddings")
+    if "start_tok" in name:
+        name = name.replace("start_tok", "start_token")
+    if "attn" in name:
+        name = name.replace("attn", "attention")
+    if "ln1" in name:
+        name = name.replace("ln1", "layernorm1")
+    if "ln2" in name:
+        name = name.replace("ln2", "layernorm2")
+    if "proj" in name:
+        name = name.replace("proj", "projection")
+    if "ln_f" in name:
+        name = name.replace("ln_f", "final_layernorm")
 
     return name
 
@@ -74,7 +90,7 @@ def convert_transformer_checkpoint(model_name, checkpoint_path, pytorch_dump_fol
 
     # Verify outputs on dummy input
     dummy_input = torch.tensor([[1024, 1024, 1024]])
-    output = model(dummy_input, t=2)
+    output = model(dummy_input)
 
     assert output.shape == (1, 3, 1024)
     assert torch.allclose(

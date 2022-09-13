@@ -32,8 +32,6 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
             latent representations.
         transformer ([`Transformer`]):
             BERT-like Transformer encoder.
-        mask_id (`int`, *optional*, defaults to 1024):
-            The id of the mask token in the vocabulary.
     """
 
     def __init__(
@@ -47,6 +45,7 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
             transformer=transformer,
         )
         # TODO make these attributes configurable?
+        # not sure where to put these attributes
         self.mask_id = 1024
         self.latent_shape = [1, 16, 16]
         self.codebook_size = self.transformer.vocab_size
@@ -54,7 +53,7 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
 
     @torch.no_grad()
     def embed(self, z):
-        z_flattened = z.view(-1, self.codebook_size)  # B*H*W, codebook_size
+        z_flattened = z.view(-1, self.codebook_size)  # batch_size*height*width, codebook_size
         embedded = (
             torch.matmul(z_flattened, self.vae.quantize.embedding.weight)
             .view(z.size(0), self.latent_shape[1], self.latent_shape[2], self.emb_dim)
@@ -80,8 +79,8 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
             batch_size (`int`, *optional*, defaults to 1):
                 Number of images to generate.
             generator (`torch.Generator`, *optional*):
-                A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
-                deterministic.
+                A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make the masking
+                (not the generation) deterministic.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -124,7 +123,7 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
             # update mask with changes
             unmasked = torch.bitwise_or(unmasked, changes)
 
-            x_0_logits = self.transformer(x_t, t=t)
+            x_0_logits = self.transformer(x_t)
 
             # scale by temperature
             x_0_logits = x_0_logits / temp
