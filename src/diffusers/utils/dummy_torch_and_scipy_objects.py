@@ -4,8 +4,8 @@
 from ..utils import DummyObject, requires_backends
 
 
-class StableDiffusionOnnxPipeline(metaclass=DummyObject):
-    _backends = ["transformers", "onnx"]
+class LMSDiscreteScheduler(metaclass=DummyObject):
+    _backends = ["torch", "scipy"]
 
     def __init__(self, *args, **kwargs):
-        requires_backends(self, ["transformers", "onnx"])
+        requires_backends(self, ["torch", "scipy"])
