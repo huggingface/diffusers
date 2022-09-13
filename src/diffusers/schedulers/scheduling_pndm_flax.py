@@ -84,7 +84,7 @@ class PNDMSchedulerState:
     def create(cls, betas: jnp.array, num_train_timesteps: int):
         return cls(
             betas=betas,
-            _timesteps=jnp.arange(0, num_train_timesteps)[::-1].copy(),
+            _timesteps=jnp.arange(0, num_train_timesteps)[::-1],
         )
 
 
@@ -166,7 +166,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         step_ratio = self.config.num_train_timesteps // num_inference_steps
         # creates integer timesteps by multiplying by ratio
         # casting to int to avoid issues when num_inference_step is power of 3
-        _timesteps = (jnp.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy()
+        _timesteps = (jnp.arange(0, num_inference_steps) * step_ratio).round()[::-1]
         _timesteps = _timesteps + offset
 
         state = state.replace(num_inference_steps=num_inference_steps, _offset=offset, _timesteps=_timesteps)
@@ -179,7 +179,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
                 prk_timesteps=jnp.array([]),
                 plms_timesteps=jnp.concatenate(
                     [state._timesteps[:-1], state._timesteps[-2:-1], state._timesteps[-1:]]
-                )[::-1].copy(),
+                )[::-1],
             )
         else:
             prk_timesteps = jnp.array(state._timesteps[-self.pndm_order :]).repeat(2) + jnp.tile(
@@ -187,10 +187,8 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
             )
 
             state = state.replace(
-                prk_timesteps=(prk_timesteps[:-1].repeat(2)[1:-1])[::-1].copy(),
-                plms_timesteps=state._timesteps[:-3][
-                    ::-1
-                ].copy(),  # we copy to avoid having negative strides which are not supported by torch.from_numpy
+                prk_timesteps=(prk_timesteps[:-1].repeat(2)[1:-1])[::-1],
+                plms_timesteps=state._timesteps[:-3][::-1],
             )
 
         return state.replace(
