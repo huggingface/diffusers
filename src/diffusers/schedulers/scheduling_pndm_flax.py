@@ -114,7 +114,6 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
         trained_betas (`np.ndarray`, optional):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
-        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays
         skip_prk_steps (`bool`):
             allows the scheduler to skip the Runge-Kutta steps that are defined in the original paper as being required
             before plms steps; defaults to `False`.
@@ -128,7 +127,6 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
         trained_betas: Optional[jnp.array] = None,
-        tensor_format: str = "np",
         skip_prk_steps: bool = False,
     ):
         if trained_betas is not None:
@@ -150,9 +148,6 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         self.pndm_order = 4
 
         self.state = PNDMSchedulerState.create(betas=betas, num_train_timesteps=num_train_timesteps)
-
-        self.tensor_format = tensor_format
-        self.set_format(tensor_format=tensor_format)
 
     def set_timesteps(
         self, state: PNDMSchedulerState, num_inference_steps: int, offset: int = 0
