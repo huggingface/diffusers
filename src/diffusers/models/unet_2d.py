@@ -76,6 +76,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         norm_num_groups: int = 32,
         norm_eps: float = 1e-5,
         resnet_time_scale_shift: str = "default",
+        resblock_updown=False,
     ):
         super().__init__()
 
@@ -119,6 +120,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 attn_num_head_channels=attention_head_dim,
                 downsample_padding=downsample_padding,
                 resnet_time_scale_shift=resnet_time_scale_shift,
+                resblock_updown=resblock_updown,
             )
             self.down_blocks.append(down_block)
 

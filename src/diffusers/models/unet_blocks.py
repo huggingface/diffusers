@@ -35,6 +35,7 @@ def get_down_block(
     cross_attention_dim=None,
     downsample_padding=None,
     resnet_time_scale_shift: str = "default",
+    resblock_updown=False,
 ):
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
     if down_block_type == "DownBlock2D":
@@ -112,6 +113,19 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
+        )
+    elif down_block_type == "GuidedDiffusionDownBlock2D":
+        return GuidedDiffusionDownBlock2D(
+            num_layers=num_layers,
+            in_channels=in_channels,
+            out_channels=out_channels,
+            temb_channels=temb_channels,
+            add_downsample=add_downsample,
+            resnet_eps=resnet_eps,
+            resnet_time_scale_shift=resnet_time_scale_shift,
+            resnet_act_fn=resnet_act_fn,
+            downsample_padding=downsample_padding,
+            resblock_updown=resblock_updown,
         )
 
 
@@ -959,6 +973,96 @@ class SkipDownBlock2D(nn.Module):
             output_states += (hidden_states,)
 
         return hidden_states, output_states, skip_sample
+
+
+class GuidedDiffusionDownBlock2D(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        temb_channels: int,
+        dropout: float = 0.0,
+        num_layers: int = 1,
+        resnet_eps: float = 1e-6,
+        resnet_time_scale_shift: str = "default",
+        resnet_act_fn: str = "swish",
+        resnet_groups: int = 32,
+        resnet_pre_norm: bool = True,
+        output_scale_factor=1.0,
+        add_downsample=True,
+        downsample_padding=1,
+        resblock_updown=False,
+        add_attention_block=False,
+    ):
+        super().__init__()
+        resnets = []
+        attentions = []
+
+        for i in range(num_layers):
+            in_channels = in_channels if i == 0 else out_channels
+            resnets.append(
+                ResnetBlock2D(
+                    in_channels=in_channels,
+                    out_channels=out_channels,
+                    temb_channels=temb_channels,
+                    eps=resnet_eps,
+                    groups=resnet_groups,
+                    dropout=dropout,
+                    time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                    pre_norm=resnet_pre_norm,
+                )
+            )
+            if add_attention_block:
+                attentions.append(
+                    AttentionBlock(
+                        out_channels,
+                        num_head_channels=attn_num_head_channels,
+                        rescale_output_factor=output_scale_factor,
+                        eps=resnet_eps,
+                    )
+                )
+
+        self.attentions = nn.ModuleList(attentions)
+        self.resnets = nn.ModuleList(resnets)
+
+        if add_downsample:
+            if resblock_updown:
+                downsampler = ResnetBlock2D(
+                    in_channels=in_channels,
+                    out_channels=out_channels,
+                    temb_channels=temb_channels,
+                    eps=resnet_eps,
+                    groups=resnet_groups,
+                    dropout=dropout,
+                    time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                    pre_norm=resnet_pre_norm,
+                )
+            else:
+                downsampler = Downsample2D(
+                    in_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                )
+            self.downsamplers = nn.ModuleList([downsampler])
+        else:
+            self.downsamplers = None
+
+    def forward(self, hidden_states, temb=None):
+        output_states = ()
+
+        for resnet in self.resnets:
+            hidden_states = resnet(hidden_states, temb)
+            output_states += (hidden_states,)
+
+        if self.downsamplers is not None:
+            for downsampler in self.downsamplers:
+                hidden_states = downsampler(hidden_states)
+
+            output_states += (hidden_states,)
+
+        return hidden_states, output_states
 
 
 class AttnUpBlock2D(nn.Module):

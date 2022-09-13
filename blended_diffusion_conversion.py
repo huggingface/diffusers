@@ -31,7 +31,17 @@ config["block_out_channels"] = [
     1024,
     1024,
   ]
+config["down_block_types"] = [
+    "GuidedDiffusionDownBlock2D",
+    "GuidedDiffusionDownBlock2D",
+    "GuidedDiffusionDownBlock2D",
+    "GuidedDiffusionDownBlock2D",  # attention?
+    "GuidedDiffusionDownBlock2D",  # attention?
+    "GuidedDiffusionDownBlock2D"   # attention?
+]
+
 config["resnet_time_scale_shift"] = "scale_shift"
+config["resblock_updown"] = True
 model = UNet2DModel(**config)
 
 print(model)
@@ -40,6 +50,10 @@ model.save_pretrained("ddpm-church-256-custom")
 config = dict(model.config)
 print(config)
 print(config["resnet_time_scale_shift"])
+
+import json
+with open("ddpm_256_custom_config.json", "w") as fp:
+   json.dump(config, fp, indent=4)
 
 # --------------------------------------------------------------------------------
 # diffusers/src
@@ -61,6 +75,7 @@ import json
 with open("ddpm_256_custom.json", "w") as fp:
     json.dump(info, fp, indent=4)
 
+exit(0)
 # --------------------------------------------------------------------------------
 # diffusers/src
 
