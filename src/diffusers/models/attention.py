@@ -661,3 +661,89 @@ class AdaLayerNorm(nn.Module):
         scale, shift = torch.chunk(emb, 2)
         x = self.norm(x) * (1 + scale) + shift
         return x
+        return hidden_states * F.gelu(gate)
+
+
+class SelfAttention(nn.Module):
+    """
+    A vanilla multi-head masked self-attention layer with a projection at the end.
+    """
+
+    def __init__(self, hidden_size, num_heads, attention_dropout=0.0, residual_dropout=0.0):
+        super().__init__()
+        if hidden_size % num_heads != 0:
+            raise ValueError("Making sure that `hidden_size` is divisible by `num_heads`")
+        # key, query, value projections for all heads
+        self.key = nn.Linear(hidden_size, hidden_size)
+        self.query = nn.Linear(hidden_size, hidden_size)
+        self.value = nn.Linear(hidden_size, hidden_size)
+        # regularization
+        self.attention_dropout = nn.Dropout(attention_dropout)
+        self.residual_dropout = nn.Dropout(residual_dropout)
+        # output projection
+        self.projection = nn.Linear(hidden_size, hidden_size)
+        self.n_head = num_heads
+
+    def forward(self, hidden_states):
+        batch_size, seq_length, hidden_size = hidden_states.size()
+
+        # calculate query, key, values for all heads in batch and move head forward to be the batch dim
+        keys = (
+            self.key(hidden_states)
+            .view(batch_size, seq_length, self.n_head, hidden_size // self.n_head)
+            .transpose(1, 2)
+        )  # (batch_size, num_heads, seq_length, hs)
+        queries = (
+            self.query(hidden_states)
+            .view(batch_size, seq_length, self.n_head, hidden_size // self.n_head)
+            .transpose(1, 2)
+        )  # (batch_size, num_heads, seq_length, hs)
+        values = (
+            self.value(hidden_states)
+            .view(batch_size, seq_length, self.n_head, hidden_size // self.n_head)
+            .transpose(1, 2)
+        )  # (batch_size, num_heads, seq_length, hs)
+
+        # self-attention;
+        # (batch_size, num_heads, seq_length, hs) x (batch_size, num_heads, hs, seq_length) -> (batch_size, num_heads, seq_length, seq_length)
+        attention_logits = (queries @ keys.transpose(-2, -1)) * (1.0 / math.sqrt(keys.size(-1)))
+
+        attention_scores = F.softmax(attention_logits, dim=-1)
+        attention_scores = self.attention_dropout(attention_scores)
+        hidden_states = (
+            attention_scores @ values
+        )  # (batch_size, num_heads, seq_length, seq_length) x (batch_size, num_heads, seq_length, hs) -> (batch_size, num_heads, seq_length, hs)
+        # re-assemble all head outputs side by side
+        hidden_states = hidden_states.transpose(1, 2).contiguous().view(batch_size, seq_length, hidden_size)
+
+        # output projection
+        hidden_states = self.residual_dropout(self.projection(hidden_states))
+        return hidden_states
+
+
+class Block(nn.Module):
+    """A regular Transformer block"""
+
+    def __init__(self, hidden_size, num_heads, attention_dropout=0.0, residual_dropout=0.0):
+        super().__init__()
+        self.layernorm1 = nn.LayerNorm(hidden_size)
+        self.layernorm2 = nn.LayerNorm(hidden_size)
+        self.attention = SelfAttention(
+            hidden_size,
+            num_heads,
+            attention_dropout=attention_dropout,
+            residual_dropout=residual_dropout,
+        )
+        self.mlp = nn.Sequential(
+            nn.Linear(hidden_size, 4 * hidden_size),
+            nn.GELU(),
+            nn.Linear(4 * hidden_size, hidden_size),
+            nn.Dropout(residual_dropout),
+        )
+
+    def forward(self, hidden_states):
+        attention_output = self.attention(self.layernorm1(hidden_states))
+        hidden_states = hidden_states + attention_output
+        hidden_states = hidden_states + self.mlp(self.layernorm2(hidden_states))
+
+        return hidden_states
