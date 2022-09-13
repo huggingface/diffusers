@@ -164,7 +164,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         step_ratio = self.config.num_train_timesteps // num_inference_steps
         # creates integer timesteps by multiplying by ratio
         # casting to int to avoid issues when num_inference_step is power of 3
-        _timesteps = (jnp.arange(0, num_inference_steps) * step_ratio).astype(int)[::-1].copy()
+        _timesteps = (jnp.arange(0, num_inference_steps) * step_ratio).astype(jnp.int64)[::-1].copy()
         _timesteps = _timesteps + offset
 
         state = state.replace(num_inference_steps=num_inference_steps, _offset=offset, _timesteps=_timesteps)
@@ -287,7 +287,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         state.replace(counter=state.counter + 1)
 
         if not return_dict:
-            return (prev_sample,)
+            return (prev_sample, state)
 
         return SchedulerOutput(prev_sample=prev_sample)
 
@@ -357,7 +357,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         state.replace(counter=state.counter + 1)
 
         if not return_dict:
-            return (prev_sample,)
+            return (prev_sample, state)
 
         return SchedulerOutput(prev_sample=prev_sample)
 
