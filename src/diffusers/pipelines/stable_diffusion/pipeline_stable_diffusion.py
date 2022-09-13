@@ -90,10 +90,29 @@ class StableDiffusionPipeline(DiffusionPipeline):
         # set slice_size = `None` to disable `attention slicing`
         self.enable_attention_slicing(None)
 
-    @torch.no_grad()
+    def gradient_checkpointing_enable(self) -> None:
+        """
+        Activates gradient checkpointing for the current model.
+
+        Note that in other frameworks this feature can be referred to as "activation checkpointing" or "checkpoint
+        activations".
+        """
+        self.pipe.text_encoder.gradient_checkpointing_enable()
+        # TODO: activate gradient checkpointing for self.unet and self.vae
+
+    def gradient_checkpointing_disable(self) -> None:
+        """
+        Deactivates gradient checkpointing for the current model.
+
+        Note that in other frameworks this feature can be referred to as "activation checkpointing" or "checkpoint
+        activations".
+        """
+        self.pipe.text_encoder.gradient_checkpointing_disable()
+        # TODO: disable gradient checkpointing for self.unet and self.vae
+
     def __call__(
         self,
-        prompt: Union[str, List[str]],
+        prompt: Union[str, List[str], torch.Tensor],
         height: Optional[int] = 512,
         width: Optional[int] = 512,
         num_inference_steps: Optional[int] = 50,
@@ -103,13 +122,16 @@ class StableDiffusionPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        output_latents: bool = False,
+        run_safety_checker: bool = True,
+        enable_grad: bool = False,
         **kwargs,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`):
+            prompt (`str`, `List[str]` or `torch.Tensor`):
                 The prompt or prompts to guide the image generation.
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
@@ -140,6 +162,13 @@ class StableDiffusionPipeline(DiffusionPipeline):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
+            output_latents (`bool`, *optional*, defaults to `False`):
+                Whether or not to return the latents from all the diffusion steps. See `latents` under returned tensors
+                for more details.
+            run_safety_checker (`bool`, *optional*, defaults to `True`):
+                Whether or not to return run the safety checker in the final generated image.
+            enable_grad (`bool`, *optional*, defaults to `False`):
+                Whether or not to enable gradient calculation during diffusion process.
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
@@ -161,10 +190,26 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 device = "cuda" if torch.cuda.is_available() else "cpu"
             self.to(device)
 
+        # enable/disable grad
+        was_grad_enabled = torch.is_grad_enabled()
+        torch.set_grad_enabled(enable_grad)
+
         if isinstance(prompt, str):
             batch_size = 1
         elif isinstance(prompt, list):
             batch_size = len(prompt)
+        elif torch.is_tensor(prompt):
+            if len(prompt.shape) == 2:
+                # Add batch dimension
+                prompt = prompt.unsqueeze(0)
+
+            if len(prompt.shape) != 3:
+                raise ValueError(
+                    f"If `prompt` is of type `torch.Tensor`, it is expected to have a 2 dimensions "
+                    f"(sequence len, embedding dim) or 3 dimensions (batch size, sequence len, embedding dim), "
+                    f"but found tensor with shape {prompt.shape}"
+                )
+            batch_size = prompt.shape[0]
         else:
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
@@ -172,14 +217,17 @@ class StableDiffusionPipeline(DiffusionPipeline):
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         # get prompt text embeddings
-        text_input = self.tokenizer(
-            prompt,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            truncation=True,
-            return_tensors="pt",
-        )
-        text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
+        if torch.is_tensor(prompt):
+            text_embeddings = prompt
+        else:
+            text_input = self.tokenizer(
+                prompt,
+                padding="max_length",
+                max_length=self.tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+            text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -187,7 +235,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
-            max_length = text_input.input_ids.shape[-1]
+            max_length = text_embeddings.shape[-2]
             uncond_input = self.tokenizer(
                 [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="pt"
             )
@@ -237,6 +285,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
+        all_latents = [latents] if output_latents else None
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
@@ -259,6 +308,10 @@ class StableDiffusionPipeline(DiffusionPipeline):
             else:
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
+            if output_latents:
+                # save latents from all diffusion steps
+                all_latents.append(latents)
+
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
         image = self.vae.decode(latents).sample
@@ -276,4 +329,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        # reset
+        torch.set_grad_enabled(was_grad_enabled)
+
+        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept, latents=all_latents)
