@@ -5,8 +5,6 @@ import numpy as np
 import torch
 import torch.distributions as dists
 
-from torchvision import utils
-
 from ...models import Transformer, VQModel
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
@@ -28,7 +26,7 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
 
     Args:
         vae ([`VQModel`]):
-            Vector-Quantized Variational Auto-Encoder (VQ-VAE) Model to encode and decode images to and from discrete
+            Vector-Quantized Variational Auto-Encoder (VQ-VAE) model to encode and decode images to and from discrete
             latent representations.
         transformer ([`Transformer`]):
             BERT-like Transformer encoder.
@@ -113,6 +111,7 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
 
         sample_steps = list(range(1, num_inference_steps + 1))
 
+        # TODO use progress_bar here
         for t in reversed(sample_steps):
             t = torch.full((batch_size,), t, device=self.device, dtype=torch.long)
 
@@ -123,7 +122,7 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
             # update mask with changes
             unmasked = torch.bitwise_or(unmasked, changes)
 
-            x_0_logits = self.transformer(x_t)
+            x_0_logits = self.transformer(x_t).logits
 
             # scale by temperature
             x_0_logits = x_0_logits / temp
@@ -137,9 +136,11 @@ class AbsorbingDiffusionPipeline(DiffusionPipeline):
         q = self.embed(latents_one_hot)
         images = self.vae.decoder(q.float())
 
-        # if output_type == "pil":
-        #     images = self.numpy_to_pil(images)
-        utils.save_image(images, "results.png", nrow=batch_size)
+        images = (images / 2 + 0.5).clamp(0, 1)
+        images = images.cpu().permute(0, 2, 3, 1).numpy()
+
+        if output_type == "pil":
+            images = self.numpy_to_pil(images)
 
         if not return_dict:
             return (images,)

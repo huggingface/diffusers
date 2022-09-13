@@ -17,7 +17,7 @@ class TransformerIntegrationTests(unittest.TestCase):
         dummy_inputs = torch.tensor([[1024, 1024, 1024]], device=torch_device)
 
         with torch.no_grad():
-            logits = model(dummy_inputs)
+            logits = model(dummy_inputs).logits
 
         # verify output
         self.assertEqual(logits.shape, (1, 3, 1024))

@@ -90,11 +90,11 @@ def convert_transformer_checkpoint(checkpoint_path, pytorch_dump_folder_path, pu
 
     # Verify outputs on dummy input
     dummy_input = torch.tensor([[1024, 1024, 1024]])
-    output = model(dummy_input)
+    logits = model(dummy_input).logits
 
-    assert output.shape == (1, 3, 1024)
+    assert logits.shape == (1, 3, 1024)
     assert torch.allclose(
-        output[0, :3, :3],
+        logits[0, :3, :3],
         torch.tensor([[-0.1161, 0.4330, -13.3936], [-0.0973, 0.4164, -13.3616], [-0.1220, 0.4098, -13.3992]]),
         atol=1e-4,
     )

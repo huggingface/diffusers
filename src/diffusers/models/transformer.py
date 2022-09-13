@@ -1,4 +1,5 @@
 import math
+from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
@@ -6,18 +7,31 @@ import torch.nn.functional as F
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
+from ..utils import BaseOutput
+
+
+@dataclass
+class MaskedLMOutput(BaseOutput):
+    """
+    Base class for masked language models outputs.
+
+    Args:
+        logits (`torch.FloatTensor` of shape `(batch_size, sequence_length, config.vocab_size)`):
+            Prediction scores of the language modeling head (scores for each vocabulary token before SoftMax).
+    """
+
+    logits: torch.FloatTensor = None
 
 
 class SelfAttention(nn.Module):
     """
-    A vanilla multi-head masked self-attention layer with a projection at the end. It is possible to use
-    torch.nn.MultiheadAttention here but I am including an explicit implementation here to show that there is nothing
-    too scary here.
+    A vanilla multi-head masked self-attention layer with a projection at the end.
     """
 
     def __init__(self, hidden_size, num_heads, attention_dropout=0.0, residual_dropout=0.0):
         super().__init__()
-        assert hidden_size % num_heads == 0
+        if hidden_size % num_heads != 0:
+            raise ValueError("Making sure that `hidden_size` is divisible by `num_heads`")
         # key, query, value projections for all heads
         self.key = nn.Linear(hidden_size, hidden_size)
         self.query = nn.Linear(hidden_size, hidden_size)
@@ -29,7 +43,7 @@ class SelfAttention(nn.Module):
         self.projection = nn.Linear(hidden_size, hidden_size)
         self.n_head = num_heads
 
-    def forward(self, hidden_states, layer_past=None):
+    def forward(self, hidden_states):
         batch_size, seq_length, hidden_size = hidden_states.size()
 
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
@@ -49,8 +63,6 @@ class SelfAttention(nn.Module):
             .transpose(1, 2)
         )  # (batch_size, num_heads, seq_length, hs)
 
-        present = torch.stack((keys, values))
-
         # self-attention;
         # (batch_size, num_heads, seq_length, hs) x (batch_size, num_heads, hs, seq_length) -> (batch_size, num_heads, seq_length, seq_length)
         attention_logits = (queries @ keys.transpose(-2, -1)) * (1.0 / math.sqrt(keys.size(-1)))
@@ -65,7 +77,7 @@ class SelfAttention(nn.Module):
 
         # output projection
         hidden_states = self.residual_dropout(self.projection(hidden_states))
-        return hidden_states, present
+        return hidden_states
 
 
 class Block(nn.Module):
@@ -88,18 +100,16 @@ class Block(nn.Module):
             nn.Dropout(residual_dropout),
         )
 
-    def forward(self, hidden_states, layer_past=None, return_present=False):
-        attention_output, present = self.attention(self.layernorm1(hidden_states), layer_past)
+    def forward(self, hidden_states):
+        attention_output = self.attention(self.layernorm1(hidden_states))
         hidden_states = hidden_states + attention_output
         hidden_states = hidden_states + self.mlp(self.layernorm2(hidden_states))
 
-        if layer_past is not None or return_present:
-            return hidden_states, present
         return hidden_states
 
 
 class Transformer(ModelMixin, ConfigMixin):
-    """The full BERT/GPT language model, with a context size of `max_position_embeddings`"""
+    """The full BERT-like language model, with a context size of `max_position_embeddings`"""
 
     @register_to_config
     def __init__(
@@ -152,7 +162,7 @@ class Transformer(ModelMixin, ConfigMixin):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
 
-    def forward(self, input_ids):
+    def forward(self, input_ids: torch.LongTensor, return_dict: bool = True):
         # 1. get token embeddings
         token_embeddings = self.token_embeddings(input_ids)
 
@@ -173,4 +183,7 @@ class Transformer(ModelMixin, ConfigMixin):
         hidden_states = self.final_layernorm(hidden_states)
         logits = self.head(hidden_states)
 
-        return logits
+        if not return_dict:
+            return (logits,)
+
+        return MaskedLMOutput(logits=logits)
