@@ -3,10 +3,10 @@ from typing import Tuple
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
-from flax.core.frozen_dict import FrozenDict
+# from flax.core.frozen_dict import FrozenDict
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..modeling_utils import FlaxModelMixin
+from ..configuration_utils import ConfigMixin, flax_register_to_config
+from ..modeling_flax_utils import FlaxModelMixin
 from .embeddings_flax import FlaxTimestepEmbedding, FlaxTimesteps
 from .unet_blocks_flax import (
     FlaxDownBlock2D,
@@ -17,22 +17,37 @@ from .unet_blocks_flax import (
 )
 
 
-# This is TBD. We may not need the module + the class
-class FlaxUNet2DModule(nn.Module):
-    # config args
-    sample_size=32,
-    in_channels=4,
-    out_channels=4,
-    down_block_types=("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D"),
-    up_block_types=("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
-    block_out_channels=(224, 448, 672, 896),
-    layers_per_block=2,
-    attention_head_dim=8,
-    cross_attention_dim=768,
-    dropout=0.1,
+@flax_register_to_config
+class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
+    sample_size=32
+    in_channels=4
+    out_channels=4
+    down_block_types=("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")
+    up_block_types=("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")
+    block_out_channels=(224, 448, 672, 896)
+    layers_per_block=2
+    attention_head_dim=8
+    cross_attention_dim=768
+    dropout=0.1
+    dtype: jnp.dtype = jnp.float32
 
     # model args
-    dtype: jnp.dtype = jnp.float32
+    # input_shape: Tuple = (1, 32, 32, 4)
+    # seed: int = 0
+
+    # # Note: input_shape is ignored
+    # def init_weights(self, rng: jax.random.PRNGKey, input_shape: Tuple) -> FrozenDict:
+    #     # init input tensors
+    #     sample_shape = (1, self.module.sample_size, self.module.sample_size, self.module.in_channels)
+    #     sample = jnp.zeros(sample_shape, dtype=jnp.float32)
+    #     timesteps = jnp.ones((1,), dtype=jnp.int32)
+    #     encoder_hidden_states = jnp.zeros((1, 1, self.module.cross_attention_dim), dtype=jnp.float32)
+
+    #     params_rng, dropout_rng = jax.random.split(rng)
+    #     rngs = {"params": params_rng, "dropout": dropout_rng}
+
+    #     return self.module.init(rngs, sample, timesteps, encoder_hidden_states)["params"]
+
 
     def setup(self):
         block_out_channels = self.block_out_channels
@@ -137,7 +152,18 @@ class FlaxUNet2DModule(nn.Module):
             dtype=self.dtype,
         )
 
-    def __call__(self, sample, timesteps, encoder_hidden_states, deterministic=True):
+    def __call__(
+        self,
+        sample,
+        timesteps,
+        encoder_hidden_states,
+        # params: dict = None,
+        # dropout_rng: jax.random.PRNGKey = None,
+        train: bool = False,
+    ):
+        # Handle any PRNG if needed
+        # rngs = {"dropout": dropout_rng} if dropout_rng is not None else {}
+
         # 1. time
         # broadcast to batch dimension
         # timesteps = jnp.broadcast_to(timesteps, (sample.shape[0],) + timesteps.shape)
@@ -179,89 +205,3 @@ class FlaxUNet2DModule(nn.Module):
         sample = self.conv_out(sample)
 
         return sample
-
-
-class FlaxUNet2DConditionModel(nn.Module, ConfigMixin, FlaxModelMixin):
-    base_model_prefix = "model"
-    module_class = FlaxUNet2DModule
-    ignore_for_config = ["input_shape", "seed", "dtype", "_do_init"]
-
-    @register_to_config
-    def __init__(
-        self,
-        # config args
-        sample_size=32,
-        in_channels=4,
-        out_channels=4,
-        down_block_types=("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D"),
-        up_block_types=("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
-        block_out_channels=(224, 448, 672, 896),
-        layers_per_block=2,
-        attention_head_dim=8,
-        cross_attention_dim=768,
-        dropout=0.1,
-
-        # model args
-        input_shape: Tuple = (1, 32, 32, 4),
-        seed: int = 0,
-        dtype: jnp.dtype = jnp.float32,
-        _do_init: bool = True,
-        **kwargs,
-    ):
-        module = self.module_class(
-            sample_size=sample_size,
-            in_channels=in_channels,
-            out_channels=out_channels,
-            down_block_types=down_block_types,
-            up_block_types=up_block_types,
-            block_out_channels=block_out_channels,
-            layers_per_block=layers_per_block,
-            attention_head_dim=attention_head_dim,
-            cross_attention_dim=cross_attention_dim,
-            dropout=dropout,
-            dtype=dtype, **kwargs)
-        super().__init__(
-            module,
-            input_shape=input_shape,
-            seed=seed,
-            dtype=dtype,
-            _do_init=_do_init
-        )
-
-    # Note: input_shape is ignored
-    def init_weights(self, rng: jax.random.PRNGKey, input_shape: Tuple) -> FrozenDict:
-        # init input tensors
-        sample_shape = (1, self.module.sample_size, self.module.sample_size, self.module.in_channels)
-        sample = jnp.zeros(sample_shape, dtype=jnp.float32)
-        timesteps = jnp.ones((1,), dtype=jnp.int32)
-        encoder_hidden_states = jnp.zeros((1, 1, self.module.cross_attention_dim), dtype=jnp.float32)
-
-        params_rng, dropout_rng = jax.random.split(rng)
-        rngs = {"params": params_rng, "dropout": dropout_rng}
-
-        return self.module.init(rngs, sample, timesteps, encoder_hidden_states)["params"]
-
-    def __call__(
-        self,
-        sample,
-        timesteps,
-        encoder_hidden_states,
-        params: dict = None,
-        dropout_rng: jax.random.PRNGKey = None,
-        train: bool = False,
-    ):
-        # Handle any PRNG if needed
-        rngs = {"dropout": dropout_rng} if dropout_rng is not None else {}
-
-        return self.module.apply(
-            {"params": params or self.params},
-            jnp.array(sample),
-            jnp.array(timesteps, dtype=jnp.int32),
-            encoder_hidden_states,
-            not train,
-            rngs=rngs,
-        )
-
-
-# class UNet2D(UNet2DPretrainedModel):
-#     module_class = UNet2DModule
