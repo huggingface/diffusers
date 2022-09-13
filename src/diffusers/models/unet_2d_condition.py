@@ -247,16 +247,26 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
             down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
 
+            if upsample_block.upsamplers is not None:
+                upsample_size = down_block_res_samples[-1].shape[2:]
+            else:
+                upsample_size = None
+
             if hasattr(upsample_block, "attentions") and upsample_block.attentions is not None:
                 sample = upsample_block(
                     hidden_states=sample,
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
                     encoder_hidden_states=encoder_hidden_states,
+                    upsample_size=upsample_size
                 )
             else:
-                sample = upsample_block(hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples)
-
+                sample = upsample_block(
+                    hidden_states=sample, 
+                    temb=emb, 
+                    res_hidden_states_tuple=res_samples,
+                    upsample_size=upsample_size
+                )
         # 6. post-process
         # make sure hidden states is in float32
         # when running in half-precision

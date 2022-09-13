@@ -35,12 +35,15 @@ class Upsample2D(nn.Module):
         else:
             self.Conv2d_0 = conv
 
-    def forward(self, x):
+    def forward(self, x, size=None):
         assert x.shape[1] == self.channels
         if self.use_conv_transpose:
             return self.conv(x)
 
-        x = F.interpolate(x, scale_factor=2.0, mode="nearest")
+        if size is None:
+            x = F.interpolate(x, scale_factor=2.0, mode="nearest")
+        else:
+            x = F.interpolate(x, size=size, mode="nearest")
 
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if self.use_conv:

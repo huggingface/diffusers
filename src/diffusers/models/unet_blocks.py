@@ -1072,7 +1072,7 @@ class CrossAttnUpBlock2D(nn.Module):
         for attn in self.attentions:
             attn._set_attention_slice(slice_size)
 
-    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, encoder_hidden_states=None):
+    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, encoder_hidden_states=None, upsample_size=None):
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
@@ -1084,7 +1084,7 @@ class CrossAttnUpBlock2D(nn.Module):
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states)
+                hidden_states = upsampler(hidden_states, upsample_size)
 
         return hidden_states
 
@@ -1135,7 +1135,7 @@ class UpBlock2D(nn.Module):
         else:
             self.upsamplers = None
 
-    def forward(self, hidden_states, res_hidden_states_tuple, temb=None):
+    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None):
         for resnet in self.resnets:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
@@ -1146,7 +1146,7 @@ class UpBlock2D(nn.Module):
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states)
+                hidden_states = upsampler(hidden_states, upsample_size)
 
         return hidden_states
 
