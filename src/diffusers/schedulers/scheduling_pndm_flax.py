@@ -345,7 +345,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
 
         if len(state.ets) == 1 and state.counter == 0:
             model_output = model_output
-            state.replace(cur_sampe=sample)
+            state.replace(cur_sample=sample)
         elif len(state.ets) == 1 and state.counter == 1:
             model_output = (model_output + state.ets[-1]) / 2
             sample = state.cur_sample
