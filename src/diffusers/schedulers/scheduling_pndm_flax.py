@@ -16,10 +16,9 @@ import math
 
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import flax
-import jax
 import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, register_to_config
@@ -83,11 +82,10 @@ class PNDMSchedulerState:
 
     @classmethod
     def create(cls, betas: jnp.array, num_train_timesteps: int):
-        state = cls(
+        return cls(
             betas=betas,
             _timesteps=jnp.arange(0, num_train_timesteps)[::-1].copy(),
         )
-        return state
 
 
 @dataclass
