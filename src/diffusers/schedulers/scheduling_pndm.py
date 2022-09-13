@@ -84,8 +84,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             otherwise it uses the value of alpha at step 0.
         steps_offset (`int`, default `0`):
             an offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product,
-            as done in stable diffusion.
+            `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
+            stable diffusion.
         tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays
 
     """
