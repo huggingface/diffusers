@@ -64,5 +64,6 @@ else:
 
 if is_flax_available():
     from .schedulers import FlaxPNDMScheduler
+    from .models.unet_2d_condition_flax import FlaxUNet2DConditionModel
 else:
     from .utils.dummy_flax_objects import *  # noqa F403
