@@ -229,7 +229,7 @@ class ModelMixin(torch.nn.Module):
                 git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
                 identifier allowed by git.
             subfolder (`str`, *optional*, defaults to `""`):
-                In case the relevant files are located inside a subfolder of the model repo on huggingface.co, you can
+                In case the relevant files are located inside a subfolder of the model repo (either remote in huggingface.co or downloaded locally), you can
                 specify the folder name here.
 
             mirror (`str`, *optional*):
