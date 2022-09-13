@@ -99,7 +99,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         back to computing attention in one step.
         """
         # set slice_size = `None` to disable `set_attention_slice`
-        self.enable_attention_slice(None)
+        self.enable_attention_slicing(None)
 
     @torch.no_grad()
     def __call__(
