@@ -1,10 +1,6 @@
 name: Check typos
 
 on:
-  push:
-  pull_request:
-    branches:
-      - '**'
   workflow_dispatch:
 
 jobs:
