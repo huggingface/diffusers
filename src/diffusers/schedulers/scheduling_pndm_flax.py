@@ -161,9 +161,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
                 the number of diffusion steps used when generating samples with a pre-trained model.
             offset (`int`): TODO
         """
-        self.num_inference_steps = num_inference_steps
-
-        step_ratio = self.config.num_train_timesteps // self.num_inference_steps
+        step_ratio = self.config.num_train_timesteps // num_inference_steps
         # creates integer timesteps by multiplying by ratio
         # casting to int to avoid issues when num_inference_step is power of 3
         _timesteps = (jnp.arange(0, num_inference_steps) * step_ratio).astype(int)[::-1].copy()
@@ -259,7 +257,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
             True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
-        if self.num_inference_steps is None:
+        if state.num_inference_steps is None:
             raise ValueError(
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
             )
