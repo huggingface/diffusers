@@ -68,6 +68,7 @@ To create the package for pypi.
 """
 
 import re
+import os
 from distutils.core import Command
 
 from setuptools import find_packages, setup
@@ -82,10 +83,13 @@ _deps = [
     "datasets",
     "filelock",
     "flake8>=3.8.3",
+    "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
     "huggingface-hub>=0.8.1",
     "importlib_metadata",
     "isort>=5.5.4",
+    "jax>=0.2.8,!=0.3.2,<=0.3.6",
+    "jaxlib>=0.1.65,<=0.3.6",
     "modelcards==0.1.4",
     "numpy",
     "pytest",
@@ -171,7 +175,14 @@ extras["quality"] = ["black==22.8", "isort>=5.5.4", "flake8>=3.8.3", "hf-doc-bui
 extras["docs"] = ["hf-doc-builder"]
 extras["training"] = ["accelerate", "datasets", "tensorboard", "modelcards"]
 extras["test"] = ["datasets", "onnxruntime", "pytest", "pytest-timeout", "pytest-xdist", "scipy", "transformers"]
-extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras["docs"]
+extras["torch"] = deps_list("torch")
+
+if os.name == "nt":  # windows
+    extras["flax"] = []  # jax is not supported on windows
+else:
+    extras["flax"] = deps_list("jax", "jaxlib", "flax")
+
+extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"] + extras["flax"]
 
 install_requires = [
     deps["importlib_metadata"],
@@ -180,13 +191,12 @@ install_requires = [
     deps["numpy"],
     deps["regex"],
     deps["requests"],
-    deps["torch"],
     deps["Pillow"],
 ]
 
 setup(
     name="diffusers",
-    version="0.4.0.dev0", # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.4.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
@@ -198,7 +208,7 @@ setup(
     package_dir={"": "src"},
     packages=find_packages("src"),
     include_package_data=True,
-    python_requires=">=3.6.0",
+    python_requires=">=3.7.0",
     install_requires=install_requires,
     extras_require=extras,
     entry_points={"console_scripts": ["diffusers-cli=diffusers.commands.diffusers_cli:main"]},
