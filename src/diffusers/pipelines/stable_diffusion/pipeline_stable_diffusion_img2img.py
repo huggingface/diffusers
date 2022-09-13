@@ -99,7 +99,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         back to computing attention in one step.
         """
         # set slice_size = `None` to disable `set_attention_slice`
-        self.enable_attention_slice(None)
+        self.enable_attention_slicing(None)
 
     @torch.no_grad()
     def __call__(
@@ -171,7 +171,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
 
-        if not isinstance(init_image, torch.FloatTensor):
+        if isinstance(init_image, PIL.Image.Image):
             init_image = preprocess(init_image)
 
         # encode the init image into latents and scale the latents

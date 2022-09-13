@@ -62,7 +62,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
     [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
-    [`~ConfigMixin.from_config`] functios.
+    [`~ConfigMixin.from_config`] functions.
 
     For more details, see the original paper: https://arxiv.org/abs/2202.09778
 
@@ -73,7 +73,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule (`str`):
             the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
-        trained_betas (`np.ndarray`, optional): TODO
+        trained_betas (`np.ndarray`, optional):
+            option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
         skip_prk_steps (`bool`):
             allows the scheduler to skip the Runge-Kutta steps that are defined in the original paper as being required
             before plms steps; defaults to `False`.
@@ -83,7 +84,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             otherwise it uses the value of alpha at step 0.
         steps_offset (`int`, default `0`):
             an offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product.
+            `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product,
+            as done in stable diffusion.
         tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays
 
     """
