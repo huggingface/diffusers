@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
-
+from dataclasses import dataclass
 import math
 from typing import Optional, Tuple, Union, List
 
@@ -40,7 +40,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps: int, max_beta=0.999):
                      prevent singularities.
 
     Returns:
-        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
+        betas (`jnp.array`): the betas used by the scheduler to step the model outputs
     """
 
     def alpha_bar(time_step):
@@ -86,6 +86,11 @@ class PNDMSchedulerState:
             betas=beta,
             _timesteps=jnp.arange(0, num_train_timesteps)[::-1].copy(),
         )
+
+
+@dataclass
+class FlaxSchedulerOutput(SchedulerOutput):
+    state: PNDMSchedulerState
 
 
 class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
@@ -202,7 +207,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: jnp.ndarray,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> Union[FlaxSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -218,8 +223,8 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
-            [`~schedulers.scheduling_utils.SchedulerOutput`] or `tuple`:
-            [`~schedulers.scheduling_utils.SchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            [`FlaxSchedulerOutput`] or `tuple`:
+            [`FlaxSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is the sample tensor.
 
         """
@@ -239,7 +244,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: jnp.ndarray,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> Union[FlaxSchedulerOutput, Tuple]:
         """
         Step function propagating the sample with the Runge-Kutta method. RK takes 4 forward passes to approximate the
         solution to the differential equation.
@@ -253,7 +258,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
-            [`~scheduling_utils.SchedulerOutput`] or `tuple`: [`~scheduling_utils.SchedulerOutput`] if `return_dict` is
+            [`FlaxSchedulerOutput`] or `tuple`: [`FlaxSchedulerOutput`] if `return_dict` is
             True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
@@ -289,7 +294,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (prev_sample, state)
 
-        return SchedulerOutput(prev_sample=prev_sample)
+        return FlaxSchedulerOutput(prev_sample=prev_sample, state=state)
 
     def step_plms(
         self,
@@ -298,7 +303,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: jnp.ndarray,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> Union[FlaxSchedulerOutput, Tuple]:
         """
         Step function propagating the sample with the linear multi-step method. This has one forward pass with multiple
         times to approximate the solution.
@@ -312,7 +317,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
-            [`~scheduling_utils.SchedulerOutput`] or `tuple`: [`~scheduling_utils.SchedulerOutput`] if `return_dict` is
+            [`FlaxSchedulerOutput`] or `tuple`: [`FlaxSchedulerOutput`] if `return_dict` is
             True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
@@ -359,7 +364,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (prev_sample, state)
 
-        return SchedulerOutput(prev_sample=prev_sample)
+        return FlaxSchedulerOutput(prev_sample=prev_sample, state=state)
 
     def _get_prev_sample(self, sample, timestep, timestep_prev, model_output, state):
         # See formula (9) of PNDM paper https://arxiv.org/pdf/2202.09778.pdf
