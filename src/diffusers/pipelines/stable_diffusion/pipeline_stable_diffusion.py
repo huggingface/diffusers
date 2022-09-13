@@ -327,7 +327,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             image = self.numpy_to_pil(image)
 
         if not return_dict:
-            return (image, has_nsfw_concept, latents)
+            return (image, has_nsfw_concept, all_latents)
 
         # reset
         torch.set_grad_enabled(was_grad_enabled)
