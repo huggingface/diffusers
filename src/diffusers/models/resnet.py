@@ -398,9 +398,7 @@ def upsample_2d(x, kernel=None, factor=2, gain=1):
 
     kernel = kernel * (gain * (factor**2))
     p = kernel.shape[0] - factor
-    return upfirdn2d_native(
-        x, kernel.to(device=x.device), up=factor, pad=((p + 1) // 2 + factor - 1, p // 2)
-    )
+    return upfirdn2d_native(x, kernel.to(device=x.device), up=factor, pad=((p + 1) // 2 + factor - 1, p // 2))
 
 
 def downsample_2d(x, kernel=None, factor=2, gain=1):
