@@ -188,7 +188,7 @@ class Decoder(nn.Module):
 
             up_block = get_up_block(
                 up_block_type,
-                num_layers=self.layers_per_block,
+                num_layers=self.layers_per_block + 1,
                 in_channels=prev_output_channel,
                 out_channels=output_channel,
                 prev_output_channel=None,
@@ -425,6 +425,7 @@ class VQModel(ModelMixin, ConfigMixin):
         up_block_types: Tuple[str] = ("UpDecoderBlock2D",),
         block_out_channels: Tuple[int] = (64,),
         layers_per_block: int = 1,
+        decoder_layers_per_block: int = 1,
         act_fn: str = "silu",
         latent_channels: int = 3,
         sample_size: int = 32,
@@ -461,7 +462,7 @@ class VQModel(ModelMixin, ConfigMixin):
             out_channels=out_channels,
             up_block_types=up_block_types,
             block_out_channels=block_out_channels,
-            layers_per_block=layers_per_block,
+            layers_per_block=decoder_layers_per_block,
             act_fn=act_fn,
             norm_num_groups=norm_num_groups,
             final_activation=final_decoder_activation,

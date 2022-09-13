@@ -211,6 +211,7 @@ def convert_vqgan_checkpoint(checkpoint_path, pytorch_dump_folder_path, push_to_
         ),
         block_out_channels=(128, 128, 256, 256, 512),
         layers_per_block=2,
+        decoder_layers_per_block=1,
         act_fn="swish",
         final_encoder_activation=False,
         final_decoder_activation=False,
