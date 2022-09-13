@@ -12,14 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 from dataclasses import dataclass
-import math
-from typing import Optional, Tuple, Union, List
+from typing import List, Optional, Tuple, Union
 
+import flax
 import jax
 import jax.numpy as jnp
-import flax
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
@@ -223,9 +224,8 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
-            [`FlaxSchedulerOutput`] or `tuple`:
-            [`FlaxSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is the sample tensor.
+            [`FlaxSchedulerOutput`] or `tuple`: [`FlaxSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
+            When returning a tuple, the first element is the sample tensor.
 
         """
         if state.counter < len(state.prk_timesteps) and not self.config.skip_prk_steps:
@@ -258,8 +258,8 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
-            [`FlaxSchedulerOutput`] or `tuple`: [`FlaxSchedulerOutput`] if `return_dict` is
-            True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
+            [`FlaxSchedulerOutput`] or `tuple`: [`FlaxSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
+            When returning a tuple, the first element is the sample tensor.
 
         """
         if state.num_inference_steps is None:
@@ -317,8 +317,8 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
-            [`FlaxSchedulerOutput`] or `tuple`: [`FlaxSchedulerOutput`] if `return_dict` is
-            True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
+            [`FlaxSchedulerOutput`] or `tuple`: [`FlaxSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
+            When returning a tuple, the first element is the sample tensor.
 
         """
         if state.num_inference_steps is None:
