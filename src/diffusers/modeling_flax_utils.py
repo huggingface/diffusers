@@ -102,7 +102,7 @@ class FlaxModelMixin:
         >>> model, params = FlaxUNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4")
         >>> # By default, the model parameters will be in fp32 precision, to cast these to bfloat16 precision
         >>> params = model.to_bf16(params)
-        >>> # If you want don't want to cast certain parameters (for example layer norm bias and scale)
+        >>> # If you don't want to cast certain parameters (for example layer norm bias and scale)
         >>> # then pass the mask as follows
         >>> from flax import traverse_util
 
