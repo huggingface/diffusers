@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import gc
+import os
 import random
 import tempfile
 import unittest
@@ -46,8 +47,11 @@ from diffusers import (
     UNet2DModel,
     VQModel,
 )
+from diffusers.modeling_utils import WEIGHTS_NAME
 from diffusers.pipeline_utils import DiffusionPipeline
+from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.testing_utils import floats_tensor, slow, torch_device
+from diffusers.utils import CONFIG_NAME
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -709,11 +713,25 @@ class PipelineTesterMixin(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_smart_download(self):
+        model_id = "hf-internal-testing/unet-pipeline-dummy"
         with tempfile.TemporaryDirectory() as tmpdirname:
-            # let's make sure this super large numpy file is not downloaded!
-            _ = DiffusionPipeline.from_pretrained("hf-internal-testing/unet-pipeline-dummy", cache_dir=tmpdirname)
+            _ = DiffusionPipeline.from_pretrained(model_id, cache_dir=tmpdirname, force_download=True)
+            local_repo_name = "--".join(["models"] + model_id.split("/"))
+            snapshot_dir = os.path.join(tmpdirname, local_repo_name, "snapshots")
+            snapshot_dir = os.path.join(snapshot_dir, os.listdir(snapshot_dir)[0])
 
             # inspect all downloaded files to make sure that everything is included
+            assert os.path.isfile(os.path.join(snapshot_dir, DiffusionPipeline.config_name))
+            assert os.path.isfile(os.path.join(snapshot_dir, CONFIG_NAME))
+            assert os.path.isfile(os.path.join(snapshot_dir, SCHEDULER_CONFIG_NAME))
+            assert os.path.isfile(os.path.join(snapshot_dir, WEIGHTS_NAME))
+            assert os.path.isfile(os.path.join(snapshot_dir, "scheduler", SCHEDULER_CONFIG_NAME))
+            assert os.path.isfile(os.path.join(snapshot_dir, "unet", WEIGHTS_NAME))
+            assert os.path.isfile(os.path.join(snapshot_dir, "unet", WEIGHTS_NAME))
+            # let's make sure the super large numpy file:
+            # https://huggingface.co/hf-internal-testing/unet-pipeline-dummy/blob/main/big_array.npy
+            # is not downloaded, but all the expected ones
+            assert not os.path.isfile(os.path.join(snapshot_dir, "big_array.npy"))
 
     def test_from_pretrained_save_pretrained(self):
         # 1. Load models

@@ -32,7 +32,7 @@ from tqdm.auto import tqdm
 from .configuration_utils import ConfigMixin
 from .modeling_utils import WEIGHTS_NAME
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from .utils import DIFFUSERS_CACHE, BaseOutput, logging, CONFIG_NAME
+from .utils import CONFIG_NAME, DIFFUSERS_CACHE, BaseOutput, logging
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
