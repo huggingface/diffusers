@@ -43,9 +43,7 @@ class FlaxModelMixin:
     [`FlaxModelMixin`] takes care of storing the configuration of the models and handles methods for loading,
     downloading and saving models.
     """
-    _missing_keys = set()
     config_name = CONFIG_NAME
-    ignore_for_config = ["parent", "name"]
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
 
     @classmethod
@@ -54,13 +52,6 @@ class FlaxModelMixin:
         All context managers that the model should be initialized under go here.
         """
         return cls(config, **kwargs)
-
-    @property
-    def framework(self) -> str:
-        """
-        :str: Identifies that this is a Flax model.
-        """
-        return "flax"
 
     def _cast_floating_to(self, params: Union[Dict, FrozenDict], dtype: jnp.dtype, mask: Any = None) -> Any:
         """
@@ -459,7 +450,7 @@ class FlaxModelMixin:
     ):
         """
         Save a model and its configuration file to a directory, so that it can be re-loaded using the
-        `[`~FlaxPreTrainedModel.from_pretrained`]` class method
+        `[`~FlaxModelMixin.from_pretrained`]` class method
 
         Arguments:
             save_directory (`str` or `os.PathLike`):

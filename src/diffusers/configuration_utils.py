@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ ConfigMixinuration base class and utilities."""
+import dataclasses
 import functools
 import inspect
 import json
@@ -408,36 +409,36 @@ def flax_register_to_config(cls):
 
     @functools.wraps(original_init)
     def init(self, *args, **kwargs):
-        # Ignore private kwargs in the init.
-        init_kwargs = {k: v for k, v in kwargs.items() if not k.startswith("_")}
-        # original_init(self, *args, **init_kwargs)
         if not isinstance(self, ConfigMixin):
             raise RuntimeError(
                 f"`@register_for_config` was applied to {self.__class__.__name__} init method, but this class does "
                 "not inherit from `ConfigMixin`."
             )
 
-        ignore = getattr(self, "ignore_for_config", [])
+        # Ignore private kwargs in the init. Retrieve all passed attributes
+        init_kwargs = {k: v for k, v in kwargs.items() if not k.startswith("_")}
+
+        # Retrieve default values
+        fields = dataclasses.fields(self)
+        default_kwargs = {}
+        for field in fields:
+            if field.name in ("parent", "name"):
+                continue
+            if type(field.default) == dataclasses._MISSING_TYPE:
+                default_kwargs[field.name] = None
+            else:
+                default_kwargs[field.name] = getattr(self, field.name)
+
+        # Make sure init_kwargs override default kwargs
+        new_kwargs = {**default_kwargs, **init_kwargs}
+
         # Get positional arguments aligned with kwargs
-        new_kwargs = {}
-        signature = inspect.signature(init)
-        parameters = {
-            name: p.default for i, (name, p) in enumerate(signature.parameters.items()) if i > 0 and name not in ignore
-        }
-        for arg, name in zip(args, parameters.keys()):
+        for i, arg in enumerate(args):
+            name = fields[i].name
             new_kwargs[name] = arg
 
-        # Then add all kwargs
-        new_kwargs.update(
-            {
-                k: init_kwargs.get(k, default)
-                for k, default in parameters.items()
-                if k not in ignore and k not in new_kwargs
-            }
-        )
         getattr(self, "register_to_config")(**new_kwargs)
-
-        original_init(self, *args, **init_kwargs)
+        original_init(self, *args, **kwargs)
 
     cls.__init__ = init
     return cls
