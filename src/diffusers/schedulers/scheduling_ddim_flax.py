@@ -150,7 +150,7 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
 
         Args:
             state (`DDIMSchedulerState`):
-                the `DDIMScheduler` state data class instance.
+                the `FlaxDDIMScheduler` state data class instance.
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
             offset (`int`):
@@ -180,7 +180,7 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            state (`DDIMSchedulerState`): the `DDIMScheduler` state data class instance.
+            state (`DDIMSchedulerState`): the `FlaxDDIMScheduler` state data class instance.
             model_output (`jnp.ndarray`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`jnp.ndarray`):

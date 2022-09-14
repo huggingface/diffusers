@@ -147,7 +147,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
 
         Args:
             state (`PNDMSchedulerState`):
-                the PNDMScheduler state data class instance.
+                the `FlaxPNDMScheduler` state data class instance.
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
             offset (`int`):
@@ -202,7 +202,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         This function calls `step_prk()` or `step_plms()` depending on the internal variable `counter`.
 
         Args:
-            state (`PNDMSchedulerState`): the PNDMScheduler state data class instance.
+            state (`PNDMSchedulerState`): the `FlaxPNDMScheduler` state data class instance.
             model_output (`jnp.ndarray`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`jnp.ndarray`):
@@ -236,7 +236,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         solution to the differential equation.
 
         Args:
-            state (`PNDMSchedulerState`): the PNDMScheduler state data class instance.
+            state (`PNDMSchedulerState`): the `FlaxPNDMScheduler` state data class instance.
             model_output (`jnp.ndarray`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`jnp.ndarray`):
@@ -295,7 +295,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         times to approximate the solution.
 
         Args:
-            state (`PNDMSchedulerState`): the PNDMScheduler state data class instance.
+            state (`PNDMSchedulerState`): the `FlaxPNDMScheduler` state data class instance.
             model_output (`jnp.ndarray`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`jnp.ndarray`):
