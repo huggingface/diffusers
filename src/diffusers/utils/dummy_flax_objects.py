@@ -4,6 +4,13 @@
 from ..utils import DummyObject, requires_backends
 
 
+class FlaxModelMixin(metaclass=DummyObject):
+    _backends = ["flax"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["flax"])
+
+
 class FlaxDDIMScheduler(metaclass=DummyObject):
     _backends = ["flax"]
 
@@ -12,13 +19,6 @@ class FlaxDDIMScheduler(metaclass=DummyObject):
 
 
 class FlaxDDPMScheduler(metaclass=DummyObject):
-    _backends = ["flax"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["flax"])
-        
-
-class FlaxModelMixin(metaclass=DummyObject):
     _backends = ["flax"]
 
     def __init__(self, *args, **kwargs):
