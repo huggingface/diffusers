@@ -45,7 +45,7 @@ jobs:
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
-        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_gpu tests/
+        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_gpu --junit-xml=reports/tests_torch_gpu.junit.xml tests/
 
     - name: Failure short reports
       if: ${{ failure() }}
@@ -92,7 +92,7 @@ jobs:
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
-        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=examples_torch_gpu examples/
+        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=examples_torch_gpu --junit-xml=reports/examples_torch_gpu.junit.xml examples/
 
     - name: Failure short reports
       if: ${{ failure() }}

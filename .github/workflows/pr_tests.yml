@@ -41,7 +41,7 @@ jobs:
 
     - name: Run all non-slow selected tests on CPU
       run: |
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_cpu tests/
+        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_cpu --junit-xml=reports/tests_torch_cpu.junit.xml tests/
 
     - name: Failure short reports
       if: ${{ failure() }}
