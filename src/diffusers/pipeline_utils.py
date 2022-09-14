@@ -30,6 +30,8 @@ from PIL import Image
 from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
+from .modeling_utils import WEIGHTS_NAME
+from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from .utils import DIFFUSERS_CACHE, BaseOutput, logging
 
 
@@ -285,6 +287,21 @@ class DiffusionPipeline(ConfigMixin):
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
         if not os.path.isdir(pretrained_model_name_or_path):
+            config_dict = cls.get_config_dict(
+                pretrained_model_name_or_path,
+                cache_dir=cache_dir,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+            )
+            # make sure we only download sub-folders and `diffusers` filenames
+            folder_names = [k for k in config_dict.keys() if not k.startswith("_")]
+            allow_patterns = [os.path.join(k, "*") for k in folder_names]
+            allow_patterns += [WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, cls.config_name]
+
+            # download all allow_patterns
             cached_folder = snapshot_download(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
@@ -293,6 +310,7 @@ class DiffusionPipeline(ConfigMixin):
                 local_files_only=local_files_only,
                 use_auth_token=use_auth_token,
                 revision=revision,
+                allow_patterns=allow_patterns,
             )
         else:
             cached_folder = pretrained_model_name_or_path
