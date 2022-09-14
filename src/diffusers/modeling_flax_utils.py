@@ -43,9 +43,7 @@ class FlaxModelMixin:
     [`FlaxModelMixin`] takes care of storing the configuration of the models and handles methods for loading,
     downloading and saving models.
     """
-    _missing_keys = set()
     config_name = CONFIG_NAME
-    ignore_for_config = ["parent", "name"]
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
 
     @classmethod
