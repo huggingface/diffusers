@@ -452,7 +452,7 @@ class FlaxModelMixin:
     ):
         """
         Save a model and its configuration file to a directory, so that it can be re-loaded using the
-        `[`~FlaxPreTrainedModel.from_pretrained`]` class method
+        `[`~FlaxModelMixin.from_pretrained`]` class method
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
