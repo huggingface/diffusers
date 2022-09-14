@@ -105,7 +105,10 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = num_inference_steps
         self.timesteps = np.arange(0, self.num_inference_steps)[::-1].copy()
         self.schedule = [
-            (self.sigma_max * (self.sigma_min**2 / self.sigma_max**2) ** (i / (num_inference_steps - 1)))
+            (
+                self.config.sigma_max
+                * (self.config.sigma_min**2 / self.config.sigma_max**2) ** (i / (num_inference_steps - 1))
+            )
             for i in self.timesteps
         ]
         self.schedule = np.array(self.schedule, dtype=np.float32)
@@ -121,13 +124,13 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
 
         TODO Args:
         """
-        if self.s_min <= sigma <= self.s_max:
-            gamma = min(self.s_churn / self.num_inference_steps, 2**0.5 - 1)
+        if self.config.s_min <= sigma <= self.config.s_max:
+            gamma = min(self.config.s_churn / self.num_inference_steps, 2**0.5 - 1)
         else:
             gamma = 0
 
         # sample eps ~ N(0, S_noise^2 * I)
-        eps = self.s_noise * torch.randn(sample.shape, generator=generator).to(sample.device)
+        eps = self.config.s_noise * torch.randn(sample.shape, generator=generator).to(sample.device)
         sigma_hat = sigma + gamma * sigma
         sample_hat = sample + ((sigma_hat**2 - sigma**2) ** 0.5 * eps)
 
