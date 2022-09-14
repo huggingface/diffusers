@@ -19,16 +19,16 @@ from .unet_blocks_flax import (
 
 @flax_register_to_config
 class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
-    sample_size=32
-    in_channels=4
-    out_channels=4
-    down_block_types=("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")
-    up_block_types=("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")
-    block_out_channels=(224, 448, 672, 896)
-    layers_per_block=2
-    attention_head_dim=8
-    cross_attention_dim=768
-    dropout=0.1
+    sample_size:int=32
+    in_channels:int=4
+    out_channels:int=4
+    down_block_types:Tuple=("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")
+    up_block_types:Tuple=("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")
+    block_out_channels:Tuple=(224, 448, 672, 896)
+    layers_per_block:int=2
+    attention_head_dim:int=8
+    cross_attention_dim:int=768
+    dropout:float=0.1
     dtype: jnp.dtype = jnp.float32
 
     # model args
