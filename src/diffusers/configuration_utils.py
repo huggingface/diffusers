@@ -422,6 +422,7 @@ def flax_register_to_config(cls):
         fields = dataclasses.fields(self)
         default_kwargs = {}
         for field in fields:
+            # ignore flax specific attributes
             if field.name in ("parent", "name"):
                 continue
             if type(field.default) == dataclasses._MISSING_TYPE:
