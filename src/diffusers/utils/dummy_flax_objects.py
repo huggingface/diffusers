@@ -4,6 +4,13 @@
 from ..utils import DummyObject, requires_backends
 
 
+class FlaxModelMixin(metaclass=DummyObject):
+    _backends = ["flax"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["flax"])
+
+
 class FlaxPNDMScheduler(metaclass=DummyObject):
     _backends = ["flax"]
 
