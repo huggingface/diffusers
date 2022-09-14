@@ -262,7 +262,7 @@ class CrossAttention(nn.Module):
         # TODO(PVP) - mask is currently never used. Remember to re-implement when used
 
         # attention, what we cannot get enough of
-        if self._slice_size is None:
+        if self._slice_size is None or q.shape[0] // slice_size == 1:
             hidden_states = self._attention(q, k, v)
         else:
             hidden_states = self._sliced_attention(q, k, v, sequence_length, dim)
