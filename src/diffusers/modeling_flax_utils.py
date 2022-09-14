@@ -206,7 +206,8 @@ class FlaxModelMixin:
                 Can be either:
 
                     - A string, the *model id* of a pretrained model hosted inside a model repo on huggingface.co.
-                      Valid model ids are namespaced under a user or organization name, like `CompVis/stable-diffusion-v1-4`.
+                      Valid model ids are namespaced under a user or organization name, like
+                      `CompVis/stable-diffusion-v1-4`.
                     - A path to a *directory* containing model weights saved using [`~ModelMixin.save_pretrained`],
                       e.g., `./my_model_directory/`.
                     - A path or url to a *pt index checkpoint file* (e.g, `./tf_model/model.ckpt.index`). In this case,
