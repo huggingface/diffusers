@@ -210,8 +210,6 @@ class FlaxModelMixin:
                       `CompVis/stable-diffusion-v1-4`.
                     - A path to a *directory* containing model weights saved using [`~ModelMixin.save_pretrained`],
                       e.g., `./my_model_directory/`.
-                    - A path or url to a *pt index checkpoint file* (e.g, `./tf_model/model.ckpt.index`). In this case,
-                      `from_pt` should be set to `True`.
             dtype (`jax.numpy.dtype`, *optional*, defaults to `jax.numpy.float32`):
                 The data type of the computation. Can be one of `jax.numpy.float32`, `jax.numpy.float16` (on GPUs) and
                 `jax.numpy.bfloat16` (on TPUs).
