@@ -22,7 +22,6 @@ import numpy as np
 import torch
 
 import PIL
-from datasets import load_dataset
 from diffusers import (
     AutoencoderKL,
     DDIMPipeline,
@@ -47,7 +46,7 @@ from diffusers import (
     VQModel,
 )
 from diffusers.pipeline_utils import DiffusionPipeline
-from diffusers.testing_utils import floats_tensor, slow, torch_device
+from diffusers.testing_utils import floats_tensor, load_image, slow, torch_device
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -1139,23 +1138,48 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
-    def test_stable_diffusion_img2img_pipeline(self):
-        ds = load_dataset(
-            "imagefolder",
-            data_files={
-                "input": [
-                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-                    "/img2img/sketch-mountains-input.jpg"
-                ],
-                "output": [
-                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-                    "/img2img/fantasy_landscape.png"
-                ],
-            },
+    def test_stable_diffusion_text2img_pipeline(self):
+        output_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/text2img/astronaut_riding_a_horse.png"
         )
 
-        init_image = ds["input"]["image"][0].resize((768, 512))
-        output_image = ds["output"]["image"][0].resize((768, 512))
+        model_id = "CompVis/stable-diffusion-v1-4"
+        pipe = StableDiffusionPipeline.from_pretrained(
+            model_id,
+            use_auth_token=True,
+        )
+        pipe.to(torch_device)
+        pipe.enable_attention_slicing()
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "astronaut riding a horse"
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        with torch.autocast("cuda"):
+            output = pipe(prompt=prompt, strength=0.75, guidance_scale=7.5, generator=generator)
+        image = output.images[0]
+
+        expected_array = np.array(output_image, dtype=np.int32)
+        sampled_array = np.array(image, dtype=np.int32)
+
+        assert sampled_array.shape == (512, 512, 3)
+        # using the mean absolute error due to slightly inconsistent outputs across different GPUs
+        assert np.mean(np.abs(sampled_array - expected_array)) < 2.0
+
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    def test_stable_diffusion_img2img_pipeline(self):
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/img2img/sketch-mountains-input.jpg"
+        )
+        output_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/img2img/fantasy_landscape.png"
+        )
+        init_image = init_image.resize((768, 512))
+        output_image = output_image.resize((768, 512))
 
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
@@ -1173,31 +1197,26 @@ class PipelineTesterMixin(unittest.TestCase):
             output = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5, generator=generator)
         image = output.images[0]
 
-        expected_array = np.array(output_image) / 255.0
-        sampled_array = np.array(image) / 255.0
+        expected_array = np.array(output_image, dtype=np.int32)
+        sampled_array = np.array(image, dtype=np.int32)
 
         assert sampled_array.shape == (512, 768, 3)
-        assert np.max(np.abs(sampled_array - expected_array)) < 1e-4
+        # using the mean absolute error due to slightly inconsistent outputs across different GPUs
+        assert np.mean(np.abs(sampled_array - expected_array)) < 2.0
 
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_img2img_pipeline_k_lms(self):
-        ds = load_dataset(
-            "imagefolder",
-            data_files={
-                "input": [
-                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-                    "/img2img/sketch-mountains-input.jpg"
-                ],
-                "output": [
-                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-                    "/img2img/fantasy_landscape_k_lms.png"
-                ],
-            },
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/img2img/sketch-mountains-input.jpg"
         )
-
-        init_image = ds["input"]["image"][0].resize((768, 512))
-        output_image = ds["output"]["image"][0].resize((768, 512))
+        output_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/img2img/fantasy_landscape_k_lms.png"
+        )
+        init_image = init_image.resize((768, 512))
+        output_image = output_image.resize((768, 512))
 
         lms = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
 
@@ -1218,36 +1237,28 @@ class PipelineTesterMixin(unittest.TestCase):
             output = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5, generator=generator)
         image = output.images[0]
 
-        expected_array = np.array(output_image) / 255.0
-        sampled_array = np.array(image) / 255.0
+        expected_array = np.array(output_image, dtype=np.int32)
+        sampled_array = np.array(image, dtype=np.int32)
 
         assert sampled_array.shape == (512, 768, 3)
-        assert np.max(np.abs(sampled_array - expected_array)) < 1e-4
+        # using the mean absolute error due to slightly inconsistent outputs across different GPUs
+        assert np.mean(np.abs(sampled_array - expected_array)) < 2.0
 
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_inpaint_pipeline(self):
-        ds = load_dataset(
-            "imagefolder",
-            data_files={
-                "input": [
-                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-                    "/in_paint/overture-creations-5sI6fQgYIuo.png"
-                ],
-                "mask": [
-                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-                    "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
-                ],
-                "output": [
-                    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-                    "/in_paint/red_cat_sitting_on_a_parking_bench.png"
-                ],
-            },
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/overture-creations-5sI6fQgYIuo.png"
         )
-
-        init_image = ds["input"]["image"][0].resize((768, 512))
-        mask_image = ds["mask"]["image"][0].resize((768, 512))
-        output_image = ds["output"]["image"][0].resize((768, 512))
+        mask_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
+        )
+        output_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/red_cat_sitting_on_a_park_bench.png"
+        )
 
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
@@ -1272,11 +1283,12 @@ class PipelineTesterMixin(unittest.TestCase):
             )
         image = output.images[0]
 
-        expected_array = np.array(output_image) / 255.0
-        sampled_array = np.array(image) / 255.0
+        expected_array = np.array(output_image, dtype=np.int32)
+        sampled_array = np.array(image, dtype=np.int32)
 
-        assert sampled_array.shape == (512, 768, 3)
-        assert np.max(np.abs(sampled_array - expected_array)) < 1e-3
+        assert sampled_array.shape == (512, 512, 3)
+        # using the mean absolute error due to slightly inconsistent outputs across different GPUs
+        assert np.mean(np.abs(sampled_array - expected_array)) < 2.0
 
     @slow
     def test_stable_diffusion_onnx(self):
