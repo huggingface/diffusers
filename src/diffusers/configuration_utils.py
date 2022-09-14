@@ -272,6 +272,11 @@ class ConfigMixin:
         # remove general kwargs if present in dict
         if "kwargs" in expected_keys:
             expected_keys.remove("kwargs")
+        # remove flax interal keys
+        if hasattr(cls, "_flax_internal_args"):
+            for arg in cls._flax_internal_args:
+                expected_keys.remove(arg)
+
         # remove keys to be ignored
         if len(cls.ignore_for_config) > 0:
             expected_keys = expected_keys - set(cls.ignore_for_config)
@@ -423,7 +428,7 @@ def flax_register_to_config(cls):
         default_kwargs = {}
         for field in fields:
             # ignore flax specific attributes
-            if field.name in ("parent", "name"):
+            if field.name in self._flax_internal_args:
                 continue
             if type(field.default) == dataclasses._MISSING_TYPE:
                 default_kwargs[field.name] = None

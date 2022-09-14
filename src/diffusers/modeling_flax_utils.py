@@ -45,6 +45,7 @@ class FlaxModelMixin:
     """
     config_name = CONFIG_NAME
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
+    _flax_internal_args = ["name", "parent"]
 
     @classmethod
     def _from_config(cls, config, **kwargs):
@@ -255,10 +256,10 @@ class FlaxModelMixin:
                       underlying model's `__init__` method (we assume all relevant updates to the configuration have
                       already been done)
                     - If a configuration is not provided, `kwargs` will be first passed to the configuration class
-                      initialization function ([`~ConfigMixin.from_config`]). Each key of `kwargs` that
-                      corresponds to a configuration attribute will be used to override said attribute with the
-                      supplied `kwargs` value. Remaining keys that do not correspond to any configuration attribute
-                      will be passed to the underlying model's `__init__` function.
+                      initialization function ([`~ConfigMixin.from_config`]). Each key of `kwargs` that corresponds to
+                      a configuration attribute will be used to override said attribute with the supplied `kwargs`
+                      value. Remaining keys that do not correspond to any configuration attribute will be passed to the
+                      underlying model's `__init__` function.
 
         Examples:
 
