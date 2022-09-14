@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ ConfigMixinuration base class and utilities."""
+import dataclasses
 import functools
 import inspect
 import json
@@ -21,7 +22,6 @@ import os
 import re
 from collections import OrderedDict
 from typing import Any, Dict, Tuple, Union
-import dataclasses
 
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
