@@ -19,7 +19,6 @@ from .unet_blocks_flax import (
 # from flax.core.frozen_dict import FrozenDict
 
 
-
 @flax_register_to_config
 class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     sample_size: int = 32
