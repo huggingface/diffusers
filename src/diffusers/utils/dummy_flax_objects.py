@@ -25,14 +25,14 @@ class FlaxDDPMScheduler(metaclass=DummyObject):
         requires_backends(self, ["flax"])
 
 
-class FlaxPNDMScheduler(metaclass=DummyObject):
+class FlaxKarrasVeScheduler(metaclass=DummyObject):
     _backends = ["flax"]
 
     def __init__(self, *args, **kwargs):
         requires_backends(self, ["flax"])
 
 
-class FlaxKarrasVeScheduler(metaclass=DummyObject):
+class FlaxPNDMScheduler(metaclass=DummyObject):
     _backends = ["flax"]
 
     def __init__(self, *args, **kwargs):
