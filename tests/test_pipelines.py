@@ -330,6 +330,7 @@ class PipelineFastTests(unittest.TestCase):
 
         assert image.shape == (1, 128, 128, 3)
         expected_slice = np.array([0.5112, 0.4692, 0.4715, 0.5206, 0.4894, 0.5114, 0.5096, 0.4932, 0.4755])
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -463,17 +464,18 @@ class PipelineFastTests(unittest.TestCase):
         sde_ve.to(torch_device)
         sde_ve.set_progress_bar_config(disable=None)
 
-        torch.manual_seed(0)
-        image = sde_ve(num_inference_steps=2, output_type="numpy").images
+        generator = torch.manual_seed(0)
+        image = sde_ve(num_inference_steps=2, output_type="numpy", generator=generator).images
 
-        torch.manual_seed(0)
-        image_from_tuple = sde_ve(num_inference_steps=2, output_type="numpy", return_dict=False)[0]
+        generator = torch.manual_seed(0)
+        image_from_tuple = sde_ve(num_inference_steps=2, output_type="numpy", generator=generator, return_dict=False)[
+            0
+        ]
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-
         expected_slice = np.array([0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
@@ -647,7 +649,7 @@ class PipelineFastTests(unittest.TestCase):
         bert = self.dummy_text_encoder
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        image = self.dummy_image.to(device).permute(0, 2, 3, 1)[0]
+        image = self.dummy_image.cpu().permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB")
         mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((128, 128))
 
@@ -729,8 +731,8 @@ class PipelineTesterMixin(unittest.TestCase):
             new_ddpm.to(torch_device)
 
         generator = torch.manual_seed(0)
-
         image = ddpm(generator=generator, output_type="numpy").images
+
         generator = generator.manual_seed(0)
         new_image = new_ddpm(generator=generator, output_type="numpy").images
 
@@ -750,8 +752,8 @@ class PipelineTesterMixin(unittest.TestCase):
         ddpm_from_hub.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-
         image = ddpm(generator=generator, output_type="numpy").images
+
         generator = generator.manual_seed(0)
         new_image = ddpm_from_hub(generator=generator, output_type="numpy").images
 
@@ -774,8 +776,8 @@ class PipelineTesterMixin(unittest.TestCase):
         ddpm_from_hub_custom_model.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-
         image = ddpm_from_hub_custom_model(generator=generator, output_type="numpy").images
+
         generator = generator.manual_seed(0)
         new_image = ddpm_from_hub(generator=generator, output_type="numpy").images
 
@@ -981,14 +983,14 @@ class PipelineTesterMixin(unittest.TestCase):
         sde_ve.to(torch_device)
         sde_ve.set_progress_bar_config(disable=None)
 
-        torch.manual_seed(0)
-        image = sde_ve(num_inference_steps=300, output_type="numpy").images
+        generator = torch.manual_seed(0)
+        image = sde_ve(num_inference_steps=10, output_type="numpy", generator=generator).images
 
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 256, 256, 3)
 
-        expected_slice = np.array([0.64363, 0.5868, 0.3031, 0.2284, 0.7409, 0.3216, 0.25643, 0.6557, 0.2633])
+        expected_slice = np.array([0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
