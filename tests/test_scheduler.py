@@ -178,6 +178,8 @@ class SchedulerCommonTest(unittest.TestCase):
 
         num_inference_steps = kwargs.pop("num_inference_steps", None)
 
+        self.assertEqual(self.scheduler_classes, ["KABLOOEY"])
+
         for scheduler_class in self.scheduler_classes:
             sample_pt = self.dummy_sample
             residual_pt = 0.1 * sample_pt
