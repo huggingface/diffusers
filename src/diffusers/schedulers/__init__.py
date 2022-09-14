@@ -28,6 +28,7 @@ else:
     from ..utils.dummy_pt_objects import *  # noqa F403
 
 if is_flax_available():
+    from .scheduling_ddim_flax import FlaxDDIMScheduler
     from .scheduling_pndm_flax import FlaxPNDMScheduler
 else:
     from ..utils.dummy_flax_objects import *  # noqa F403

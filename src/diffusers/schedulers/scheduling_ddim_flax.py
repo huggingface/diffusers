@@ -72,7 +72,7 @@ class FlaxSchedulerOutput(SchedulerOutput):
     state: DDIMSchedulerState
 
 
-class DDIMScheduler(SchedulerMixin, ConfigMixin):
+class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
     """
     Denoising diffusion implicit models is a scheduler that extends the denoising procedure introduced in denoising
     diffusion probabilistic models (DDPMs) with non-Markovian guidance.
