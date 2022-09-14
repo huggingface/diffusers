@@ -129,7 +129,7 @@ class FlaxSpatialTransformer(nn.Module):
         )
 
         self.transformer_blocks = [
-            TransformerBlock(inner_dim, self.n_heads, self.d_head, dropout=self.dropout, dtype=self.dtype)
+            FlaxBasicTransformerBlock(inner_dim, self.n_heads, self.d_head, dropout=self.dropout, dtype=self.dtype)
             for _ in range(self.depth)
         ]
 
