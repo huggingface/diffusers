@@ -41,4 +41,12 @@ jobs:
 
     - name: Run all non-slow selected tests on CPU
       run: |
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s tests/
+        python -m pytest --junit-xml=./junit.xml -n 2 --max-worker-restart=0 --dist=loadfile -s tests/
+
+    - name: Upload Test Report
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: junit-test-results
+        path: 'junit.xml'
+        retention-days: 1
