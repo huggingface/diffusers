@@ -32,7 +32,7 @@ from tqdm.auto import tqdm
 from .configuration_utils import ConfigMixin
 from .modeling_utils import WEIGHTS_NAME
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from .utils import DIFFUSERS_CACHE, BaseOutput, logging
+from .utils import DIFFUSERS_CACHE, BaseOutput, logging, CONFIG_NAME
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
@@ -299,7 +299,7 @@ class DiffusionPipeline(ConfigMixin):
             # make sure we only download sub-folders and `diffusers` filenames
             folder_names = [k for k in config_dict.keys() if not k.startswith("_")]
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
-            allow_patterns += [WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, cls.config_name]
+            allow_patterns += [WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, cls.config_name]
 
             # download all allow_patterns
             cached_folder = snapshot_download(

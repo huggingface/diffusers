@@ -708,6 +708,13 @@ class PipelineTesterMixin(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
+    def test_smart_download(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            # let's make sure this super large numpy file is not downloaded!
+            _ = DiffusionPipeline.from_pretrained("hf-internal-testing/unet-pipeline-dummy", cache_dir=tmpdirname)
+
+            # inspect all downloaded files to make sure that everything is included
+
     def test_from_pretrained_save_pretrained(self):
         # 1. Load models
         model = UNet2DModel(
