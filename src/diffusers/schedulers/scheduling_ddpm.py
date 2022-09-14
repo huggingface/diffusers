@@ -251,6 +251,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         noise: Union[torch.FloatTensor, np.ndarray],
         timesteps: Union[torch.IntTensor, np.ndarray],
     ) -> Union[torch.FloatTensor, np.ndarray]:
+        if self.tensor_format == "pt":
+            timesteps = timesteps.to(self.alphas_cumprod.device)
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
         sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
