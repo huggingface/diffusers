@@ -188,8 +188,8 @@ class FlaxDDPMScheduler(SchedulerMixin, ConfigMixin):
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
+        key: random.KeyArray,
         predict_epsilon: bool = True,
-        seed: int = 0,
         return_dict: bool = True,
     ) -> Union[FlaxSchedulerOutput, Tuple]:
         """
@@ -202,10 +202,9 @@ class FlaxDDPMScheduler(SchedulerMixin, ConfigMixin):
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`jnp.ndarray`):
                 current instance of sample being created by diffusion process.
-            eta (`float`): weight of noise for added noise in diffusion step.
+            key (`random.KeyArray`): a PRNG key.
             predict_epsilon (`bool`):
                 optional flag to use when model predicts the samples directly instead of the noise, epsilon.
-            seed (`int`): seed for random number generator.
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
@@ -249,7 +248,7 @@ class FlaxDDPMScheduler(SchedulerMixin, ConfigMixin):
         # 6. Add noise
         variance = 0
         if t > 0:
-            key = random.PRNGKey(seed)
+            key = random.split(key, num=1)
             noise = random.normal(key=key, shape=model_output.shape)
             variance = (self._get_variance(t, predicted_variance=predicted_variance) ** 0.5) * noise
 

@@ -172,9 +172,9 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
+        key: random.KeyArray,
         eta: float = 0.0,
         use_clipped_model_output: bool = False,
-        seed: int = 0,
         return_dict: bool = True,
     ) -> Union[FlaxSchedulerOutput, Tuple]:
         """
@@ -187,9 +187,9 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`jnp.ndarray`):
                 current instance of sample being created by diffusion process.
+            key (`random.KeyArray`): a PRNG key.
             eta (`float`): weight of noise for added noise in diffusion step.
             use_clipped_model_output (`bool`): TODO
-            seed (`int`): seed for random number generator.
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
@@ -245,7 +245,7 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
         prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
 
         if eta > 0:
-            key = random.PRNGKey(seed)
+            key = random.split(key, num=1)
             noise = random.normal(key=key, shape=model_output.shape)
             variance = self._get_variance(timestep, prev_timestep) ** (0.5) * eta * noise
 
