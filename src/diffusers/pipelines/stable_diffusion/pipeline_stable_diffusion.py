@@ -207,12 +207,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         latents_shape = (batch_size, self.unet.in_channels, height // 8, width // 8)
         latents_dtype = text_embeddings.dtype
         if latents is None:
-            latents = torch.randn(
-                latents_shape,
-                generator=generator,
-                device=latents_device,
-                dtype=latents_dtype
-            )
+            latents = torch.randn(latents_shape, generator=generator, device=latents_device, dtype=latents_dtype)
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
