@@ -45,6 +45,7 @@ class FlaxModelMixin:
     """
     config_name = CONFIG_NAME
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
+    _flax_internal_args = ["name", "parent"]
 
     @classmethod
     def _from_config(cls, config, **kwargs):
