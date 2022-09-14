@@ -114,7 +114,7 @@ Running the pipeline is then identical to the code above as it's the same model 
 >>> image.save("image_of_squirrel_painting.png")
 ```
 
-Diffusion systems can be used with multiple different [schedulers]("api/schedulers") each with their
+Diffusion systems can be used with multiple different [schedulers](./api/schedulers) each with their
 pros and cons. By default, Stable Diffusion runs with [`PNDMScheduler`], but it's very simple to 
 use a different scheduler. *E.g.* if you would instead like to use the [`LMSDiscreteScheduler`] scheduler,
 you could use it as follows:
@@ -131,15 +131,15 @@ you could use it as follows:
 
 [Stability AI's](https://stability.ai/) Stable Diffusion model is an impressive image generation model
 and can do much more than just generating images from text. We have dedicated a whole documentation page,
-just for Stable Diffusion [here]("./conceptual/stable_diffusion").
+just for Stable Diffusion [here](./conceptual/stable_diffusion).
 
 If you want to know how to optimize Stable Diffusion to run on less memory, higher inference speeds, on specific hardware, such as Mac, or with [ONNX Runtime](https://onnxruntime.ai/), please have a look at our 
 optimization pages:
 
-- [Optimized PyTorch on GPU]("./optimization/fp16")
-- [Mac OS with PyTorch]("./optimization/mps")
-- [ONNX]("./optimization/onnx)
-- [OpenVINO]("./optimization/open_vino)
+- [Optimized PyTorch on GPU](./optimization/fp16)
+- [Mac OS with PyTorch](./optimization/mps)
+- [ONNX](./optimization/onnx)
+- [OpenVINO](./optimization/open_vino)
 
 If you want to fine-tune or train your diffusion model, please have a look at the [**training section**](./training/overview)
 

@@ -61,7 +61,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
     [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
-    [`~ConfigMixin.from_config`] functios.
+    [`~ConfigMixin.from_config`] functions.
 
     For more details, see the original paper: https://arxiv.org/abs/2006.11239
 
@@ -72,7 +72,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule (`str`):
             the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
-        trained_betas (`np.ndarray`, optional): TODO
+        trained_betas (`np.ndarray`, optional):
+            option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
         variance_type (`str`):
             options to clip the variance used when adding noise to the denoised sample. Choose from `fixed_small`,
             `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
@@ -250,6 +251,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         noise: Union[torch.FloatTensor, np.ndarray],
         timesteps: Union[torch.IntTensor, np.ndarray],
     ) -> Union[torch.FloatTensor, np.ndarray]:
+        if self.tensor_format == "pt":
+            timesteps = timesteps.to(self.alphas_cumprod.device)
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
         sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5

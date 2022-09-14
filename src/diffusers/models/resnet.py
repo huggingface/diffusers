@@ -333,7 +333,7 @@ class ResnetBlock2D(nn.Module):
 
         # make sure hidden states is in float32
         # when running in half-precision
-        hidden_states = self.norm1(hidden_states.float()).type(hidden_states.dtype)
+        hidden_states = self.norm1(hidden_states).type(hidden_states.dtype)
         hidden_states = self.nonlinearity(hidden_states)
 
         if self.upsample is not None:
@@ -351,7 +351,7 @@ class ResnetBlock2D(nn.Module):
 
         # make sure hidden states is in float32
         # when running in half-precision
-        hidden_states = self.norm2(hidden_states.float()).type(hidden_states.dtype)
+        hidden_states = self.norm2(hidden_states).type(hidden_states.dtype)
         hidden_states = self.nonlinearity(hidden_states)
 
         hidden_states = self.dropout(hidden_states)
