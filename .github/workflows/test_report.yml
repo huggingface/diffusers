@@ -1,7 +1,7 @@
 name: report
 on:
   workflow_run:
-    workflows: [build]
+    workflows: ["Run non-slow tests", "Run all tests"]
     types: [completed]
 
 permissions:
