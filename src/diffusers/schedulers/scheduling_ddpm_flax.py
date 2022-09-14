@@ -209,9 +209,8 @@ class FlaxDDPMScheduler(SchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
-            [`FlaxSchedulerOutput`] or `tuple`:
-            [`FlaxSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is the sample tensor.
+            [`FlaxSchedulerOutput`] or `tuple`: [`FlaxSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
+            When returning a tuple, the first element is the sample tensor.
 
         """
         t = timestep
