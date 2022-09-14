@@ -56,8 +56,6 @@ def betas_for_alpha_bar(num_diffusion_timesteps: int, max_beta=0.999):
 
 @flax.struct.dataclass
 class PNDMSchedulerState:
-    betas: jnp.array
-
     # setable values
     _timesteps: jnp.array
     num_inference_steps: Optional[int] = None
@@ -72,20 +70,9 @@ class PNDMSchedulerState:
     cur_sample: Optional[jnp.ndarray] = None
     ets: jnp.array = jnp.array([])
 
-    @property
-    def alphas(self) -> jnp.array:
-        return 1.0 - self.betas
-
-    @property
-    def alphas_cumprod(self) -> jnp.array:
-        return jnp.cumprod(self.alphas, axis=0)
-
     @classmethod
-    def create(cls, betas: jnp.array, num_train_timesteps: int):
-        return cls(
-            betas=betas,
-            _timesteps=jnp.arange(0, num_train_timesteps)[::-1],
-        )
+    def create(cls, num_train_timesteps: int):
+        return cls(_timesteps=jnp.arange(0, num_train_timesteps)[::-1])
 
 
 @dataclass
@@ -130,24 +117,27 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         skip_prk_steps: bool = False,
     ):
         if trained_betas is not None:
-            betas = jnp.asarray(trained_betas)
+            self.betas = jnp.asarray(trained_betas)
         if beta_schedule == "linear":
-            betas = jnp.linspace(beta_start, beta_end, num_train_timesteps, dtype=jnp.float32)
+            self.betas = jnp.linspace(beta_start, beta_end, num_train_timesteps, dtype=jnp.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            betas = jnp.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=jnp.float32) ** 2
+            self.betas = jnp.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=jnp.float32) ** 2
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
-            betas = betas_for_alpha_bar(num_train_timesteps)
+            self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+
+        self.alphas = 1.0 - self.betas
+        self.alphas_cumprod = jnp.cumprod(self.alphas, axis=0)
 
         # For now we only support F-PNDM, i.e. the runge-kutta method
         # For more information on the algorithm please take a look at the paper: https://arxiv.org/pdf/2202.09778.pdf
         # mainly at formula (9), (12), (13) and the Algorithm 2.
         self.pndm_order = 4
 
-        self.state = PNDMSchedulerState.create(betas=betas, num_train_timesteps=num_train_timesteps)
+        self.state = PNDMSchedulerState.create(num_train_timesteps=num_train_timesteps)
 
     def set_timesteps(
         self, state: PNDMSchedulerState, num_inference_steps: int, offset: int = 0
@@ -165,7 +155,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         """
         step_ratio = self.config.num_train_timesteps // num_inference_steps
         # creates integer timesteps by multiplying by ratio
-        # casting to int to avoid issues when num_inference_step is power of 3
+        # rounding to avoid issues when num_inference_step is power of 3
         _timesteps = (jnp.arange(0, num_inference_steps) * step_ratio).round()[::-1]
         _timesteps = _timesteps + offset
 
@@ -375,8 +365,8 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         # sample -> x_t
         # model_output -> e_θ(x_t, t)
         # prev_sample -> x_(t−δ)
-        alpha_prod_t = state.alphas_cumprod[timestep + 1 - state._offset]
-        alpha_prod_t_prev = state.alphas_cumprod[timestep_prev + 1 - state._offset]
+        alpha_prod_t = self.alphas_cumprod[timestep + 1 - state._offset]
+        alpha_prod_t_prev = self.alphas_cumprod[timestep_prev + 1 - state._offset]
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
@@ -400,14 +390,13 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
 
     def add_noise(
         self,
-        state: PNDMSchedulerState,
         original_samples: jnp.ndarray,
         noise: jnp.ndarray,
         timesteps: jnp.ndarray,
     ) -> jnp.ndarray:
-        sqrt_alpha_prod = state.alphas_cumprod[timesteps] ** 0.5
+        sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
-        sqrt_one_minus_alpha_prod = (1 - state.alphas_cumprod[timesteps]) ** 0.5
+        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
         sqrt_one_minus_alpha_prod = self.match_shape(sqrt_one_minus_alpha_prod, original_samples)
 
         noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
