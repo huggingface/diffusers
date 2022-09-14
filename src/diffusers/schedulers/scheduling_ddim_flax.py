@@ -132,7 +132,7 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
         # whether we use the final alpha of the "non-previous" one.
         self.final_alpha_cumprod = jnp.array(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
 
-        self.state = DDIMSchedulerState(num_train_timesteps=num_train_timesteps)
+        self.state = DDIMSchedulerState.create(num_train_timesteps=num_train_timesteps)
 
     def _get_variance(self, timestep, prev_timestep):
         alpha_prod_t = self.alphas_cumprod[timestep]
