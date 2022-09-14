@@ -20,8 +20,8 @@ from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
 import flax
-from jax import random
 import jax.numpy as jnp
+from jax import random
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
@@ -191,9 +191,8 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
-            [`FlaxSchedulerOutput`] or `tuple`:
-            [`FlaxSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is the sample tensor.
+            [`FlaxSchedulerOutput`] or `tuple`: [`FlaxSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
+            When returning a tuple, the first element is the sample tensor.
 
         """
         if state.num_inference_steps is None:
