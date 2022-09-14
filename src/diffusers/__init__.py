@@ -63,6 +63,6 @@ else:
     from .utils.dummy_torch_and_transformers_and_onnx_objects import *  # noqa F403
 
 if is_flax_available():
-    from .schedulers import FlaxDDIMScheduler, FlaxPNDMScheduler
+    from .schedulers import FlaxDDIMScheduler, FlaxDDPMScheduler, FlaxPNDMScheduler
 else:
     from .utils.dummy_flax_objects import *  # noqa F403
