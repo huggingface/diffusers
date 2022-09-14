@@ -21,7 +21,7 @@ class StableDiffusionPipelineOutput(BaseOutput):
         nsfw_content_detected (`List[bool]`)
             List of flags denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content.
-        latents (`List[torch.Tensor]`, *optional*, returned when `output_latents=True` is passed)
+        latents (`List[torch.Tensor]`, *optional*, returned when `output_latents=True` and `return_dict=True` is passed)
             List (one element for each diffusion step) of `torch.Tensor` of shape `(batch_size, in_channels, height // 8, width // 8)`
     """
 

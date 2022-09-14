@@ -132,7 +132,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         Args:
             prompt (`str`, `List[str]` or `torch.Tensor`):
-                The prompt or prompts to guide the image generation.
+                The prompt or prompts to guide the image generation. If a `torch.Tensor` is provided, it should
+                have the shape (sequence len, embedding dim) or (batch size, sequence len, embedding dim).
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 512):
@@ -327,7 +328,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             image = self.numpy_to_pil(image)
 
         if not return_dict:
-            return (image, has_nsfw_concept, all_latents)
+            return (image, has_nsfw_concept)
 
         # reset
         torch.set_grad_enabled(was_grad_enabled)
