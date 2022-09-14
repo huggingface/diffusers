@@ -3,32 +3,35 @@ from typing import Tuple
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
-# from flax.core.frozen_dict import FrozenDict
 
 from ..configuration_utils import ConfigMixin, flax_register_to_config
 from ..modeling_flax_utils import FlaxModelMixin
 from .embeddings_flax import FlaxTimestepEmbedding, FlaxTimesteps
 from .unet_blocks_flax import (
-    FlaxDownBlock2D,
     FlaxCrossAttnDownBlock2D,
+    FlaxCrossAttnUpBlock2D,
+    FlaxDownBlock2D,
     FlaxUNetMidBlock2DCrossAttn,
     FlaxUpBlock2D,
-    FlaxCrossAttnUpBlock2D,
 )
+
+
+# from flax.core.frozen_dict import FrozenDict
+
 
 
 @flax_register_to_config
 class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
-    sample_size:int=32
-    in_channels:int=4
-    out_channels:int=4
-    down_block_types:Tuple=("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")
-    up_block_types:Tuple=("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")
-    block_out_channels:Tuple=(224, 448, 672, 896)
-    layers_per_block:int=2
-    attention_head_dim:int=8
-    cross_attention_dim:int=768
-    dropout:float=0.1
+    sample_size: int = 32
+    in_channels: int = 4
+    out_channels: int = 4
+    down_block_types: Tuple = ("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")
+    up_block_types: Tuple = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")
+    block_out_channels: Tuple = (224, 448, 672, 896)
+    layers_per_block: int = 2
+    attention_head_dim: int = 8
+    cross_attention_dim: int = 768
+    dropout: float = 0.1
     dtype: jnp.dtype = jnp.float32
 
     # model args
@@ -47,7 +50,6 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     #     rngs = {"params": params_rng, "dropout": dropout_rng}
 
     #     return self.module.init(rngs, sample, timesteps, encoder_hidden_states)["params"]
-
 
     def setup(self):
         block_out_channels = self.block_out_channels
