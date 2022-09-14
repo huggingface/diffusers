@@ -86,15 +86,13 @@ logic including pre-processing, an unrolled diffusion loop, and post-processing 
 
 ```python
 # make sure you're logged in with `huggingface-cli login`
-from torch import autocast
 from diffusers import StableDiffusionPipeline, LMSDiscreteScheduler
 
 pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
-with autocast("cuda"):
-    image = pipe(prompt).images[0]  
+image = pipe(prompt).images[0]  
     
 image.save("astronaut_rides_horse.png")
 ```
@@ -104,33 +102,7 @@ image.save("astronaut_rides_horse.png")
 The `StableDiffusionImg2ImgPipeline` lets you pass a text prompt and an initial image to condition the generation of new images.
 
 ```python
-from torch import autocast
-import requests
-from PIL import Image
-from io import BytesIO
-
-from diffusers import StableDiffusionImg2ImgPipeline
-
-# load the pipeline
-device = "cuda"
-pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4",
-    revision="fp16", 
-    torch_dtype=torch.float16,
-    use_auth_token=True
-).to(device)
-
-# let's download an initial image
-url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
-
-response = requests.get(url)
-init_image = Image.open(BytesIO(response.content)).convert("RGB")
-init_image = init_image.resize((768, 512))
-
-prompt = "A fantasy landscape, trending on artstation"
-
-with autocast("cuda"):
-    images = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5).images
+images = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5).images
 
 images[0].save("fantasy_landscape.png")
 ```
@@ -148,7 +120,6 @@ The `StableDiffusionInpaintPipeline` lets you edit specific parts of an image by
 ```python
 from io import BytesIO
 
-from torch import autocast
 import requests
 import PIL
 
@@ -173,8 +144,7 @@ pipe = StableDiffusionInpaintPipeline.from_pretrained(
 ).to(device)
 
 prompt = "a cat sitting on a bench"
-with autocast("cuda"):
-    images = pipe(prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75).images
+images = pipe(prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75).images
 
 images[0].save("cat_on_bench.png")
 ```

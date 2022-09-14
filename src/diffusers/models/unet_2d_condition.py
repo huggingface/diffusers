@@ -222,6 +222,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         timesteps = timesteps.expand(sample.shape[0])
 
         t_emb = self.time_proj(timesteps)
+
+        # timesteps does not contain any weights and will always return f32 tensors
+        # but time_embedding might actually be running in fp16. so we need to cast here.
+        # there might be better ways to encapsulate this.
+        t_emb = t_emb.to(dtype=sample.dtype)
         emb = self.time_embedding(t_emb)
 
         # 2. pre-process
@@ -258,9 +263,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 sample = upsample_block(hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples)
 
         # 6. post-process
-        # make sure hidden states is in float32
-        # when running in half-precision
-        sample = self.conv_norm_out(sample.float()).type(sample.dtype)
+        sample = self.conv_norm_out(sample).type(sample.dtype)
         sample = self.conv_act(sample)
         sample = self.conv_out(sample)
 

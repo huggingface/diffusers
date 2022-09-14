@@ -205,16 +205,18 @@ class StableDiffusionPipeline(DiffusionPipeline):
         # However this currently doesn't work in `mps`.
         latents_device = "cpu" if self.device.type == "mps" else self.device
         latents_shape = (batch_size, self.unet.in_channels, height // 8, width // 8)
+        latents_dtype = text_embeddings.dtype
         if latents is None:
             latents = torch.randn(
                 latents_shape,
                 generator=generator,
                 device=latents_device,
+                dtype=latents_dtype
             )
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
-        latents = latents.to(self.device)
+            latents = latents.to(self.device)
 
         # set timesteps
         accepts_offset = "offset" in set(inspect.signature(self.scheduler.set_timesteps).parameters.keys())
@@ -268,6 +270,12 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         # run safety checker
         safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
+
+        # XXX: it might be better to check against the actual dtype of the safety checker since
+        # it might want to run in a different precision, but the safety checker does not expose
+        # a `dtype` /`precision` itself, so this is a good enough proxy for running pipelines in
+        # both f16 / f32
+        safety_cheker_input.pixel_values = safety_cheker_input.pixel_values.to(dtype=latents_dtype)
         image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_cheker_input.pixel_values)
 
         if output_type == "pil":

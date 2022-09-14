@@ -331,8 +331,6 @@ class ResnetBlock2D(nn.Module):
     def forward(self, x, temb):
         hidden_states = x
 
-        # make sure hidden states is in float32
-        # when running in half-precision
         hidden_states = self.norm1(hidden_states).type(hidden_states.dtype)
         hidden_states = self.nonlinearity(hidden_states)
 
@@ -349,8 +347,6 @@ class ResnetBlock2D(nn.Module):
             temb = self.time_emb_proj(self.nonlinearity(temb))[:, :, None, None]
             hidden_states = hidden_states + temb
 
-        # make sure hidden states is in float32
-        # when running in half-precision
         hidden_states = self.norm2(hidden_states).type(hidden_states.dtype)
         hidden_states = self.nonlinearity(hidden_states)
 
