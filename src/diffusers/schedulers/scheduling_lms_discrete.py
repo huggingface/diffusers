@@ -113,7 +113,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
         self.num_inference_steps = num_inference_steps
-        self.timesteps = np.linspace(self.num_train_timesteps - 1, 0, num_inference_steps, dtype=float)
+        self.timesteps = np.linspace(self.config.num_train_timesteps - 1, 0, num_inference_steps, dtype=float)
 
         low_idx = np.floor(self.timesteps).astype(int)
         high_idx = np.ceil(self.timesteps).astype(int)
