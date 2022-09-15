@@ -1,6 +1,9 @@
 from typing import Tuple
 
 import flax.linen as nn
+from flax.core.frozen_dict import FrozenDict
+
+import jax
 import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, flax_register_to_config
@@ -29,18 +32,18 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     dropout: float = 0.1
     dtype: jnp.dtype = jnp.float32
 
-    # # Note: input_shape is ignored
-    # def init_weights(self, rng: jax.random.PRNGKey, input_shape: Tuple) -> FrozenDict:
-    #     # init input tensors
-    #     sample_shape = (1, self.module.sample_size, self.module.sample_size, self.module.in_channels)
-    #     sample = jnp.zeros(sample_shape, dtype=jnp.float32)
-    #     timesteps = jnp.ones((1,), dtype=jnp.int32)
-    #     encoder_hidden_states = jnp.zeros((1, 1, self.module.cross_attention_dim), dtype=jnp.float32)
 
-    #     params_rng, dropout_rng = jax.random.split(rng)
-    #     rngs = {"params": params_rng, "dropout": dropout_rng}
+    def init_weights(self, rng: jax.random.PRNGKey) -> FrozenDict:
+        # init input tensors
+        sample_shape = (1, self.sample_size, self.sample_size, self.in_channels)
+        sample = jnp.zeros(sample_shape, dtype=jnp.float32)
+        timesteps = jnp.ones((1,), dtype=jnp.int32)
+        encoder_hidden_states = jnp.zeros((1, 1, self.cross_attention_dim), dtype=jnp.float32)
 
-    #     return self.module.init(rngs, sample, timesteps, encoder_hidden_states)["params"]
+        params_rng, dropout_rng = jax.random.split(rng)
+        rngs = {"params": params_rng, "dropout": dropout_rng}
+
+        return self.init(rngs, sample, timesteps, encoder_hidden_states)["params"]
 
     def setup(self):
         block_out_channels = self.block_out_channels
