@@ -258,24 +258,24 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         timestep = state.prk_timesteps[state.counter // 4 * 4]
 
         if state.counter % 4 == 0:
-            state.replace(
+            state = state.replace(
                 cur_model_output=state.cur_model_output + 1 / 6 * model_output,
                 ets=state.ets.append(model_output),
                 cur_sample=sample,
             )
         elif (self.counter - 1) % 4 == 0:
-            state.replace(cur_model_output=state.cur_model_output + 1 / 3 * model_output)
+            state = state.replace(cur_model_output=state.cur_model_output + 1 / 3 * model_output)
         elif (self.counter - 2) % 4 == 0:
-            state.replace(cur_model_output=state.cur_model_output + 1 / 3 * model_output)
+            state = state.replace(cur_model_output=state.cur_model_output + 1 / 3 * model_output)
         elif (self.counter - 3) % 4 == 0:
             model_output = state.cur_model_output + 1 / 6 * model_output
-            state.replace(cur_model_output=0)
+            state = state.replace(cur_model_output=0)
 
         # cur_sample should not be `None`
         cur_sample = state.cur_sample if state.cur_sample is not None else sample
 
         prev_sample = self._get_prev_sample(cur_sample, timestep, prev_timestep, model_output, state=state)
-        state.replace(counter=state.counter + 1)
+        state = state.replace(counter=state.counter + 1)
 
         if not return_dict:
             return (prev_sample, state)
@@ -323,18 +323,18 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         prev_timestep = max(timestep - self.config.num_train_timesteps // state.num_inference_steps, 0)
 
         if state.counter != 1:
-            state.replace(ets=state.ets.append(model_output))
+            state = state.replace(ets=state.ets.append(model_output))
         else:
             prev_timestep = timestep
             timestep = timestep + self.config.num_train_timesteps // state.num_inference_steps
 
         if len(state.ets) == 1 and state.counter == 0:
             model_output = model_output
-            state.replace(cur_sample=sample)
+            state = state.replace(cur_sample=sample)
         elif len(state.ets) == 1 and state.counter == 1:
             model_output = (model_output + state.ets[-1]) / 2
             sample = state.cur_sample
-            state.replace(cur_sample=None)
+            state = state.replace(cur_sample=None)
         elif len(state.ets) == 2:
             model_output = (3 * state.ets[-1] - state.ets[-2]) / 2
         elif len(state.ets) == 3:
@@ -345,7 +345,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
             )
 
         prev_sample = self._get_prev_sample(sample, timestep, prev_timestep, model_output, state=state)
-        state.replace(counter=state.counter + 1)
+        state = state.replace(counter=state.counter + 1)
 
         if not return_dict:
             return (prev_sample, state)
