@@ -127,7 +127,7 @@ class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         low_idx = jnp.floor(timesteps).astype(jnp.int)
         high_idx = jnp.ceil(timesteps).astype(jnp.int)
-        frac = jnp.mod(self.timesteps, 1.0)
+        frac = jnp.mod(timesteps, 1.0)
         sigmas = jnp.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         sigmas = (1 - frac) * sigmas[low_idx] + frac * sigmas[high_idx]
         sigmas = jnp.concatenate([sigmas, [0.0]]).astype(jnp.float32)
@@ -193,11 +193,12 @@ class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     def add_noise(
         self,
+        state: LMSDiscreteSchedulerState,
         original_samples: jnp.ndarray,
         noise: jnp.ndarray,
         timesteps: jnp.ndarray,
     ) -> jnp.ndarray:
-        sigmas = self.match_shape(self.sigmas[timesteps], noise)
+        sigmas = self.match_shape(state.sigmas[timesteps], noise)
         noisy_samples = original_samples + noise * sigmas
 
         return noisy_samples
