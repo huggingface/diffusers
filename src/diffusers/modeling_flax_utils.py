@@ -403,7 +403,7 @@ class FlaxModelMixin:
         params_shape_tree = jax.eval_shape(model.init_weights, prng_key)
         required_params = set(flatten_dict(unfreeze(params_shape_tree)).keys())
 
-        random_state = flatten_dict(unfreeze(params_shape_tree))
+        shape_state = flatten_dict(unfreeze(params_shape_tree))
 
         missing_keys = required_params - set(state.keys())
         unexpected_keys = set(state.keys()) - required_params
@@ -419,14 +419,14 @@ class FlaxModelMixin:
         # matching the weights in the model.
         mismatched_keys = []
         for key in state.keys():
-            if key in random_state and state[key].shape != random_state[key].shape:
+            if key in shape_state and state[key].shape != shape_state[key].shape:
                 if ignore_mismatched_sizes:
-                    mismatched_keys.append((key, state[key].shape, random_state[key].shape))
-                    state[key] = random_state[key]
+                    mismatched_keys.append((key, state[key].shape, shape_state[key].shape))
+                    state[key] = shape_state[key]
                 else:
                     raise ValueError(
                         f"Trying to load the pretrained weight for {key} failed: checkpoint has shape "
-                        f"{state[key].shape} which is incompatible with the model shape {random_state[key].shape}. "
+                        f"{state[key].shape} which is incompatible with the model shape {shape_state[key].shape}. "
                         "Using `ignore_mismatched_sizes=True` if you really want to load this checkpoint inside this "
                         "model."
                     )
