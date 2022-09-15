@@ -23,7 +23,7 @@ except ImportError:
     raise ImportError("OmegaConf is required to convert the LDM checkpoints. Please install it with `pip install OmegaConf`.")
 
 from transformers import  BertTokenizerFast, CLIPTokenizer, CLIPTextModel
-from diffusers import LDMTextToImagePipeline, AutoencoderKL, UNet2DConditionModel, DDIMScheduler
+from diffusers import LDMTextToImagePipeline, AutoencoderKL, UNet2DConditionModel, DDIMScheduler, KLM
 from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertModel, LDMBertConfig
 
 
