@@ -65,7 +65,7 @@ class FlaxAttentionBlock(nn.Module):
         attn_weights = attn_weights * self.scale
         attn_weights = nn.softmax(attn_weights, axis=2)
 
-        ## attend to values
+        # attend to values
         hidden_states = jnp.einsum("b i j, b j d -> b i d", attn_weights, v)
         hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
         hidden_states = self.to_out(hidden_states)

@@ -14,7 +14,7 @@
 import flax.linen as nn
 import jax.numpy as jnp
 
-from .attention_flax import FlaxAttentionBlock, FlaxSpatialTransformer
+from .attention_flax import FlaxSpatialTransformer
 from .resnet_flax import FlaxDownsample2D, FlaxResnetBlock2D, FlaxUpsample2D
 
 

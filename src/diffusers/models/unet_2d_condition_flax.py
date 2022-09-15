@@ -1,7 +1,6 @@
 from typing import Tuple
 
 import flax.linen as nn
-import jax
 import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, flax_register_to_config
@@ -14,9 +13,6 @@ from .unet_blocks_flax import (
     FlaxUNetMidBlock2DCrossAttn,
     FlaxUpBlock2D,
 )
-
-
-# from flax.core.frozen_dict import FrozenDict
 
 
 @flax_register_to_config
@@ -32,10 +28,6 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     cross_attention_dim: int = 768
     dropout: float = 0.1
     dtype: jnp.dtype = jnp.float32
-
-    # model args
-    # input_shape: Tuple = (1, 32, 32, 4)
-    # seed: int = 0
 
     # # Note: input_shape is ignored
     # def init_weights(self, rng: jax.random.PRNGKey, input_shape: Tuple) -> FrozenDict:
@@ -158,16 +150,12 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         sample,
         timesteps,
         encoder_hidden_states,
-        # params: dict = None,
-        # dropout_rng: jax.random.PRNGKey = None,
         train: bool = False,
     ):
         # Handle any PRNG if needed
         # rngs = {"dropout": dropout_rng} if dropout_rng is not None else {}
 
         # 1. time
-        # broadcast to batch dimension
-        # timesteps = jnp.broadcast_to(timesteps, (sample.shape[0],) + timesteps.shape)
         t_emb = self.time_proj(timesteps)
         t_emb = self.time_embedding(t_emb)
 
