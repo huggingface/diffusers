@@ -181,7 +181,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         if callback_frequency is not None and (callback_frequency <= 0 or not isinstance(callback_frequency, int)):
             raise ValueError(
-                f"`callback_frequency` has to be a positive integer but is {callback_frequency} of type {type(callback_frequency)}."
+                f"`callback_frequency` has to be a positive integer but is {callback_frequency} of type"
+                f" {type(callback_frequency)}."
             )
 
         # get prompt text embeddings
