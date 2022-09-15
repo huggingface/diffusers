@@ -25,13 +25,14 @@ class FlaxAttentionBlock(nn.Module):
 
     def setup(self):
         inner_dim = self.dim_head * self.heads
-        self.scale = self.dim_head**-0.5
+        self.scale = self.dim_head ** -0.5
 
-        self.to_q = nn.Dense(inner_dim, use_bias=False, dtype=self.dtype)
-        self.to_k = nn.Dense(inner_dim, use_bias=False, dtype=self.dtype)
-        self.to_v = nn.Dense(inner_dim, use_bias=False, dtype=self.dtype)
+        # Weights were exported with old names {to_q, to_k, to_v, to_out}
+        self.query = nn.Dense(inner_dim, use_bias=False, dtype=self.dtype, name="to_q")
+        self.key = nn.Dense(inner_dim, use_bias=False, dtype=self.dtype, name="to_k")
+        self.value = nn.Dense(inner_dim, use_bias=False, dtype=self.dtype, name="to_v")
 
-        self.to_out = nn.Dense(self.query_dim, dtype=self.dtype)
+        self.proj_attn = nn.Dense(self.query_dim, dtype=self.dtype, name="to_out")
 
     def reshape_heads_to_batch_dim(self, tensor):
         batch_size, seq_len, dim = tensor.shape
@@ -52,23 +53,23 @@ class FlaxAttentionBlock(nn.Module):
     def __call__(self, hidden_states, context=None, deterministic=True):
         context = hidden_states if context is None else context
 
-        q = self.to_q(hidden_states)
-        k = self.to_k(context)
-        v = self.to_v(context)
+        query_proj = self.query(hidden_states)
+        key_proj = self.key(context)
+        value_proj = self.value(context)
 
-        q = self.reshape_heads_to_batch_dim(q)
-        k = self.reshape_heads_to_batch_dim(k)
-        v = self.reshape_heads_to_batch_dim(v)
+        query_states = self.reshape_heads_to_batch_dim(query_proj)
+        key_states = self.reshape_heads_to_batch_dim(key_proj)
+        value_states = self.reshape_heads_to_batch_dim(value_proj)
 
         # compute attentions
-        attn_weights = jnp.einsum("b i d, b j d->b i j", q, k)
-        attn_weights = attn_weights * self.scale
-        attn_weights = nn.softmax(attn_weights, axis=2)
+        attention_scores = jnp.einsum("b i d, b j d->b i j", query_states, key_states)
+        attention_scores = attention_scores * self.scale
+        attention_probs = nn.softmax(attention_scores, axis=2)
 
         # attend to values
-        hidden_states = jnp.einsum("b i j, b j d -> b i d", attn_weights, v)
+        hidden_states = jnp.einsum("b i j, b j d -> b i d", attention_probs, value_states)
         hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
-        hidden_states = self.to_out(hidden_states)
+        hidden_states = self.proj_attn(hidden_states)
         return hidden_states
 
 
