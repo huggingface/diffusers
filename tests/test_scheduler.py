@@ -857,6 +857,7 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
 
 class LMSDiscreteSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (LMSDiscreteScheduler,)
+    num_inference_steps = 10
 
     def get_scheduler_config(self, **kwargs):
         config = {
@@ -889,15 +890,39 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
             self.check_over_forward(time_step=t)
 
     def test_pytorch_equal_numpy(self):
-        pass
+        for scheduler_class in self.scheduler_classes:
+            sample_pt = self.dummy_sample
+            residual_pt = 0.1 * sample_pt
+            dummy_past_residuals_pt = [residual_pt + 0.2, residual_pt + 0.15, residual_pt + 0.1, residual_pt + 0.05]
+
+            sample = sample_pt.numpy()
+            residual = 0.1 * sample
+            dummy_past_residuals = [residual + 0.2, residual + 0.15, residual + 0.1, residual + 0.05]
+
+            scheduler_config = self.get_scheduler_config()
+            scheduler_config["tensor_format"] = "np"
+            scheduler = scheduler_class(**scheduler_config)
+
+            scheduler_config["tensor_format"] = "pt"
+            scheduler_pt = scheduler_class(**scheduler_config)
+
+            scheduler.set_timesteps(self.num_inference_steps)
+            scheduler_pt.set_timesteps(self.num_inference_steps)
+
+            # copy over dummy past residuals (must be done after set_timesteps)
+            scheduler.ets = dummy_past_residuals[:]
+            scheduler_pt.ets = dummy_past_residuals_pt[:]
+
+            output = scheduler.step(residual, 1, sample).prev_sample
+            output_pt = scheduler_pt.step(residual_pt, 1, sample_pt).prev_sample
+            assert np.sum(np.abs(output - output_pt.numpy())) < 1e-4, "Scheduler outputs are not identical"
 
     def test_full_loop_no_noise(self):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
         scheduler = scheduler_class(**scheduler_config)
 
-        num_inference_steps = 10
-        scheduler.set_timesteps(num_inference_steps)
+        scheduler.set_timesteps(self.num_inference_steps)
 
         model = self.dummy_model()
         sample = self.dummy_sample_deter * scheduler.sigmas[0]
