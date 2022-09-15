@@ -92,17 +92,17 @@ class FlaxBasicTransformerBlock(nn.Module):
     def __call__(self, hidden_states, context, deterministic=True):
         # self attention
         residual = hidden_states
-        hidden_states = self.self_attn(self.norm1(hidden_states))
+        hidden_states = self.self_attn(self.norm1(hidden_states), deterministic=deterministic)
         hidden_states = hidden_states + residual
 
         # cross attention
         residual = hidden_states
-        hidden_states = self.cross_attn(self.norm2(hidden_states), context)
+        hidden_states = self.cross_attn(self.norm2(hidden_states), context, deterministic=deterministic)
         hidden_states = hidden_states + residual
 
         # feed forward
         residual = hidden_states
-        hidden_states = self.ff(self.norm3(hidden_states))
+        hidden_states = self.ff(self.norm3(hidden_states), deterministic=deterministic)
         hidden_states = hidden_states + residual
 
         return hidden_states
@@ -148,14 +148,12 @@ class FlaxSpatialTransformer(nn.Module):
         hidden_states = self.norm(hidden_states)
         hidden_states = self.proj_in(hidden_states)
 
-        # hidden_states = jnp.transpose(hidden_states, (0, 2, 3, 1))
         hidden_states = hidden_states.reshape(batch, height * width, channels)
 
         for transformer_block in self.transformer_blocks:
-            hidden_states = transformer_block(hidden_states, context)
+            hidden_states = transformer_block(hidden_states, context, deterministic=deterministic)
 
         hidden_states = hidden_states.reshape(batch, height, width, channels)
-        # hidden_states = jnp.transpose(hidden_states, (0, 3, 1, 2))
 
         hidden_states = self.proj_out(hidden_states)
         hidden_states = hidden_states + residual

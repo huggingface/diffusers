@@ -155,9 +155,6 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         encoder_hidden_states,
         train: bool = False,
     ):
-        # Handle any PRNG if needed
-        # rngs = {"dropout": dropout_rng} if dropout_rng is not None else {}
-
         # 1. time
         t_emb = self.time_proj(timesteps)
         t_emb = self.time_embedding(t_emb)
@@ -169,13 +166,13 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         down_block_res_samples = (sample,)
         for down_block in self.down_blocks:
             if isinstance(down_block, FlaxCrossAttnDownBlock2D):
-                sample, res_samples = down_block(sample, t_emb, encoder_hidden_states)
+                sample, res_samples = down_block(sample, t_emb, encoder_hidden_states, deterministic=not train)
             else:
-                sample, res_samples = down_block(sample, t_emb)
+                sample, res_samples = down_block(sample, t_emb, deterministic=not train)
             down_block_res_samples += res_samples
 
         # 4. mid
-        sample = self.mid_block(sample, t_emb, encoder_hidden_states)
+        sample = self.mid_block(sample, t_emb, encoder_hidden_states, deterministic=not train)
 
         # 5. up
         for up_block in self.up_blocks:
@@ -187,9 +184,10 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
                     temb=t_emb,
                     encoder_hidden_states=encoder_hidden_states,
                     res_hidden_states_tuple=res_samples,
+                    deterministic=not train,
                 )
             else:
-                sample = up_block(sample, temb=t_emb, res_hidden_states_tuple=res_samples)
+                sample = up_block(sample, temb=t_emb, res_hidden_states_tuple=res_samples, deterministic=not train)
 
         # 6. post-process
         sample = self.conv_norm_out(sample)

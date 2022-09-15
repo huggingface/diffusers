@@ -61,8 +61,8 @@ class FlaxCrossAttnDownBlock2D(nn.Module):
         output_states = ()
 
         for resnet, attn in zip(self.resnets, self.attentions):
-            hidden_states = resnet(hidden_states, temb)
-            hidden_states = attn(hidden_states, encoder_hidden_states)
+            hidden_states = resnet(hidden_states, temb, deterministic=deterministic)
+            hidden_states = attn(hidden_states, encoder_hidden_states, deterministic=deterministic)
             output_states += (hidden_states,)
 
         if self.add_downsample:
@@ -102,7 +102,7 @@ class FlaxDownBlock2D(nn.Module):
         output_states = ()
 
         for resnet in self.resnets:
-            hidden_states = resnet(hidden_states, temb)
+            hidden_states = resnet(hidden_states, temb, deterministic=deterministic)
             output_states += (hidden_states,)
 
         if self.add_downsample:
@@ -160,8 +160,8 @@ class FlaxCrossAttnUpBlock2D(nn.Module):
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
             hidden_states = jnp.concatenate((hidden_states, res_hidden_states), axis=-1)
 
-            hidden_states = resnet(hidden_states, temb)
-            hidden_states = attn(hidden_states, encoder_hidden_states)
+            hidden_states = resnet(hidden_states, temb, deterministic=deterministic)
+            hidden_states = attn(hidden_states, encoder_hidden_states, deterministic=deterministic)
 
         if self.add_upsample:
             hidden_states = self.upsample(hidden_states)
@@ -205,7 +205,7 @@ class FlaxUpBlock2D(nn.Module):
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
             hidden_states = jnp.concatenate((hidden_states, res_hidden_states), axis=-1)
 
-            hidden_states = resnet(hidden_states, temb)
+            hidden_states = resnet(hidden_states, temb, deterministic=deterministic)
 
         if self.add_upsample:
             hidden_states = self.upsample(hidden_states)
@@ -257,7 +257,7 @@ class FlaxUNetMidBlock2DCrossAttn(nn.Module):
     def __call__(self, hidden_states, temb, encoder_hidden_states, deterministic=True):
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
-            hidden_states = attn(hidden_states, encoder_hidden_states)
-            hidden_states = resnet(hidden_states, temb)
+            hidden_states = attn(hidden_states, encoder_hidden_states, deterministic=deterministic)
+            hidden_states = resnet(hidden_states, temb, deterministic=deterministic)
 
         return hidden_states
