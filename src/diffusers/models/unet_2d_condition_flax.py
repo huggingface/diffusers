@@ -2,15 +2,13 @@ from dataclasses import dataclass
 from typing import Tuple, Union
 
 import flax.linen as nn
-from flax.core.frozen_dict import FrozenDict
-
 import jax
 import jax.numpy as jnp
+from flax.core.frozen_dict import FrozenDict
 
 from ..configuration_utils import ConfigMixin, flax_register_to_config
 from ..modeling_flax_utils import FlaxModelMixin
 from ..utils import BaseOutput
-
 from .embeddings_flax import FlaxTimestepEmbedding, FlaxTimesteps
 from .unet_blocks_flax import (
     FlaxCrossAttnDownBlock2D,
@@ -19,6 +17,7 @@ from .unet_blocks_flax import (
     FlaxUNetMidBlock2DCrossAttn,
     FlaxUpBlock2D,
 )
+
 
 @dataclass
 class FlaxUNet2DConditionOutput(BaseOutput):
@@ -34,8 +33,8 @@ class FlaxUNet2DConditionOutput(BaseOutput):
 @flax_register_to_config
 class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     r"""
-    FlaxUNet2DConditionModel is a conditional 2D UNet model that takes in a noisy sample, conditional state, and a timestep
-    and returns sample shaped output.
+    FlaxUNet2DConditionModel is a conditional 2D UNet model that takes in a noisy sample, conditional state, and a
+    timestep and returns sample shaped output.
 
     This model inherits from [`FlaxModelMixin`]. Check the superclass documentation for the generic methods the library
     implements for all the models (such as downloading or saving, etc.)
@@ -45,11 +44,11 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         in_channels (`int`, *optional*, defaults to 4): The number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 4): The number of channels in the output.
         down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
-            The tuple of downsample blocks to use. The corresponding class names will be:
-            "FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxDownBlock2D"
+            The tuple of downsample blocks to use. The corresponding class names will be: "FlaxCrossAttnDownBlock2D",
+            "FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxDownBlock2D"
         up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D",)`):
-            The tuple of upsample blocks to use. The corresponding class names will be:
-            "FlaxUpBlock2D", "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D"
+            The tuple of upsample blocks to use. The corresponding class names will be: "FlaxUpBlock2D",
+            "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D"
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
         layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
@@ -61,7 +60,12 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     sample_size: int = 32
     in_channels: int = 4
     out_channels: int = 4
-    down_block_types: Tuple[str] = ("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")
+    down_block_types: Tuple[str] = (
+        "CrossAttnDownBlock2D",
+        "CrossAttnDownBlock2D",
+        "CrossAttnDownBlock2D",
+        "DownBlock2D",
+    )
     up_block_types: Tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")
     block_out_channels: Tuple[int] = (320, 640, 1280, 1280)
     layers_per_block: int = 2
@@ -69,7 +73,6 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     cross_attention_dim: int = 1280
     dropout: float = 0.0
     dtype: jnp.dtype = jnp.float32
-
 
     def init_weights(self, rng: jax.random.PRNGKey) -> FrozenDict:
         # init input tensors
@@ -200,14 +203,15 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             timestep (`jnp.ndarray` or `float` or `int`): timesteps
             encoder_hidden_states (`jnp.ndarray`): (channel, height, width) encoder hidden states
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] instead of a plain tuple.
+                Whether or not to return a [`models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] instead of a
+                plain tuple.
             train (`bool`, *optional*, defaults to `False`):
                 Use deterministic functions and disable dropout when not training.
 
         Returns:
             [`~models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] or `tuple`:
-            [`~models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is the sample tensor.
+            [`~models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] if `return_dict` is True, otherwise a `tuple`.
+            When returning a tuple, the first element is the sample tensor.
         """
         # 1. time
         t_emb = self.time_proj(timesteps)

@@ -25,7 +25,7 @@ class FlaxAttentionBlock(nn.Module):
 
     def setup(self):
         inner_dim = self.dim_head * self.heads
-        self.scale = self.dim_head ** -0.5
+        self.scale = self.dim_head**-0.5
 
         # Weights were exported with old names {to_q, to_k, to_v, to_out}
         self.query = nn.Dense(inner_dim, use_bias=False, dtype=self.dtype, name="to_q")
