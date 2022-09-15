@@ -393,8 +393,7 @@ class FlaxModelMixin:
         # flatten dicts
         state = flatten_dict(state)
 
-        prng_key = jax.random.PRNGKey(0)
-        params_shape_tree = jax.eval_shape(model.init_weights, prng_key)
+        params_shape_tree = jax.eval_shape(model.init_weights, rng=jax.random.PRNGKey(0))
         required_params = set(flatten_dict(unfreeze(params_shape_tree)).keys())
 
         shape_state = flatten_dict(unfreeze(params_shape_tree))
