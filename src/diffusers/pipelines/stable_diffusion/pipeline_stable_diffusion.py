@@ -214,6 +214,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
+            if latents.device != self.device:
+                raise ValueError(f"Unexpected latents device, got {latents.device}, expected {self.device}")
 
         # set timesteps
         accepts_offset = "offset" in set(inspect.signature(self.scheduler.set_timesteps).parameters.keys())
