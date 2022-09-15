@@ -293,3 +293,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         # fmt: on
 
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
+
+    def test_forward_with_norm_groups(self):
+        # not required for this model
+        pass
