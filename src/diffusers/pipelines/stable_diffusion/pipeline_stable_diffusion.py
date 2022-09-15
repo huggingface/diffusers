@@ -206,9 +206,11 @@ class StableDiffusionPipeline(DiffusionPipeline):
         latents_shape = (batch_size, self.unet.in_channels, height // 8, width // 8)
         latents_dtype = text_embeddings.dtype
         if latents is None:
-            if self.device.type == "mps": 
+            if self.device.type == "mps":
                 # randn does not exist on mps
-                latents = torch.randn(latents_shape, generator=generator, device='cpu', dtype=latents_dtype).to(self.device)
+                latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(
+                    self.device
+                )
             else:
                 latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
         else:
