@@ -20,16 +20,41 @@ from .unet_blocks_flax import (
 
 @flax_register_to_config
 class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
+    r"""
+    FlaxUNet2DConditionModel is a conditional 2D UNet model that takes in a noisy sample, conditional state, and a timestep
+    and returns sample shaped output.
+
+    This model inherits from [`FlaxModelMixin`]. Check the superclass documentation for the generic methods the library
+    implements for all the models (such as downloading or saving, etc.)
+
+    Parameters:
+        sample_size (`int`, *optional*): The size of the input sample.
+        in_channels (`int`, *optional*, defaults to 4): The number of channels in the input sample.
+        out_channels (`int`, *optional*, defaults to 4): The number of channels in the output.
+        down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
+            The tuple of downsample blocks to use. The corresponding class names will be:
+            "FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxDownBlock2D"
+        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D",)`):
+            The tuple of upsample blocks to use. The corresponding class names will be:
+            "FlaxUpBlock2D", "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D"
+        block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
+            The tuple of output channels for each block.
+        layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
+        attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
+        cross_attention_dim (`int`, *optional*, defaults to 768): The dimension of the cross attention features.
+        dropout (`float`, *optional*, defaults to 0): Dropout probability for down, up and bottleneck blocks.
+    """
+
     sample_size: int = 32
     in_channels: int = 4
     out_channels: int = 4
-    down_block_types: Tuple = ("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")
-    up_block_types: Tuple = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")
-    block_out_channels: Tuple = (224, 448, 672, 896)
+    down_block_types: Tuple[str] = ("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")
+    up_block_types: Tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")
+    block_out_channels: Tuple[int] = (320, 640, 1280, 1280)
     layers_per_block: int = 2
     attention_head_dim: int = 8
-    cross_attention_dim: int = 768
-    dropout: float = 0.1
+    cross_attention_dim: int = 1280
+    dropout: float = 0.0
     dtype: jnp.dtype = jnp.float32
 
 
@@ -155,6 +180,17 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         encoder_hidden_states,
         train: bool = False,
     ):
+        """r
+        Args:
+            sample (`jnp.ndarray`): (channel, height, width) noisy inputs tensor
+            timestep (`jnp.ndarray` or `float` or `int`): timesteps
+            encoder_hidden_states (`jnp.ndarray`): (channel, height, width) encoder hidden states
+            train (`bool`, *optional*, defaults to `False`):
+                Use deterministic functions and disable dropout when not training.
+
+        Returns:
+            `jnp.ndarray` sample.
+        """
         # 1. time
         t_emb = self.time_proj(timesteps)
         t_emb = self.time_embedding(t_emb)
