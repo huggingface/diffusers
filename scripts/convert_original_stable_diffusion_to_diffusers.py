@@ -15,8 +15,10 @@
 """ Conversion script for the LDM checkpoints. """
 
 import argparse
-import torch
 import os
+
+import torch
+
 
 try:
     from omegaconf import OmegaConf
@@ -25,18 +27,18 @@ except ImportError:
         "OmegaConf is required to convert the LDM checkpoints. Please install it with `pip install OmegaConf`."
     )
 
-from transformers import BertTokenizerFast, CLIPTokenizer, CLIPTextModel, AutoFeatureExtractor
 from diffusers import (
-    LDMTextToImagePipeline,
     AutoencoderKL,
-    UNet2DConditionModel,
     DDIMScheduler,
+    LDMTextToImagePipeline,
     LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionPipeline,
+    UNet2DConditionModel,
 )
+from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
-from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertModel, LDMBertConfig
+from transformers import AutoFeatureExtractor, BertTokenizerFast, CLIPTextModel, CLIPTokenizer
 
 
 def shave_segments(path, n_shave_prefix_segments=1):
@@ -545,7 +547,6 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
 
 def convert_ldm_bert_checkpoint(checkpoint, config):
     def _copy_attn_layer(hf_attn_layer, pt_attn_layer):
-
         hf_attn_layer.q_proj.weight.data = pt_attn_layer.to_q.weight
         hf_attn_layer.k_proj.weight.data = pt_attn_layer.to_k.weight
         hf_attn_layer.v_proj.weight.data = pt_attn_layer.to_v.weight
