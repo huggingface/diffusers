@@ -284,7 +284,6 @@ class FlaxModelMixin:
         revision = kwargs.pop("revision", None)
         from_auto_class = kwargs.pop("_from_auto", False)
         subfolder = kwargs.pop("subfolder", None)
-        prng_key = kwargs.pop("prng_key", None)
 
         user_agent = {"file_type": "model", "framework": "flax", "from_auto_class": from_auto_class}
 
@@ -399,7 +398,7 @@ class FlaxModelMixin:
         # flatten dicts
         state = flatten_dict(state)
 
-        prng_key = prng_key if prng_key is not None else jax.random.PRNGKey(0)
+        prng_key = jax.random.PRNGKey(0)
         params_shape_tree = jax.eval_shape(model.init_weights, prng_key)
         required_params = set(flatten_dict(unfreeze(params_shape_tree)).keys())
 
