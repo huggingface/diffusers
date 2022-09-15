@@ -64,6 +64,7 @@ else:
 
 if is_flax_available():
     from .modeling_flax_utils import FlaxModelMixin
+    from .models.unet_2d_condition_flax import FlaxUNet2DConditionModel
     from .schedulers import (
         FlaxDDIMScheduler,
         FlaxDDPMScheduler,
