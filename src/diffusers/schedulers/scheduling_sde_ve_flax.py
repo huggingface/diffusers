@@ -14,7 +14,6 @@
 
 # DISCLAIMER: This file is strongly influenced by https://github.com/yang-song/score_sde_pytorch
 
-import warnings
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
@@ -23,7 +22,6 @@ import jax.numpy as jnp
 from jax import random
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
