@@ -230,10 +230,6 @@ class FlaxModelMixin:
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory in which a downloaded pretrained model configuration should be cached if the
                 standard cache should not be used.
-            ignore_mismatched_sizes (`bool`, *optional*, defaults to `False`):
-                Whether or not to raise an error if some of the weights from the checkpoint do not have the same size
-                as the weights of the model (if for instance, you are instantiating a model with 10 labels from a
-                checkpoint with 3 labels).
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
@@ -275,7 +271,6 @@ class FlaxModelMixin:
         ```"""
         config = kwargs.pop("config", None)
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
-        ignore_mismatched_sizes = kwargs.pop("ignore_mismatched_sizes", False)
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -419,16 +414,10 @@ class FlaxModelMixin:
         mismatched_keys = []
         for key in state.keys():
             if key in shape_state and state[key].shape != shape_state[key].shape:
-                if ignore_mismatched_sizes:
-                    mismatched_keys.append((key, state[key].shape, shape_state[key].shape))
-                    state[key] = shape_state[key]
-                else:
-                    raise ValueError(
-                        f"Trying to load the pretrained weight for {key} failed: checkpoint has shape "
-                        f"{state[key].shape} which is incompatible with the model shape {shape_state[key].shape}. "
-                        "Using `ignore_mismatched_sizes=True` if you really want to load this checkpoint inside this "
-                        "model."
-                    )
+                raise ValueError(
+                    f"Trying to load the pretrained weight for {key} failed: checkpoint has shape "
+                    f"{state[key].shape} which is incompatible with the model shape {shape_state[key].shape}. "
+                )
 
         # remove unexpected keys to not be saved again
         for unexpected_key in unexpected_keys:
