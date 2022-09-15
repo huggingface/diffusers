@@ -184,7 +184,7 @@ class FlaxModelMixin:
         return self._cast_floating_to(params, jnp.float16, mask)
 
     def init_weights(self, rng: jax.random.PRNGKey) -> Dict:
-        raise NotImplementedError(f"init method has to be implemented for {self}")
+        raise NotImplementedError(f"init_weights method has to be implemented for {self}")
 
     @classmethod
     def from_pretrained(
