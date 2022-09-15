@@ -1,21 +1,50 @@
-from typing import Optional, Tuple, Union
+import inspect
+import warnings
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint
 
-from tqdm.auto import tqdm
 from transformers.activations import ACT2FN
 from transformers.configuration_utils import PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutput
 from transformers.modeling_utils import PreTrainedModel
+from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.utils import logging
 
-from ...pipeline_utils import DiffusionPipeline
+from ...models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
+from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 
 
 class LDMTextToImagePipeline(DiffusionPipeline):
-    def __init__(self, vqvae, bert, tokenizer, unet, scheduler):
+    r"""
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    Parameters:
+        vqvae ([`VQModel`]):
+            Vector-quantized (VQ) Model to encode and decode images to and from latent representations.
+        bert ([`LDMBertModel`]):
+            Text-encoder model based on [BERT](ttps://huggingface.co/docs/transformers/model_doc/bert) architecture.
+        tokenizer (`transformers.BertTokenizer`):
+            Tokenizer of class
+            [BertTokenizer](https://huggingface.co/docs/transformers/model_doc/bert#transformers.BertTokenizer).
+        unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
+        scheduler ([`SchedulerMixin`]):
+            A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
+            [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
+    """
+
+    def __init__(
+        self,
+        vqvae: Union[VQModel, AutoencoderKL],
+        bert: PreTrainedModel,
+        tokenizer: PreTrainedTokenizer,
+        unet: Union[UNet2DModel, UNet2DConditionModel],
+        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+    ):
         super().__init__()
         scheduler = scheduler.set_format("pt")
         self.register_modules(vqvae=vqvae, bert=bert, tokenizer=tokenizer, unet=unet, scheduler=scheduler)
@@ -23,43 +52,95 @@ class LDMTextToImagePipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt,
-        batch_size=1,
-        generator=None,
-        torch_device=None,
-        eta=0.0,
-        guidance_scale=1.0,
-        num_inference_steps=50,
-        output_type="pil",
-    ):
-        # eta corresponds to η in paper and should be between [0, 1]
+        prompt: Union[str, List[str]],
+        height: Optional[int] = 256,
+        width: Optional[int] = 256,
+        num_inference_steps: Optional[int] = 50,
+        guidance_scale: Optional[float] = 1.0,
+        eta: Optional[float] = 0.0,
+        generator: Optional[torch.Generator] = None,
+        output_type: Optional[str] = "pil",
+        return_dict: bool = True,
+        **kwargs,
+    ) -> Union[Tuple, ImagePipelineOutput]:
+        r"""
+        Args:
+            prompt (`str` or `List[str]`):
+                The prompt or prompts to guide the image generation.
+            height (`int`, *optional*, defaults to 256):
+                The height in pixels of the generated image.
+            width (`int`, *optional*, defaults to 256):
+                The width in pixels of the generated image.
+            num_inference_steps (`int`, *optional*, defaults to 50):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
+            guidance_scale (`float`, *optional*, defaults to 1.0):
+                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+                `guidance_scale` is defined as `w` of equation 2. of [Imagen
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
+                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt` at
+                the, usually at the expense of lower image quality.
+            generator (`torch.Generator`, *optional*):
+                A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
+                deterministic.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generate image. Choose between
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `nd.array`.
+            return_dict (`bool`, *optional*):
+                Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
 
-        if torch_device is None:
-            torch_device = "cuda" if torch.cuda.is_available() else "cpu"
-        batch_size = len(prompt)
+        Returns:
+            [`~pipeline_utils.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if
+            `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
+            generated images.
+        """
+        if "torch_device" in kwargs:
+            device = kwargs.pop("torch_device")
+            warnings.warn(
+                "`torch_device` is deprecated as an input argument to `__call__` and will be removed in v0.3.0."
+                " Consider using `pipe.to(torch_device)` instead."
+            )
 
-        self.unet.to(torch_device)
-        self.vqvae.to(torch_device)
-        self.bert.to(torch_device)
+            # Set device as before (to be removed in 0.3.0)
+            if device is None:
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.to(device)
+
+        if isinstance(prompt, str):
+            batch_size = 1
+        elif isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        if height % 8 != 0 or width % 8 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         # get unconditional embeddings for classifier free guidance
         if guidance_scale != 1.0:
             uncond_input = self.tokenizer([""] * batch_size, padding="max_length", max_length=77, return_tensors="pt")
-            uncond_embeddings = self.bert(uncond_input.input_ids.to(torch_device))[0]
+            uncond_embeddings = self.bert(uncond_input.input_ids.to(self.device))[0]
 
         # get prompt text embeddings
         text_input = self.tokenizer(prompt, padding="max_length", max_length=77, return_tensors="pt")
-        text_embeddings = self.bert(text_input.input_ids.to(torch_device))[0]
+        text_embeddings = self.bert(text_input.input_ids.to(self.device))[0]
 
         latents = torch.randn(
-            (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
+            (batch_size, self.unet.in_channels, height // 8, width // 8),
             generator=generator,
         )
-        latents = latents.to(torch_device)
+        latents = latents.to(self.device)
 
         self.scheduler.set_timesteps(num_inference_steps)
 
-        for t in tqdm(self.scheduler.timesteps):
+        # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
+        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
+
+        extra_kwargs = {}
+        if accepts_eta:
+            extra_kwargs["eta"] = eta
+
+        for t in self.progress_bar(self.scheduler.timesteps):
             if guidance_scale == 1.0:
                 # guidance_scale of 1 means no guidance
                 latents_input = latents
@@ -72,25 +153,28 @@ class LDMTextToImagePipeline(DiffusionPipeline):
                 context = torch.cat([uncond_embeddings, text_embeddings])
 
             # predict the noise residual
-            noise_pred = self.unet(latents_input, t, encoder_hidden_states=context)["sample"]
+            noise_pred = self.unet(latents_input, t, encoder_hidden_states=context).sample
             # perform guidance
             if guidance_scale != 1.0:
                 noise_pred_uncond, noise_prediction_text = noise_pred.chunk(2)
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_prediction_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, eta=eta)["prev_sample"]
+            latents = self.scheduler.step(noise_pred, t, latents, **extra_kwargs).prev_sample
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
-        image = self.vqvae.decode(latents)
+        image = self.vqvae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
-        return {"sample": image}
+        if not return_dict:
+            return (image,)
+
+        return ImagePipelineOutput(images=image)
 
 
 ################################################################################
@@ -502,7 +586,7 @@ class LDMBertEncoder(LDMBertPreTrainedModel):
                 Whether or not to return the hidden states of all layers. See `hidden_states` under returned tensors
                 for more detail.
             return_dict (`bool`, *optional*):
-                Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
+                Whether or not to return a [`~utils.BaseModelOutput`] instead of a plain tuple.
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -591,7 +675,7 @@ class LDMBertEncoder(LDMBertPreTrainedModel):
 
 
 class LDMBertModel(LDMBertPreTrainedModel):
-    def __init__(self, config):
+    def __init__(self, config: LDMBertConfig):
         super().__init__(config)
         self.model = LDMBertEncoder(config)
         self.to_logits = nn.Linear(config.hidden_size, config.vocab_size)
@@ -607,7 +691,6 @@ class LDMBertModel(LDMBertPreTrainedModel):
         output_hidden_states=None,
         return_dict=None,
     ):
-
         outputs = self.model(
             input_ids,
             attention_mask=attention_mask,

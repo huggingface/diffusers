@@ -19,9 +19,9 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-from diffusers import DiffusionPipeline
 from huggingface_hub import HfFolder, Repository, whoami
 
+from .pipeline_utils import DiffusionPipeline
 from .utils import is_modelcards_available, logging
 
 

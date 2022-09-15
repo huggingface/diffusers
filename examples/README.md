@@ -1,129 +1,62 @@
-## Training examples
+<!---
+Copyright 2022 The HuggingFace Team. All rights reserved.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-Creating a training image set is [described in a different document](https://huggingface.co/docs/datasets/image_process#image-datasets).
+    http://www.apache.org/licenses/LICENSE-2.0
 
-### Installing the dependencies
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
 
-Before running the scipts, make sure to install the library's training dependencies:
+# 🧨 Diffusers Examples
 
+Diffusers examples are a collection of scripts to demonstrate how to effectively use the `diffusers` library
+for a variety of use cases.
+
+**Note**: If you are looking for **official** examples on how to use `diffusers` for inference, 
+please have a look at [src/diffusers/pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines)
+
+Our examples aspire to be **self-contained**, **easy-to-tweak**, **beginner-friendly** and for **one-purpose-only**.
+More specifically, this means:
+
+- **Self-contained**: An example script shall only depend on "pip-install-able" Python packages that can be found in a `requirements.txt` file. Example scripts shall **not** depend on any local files. This means that one can simply download an example script, *e.g.* [train_unconditional.py](https://github.com/huggingface/diffusers/blob/main/examples/unconditional_image_generation/train_unconditional.py), install the required dependencies, *e.g.* [requirements.txt](https://github.com/huggingface/diffusers/blob/main/examples/unconditional_image_generation/requirements.txt) and execute the example script.
+- **Easy-to-tweak**: While we strive to present as many use cases as possible, the example scripts are just that - examples. It is expected that they won't work out-of-the box on your specific problem and that you will be required to change a few lines of code to adapt them to your needs. To help you with that, most of the examples fully expose the preprocessing of the data and the training loop to allow you to tweak and edit them as required.
+- **Beginner-friendly**: We do not aim for providing state-of-the-art training scripts for the newest models, but rather examples that can be used as a way to better understand diffusion models and how to use them with the `diffusers` library. We often purposefully leave out certain state-of-the-art methods if we consider them too complex for beginners.
+- **One-purpose-only**: Examples should show one task and one task only. Even if a task is from a modeling 
+point of view very similar, *e.g.* image super-resolution and image modification tend to use the same model and training method, we want examples to showcase only one task to keep them as readable and easy-to-understand as possible.
+
+We provide **official** examples that cover the most popular tasks of diffusion models.
+*Official* examples are **actively** maintained by the `diffusers` maintainers and we try to rigorously follow our example philosophy as defined above. 
+If you feel like another important example should exist, we are more than happy to welcome a [Feature Request](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feature_request.md&title=) or directly a [Pull Request](https://github.com/huggingface/diffusers/compare) from you!
+
+Training examples show how to pretrain or fine-tune diffusion models for a variety of tasks. Currently we support:
+
+| Task | 🤗 Accelerate | 🤗 Datasets | Colab
+|---|---|:---:|:---:|
+| [**Unconditional Image Generation**](https://github.com/huggingface/transformers/tree/main/examples/training/train_unconditional.py) | ✅ | ✅ | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb)
+
+## Community
+
+In addition, we provide **community** examples, which are examples added and maintained by our community.
+Community examples can consist of both *training* examples or *inference* pipelines.
+For such examples, we are more lenient regarding the philosophy defined above and also cannot guarantee to provide maintenance for every issue.
+Examples that are useful for the community, but are either not yet deemed popular or not yet following our above philosophy should go into the [community examples](https://github.com/huggingface/diffusers/tree/main/examples/community) folder. The community folder therefore includes training examples and inference pipelines.
+**Note**: Community examples can be a [great first contribution](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) to show to the community how you like to use `diffusers` 🪄.
+
+## Important note
+
+To make sure you can successfully run the latest versions of the example scripts, you have to **install the library from source** and install some example-specific requirements. To do this, execute the following steps in a new virtual environment:
 ```bash
-pip install diffusers[training] accelerate datasets
+git clone https://github.com/huggingface/diffusers
+cd diffusers
+pip install .
 ```
-
-And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
-
+Then cd in the example folder of your choice and run
 ```bash
-accelerate config
+pip install -r requirements.txt
 ```
-
-### Unconditional Flowers  
-
-The command to train a DDPM UNet model on the Oxford Flowers dataset:
-
-```bash
-accelerate launch train_unconditional.py \
-  --dataset_name="huggan/flowers-102-categories" \
-  --resolution=64 \
-  --output_dir="ddpm-ema-flowers-64" \
-  --train_batch_size=16 \
-  --num_epochs=100 \
-  --gradient_accumulation_steps=1 \
-  --learning_rate=1e-4 \
-  --lr_warmup_steps=500 \
-  --mixed_precision=no \
-  --push_to_hub
-```
-An example trained model: https://huggingface.co/anton-l/ddpm-ema-flowers-64
-
-A full training run takes 2 hours on 4xV100 GPUs.
-
-<img src="https://user-images.githubusercontent.com/26864830/180248660-a0b143d0-b89a-42c5-8656-2ebf6ece7e52.png" width="700" />
-
-
-### Unconditional Pokemon 
-
-The command to train a DDPM UNet model on the Pokemon dataset:
-
-```bash
-accelerate launch train_unconditional.py \
-  --dataset_name="huggan/pokemon" \
-  --resolution=64 \
-  --output_dir="ddpm-ema-pokemon-64" \
-  --train_batch_size=16 \
-  --num_epochs=100 \
-  --gradient_accumulation_steps=1 \
-  --learning_rate=1e-4 \
-  --lr_warmup_steps=500 \
-  --mixed_precision=no \
-  --push_to_hub
-```
-An example trained model: https://huggingface.co/anton-l/ddpm-ema-pokemon-64
-
-A full training run takes 2 hours on 4xV100 GPUs.
-
-<img src="https://user-images.githubusercontent.com/26864830/180248200-928953b4-db38-48db-b0c6-8b740fe6786f.png" width="700" />
-
-
-### Using your own data
-
-To use your own dataset, there are 2 ways:
-- you can either provide your own folder as `--train_data_dir`
-- or you can upload your dataset to the hub (possibly as a private repo, if you prefer so), and simply pass the `--dataset_name` argument.
-
-Below, we explain both in more detail.
-
-#### Provide the dataset as a folder
-
-If you provide your own folders with images, the script expects the following directory structure:
-
-```bash
-data_dir/xxx.png
-data_dir/xxy.png
-data_dir/[...]/xxz.png
-```
-
-In other words, the script will take care of gathering all images inside the folder. You can then run the script like this:
-
-```bash
-accelerate launch train_unconditional.py \
-    --train_data_dir <path-to-train-directory> \
-    <other-arguments>
-```
-
-Internally, the script will use the [`ImageFolder`](https://huggingface.co/docs/datasets/v2.0.0/en/image_process#imagefolder) feature which will automatically turn the folders into 🤗 Dataset objects.
-
-#### Upload your data to the hub, as a (possibly private) repo
-
-It's very easy (and convenient) to upload your image dataset to the hub using the [`ImageFolder`](https://huggingface.co/docs/datasets/v2.0.0/en/image_process#imagefolder) feature available in 🤗 Datasets. Simply do the following:
-
-```python
-from datasets import load_dataset
-
-# example 1: local folder
-dataset = load_dataset("imagefolder", data_dir="path_to_your_folder")
-
-# example 2: local files (suppoted formats are tar, gzip, zip, xz, rar, zstd)
-dataset = load_dataset("imagefolder", data_files="path_to_zip_file")
-
-# example 3: remote files (supported formats are tar, gzip, zip, xz, rar, zstd)
-dataset = load_dataset("imagefolder", data_files="https://download.microsoft.com/download/3/E/1/3E1C3F21-ECDB-4869-8368-6DEBA77B919F/kagglecatsanddogs_3367a.zip")
-
-# example 4: providing several splits
-dataset = load_dataset("imagefolder", data_files={"train": ["path/to/file1", "path/to/file2"], "test": ["path/to/file3", "path/to/file4"]})
-```
-
-`ImageFolder` will create an `image` column containing the PIL-encoded images.
-
-Next, push it to the hub!
-
-```python
-# assuming you have ran the huggingface-cli login command in a terminal
-dataset.push_to_hub("name_of_your_dataset")
-
-# if you want to push to a private repo, simply pass private=True:
-dataset.push_to_hub("name_of_your_dataset", private=True)
-```
-
-and that's it! You can now train your model by simply setting the `--dataset_name` argument to the name of your dataset on the hub.
-
-More on this can also be found in [this blog post](https://huggingface.co/blog/image-search-datasets).
