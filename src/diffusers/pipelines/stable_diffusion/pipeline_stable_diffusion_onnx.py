@@ -1,5 +1,5 @@
 import inspect
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import numpy as np
 
@@ -53,6 +53,8 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
         latents: Optional[np.ndarray] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        callback: Optional[Callable] = None,
+        callback_frequency: Optional[int] = None,
         **kwargs,
     ):
         if isinstance(prompt, str):
@@ -64,6 +66,11 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
 
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+
+        if callback_frequency is not None and (callback_frequency <= 0 or not isinstance(callback_frequency, int)):
+            raise ValueError(
+                f"`callback_frequency` has to be a positive integer but is {callback_frequency} of type {type(callback_frequency)}."
+            )
 
         # get prompt text embeddings
         text_input = self.tokenizer(
@@ -144,6 +151,18 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
                 latents = self.scheduler.step(noise_pred, i, latents, **extra_step_kwargs).prev_sample
             else:
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+
+            # call the callback, if provided
+            if callback is not None:
+                if (callback_frequency is None) or (callback_frequency is not None and i % callback_frequency == 0):
+                    # scale and decode the image latents with vae
+                    current_latents = 1 / 0.18215 * latents
+                    image = self.vae_decoder(latent_sample=current_latents)[0]
+
+                    image = np.clip(image / 2 + 0.5, 0, 1)
+                    image = image.transpose((0, 2, 3, 1))
+                    image = self.numpy_to_pil(image)
+                    callback(i, image)
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents

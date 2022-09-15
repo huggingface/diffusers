@@ -1,6 +1,6 @@
 import inspect
 import warnings
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import torch
 
@@ -103,6 +103,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        callback: Optional[Callable] = None,
+        callback_frequency: Optional[int] = None,
         **kwargs,
     ):
         r"""
@@ -140,6 +142,12 @@ class StableDiffusionPipeline(DiffusionPipeline):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
+            callback (`Callable`, *optional*):
+                A function that will be called every `callback_frequency` steps during inference. The function will be
+                called with the following arguments: `callback(step: int, image: List[PIL.Image.Image])`.
+            callback_frequency (`int`, *optional*):
+                The frequency at which the `callback` function will be called. If `None`, the callback will be called
+                after every step.
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
@@ -170,6 +178,11 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+
+        if callback_frequency is not None and (callback_frequency <= 0 or not isinstance(callback_frequency, int)):
+            raise ValueError(
+                f"`callback_frequency` has to be a positive integer but is {callback_frequency} of type {type(callback_frequency)}."
+            )
 
         # get prompt text embeddings
         text_input = self.tokenizer(
@@ -258,6 +271,18 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 latents = self.scheduler.step(noise_pred, i, latents, **extra_step_kwargs).prev_sample
             else:
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+
+            # call the callback, if provided
+            if callback is not None:
+                if (callback_frequency is None) or (callback_frequency is not None and i % callback_frequency == 0):
+                    # scale and decode the image latents with vae
+                    current_latents = 1 / 0.18215 * latents
+                    image = self.vae.decode(current_latents).sample
+
+                    image = (image / 2 + 0.5).clamp(0, 1)
+                    image = image.cpu().permute(0, 2, 3, 1).numpy()
+                    image = self.numpy_to_pil(image)
+                    callback(i, image)
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents

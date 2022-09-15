@@ -1,5 +1,5 @@
 import inspect
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import numpy as np
 import torch
@@ -133,6 +133,8 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        callback: Optional[Callable] = None,
+        callback_frequency: Optional[int] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -173,6 +175,12 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
+            callback (`Callable`, *optional*):
+                A function that will be called every `callback_frequency` steps during inference. The function will be
+                called with the following arguments: `callback(step: int, image: List[PIL.Image.Image])`.
+            callback_frequency (`int`, *optional*):
+                The frequency at which the `callback` function will be called. If `None`, the callback will be called
+                after every step.
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
@@ -190,6 +198,11 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
+
+        if callback_frequency is not None and (callback_frequency <= 0 or not isinstance(callback_frequency, int)):
+            raise ValueError(
+                f"`callback_frequency` has to be a positive integer but is {callback_frequency} of type {type(callback_frequency)}."
+            )
 
         # set timesteps
         accepts_offset = "offset" in set(inspect.signature(self.scheduler.set_timesteps).parameters.keys())
@@ -288,6 +301,18 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             # masking
             init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, t)
             latents = (init_latents_proper * mask) + (latents * (1 - mask))
+
+            # call the callback, if provided
+            if callback is not None:
+                if (callback_frequency is None) or (callback_frequency is not None and i % callback_frequency == 0):
+                    # scale and decode the image latents with vae
+                    current_latents = 1 / 0.18215 * latents
+                    image = self.vae.decode(current_latents).sample
+
+                    image = (image / 2 + 0.5).clamp(0, 1)
+                    image = image.cpu().permute(0, 2, 3, 1).numpy()
+                    image = self.numpy_to_pil(image)
+                    callback(i, image)
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
