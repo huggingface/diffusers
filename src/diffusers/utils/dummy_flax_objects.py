@@ -44,3 +44,10 @@ class FlaxPNDMScheduler(metaclass=DummyObject):
 
     def __init__(self, *args, **kwargs):
         requires_backends(self, ["flax"])
+
+
+class FlaxScoreSdeVeScheduler(metaclass=DummyObject):
+    _backends = ["flax"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["flax"])
