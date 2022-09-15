@@ -123,14 +123,14 @@ class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
-        timesteps = jnp.linspace(state.num_train_timesteps - 1, 0, num_inference_steps, dtype=jnp.float32)
+        timesteps = jnp.linspace(self.config.num_train_timesteps - 1, 0, num_inference_steps, dtype=jnp.float32)
 
-        low_idx = jnp.floor(timesteps).astype(jnp.int)
-        high_idx = jnp.ceil(timesteps).astype(jnp.int)
+        low_idx = jnp.floor(timesteps).astype(int)
+        high_idx = jnp.ceil(timesteps).astype(int)
         frac = jnp.mod(timesteps, 1.0)
         sigmas = jnp.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         sigmas = (1 - frac) * sigmas[low_idx] + frac * sigmas[high_idx]
-        sigmas = jnp.concatenate([sigmas, [0.0]]).astype(jnp.float32)
+        sigmas = jnp.concatenate([sigmas, jnp.array([0.0])]).astype(jnp.float32)
 
         return state.replace(
             num_inference_steps=num_inference_steps,
