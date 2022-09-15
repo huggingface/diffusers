@@ -866,7 +866,6 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
             "beta_end": 0.02,
             "beta_schedule": "linear",
             "trained_betas": None,
-            "timestep_values": None,
             "tensor_format": "pt",
         }
 
