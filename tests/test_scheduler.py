@@ -814,7 +814,7 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
         for i, t in enumerate(scheduler.timesteps):
             sigma_t = scheduler.sigmas[i]
 
-            for _ in range(scheduler.correct_steps):
+            for _ in range(scheduler.config.correct_steps):
                 with torch.no_grad():
                     model_output = model(sample, sigma_t)
                 sample = scheduler.step_correct(model_output, sample, generator=generator, **kwargs).prev_sample
