@@ -1,4 +1,5 @@
-from typing import Tuple
+from dataclasses import dataclass
+from typing import Tuple, Union
 
 import flax.linen as nn
 from flax.core.frozen_dict import FrozenDict
@@ -8,6 +9,8 @@ import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, flax_register_to_config
 from ..modeling_flax_utils import FlaxModelMixin
+from ..utils import BaseOutput
+
 from .embeddings_flax import FlaxTimestepEmbedding, FlaxTimesteps
 from .unet_blocks_flax import (
     FlaxCrossAttnDownBlock2D,
@@ -16,6 +19,16 @@ from .unet_blocks_flax import (
     FlaxUNetMidBlock2DCrossAttn,
     FlaxUpBlock2D,
 )
+
+@dataclass
+class FlaxUNet2DConditionOutput(BaseOutput):
+    """
+    Args:
+        sample (`jnp.ndarray` of shape `(batch_size, num_channels, height, width)`):
+            Hidden states conditioned on `encoder_hidden_states` input. Output of last layer of model.
+    """
+
+    sample: jnp.ndarray
 
 
 @flax_register_to_config
@@ -178,18 +191,23 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         sample,
         timesteps,
         encoder_hidden_states,
+        return_dict: bool = True,
         train: bool = False,
-    ):
+    ) -> Union[FlaxUNet2DConditionOutput, Tuple]:
         """r
         Args:
             sample (`jnp.ndarray`): (channel, height, width) noisy inputs tensor
             timestep (`jnp.ndarray` or `float` or `int`): timesteps
             encoder_hidden_states (`jnp.ndarray`): (channel, height, width) encoder hidden states
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] instead of a plain tuple.
             train (`bool`, *optional*, defaults to `False`):
                 Use deterministic functions and disable dropout when not training.
 
         Returns:
-            `jnp.ndarray` sample.
+            [`~models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] or `tuple`:
+            [`~models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            returning a tuple, the first element is the sample tensor.
         """
         # 1. time
         t_emb = self.time_proj(timesteps)
@@ -230,4 +248,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         sample = nn.silu(sample)
         sample = self.conv_out(sample)
 
-        return sample
+        if not return_dict:
+            return (sample,)
+
+        return FlaxUNet2DConditionOutput(sample=sample)
