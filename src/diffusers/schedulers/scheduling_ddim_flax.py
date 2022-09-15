@@ -27,7 +27,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
-def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
+def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> jnp.ndarray:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
@@ -42,7 +42,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
                      prevent singularities.
 
     Returns:
-        betas (`jnp.array`): the betas used by the scheduler to step the model outputs
+        betas (`jnp.ndarray`): the betas used by the scheduler to step the model outputs
     """
 
     def alpha_bar(time_step):
@@ -59,7 +59,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
 @flax.struct.dataclass
 class DDIMSchedulerState:
     # setable values
-    timesteps: jnp.array
+    timesteps: jnp.ndarray
     num_inference_steps: Optional[int] = None
 
     @classmethod
@@ -91,7 +91,7 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule (`str`):
             the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
-        trained_betas (`jnp.array`, optional):
+        trained_betas (`jnp.ndarray`, optional):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
         clip_sample (`bool`, default `True`):
             option to clip predicted sample between -1 and 1 for numerical stability.
@@ -106,7 +106,7 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[jnp.array] = None,
+        trained_betas: Optional[jnp.ndarray] = None,
         clip_sample: bool = True,
         set_alpha_to_one: bool = True,
     ):

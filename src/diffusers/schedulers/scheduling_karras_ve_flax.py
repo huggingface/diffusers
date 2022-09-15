@@ -29,8 +29,8 @@ from .scheduling_utils import SchedulerMixin
 class KarrasVeSchedulerState:
     # setable values
     num_inference_steps: Optional[int] = None
-    timesteps: Optional[jnp.array] = None
-    schedule: Optional[jnp.array] = None  # sigma(t_i)
+    timesteps: Optional[jnp.ndarray] = None
+    schedule: Optional[jnp.ndarray] = None  # sigma(t_i)
 
     @classmethod
     def create(cls):

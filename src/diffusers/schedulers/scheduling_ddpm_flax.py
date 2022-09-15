@@ -26,7 +26,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
-def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
+def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> jnp.ndarray:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
@@ -41,7 +41,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
                      prevent singularities.
 
     Returns:
-        betas (`jnp.array`): the betas used by the scheduler to step the model outputs
+        betas (`jnp.ndarray`): the betas used by the scheduler to step the model outputs
     """
 
     def alpha_bar(time_step):
@@ -58,7 +58,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
 @flax.struct.dataclass
 class DDPMSchedulerState:
     # setable values
-    timesteps: jnp.array
+    timesteps: jnp.ndarray
     num_inference_steps: Optional[int] = None
 
     @classmethod
@@ -108,7 +108,7 @@ class FlaxDDPMScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[jnp.array] = None,
+        trained_betas: Optional[jnp.ndarray] = None,
         variance_type: str = "fixed_small",
         clip_sample: bool = True,
     ):
