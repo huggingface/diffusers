@@ -22,7 +22,6 @@ from torch import nn
 
 import xformers
 import xformers.ops
-from einops import rearrange
 
 
 _USE_MEMORY_EFFICIENT_ATTENTION = int(os.environ.get("USE_MEMORY_EFFICIENT_ATTENTION", 0)) == 1
@@ -241,6 +240,7 @@ class MemoryEfficientCrossAttention(nn.Module):
 
         self.scale = dim_head**-0.5
         self.heads = heads
+        self.dim_head = dim_head
 
         self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
         self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
@@ -273,15 +273,18 @@ class MemoryEfficientCrossAttention(nn.Module):
             raise NotImplementedError(f"Please install xformers with the flash attention / cutlass components.\n{err}")
 
     def forward(self, x, context=None, mask=None):
-        h = self.heads
-
         q = self.to_q(x)
         context = default(context, x)
         k = self.to_k(context)
         v = self.to_v(context)
 
+        b, _, _ = q.shape
         q, k, v = map(
-            lambda t: rearrange(t, "b n (h d) -> (b h) n d", h=h).contiguous(),
+            lambda t: t.unsqueeze(3)
+            .reshape(b, t.shape[1], self.heads, self.dim_head)
+            .permute(0, 2, 1, 3)
+            .reshape(b * self.heads, t.shape[1], self.dim_head)
+            .contiguous(),
             (q, k, v),
         )
 
@@ -294,12 +297,12 @@ class MemoryEfficientCrossAttention(nn.Module):
         # TODO: Use this directly in the attention operation, as a bias
         if exists(mask):
             raise NotImplementedError
-            # mask = rearrange(mask, "b ... -> b (...)")
-            # max_neg_value = -torch.finfo(sim.dtype).max
-            # mask = repeat(mask, "b j -> (b h) () j", h=h)
-            # sim.masked_fill_(~mask, max_neg_value)
-
-        out = rearrange(out, "(b h) n d -> b n (h d)", h=h)
+        out = (
+            out.unsqueeze(0)
+            .reshape(b, self.heads, out.shape[1], self.dim_head)
+            .permute(0, 2, 1, 3)
+            .reshape(b, out.shape[1], self.heads * self.dim_head)
+        )
         return self.to_out(out)
 
 
