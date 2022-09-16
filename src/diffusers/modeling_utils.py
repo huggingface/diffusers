@@ -359,12 +359,8 @@ class ModelMixin(torch.nn.Module):
                     device_map=device_map,
                     **kwargs,
                 )
-            
-            accelerate.load_checkpoint_and_dispatch(
-                model,
-                model_file,
-                device_map
-            )
+
+            accelerate.load_checkpoint_and_dispatch(model, model_file, device_map)
 
             loading_info = {
                 "missing_keys": [],
@@ -387,7 +383,7 @@ class ModelMixin(torch.nn.Module):
                 device_map=device_map,
                 **kwargs,
             )
-            
+
             state_dict = load_state_dict(model_file)
             model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
                 model,
@@ -412,7 +408,7 @@ class ModelMixin(torch.nn.Module):
             model = model.to(torch_dtype)
 
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
-        
+
         # Set model in evaluation mode to deactivate DropOut modules by default
         model.eval()
         if output_loading_info:
