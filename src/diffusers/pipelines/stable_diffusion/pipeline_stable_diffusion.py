@@ -1,6 +1,6 @@
+import gc
 import inspect
 import warnings
-import gc
 from typing import List, Optional, Union
 
 import torch
@@ -159,7 +159,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         """
 
         if "torch_device" in kwargs:
-            device = kwargs.pop("torch_device")
+            # device = kwargs.pop("torch_device")
             warnings.warn(
                 "`torch_device` is deprecated as an input argument to `__call__` and will be removed in v0.3.0."
                 " Consider using `pipe.to(torch_device)` instead."
