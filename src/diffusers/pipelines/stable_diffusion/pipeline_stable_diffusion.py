@@ -123,7 +123,6 @@ class StableDiffusionPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         output_latents: bool = False,
-        run_safety_checker: bool = True,
         enable_grad: bool = False,
         **kwargs,
     ):
@@ -166,8 +165,6 @@ class StableDiffusionPipeline(DiffusionPipeline):
             output_latents (`bool`, *optional*, defaults to `False`):
                 Whether or not to return the latents from all the diffusion steps. See `latents` under returned tensors
                 for more details.
-            run_safety_checker (`bool`, *optional*, defaults to `True`):
-                Whether or not to return run the safety checker in the final generated image.
             enable_grad (`bool`, *optional*, defaults to `False`):
                 Whether or not to enable gradient calculation during diffusion process.
 
