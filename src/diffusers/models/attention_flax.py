@@ -168,13 +168,27 @@ class FlaxGluFeedForward(nn.Module):
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
-        inner_dim = self.dim * 4
-        self.net_0 = nn.Dense(inner_dim * 2, dtype=self.dtype)
-        self.net_1 = nn.Dense(self.dim, dtype=self.dtype)
+        # The second linear layer needs to be called
+        # net_2 for now to match the index of the Sequential layer
+        self.net_0 = FlaxGEGLU(self.dim, self.dropout, self.dtype)
+        self.net_2 = nn.Dense(self.dim, dtype=self.dtype)
 
     def __call__(self, hidden_states, deterministic=True):
         hidden_states = self.net_0(hidden_states)
-        hidden_linear, hidden_gelu = jnp.split(hidden_states, 2, axis=2)
-        hidden_states = hidden_linear * nn.gelu(hidden_gelu)
-        hidden_states = self.net_1(hidden_states)
+        hidden_states = self.net_2(hidden_states)
         return hidden_states
+
+
+class FlaxGEGLU(nn.Module):
+    dim: int
+    dropout: float = 0.0
+    dtype: jnp.dtype = jnp.float32
+
+    def setup(self):
+        inner_dim = self.dim * 4
+        self.proj = nn.Dense(inner_dim * 2, dtype=self.dtype)
+
+    def __call__(self, hidden_states, deterministic=True):
+        hidden_states = self.proj(hidden_states)
+        hidden_linear, hidden_gelu = jnp.split(hidden_states, 2, axis=2)
+        return hidden_linear * nn.gelu(hidden_gelu)
