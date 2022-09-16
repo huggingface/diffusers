@@ -1139,10 +1139,11 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_text2img_pipeline(self):
-        output_image = load_image(
+        expected_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/text2img/astronaut_riding_a_horse.png"
         )
+        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionPipeline.from_pretrained(
@@ -1150,22 +1151,20 @@ class PipelineTesterMixin(unittest.TestCase):
             use_auth_token=True,
         )
         pipe.to(torch_device)
-        pipe.enable_attention_slicing()
         pipe.set_progress_bar_config(disable=None)
+        pipe.safety_checker = lambda x, y: x, [False]
+        pipe.enable_attention_slicing()
 
         prompt = "astronaut riding a horse"
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        with torch.autocast("cuda"):
-            output = pipe(prompt=prompt, strength=0.75, guidance_scale=7.5, generator=generator)
+        output = pipe(prompt=prompt, strength=0.75, guidance_scale=7.5, generator=generator, output_type="np")
         image = output.images[0]
 
-        expected_array = np.array(output_image, dtype=np.int32)
-        sampled_array = np.array(image, dtype=np.int32)
+        Image.fromarray((image * 255).round().astype("uint8")).save("astronaut_riding_a_horse.png")
 
-        assert sampled_array.shape == (512, 512, 3)
-        # using the mean absolute error due to slightly inconsistent outputs across different GPUs
-        assert np.mean(np.abs(sampled_array - expected_array)) < 2.0
+        assert image.shape == (512, 512, 3)
+        assert np.abs(expected_image - image).max() < 1e-3
 
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
