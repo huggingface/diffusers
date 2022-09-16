@@ -14,9 +14,6 @@
 # limitations under the License.
 """ PyTorch - Flax general utilities."""
 import re
-from typing import Tuple
-
-import numpy as np
 
 import jax.numpy as jnp
 from flax.traverse_util import flatten_dict, unflatten_dict
@@ -40,23 +37,29 @@ def rename_key(key):
 # PyTorch => Flax #
 #####################
 
-# Inspired from https://github.com/huggingface/transformers/blob/c603c80f46881ae18b2ca50770ef65fa4033eacd/src/transformers/modeling_flax_pytorch_utils.py#L69
-def rename_key_and_reshape_tensor(
-    pt_tuple_key: Tuple[str],
-    pt_tensor: np.ndarray,
-) -> (Tuple[str], np.ndarray):
+# Adapted from https://github.com/huggingface/transformers/blob/c603c80f46881ae18b2ca50770ef65fa4033eacd/src/transformers/modeling_flax_pytorch_utils.py#L69
+# and https://github.com/patil-suraj/stable-diffusion-jax/blob/main/stable_diffusion_jax/convert_diffusers_to_jax.py
+def rename_key_and_reshape_tensor(pt_tuple_key, pt_tensor, random_flax_state_dict):
     """Rename PT weight names to corresponding Flax weight names and reshape tensor if necessary"""
 
-    # # conv norm or layer norm
-    # This is not really stable since any module that has the name 'scale'
-    # Will be affected. Maybe just check pt_tuple_key[-2] ?
+    # conv norm or layer norm
     renamed_pt_tuple_key = pt_tuple_key[:-1] + ("scale",)
-    if any("norm" in str_ for str_ in pt_tuple_key) and pt_tuple_key[-1] == "weight":
+    if (
+        any("norm" in str_ for str_ in pt_tuple_key)
+        and (pt_tuple_key[-1] == "bias")
+        and (pt_tuple_key[:-1] + ("bias",) not in random_flax_state_dict)
+        and (pt_tuple_key[:-1] + ("scale",) in random_flax_state_dict)
+    ):
+        renamed_pt_tuple_key = pt_tuple_key[:-1] + ("scale",)
+        return renamed_pt_tuple_key, pt_tensor
+    elif pt_tuple_key[-1] in ["weight", "gamma"] and pt_tuple_key[:-1] + ("scale",) in random_flax_state_dict:
+        renamed_pt_tuple_key = pt_tuple_key[:-1] + ("scale",)
         return renamed_pt_tuple_key, pt_tensor
 
     # embedding
-    # For now the embedding layers are not converted
-    # TODO: figure out how to detect embedding layers
+    if pt_tuple_key[-1] == "weight" and pt_tuple_key[:-1] + ("embedding",) in random_flax_state_dict:
+        pt_tuple_key = pt_tuple_key[:-1] + ("embedding",)
+        return renamed_pt_tuple_key, pt_tensor
 
     # conv layer
     renamed_pt_tuple_key = pt_tuple_key[:-1] + ("kernel",)
@@ -99,7 +102,7 @@ def convert_pytorch_state_dict_to_flax(pt_state_dict, flax_model, init_key=42):
         pt_tuple_key = tuple(renamed_pt_key.split("."))
 
         # Correctly rename weight parameters
-        flax_key, flax_tensor = rename_key_and_reshape_tensor(pt_tuple_key, pt_tensor)
+        flax_key, flax_tensor = rename_key_and_reshape_tensor(pt_tuple_key, pt_tensor, random_flax_state_dict)
 
         if flax_key in random_flax_state_dict:
             if flax_tensor.shape != random_flax_state_dict[flax_key].shape:
