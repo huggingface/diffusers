@@ -315,7 +315,7 @@ class FlaxModelMixin:
                         f"Error no file named {WEIGHTS_NAME} found in directory {pretrained_model_name_or_path} "
                     )
                 model_file = os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)
-            if os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME):
+            elif os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME):
                 raise EnvironmentError(
                     f"{WEIGHTS_NAME} file found in directory {pretrained_model_name_or_path}. Please load the model"
                     " using  `from_pt=True`."
