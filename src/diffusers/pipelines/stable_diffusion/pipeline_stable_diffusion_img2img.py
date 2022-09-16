@@ -131,8 +131,8 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 Images to run the safety checker on.
 
         Returns:
-            image (`np.ndarray`): Images that has been processed by the safety checker.
-            has_nsfw_concept (`List[bool]`): Boolean array indicating whether the images contain NSFW content.
+            `Tuple[np.ndarray, List[bool]]`: The first element contains the images that has been processed by the
+            safety checker. The second element is a boolean array indicating whether the images contain NSFW content.
         """
         safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
         image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
@@ -193,8 +193,8 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_frequency` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: np.ndarray, latents: torch.FloatTensor,
-                image: Union[List[PIL.Image.Image], np.ndarray])`.
+                called with the following arguments: `callback(step: int, timestep: np.ndarray, latents:
+                torch.FloatTensor, image: Union[List[PIL.Image.Image], np.ndarray])`.
             callback_frequency (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
