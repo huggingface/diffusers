@@ -16,6 +16,7 @@
 import math
 import unittest
 import gc
+import tracemalloc
 
 import torch
 
@@ -134,6 +135,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
 
         assert image is not None, "Make sure output is not None"
 
+    @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
     def test_from_pretrained_accelerate(self):
         model, _ = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", output_loading_info=True, device_map="auto")
         model.to(torch_device)
@@ -141,6 +143,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
 
         assert image is not None, "Make sure output is not None"
 
+    @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
     def test_from_pretrained_accelerate_wont_change_results(self):
         model_accelerate, _ = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", output_loading_info=True, device_map="auto")
         model_accelerate.to(torch_device)
@@ -169,6 +172,31 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         arr_normal_load = model_normal_load(noise, time_step)["sample"]
         
         assert torch.allclose(arr_accelerate["sample"], arr_normal_load, rtol=1e-3)
+
+    @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
+    def test_memory_footprint_gets_reduced(self):
+        torch.cuda.empty_cache()
+        gc.collect()
+        
+        tracemalloc.start()
+        model_accelerate, _ = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", output_loading_info=True, device_map="auto")
+        model_accelerate.to(torch_device)
+        model_accelerate.eval()
+        _, peak_accelerate =  tracemalloc.get_traced_memory()
+
+
+        del model_accelerate
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        model_normal_load, _ = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", output_loading_info=True)
+        model_normal_load.to(torch_device)
+        model_normal_load.eval()
+        _, peak_normal =  tracemalloc.get_traced_memory()
+
+        tracemalloc.stop()
+
+        assert peak_accelerate < peak_normal
 
     def test_output_pretrained(self):
         model = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update")
