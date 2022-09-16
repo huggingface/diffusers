@@ -1208,8 +1208,6 @@ class PipelineTesterMixin(unittest.TestCase):
         )
         image = output.images[0]
 
-        Image.fromarray((image * 255).round().astype("uint8")).save("fantasy_landscape.png")
-
         assert image.shape == (512, 768, 3)
         # img2img is flaky across GPUs even in fp32, so using MAE here
         assert np.abs(expected_image - image).mean() < 1e-2
@@ -1253,8 +1251,6 @@ class PipelineTesterMixin(unittest.TestCase):
             output_type="np",
         )
         image = output.images[0]
-
-        Image.fromarray((image * 255).round().astype("uint8")).save("fantasy_landscape_k_lms.png")
 
         assert image.shape == (512, 768, 3)
         # img2img is flaky across GPUs even in fp32, so using MAE here
@@ -1300,8 +1296,6 @@ class PipelineTesterMixin(unittest.TestCase):
             output_type="np",
         )
         image = output.images[0]
-
-        Image.fromarray((image * 255).round().astype("uint8")).save("red_cat_sitting_on_a_park_bench.png")
 
         assert image.shape == (512, 512, 3)
         assert np.abs(expected_image - image).max() < 1e-2
