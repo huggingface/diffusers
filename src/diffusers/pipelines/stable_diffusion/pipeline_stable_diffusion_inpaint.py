@@ -1,5 +1,5 @@
 import inspect
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -121,6 +121,43 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         self.enable_attention_slicing(None)
 
     @torch.no_grad()
+    def decode_latents(self, latents: torch.FloatTensor) -> np.ndarray:
+        r"""
+        Scale and decode the latent representations into images using the VAE.
+
+        Args:
+            latents (`torch.FloatTensor`):
+                Latent representations to decode into images.
+
+        Returns:
+            `np.ndarray`: Decoded images.
+        """
+        latents = 1 / 0.18215 * latents
+        image = self.vae.decode(latents).sample
+
+        image = (image / 2 + 0.5).clamp(0, 1)
+        image = image.cpu().permute(0, 2, 3, 1).numpy()
+        return image
+
+    @torch.no_grad()
+    def run_safety_checker(self, image: np.ndarray) -> Tuple[np.ndarray, List[bool]]:
+        r"""
+        Run the safety checker on the generated images. If potential NSFW content was detected, a warning will be
+        raised and a black image will be returned instead.
+
+        Args:
+            image (`np.ndarray`):
+                Images to run the safety checker on.
+
+        Returns:
+            image (`np.ndarray`): Images that has been processed by the safety checker.
+            has_nsfw_concept (`List[bool]`): Boolean array indicating whether the images contain NSFW content.
+        """
+        safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
+        image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
+        return image, has_nsfw_concept
+
+    @torch.no_grad()
     def __call__(
         self,
         prompt: Union[str, List[str]],
@@ -133,8 +170,10 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable] = None,
-        callback_frequency: Optional[int] = None,
+        callback: Optional[
+            Callable[[int, np.ndarray, torch.FloatTensor, Union[List[PIL.Image.Image], np.ndarray]], None]
+        ] = None,
+        callback_frequency: Optional[int] = 1,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -177,10 +216,11 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_frequency` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, image: List[PIL.Image.Image])`.
-            callback_frequency (`int`, *optional*):
-                The frequency at which the `callback` function will be called. If `None`, the callback will be called
-                after every step.
+                called with the following arguments: `callback(step: int, timestep: np.ndarray, latents: torch.FloatTensor,
+                image: Union[List[PIL.Image.Image], np.ndarray])`.
+            callback_frequency (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function will be called. If not specified, the callback will be
+                called at every step.
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
@@ -199,7 +239,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
-        if callback_frequency is not None and (callback_frequency <= 0 or not isinstance(callback_frequency, int)):
+        if (callback_frequency is None) or (
+            callback_frequency is not None and (not isinstance(callback_frequency, int) or callback_frequency <= 0)
+        ):
             raise ValueError(
                 f"`callback_frequency` has to be a positive integer but is {callback_frequency} of type"
                 f" {type(callback_frequency)}."
@@ -304,27 +346,16 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             latents = (init_latents_proper * mask) + (latents * (1 - mask))
 
             # call the callback, if provided
-            if callback is not None:
-                if (callback_frequency is None) or (callback_frequency is not None and i % callback_frequency == 0):
-                    # scale and decode the image latents with vae
-                    current_latents = 1 / 0.18215 * latents
-                    image = self.vae.decode(current_latents).sample
-
-                    image = (image / 2 + 0.5).clamp(0, 1)
-                    image = image.cpu().permute(0, 2, 3, 1).numpy()
+            if callback is not None and i % callback_frequency == 0:
+                image = self.decode_latents(latents)
+                image = self.run_safety_checker(image)[0]
+                if output_type == "pil":
                     image = self.numpy_to_pil(image)
-                    callback(i, image)
+                callback(i, t, latents, image)
 
-        # scale and decode the image latents with vae
-        latents = 1 / 0.18215 * latents
-        image = self.vae.decode(latents).sample
+        image = self.decode_latents(latents)
 
-        image = (image / 2 + 0.5).clamp(0, 1)
-        image = image.cpu().permute(0, 2, 3, 1).numpy()
-
-        # run safety checker
-        safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
-        image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_cheker_input.pixel_values)
+        image, has_nsfw_concept = self.run_safety_checker(image)
 
         if output_type == "pil":
             image = self.numpy_to_pil(image)
