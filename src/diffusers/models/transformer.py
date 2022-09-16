@@ -10,9 +10,9 @@ from .attention import Block
 
 
 @dataclass
-class MaskedLMOutput(BaseOutput):
+class TransformerOutput(BaseOutput):
     """
-    Base class for masked language models outputs.
+    Class for Transformer outputs.
 
     Args:
         logits (`torch.FloatTensor` of shape `(batch_size, sequence_length, config.vocab_size)`):
@@ -99,4 +99,4 @@ class Transformer(ModelMixin, ConfigMixin):
         if not return_dict:
             return (logits,)
 
-        return MaskedLMOutput(logits=logits)
+        return TransformerOutput(logits=logits)

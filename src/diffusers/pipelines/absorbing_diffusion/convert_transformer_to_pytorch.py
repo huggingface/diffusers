@@ -22,7 +22,7 @@ from pathlib import Path
 
 import torch
 
-from diffusers import Transformer
+from diffusers.models import Transformer
 from huggingface_hub import HfApi
 
 
