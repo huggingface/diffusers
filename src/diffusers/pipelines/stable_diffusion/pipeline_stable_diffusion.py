@@ -269,7 +269,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             # compute the previous noisy sample x_t -> x_t-1
             if isinstance(self.scheduler, LMSDiscreteScheduler):
                 latents = self.scheduler.step(
-                    noise_pred, i.to(self.unet.device), latents.to(self.unet.device), **extra_step_kwargs
+                    noise_pred, i, latents.to(self.unet.device), **extra_step_kwargs
                 ).prev_sample
             else:
                 latents = self.scheduler.step(
@@ -281,13 +281,13 @@ class StableDiffusionPipeline(DiffusionPipeline):
         image = self.vae.decode(latents.to(self.vae.device)).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
-        image = image.to(self.safety_checker.dtype).cpu().permute(0, 2, 3, 1).numpy()
+        image = image.to(self.vae.device).to(self.vae.device).cpu().permute(0, 2, 3, 1).numpy()
 
         # run safety checker
         safety_cheker_input = (
             self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt")
-            .to(self.safety_checker.device)
-            .to(self.safety_checker.dtype)
+            .to(self.vae.device)
+            .to(self.vae.dtype)
         )
         image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_cheker_input.pixel_values)
 
