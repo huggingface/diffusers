@@ -16,32 +16,47 @@
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
-import numpy as np
-import torch
+import flax
+import jax.numpy as jnp
+from jax import random
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
 from .scheduling_utils import SchedulerMixin
 
 
+@flax.struct.dataclass
+class KarrasVeSchedulerState:
+    # setable values
+    num_inference_steps: Optional[int] = None
+    timesteps: Optional[jnp.ndarray] = None
+    schedule: Optional[jnp.ndarray] = None  # sigma(t_i)
+
+    @classmethod
+    def create(cls):
+        return cls()
+
+
 @dataclass
-class KarrasVeOutput(BaseOutput):
+class FlaxKarrasVeOutput(BaseOutput):
     """
     Output class for the scheduler's step function output.
 
     Args:
-        prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        prev_sample (`jnp.ndarray` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
-        derivative (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        derivative (`jnp.ndarray` of shape `(batch_size, num_channels, height, width)` for images):
             Derivate of predicted original image sample (x_0).
+        state (`KarrasVeSchedulerState`): the `FlaxKarrasVeScheduler` state data class.
     """
 
-    prev_sample: torch.FloatTensor
-    derivative: torch.FloatTensor
+    prev_sample: jnp.ndarray
+    derivative: jnp.ndarray
+    state: KarrasVeSchedulerState
 
 
-class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
+class FlaxKarrasVeScheduler(SchedulerMixin, ConfigMixin):
     """
     Stochastic sampling from Karras et al. [1] tailored to the Variance-Expanding (VE) models [2]. Use Algorithm 2 and
     the VE column of Table 1 from [1] for reference.
@@ -70,8 +85,6 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
             A reasonable range is [0, 10].
         s_max (`float`): the end value of the sigma range where we add noise.
             A reasonable range is [0.2, 80].
-        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays.
-
     """
 
     @register_to_config
@@ -83,41 +96,42 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         s_churn: float = 80,
         s_min: float = 0.05,
         s_max: float = 50,
-        tensor_format: str = "pt",
     ):
-        # setable values
-        self.num_inference_steps = None
-        self.timesteps = None
-        self.schedule = None  # sigma(t_i)
+        self.state = KarrasVeSchedulerState.create()
 
-        self.tensor_format = tensor_format
-        self.set_format(tensor_format=tensor_format)
-
-    def set_timesteps(self, num_inference_steps: int):
+    def set_timesteps(self, state: KarrasVeSchedulerState, num_inference_steps: int) -> KarrasVeSchedulerState:
         """
         Sets the continuous timesteps used for the diffusion chain. Supporting function to be run before inference.
 
         Args:
+            state (`KarrasVeSchedulerState`):
+                the `FlaxKarrasVeScheduler` state data class.
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
 
         """
-        self.num_inference_steps = num_inference_steps
-        self.timesteps = np.arange(0, self.num_inference_steps)[::-1].copy()
-        self.schedule = [
+        timesteps = jnp.arange(0, num_inference_steps)[::-1].copy()
+        schedule = [
             (
                 self.config.sigma_max
                 * (self.config.sigma_min**2 / self.config.sigma_max**2) ** (i / (num_inference_steps - 1))
             )
-            for i in self.timesteps
+            for i in timesteps
         ]
-        self.schedule = np.array(self.schedule, dtype=np.float32)
 
-        self.set_format(tensor_format=self.tensor_format)
+        return state.replace(
+            num_inference_steps=num_inference_steps,
+            schedule=jnp.array(schedule, dtype=jnp.float32),
+            timesteps=timesteps,
+        )
 
     def add_noise_to_input(
-        self, sample: Union[torch.FloatTensor, np.ndarray], sigma: float, generator: Optional[torch.Generator] = None
-    ) -> Tuple[Union[torch.FloatTensor, np.ndarray], float]:
+        self,
+        state: KarrasVeSchedulerState,
+        sample: jnp.ndarray,
+        sigma: float,
+        key: random.KeyArray,
+    ) -> Tuple[jnp.ndarray, float]:
         """
         Explicit Langevin-like "churn" step of adding noise to the sample according to a factor gamma_i ≥ 0 to reach a
         higher noise level sigma_hat = sigma_i + gamma_i*sigma_i.
@@ -125,12 +139,13 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         TODO Args:
         """
         if self.config.s_min <= sigma <= self.config.s_max:
-            gamma = min(self.config.s_churn / self.num_inference_steps, 2**0.5 - 1)
+            gamma = min(self.config.s_churn / state.num_inference_steps, 2**0.5 - 1)
         else:
             gamma = 0
 
         # sample eps ~ N(0, S_noise^2 * I)
-        eps = self.config.s_noise * torch.randn(sample.shape, generator=generator).to(sample.device)
+        key = random.split(key, num=1)
+        eps = self.config.s_noise * random.normal(key=key, shape=sample.shape)
         sigma_hat = sigma + gamma * sigma
         sample_hat = sample + ((sigma_hat**2 - sigma**2) ** 0.5 * eps)
 
@@ -138,29 +153,29 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        model_output: Union[torch.FloatTensor, np.ndarray],
+        state: KarrasVeSchedulerState,
+        model_output: jnp.ndarray,
         sigma_hat: float,
         sigma_prev: float,
-        sample_hat: Union[torch.FloatTensor, np.ndarray],
+        sample_hat: jnp.ndarray,
         return_dict: bool = True,
-    ) -> Union[KarrasVeOutput, Tuple]:
+    ) -> Union[FlaxKarrasVeOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
 
         Args:
+            state (`KarrasVeSchedulerState`): the `FlaxKarrasVeScheduler` state data class.
             model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
             sigma_hat (`float`): TODO
             sigma_prev (`float`): TODO
             sample_hat (`torch.FloatTensor` or `np.ndarray`): TODO
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
-            KarrasVeOutput: updated sample in the diffusion chain and derivative (TODO double check).
         Returns:
-            [`~schedulers.scheduling_karras_ve.KarrasVeOutput`] or `tuple`:
-            [`~schedulers.scheduling_karras_ve.KarrasVeOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is the sample tensor.
-
+            [`~schedulers.scheduling_karras_ve_flax.FlaxKarrasVeOutput`] or `tuple`: Updated sample in the diffusion
+            chain and derivative. [`~schedulers.scheduling_karras_ve_flax.FlaxKarrasVeOutput`] if `return_dict` is
+            True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
         """
 
         pred_original_sample = sample_hat + sigma_hat * model_output
@@ -168,24 +183,26 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         sample_prev = sample_hat + (sigma_prev - sigma_hat) * derivative
 
         if not return_dict:
-            return (sample_prev, derivative)
+            return (sample_prev, derivative, state)
 
-        return KarrasVeOutput(prev_sample=sample_prev, derivative=derivative)
+        return FlaxKarrasVeOutput(prev_sample=sample_prev, derivative=derivative, state=state)
 
     def step_correct(
         self,
-        model_output: Union[torch.FloatTensor, np.ndarray],
+        state: KarrasVeSchedulerState,
+        model_output: jnp.ndarray,
         sigma_hat: float,
         sigma_prev: float,
-        sample_hat: Union[torch.FloatTensor, np.ndarray],
-        sample_prev: Union[torch.FloatTensor, np.ndarray],
-        derivative: Union[torch.FloatTensor, np.ndarray],
+        sample_hat: jnp.ndarray,
+        sample_prev: jnp.ndarray,
+        derivative: jnp.ndarray,
         return_dict: bool = True,
-    ) -> Union[KarrasVeOutput, Tuple]:
+    ) -> Union[FlaxKarrasVeOutput, Tuple]:
         """
         Correct the predicted sample based on the output model_output of the network. TODO complete description
 
         Args:
+            state (`KarrasVeSchedulerState`): the `FlaxKarrasVeScheduler` state data class.
             model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
             sigma_hat (`float`): TODO
             sigma_prev (`float`): TODO
@@ -203,9 +220,9 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         sample_prev = sample_hat + (sigma_prev - sigma_hat) * (0.5 * derivative + 0.5 * derivative_corr)
 
         if not return_dict:
-            return (sample_prev, derivative)
+            return (sample_prev, derivative, state)
 
-        return KarrasVeOutput(prev_sample=sample_prev, derivative=derivative)
+        return FlaxKarrasVeOutput(prev_sample=sample_prev, derivative=derivative, state=state)
 
     def add_noise(self, original_samples, noise, timesteps):
         raise NotImplementedError()

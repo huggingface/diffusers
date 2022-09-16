@@ -31,6 +31,7 @@ def get_down_block(
     resnet_eps,
     resnet_act_fn,
     attn_num_head_channels,
+    resnet_groups=None,
     cross_attention_dim=None,
     downsample_padding=None,
 ):
@@ -44,6 +45,7 @@ def get_down_block(
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
+            resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
         )
     elif down_block_type == "AttnDownBlock2D":
@@ -55,6 +57,7 @@ def get_down_block(
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
+            resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
             attn_num_head_channels=attn_num_head_channels,
         )
@@ -69,6 +72,7 @@ def get_down_block(
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
+            resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
@@ -104,6 +108,7 @@ def get_down_block(
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
+            resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
         )
 
@@ -119,6 +124,7 @@ def get_up_block(
     resnet_eps,
     resnet_act_fn,
     attn_num_head_channels,
+    resnet_groups=None,
     cross_attention_dim=None,
 ):
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
@@ -132,6 +138,7 @@ def get_up_block(
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
+            resnet_groups=resnet_groups,
         )
     elif up_block_type == "CrossAttnUpBlock2D":
         if cross_attention_dim is None:
@@ -145,6 +152,7 @@ def get_up_block(
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
+            resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
         )
@@ -158,6 +166,7 @@ def get_up_block(
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
+            resnet_groups=resnet_groups,
             attn_num_head_channels=attn_num_head_channels,
         )
     elif up_block_type == "SkipUpBlock2D":
@@ -191,6 +200,7 @@ def get_up_block(
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
+            resnet_groups=resnet_groups,
         )
     raise ValueError(f"{up_block_type} does not exist.")
 
@@ -323,6 +333,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                     in_channels // attn_num_head_channels,
                     depth=1,
                     context_dim=cross_attention_dim,
+                    num_groups=resnet_groups,
                 )
             )
             resnets.append(
@@ -414,6 +425,7 @@ class AttnDownBlock2D(nn.Module):
                     num_head_channels=attn_num_head_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
+                    num_groups=resnet_groups,
                 )
             )
 
@@ -498,6 +510,7 @@ class CrossAttnDownBlock2D(nn.Module):
                     out_channels // attn_num_head_channels,
                     depth=1,
                     context_dim=cross_attention_dim,
+                    num_groups=resnet_groups,
                 )
             )
         self.attentions = nn.ModuleList(attentions)
@@ -966,6 +979,7 @@ class AttnUpBlock2D(nn.Module):
                     num_head_channels=attn_num_head_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
+                    num_groups=resnet_groups,
                 )
             )
 
@@ -1047,6 +1061,7 @@ class CrossAttnUpBlock2D(nn.Module):
                     out_channels // attn_num_head_channels,
                     depth=1,
                     context_dim=cross_attention_dim,
+                    num_groups=resnet_groups,
                 )
             )
         self.attentions = nn.ModuleList(attentions)

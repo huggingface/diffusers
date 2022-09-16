@@ -80,7 +80,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
             sigma_t = self.scheduler.sigmas[i] * torch.ones(shape[0], device=self.device)
 
             # correction step
-            for _ in range(self.scheduler.correct_steps):
+            for _ in range(self.scheduler.config.correct_steps):
                 model_output = self.unet(sample, sigma_t).sample
                 sample = self.scheduler.step_correct(model_output, sample, generator=generator).prev_sample
 

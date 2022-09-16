@@ -108,8 +108,6 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
 
-        self.one = np.array(1.0)
-
         # For now we only support F-PNDM, i.e. the runge-kutta method
         # For more information on the algorithm please take a look at the paper: https://arxiv.org/pdf/2202.09778.pdf
         # mainly at formula (9), (12), (13) and the Algorithm 2.
@@ -367,8 +365,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         noise: Union[torch.FloatTensor, np.ndarray],
         timesteps: Union[torch.IntTensor, np.ndarray],
     ) -> torch.Tensor:
-        # mps requires indices to be in the same device, so we use cpu as is the default with cuda
-        timesteps = timesteps.to(self.alphas_cumprod.device)
+        if self.tensor_format == "pt":
+            timesteps = timesteps.to(self.alphas_cumprod.device)
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
         sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
