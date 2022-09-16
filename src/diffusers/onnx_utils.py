@@ -38,8 +38,6 @@ logger = logging.get_logger(__name__)
 
 
 class OnnxRuntimeModel:
-    base_model_prefix = "onnx_model"
-
     def __init__(self, model=None, **kwargs):
         logger.info("`diffusers.OnnxRuntimeModel` is experimental and might change in the future.")
         self.model = model
