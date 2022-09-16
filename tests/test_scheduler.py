@@ -891,7 +891,10 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
     def test_pytorch_equal_numpy(self):
         for scheduler_class in self.scheduler_classes:
             sample_pt = self.dummy_sample
+            residual_pt = 0.1 * sample_pt
+
             sample = sample_pt.numpy()
+            residual = 0.1 * sample
 
             scheduler_config = self.get_scheduler_config()
             scheduler_config["tensor_format"] = "np"
