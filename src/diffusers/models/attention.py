@@ -12,11 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from typing import Optional
+import os
+from inspect import isfunction
+from typing import Any, Optional
 
 import torch
 import torch.nn.functional as F
 from torch import nn
+
+import xformers
+import xformers.ops
+from einops import rearrange
+
+
+_USE_MEMORY_EFFICIENT_ATTENTION = int(os.environ.get("USE_MEMORY_EFFICIENT_ATTENTION", 0)) == 1
+
+
+def exists(val):
+    return val is not None
+
+
+def default(val, d):
+    if exists(val):
+        return val
+    return d() if isfunction(d) else d
 
 
 class AttentionBlock(nn.Module):
@@ -190,11 +209,12 @@ class BasicTransformerBlock(nn.Module):
         checkpoint: bool = True,
     ):
         super().__init__()
-        self.attn1 = CrossAttention(
+        AttentionBuilder = MemoryEfficientCrossAttention if _USE_MEMORY_EFFICIENT_ATTENTION else CrossAttention
+        self.attn1 = AttentionBuilder(
             query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout
         )  # is a self-attention
         self.ff = FeedForward(dim, dropout=dropout, glu=gated_ff)
-        self.attn2 = CrossAttention(
+        self.attn2 = AttentionBuilder(
             query_dim=dim, context_dim=context_dim, heads=n_heads, dim_head=d_head, dropout=dropout
         )  # is self-attn if context is none
         self.norm1 = nn.LayerNorm(dim)
@@ -211,6 +231,76 @@ class BasicTransformerBlock(nn.Module):
         hidden_states = self.attn2(self.norm2(hidden_states), context=context) + hidden_states
         hidden_states = self.ff(self.norm3(hidden_states)) + hidden_states
         return hidden_states
+
+
+class MemoryEfficientCrossAttention(nn.Module):
+    def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.0):
+        super().__init__()
+        inner_dim = dim_head * heads
+        context_dim = default(context_dim, query_dim)
+
+        self.scale = dim_head**-0.5
+        self.heads = heads
+
+        self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
+        self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
+        self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
+
+        self.to_out = nn.Sequential(nn.Linear(inner_dim, query_dim), nn.Dropout(dropout))
+        self.attention_op: Optional[Any] = None
+
+    def _maybe_init(self, x):
+        """
+        Initialize the attention operator, if required We expect the head dimension to be exposed here, meaning that x
+        : B, Head, Length
+        """
+        if self.attention_op is not None:
+            return
+
+        _, K, M = x.shape
+        try:
+            self.attention_op = xformers.ops.AttentionOpDispatch(
+                dtype=x.dtype,
+                device=x.device,
+                k=K,
+                attn_bias_type=type(None),
+                has_dropout=False,
+                kv_len=M,
+                q_len=M,
+            ).op
+
+        except NotImplementedError as err:
+            raise NotImplementedError(f"Please install xformers with the flash attention / cutlass components.\n{err}")
+
+    def forward(self, x, context=None, mask=None):
+        h = self.heads
+
+        q = self.to_q(x)
+        context = default(context, x)
+        k = self.to_k(context)
+        v = self.to_v(context)
+
+        q, k, v = map(
+            lambda t: rearrange(t, "b n (h d) -> (b h) n d", h=h).contiguous(),
+            (q, k, v),
+        )
+
+        # init the attention op, if required, using the proper dimensions
+        self._maybe_init(q)
+
+        # actually compute the attention, what we cannot get enough of
+        out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=None, op=self.attention_op)
+
+        # TODO: Use this directly in the attention operation, as a bias
+        if exists(mask):
+            raise NotImplementedError
+            # mask = rearrange(mask, "b ... -> b (...)")
+            # max_neg_value = -torch.finfo(sim.dtype).max
+            # mask = repeat(mask, "b j -> (b h) () j", h=h)
+            # sim.masked_fill_(~mask, max_neg_value)
+
+        out = rearrange(out, "(b h) n d -> b n (h d)", h=h)
+        return self.to_out(out)
 
 
 class CrossAttention(nn.Module):
