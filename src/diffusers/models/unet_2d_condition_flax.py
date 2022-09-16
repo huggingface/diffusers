@@ -218,7 +218,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             timesteps = jnp.array([timesteps], dtype=jnp.int32)
         elif isinstance(timesteps, jnp.ndarray) and len(timesteps.shape) == 0:
             timesteps = timesteps.astype(dtype=jnp.float32)
-            timesteps = timesteps[None]
+            timesteps = jnp.expand_dims(timesteps, 0)
 
         t_emb = self.time_proj(timesteps)
         t_emb = self.time_embedding(t_emb)
