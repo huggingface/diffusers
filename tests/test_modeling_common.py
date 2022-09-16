@@ -145,7 +145,7 @@ class ModelTesterMixin:
             new_model.to(torch_device)
             new_model.eval()
 
-        # check if all paramters shape are the same
+        # check if all parameters shape are the same
         for param_name in model.state_dict().keys():
             param_1 = model.state_dict()[param_name]
             param_2 = new_model.state_dict()[param_name]

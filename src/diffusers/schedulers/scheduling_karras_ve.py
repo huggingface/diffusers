@@ -34,7 +34,7 @@ class KarrasVeOutput(BaseOutput):
             Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
         derivative (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
-            Derivate of predicted original image sample (x_0).
+            Derivative of predicted original image sample (x_0).
     """
 
     prev_sample: torch.FloatTensor

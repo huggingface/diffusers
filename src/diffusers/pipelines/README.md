@@ -70,7 +70,7 @@ not be used for training. If you want to store the gradients during the forward 
 
 ## Contribution
 
-We are more than happy about any contribution to the offically supported pipelines 🤗. We aspire 
+We are more than happy about any contribution to the officially supported pipelines 🤗. We aspire 
 all of our pipelines to be  **self-contained**, **easy-to-tweak**, **beginner-friendly** and for **one-purpose-only**.
 
 - **Self-contained**: A pipeline shall be as self-contained as possible. More specifically, this means that all functionality should be either directly defined in the pipeline file iteslf, should be inherited from (and only from) the [`DiffusionPipeline` class](https://github.com/huggingface/diffusers/blob/5cbed8e0d157f65d3ddc2420dfd09f2df630e978/src/diffusers/pipeline_utils.py#L56) or be directly attached to the model and scheduler components of the pipeline. 
