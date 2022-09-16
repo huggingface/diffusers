@@ -4,6 +4,7 @@ from typing import Callable, List, Optional, Tuple, Union
 import numpy as np
 import torch
 
+import PIL
 from transformers import CLIPFeatureExtractor, CLIPTokenizer
 
 from ...onnx_utils import OnnxRuntimeModel
