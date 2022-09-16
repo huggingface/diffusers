@@ -902,7 +902,7 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
 
             scheduler.set_timesteps(self.num_inference_steps)
             scheduler_pt.set_timesteps(self.num_inference_steps)
-            
+
             output = scheduler.step(residual, 1, sample).prev_sample
             output_pt = scheduler_pt.step(residual_pt, 1, sample_pt).prev_sample
             assert np.sum(np.abs(output - output_pt.numpy())) < 1e-4, "Scheduler outputs are not identical"
