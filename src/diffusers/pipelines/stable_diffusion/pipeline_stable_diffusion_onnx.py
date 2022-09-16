@@ -102,7 +102,7 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
 
-        # if we use LMSDiscreteScheduler, let's make sure latents are mulitplied by sigmas
+        # if we use LMSDiscreteScheduler, let's make sure latents are multiplied by sigmas
         if isinstance(self.scheduler, LMSDiscreteScheduler):
             latents = latents * self.scheduler.sigmas[0]
 

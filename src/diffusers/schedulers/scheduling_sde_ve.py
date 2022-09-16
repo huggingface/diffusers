@@ -55,6 +55,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
     [`~ConfigMixin.from_config`] functions.
 
     Args:
+        num_train_timesteps (`int`): number of diffusion steps used to train the model.
         snr (`float`):
             coefficient weighting the step from the model_output sample (from the network) to the random noise.
         sigma_min (`float`):
