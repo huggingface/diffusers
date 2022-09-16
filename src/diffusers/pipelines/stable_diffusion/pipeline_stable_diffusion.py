@@ -90,26 +90,6 @@ class StableDiffusionPipeline(DiffusionPipeline):
         # set slice_size = `None` to disable `attention slicing`
         self.enable_attention_slicing(None)
 
-    def gradient_checkpointing_enable(self) -> None:
-        """
-        Activates gradient checkpointing for the current model.
-
-        Note that in other frameworks this feature can be referred to as "activation checkpointing" or "checkpoint
-        activations".
-        """
-        self.pipe.text_encoder.gradient_checkpointing_enable()
-        # TODO: activate gradient checkpointing for self.unet and self.vae
-
-    def gradient_checkpointing_disable(self) -> None:
-        """
-        Deactivates gradient checkpointing for the current model.
-
-        Note that in other frameworks this feature can be referred to as "activation checkpointing" or "checkpoint
-        activations".
-        """
-        self.pipe.text_encoder.gradient_checkpointing_disable()
-        # TODO: disable gradient checkpointing for self.unet and self.vae
-
     def __call__(
         self,
         prompt: Union[str, List[str], torch.Tensor],
