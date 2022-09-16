@@ -140,7 +140,9 @@ _onnx_available = importlib.util.find_spec("onnxruntime") is not None
 if _onnx_available:
     candidates = (
         "onnxruntime",
-        "onnxruntime-gpu"
+        "onnxruntime-gpu",
+        "onnxruntime-directml",
+        "onnxruntime-openvino"
     )
     _onnxruntime_version = None
     # For the metadata, we have to look for both onnxruntime and onnxruntime-gpu
