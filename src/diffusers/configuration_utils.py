@@ -24,7 +24,6 @@ from typing import Any, Dict, Tuple, Union
 
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
-import accelerate
 from requests import HTTPError
 
 from . import __version__
