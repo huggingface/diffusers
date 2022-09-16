@@ -206,7 +206,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         sample: torch.FloatTensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
-        gradient_checkpointing: bool = False,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         """r
@@ -251,12 +250,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                     hidden_states=sample,
                     temb=emb,
                     encoder_hidden_states=encoder_hidden_states,
-                    gradient_checkpointing=gradient_checkpointing,
                 )
             else:
-                sample, res_samples = downsample_block(
-                    hidden_states=sample, temb=emb, gradient_checkpointing=gradient_checkpointing
-                )
+                sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
 
             down_block_res_samples += res_samples
 
@@ -274,15 +270,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
                     encoder_hidden_states=encoder_hidden_states,
-                    gradient_checkpointing=gradient_checkpointing,
                 )
             else:
-                sample = upsample_block(
-                    hidden_states=sample,
-                    temb=emb,
-                    res_hidden_states_tuple=res_samples,
-                    gradient_checkpointing=gradient_checkpointing,
-                )
+                sample = upsample_block(hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples)
 
         # 6. post-process
         # make sure hidden states is in float32

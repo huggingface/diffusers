@@ -200,20 +200,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         model = self.model_class(**init_dict)
         model.to(torch_device)
 
-        out = model(**inputs_dict, gradient_checkpointing=True).sample
-        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
-        # we won't calculate the loss and rather backprop on out.sum()
-        model.zero_grad()
-        out.sum().backward()
-
-        # now we save the output and parameter gradients that we will use for comparison purposes with
-        # the non-checkpointed run.
-        output_checkpointed = out.data.clone()
-        grad_checkpointed = {}
-        for name, param in model.named_parameters():
-            grad_checkpointed[name] = param.grad.data.clone()
-
-        out = model(**inputs_dict, gradient_checkpointing=False).sample
+        out = model(**inputs_dict).sample
         # run the backwards pass on the model. For backwards pass, for simplicity purpose,
         # we won't calculate the loss and rather backprop on out.sum()
         model.zero_grad()
@@ -225,6 +212,20 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         grad_not_checkpointed = {}
         for name, param in model.named_parameters():
             grad_not_checkpointed[name] = param.grad.data.clone()
+
+        model.gradient_checkpointing_enable()
+        out = model(**inputs_dict).sample
+        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
+        # we won't calculate the loss and rather backprop on out.sum()
+        model.zero_grad()
+        out.sum().backward()
+
+        # now we save the output and parameter gradients that we will use for comparison purposes with
+        # the non-checkpointed run.
+        output_checkpointed = out.data.clone()
+        grad_checkpointed = {}
+        for name, param in model.named_parameters():
+            grad_checkpointed[name] = param.grad.data.clone()
 
         # compare the output and parameters gradients
         self.assertTrue((output_checkpointed == output_not_checkpointed).all())
