@@ -514,6 +514,8 @@ class CrossAttnDownBlock2D(nn.Module):
         else:
             self.downsamplers = None
 
+        self.gradient_checkpointing = False
+
     def set_attention_slice(self, slice_size):
         if slice_size is not None and self.attn_num_head_channels % slice_size != 0:
             raise ValueError(
@@ -609,6 +611,8 @@ class DownBlock2D(nn.Module):
             )
         else:
             self.downsamplers = None
+
+        self.gradient_checkpointing = False
 
     def forward(self, hidden_states, temb=None, gradient_checkpointing=False):
         output_states = ()
@@ -1082,6 +1086,8 @@ class CrossAttnUpBlock2D(nn.Module):
         else:
             self.upsamplers = None
 
+        self.gradient_checkpointing = False
+
     def set_attention_slice(self, slice_size):
         if slice_size is not None and self.attn_num_head_channels % slice_size != 0:
             raise ValueError(
@@ -1096,6 +1102,8 @@ class CrossAttnUpBlock2D(nn.Module):
 
         for attn in self.attentions:
             attn._set_attention_slice(slice_size)
+
+        self.gradient_checkpointing = False
 
     def forward(
         self,
@@ -1179,6 +1187,8 @@ class UpBlock2D(nn.Module):
             self.upsamplers = nn.ModuleList([Upsample2D(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
+
+        self.gradient_checkpointing = False
 
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None, gradient_checkpointing=False):
         for resnet in self.resnets:
