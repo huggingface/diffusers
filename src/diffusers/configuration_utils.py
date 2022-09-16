@@ -154,17 +154,9 @@ class ConfigMixin:
         </Tip>
 
         """
-        device_map = kwargs.pop("low_cpu_mem_usage", None)
-        if device_map is not None:
-            with accelerate.init_empty_weights():
-                config_dict = cls.get_config_dict(pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs)
-                init_dict, unused_kwargs = cls.extract_init_dict(config_dict, **kwargs)
-                model = cls(**init_dict)
-                    
-        else:
-            config_dict = cls.get_config_dict(pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs)
-            init_dict, unused_kwargs = cls.extract_init_dict(config_dict, **kwargs)
-            model = cls(**init_dict)
+        config_dict = cls.get_config_dict(pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs)
+        init_dict, unused_kwargs = cls.extract_init_dict(config_dict, **kwargs)
+        model = cls(**init_dict)
 
         if return_unused_kwargs:
             return model, unused_kwargs
