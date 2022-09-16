@@ -140,7 +140,7 @@ class ModelMixin(torch.nn.Module):
         """
         return any(hasattr(m, "gradient_checkpointing") and m.gradient_checkpointing for m in self.modules())
 
-    def gradient_checkpointing_enable(self):
+    def enable_gradient_checkpointing(self):
         """
         Activates gradient checkpointing for the current model.
 
@@ -151,7 +151,7 @@ class ModelMixin(torch.nn.Module):
             raise ValueError(f"{self.__class__.__name__} does not support gradient checkpointing.")
         self.apply(partial(self._set_gradient_checkpointing, value=True))
 
-    def gradient_checkpointing_disable(self):
+    def disable_gradient_checkpointing(self):
         """
         Deactivates gradient checkpointing for the current model.
 

@@ -213,7 +213,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         for name, param in model.named_parameters():
             grad_not_checkpointed[name] = param.grad.data.clone()
 
-        model.gradient_checkpointing_enable()
+        model.enable_gradient_checkpointing()
         out = model(**inputs_dict).sample
         # run the backwards pass on the model. For backwards pass, for simplicity purpose,
         # we won't calculate the loss and rather backprop on out.sum()
