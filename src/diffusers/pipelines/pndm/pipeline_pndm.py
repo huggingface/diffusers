@@ -63,7 +63,7 @@ class PNDMPipeline(DiffusionPipeline):
                 generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
                 deterministic.
             output_type (`str`, `optional`, defaults to `"pil"`): The output format of the generate image. Choose
-                between [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `nd.array`.
+                between [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, `optional`, defaults to `True`): Whether or not to return a
                 [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
 

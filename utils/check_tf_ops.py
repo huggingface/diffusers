@@ -41,7 +41,7 @@ INTERNAL_OPS = [
 ]
 
 
-def onnx_compliancy(saved_model_path, strict, opset):
+def onnx_compliance(saved_model_path, strict, opset):
     saved_model = SavedModel()
     onnx_ops = []
 
@@ -98,4 +98,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.framework == "onnx":
-        onnx_compliancy(args.saved_model_path, args.strict, args.opset)
+        onnx_compliance(args.saved_model_path, args.strict, args.opset)

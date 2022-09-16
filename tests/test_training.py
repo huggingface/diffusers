@@ -52,7 +52,7 @@ class TrainingTests(unittest.TestCase):
             tensor_format="pt",
         )
 
-        assert ddpm_scheduler.num_train_timesteps == ddim_scheduler.num_train_timesteps
+        assert ddpm_scheduler.config.num_train_timesteps == ddim_scheduler.config.num_train_timesteps
 
         # shared batches for DDPM and DDIM
         set_seed(0)
