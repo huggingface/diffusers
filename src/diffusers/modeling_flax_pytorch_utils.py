@@ -54,8 +54,9 @@ def rename_key_and_reshape_tensor(
     if any("norm" in str_ for str_ in pt_tuple_key) and pt_tuple_key[-1] == "weight":
         return renamed_pt_tuple_key, pt_tensor
 
-    # # embedding
-    # renamed_pt_tuple_key = pt_tuple_key[:-1] + ("embedding",)
+    # embedding
+    # For now the embedding layers are not converted
+    # TODO: figure out how to detect embedding layers
 
     # conv layer
     renamed_pt_tuple_key = pt_tuple_key[:-1] + ("kernel",)
