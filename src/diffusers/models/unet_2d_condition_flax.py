@@ -192,7 +192,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     def __call__(
         self,
         sample,
-        timesteps,
+        timestep,
         encoder_hidden_states,
         return_dict: bool = True,
         train: bool = False,
@@ -214,6 +214,13 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             When returning a tuple, the first element is the sample tensor.
         """
         # 1. time
+        timesteps = timestep
+        if not isinstance(timesteps, jnp.ndarray):
+            timesteps = jnp.array([timesteps], dtype=jnp.int32)
+        elif isinstance(timesteps, jnp.ndarray) and len(timesteps.shape) == 0:
+            timesteps = timesteps.to(dtype=jnp.float32)
+            timesteps = timesteps[None]
+
         t_emb = self.time_proj(timesteps)
         t_emb = self.time_embedding(t_emb)
 
