@@ -1173,9 +1173,7 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_stable_diffusion_further_memory_chunking(self):
         torch.cuda.reset_peak_memory_stats()
         model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionPipeline.from_pretrained(
-            model_id, use_auth_token=True, revision="main"
-        )
+        pipe = StableDiffusionPipeline.from_pretrained(model_id, use_auth_token=True, revision="main")
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_minimal_memory_usage()
 
@@ -1184,9 +1182,7 @@ class PipelineTesterMixin(unittest.TestCase):
         # make attention efficient
         pipe.enable_attention_slicing()
         with torch.autocast(torch_device):
-            output_chunked = pipe(
-                [prompt], guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
-            )
+            output_chunked = pipe([prompt], guidance_scale=7.5, num_inference_steps=10, output_type="numpy")
 
         mem_bytes = torch.cuda.max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()

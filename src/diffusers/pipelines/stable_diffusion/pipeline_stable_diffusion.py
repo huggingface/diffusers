@@ -90,17 +90,15 @@ class StableDiffusionPipeline(DiffusionPipeline):
         """
         # set slice_size = `None` to disable `attention slicing`
         self.enable_attention_slicing(None)
-    
+
     def enable_minimal_memory_usage(self):
-        """Moves only unet to fp16 and to CUDA, while keepping lighter models on CPUs
-        """
+        """Moves only unet to fp16 and to CUDA, while keepping lighter models on CPUs"""
         self.unet.to(torch.float16).to(torch.device("cuda"))
         self.enable_attention_slicing(1)
-        
+
         torch.cuda.empty_cache()
         gc.collect()
-        
-    
+
     @torch.no_grad()
     def __call__(
         self,
@@ -202,7 +200,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
             uncond_input = self.tokenizer(
                 [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="pt"
             )
-            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.text_encoder.device))[0].to(self.unet.device)
+            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.text_encoder.device))[0].to(
+                self.unet.device
+            )
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
@@ -258,9 +258,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
             # predict the noise residual
             noise_pred = self.unet(
-                latent_model_input.to(self.unet.device),
-                t.to(self.unet.device),
-                encoder_hidden_states=text_embeddings
+                latent_model_input.to(self.unet.device), t.to(self.unet.device), encoder_hidden_states=text_embeddings
             ).sample
 
             # perform guidance
@@ -270,9 +268,13 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
             # compute the previous noisy sample x_t -> x_t-1
             if isinstance(self.scheduler, LMSDiscreteScheduler):
-                latents = self.scheduler.step(noise_pred, i.to(self.unet.device), latents.to(self.unet.device), **extra_step_kwargs).prev_sample
+                latents = self.scheduler.step(
+                    noise_pred, i.to(self.unet.device), latents.to(self.unet.device), **extra_step_kwargs
+                ).prev_sample
             else:
-                latents = self.scheduler.step(noise_pred, t.to(self.unet.device), latents.to(self.unet.device), **extra_step_kwargs).prev_sample
+                latents = self.scheduler.step(
+                    noise_pred, t.to(self.unet.device), latents.to(self.unet.device), **extra_step_kwargs
+                ).prev_sample
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
@@ -282,7 +284,11 @@ class StableDiffusionPipeline(DiffusionPipeline):
         image = image.to(self.safety_checker.dtype).cpu().permute(0, 2, 3, 1).numpy()
 
         # run safety checker
-        safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.safety_checker.device).to(self.safety_checker.dtype)
+        safety_cheker_input = (
+            self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt")
+            .to(self.safety_checker.device)
+            .to(self.safety_checker.dtype)
+        )
         image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_cheker_input.pixel_values)
 
         if output_type == "pil":
