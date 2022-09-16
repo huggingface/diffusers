@@ -86,7 +86,7 @@ class DiffusionPipeline(ConfigMixin):
     Class attributes:
 
         - **config_name** ([`str`]) -- name of the config file that will store the class and module names of all
-          compenents of the diffusion pipeline.
+          components of the diffusion pipeline.
     """
     config_name = "model_index.json"
 
@@ -95,7 +95,7 @@ class DiffusionPipeline(ConfigMixin):
         from diffusers import pipelines
 
         for name, module in kwargs.items():
-            # retrive library
+            # retrieve library
             library = module.__module__.split(".")[0]
 
             # check if the module is a pipeline module
@@ -109,7 +109,7 @@ class DiffusionPipeline(ConfigMixin):
             if library not in LOADABLE_CLASSES or is_pipeline_module:
                 library = pipeline_dir
 
-            # retrive class_name
+            # retrieve class_name
             class_name = module.__class__.__name__
 
             register_dict = {name: (library, class_name)}
@@ -217,7 +217,7 @@ class DiffusionPipeline(ConfigMixin):
                 A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
-                Whether ot not to also return a dictionary containing missing keys, unexpected keys and error messages.
+                Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
             local_files_only(`bool`, *optional*, defaults to `False`):
                 Whether or not to only look at local files (i.e., do not try to download the model).
             use_auth_token (`str` or *bool*, *optional*):
@@ -234,7 +234,7 @@ class DiffusionPipeline(ConfigMixin):
 
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
-                speficic pipeline class. The overritten components are then directly passed to the pipelines `__init__`
+                specific pipeline class. The overritten components are then directly passed to the pipelines `__init__`
                 method. See example below for more information.
 
         <Tip>

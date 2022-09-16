@@ -124,4 +124,4 @@ for mod in models:
         assert torch.allclose(
             logits[0, 0, 0, :30], results["_".join("_".join(mod.modelId.split("/")).split("-"))], atol=1e-3
         )
-        print(f"{mod.modelId} has passed succesfully!!!")
+        print(f"{mod.modelId} has passed successfully!!!")

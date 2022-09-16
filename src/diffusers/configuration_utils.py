@@ -45,9 +45,9 @@ class ConfigMixin:
 
     Class attributes:
         - **config_name** (`str`) -- A filename under which the config should stored when calling
-          [`~ConfigMixin.save_config`] (should be overriden by parent class).
+          [`~ConfigMixin.save_config`] (should be overridden by parent class).
         - **ignore_for_config** (`List[str]`) -- A list of attributes that should not be saved in the config (should be
-          overriden by parent class).
+          overridden by parent class).
     """
     config_name = None
     ignore_for_config = []
@@ -125,7 +125,7 @@ class ConfigMixin:
                 A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
-                Whether ot not to also return a dictionary containing missing keys, unexpected keys and error messages.
+                Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
             local_files_only(`bool`, *optional*, defaults to `False`):
                 Whether or not to only look at local files (i.e., do not try to download the model).
             use_auth_token (`str` or *bool*, *optional*):

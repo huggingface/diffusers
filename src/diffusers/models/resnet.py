@@ -264,7 +264,7 @@ class ResnetBlock2D(nn.Module):
         time_embedding_norm="default",
         kernel=None,
         output_scale_factor=1.0,
-        use_nin_shortcut=None,
+        use_in_shortcut=None,
         up=False,
         down=False,
     ):
@@ -321,10 +321,10 @@ class ResnetBlock2D(nn.Module):
             else:
                 self.downsample = Downsample2D(in_channels, use_conv=False, padding=1, name="op")
 
-        self.use_nin_shortcut = self.in_channels != self.out_channels if use_nin_shortcut is None else use_nin_shortcut
+        self.use_in_shortcut = self.in_channels != self.out_channels if use_in_shortcut is None else use_in_shortcut
 
         self.conv_shortcut = None
-        if self.use_nin_shortcut:
+        if self.use_in_shortcut:
             self.conv_shortcut = torch.nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x, temb):
