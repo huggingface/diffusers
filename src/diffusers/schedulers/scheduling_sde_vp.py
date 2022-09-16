@@ -14,7 +14,7 @@
 
 # DISCLAIMER: This file is strongly influenced by https://github.com/yang-song/score_sde_pytorch
 
-# TODO(Patrick, Anton, Suraj) - make scheduler framework indepedent and clean-up a bit
+# TODO(Patrick, Anton, Suraj) - make scheduler framework independent and clean-up a bit
 
 import numpy as np
 import torch

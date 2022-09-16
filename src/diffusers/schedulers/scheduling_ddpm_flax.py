@@ -15,16 +15,18 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 import math
+from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
-import numpy as np
-import torch
+import flax
+import jax.numpy as jnp
+from jax import random
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
-def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
+def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> jnp.ndarray:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
@@ -39,7 +41,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
                      prevent singularities.
 
     Returns:
-        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
+        betas (`jnp.ndarray`): the betas used by the scheduler to step the model outputs
     """
 
     def alpha_bar(time_step):
@@ -50,10 +52,26 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
         t1 = i / num_diffusion_timesteps
         t2 = (i + 1) / num_diffusion_timesteps
         betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
-    return np.array(betas, dtype=np.float32)
+    return jnp.array(betas, dtype=jnp.float32)
 
 
-class DDPMScheduler(SchedulerMixin, ConfigMixin):
+@flax.struct.dataclass
+class DDPMSchedulerState:
+    # setable values
+    timesteps: jnp.ndarray
+    num_inference_steps: Optional[int] = None
+
+    @classmethod
+    def create(cls, num_train_timesteps: int):
+        return cls(timesteps=jnp.arange(0, num_train_timesteps)[::-1])
+
+
+@dataclass
+class FlaxSchedulerOutput(SchedulerOutput):
+    state: DDPMSchedulerState
+
+
+class FlaxDDPMScheduler(SchedulerMixin, ConfigMixin):
     """
     Denoising diffusion probabilistic models (DDPMs) explores the connections between denoising score matching and
     Langevin dynamics sampling.
@@ -90,18 +108,17 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[np.ndarray] = None,
+        trained_betas: Optional[jnp.ndarray] = None,
         variance_type: str = "fixed_small",
         clip_sample: bool = True,
-        tensor_format: str = "pt",
     ):
         if trained_betas is not None:
-            self.betas = np.asarray(trained_betas)
+            self.betas = jnp.asarray(trained_betas)
         elif beta_schedule == "linear":
-            self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
+            self.betas = jnp.linspace(beta_start, beta_end, num_train_timesteps, dtype=jnp.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = np.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=np.float32) ** 2
+            self.betas = jnp.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=jnp.float32) ** 2
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
@@ -109,32 +126,28 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
         self.alphas = 1.0 - self.betas
-        self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
-        self.one = np.array(1.0)
+        self.alphas_cumprod = jnp.cumprod(self.alphas, axis=0)
+        self.one = jnp.array(1.0)
 
-        # setable values
-        self.num_inference_steps = None
-        self.timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
-
-        self.tensor_format = tensor_format
-        self.set_format(tensor_format=tensor_format)
+        self.state = DDPMSchedulerState.create(num_train_timesteps=num_train_timesteps)
 
         self.variance_type = variance_type
 
-    def set_timesteps(self, num_inference_steps: int):
+    def set_timesteps(self, state: DDPMSchedulerState, num_inference_steps: int) -> DDPMSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
         Args:
+            state (`DDIMSchedulerState`):
+                the `FlaxDDPMScheduler` state data class instance.
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
         num_inference_steps = min(self.config.num_train_timesteps, num_inference_steps)
-        self.num_inference_steps = num_inference_steps
-        self.timesteps = np.arange(
-            0, self.config.num_train_timesteps, self.config.num_train_timesteps // self.num_inference_steps
-        )[::-1].copy()
-        self.set_format(tensor_format=self.tensor_format)
+        timesteps = jnp.arange(
+            0, self.config.num_train_timesteps, self.config.num_train_timesteps // num_inference_steps
+        )[::-1]
+        return state.replace(num_inference_steps=num_inference_steps, timesteps=timesteps)
 
     def _get_variance(self, t, predicted_variance=None, variance_type=None):
         alpha_prod_t = self.alphas_cumprod[t]
@@ -150,15 +163,15 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         # hacks - were probably added for training stability
         if variance_type == "fixed_small":
-            variance = self.clip(variance, min_value=1e-20)
+            variance = jnp.clip(variance, a_min=1e-20)
         # for rl-diffuser https://arxiv.org/abs/2205.09991
         elif variance_type == "fixed_small_log":
-            variance = self.log(self.clip(variance, min_value=1e-20))
+            variance = jnp.log(jnp.clip(variance, a_min=1e-20))
         elif variance_type == "fixed_large":
             variance = self.betas[t]
         elif variance_type == "fixed_large_log":
             # Glide max_log
-            variance = self.log(self.betas[t])
+            variance = jnp.log(self.betas[t])
         elif variance_type == "learned":
             return predicted_variance
         elif variance_type == "learned_range":
@@ -171,37 +184,38 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        model_output: Union[torch.FloatTensor, np.ndarray],
+        state: DDPMSchedulerState,
+        model_output: jnp.ndarray,
         timestep: int,
-        sample: Union[torch.FloatTensor, np.ndarray],
-        predict_epsilon=True,
-        generator=None,
+        sample: jnp.ndarray,
+        key: random.KeyArray,
+        predict_epsilon: bool = True,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> Union[FlaxSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            state (`DDPMSchedulerState`): the `FlaxDDPMScheduler` state data class instance.
+            model_output (`jnp.ndarray`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor` or `np.ndarray`):
+            sample (`jnp.ndarray`):
                 current instance of sample being created by diffusion process.
+            key (`random.KeyArray`): a PRNG key.
             predict_epsilon (`bool`):
                 optional flag to use when model predicts the samples directly instead of the noise, epsilon.
-            generator: random number generator.
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
-            [`~schedulers.scheduling_utils.SchedulerOutput`] or `tuple`:
-            [`~schedulers.scheduling_utils.SchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
-            returning a tuple, the first element is the sample tensor.
+            [`FlaxSchedulerOutput`] or `tuple`: [`FlaxSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
+            When returning a tuple, the first element is the sample tensor.
 
         """
         t = timestep
 
         if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
-            model_output, predicted_variance = torch.split(model_output, sample.shape[1], dim=1)
+            model_output, predicted_variance = jnp.split(model_output, sample.shape[1], axis=1)
         else:
             predicted_variance = None
 
@@ -220,7 +234,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         # 3. Clip "predicted x_0"
         if self.config.clip_sample:
-            pred_original_sample = self.clip(pred_original_sample, -1, 1)
+            pred_original_sample = jnp.clip(pred_original_sample, -1, 1)
 
         # 4. Compute coefficients for pred_original_sample x_0 and current sample x_t
         # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
@@ -234,24 +248,23 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         # 6. Add noise
         variance = 0
         if t > 0:
-            noise = self.randn_like(model_output, generator=generator)
+            key = random.split(key, num=1)
+            noise = random.normal(key=key, shape=model_output.shape)
             variance = (self._get_variance(t, predicted_variance=predicted_variance) ** 0.5) * noise
 
         pred_prev_sample = pred_prev_sample + variance
 
         if not return_dict:
-            return (pred_prev_sample,)
+            return (pred_prev_sample, state)
 
-        return SchedulerOutput(prev_sample=pred_prev_sample)
+        return FlaxSchedulerOutput(prev_sample=pred_prev_sample, state=state)
 
     def add_noise(
         self,
-        original_samples: Union[torch.FloatTensor, np.ndarray],
-        noise: Union[torch.FloatTensor, np.ndarray],
-        timesteps: Union[torch.IntTensor, np.ndarray],
-    ) -> Union[torch.FloatTensor, np.ndarray]:
-        if self.tensor_format == "pt":
-            timesteps = timesteps.to(self.alphas_cumprod.device)
+        original_samples: jnp.ndarray,
+        noise: jnp.ndarray,
+        timesteps: jnp.ndarray,
+    ) -> jnp.ndarray:
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
         sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5

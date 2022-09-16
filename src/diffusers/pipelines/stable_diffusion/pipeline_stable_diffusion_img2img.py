@@ -146,7 +146,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 deterministic.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `nd.array`.
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
@@ -249,7 +249,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
-            # if we use LMSDiscreteScheduler, let's make sure latents are mulitplied by sigmas
+            # if we use LMSDiscreteScheduler, let's make sure latents are multiplied by sigmas
             if isinstance(self.scheduler, LMSDiscreteScheduler):
                 sigma = self.scheduler.sigmas[t_index]
                 # the model input needs to be scaled to match the continuous ODE formulation in K-LMS
