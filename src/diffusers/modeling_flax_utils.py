@@ -28,7 +28,7 @@ from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, R
 from requests import HTTPError
 
 from .modeling_flax_pytorch_utils import convert_pytorch_state_dict_to_flax
-from .modeling_utils import WEIGHTS_NAME
+from .modeling_utils import WEIGHTS_NAME, load_state_dict
 from .utils import CONFIG_NAME, DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT, logging
 
 
@@ -380,7 +380,11 @@ class FlaxModelMixin:
                 )
 
         if from_pt:
-            state = convert_pytorch_state_dict_to_flax(model, model_file)
+            # Step 1: Get the pytorch file
+            pytorch_model_file = load_state_dict(model_file)
+
+            # Step 2: Convert the weights
+            state = convert_pytorch_state_dict_to_flax(pytorch_model_file, model)
         else:
             try:
                 with open(model_file, "rb") as state_f:
