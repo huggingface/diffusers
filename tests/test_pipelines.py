@@ -1170,6 +1170,31 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    def test_stable_diffusion_further_memory_chunking(self):
+        torch.cuda.reset_peak_memory_stats()
+        model_id = "CompVis/stable-diffusion-v1-4"
+        pipe = StableDiffusionPipeline.from_pretrained(
+            model_id, use_auth_token=True, revision="main"
+        )
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_minimal_memory_usage()
+
+        prompt = "a photograph of an astronaut riding a horse"
+
+        # make attention efficient
+        pipe.enable_attention_slicing()
+        with torch.autocast(torch_device):
+            output_chunked = pipe(
+                [prompt], guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
+            )
+
+        mem_bytes = torch.cuda.max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
+        # make sure that less than 2.3 GB is allocated
+        assert mem_bytes < 2.3 * 10**9
+
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_text2img_pipeline(self):
         expected_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"

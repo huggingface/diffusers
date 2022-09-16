@@ -282,7 +282,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         image = image.to(self.safety_checker.dtype).cpu().permute(0, 2, 3, 1).numpy()
 
         # run safety checker
-        safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.safety_checker.dtype).to(self.device)
+        safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.safety_checker.device).to(self.safety_checker.dtype)
         image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_cheker_input.pixel_values)
 
         if output_type == "pil":
