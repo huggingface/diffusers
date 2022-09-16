@@ -36,7 +36,6 @@ class DDIMPipeline(DiffusionPipeline):
 
     def __init__(self, unet, scheduler):
         super().__init__()
-        scheduler = scheduler.set_format("pt")
         self.register_modules(unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
