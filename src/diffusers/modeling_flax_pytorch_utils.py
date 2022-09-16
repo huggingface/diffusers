@@ -14,7 +14,7 @@
 # limitations under the License.
 """ PyTorch - Flax general utilities."""
 import re
-from typing import Dict, Tuple
+from typing import Tuple
 
 import numpy as np
 
