@@ -40,6 +40,11 @@ class ContextEncoder(nn.Module):
         super().__init__()
 
 
+class NoteTokenizer(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+
+
 class NoteEncoder(nn.Module):
     def __init__(self) -> None:
         super().__init__()

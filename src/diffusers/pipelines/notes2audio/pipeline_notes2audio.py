@@ -1,3 +1,4 @@
+from turtle import forward
 from typing import List, Optional, Union
 
 import torch
@@ -40,6 +41,26 @@ class Notes2AudioPipeline(DiffusionPipeline):
             scheduler=scheduler,
             vocoder=vocoder,
         )
+
+    def generation_step(self):
+        """
+        Generate a single frame of audio which corresponds to 5 seconds.
+
+        Args:
+            encoder_continuous_inputs (`torch.Tensor`): fields for context
+            encoder_continuous_mask (`torch.Tensor`): fields for context
+            encoder_input_tokens (`torch.Tensor`): fields for context
+            decoder_target_tokens (`torch.Tensor`): fields for context
+            diffusion_noise (`torch.Tensor`): fields for context
+            diffusion_noise_mask (`torch.Tensor`): fields for context
+            deterministic (`bool`): fields for context
+            **kwargs (`dict`): fields for context
+
+        Returns:
+            `torch.Tensor`: The generated audio
+
+
+        """
 
     @torch.no_grad()
     def __call__(
