@@ -174,6 +174,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             Callable[[int, np.ndarray, torch.FloatTensor, Union[List[PIL.Image.Image], np.ndarray]], None]
         ] = None,
         callback_frequency: Optional[int] = 1,
+        **kwargs,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
