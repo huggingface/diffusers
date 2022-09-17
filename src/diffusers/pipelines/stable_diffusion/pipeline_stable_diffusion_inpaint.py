@@ -1,4 +1,5 @@
 import inspect
+import warnings
 from typing import List, Optional, Union
 
 import numpy as np
@@ -8,6 +9,7 @@ import PIL
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
+from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, PNDMScheduler
@@ -83,6 +85,21 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         super().__init__()
         scheduler = scheduler.set_format("pt")
         logger.info("`StableDiffusionInpaintPipeline` is experimental and will very likely change in the future.")
+
+        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
+            warnings.warn(
+                f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
+                f" should be set to 1 istead of {scheduler.config.steps_offset}. Please make sure "
+                "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
+                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
+                " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
+                " file",
+                DeprecationWarning,
+            )
+            new_config = dict(scheduler.config)
+            new_config["steps_offset"] = 1
+            scheduler._internal_dict = FrozenDict(new_config)
+
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -193,19 +210,12 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
         # set timesteps
-        accepts_offset = "offset" in set(inspect.signature(self.scheduler.set_timesteps).parameters.keys())
-        extra_set_kwargs = {}
-        offset = 0
-        if accepts_offset:
-            offset = 1
-            extra_set_kwargs["offset"] = 1
-
-        self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
+        self.scheduler.set_timesteps(num_inference_steps)
 
         # preprocess image
         if not isinstance(init_image, torch.FloatTensor):
             init_image = preprocess_image(init_image)
-        init_image.to(self.device)
+        init_image = init_image.to(self.device)
 
         # encode the init image into latents and scale the latents
         init_latent_dist = self.vae.encode(init_image).latent_dist
@@ -220,7 +230,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         # preprocess mask
         if not isinstance(mask_image, torch.FloatTensor):
             mask_image = preprocess_mask(mask_image)
-        mask_image.to(self.device)
+        mask_image = mask_image.to(self.device)
         mask = torch.cat([mask_image] * batch_size)
 
         # check sizes
@@ -228,6 +238,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             raise ValueError("The mask and init_image should be the same size!")
 
         # get the original timestep using init_timestep
+        offset = self.scheduler.config.get("steps_offset", 0)
         init_timestep = int(num_inference_steps * strength) + offset
         init_timestep = min(init_timestep, num_inference_steps)
         timesteps = self.scheduler.timesteps[-init_timestep]

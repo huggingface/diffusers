@@ -16,6 +16,7 @@
 # and https://github.com/hojonathanho/diffusion
 
 import math
+import warnings
 from typing import Optional, Tuple, Union
 
 import numpy as np
@@ -78,7 +79,13 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         clip_sample (`bool`, default `True`):
             option to clip predicted sample between -1 and 1 for numerical stability.
         set_alpha_to_one (`bool`, default `True`):
-            if alpha for final step is 1 or the final alpha of the "non-previous" one.
+            each diffusion step uses the value of alphas product at that step and at the previous one. For the final
+            step there is no previous alpha. When this option is `True` the previous alpha product is fixed to `1`,
+            otherwise it uses the value of alpha at step 0.
+        steps_offset (`int`, default `0`):
+            an offset added to the inference steps. You can use a combination of `offset=1` and
+            `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
+            stable diffusion.
         tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays.
 
     """
@@ -93,6 +100,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         trained_betas: Optional[np.ndarray] = None,
         clip_sample: bool = True,
         set_alpha_to_one: bool = True,
+        steps_offset: int = 0,
         tensor_format: str = "pt",
     ):
         if trained_betas is not None:
@@ -134,16 +142,26 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
-    def set_timesteps(self, num_inference_steps: int, offset: int = 0):
+    def set_timesteps(self, num_inference_steps: int, **kwargs):
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
         Args:
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
-            offset (`int`):
-                optional value to shift timestep values up by. A value of 1 is used in stable diffusion for inference.
         """
+
+        offset = self.config.steps_offset
+
+        if "offset" in kwargs:
+            warnings.warn(
+                "`offset` is deprecated as an input argument to `set_timesteps` and will be removed in v0.4.0."
+                " Please pass `steps_offset` to `__init__` instead.",
+                DeprecationWarning,
+            )
+
+            offset = kwargs["offset"]
+
         self.num_inference_steps = num_inference_steps
         step_ratio = self.config.num_train_timesteps // self.num_inference_steps
         # creates integer timesteps by multiplying by ratio
