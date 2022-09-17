@@ -14,7 +14,7 @@ Colab for inference
 ## Running locally 
 ### Installing the dependencies
 
-Before running the scripts, make sure to install the library's training dependencies:
+Before running the scipts, make sure to install the library's training dependencies:
 
 ```bash
 pip install diffusers[training] accelerate transformers
@@ -33,7 +33,7 @@ You need to accept the model license before downloading or using the weights. In
 
 You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section of the documentation](https://huggingface.co/docs/hub/security-tokens).
 
-Run the following command to authenticate your token
+Run the following command to autheticate your token
 
 ```bash
 huggingface-cli login
@@ -64,6 +64,10 @@ accelerate launch textual_inversion.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --output_dir="textual_inversion_cat"
+```
+
+```
+accelerate launch textual_inversion.py --pretrained_model_name_or_path="CompVis/stable-diffusion-v1-4" --use_auth_token --train_data_dir="frida" --learnable_property="object" --placeholder_token="<frida>" --initializer_token="dog" --resolution=512 --train_batch_size=1  --gradient_accumulation_steps=4 --max_train_steps=3000 --learning_rate=5.0e-04 --scale_lr --lr_scheduler="constant" --lr_warmup_steps=0 --output_dir="textual_inversion_frida"
 ```
 
 A full training run takes ~1 hour on one V100 GPU.
