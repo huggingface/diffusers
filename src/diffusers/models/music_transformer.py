@@ -9,6 +9,34 @@ import torch.nn as nn
 from transformers.models.t5.modeling_t5 import T5Stack, T5Block
 from transformers import T5Config
 
+class FiLMLayer(nn.Module):
+    """A simple FiLM layer for conditioning on the diffusion time embedding.
+    
+    """
+
+    def __init__(self, in_channels, out_channels) -> None:
+        super().__init__()
+        self.gamma = nn.Linear(in_channels, out_channels)   # s
+        self.beta = nn.Linear(in_channels, out_channels)    # t
+    
+    def forward(self, hidden_states, conditioning_emb):
+        """Updates the hidden states based on the conditioning embeddings. 
+
+        Args:
+            hidden_states (`Tensor`): _description_
+            conditioning_emb (`Tensor`): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        
+        beta = self.beta(conditioning_emb).unsqueeze(-1).unsqueeze(-1)
+        gamma = self.gamma(conditioning_emb).unsqueeze(-1).unsqueeze(-1)
+        
+        hidden_states = hidden_states * (gamma + 1.0) + beta
+        return hidden_states
+
+
 class ContextEncoder(nn.Module):
     def __init__(self) -> None:
       super().__init__()
