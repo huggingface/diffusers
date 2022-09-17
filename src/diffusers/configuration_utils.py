@@ -294,8 +294,8 @@ class ConfigMixin:
         if len(config_dict) > 0:
             logger.warning(
                 f"The config attributes {config_dict} were passed to {cls.__name__}, "
-                "but are not expected and will be ignored. Please verify your config file "
-                f"{cls.config_file}"
+                "but are not expected and will be ignored. Please verify your "
+                f"{cls.config_name} configuration file."
             )
 
         unused_kwargs = {**config_dict, **kwargs}
