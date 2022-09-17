@@ -38,7 +38,7 @@ class Notes2AudioPipeline(DiffusionPipeline):
             context_encoder=context_encoder,
             note_encoder=note_encoder,
             scheduler=scheduler,
-            vocoder=vocoder
+            vocoder=vocoder,
         )
 
     @torch.no_grad()

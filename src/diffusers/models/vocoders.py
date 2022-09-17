@@ -3,8 +3,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..modeling_utils import ModelMixin
 from ..configuration_utils import ConfigMixin
+from ..modeling_utils import ModelMixin
+
 
 # DiffSound Uses MelGAN
 class MelGAN(nn.Module):
