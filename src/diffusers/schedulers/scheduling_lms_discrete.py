@@ -20,10 +20,10 @@ import torch
 from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_utils import SchedulerOutput
 
 
-class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
+class LMSDiscreteScheduler(ConfigMixin):
     """
     Linear Multistep Scheduler for discrete beta schedules. Based on the original k-diffusion implementation by
     Katherine Crowson:
@@ -60,17 +60,19 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         tensor_format: str = "pt",
     ):
         if trained_betas is not None:
-            self.betas = np.asarray(trained_betas)
+            self.betas = torch.from_numpy(trained_betas)
         if beta_schedule == "linear":
-            self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
+            self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = np.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=np.float32) ** 2
+            self.betas = (
+                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
+            )
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
         self.alphas = 1.0 - self.betas
-        self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
+        self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
 
         self.sigmas = ((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5
 
@@ -78,9 +80,6 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = None
         self.timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
         self.derivatives = []
-
-        self.tensor_format = tensor_format
-        self.set_format(tensor_format=tensor_format)
 
     def get_lms_coefficient(self, order, t, current_order):
         """
@@ -128,9 +127,9 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        model_output: Union[torch.FloatTensor, np.ndarray],
+        model_output: torch.FloatTensor,
         timestep: int,
-        sample: Union[torch.FloatTensor, np.ndarray],
+        sample: torch.FloatTensor,
         order: int = 4,
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
@@ -139,9 +138,9 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor` or `np.ndarray`):
+            sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
             order: coefficient for multi-step inference.
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
@@ -179,15 +178,17 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     def add_noise(
         self,
-        original_samples: Union[torch.FloatTensor, np.ndarray],
-        noise: Union[torch.FloatTensor, np.ndarray],
-        timesteps: Union[torch.IntTensor, np.ndarray],
-    ) -> Union[torch.FloatTensor, np.ndarray]:
-        if self.tensor_format == "pt":
-            timesteps = timesteps.to(self.sigmas.device)
-        sigmas = self.match_shape(self.sigmas[timesteps], noise)
-        noisy_samples = original_samples + noise * sigmas
+        original_samples: torch.FloatTensor,
+        noise: torch.FloatTensor,
+        timesteps: torch.IntTensor,
+    ) -> torch.FloatTensor:
+        timesteps = timesteps.to(self.sigmas.device)
 
+        sigma = self.sigmas[timesteps].flatten()
+        while len(sigma.shape) < len(original_samples.shape):
+            sigma = sigma.unsqueeze(-1)
+
+        noisy_samples = original_samples + noise * sigma
         return noisy_samples
 
     def __len__(self):
