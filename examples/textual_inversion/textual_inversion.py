@@ -24,10 +24,47 @@ from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
-
+import albumentations as A
 import gc
+import wandb
 logger = get_logger(__name__)
 
+def wandb_setup(
+    args: dict,
+    project_name: str = "glide-text2im-finetune",
+):
+    return wandb.init(
+        project=project_name,
+        config=args,
+    )
+
+def save_progress(text_encoder, vae, unet, tokenizer, args):
+    pipeline = StableDiffusionPipeline(
+        text_encoder=accelerator.unwrap_model(text_encoder),
+        vae=vae,
+        unet=unet,
+        tokenizer=tokenizer,
+        scheduler=PNDMScheduler(
+            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True
+        ),
+        safety_checker=StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker"),
+        feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
+    )
+    pipeline.save_pretrained(args.output_dir)
+    return pipeline
+def log_progress(pipeline, args, step, wandb_run):
+    prompt = f"A picture of {args.placeholder_token}"
+
+    with autocast("cuda"):
+        image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+
+    image.save(f"{args.placeholder_token}.png")
+    wandb_run.log(
+        {
+            "iter": step,
+            "samples": wandb.Image(f"{args.placeholder_token}.png", caption=prompt),
+        }
+    )
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
@@ -36,6 +73,18 @@ def parse_args():
         type=int,
         default=1,
         help="The slice amount for less memory usage. Higher slice means less memory but longer computation.",
+    )
+    parser.add_argument(
+        "--project_name",
+        type=str,
+        default='huggingface_textual_inv',
+        help="Name of wandb run",
+    )
+    parser.add_argument(
+        "--log_frequency",
+        type=int,
+        default=100,
+        help="Frequency to log/save the model.",
     )
     parser.add_argument(
         "--pretrained_model_name_or_path",
@@ -266,6 +315,11 @@ class TextualInversionDataset(Dataset):
             "bicubic": PIL.Image.BICUBIC,
             "lanczos": PIL.Image.LANCZOS,
         }[interpolation]
+        resize_ratio=0.75
+        self.base_transform = A.Compose([
+                A.RandomResizedCrop(self.size, self.size, scale=(resize_ratio, 1), ratio=(1, 1), p=1)
+            ],
+        )
 
         self.templates = imagenet_style_templates_small if learnable_property == "style" else imagenet_templates_small
         self.flip_transform = transforms.RandomHorizontalFlip(p=self.flip_p)
@@ -293,6 +347,8 @@ class TextualInversionDataset(Dataset):
 
         # default to score-sde preprocessing
         img = np.array(image).astype(np.uint8)
+        transformed = self.base_transform(image=img)
+        img = transformed["image"]
 
         if self.center_crop:
             crop = min(img.shape[0], img.shape[1])
@@ -331,7 +387,7 @@ def freeze_params(params):
 def main():
     args = parse_args()
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
-
+    wandb_run = wandb_setup(args.project_name, args)
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
@@ -386,13 +442,13 @@ def main():
     placeholder_token_id = tokenizer.convert_tokens_to_ids(args.placeholder_token)
 
     # Load models and create wrapper for stable diffusion
-    print('Beginning')
-    print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+    # print('Beginning')
+    # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
     text_encoder = CLIPTextModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", use_auth_token=args.use_auth_token
     )
-    print('Load text encoder')
-    print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+    # print('Load text encoder')
+    # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="vae", use_auth_token=args.use_auth_token
     )
@@ -400,7 +456,6 @@ def main():
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", use_auth_token=args.use_auth_token
     )
-    
     slice_size = unet.config.attention_head_dim // args.slice_div
     unet.set_attention_slice(slice_size)
 
@@ -473,19 +528,19 @@ def main():
     torch.cuda.empty_cache()
     # Move vae and unet to device
     vae.to('cpu')
-    print('Loaded data loader')
-    print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+    # print('Loaded data loader')
+    # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
     
-    print('Load vae')
-    print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+    # print('Load vae')
+    # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
     unet.to(accelerator.device)
-    print('Load unet')
-    print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+    # print('Load unet')
+    # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
     # Keep vae and unet in eval model as we don't train these
     vae.eval()
     unet.eval()
-    print('eval mode')
-    print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+    # print('eval mode')
+    # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
@@ -516,15 +571,15 @@ def main():
     for epoch in range(args.num_train_epochs):
         text_encoder.train()
         for step, batch in enumerate(train_dataloader):
-            print(f'Before gc')
-            print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+            # print(f'Before gc')
+            # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
             gc.collect()
             torch.cuda.empty_cache()
-            print(f'After gc')
-            print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+            # print(f'After gc')
+            # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
             with accelerator.accumulate(text_encoder):
-                print(f'Start of batch')
-                print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+                # print(f'Start of batch')
+                # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
 
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"]).latent_dist.sample().detach()
@@ -534,31 +589,31 @@ def main():
                 noise = torch.randn(latents.shape).to(latents.device)
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
-                print('Before timestamps')
-                print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+                # print('Before timestamps')
+                # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
                 timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (bsz,), device=accelerator.device).long()
-                print('After timestamps')
-                print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+                # print('After timestamps')
+                # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                print('Before noisy_latents')
-                print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+                # print('Before noisy_latents')
+                # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
 
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps).to(accelerator.device)
-                print('After noisy_latents')
-                print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+                # print('After noisy_latents')
+                # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
                 # Get the text embedding for conditioning
-                print('Before encoder_hidden_states')
-                print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+                # print('Before encoder_hidden_states')
+                # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0].to(accelerator.device)
-                print('After encoder_hidden_states')
-                print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
-                print('Before unet')
-                print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+                # print('After encoder_hidden_states')
+                # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+                # print('Before unet')
+                # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
                 # Predict the noise residual
                 noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample.to('cpu')
-                print('After unet')
-                print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+                # print('After unet')
+                # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
                 loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
                 # accelerator.backward(loss)
                 loss.backward()
@@ -575,8 +630,8 @@ def main():
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
-                print('After optimizer and loss')
-                print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+                # print('After optimizer and loss')
+                # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
 
                 del noise
                 del noisy_latents
