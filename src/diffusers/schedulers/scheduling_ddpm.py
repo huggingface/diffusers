@@ -245,10 +245,10 @@ class DDPMScheduler(ConfigMixin):
 
     def add_noise(
         self,
-        original_samples: Union[torch.FloatTensor, np.ndarray],
-        noise: Union[torch.FloatTensor, np.ndarray],
-        timesteps: Union[torch.IntTensor, np.ndarray],
-    ) -> Union[torch.FloatTensor, np.ndarray]:
+        original_samples: torch.FloatTensor,
+        noise: torch.FloatTensor,
+        timesteps: torch.IntTensor,
+    ) -> torch.FloatTensor:
         timesteps = timesteps.to(self.alphas_cumprod.device)
 
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
