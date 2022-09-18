@@ -192,7 +192,7 @@ class PipelineFastTests(unittest.TestCase):
 
     def test_ddim(self):
         unet = self.dummy_uncond_unet
-        scheduler = DDIMScheduler(tensor_format="pt")
+        scheduler = DDIMScheduler()
 
         ddpm = DDIMPipeline(unet=unet, scheduler=scheduler)
         ddpm.to(torch_device)
@@ -221,7 +221,7 @@ class PipelineFastTests(unittest.TestCase):
 
     def test_pndm_cifar10(self):
         unet = self.dummy_uncond_unet
-        scheduler = PNDMScheduler(tensor_format="pt")
+        scheduler = PNDMScheduler()
 
         pndm = PNDMPipeline(unet=unet, scheduler=scheduler)
         pndm.to(torch_device)
@@ -243,7 +243,7 @@ class PipelineFastTests(unittest.TestCase):
 
     def test_ldm_text2img(self):
         unet = self.dummy_cond_unet
-        scheduler = DDIMScheduler(tensor_format="pt")
+        scheduler = DDIMScheduler()
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
@@ -340,7 +340,7 @@ class PipelineFastTests(unittest.TestCase):
     def test_stable_diffusion_pndm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
-        scheduler = PNDMScheduler(tensor_format="pt", skip_prk_steps=True)
+        scheduler = PNDMScheduler(skip_prk_steps=True)
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
@@ -461,7 +461,7 @@ class PipelineFastTests(unittest.TestCase):
 
     def test_score_sde_ve_pipeline(self):
         unet = self.dummy_uncond_unet
-        scheduler = ScoreSdeVeScheduler(tensor_format="pt")
+        scheduler = ScoreSdeVeScheduler()
 
         sde_ve = ScoreSdeVePipeline(unet=unet, scheduler=scheduler)
         sde_ve.to(torch_device)
@@ -485,7 +485,7 @@ class PipelineFastTests(unittest.TestCase):
 
     def test_ldm_uncond(self):
         unet = self.dummy_uncond_unet
-        scheduler = DDIMScheduler(tensor_format="pt")
+        scheduler = DDIMScheduler()
         vae = self.dummy_vq_model
 
         ldm = LDMPipeline(unet=unet, vqvae=vae, scheduler=scheduler)
@@ -513,7 +513,7 @@ class PipelineFastTests(unittest.TestCase):
 
     def test_karras_ve_pipeline(self):
         unet = self.dummy_uncond_unet
-        scheduler = KarrasVeScheduler(tensor_format="pt")
+        scheduler = KarrasVeScheduler()
 
         pipe = KarrasVePipeline(unet=unet, scheduler=scheduler)
         pipe.to(torch_device)
@@ -536,7 +536,7 @@ class PipelineFastTests(unittest.TestCase):
     def test_stable_diffusion_img2img(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
-        scheduler = PNDMScheduler(tensor_format="pt", skip_prk_steps=True)
+        scheduler = PNDMScheduler(skip_prk_steps=True)
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
@@ -647,7 +647,7 @@ class PipelineFastTests(unittest.TestCase):
     def test_stable_diffusion_inpaint(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
-        scheduler = PNDMScheduler(tensor_format="pt", skip_prk_steps=True)
+        scheduler = PNDMScheduler(skip_prk_steps=True)
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
@@ -843,7 +843,6 @@ class PipelineTesterMixin(unittest.TestCase):
 
         unet = UNet2DModel.from_pretrained(model_id)
         scheduler = DDPMScheduler.from_config(model_id)
-        scheduler = scheduler.set_format("pt")
 
         ddpm = DDPMPipeline(unet=unet, scheduler=scheduler)
         ddpm.to(torch_device)
@@ -883,7 +882,7 @@ class PipelineTesterMixin(unittest.TestCase):
         model_id = "google/ddpm-cifar10-32"
 
         unet = UNet2DModel.from_pretrained(model_id)
-        scheduler = DDIMScheduler(tensor_format="pt")
+        scheduler = DDIMScheduler()
 
         ddim = DDIMPipeline(unet=unet, scheduler=scheduler)
         ddim.to(torch_device)
@@ -903,7 +902,7 @@ class PipelineTesterMixin(unittest.TestCase):
         model_id = "google/ddpm-cifar10-32"
 
         unet = UNet2DModel.from_pretrained(model_id)
-        scheduler = PNDMScheduler(tensor_format="pt")
+        scheduler = PNDMScheduler()
 
         pndm = PNDMPipeline(unet=unet, scheduler=scheduler)
         pndm.to(torch_device)
@@ -1044,8 +1043,8 @@ class PipelineTesterMixin(unittest.TestCase):
         model_id = "google/ddpm-cifar10-32"
 
         unet = UNet2DModel.from_pretrained(model_id)
-        ddpm_scheduler = DDPMScheduler(tensor_format="pt")
-        ddim_scheduler = DDIMScheduler(tensor_format="pt")
+        ddpm_scheduler = DDPMScheduler()
+        ddim_scheduler = DDIMScheduler()
 
         ddpm = DDPMPipeline(unet=unet, scheduler=ddpm_scheduler)
         ddpm.to(torch_device)
@@ -1068,8 +1067,8 @@ class PipelineTesterMixin(unittest.TestCase):
         model_id = "google/ddpm-cifar10-32"
 
         unet = UNet2DModel.from_pretrained(model_id)
-        ddpm_scheduler = DDPMScheduler(tensor_format="pt")
-        ddim_scheduler = DDIMScheduler(tensor_format="pt")
+        ddpm_scheduler = DDPMScheduler()
+        ddim_scheduler = DDIMScheduler()
 
         ddpm = DDPMPipeline(unet=unet, scheduler=ddpm_scheduler)
         ddpm.to(torch_device)
@@ -1094,7 +1093,7 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_karras_ve_pipeline(self):
         model_id = "google/ncsnpp-celebahq-256"
         model = UNet2DModel.from_pretrained(model_id)
-        scheduler = KarrasVeScheduler(tensor_format="pt")
+        scheduler = KarrasVeScheduler()
 
         pipe = KarrasVePipeline(unet=model, scheduler=scheduler)
         pipe.to(torch_device)
