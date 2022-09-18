@@ -281,7 +281,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
             max_length = text_input.input_ids.shape[-1]
             uncond_input = self.tokenizer(
-                ucond_tokens * batch_size, padding="max_length", max_length=max_length, return_tensors="pt"
+                ucond_tokens, padding="max_length", max_length=max_length, return_tensors="pt"
             )
             uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
 
