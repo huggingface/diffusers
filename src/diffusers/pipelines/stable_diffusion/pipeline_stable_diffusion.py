@@ -110,6 +110,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         height: Optional[int] = 512,
         width: Optional[int] = 512,
         num_inference_steps: Optional[int] = 50,
@@ -127,6 +128,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation.
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 512):
@@ -203,9 +206,21 @@ class StableDiffusionPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
+            ucond_tokens: List[str]
+            if negative_prompt is None:
+                ucond_tokens = [""] * batch_size
+            elif type(prompt) is not type(negative_prompt):
+                raise ValueError("`negative_prompt` should be the same type to `prompt`.")
+            elif isinstance(negative_prompt, str):
+                ucond_tokens = [negative_prompt]
+            elif batch_size != len(negative_prompt):
+                raise ValueError("The length of `negative_prompt` should be equal to batch_size.")
+            else:
+                ucond_tokens = negative_prompt
+
             max_length = text_input.input_ids.shape[-1]
             uncond_input = self.tokenizer(
-                [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="pt"
+                ucond_tokens, padding="max_length", max_length=max_length, return_tensors="pt"
             )
             uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
 
