@@ -19,6 +19,7 @@
 import numpy as np
 import torch
 
+from .scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..configuration_utils import ConfigMixin, register_to_config
 
 
@@ -37,8 +38,10 @@ class ScoreSdeVpScheduler(ConfigMixin):
 
     """
 
+    config_name = SCHEDULER_CONFIG_NAME
+
     @register_to_config
-    def __init__(self, num_train_timesteps=2000, beta_min=0.1, beta_max=20, sampling_eps=1e-3, tensor_format="np"):
+    def __init__(self, num_train_timesteps=2000, beta_min=0.1, beta_max=20, sampling_eps=1e-3):
         self.sigmas = None
         self.discrete_sigmas = None
         self.timesteps = None

@@ -20,7 +20,7 @@ import torch
 from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerOutput
+from .scheduling_utils import SCHEDULER_CONFIG_NAME, SchedulerOutput
 
 
 class LMSDiscreteScheduler(ConfigMixin):
@@ -45,9 +45,10 @@ class LMSDiscreteScheduler(ConfigMixin):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
             options to clip the variance used when adding noise to the denoised sample. Choose from `fixed_small`,
             `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
-        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays.
 
     """
+
+    config_name = SCHEDULER_CONFIG_NAME
 
     @register_to_config
     def __init__(
@@ -57,7 +58,6 @@ class LMSDiscreteScheduler(ConfigMixin):
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
         trained_betas: Optional[np.ndarray] = None,
-        tensor_format: str = "pt",
     ):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
@@ -122,8 +122,6 @@ class LMSDiscreteScheduler(ConfigMixin):
         self.sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
 
         self.derivatives = []
-
-        self.set_format(tensor_format=self.tensor_format)
 
     def step(
         self,

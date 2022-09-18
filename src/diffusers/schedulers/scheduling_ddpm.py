@@ -21,7 +21,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerOutput
+from .scheduling_utils import SCHEDULER_CONFIG_NAME, SchedulerOutput
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
@@ -50,7 +50,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
         t1 = i / num_diffusion_timesteps
         t2 = (i + 1) / num_diffusion_timesteps
         betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
-    return np.array(betas, dtype=np.float32)
+    return torch.tensor(betas, dtype=torch.float32)
 
 
 class DDPMScheduler(ConfigMixin):
@@ -79,9 +79,10 @@ class DDPMScheduler(ConfigMixin):
             `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
         clip_sample (`bool`, default `True`):
             option to clip predicted sample between -1 and 1 for numerical stability.
-        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays.
 
     """
+
+    config_name = SCHEDULER_CONFIG_NAME
 
     @register_to_config
     def __init__(
@@ -147,10 +148,10 @@ class DDPMScheduler(ConfigMixin):
 
         # hacks - were probably added for training stability
         if variance_type == "fixed_small":
-            variance = torch.clamp(variance, min_value=1e-20)
+            variance = torch.clamp(variance, min=1e-20)
         # for rl-diffuser https://arxiv.org/abs/2205.09991
         elif variance_type == "fixed_small_log":
-            variance = torch.log(torch.clamp(variance, min_value=1e-20))
+            variance = torch.log(torch.clamp(variance, min=1e-20))
         elif variance_type == "fixed_large":
             variance = self.betas[t]
         elif variance_type == "fixed_large_log":

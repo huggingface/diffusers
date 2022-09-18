@@ -23,7 +23,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import SchedulerOutput
+from .scheduling_utils import SCHEDULER_CONFIG_NAME, SchedulerOutput
 
 
 @dataclass
@@ -66,6 +66,8 @@ class ScoreSdeVeScheduler(ConfigMixin):
         epsilon.
         correct_steps (`int`): number of correction steps performed on a produced sample.
     """
+
+    config_name = SCHEDULER_CONFIG_NAME
 
     @register_to_config
     def __init__(
@@ -190,7 +192,7 @@ class ScoreSdeVeScheduler(ConfigMixin):
         drift = drift - diffusion[:, None, None, None] ** 2 * model_output
 
         #  equation 6: sample noise for the diffusion term of
-        noise = torch.randn_like(sample, layout=sample.layout, generator=generator).to(sample.device)
+        noise = torch.randn(sample.shape, layout=sample.layout, generator=generator).to(sample.device)
         prev_sample_mean = sample - drift  # subtract because `dt` is a small negative timestep
         # TODO is the variable diffusion the correct scaling term for the noise?
         prev_sample = prev_sample_mean + diffusion[:, None, None, None] * noise  # add impact of diffusion field g
@@ -234,7 +236,7 @@ class ScoreSdeVeScheduler(ConfigMixin):
 
         # For small batch sizes, the paper "suggest replacing norm(z) with sqrt(d), where d is the dim. of z"
         # sample noise for correction
-        noise = torch.randn_like(sample, layout=sample.layout, generator=generator).to(sample.device)
+        noise = torch.randn(sample.shape, layout=sample.layout, generator=generator).to(sample.device)
 
         # compute step size from the model_output, the noise, and the snr
         grad_norm = torch.norm(model_output.reshape(model_output.shape[0], -1), dim=-1).mean()

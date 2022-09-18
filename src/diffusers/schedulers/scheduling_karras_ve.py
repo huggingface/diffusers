@@ -19,6 +19,7 @@ from typing import Optional, Tuple, Union
 import numpy as np
 import torch
 
+from .scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
 
@@ -71,6 +72,8 @@ class KarrasVeScheduler(ConfigMixin):
             A reasonable range is [0.2, 80].
 
     """
+
+    config_name = SCHEDULER_CONFIG_NAME
 
     @register_to_config
     def __init__(

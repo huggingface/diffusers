@@ -22,7 +22,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerOutput
+from .scheduling_utils import SCHEDULER_CONFIG_NAME, SchedulerOutput
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
@@ -88,6 +88,8 @@ class PNDMScheduler(ConfigMixin):
             stable diffusion.
 
     """
+
+    config_name = SCHEDULER_CONFIG_NAME
 
     @register_to_config
     def __init__(
