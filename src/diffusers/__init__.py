@@ -59,7 +59,7 @@ else:
 
 if is_torch_available() and is_transformers_available() and is_onnx_available():
     from .pipelines import StableDiffusionOnnxPipeline
-    from .pipelines import StableDiffusionImg2ImgOnnxPipeline
+    from .pipelines import StableDiffusionInpaintOnnxPipeline
 else:
     from .utils.dummy_torch_and_transformers_and_onnx_objects import *  # noqa F403
 
