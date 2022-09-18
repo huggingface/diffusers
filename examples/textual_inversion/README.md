@@ -47,6 +47,11 @@ Now let's get our dataset.Download 3-4 images from [here](https://drive.google.c
 
 And launch the training using
 
+For 6gb gpu memory, run the below command
+```
+accelerate launch textual_inversion.py --pretrained_model_name_or_path="CompVis/stable-diffusion-v1-4" --use_auth_token --train_data_dir="frida" --learnable_property="object" --placeholder_token="<frida>" --initializer_token="dog" --resolution=512 --train_batch_size=1  --gradient_accumulation_steps=4 --max_train_steps=3000 --learning_rate=5.0e-04 --scale_lr --lr_scheduler="constant" --lr_warmup_steps=0 --output_dir="textual_inversion_frida" --slice_div=4 --mixed_precision="fp16"
+```
+
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export DATA_DIR="path-to-dir-containing-images"
