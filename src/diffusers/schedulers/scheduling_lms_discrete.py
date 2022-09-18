@@ -119,7 +119,8 @@ class LMSDiscreteScheduler(ConfigMixin):
         frac = np.mod(self.timesteps, 1.0)
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         sigmas = (1 - frac) * sigmas[low_idx] + frac * sigmas[high_idx]
-        self.sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
+        sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
+        self.sigmas = torch.from_numpy(sigmas)
 
         self.derivatives = []
 
