@@ -240,7 +240,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             elif type(prompt) is not type(negative_prompt):
                 raise TypeError("`negative_prompt` should be the same type to `prompt`.")
             elif isinstance(negative_prompt, str):
-                ucond_tokens = [negative_prompt]
+                ucond_tokens = [negative_prompt] * batch_size
             elif batch_size != len(negative_prompt):
                 raise ValueError("The length of `negative_prompt` should be equal to batch_size.")
             else:
