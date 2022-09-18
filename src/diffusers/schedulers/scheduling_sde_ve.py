@@ -52,16 +52,17 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
     [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
-    [`~ConfigMixin.from_config`] functios.
+    [`~ConfigMixin.from_config`] functions.
 
     Args:
+        num_train_timesteps (`int`): number of diffusion steps used to train the model.
         snr (`float`):
             coefficient weighting the step from the model_output sample (from the network) to the random noise.
         sigma_min (`float`):
                 initial noise scale for sigma sequence in sampling procedure. The minimum sigma should mirror the
                 distribution of the data.
         sigma_max (`float`): maximum value used for the range of continuous timesteps passed into the model.
-        sampling_eps (`float`): the end value of sampling, where timesteps decrease progessively from 1 to
+        sampling_eps (`float`): the end value of sampling, where timesteps decrease progressively from 1 to
         epsilon.
         correct_steps (`int`): number of correction steps performed on a produced sample.
         tensor_format (`str`): "np" or "pt" for the expected format of samples passed to the Scheduler.

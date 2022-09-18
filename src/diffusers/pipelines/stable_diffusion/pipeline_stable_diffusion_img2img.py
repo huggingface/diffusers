@@ -1,4 +1,5 @@
 import inspect
+import warnings
 from typing import List, Optional, Union
 
 import numpy as np
@@ -7,6 +8,7 @@ import torch
 import PIL
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
+from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
@@ -64,6 +66,21 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
     ):
         super().__init__()
         scheduler = scheduler.set_format("pt")
+
+        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
+            warnings.warn(
+                f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
+                f" should be set to 1 istead of {scheduler.config.steps_offset}. Please make sure "
+                "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
+                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
+                " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
+                " file",
+                DeprecationWarning,
+            )
+            new_config = dict(scheduler.config)
+            new_config["steps_offset"] = 1
+            scheduler._internal_dict = FrozenDict(new_config)
+
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -99,7 +116,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         back to computing attention in one step.
         """
         # set slice_size = `None` to disable `set_attention_slice`
-        self.enable_attention_slice(None)
+        self.enable_attention_slicing(None)
 
     @torch.no_grad()
     def __call__(
@@ -146,7 +163,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 deterministic.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `nd.array`.
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
@@ -169,16 +186,9 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
         # set timesteps
-        accepts_offset = "offset" in set(inspect.signature(self.scheduler.set_timesteps).parameters.keys())
-        extra_set_kwargs = {}
-        offset = 0
-        if accepts_offset:
-            offset = 1
-            extra_set_kwargs["offset"] = 1
+        self.scheduler.set_timesteps(num_inference_steps)
 
-        self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
-
-        if not isinstance(init_image, torch.FloatTensor):
+        if isinstance(init_image, PIL.Image.Image):
             init_image = preprocess(init_image)
 
         # encode the init image into latents and scale the latents
@@ -190,6 +200,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         init_latents = torch.cat([init_latents] * batch_size)
 
         # get the original timestep using init_timestep
+        offset = self.scheduler.config.get("steps_offset", 0)
         init_timestep = int(num_inference_steps * strength) + offset
         init_timestep = min(init_timestep, num_inference_steps)
         if isinstance(self.scheduler, LMSDiscreteScheduler):
@@ -249,7 +260,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
-            # if we use LMSDiscreteScheduler, let's make sure latents are mulitplied by sigmas
+            # if we use LMSDiscreteScheduler, let's make sure latents are multiplied by sigmas
             if isinstance(self.scheduler, LMSDiscreteScheduler):
                 sigma = self.scheduler.sigmas[t_index]
                 # the model input needs to be scaled to match the continuous ODE formulation in K-LMS

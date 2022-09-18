@@ -30,7 +30,10 @@ from PIL import Image
 from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
-from .utils import DIFFUSERS_CACHE, BaseOutput, logging
+from .modeling_utils import WEIGHTS_NAME
+from .onnx_utils import ONNX_WEIGHTS_NAME
+from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
+from .utils import CONFIG_NAME, DIFFUSERS_CACHE, BaseOutput, logging
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
@@ -86,7 +89,7 @@ class DiffusionPipeline(ConfigMixin):
     Class attributes:
 
         - **config_name** ([`str`]) -- name of the config file that will store the class and module names of all
-          compenents of the diffusion pipeline.
+          components of the diffusion pipeline.
     """
     config_name = "model_index.json"
 
@@ -95,7 +98,7 @@ class DiffusionPipeline(ConfigMixin):
         from diffusers import pipelines
 
         for name, module in kwargs.items():
-            # retrive library
+            # retrieve library
             library = module.__module__.split(".")[0]
 
             # check if the module is a pipeline module
@@ -109,7 +112,7 @@ class DiffusionPipeline(ConfigMixin):
             if library not in LOADABLE_CLASSES or is_pipeline_module:
                 library = pipeline_dir
 
-            # retrive class_name
+            # retrieve class_name
             class_name = module.__class__.__name__
 
             register_dict = {name: (library, class_name)}
@@ -217,7 +220,7 @@ class DiffusionPipeline(ConfigMixin):
                 A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
-                Whether ot not to also return a dictionary containing missing keys, unexpected keys and error messages.
+                Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
             local_files_only(`bool`, *optional*, defaults to `False`):
                 Whether or not to only look at local files (i.e., do not try to download the model).
             use_auth_token (`str` or *bool*, *optional*):
@@ -234,7 +237,7 @@ class DiffusionPipeline(ConfigMixin):
 
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
-                speficic pipeline class. The overritten components are then directly passed to the pipelines `__init__`
+                specific pipeline class. The overritten components are then directly passed to the pipelines `__init__`
                 method. See example below for more information.
 
         <Tip>
@@ -285,6 +288,21 @@ class DiffusionPipeline(ConfigMixin):
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
         if not os.path.isdir(pretrained_model_name_or_path):
+            config_dict = cls.get_config_dict(
+                pretrained_model_name_or_path,
+                cache_dir=cache_dir,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+            )
+            # make sure we only download sub-folders and `diffusers` filenames
+            folder_names = [k for k in config_dict.keys() if not k.startswith("_")]
+            allow_patterns = [os.path.join(k, "*") for k in folder_names]
+            allow_patterns += [WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, ONNX_WEIGHTS_NAME, cls.config_name]
+
+            # download all allow_patterns
             cached_folder = snapshot_download(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
@@ -293,6 +311,7 @@ class DiffusionPipeline(ConfigMixin):
                 local_files_only=local_files_only,
                 use_auth_token=use_auth_token,
                 revision=revision,
+                allow_patterns=allow_patterns,
             )
         else:
             cached_folder = pretrained_model_name_or_path
