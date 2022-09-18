@@ -39,6 +39,7 @@ def wandb_setup(
     )
 
 def save_progress(text_encoder, vae, unet, tokenizer, args):
+    print("Saving pipeline")
     pipeline = StableDiffusionPipeline(
         text_encoder=accelerator.unwrap_model(text_encoder),
         vae=vae,
@@ -56,6 +57,8 @@ def save_progress(text_encoder, vae, unet, tokenizer, args):
     torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
     return pipeline
 def log_progress(pipeline, args, step, wandb_run, logs={}):
+    print("Running pipeline")
+
     prompt = f"A picture of {args.placeholder_token}"
 
     with autocast("cuda"):
@@ -391,7 +394,7 @@ def freeze_params(params):
 def main():
     args = parse_args()
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
-    wandb_run = wandb_setup(args.project_name, args)
+    wandb_run = wandb_setup(args, args.project_name)
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
@@ -661,10 +664,10 @@ def main():
             del loss
             if global_step >= args.max_train_steps:
                 break
-        if global_step % args.log_frequency == 0:
-            pipeline=save_progress(text_encoder, vae, unet, tokenizer, args)
-            log_progress(pipeline, args, global_step, wandb_run)
-            del piepline
+            if (global_step % args.log_frequency) == 0:
+                pipeline=save_progress(text_encoder, vae, unet, tokenizer, args)
+                log_progress(pipeline, args, global_step, wandb_run)
+                del piepline
 
         accelerator.wait_for_everyone()
 
