@@ -32,6 +32,7 @@ from .utils import CONFIG_NAME, DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT
 
 
 FLAX_WEIGHTS_NAME = "diffusion_flax_model.msgpack"
+FLAX_WEIGHTS_NAME = "flax_model.msgpack"
 
 logger = logging.get_logger(__name__)
 
@@ -294,6 +295,7 @@ class FlaxModelMixin:
             local_files_only=local_files_only,
             use_auth_token=use_auth_token,
             revision=revision,
+            subfolder=subfolder,
             # model args
             dtype=dtype,
             **kwargs,
