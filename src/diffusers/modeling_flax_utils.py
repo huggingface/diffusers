@@ -32,7 +32,6 @@ from .utils import CONFIG_NAME, DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT
 
 
 FLAX_WEIGHTS_NAME = "diffusion_flax_model.msgpack"
-FLAX_WEIGHTS_NAME = "flax_model.msgpack"
 
 logger = logging.get_logger(__name__)
 
