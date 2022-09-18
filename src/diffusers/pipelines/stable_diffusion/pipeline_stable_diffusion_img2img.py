@@ -65,7 +65,6 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
-        scheduler = scheduler.set_format("pt")
 
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             warnings.warn(
@@ -266,7 +265,6 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 # the model input needs to be scaled to match the continuous ODE formulation in K-LMS
                 latent_model_input = latent_model_input / ((sigma**2 + 1) ** 0.5)
                 latent_model_input = latent_model_input.to(self.unet.dtype)
-                t = t.to(self.unet.dtype)
 
             # predict the noise residual
             noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample

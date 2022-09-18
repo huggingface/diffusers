@@ -31,7 +31,6 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
-        scheduler = scheduler.set_format("np")
         self.register_modules(
             vae_decoder=vae_decoder,
             text_encoder=text_encoder,
