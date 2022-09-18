@@ -51,16 +51,20 @@ def save_progress(text_encoder, vae, unet, tokenizer, args):
         feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
     )
     pipeline.save_pretrained(args.output_dir)
+    learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_id]
+    learned_embeds_dict = {args.placeholder_token: learned_embeds.detach().cpu()}
+    torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
     return pipeline
-def log_progress(pipeline, args, step, wandb_run):
+def log_progress(pipeline, args, step, wandb_run, logs={}):
     prompt = f"A picture of {args.placeholder_token}"
 
     with autocast("cuda"):
-        image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+        image = pipe(prompt, height=args.resolution, width=args.resolution, num_inference_steps=50, guidance_scale=7.5).images[0]
 
     image.save(f"{args.placeholder_token}.png")
     wandb_run.log(
         {
+            **logs,
             "iter": step,
             "samples": wandb.Image(f"{args.placeholder_token}.png", caption=prompt),
         }
@@ -650,32 +654,25 @@ def main():
                 global_step += 1
 
             logs = {"loss": loss.detach().cpu().item(), "lr": lr_scheduler.get_last_lr()[0]}
+            wandb_run.log(logs)
+
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
             del loss
             if global_step >= args.max_train_steps:
                 break
+        if global_step % args.log_frequency == 0:
+            pipeline=save_progress(text_encoder, vae, unet, tokenizer, args)
+            log_progress(pipeline, args, global_step, wandb_run)
+            del piepline
 
         accelerator.wait_for_everyone()
 
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
-        pipeline = StableDiffusionPipeline(
-            text_encoder=accelerator.unwrap_model(text_encoder),
-            vae=vae,
-            unet=unet,
-            tokenizer=tokenizer,
-            scheduler=PNDMScheduler(
-                beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True
-            ),
-            safety_checker=StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker"),
-            feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
-        )
-        pipeline.save_pretrained(args.output_dir)
+        pipeline=save_progress(text_encoder, vae, unet, tokenizer, args)
+        log_progress(pipeline, args, global_step, wandb_run)
         # Also save the newly trained embeddings
-        learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_id]
-        learned_embeds_dict = {args.placeholder_token: learned_embeds.detach().cpu()}
-        torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
 
         if args.push_to_hub:
             repo.push_to_hub(
