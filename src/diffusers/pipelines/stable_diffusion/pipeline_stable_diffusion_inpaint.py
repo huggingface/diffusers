@@ -216,7 +216,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         if not isinstance(mask_image, torch.FloatTensor):
             mask_image = preprocess_mask(mask_image)
         mask_image = mask_image.to(self.device)
-        mask = torch.cat([mask] * batch_size)
+        mask = torch.cat([mask_image] * batch_size)
 
         # preprocess image
         if not isinstance(init_image, torch.FloatTensor):
