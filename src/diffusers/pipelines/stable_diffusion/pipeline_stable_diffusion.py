@@ -210,7 +210,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             if negative_prompt is None:
                 ucond_tokens = [""] * batch_size
             elif type(prompt) is not type(negative_prompt):
-                raise ValueError("`negative_prompt` should be the same type to `prompt`.")
+                raise TypeError("`negative_prompt` should be the same type to `prompt`.")
             elif isinstance(negative_prompt, str):
                 ucond_tokens = [negative_prompt]
             elif batch_size != len(negative_prompt):
