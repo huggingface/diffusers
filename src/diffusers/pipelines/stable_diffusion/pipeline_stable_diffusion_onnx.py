@@ -45,11 +45,11 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
         height: Optional[int] = 512,
         width: Optional[int] = 512,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         eta: Optional[float] = 0.0,
         latents: Optional[np.ndarray] = None,
         output_type: Optional[str] = "pil",

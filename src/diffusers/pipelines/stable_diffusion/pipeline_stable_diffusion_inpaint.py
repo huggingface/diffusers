@@ -141,12 +141,12 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
         init_image: Union[torch.FloatTensor, PIL.Image.Image],
         mask_image: Union[torch.FloatTensor, PIL.Image.Image],
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
@@ -158,8 +158,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
-            negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation.
             init_image (`torch.FloatTensor` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
                 process. This is the image whose masked region will be inpainted.
@@ -182,6 +180,8 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation.
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
