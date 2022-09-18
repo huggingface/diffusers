@@ -17,3 +17,4 @@ if is_transformers_available():
 
 if is_transformers_available() and is_onnx_available():
     from .stable_diffusion import StableDiffusionOnnxPipeline
+    from .stable_diffusion import StableDiffusionImg2ImgOnnxPipeline
