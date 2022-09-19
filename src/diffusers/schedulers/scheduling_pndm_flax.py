@@ -291,7 +291,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         # cur_sample should not be `None`
         cur_sample = state.cur_sample if state.cur_sample is not None else sample
 
-        prev_sample = self._get_prev_sample(cur_sample, timestep, prev_timestep, model_output, state=state)
+        prev_sample = self._get_prev_sample(cur_sample, timestep, prev_timestep, model_output)
         state = state.replace(counter=state.counter + 1)
 
         if not return_dict:
