@@ -122,6 +122,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
             setattr(self, name, module)
 
     def save_pretrained(self, save_directory: Union[str, os.PathLike]):
+        # TODO: handle inference_state
         """
         Save all variables of the pipeline that can be saved and loaded as well as the pipelines configuration file to
         a directory. A pipeline variable can be saved and loaded if its class implements both a save and loading
