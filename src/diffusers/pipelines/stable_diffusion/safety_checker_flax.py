@@ -44,7 +44,7 @@ class FlaxStableDiffusionSafetyChecker(nn.Module, FlaxModelMixin, ConfigMixin):
         return self.init(rngs, pixel_values)["params"]
 
     def setup(self):
-        clip_vision_config = CLIPVisionConfig(self.vision_config)
+        clip_vision_config = CLIPVisionConfig(**self.vision_config)
         self.vision_model = FlaxCLIPVisionModule(clip_vision_config)
         self.visual_projection = nn.Dense(self.projection_dim, use_bias=False)
 
@@ -55,7 +55,7 @@ class FlaxStableDiffusionSafetyChecker(nn.Module, FlaxModelMixin, ConfigMixin):
         self.special_care_embeds_weights = self.param("special_care_embeds_weights", jax.nn.initializers.ones, (3,))
 
     def __call__(self, clip_input):
-        pooled_output = self.vision_model(clip_input)[1]  # pooled_output
+        pooled_output = self.vision_model(clip_input)[1]
         image_embeds = self.visual_projection(pooled_output)
 
         special_cos_dist = jax_cosine_distance(image_embeds, self.special_care_embeds)
