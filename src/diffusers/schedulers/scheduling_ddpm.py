@@ -21,7 +21,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SCHEDULER_CONFIG_NAME, SchedulerOutput
+from .scheduling_utils import SchedulerOutput, SchedulerMixin
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
@@ -53,7 +53,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     return torch.tensor(betas, dtype=torch.float32)
 
 
-class DDPMScheduler(ConfigMixin):
+class DDPMScheduler(SchedulerMixin, ConfigMixin):
     """
     Denoising diffusion probabilistic models (DDPMs) explores the connections between denoising score matching and
     Langevin dynamics sampling.
@@ -81,8 +81,6 @@ class DDPMScheduler(ConfigMixin):
             option to clip predicted sample between -1 and 1 for numerical stability.
 
     """
-
-    config_name = SCHEDULER_CONFIG_NAME
 
     @register_to_config
     def __init__(

@@ -21,7 +21,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import SCHEDULER_CONFIG_NAME
+from .scheduling_utils import SchedulerMixin
 
 
 @dataclass
@@ -41,7 +41,7 @@ class KarrasVeOutput(BaseOutput):
     derivative: torch.FloatTensor
 
 
-class KarrasVeScheduler(ConfigMixin):
+class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
     """
     Stochastic sampling from Karras et al. [1] tailored to the Variance-Expanding (VE) models [2]. Use Algorithm 2 and
     the VE column of Table 1 from [1] for reference.
@@ -72,8 +72,6 @@ class KarrasVeScheduler(ConfigMixin):
             A reasonable range is [0.2, 80].
 
     """
-
-    config_name = SCHEDULER_CONFIG_NAME
 
     @register_to_config
     def __init__(

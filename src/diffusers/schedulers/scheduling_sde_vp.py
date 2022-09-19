@@ -20,10 +20,10 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SCHEDULER_CONFIG_NAME
+from .scheduling_utils import SchedulerMixin
 
 
-class ScoreSdeVpScheduler(ConfigMixin):
+class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
     """
     The variance preserving stochastic differential equation (SDE) scheduler.
 
@@ -37,8 +37,6 @@ class ScoreSdeVpScheduler(ConfigMixin):
     UNDER CONSTRUCTION
 
     """
-
-    config_name = SCHEDULER_CONFIG_NAME
 
     @register_to_config
     def __init__(self, num_train_timesteps=2000, beta_min=0.1, beta_max=20, sampling_eps=1e-3):

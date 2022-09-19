@@ -20,10 +20,10 @@ import torch
 from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SCHEDULER_CONFIG_NAME, SchedulerOutput
+from .scheduling_utils import SchedulerOutput, SchedulerMixin
 
 
-class LMSDiscreteScheduler(ConfigMixin):
+class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
     """
     Linear Multistep Scheduler for discrete beta schedules. Based on the original k-diffusion implementation by
     Katherine Crowson:
@@ -47,8 +47,6 @@ class LMSDiscreteScheduler(ConfigMixin):
             `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
 
     """
-
-    config_name = SCHEDULER_CONFIG_NAME
 
     @register_to_config
     def __init__(
