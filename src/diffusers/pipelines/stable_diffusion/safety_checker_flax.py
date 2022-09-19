@@ -6,9 +6,7 @@ from flax.core.frozen_dict import FrozenDict
 from flax.struct import dataclass, field
 
 import warnings
-# from typing import Optional, Tuple
 
-# from transformers import CLIPConfig, FlaxPreTrainedModel
 from transformers import CLIPVisionConfig
 from transformers.models.clip.modeling_flax_clip import FlaxCLIPVisionModule
 
@@ -24,10 +22,9 @@ def jax_cosine_distance(emb_1, emb_2, eps=1e-12):
 
 @flax_register_to_config
 class FlaxStableDiffusionSafetyChecker(nn.Module, FlaxModelMixin, ConfigMixin):
-    # Used to be a CLIPConfig configuration, but we only need the Vision configuration.
     projection_dim: int = 768
+    # CLIPVisionConfig fields
     vision_config: dict = field(default_factory=dict)
-    # vision_config: CLIPVisionConfig = None
     dtype: jnp.dtype = jnp.float32
 
     def init_weights(self, rng: jax.random.PRNGKey) -> FrozenDict:
