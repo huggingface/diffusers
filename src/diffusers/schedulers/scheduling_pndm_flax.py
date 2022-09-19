@@ -25,7 +25,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
-def betas_for_alpha_bar(num_diffusion_timesteps: int, max_beta=0.999):
+def betas_for_alpha_bar(num_diffusion_timesteps: int, max_beta=0.999) -> jnp.ndarray:
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
@@ -40,7 +40,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps: int, max_beta=0.999):
                      prevent singularities.
 
     Returns:
-        betas (`jnp.array`): the betas used by the scheduler to step the model outputs
+        betas (`jnp.ndarray`): the betas used by the scheduler to step the model outputs
     """
 
     def alpha_bar(time_step):
@@ -56,36 +56,23 @@ def betas_for_alpha_bar(num_diffusion_timesteps: int, max_beta=0.999):
 
 @flax.struct.dataclass
 class PNDMSchedulerState:
-    betas: jnp.array
-
     # setable values
-    _timesteps: jnp.array
+    _timesteps: jnp.ndarray
     num_inference_steps: Optional[int] = None
     _offset: int = 0
-    prk_timesteps: Optional[jnp.array] = None
-    plms_timesteps: Optional[jnp.array] = None
-    timesteps: Optional[jnp.array] = None
+    prk_timesteps: Optional[jnp.ndarray] = None
+    plms_timesteps: Optional[jnp.ndarray] = None
+    timesteps: Optional[jnp.ndarray] = None
 
     # running values
     cur_model_output: Optional[jnp.ndarray] = None
     counter: int = 0
     cur_sample: Optional[jnp.ndarray] = None
-    ets: jnp.array = jnp.array([])
-
-    @property
-    def alphas(self) -> jnp.array:
-        return 1.0 - self.betas
-
-    @property
-    def alphas_cumprod(self) -> jnp.array:
-        return jnp.cumprod(self.alphas, axis=0)
+    ets: jnp.ndarray = jnp.array([])
 
     @classmethod
-    def create(cls, betas: jnp.array, num_train_timesteps: int):
-        return cls(
-            betas=betas,
-            _timesteps=jnp.arange(0, num_train_timesteps)[::-1],
-        )
+    def create(cls, num_train_timesteps: int):
+        return cls(_timesteps=jnp.arange(0, num_train_timesteps)[::-1])
 
 
 @dataclass
@@ -112,7 +99,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule (`str`):
             the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
-        trained_betas (`np.ndarray`, optional):
+        trained_betas (`jnp.ndarray`, optional):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
         skip_prk_steps (`bool`):
             allows the scheduler to skip the Runge-Kutta steps that are defined in the original paper as being required
@@ -126,28 +113,31 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[jnp.array] = None,
+        trained_betas: Optional[jnp.ndarray] = None,
         skip_prk_steps: bool = False,
     ):
         if trained_betas is not None:
-            betas = jnp.asarray(trained_betas)
+            self.betas = jnp.asarray(trained_betas)
         if beta_schedule == "linear":
-            betas = jnp.linspace(beta_start, beta_end, num_train_timesteps, dtype=jnp.float32)
+            self.betas = jnp.linspace(beta_start, beta_end, num_train_timesteps, dtype=jnp.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            betas = jnp.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=jnp.float32) ** 2
+            self.betas = jnp.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=jnp.float32) ** 2
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
-            betas = betas_for_alpha_bar(num_train_timesteps)
+            self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+
+        self.alphas = 1.0 - self.betas
+        self.alphas_cumprod = jnp.cumprod(self.alphas, axis=0)
 
         # For now we only support F-PNDM, i.e. the runge-kutta method
         # For more information on the algorithm please take a look at the paper: https://arxiv.org/pdf/2202.09778.pdf
         # mainly at formula (9), (12), (13) and the Algorithm 2.
         self.pndm_order = 4
 
-        self.state = PNDMSchedulerState.create(betas=betas, num_train_timesteps=num_train_timesteps)
+        self.state = PNDMSchedulerState.create(num_train_timesteps=num_train_timesteps)
 
     def set_timesteps(
         self, state: PNDMSchedulerState, num_inference_steps: int, offset: int = 0
@@ -157,7 +147,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
 
         Args:
             state (`PNDMSchedulerState`):
-                the PNDMScheduler state data class instance.
+                the `FlaxPNDMScheduler` state data class instance.
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
             offset (`int`):
@@ -165,7 +155,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         """
         step_ratio = self.config.num_train_timesteps // num_inference_steps
         # creates integer timesteps by multiplying by ratio
-        # casting to int to avoid issues when num_inference_step is power of 3
+        # rounding to avoid issues when num_inference_step is power of 3
         _timesteps = (jnp.arange(0, num_inference_steps) * step_ratio).round()[::-1]
         _timesteps = _timesteps + offset
 
@@ -212,7 +202,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         This function calls `step_prk()` or `step_plms()` depending on the internal variable `counter`.
 
         Args:
-            state (`PNDMSchedulerState`): the PNDMScheduler state data class instance.
+            state (`PNDMSchedulerState`): the `FlaxPNDMScheduler` state data class instance.
             model_output (`jnp.ndarray`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`jnp.ndarray`):
@@ -246,7 +236,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         solution to the differential equation.
 
         Args:
-            state (`PNDMSchedulerState`): the PNDMScheduler state data class instance.
+            state (`PNDMSchedulerState`): the `FlaxPNDMScheduler` state data class instance.
             model_output (`jnp.ndarray`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`jnp.ndarray`):
@@ -268,24 +258,24 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         timestep = state.prk_timesteps[state.counter // 4 * 4]
 
         if state.counter % 4 == 0:
-            state.replace(
+            state = state.replace(
                 cur_model_output=state.cur_model_output + 1 / 6 * model_output,
                 ets=state.ets.append(model_output),
                 cur_sample=sample,
             )
         elif (self.counter - 1) % 4 == 0:
-            state.replace(cur_model_output=state.cur_model_output + 1 / 3 * model_output)
+            state = state.replace(cur_model_output=state.cur_model_output + 1 / 3 * model_output)
         elif (self.counter - 2) % 4 == 0:
-            state.replace(cur_model_output=state.cur_model_output + 1 / 3 * model_output)
+            state = state.replace(cur_model_output=state.cur_model_output + 1 / 3 * model_output)
         elif (self.counter - 3) % 4 == 0:
             model_output = state.cur_model_output + 1 / 6 * model_output
-            state.replace(cur_model_output=0)
+            state = state.replace(cur_model_output=0)
 
         # cur_sample should not be `None`
         cur_sample = state.cur_sample if state.cur_sample is not None else sample
 
         prev_sample = self._get_prev_sample(cur_sample, timestep, prev_timestep, model_output, state=state)
-        state.replace(counter=state.counter + 1)
+        state = state.replace(counter=state.counter + 1)
 
         if not return_dict:
             return (prev_sample, state)
@@ -305,7 +295,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         times to approximate the solution.
 
         Args:
-            state (`PNDMSchedulerState`): the PNDMScheduler state data class instance.
+            state (`PNDMSchedulerState`): the `FlaxPNDMScheduler` state data class instance.
             model_output (`jnp.ndarray`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`jnp.ndarray`):
@@ -333,18 +323,18 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         prev_timestep = max(timestep - self.config.num_train_timesteps // state.num_inference_steps, 0)
 
         if state.counter != 1:
-            state.replace(ets=state.ets.append(model_output))
+            state = state.replace(ets=state.ets.append(model_output))
         else:
             prev_timestep = timestep
             timestep = timestep + self.config.num_train_timesteps // state.num_inference_steps
 
         if len(state.ets) == 1 and state.counter == 0:
             model_output = model_output
-            state.replace(cur_sample=sample)
+            state = state.replace(cur_sample=sample)
         elif len(state.ets) == 1 and state.counter == 1:
             model_output = (model_output + state.ets[-1]) / 2
             sample = state.cur_sample
-            state.replace(cur_sample=None)
+            state = state.replace(cur_sample=None)
         elif len(state.ets) == 2:
             model_output = (3 * state.ets[-1] - state.ets[-2]) / 2
         elif len(state.ets) == 3:
@@ -355,7 +345,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
             )
 
         prev_sample = self._get_prev_sample(sample, timestep, prev_timestep, model_output, state=state)
-        state.replace(counter=state.counter + 1)
+        state = state.replace(counter=state.counter + 1)
 
         if not return_dict:
             return (prev_sample, state)
@@ -375,8 +365,8 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         # sample -> x_t
         # model_output -> e_θ(x_t, t)
         # prev_sample -> x_(t−δ)
-        alpha_prod_t = state.alphas_cumprod[timestep + 1 - state._offset]
-        alpha_prod_t_prev = state.alphas_cumprod[timestep_prev + 1 - state._offset]
+        alpha_prod_t = self.alphas_cumprod[timestep + 1 - state._offset]
+        alpha_prod_t_prev = self.alphas_cumprod[timestep_prev + 1 - state._offset]
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
@@ -400,14 +390,13 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
 
     def add_noise(
         self,
-        state: PNDMSchedulerState,
         original_samples: jnp.ndarray,
         noise: jnp.ndarray,
         timesteps: jnp.ndarray,
     ) -> jnp.ndarray:
-        sqrt_alpha_prod = state.alphas_cumprod[timesteps] ** 0.5
+        sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
-        sqrt_one_minus_alpha_prod = (1 - state.alphas_cumprod[timesteps]) ** 0.5
+        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
         sqrt_one_minus_alpha_prod = self.match_shape(sqrt_one_minus_alpha_prod, original_samples)
 
         noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise

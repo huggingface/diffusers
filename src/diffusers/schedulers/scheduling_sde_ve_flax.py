@@ -14,36 +14,49 @@
 
 # DISCLAIMER: This file is strongly influenced by https://github.com/yang-song/score_sde_pytorch
 
-import warnings
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
-import numpy as np
-import torch
+import flax
+import jax.numpy as jnp
+from jax import random
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
+@flax.struct.dataclass
+class ScoreSdeVeSchedulerState:
+    # setable values
+    timesteps: Optional[jnp.ndarray] = None
+    discrete_sigmas: Optional[jnp.ndarray] = None
+    sigmas: Optional[jnp.ndarray] = None
+
+    @classmethod
+    def create(cls):
+        return cls()
+
+
 @dataclass
-class SdeVeOutput(BaseOutput):
+class FlaxSdeVeOutput(SchedulerOutput):
     """
     Output class for the ScoreSdeVeScheduler's step function output.
 
     Args:
-        prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        state (`ScoreSdeVeSchedulerState`):
+        prev_sample (`jnp.ndarray` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
-        prev_sample_mean (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        prev_sample_mean (`jnp.ndarray` of shape `(batch_size, num_channels, height, width)` for images):
             Mean averaged `prev_sample`. Same as `prev_sample`, only mean-averaged over previous timesteps.
     """
 
-    prev_sample: torch.FloatTensor
-    prev_sample_mean: torch.FloatTensor
+    state: ScoreSdeVeSchedulerState
+    prev_sample: jnp.ndarray
+    prev_sample_mean: Optional[jnp.ndarray] = None
 
 
-class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
+class FlaxScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
     """
     The variance exploding stochastic differential equation (SDE) scheduler.
 
@@ -65,7 +78,6 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         sampling_eps (`float`): the end value of sampling, where timesteps decrease progressively from 1 to
         epsilon.
         correct_steps (`int`): number of correction steps performed on a produced sample.
-        tensor_format (`str`): "np" or "pt" for the expected format of samples passed to the Scheduler.
     """
 
     @register_to_config
@@ -77,140 +89,105 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         sigma_max: float = 1348.0,
         sampling_eps: float = 1e-5,
         correct_steps: int = 1,
-        tensor_format: str = "pt",
     ):
-        # setable values
-        self.timesteps = None
+        state = ScoreSdeVeSchedulerState.create()
 
-        self.set_sigmas(num_train_timesteps, sigma_min, sigma_max, sampling_eps)
+        self.state = self.set_sigmas(state, num_train_timesteps, sigma_min, sigma_max, sampling_eps)
 
-        self.tensor_format = tensor_format
-        self.set_format(tensor_format=tensor_format)
-
-    def set_timesteps(self, num_inference_steps: int, sampling_eps: float = None):
+    def set_timesteps(
+        self, state: ScoreSdeVeSchedulerState, num_inference_steps: int, sampling_eps: float = None
+    ) -> ScoreSdeVeSchedulerState:
         """
         Sets the continuous timesteps used for the diffusion chain. Supporting function to be run before inference.
 
         Args:
+            state (`ScoreSdeVeSchedulerState`): the `FlaxScoreSdeVeScheduler` state data class instance.
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
             sampling_eps (`float`, optional): final timestep value (overrides value given at Scheduler instantiation).
 
         """
         sampling_eps = sampling_eps if sampling_eps is not None else self.config.sampling_eps
-        tensor_format = getattr(self, "tensor_format", "pt")
-        if tensor_format == "np":
-            self.timesteps = np.linspace(1, sampling_eps, num_inference_steps)
-        elif tensor_format == "pt":
-            self.timesteps = torch.linspace(1, sampling_eps, num_inference_steps)
-        else:
-            raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
+
+        timesteps = jnp.linspace(1, sampling_eps, num_inference_steps)
+        return state.replace(timesteps=timesteps)
 
     def set_sigmas(
-        self, num_inference_steps: int, sigma_min: float = None, sigma_max: float = None, sampling_eps: float = None
-    ):
+        self,
+        state: ScoreSdeVeSchedulerState,
+        num_inference_steps: int,
+        sigma_min: float = None,
+        sigma_max: float = None,
+        sampling_eps: float = None,
+    ) -> ScoreSdeVeSchedulerState:
         """
         Sets the noise scales used for the diffusion chain. Supporting function to be run before inference.
 
         The sigmas control the weight of the `drift` and `diffusion` components of sample update.
 
         Args:
+            state (`ScoreSdeVeSchedulerState`): the `FlaxScoreSdeVeScheduler` state data class instance.
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
             sigma_min (`float`, optional):
                 initial noise scale value (overrides value given at Scheduler instantiation).
             sigma_max (`float`, optional): final noise scale value (overrides value given at Scheduler instantiation).
             sampling_eps (`float`, optional): final timestep value (overrides value given at Scheduler instantiation).
-
         """
         sigma_min = sigma_min if sigma_min is not None else self.config.sigma_min
         sigma_max = sigma_max if sigma_max is not None else self.config.sigma_max
         sampling_eps = sampling_eps if sampling_eps is not None else self.config.sampling_eps
-        if self.timesteps is None:
-            self.set_timesteps(num_inference_steps, sampling_eps)
+        if state.timesteps is None:
+            state = self.set_timesteps(state, num_inference_steps, sampling_eps)
 
-        tensor_format = getattr(self, "tensor_format", "pt")
-        if tensor_format == "np":
-            self.discrete_sigmas = np.exp(np.linspace(np.log(sigma_min), np.log(sigma_max), num_inference_steps))
-            self.sigmas = np.array([sigma_min * (sigma_max / sigma_min) ** t for t in self.timesteps])
-        elif tensor_format == "pt":
-            self.discrete_sigmas = torch.exp(torch.linspace(np.log(sigma_min), np.log(sigma_max), num_inference_steps))
-            self.sigmas = torch.tensor([sigma_min * (sigma_max / sigma_min) ** t for t in self.timesteps])
-        else:
-            raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
+        discrete_sigmas = jnp.exp(jnp.linspace(jnp.log(sigma_min), jnp.log(sigma_max), num_inference_steps))
+        sigmas = jnp.array([sigma_min * (sigma_max / sigma_min) ** t for t in state.timesteps])
 
-    def get_adjacent_sigma(self, timesteps, t):
-        tensor_format = getattr(self, "tensor_format", "pt")
-        if tensor_format == "np":
-            return np.where(timesteps == 0, np.zeros_like(t), self.discrete_sigmas[timesteps - 1])
-        elif tensor_format == "pt":
-            return torch.where(
-                timesteps == 0,
-                torch.zeros_like(t.to(timesteps.device)),
-                self.discrete_sigmas[timesteps - 1].to(timesteps.device),
-            )
+        return state.replace(discrete_sigmas=discrete_sigmas, sigmas=sigmas)
 
-        raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
-
-    def set_seed(self, seed):
-        warnings.warn(
-            "The method `set_seed` is deprecated and will be removed in version `0.4.0`. Please consider passing a"
-            " generator instead.",
-            DeprecationWarning,
-        )
-        tensor_format = getattr(self, "tensor_format", "pt")
-        if tensor_format == "np":
-            np.random.seed(seed)
-        elif tensor_format == "pt":
-            torch.manual_seed(seed)
-        else:
-            raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
+    def get_adjacent_sigma(self, state, timesteps, t):
+        return jnp.where(timesteps == 0, jnp.zeros_like(t), state.discrete_sigmas[timesteps - 1])
 
     def step_pred(
         self,
-        model_output: Union[torch.FloatTensor, np.ndarray],
+        state: ScoreSdeVeSchedulerState,
+        model_output: jnp.ndarray,
         timestep: int,
-        sample: Union[torch.FloatTensor, np.ndarray],
-        generator: Optional[torch.Generator] = None,
+        sample: jnp.ndarray,
+        key: random.KeyArray,
         return_dict: bool = True,
-        **kwargs,
-    ) -> Union[SdeVeOutput, Tuple]:
+    ) -> Union[FlaxSdeVeOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            state (`ScoreSdeVeSchedulerState`): the `FlaxScoreSdeVeScheduler` state data class instance.
+            model_output (`jnp.ndarray`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor` or `np.ndarray`):
+            sample (`jnp.ndarray`):
                 current instance of sample being created by diffusion process.
             generator: random number generator.
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
-            [`~schedulers.scheduling_sde_ve.SdeVeOutput`] or `tuple`: [`~schedulers.scheduling_sde_ve.SdeVeOutput`] if
-            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
+            [`FlaxSdeVeOutput`] or `tuple`: [`FlaxSdeVeOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            returning a tuple, the first element is the sample tensor.
 
         """
-        if "seed" in kwargs and kwargs["seed"] is not None:
-            self.set_seed(kwargs["seed"])
-
-        if self.timesteps is None:
+        if state.timesteps is None:
             raise ValueError(
-                "`self.timesteps` is not set, you need to run 'set_timesteps' after creating the scheduler"
+                "`state.timesteps` is not set, you need to run 'set_timesteps' after creating the scheduler"
             )
 
-        timestep = timestep * torch.ones(
-            sample.shape[0], device=sample.device
-        )  # torch.repeat_interleave(timestep, sample.shape[0])
-        timesteps = (timestep * (len(self.timesteps) - 1)).long()
+        timestep = timestep * jnp.ones(
+            sample.shape[0],
+        )
+        timesteps = (timestep * (len(state.timesteps) - 1)).long()
 
-        # mps requires indices to be in the same device, so we use cpu as is the default with cuda
-        timesteps = timesteps.to(self.discrete_sigmas.device)
-
-        sigma = self.discrete_sigmas[timesteps].to(sample.device)
-        adjacent_sigma = self.get_adjacent_sigma(timesteps, timestep).to(sample.device)
-        drift = self.zeros_like(sample)
+        sigma = state.discrete_sigmas[timesteps]
+        adjacent_sigma = self.get_adjacent_sigma(state, timesteps, timestep)
+        drift = jnp.zeros_like(sample)
         diffusion = (sigma**2 - adjacent_sigma**2) ** 0.5
 
         # equation 6 in the paper: the model_output modeled by the network is grad_x log pt(x)
@@ -218,67 +195,66 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         drift = drift - diffusion[:, None, None, None] ** 2 * model_output
 
         #  equation 6: sample noise for the diffusion term of
-        noise = self.randn_like(sample, generator=generator)
+        key = random.split(key, num=1)
+        noise = random.normal(key=key, shape=sample.shape)
         prev_sample_mean = sample - drift  # subtract because `dt` is a small negative timestep
         # TODO is the variable diffusion the correct scaling term for the noise?
         prev_sample = prev_sample_mean + diffusion[:, None, None, None] * noise  # add impact of diffusion field g
 
         if not return_dict:
-            return (prev_sample, prev_sample_mean)
+            return (prev_sample, prev_sample_mean, state)
 
-        return SdeVeOutput(prev_sample=prev_sample, prev_sample_mean=prev_sample_mean)
+        return FlaxSdeVeOutput(prev_sample=prev_sample, prev_sample_mean=prev_sample_mean, state=state)
 
     def step_correct(
         self,
-        model_output: Union[torch.FloatTensor, np.ndarray],
-        sample: Union[torch.FloatTensor, np.ndarray],
-        generator: Optional[torch.Generator] = None,
+        state: ScoreSdeVeSchedulerState,
+        model_output: jnp.ndarray,
+        sample: jnp.ndarray,
+        key: random.KeyArray,
         return_dict: bool = True,
-        **kwargs,
     ) -> Union[SchedulerOutput, Tuple]:
         """
         Correct the predicted sample based on the output model_output of the network. This is often run repeatedly
         after making the prediction for the previous timestep.
 
         Args:
-            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
-            sample (`torch.FloatTensor` or `np.ndarray`):
+            state (`ScoreSdeVeSchedulerState`): the `FlaxScoreSdeVeScheduler` state data class instance.
+            model_output (`jnp.ndarray`): direct output from learned diffusion model.
+            sample (`jnp.ndarray`):
                 current instance of sample being created by diffusion process.
             generator: random number generator.
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
-            [`~schedulers.scheduling_sde_ve.SdeVeOutput`] or `tuple`: [`~schedulers.scheduling_sde_ve.SdeVeOutput`] if
-            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
+            [`FlaxSdeVeOutput`] or `tuple`: [`FlaxSdeVeOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            returning a tuple, the first element is the sample tensor.
 
         """
-        if "seed" in kwargs and kwargs["seed"] is not None:
-            self.set_seed(kwargs["seed"])
-
-        if self.timesteps is None:
+        if state.timesteps is None:
             raise ValueError(
-                "`self.timesteps` is not set, you need to run 'set_timesteps' after creating the scheduler"
+                "`state.timesteps` is not set, you need to run 'set_timesteps' after creating the scheduler"
             )
 
         # For small batch sizes, the paper "suggest replacing norm(z) with sqrt(d), where d is the dim. of z"
         # sample noise for correction
-        noise = self.randn_like(sample, generator=generator)
+        key = random.split(key, num=1)
+        noise = random.normal(key=key, shape=sample.shape)
 
         # compute step size from the model_output, the noise, and the snr
-        grad_norm = self.norm(model_output)
-        noise_norm = self.norm(noise)
+        grad_norm = jnp.linalg.norm(model_output)
+        noise_norm = jnp.linalg.norm(noise)
         step_size = (self.config.snr * noise_norm / grad_norm) ** 2 * 2
-        step_size = step_size * torch.ones(sample.shape[0]).to(sample.device)
-        # self.repeat_scalar(step_size, sample.shape[0])
+        step_size = step_size * jnp.ones(sample.shape[0])
 
         # compute corrected sample: model_output term and noise term
         prev_sample_mean = sample + step_size[:, None, None, None] * model_output
         prev_sample = prev_sample_mean + ((step_size * 2) ** 0.5)[:, None, None, None] * noise
 
         if not return_dict:
-            return (prev_sample,)
+            return (prev_sample, state)
 
-        return SchedulerOutput(prev_sample=prev_sample)
+        return FlaxSdeVeOutput(prev_sample=prev_sample, state=state)
 
     def __len__(self):
         return self.config.num_train_timesteps

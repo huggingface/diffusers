@@ -2,9 +2,13 @@ import os
 import random
 import unittest
 from distutils.util import strtobool
+from typing import Union
 
 import torch
 
+import PIL.Image
+import PIL.ImageOps
+import requests
 from packaging import version
 
 
@@ -59,3 +63,32 @@ def slow(test_case):
 
     """
     return unittest.skipUnless(_run_slow_tests, "test is slow")(test_case)
+
+
+def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
+    """
+    Args:
+    Loads `image` to a PIL Image.
+        image (`str` or `PIL.Image.Image`):
+            The image to convert to the PIL Image format.
+    Returns:
+        `PIL.Image.Image`: A PIL Image.
+    """
+    if isinstance(image, str):
+        if image.startswith("http://") or image.startswith("https://"):
+            image = PIL.Image.open(requests.get(image, stream=True).raw)
+        elif os.path.isfile(image):
+            image = PIL.Image.open(image)
+        else:
+            raise ValueError(
+                f"Incorrect path or url, URLs must start with `http://` or `https://`, and {image} is not a valid path"
+            )
+    elif isinstance(image, PIL.Image.Image):
+        image = image
+    else:
+        raise ValueError(
+            "Incorrect format used for image. Should be an url linking to an image, a local path, or a PIL image."
+        )
+    image = PIL.ImageOps.exif_transpose(image)
+    image = image.convert("RGB")
+    return image
