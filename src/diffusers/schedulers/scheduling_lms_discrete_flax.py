@@ -198,8 +198,11 @@ class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         noise: jnp.ndarray,
         timesteps: jnp.ndarray,
     ) -> jnp.ndarray:
-        sigmas = self.match_shape(state.sigmas[timesteps], noise)
-        noisy_samples = original_samples + noise * sigmas
+        sigma = state.sigmas[timesteps].flatten()
+        while len(sigma.shape) < len(noise.shape):
+            sigma = sigma[..., None]
+
+        noisy_samples = original_samples + noise * sigma
 
         return noisy_samples
 
