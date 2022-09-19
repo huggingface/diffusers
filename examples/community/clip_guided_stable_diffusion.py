@@ -165,7 +165,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
             latents = latents.detach() + grads * (sigma**2)
         else:
             noise_pred = noise_pred - torch.sqrt(beta_prod_t) * grads
-        return noise_pred_original, latents
+        return noise_pred, latents
 
     @torch.no_grad()
     def __call__(
