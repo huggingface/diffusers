@@ -15,7 +15,6 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 import math
-import warnings
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
@@ -151,7 +150,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
 
         self.state = PNDMSchedulerState.create(num_train_timesteps=num_train_timesteps)
 
-    def set_timesteps(self, state: PNDMSchedulerState, num_inference_steps: int, **kwargs) -> PNDMSchedulerState:
+    def set_timesteps(self, state: PNDMSchedulerState, num_inference_steps: int) -> PNDMSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -162,14 +161,6 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
         offset = self.config.steps_offset
-
-        if "offset" in kwargs:
-            warnings.warn(
-                "`offset` is deprecated as an input argument to `set_timesteps` and will be removed in v0.4.0."
-                " Please pass `steps_offset` to `__init__` instead."
-            )
-
-            offset = kwargs["offset"]
 
         step_ratio = self.config.num_train_timesteps // num_inference_steps
         # creates integer timesteps by multiplying by ratio

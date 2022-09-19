@@ -16,7 +16,6 @@
 # and https://github.com/hojonathanho/diffusion
 
 import math
-import warnings
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
@@ -152,7 +151,7 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
-    def set_timesteps(self, state: DDIMSchedulerState, num_inference_steps: int, **kwargs) -> DDIMSchedulerState:
+    def set_timesteps(self, state: DDIMSchedulerState, num_inference_steps: int) -> DDIMSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -163,14 +162,6 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
         offset = self.config.steps_offset
-        if "offset" in kwargs:
-            warnings.warn(
-                "`offset` is deprecated as an input argument to `set_timesteps` and will be removed in v0.4.0."
-                " Please pass `steps_offset` to `__init__` instead.",
-                DeprecationWarning,
-            )
-
-            offset = kwargs["offset"]
 
         step_ratio = self.config.num_train_timesteps // num_inference_steps
         # creates integer timesteps by multiplying by ratio
