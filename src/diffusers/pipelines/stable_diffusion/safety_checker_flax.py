@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 from flax import linen as nn
 from flax.core.frozen_dict import FrozenDict
-from flax.struct import dataclass, field
+from flax.struct import field
 from transformers import CLIPVisionConfig
 from transformers.models.clip.modeling_flax_clip import FlaxCLIPVisionModule
 
