@@ -1,19 +1,15 @@
-import inspect
 import warnings
 from typing import Dict, List, Optional, Union
-
-import numpy as np
 
 import jax
 import jax.numpy as jnp
 from flax.core.frozen_dict import FrozenDict
 from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel
 
-from ...configuration_utils import FrozenDict
 from ...models import FlaxAutoencoderKL, FlaxUNet2DConditionModel
 from ...pipeline_flax_utils import FlaxDiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from . import FlaxStableDiffusionPipelineOutput, InferenceState
+from . import FlaxStableDiffusionPipelineOutput
 from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
 
 
