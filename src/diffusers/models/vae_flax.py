@@ -214,7 +214,7 @@ class DownEncoderBlock2D(nn.Module):
         for i in range(self.num_layers):
             in_channels = self.in_channels if i == 0 else self.out_channels
 
-            res_block = ResnetBlock(
+            res_block = ResnetBlock2D(
                 in_channels=in_channels,
                 out_channels=self.out_channels,
                 dropout_prob=self.dropout,
@@ -224,7 +224,7 @@ class DownEncoderBlock2D(nn.Module):
         self.resnets = resnets
 
         if self.add_downsample:
-            self.downsample = Downsample(self.out_channels, dtype=self.dtype)
+            self.downsample = Downsample2D(self.out_channels, dtype=self.dtype)
 
     def __call__(self, hidden_states, deterministic=True):
         for resnet in self.resnets:
@@ -248,7 +248,7 @@ class UpEncoderBlock2D(nn.Module):
         resnets = []
         for i in range(self.num_layers):
             in_channels = self.in_channels if i == 0 else self.out_channels
-            res_block = ResnetBlock(
+            res_block = ResnetBlock2D(
                 in_channels=in_channels,
                 out_channels=self.out_channels,
                 dropout_prob=self.dropout,
@@ -259,7 +259,7 @@ class UpEncoderBlock2D(nn.Module):
         self.resnets = resnets
 
         if self.add_upsample:
-            self.upsample = Upsample(self.out_channels, dtype=self.dtype)
+            self.upsample = Upsample2D(self.out_channels, dtype=self.dtype)
 
     def __call__(self, hidden_states, deterministic=True):
         for resnet in self.resnets:
@@ -281,7 +281,7 @@ class UNetMidBlock2D(nn.Module):
     def setup(self):
         # there is always at least one resnet
         resnets = [
-            ResnetBlock(
+            ResnetBlock2D(
                 in_channels=self.in_channels,
                 out_channels=self.in_channels,
                 dropout_prob=self.dropout,
@@ -292,12 +292,12 @@ class UNetMidBlock2D(nn.Module):
         attentions = []
 
         for _ in range(self.num_layers):
-            attn_block = AttnBlock(
+            attn_block = AttentionBlock(
                 channels=self.in_channels, num_head_channels=self.attn_num_head_channels, dtype=self.dtype
             )
             attentions.append(attn_block)
 
-            res_block = ResnetBlock(
+            res_block = ResnetBlock2D(
                 in_channels=self.in_channels,
                 out_channels=self.in_channels,
                 dropout_prob=self.dropout,
@@ -347,7 +347,7 @@ class Encoder(nn.Module):
             output_channel = block_out_channels[i]
             is_final_block = i == len(block_out_channels) - 1
 
-            down_block = DownBlock2D(
+            down_block = DownEncoderBlock2D(
                 in_channels=input_channel,
                 out_channels=output_channel,
                 num_layers=self.layers_per_block,
@@ -429,7 +429,7 @@ class Decoder(nn.Module):
 
             is_final_block = i == len(block_out_channels) - 1
 
-            up_block = UpBlock2D(
+            up_block = UpEncoderBlock2D(
                 in_channels=prev_output_channel,
                 out_channels=output_channel,
                 num_layers=self.layers_per_block + 1,
@@ -470,7 +470,6 @@ class Decoder(nn.Module):
 
 
 class DiagonalGaussianDistribution(object):
-    # TODO: should we pass dtype?
     def __init__(self, parameters, deterministic=False):
         # Last axis to account for channels-last
         self.mean, self.logvar = jnp.split(parameters, 2, axis=-1)
@@ -563,8 +562,8 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
         sample_shape = (1, self.in_channels, self.sample_size, self.sample_size)
         sample = jnp.zeros(sample_shape, dtype=jnp.float32)
 
-        params_rng, dropout_rng = jax.random.split(rng)
-        rngs = {"params": params_rng, "dropout": dropout_rng}
+        params_rng, dropout_rng, gaussian_rng = jax.random.split(rng, 3)
+        rngs = {"params": params_rng, "dropout": dropout_rng, "gaussian": gaussian_rng}
 
         return self.init(rngs, sample)["params"]
 
@@ -587,6 +586,8 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
         hidden_states = self.post_quant_conv(latents)
         hidden_states = self.decoder(hidden_states, deterministic=deterministic)
 
+        hidden_states = jnp.transpose(hidden_states, (0, 3, 1, 2))
+
         if not return_dict:
             return (hidden_states,)
 
@@ -600,8 +601,6 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
         else:
             hidden_states = posterior.latent_dist.mode()
         hidden_states = self.decode(hidden_states, return_dict=return_dict).sample
-
-        sample = jnp.transpose(hidden_states, (0, 3, 1, 2))
 
         if not return_dict:
             return (sample,)
