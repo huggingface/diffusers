@@ -192,14 +192,17 @@ class FlaxScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
 
         # equation 6 in the paper: the model_output modeled by the network is grad_x log pt(x)
         # also equation 47 shows the analog from SDE models to ancestral sampling methods
-        drift = drift - diffusion[:, None, None, None] ** 2 * model_output
+        diffusion = diffusion.flatten()
+        while len(diffusion.shape) < len(sample.shape):
+            diffusion = diffusion[:, None]
+        drift = drift - diffusion**2 * model_output
 
         #  equation 6: sample noise for the diffusion term of
         key = random.split(key, num=1)
         noise = random.normal(key=key, shape=sample.shape)
         prev_sample_mean = sample - drift  # subtract because `dt` is a small negative timestep
         # TODO is the variable diffusion the correct scaling term for the noise?
-        prev_sample = prev_sample_mean + diffusion[:, None, None, None] * noise  # add impact of diffusion field g
+        prev_sample = prev_sample_mean + diffusion * noise  # add impact of diffusion field g
 
         if not return_dict:
             return (prev_sample, prev_sample_mean, state)
@@ -248,8 +251,11 @@ class FlaxScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         step_size = step_size * jnp.ones(sample.shape[0])
 
         # compute corrected sample: model_output term and noise term
-        prev_sample_mean = sample + step_size[:, None, None, None] * model_output
-        prev_sample = prev_sample_mean + ((step_size * 2) ** 0.5)[:, None, None, None] * noise
+        step_size = step_size.flatten()
+        while len(step_size.shape) < len(sample.shape):
+            step_size = step_size[:, None]
+        prev_sample_mean = sample + step_size * model_output
+        prev_sample = prev_sample_mean + ((step_size * 2) ** 0.5) * noise
 
         if not return_dict:
             return (prev_sample, state)

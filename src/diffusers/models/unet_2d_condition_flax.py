@@ -1,6 +1,6 @@
-from dataclasses import dataclass
 from typing import Tuple, Union
 
+import flax
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
@@ -19,7 +19,7 @@ from .unet_blocks_flax import (
 )
 
 
-@dataclass
+@flax.struct.dataclass
 class FlaxUNet2DConditionOutput(BaseOutput):
     """
     Args:

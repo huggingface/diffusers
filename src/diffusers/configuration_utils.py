@@ -272,7 +272,7 @@ class ConfigMixin:
         # remove general kwargs if present in dict
         if "kwargs" in expected_keys:
             expected_keys.remove("kwargs")
-        # remove flax interal keys
+        # remove flax internal keys
         if hasattr(cls, "_flax_internal_args"):
             for arg in cls._flax_internal_args:
                 expected_keys.remove(arg)
@@ -289,11 +289,20 @@ class ConfigMixin:
                 # use value from config dict
                 init_dict[key] = config_dict.pop(key)
 
-        unused_kwargs = config_dict.update(kwargs)
+        config_dict = {k: v for k, v in config_dict.items() if not k.startswith("_")}
+
+        if len(config_dict) > 0:
+            logger.warning(
+                f"The config attributes {config_dict} were passed to {cls.__name__}, "
+                "but are not expected and will be ignored. Please verify your "
+                f"{cls.config_name} configuration file."
+            )
+
+        unused_kwargs = {**config_dict, **kwargs}
 
         passed_keys = set(init_dict.keys())
         if len(expected_keys - passed_keys) > 0:
-            logger.warning(
+            logger.info(
                 f"{expected_keys - passed_keys} was not found in config. Values will be initialized to default values."
             )
 

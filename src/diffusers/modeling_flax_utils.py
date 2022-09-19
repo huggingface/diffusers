@@ -46,7 +46,7 @@ class FlaxModelMixin:
     """
     config_name = CONFIG_NAME
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
-    _flax_internal_args = ["name", "parent"]
+    _flax_internal_args = ["name", "parent", "dtype"]
 
     @classmethod
     def _from_config(cls, config, **kwargs):
@@ -298,6 +298,7 @@ class FlaxModelMixin:
             local_files_only=local_files_only,
             use_auth_token=use_auth_token,
             revision=revision,
+            subfolder=subfolder,
             # model args
             dtype=dtype,
             **kwargs,
