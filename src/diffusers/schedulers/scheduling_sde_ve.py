@@ -49,14 +49,20 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
 
     For more information, see the original paper: https://arxiv.org/abs/2011.13456
 
+    [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
+    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
+    [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
+    [`~ConfigMixin.from_config`] functions.
+
     Args:
+        num_train_timesteps (`int`): number of diffusion steps used to train the model.
         snr (`float`):
             coefficient weighting the step from the model_output sample (from the network) to the random noise.
         sigma_min (`float`):
                 initial noise scale for sigma sequence in sampling procedure. The minimum sigma should mirror the
                 distribution of the data.
         sigma_max (`float`): maximum value used for the range of continuous timesteps passed into the model.
-        sampling_eps (`float`): the end value of sampling, where timesteps decrease progessively from 1 to
+        sampling_eps (`float`): the end value of sampling, where timesteps decrease progressively from 1 to
         epsilon.
         correct_steps (`int`): number of correction steps performed on a produced sample.
         tensor_format (`str`): "np" or "pt" for the expected format of samples passed to the Scheduler.
@@ -139,7 +145,9 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             return np.where(timesteps == 0, np.zeros_like(t), self.discrete_sigmas[timesteps - 1])
         elif tensor_format == "pt":
             return torch.where(
-                timesteps == 0, torch.zeros_like(t), self.discrete_sigmas[timesteps - 1].to(timesteps.device)
+                timesteps == 0,
+                torch.zeros_like(t.to(timesteps.device)),
+                self.discrete_sigmas[timesteps - 1].to(timesteps.device),
             )
 
         raise ValueError(f"`self.tensor_format`: {self.tensor_format} is not valid.")
@@ -180,7 +188,8 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
-            prev_sample (`SchedulerOutput` or `Tuple`): updated sample in the diffusion chain.
+            [`~schedulers.scheduling_sde_ve.SdeVeOutput`] or `tuple`: [`~schedulers.scheduling_sde_ve.SdeVeOutput`] if
+            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         if "seed" in kwargs and kwargs["seed"] is not None:
@@ -196,8 +205,11 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         )  # torch.repeat_interleave(timestep, sample.shape[0])
         timesteps = (timestep * (len(self.timesteps) - 1)).long()
 
+        # mps requires indices to be in the same device, so we use cpu as is the default with cuda
+        timesteps = timesteps.to(self.discrete_sigmas.device)
+
         sigma = self.discrete_sigmas[timesteps].to(sample.device)
-        adjacent_sigma = self.get_adjacent_sigma(timesteps, timestep)
+        adjacent_sigma = self.get_adjacent_sigma(timesteps, timestep).to(sample.device)
         drift = self.zeros_like(sample)
         diffusion = (sigma**2 - adjacent_sigma**2) ** 0.5
 
@@ -236,7 +248,8 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
-            prev_sample (`SchedulerOutput` or `Tuple`): updated sample in the diffusion chain.
+            [`~schedulers.scheduling_sde_ve.SdeVeOutput`] or `tuple`: [`~schedulers.scheduling_sde_ve.SdeVeOutput`] if
+            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         if "seed" in kwargs and kwargs["seed"] is not None:

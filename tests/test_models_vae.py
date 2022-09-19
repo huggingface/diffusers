@@ -18,6 +18,7 @@ import unittest
 import torch
 
 from diffusers import AutoencoderKL
+from diffusers.modeling_utils import ModelMixin
 from diffusers.testing_utils import floats_tensor, torch_device
 
 from .test_modeling_common import ModelTesterMixin
@@ -80,17 +81,38 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
         model = model.to(torch_device)
         model.eval()
 
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
+        # One-time warmup pass (see #372)
+        if torch_device == "mps" and isinstance(model, ModelMixin):
+            image = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
+            image = image.to(torch_device)
+            with torch.no_grad():
+                _ = model(image, sample_posterior=True).sample
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
 
-        image = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
+        image = torch.randn(
+            1,
+            model.config.in_channels,
+            model.config.sample_size,
+            model.config.sample_size,
+            generator=torch.manual_seed(0),
+        )
         image = image.to(torch_device)
         with torch.no_grad():
-            output = model(image, sample_posterior=True).sample
+            output = model(image, sample_posterior=True, generator=generator).sample
 
         output_slice = output[0, -1, -3:, -3:].flatten().cpu()
-        # fmt: off
-        expected_output_slice = torch.tensor([-4.0078e-01, -3.8304e-04, -1.2681e-01, -1.1462e-01, 2.0095e-01, 1.0893e-01, -8.8248e-02, -3.0361e-01, -9.8646e-03])
-        # fmt: on
+
+        # Since the VAE Gaussian prior's generator is seeded on the appropriate device,
+        # the expected output slices are not the same for CPU and GPU.
+        if torch_device in ("mps", "cpu"):
+            expected_output_slice = torch.tensor(
+                [-0.1352, 0.0878, 0.0419, -0.0818, -0.1069, 0.0688, -0.1458, -0.4446, -0.0026]
+            )
+        else:
+            expected_output_slice = torch.tensor(
+                [-0.2421, 0.4642, 0.2507, -0.0438, 0.0682, 0.3160, -0.2018, -0.0727, 0.2485]
+            )
+
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))

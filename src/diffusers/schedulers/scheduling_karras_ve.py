@@ -34,7 +34,7 @@ class KarrasVeOutput(BaseOutput):
             Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
         derivative (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
-            Derivate of predicted original image sample (x_0).
+            Derivative of predicted original image sample (x_0).
     """
 
     prev_sample: torch.FloatTensor
@@ -49,6 +49,11 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
     [1] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models."
     https://arxiv.org/abs/2206.00364 [2] Song, Yang, et al. "Score-based generative modeling through stochastic
     differential equations." https://arxiv.org/abs/2011.13456
+
+    [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
+    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
+    [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
+    [`~ConfigMixin.from_config`] functions.
 
     For more details on the parameters, see the original paper's Appendix E.: "Elucidating the Design Space of
     Diffusion-Based Generative Models." https://arxiv.org/abs/2206.00364. The grid search values used to find the
@@ -100,7 +105,10 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = num_inference_steps
         self.timesteps = np.arange(0, self.num_inference_steps)[::-1].copy()
         self.schedule = [
-            (self.sigma_max * (self.sigma_min**2 / self.sigma_max**2) ** (i / (num_inference_steps - 1)))
+            (
+                self.config.sigma_max
+                * (self.config.sigma_min**2 / self.config.sigma_max**2) ** (i / (num_inference_steps - 1))
+            )
             for i in self.timesteps
         ]
         self.schedule = np.array(self.schedule, dtype=np.float32)
@@ -116,13 +124,13 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
 
         TODO Args:
         """
-        if self.s_min <= sigma <= self.s_max:
-            gamma = min(self.s_churn / self.num_inference_steps, 2**0.5 - 1)
+        if self.config.s_min <= sigma <= self.config.s_max:
+            gamma = min(self.config.s_churn / self.num_inference_steps, 2**0.5 - 1)
         else:
             gamma = 0
 
         # sample eps ~ N(0, S_noise^2 * I)
-        eps = self.s_noise * torch.randn(sample.shape, generator=generator).to(sample.device)
+        eps = self.config.s_noise * torch.randn(sample.shape, generator=generator).to(sample.device)
         sigma_hat = sigma + gamma * sigma
         sample_hat = sample + ((sigma_hat**2 - sigma**2) ** 0.5 * eps)
 
@@ -147,8 +155,11 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
             sample_hat (`torch.FloatTensor` or `np.ndarray`): TODO
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
-        Returns:
             KarrasVeOutput: updated sample in the diffusion chain and derivative (TODO double check).
+        Returns:
+            [`~schedulers.scheduling_karras_ve.KarrasVeOutput`] or `tuple`:
+            [`~schedulers.scheduling_karras_ve.KarrasVeOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            returning a tuple, the first element is the sample tensor.
 
         """
 

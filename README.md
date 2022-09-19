@@ -21,7 +21,7 @@ as a modular toolbox for inference and training of diffusion models.
 More precisely, 🤗 Diffusers offers:
 
 - State-of-the-art diffusion pipelines that can be run in inference with just a couple of lines of code (see [src/diffusers/pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines)). Check [this overview](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines/README.md#pipelines-summary) to see all supported pipelines and their corresponding official papers.
-- Various noise schedulers that can be used interchangeably for the prefered speed vs. quality trade-off in inference (see [src/diffusers/schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers)).
+- Various noise schedulers that can be used interchangeably for the preferred speed vs. quality trade-off in inference (see [src/diffusers/schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers)).
 - Multiple types of models, such as UNet, can be used as building blocks in an end-to-end diffusion system (see [src/diffusers/models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models)).
 - Training examples to show how to train the most popular diffusion model tasks (see [examples](https://github.com/huggingface/diffusers/tree/main/examples), *e.g.* [unconditional-image-generation](https://github.com/huggingface/diffusers/tree/main/examples/unconditional_image_generation)).
 
@@ -30,7 +30,7 @@ More precisely, 🤗 Diffusers offers:
 **With `pip`**
     
 ```bash
-pip install --upgrade diffusers  # should install diffusers 0.2.4
+pip install --upgrade diffusers
 ```
 
 **With `conda`**
@@ -38,6 +38,10 @@ pip install --upgrade diffusers  # should install diffusers 0.2.4
 ```sh
 conda install -c conda-forge diffusers
 ```
+
+**Apple Silicon (M1/M2) support**
+
+Please, refer to [the documentation](https://huggingface.co/docs/diffusers/optimization/mps).
 
 ## Contributing
 
@@ -191,7 +195,7 @@ with autocast("cuda"):
 
 images[0].save("fantasy_landscape.png")
 ```
-You can also run this example on colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/patil-suraj/Notebooks/blob/master/image_2_image_using_diffusers.ipynb)
+You can also run this example on colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/image_2_image_using_diffusers.ipynb)
 
 ### In-painting using Stable Diffusion
 
@@ -254,42 +258,49 @@ If you want to run the code yourself 💻, you can try out:
 - [Text-to-Image Latent Diffusion](https://huggingface.co/CompVis/ldm-text2im-large-256)
 ```python
 # !pip install diffusers transformers
+from torch import autocast
 from diffusers import DiffusionPipeline
 
+device = "cuda"
 model_id = "CompVis/ldm-text2im-large-256"
 
 # load model and scheduler
 ldm = DiffusionPipeline.from_pretrained(model_id)
+ldm = ldm.to(device)
 
 # run pipeline in inference (sample random noise and denoise)
 prompt = "A painting of a squirrel eating a burger"
-images = ldm([prompt], num_inference_steps=50, eta=0.3, guidance_scale=6).images
+with autocast(device):
+    image = ldm([prompt], num_inference_steps=50, eta=0.3, guidance_scale=6).images[0]
 
-# save images
-for idx, image in enumerate(images):
-    image.save(f"squirrel-{idx}.png")
+# save image
+image.save("squirrel.png")
 ```
 - [Unconditional Diffusion with discrete scheduler](https://huggingface.co/google/ddpm-celebahq-256)
 ```python
 # !pip install diffusers
+from torch import autocast
 from diffusers import DDPMPipeline, DDIMPipeline, PNDMPipeline
 
 model_id = "google/ddpm-celebahq-256"
+device = "cuda"
 
 # load model and scheduler
 ddpm = DDPMPipeline.from_pretrained(model_id)  # you can replace DDPMPipeline with DDIMPipeline or PNDMPipeline for faster inference
+ddpm.to(device)
 
 # run pipeline in inference (sample random noise and denoise)
-image = ddpm().images
+with autocast("cuda"):
+    image = ddpm().images[0]
 
 # save image
-image[0].save("ddpm_generated_image.png")
+image.save("ddpm_generated_image.png")
 ```
 - [Unconditional Latent Diffusion](https://huggingface.co/CompVis/ldm-celebahq-256)
-- [Unconditional Diffusion with continous scheduler](https://huggingface.co/google/ncsnpp-ffhq-1024)
+- [Unconditional Diffusion with continuous scheduler](https://huggingface.co/google/ncsnpp-ffhq-1024)
 
 **Other Notebooks**:
-* [image-to-image generation with Stable Diffusion](https://colab.research.google.com/github/patil-suraj/Notebooks/blob/master/image_2_image_using_diffusers.ipynb) ![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg),
+* [image-to-image generation with Stable Diffusion](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/image_2_image_using_diffusers.ipynb) ![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg),
 * [tweak images via repeated Stable Diffusion seeds](https://colab.research.google.com/github/pcuenca/diffusers-examples/blob/main/notebooks/stable-diffusion-seeds.ipynb) ![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg),
 
 ### Web Demos
@@ -335,8 +346,8 @@ The class provides functionality to compute previous image according to alpha, b
     
 ## Philosophy
 
-- Readability and clarity is prefered over highly optimized code. A strong importance is put on providing readable, intuitive and elementary code design. *E.g.*, the provided [schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers) are separated from the provided [models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models) and provide well-commented code that can be read alongside the original paper.
-- Diffusers is **modality independent** and focuses on providing pretrained models and tools to build systems that generate **continous outputs**, *e.g.* vision and audio.
+- Readability and clarity is preferred over highly optimized code. A strong importance is put on providing readable, intuitive and elementary code design. *E.g.*, the provided [schedulers](https://github.com/huggingface/diffusers/tree/main/src/diffusers/schedulers) are separated from the provided [models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models) and provide well-commented code that can be read alongside the original paper.
+- Diffusers is **modality independent** and focuses on providing pretrained models and tools to build systems that generate **continuous outputs**, *e.g.* vision and audio.
 - Diffusion models and schedulers are provided as concise, elementary building blocks. In contrast, diffusion pipelines are a collection of end-to-end diffusion systems that can be used out-of-the-box, should stay as close as possible to their original implementation and can include components of another library, such as text-encoders. Examples for diffusion pipelines are [Glide](https://github.com/openai/glide-text2im) and [Latent Diffusion](https://github.com/CompVis/latent-diffusion).
 
 ## In the works

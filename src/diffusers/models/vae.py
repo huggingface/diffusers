@@ -59,6 +59,7 @@ class Encoder(nn.Module):
         down_block_types=("DownEncoderBlock2D",),
         block_out_channels=(64,),
         layers_per_block=2,
+        norm_num_groups=32,
         act_fn="silu",
         double_z=True,
     ):
@@ -86,6 +87,7 @@ class Encoder(nn.Module):
                 resnet_eps=1e-6,
                 downsample_padding=0,
                 resnet_act_fn=act_fn,
+                resnet_groups=norm_num_groups,
                 attn_num_head_channels=None,
                 temb_channels=None,
             )
@@ -99,13 +101,12 @@ class Encoder(nn.Module):
             output_scale_factor=1,
             resnet_time_scale_shift="default",
             attn_num_head_channels=None,
-            resnet_groups=32,
+            resnet_groups=norm_num_groups,
             temb_channels=None,
         )
 
         # out
-        num_groups_out = 32
-        self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[-1], num_groups=num_groups_out, eps=1e-6)
+        self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[-1], num_groups=norm_num_groups, eps=1e-6)
         self.conv_act = nn.SiLU()
 
         conv_out_channels = 2 * out_channels if double_z else out_channels
@@ -138,6 +139,7 @@ class Decoder(nn.Module):
         up_block_types=("UpDecoderBlock2D",),
         block_out_channels=(64,),
         layers_per_block=2,
+        norm_num_groups=32,
         act_fn="silu",
     ):
         super().__init__()
@@ -156,7 +158,7 @@ class Decoder(nn.Module):
             output_scale_factor=1,
             resnet_time_scale_shift="default",
             attn_num_head_channels=None,
-            resnet_groups=32,
+            resnet_groups=norm_num_groups,
             temb_channels=None,
         )
 
@@ -178,6 +180,7 @@ class Decoder(nn.Module):
                 add_upsample=not is_final_block,
                 resnet_eps=1e-6,
                 resnet_act_fn=act_fn,
+                resnet_groups=norm_num_groups,
                 attn_num_head_channels=None,
                 temb_channels=None,
             )
@@ -185,8 +188,7 @@ class Decoder(nn.Module):
             prev_output_channel = output_channel
 
         # out
-        num_groups_out = 32
-        self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=num_groups_out, eps=1e-6)
+        self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-6)
         self.conv_act = nn.SiLU()
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, 3, padding=1)
 
@@ -338,7 +340,10 @@ class DiagonalGaussianDistribution(object):
             self.var = self.std = torch.zeros_like(self.mean).to(device=self.parameters.device)
 
     def sample(self, generator: Optional[torch.Generator] = None) -> torch.FloatTensor:
-        x = self.mean + self.std * torch.randn(self.mean.shape, generator=generator, device=self.parameters.device)
+        device = self.parameters.device
+        sample_device = "cpu" if device.type == "mps" else device
+        sample = torch.randn(self.mean.shape, generator=generator, device=sample_device).to(device)
+        x = self.mean + self.std * sample
         return x
 
     def kl(self, other=None):
@@ -368,6 +373,27 @@ class DiagonalGaussianDistribution(object):
 
 
 class VQModel(ModelMixin, ConfigMixin):
+    r"""VQ-VAE model from the paper Neural Discrete Representation Learning by Aaron van den Oord, Oriol Vinyals and Koray
+    Kavukcuoglu.
+
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
+    implements for all the model (such as downloading or saving, etc.)
+
+    Parameters:
+        in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
+        out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
+        down_block_types (`Tuple[str]`, *optional*, defaults to :
+            obj:`("DownEncoderBlock2D",)`): Tuple of downsample block types.
+        up_block_types (`Tuple[str]`, *optional*, defaults to :
+            obj:`("UpDecoderBlock2D",)`): Tuple of upsample block types.
+        block_out_channels (`Tuple[int]`, *optional*, defaults to :
+            obj:`(64,)`): Tuple of block output channels.
+        act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
+        latent_channels (`int`, *optional*, defaults to `3`): Number of channels in the latent space.
+        sample_size (`int`, *optional*, defaults to `32`): TODO
+        num_vq_embeddings (`int`, *optional*, defaults to `256`): Number of codebook vectors in the VQ-VAE.
+    """
+
     @register_to_config
     def __init__(
         self,
@@ -381,6 +407,7 @@ class VQModel(ModelMixin, ConfigMixin):
         latent_channels: int = 3,
         sample_size: int = 32,
         num_vq_embeddings: int = 256,
+        norm_num_groups: int = 32,
     ):
         super().__init__()
 
@@ -392,6 +419,7 @@ class VQModel(ModelMixin, ConfigMixin):
             block_out_channels=block_out_channels,
             layers_per_block=layers_per_block,
             act_fn=act_fn,
+            norm_num_groups=norm_num_groups,
             double_z=False,
         )
 
@@ -409,6 +437,7 @@ class VQModel(ModelMixin, ConfigMixin):
             block_out_channels=block_out_channels,
             layers_per_block=layers_per_block,
             act_fn=act_fn,
+            norm_num_groups=norm_num_groups,
         )
 
     def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> VQEncoderOutput:
@@ -437,6 +466,12 @@ class VQModel(ModelMixin, ConfigMixin):
         return DecoderOutput(sample=dec)
 
     def forward(self, sample: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
+        r"""
+        Args:
+            sample (`torch.FloatTensor`): Input sample.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+        """
         x = sample
         h = self.encode(x).latents
         dec = self.decode(h).sample
@@ -448,6 +483,26 @@ class VQModel(ModelMixin, ConfigMixin):
 
 
 class AutoencoderKL(ModelMixin, ConfigMixin):
+    r"""Variational Autoencoder (VAE) model with KL loss from the paper Auto-Encoding Variational Bayes by Diederik P. Kingma
+    and Max Welling.
+
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
+    implements for all the model (such as downloading or saving, etc.)
+
+    Parameters:
+        in_channels (int, *optional*, defaults to 3): Number of channels in the input image.
+        out_channels (int,  *optional*, defaults to 3): Number of channels in the output.
+        down_block_types (`Tuple[str]`, *optional*, defaults to :
+            obj:`("DownEncoderBlock2D",)`): Tuple of downsample block types.
+        up_block_types (`Tuple[str]`, *optional*, defaults to :
+            obj:`("UpDecoderBlock2D",)`): Tuple of upsample block types.
+        block_out_channels (`Tuple[int]`, *optional*, defaults to :
+            obj:`(64,)`): Tuple of block output channels.
+        act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
+        latent_channels (`int`, *optional*, defaults to `4`): Number of channels in the latent space.
+        sample_size (`int`, *optional*, defaults to `32`): TODO
+    """
+
     @register_to_config
     def __init__(
         self,
@@ -459,6 +514,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         layers_per_block: int = 1,
         act_fn: str = "silu",
         latent_channels: int = 4,
+        norm_num_groups: int = 32,
         sample_size: int = 32,
     ):
         super().__init__()
@@ -471,6 +527,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             block_out_channels=block_out_channels,
             layers_per_block=layers_per_block,
             act_fn=act_fn,
+            norm_num_groups=norm_num_groups,
             double_z=True,
         )
 
@@ -481,6 +538,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             up_block_types=up_block_types,
             block_out_channels=block_out_channels,
             layers_per_block=layers_per_block,
+            norm_num_groups=norm_num_groups,
             act_fn=act_fn,
         )
 
@@ -507,12 +565,24 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         return DecoderOutput(sample=dec)
 
     def forward(
-        self, sample: torch.FloatTensor, sample_posterior: bool = False, return_dict: bool = True
+        self,
+        sample: torch.FloatTensor,
+        sample_posterior: bool = False,
+        return_dict: bool = True,
+        generator: Optional[torch.Generator] = None,
     ) -> Union[DecoderOutput, torch.FloatTensor]:
+        r"""
+        Args:
+            sample (`torch.FloatTensor`): Input sample.
+            sample_posterior (`bool`, *optional*, defaults to `False`):
+                Whether to sample from the posterior.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`DecoderOutput`] instead of a plain tuple.
+        """
         x = sample
         posterior = self.encode(x).latent_dist
         if sample_posterior:
-            z = posterior.sample()
+            z = posterior.sample(generator=generator)
         else:
             z = posterior.mode()
         dec = self.decode(z).sample
