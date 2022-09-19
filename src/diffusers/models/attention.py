@@ -343,3 +343,27 @@ class GEGLU(nn.Module):
     def forward(self, hidden_states):
         hidden_states, gate = self.proj(hidden_states).chunk(2, dim=-1)
         return hidden_states * F.gelu(gate)
+
+
+class LinearAttention(torch.nn.Module):
+    def __init__(self, dim, heads=4, dim_head=32):
+        super(LinearAttention, self).__init__()
+        self.heads = heads
+        self.dim_head = dim_head
+        hidden_dim = dim_head * heads
+        self.to_qkv = torch.nn.Conv2d(dim, hidden_dim * 3, 1, bias=False)
+        self.to_out = torch.nn.Conv2d(hidden_dim, dim, 1)
+
+    def forward(self, x, encoder_states=None):
+        b, c, h, w = x.shape
+        qkv = self.to_qkv(x)
+        q, k, v = (
+            qkv.reshape(b, 3, self.heads, self.dim_head, h, w)
+            .permute(1, 0, 2, 3, 4, 5)
+            .reshape(3, b, self.heads, self.dim_head, -1)
+        )
+        k = k.softmax(dim=-1)
+        context = torch.einsum("bhdn,bhen->bhde", k, v)
+        out = torch.einsum("bhde,bhdn->bhen", context, q)
+        out = out.reshape(b, self.heads, self.dim_head, h, w).reshape(b, self.heads * self.dim_head, h, w)
+        return self.to_out(out)        
