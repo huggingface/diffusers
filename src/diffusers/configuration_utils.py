@@ -272,7 +272,7 @@ class ConfigMixin:
         # remove general kwargs if present in dict
         if "kwargs" in expected_keys:
             expected_keys.remove("kwargs")
-        # remove flax interal keys
+        # remove flax internal keys
         if hasattr(cls, "_flax_internal_args"):
             for arg in cls._flax_internal_args:
                 expected_keys.remove(arg)
