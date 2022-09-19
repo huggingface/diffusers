@@ -74,5 +74,13 @@ if is_flax_available():
         FlaxPNDMScheduler,
         FlaxScoreSdeVeScheduler,
     )
+    from .pipeline_flax_utils import FlaxDiffusionPipeline
 else:
     from .utils.dummy_flax_objects import *  # noqa F403
+
+if is_flax_available() and is_transformers_available():
+    from .pipelines import FlaxStableDiffusionPipeline
+else:
+    pass
+    # TODO: dummy_flax_and_transformers_objects
+    # from .utils.dummy_flax_and_transformers_objects import *  # noqa F403

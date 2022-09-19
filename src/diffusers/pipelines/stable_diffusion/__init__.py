@@ -66,3 +66,4 @@ if is_transformers_available() and is_onnx_available():
 
 if is_transformers_available() and is_flax_available():
     from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
+    from .pipeline_flax_stable_diffusion import FlaxStableDiffusionPipeline
