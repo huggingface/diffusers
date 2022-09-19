@@ -17,23 +17,25 @@
 import importlib
 import inspect
 import os
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 
-import diffusers
 import flax
-import jax.numpy as jnp
 import PIL
+from flax.core.frozen_dict import FrozenDict
 from huggingface_hub import snapshot_download
 from PIL import Image
 from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
-from .modeling_flax_utils import FLAX_WEIGHTS_NAME
-from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from .utils import CONFIG_NAME, DIFFUSERS_CACHE, BaseOutput, logging
+from .modeling_flax_utils import FLAX_WEIGHTS_NAME, FlaxModelMixin
+from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME, SchedulerMixin
+from .utils import CONFIG_NAME, DIFFUSERS_CACHE, BaseOutput, is_transformers_available, logging
 
+
+if is_transformers_available():
+    from transformers import FlaxPreTrainedModel
 
 INDEX_FILE = "diffusion_flax_model.bin"
 
@@ -121,7 +123,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
             # set models
             setattr(self, name, module)
 
-    def save_pretrained(self, save_directory: Union[str, os.PathLike]):
+    def save_pretrained(self, save_directory: Union[str, os.PathLike], params: Union[Dict, FrozenDict]):
         # TODO: handle inference_state
         """
         Save all variables of the pipeline that can be saved and loaded as well as the pipelines configuration file to
@@ -258,7 +260,6 @@ class FlaxDiffusionPipeline(ConfigMixin):
         local_files_only = kwargs.pop("local_files_only", False)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
-        inference_state_dict = kwargs.pop("inference_state_dict", None)
         dtype = kwargs.pop("dtype", None)
 
         # 1. Download the checkpoints and configs
@@ -311,6 +312,9 @@ class FlaxDiffusionPipeline(ConfigMixin):
         init_dict, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
         init_kwargs = {}
+
+        # inference_params
+        params = {}
 
         # import it here to avoid circular import
         from diffusers import pipelines
@@ -373,34 +377,27 @@ class FlaxDiffusionPipeline(ConfigMixin):
 
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
-                    if issubclass(class_obj, flax.linen.Module):
-                        loaded_sub_model, loaded_params = load_method(
-                            os.path.join(cached_folder, name), **loading_kwargs
-                        )
-                        params_key = f"{name}_params"
-                        if params_key not in inference_state_dict:
-                            inference_state_dict[params_key] = loaded_params
-                    else:
-                        loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
+                    loadable_folder = os.path.join(cached_folder, name)
                 else:
-                    # else load from the root directory
-                    if issubclass(class_obj, flax.linen.Module):
-                        loaded_sub_model, loaded_params = load_method(cached_folder, **loading_kwargs)
-                        params_key = f"{name}_params"
-                        if params_key not in inference_state_dict:
-                            inference_state_dict[params_key] = loaded_params
-                    else:
-                        loaded_sub_model = load_method(cached_folder, **loading_kwargs)
+                    loaded_sub_model = cached_folder
+
+                if issubclass(class_obj, FlaxModelMixin):
+                    loaded_sub_model, loaded_params = load_method(loadable_folder, **loading_kwargs)
+                    params[name] = loaded_params
+                elif is_transformers_available() and issubclass(class_obj, FlaxPreTrainedModel):
+                    # make sure we don't initialize the weights to save time
+                    loaded_sub_model, loaded_params = load_method(loadable_folder, _do_init=False, **loading_kwargs)
+                    params[name] = loaded_params
+                elif issubclass(class_obj, SchedulerMixin):
+                    loaded_sub_model = load_method(loadable_folder, **loading_kwargs)
+                    params[name] = loaded_sub_model.create_state()
+                else:
+                    loaded_sub_model = load_method(loadable_folder, **loading_kwargs)
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
-        # 4. Instantiate the pipeline
-        # TODO: fix hard-coded `StableDifusion.InferenceState`, it should be inferred as `{XYZ_Pipeline}.InferenceState`
-        from .pipelines.stable_diffusion import InferenceState
-
-        inference_state = InferenceState(**inference_state_dict)
-        model = pipeline_class(**init_kwargs, dtype=dtype, inference_state=inference_state)
-        return model
+        model = pipeline_class(**init_kwargs, dtype=dtype)
+        return model, params
 
     @staticmethod
     def numpy_to_pil(images):

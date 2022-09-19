@@ -1,9 +1,12 @@
 import inspect
 import warnings
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
+
+import numpy as np
 
 import jax
 import jax.numpy as jnp
+from flax.core.frozen_dict import FrozenDict
 from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel
 
 from ...configuration_utils import FrozenDict
@@ -51,13 +54,11 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
         safety_checker: FlaxStableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
-        inference_state: InferenceState,
         dtype: jnp.dtype = jnp.float32,
     ):
         super().__init__()
         scheduler = scheduler.set_format("np")
         self.dtype = dtype
-        self.inference_state = inference_state
 
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             warnings.warn(
@@ -83,17 +84,29 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             feature_extractor=feature_extractor,
         )
 
+    def prepare_prompts(self, prompt: Union[str, List[str]]):
+        if not isinstance(prompt, (str, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        text_input = self.tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=self.tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="np",
+        )
+        return text_input.input_ids
+
     def __call__(
         self,
-        prompt: Union[str, List[str]],
+        prompt_ids: jnp.array,
+        params: Union[Dict, FrozenDict],
         prng_seed: jax.random.PRNGKey,
+        num_inference_steps: Optional[int] = 50,
         height: Optional[int] = 512,
         width: Optional[int] = 512,
-        num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
-        eta: Optional[float] = 0.0,
         latents: Optional[jnp.array] = None,
-        output_type: Optional[str] = "pil",
         return_dict: bool = True,
         debug: bool = False,
         **kwargs,
@@ -117,9 +130,6 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
-            eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
-                [`schedulers.DDIMScheduler`], will be ignored for others.
             generator (`torch.Generator`, *optional*):
                 A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
                 deterministic.
@@ -141,40 +151,26 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             element is a list of `bool`s denoting whether the corresponding generated image likely represents
             "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
-        if isinstance(prompt, str):
-            batch_size = 1
-        elif isinstance(prompt, list):
-            batch_size = len(prompt)
-        else:
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        inference_state = self.inference_state
-
         # get prompt text embeddings
-        text_input = self.tokenizer(
-            prompt,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            truncation=True,
-            return_tensors="np",
-        )
-        text_embeddings = self.text_encoder(text_input.input_ids, params=inference_state.text_encoder_params)[0]
+        text_embeddings = self.text_encoder(prompt_ids, params=params["text_encoder"])[0]
 
         # TODO: currently it is assumed `do_classifier_free_guidance = guidance_scale > 1.0`
         # implement this conditional `do_classifier_free_guidance = guidance_scale > 1.0`
-        max_length = text_input.input_ids.shape[-1]
+        batch_size = prompt_ids.shape[0]
+
+        max_length = prompt_ids.shape[-1]
         uncond_input = self.tokenizer(
             [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="np"
         )
-        uncond_embeddings = self.text_encoder(uncond_input.input_ids, params=inference_state.text_encoder_params)[0]
+        uncond_embeddings = self.text_encoder(uncond_input.input_ids, params=params["text_encoder"])[0]
         context = jnp.concatenate([uncond_embeddings, text_embeddings])
 
         # TODO: check it because the shape is different from Pytorhc StableDiffusionPipeline
         latents_shape = (
-            text_input.input_ids.shape[0],
+            batch_size,
             self.unet.sample_size,
             self.unet.sample_size,
             self.unet.in_channels,
@@ -197,7 +193,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
 
             # predict the noise residual
             noise_pred = self.unet.apply(
-                {"params": inference_state.unet_params},
+                {"params": params["unet"]},
                 jnp.array(latents_input),
                 jnp.array(timestep, dtype=jnp.int32),
                 encoder_hidden_states=context,
@@ -208,12 +204,11 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             noise_pred = noise_pred_uncond + guidance_scale * (noise_prediction_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents, scheduler_state = self.scheduler.step(scheduler_state, noise_pred, t, latents)
-            latents = latents["prev_sample"]
+            latents, scheduler_state = self.scheduler.step(scheduler_state, noise_pred, t, latents).to_tuple()
             return latents, scheduler_state
 
-        scheduler_state = inference_state.scheduler_state
-        num_inference_steps = len(scheduler_state.timesteps)
+        scheduler_state = self.scheduler.set_timesteps(params["scheduler"], num_inference_steps=num_inference_steps)
+
         if debug:
             # run with python for loop
             for i in range(num_inference_steps):
@@ -224,20 +219,18 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
         # TODO: check when flax vae gets merged into main
-        image = self.vae.decode(latents, params=inference_state.vae_params).sample
+        image = self.vae.apply({"params": params["vae"]}, latents, method=self.vae.decode).sample
 
-        image = (image / 2 + 0.5).clamp(0, 1)
-        image = image.cpu().permute(0, 2, 3, 1).numpy()
+        image = (image / 2 + 0.5).clip(0, 1).transpose(0, 2, 3, 1)
 
+        #        image = jnp.asarray(image).transpose(0, 2, 3, 1)
         # run safety checker
         # TODO: check when flax safety checker gets merged into main
-        safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="np")
-        image, has_nsfw_concept = self.safety_checker(
-            images=image, clip_input=safety_cheker_input.pixel_values, params=inference_state.safety_params
-        )
-
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
+        #        safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="np")
+        #        image, has_nsfw_concept = self.safety_checker(
+        #            images=image, clip_input=safety_cheker_input.pixel_values, params=params["safety_params"]
+        #        )
+        has_nsfw_concept = False
 
         if not return_dict:
             return (image, has_nsfw_concept)
