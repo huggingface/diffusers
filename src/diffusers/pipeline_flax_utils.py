@@ -258,7 +258,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
         local_files_only = kwargs.pop("local_files_only", False)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
-        inference_state_dict = kwargs.pop("inference_state_dict", None)
+        inference_state_dict = kwargs.pop("inference_state_dict", dict())
         dtype = kwargs.pop("dtype", None)
 
         # 1. Download the checkpoints and configs
