@@ -267,7 +267,7 @@ class CrossAttention(nn.Module):
         if self._slice_size is None or query.shape[0] // self._slice_size == 1:
             hidden_states = self._attention(query, key, value)
         else:
-            hidden_states = self._sliced_attention(query, key, value, sequence_length, dim=query.shape[-1] * self.heads)
+            hidden_states = self._sliced_attention(query, key, value, sequence_length, dim)
 
         return self.to_out(hidden_states)
 
