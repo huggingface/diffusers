@@ -838,15 +838,6 @@ class PipelineTesterMixin(unittest.TestCase):
         assert isinstance(images[0], PIL.Image.Image)
 
     @slow
-    def test_output_dict(self):
-        from diffusers import DDIMPipeline
-
-        pipeline = DDIMPipeline.from_pretrained("google/ddpm-cifar10-32")
-        outputs = pipeline(num_inference_steps=2)
-
-        print(outputs["images"])
-
-    @slow
     def test_ddpm_cifar10(self):
         model_id = "google/ddpm-cifar10-32"
 
