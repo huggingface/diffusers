@@ -21,7 +21,7 @@ class FlaxDecoderOutput(BaseOutput):
     Output of decoding method.
 
     Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+        sample (`jnp.ndarray` of shape `(batch_size, num_channels, height, width)`):
             Decoded output sample of the model. Output of the last layer of the model.
     """
 
@@ -42,7 +42,7 @@ class FlaxAutoencoderKLOutput(BaseOutput):
     latent_dist: "DiagonalGaussianDistribution"
 
 
-class Upsample(nn.Module):
+class Upsample2D(nn.Module):
     in_channels: int
     dtype: jnp.dtype = jnp.float32
 
@@ -66,7 +66,7 @@ class Upsample(nn.Module):
         return hidden_states
 
 
-class Downsample(nn.Module):
+class Downsample2D(nn.Module):
     in_channels: int
     dtype: jnp.dtype = jnp.float32
 
@@ -86,7 +86,7 @@ class Downsample(nn.Module):
         return hidden_states
 
 
-class ResnetBlock(nn.Module):
+class ResnetBlock2D(nn.Module):
     in_channels: int
     out_channels: int = None
     dropout_prob: float = 0.0
@@ -138,14 +138,13 @@ class ResnetBlock(nn.Module):
         hidden_states = self.dropout(hidden_states, deterministic)
         hidden_states = self.conv2(hidden_states)
 
-        # import ipdb; ipdb.set_trace()
         if self.conv_shortcut is not None:
             residual = self.conv_shortcut(residual)
 
         return hidden_states + residual
 
 
-class AttnBlock(nn.Module):
+class AttentionBlock(nn.Module):
     channels: int
     num_head_channels: int = None
     dtype: jnp.dtype = jnp.float32
@@ -202,7 +201,7 @@ class AttnBlock(nn.Module):
         return hidden_states
 
 
-class DownBlock2D(nn.Module):
+class DownEncoderBlock2D(nn.Module):
     in_channels: int
     out_channels: int
     dropout: float = 0.0
@@ -237,7 +236,7 @@ class DownBlock2D(nn.Module):
         return hidden_states
 
 
-class UpBlock2D(nn.Module):
+class UpEncoderBlock2D(nn.Module):
     in_channels: int
     out_channels: int
     dropout: float = 0.0
