@@ -176,9 +176,9 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
         clip_guidance_scale: Optional[float] = 100,
+        clip_prompt: Optional[Union[str, List[str]]] = None,
         num_cutouts: Optional[int] = 4,
         use_cutouts: Optional[bool] = True,
-        eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
@@ -204,8 +204,18 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
         )
         text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
 
-        if clip_guidance_scale > 1:
-            text_embeddings_clip = self.clip_model.get_text_features(text_input.input_ids.to(self.device))
+        if clip_guidance_scale > 0:
+            if clip_prompt is not None:
+                clip_text_input = self.tokenizer(
+                    clip_prompt,
+                    padding="max_length",
+                    max_length=self.tokenizer.model_max_length,
+                    truncation=True,
+                    return_tensors="pt",
+                ).to(self.device)
+            else:
+                clip_text_input = text_input.input_ids.to(self.device)
+            text_embeddings_clip = self.clip_model.get_text_features(clip_text_input)
             text_embeddings_clip = text_embeddings_clip / text_embeddings_clip.norm(p=2, dim=-1, keepdim=True)
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
