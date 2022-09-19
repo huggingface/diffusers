@@ -294,6 +294,7 @@ class FlaxModelMixin:
             local_files_only=local_files_only,
             use_auth_token=use_auth_token,
             revision=revision,
+            subfolder=subfolder,
             # model args
             dtype=dtype,
             **kwargs,
