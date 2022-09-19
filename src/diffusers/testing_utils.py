@@ -1,10 +1,10 @@
 import os
-import re
 import random
+import re
 import unittest
 from distutils.util import strtobool
-from typing import Union
 from pathlib import Path
+from typing import Union
 
 import torch
 
@@ -132,7 +132,6 @@ def pytest_terminal_summary_main(tr, id):
     there.
 
     Args:
-
     - tr: `terminalreporter` passed from `conftest.py`
     - id: unique id like `tests` or `examples` that will be incorporated into the final reports filenames - this is
       needed as some jobs have multiple runs of pytest, so we can't have them overwrite each other.
