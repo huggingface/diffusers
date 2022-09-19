@@ -1,12 +1,12 @@
+import warnings
+
 import numpy as np
+
 import jax
 import jax.numpy as jnp
 from flax import linen as nn
 from flax.core.frozen_dict import FrozenDict
 from flax.struct import dataclass, field
-
-import warnings
-
 from transformers import CLIPVisionConfig
 from transformers.models.clip.modeling_flax_clip import FlaxCLIPVisionModule
 
@@ -46,7 +46,9 @@ class FlaxStableDiffusionSafetyChecker(nn.Module, FlaxModelMixin, ConfigMixin):
         self.visual_projection = nn.Dense(self.projection_dim, use_bias=False)
 
         self.concept_embeds = self.param("concept_embeds", jax.nn.initializers.ones, (17, self.projection_dim))
-        self.special_care_embeds = self.param("special_care_embeds", jax.nn.initializers.ones, (3, self.projection_dim))
+        self.special_care_embeds = self.param(
+            "special_care_embeds", jax.nn.initializers.ones, (3, self.projection_dim)
+        )
 
         self.concept_embeds_weights = self.param("concept_embeds_weights", jax.nn.initializers.ones, (17,))
         self.special_care_embeds_weights = self.param("special_care_embeds_weights", jax.nn.initializers.ones, (3,))
@@ -102,8 +104,8 @@ class FlaxStableDiffusionSafetyChecker(nn.Module, FlaxModelMixin, ConfigMixin):
 
             if any(has_nsfw_concepts):
                 warnings.warn(
-                    "Potential NSFW content was detected in one or more images. A black image will be returned instead."
-                    " Try again with a different prompt and/or seed."
+                    "Potential NSFW content was detected in one or more images. A black image will be returned"
+                    " instead. Try again with a different prompt and/or seed."
                 )
 
         return images, has_nsfw_concepts
