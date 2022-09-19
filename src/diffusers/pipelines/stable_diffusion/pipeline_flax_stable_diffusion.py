@@ -11,7 +11,7 @@ from ...models import FlaxAutoencoderKL, FlaxUNet2DConditionModel
 from ...pipeline_flax_utils import FlaxDiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from . import FlaxStableDiffusionPipelineOutput, InferenceState
-from .flax_safety_checker import FlaxStableDiffusionSafetyChecker
+from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
 
 
 class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):

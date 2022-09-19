@@ -60,7 +60,7 @@ for library in LOADABLE_CLASSES:
     ALL_IMPORTABLE_CLASSES.update(LOADABLE_CLASSES[library])
 
 
-@flax.structs.dataclass
+@flax.struct.dataclass
 class FlaxImagePipelineOutput(BaseOutput):
     """
     Output class for image pipelines.
