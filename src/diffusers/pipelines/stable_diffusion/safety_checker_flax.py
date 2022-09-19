@@ -42,7 +42,7 @@ class FlaxStableDiffusionSafetyChecker(nn.Module, FlaxModelMixin, ConfigMixin):
 
     def setup(self):
         clip_vision_config = CLIPVisionConfig(**self.vision_config)
-        self.vision_model = FlaxCLIPVisionModule(clip_vision_config)
+        self.vision_model = FlaxCLIPVisionModule(clip_vision_config, dtype=self.dtype)
         self.visual_projection = nn.Dense(self.projection_dim, use_bias=False)
 
         self.concept_embeds = self.param("concept_embeds", jax.nn.initializers.ones, (17, self.projection_dim))
