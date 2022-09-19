@@ -49,4 +49,4 @@ jobs:
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
-        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s tests/
+        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_gpu tests/
