@@ -213,7 +213,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
                     max_length=self.tokenizer.model_max_length,
                     truncation=True,
                     return_tensors="pt",
-                ).to(self.device)
+                ).input_ids.to(self.device)
             else:
                 clip_text_input = text_input.input_ids.to(self.device)
             text_embeddings_clip = self.clip_model.get_text_features(clip_text_input)
