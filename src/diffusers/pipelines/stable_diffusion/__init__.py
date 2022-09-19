@@ -6,7 +6,7 @@ import numpy as np
 import PIL
 from PIL import Image
 
-from ...utils import BaseOutput, is_onnx_available, is_transformers_available
+from ...utils import BaseOutput, is_flax_available, is_onnx_available, is_transformers_available
 
 
 @dataclass
@@ -35,3 +35,6 @@ if is_transformers_available():
 
 if is_transformers_available() and is_onnx_available():
     from .pipeline_stable_diffusion_onnx import StableDiffusionOnnxPipeline
+
+if is_transformers_available() and is_flax_available():
+    from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
