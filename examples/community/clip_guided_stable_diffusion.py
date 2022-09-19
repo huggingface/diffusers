@@ -48,6 +48,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
     - https://github.com/Jack000/glid-3-xl
     - https://github.dev/crowsonkb/k-diffusion
     """
+
     def __init__(
         self,
         vae: AutoencoderKL,
