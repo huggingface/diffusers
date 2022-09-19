@@ -361,7 +361,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
                 55 * state.ets[-1] - 59 * state.ets[-2] + 37 * state.ets[-3] - 9 * state.ets[-4]
             )
 
-        prev_sample = self._get_prev_sample(sample, timestep, prev_timestep, model_output, state=state)
+        prev_sample = self._get_prev_sample(sample, timestep, prev_timestep, model_output)
         state = state.replace(counter=state.counter + 1)
 
         if not return_dict:
@@ -369,7 +369,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
 
         return FlaxSchedulerOutput(prev_sample=prev_sample, state=state)
 
-    def _get_prev_sample(self, sample, timestep, prev_timestep, model_output, state):
+    def _get_prev_sample(self, sample, timestep, prev_timestep, model_output):
         # See formula (9) of PNDM paper https://arxiv.org/pdf/2202.09778.pdf
         # this function computes x_(t−δ) using the formula of (9)
         # Note that x_t needs to be added to both sides of the equation
