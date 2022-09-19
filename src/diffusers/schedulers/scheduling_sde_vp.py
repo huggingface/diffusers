@@ -16,7 +16,6 @@
 
 # TODO(Patrick, Anton, Suraj) - make scheduler framework independent and clean-up a bit
 
-from operator import ge
 import numpy as np
 import torch
 
