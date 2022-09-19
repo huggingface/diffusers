@@ -23,7 +23,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import SchedulerOutput, SchedulerMixin
+from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
 @dataclass
