@@ -78,9 +78,9 @@ class BaseOutput(OrderedDict):
             if first_field_iterator:
                 for element in iterator:
                     if (
-                            not isinstance(element, (list, tuple))
-                            or not len(element) == 2
-                            or not isinstance(element[0], str)
+                        not isinstance(element, (list, tuple))
+                        or not len(element) == 2
+                        or not isinstance(element[0], str)
                     ):
                         break
                     setattr(self, element[0], element[1])
