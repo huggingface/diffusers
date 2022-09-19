@@ -4,7 +4,7 @@
 [default.extend-identifiers]
 
 [default.extend-words]
-NIN_="NIN" # NIN is used in scripts/convert_ncsnpp_original_checkpoint_to_diffusers.py
+NIN="NIN" # NIN is used in scripts/convert_ncsnpp_original_checkpoint_to_diffusers.py
 nd="np" # nd may be np (numpy)
 
 
