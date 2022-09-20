@@ -469,7 +469,7 @@ class FlaxDecoder(nn.Module):
         return sample
 
 
-class DiagonalGaussianDistribution(object):
+class FlaxDiagonalGaussianDistribution(object):
     def __init__(self, parameters, deterministic=False):
         # Last axis to account for channels-last
         self.mean, self.logvar = jnp.split(parameters, 2, axis=-1)
@@ -572,7 +572,7 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
 
         hidden_states = self.encoder(sample, deterministic=deterministic)
         moments = self.quant_conv(hidden_states)
-        posterior = DiagonalGaussianDistribution(moments)
+        posterior = FlaxDiagonalGaussianDistribution(moments)
 
         if not return_dict:
             return (posterior,)
