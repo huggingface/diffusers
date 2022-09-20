@@ -54,7 +54,11 @@ def run_command(command: List[str], return_stdout=False):
         ) from e
 
 
-class ExamplesTests(unittest.TestCase):
+stream_handler = logging.StreamHandler(sys.stdout)
+logger.addHandler(stream_handler)
+
+
+class ExamplesTestsAccelerate(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -71,9 +75,6 @@ class ExamplesTests(unittest.TestCase):
 
     @slow
     def test_train_unconditional(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/unconditional_image_generation/train_unconditional.py
@@ -97,9 +98,6 @@ class ExamplesTests(unittest.TestCase):
 
     @slow
     def test_textual_inversion(self):
-        stream_handler = logging.StreamHandler(sys.stdout)
-        logger.addHandler(stream_handler)
-
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/textual_inversion/textual_inversion.py
