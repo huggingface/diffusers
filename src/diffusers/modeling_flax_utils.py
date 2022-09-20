@@ -483,11 +483,6 @@ class FlaxModelMixin:
                 "See [`~ModelMixin.to_fp32`] for further information on how to do this."
             )
 
-        if dtype == jnp.bfloat16:
-            state = model.to_bf16(state)
-        if dtype == jnp.float16:
-            state = model.to_fp16(state)
-
         return model, unflatten_dict(state)
 
     def save_pretrained(
