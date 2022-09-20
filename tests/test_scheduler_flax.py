@@ -85,8 +85,8 @@ class FlaxSchedulerCommonTest(unittest.TestCase):
                 new_state = new_scheduler.state
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
-                scheduler.set_timesteps(num_inference_steps)
-                new_scheduler.set_timesteps(num_inference_steps)
+                state = scheduler.set_timesteps(state, num_inference_steps)
+                new_state = new_scheduler.set_timesteps(new_state, num_inference_steps)
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
@@ -115,8 +115,8 @@ class FlaxSchedulerCommonTest(unittest.TestCase):
                 new_state = new_scheduler.state
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
-                scheduler.set_timesteps(num_inference_steps)
-                new_scheduler.set_timesteps(num_inference_steps)
+                state = scheduler.set_timesteps(state, num_inference_steps)
+                new_state = new_scheduler.set_timesteps(new_state, num_inference_steps)
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
@@ -144,8 +144,8 @@ class FlaxSchedulerCommonTest(unittest.TestCase):
                 new_state = new_scheduler.state
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
-                scheduler.set_timesteps(num_inference_steps)
-                new_scheduler.set_timesteps(num_inference_steps)
+                state = scheduler.set_timesteps(state, num_inference_steps)
+                new_state = new_scheduler.set_timesteps(new_state, num_inference_steps)
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
@@ -168,7 +168,7 @@ class FlaxSchedulerCommonTest(unittest.TestCase):
             residual = 0.1 * sample
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
-                scheduler.set_timesteps(num_inference_steps)
+                state = scheduler.set_timesteps(state, num_inference_steps)
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
@@ -214,14 +214,14 @@ class FlaxSchedulerCommonTest(unittest.TestCase):
             residual = 0.1 * sample
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
-                scheduler.set_timesteps(num_inference_steps)
+                state = scheduler.set_timesteps(state, num_inference_steps)
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
             outputs_dict = scheduler.step(state, residual, 0, sample, key, **kwargs)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
-                scheduler.set_timesteps(num_inference_steps)
+                state = scheduler.set_timesteps(state, num_inference_steps)
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
@@ -313,3 +313,121 @@ class FlaxDDPMSchedulerTest(FlaxSchedulerCommonTest):
 
         assert abs(result_sum - 255.1113) < 1e-2
         assert abs(result_mean - 0.332176) < 1e-3
+
+
+class FlaxDDIMSchedulerTest(FlaxSchedulerCommonTest):
+    scheduler_classes = (FlaxDDIMScheduler,)
+    forward_default_kwargs = (("eta", 0.0), ("num_inference_steps", 50))
+
+    def get_scheduler_config(self, **kwargs):
+        config = {
+            "num_train_timesteps": 1000,
+            "beta_start": 0.0001,
+            "beta_end": 0.02,
+            "beta_schedule": "linear",
+            "clip_sample": True,
+        }
+
+        config.update(**kwargs)
+        return config
+
+    def full_loop(self, **config):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(**config)
+        scheduler = scheduler_class(**scheduler_config)
+        state = scheduler.state
+        key1, key2 = random.split(random.PRNGKey(0))
+
+        num_inference_steps, eta = 10, 0.0
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter
+
+        state = scheduler.set_timesteps(state, num_inference_steps)
+
+        for t in state.timesteps:
+            residual = model(sample, t)
+            output = scheduler.step(state, residual, t, sample, key1, eta)
+            sample = output.prev_sample
+            state = output.state
+            key1, key2 = random.split(key2)
+
+        return sample
+
+    def test_timesteps(self):
+        for timesteps in [100, 500, 1000]:
+            self.check_over_configs(num_train_timesteps=timesteps)
+
+    def test_steps_offset(self):
+        for steps_offset in [0, 1]:
+            self.check_over_configs(steps_offset=steps_offset)
+
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(steps_offset=1)
+        scheduler = scheduler_class(**scheduler_config)
+        state = scheduler.state
+        state = scheduler.set_timesteps(state, 5)
+        assert jnp.equal(state.timesteps, jnp.array([801, 601, 401, 201, 1])).all()
+
+    def test_betas(self):
+        for beta_start, beta_end in zip([0.0001, 0.001, 0.01, 0.1], [0.002, 0.02, 0.2, 2]):
+            self.check_over_configs(beta_start=beta_start, beta_end=beta_end)
+
+    def test_schedules(self):
+        for schedule in ["linear", "squaredcos_cap_v2"]:
+            self.check_over_configs(beta_schedule=schedule)
+
+    def test_clip_sample(self):
+        for clip_sample in [True, False]:
+            self.check_over_configs(clip_sample=clip_sample)
+
+    def test_time_indices(self):
+        for t in [1, 10, 49]:
+            self.check_over_forward(time_step=t)
+
+    def test_inference_steps(self):
+        for t, num_inference_steps in zip([1, 10, 50], [10, 50, 500]):
+            self.check_over_forward(time_step=t, num_inference_steps=num_inference_steps)
+
+    def test_eta(self):
+        for t, eta in zip([1, 10, 49], [0.0, 0.5, 1.0]):
+            self.check_over_forward(time_step=t, eta=eta)
+
+    def test_variance(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        assert jnp.sum(jnp.abs(scheduler._get_variance(0, 0) - 0.0)) < 1e-5
+        assert jnp.sum(jnp.abs(scheduler._get_variance(420, 400) - 0.14771)) < 1e-5
+        assert jnp.sum(jnp.abs(scheduler._get_variance(980, 960) - 0.32460)) < 1e-5
+        assert jnp.sum(jnp.abs(scheduler._get_variance(0, 0) - 0.0)) < 1e-5
+        assert jnp.sum(jnp.abs(scheduler._get_variance(487, 486) - 0.00979)) < 1e-5
+        assert jnp.sum(jnp.abs(scheduler._get_variance(999, 998) - 0.02)) < 1e-5
+
+    def test_full_loop_no_noise(self):
+        sample = self.full_loop()
+
+        result_sum = jnp.sum(jnp.abs(sample))
+        result_mean = jnp.mean(jnp.abs(sample))
+
+        assert abs(result_sum - 172.0067) < 1e-2
+        assert abs(result_mean - 0.223967) < 1e-3
+
+    def test_full_loop_with_set_alpha_to_one(self):
+        # We specify different beta, so that the first alpha is 0.99
+        sample = self.full_loop(set_alpha_to_one=True, beta_start=0.01)
+        result_sum = jnp.sum(jnp.abs(sample))
+        result_mean = jnp.mean(jnp.abs(sample))
+
+        assert abs(result_sum - 149.8295) < 1e-2
+        assert abs(result_mean - 0.1951) < 1e-3
+
+    def test_full_loop_with_no_set_alpha_to_one(self):
+        # We specify different beta, so that the first alpha is 0.99
+        sample = self.full_loop(set_alpha_to_one=False, beta_start=0.01)
+        result_sum = jnp.sum(jnp.abs(sample))
+        result_mean = jnp.mean(jnp.abs(sample))
+
+        assert abs(result_sum - 149.0784) < 1e-2
+        assert abs(result_mean - 0.1941) < 1e-3
