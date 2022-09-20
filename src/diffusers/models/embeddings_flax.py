@@ -41,8 +41,10 @@ class FlaxTimestepEmbedding(nn.Module):
     Time step Embedding Module. Learns embeddings for input time steps.
 
     Args:
-        time_embed_dim (`int`, *optional*, defaults to `32`): time step embedding dimension
-        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32): parameters `dtype`
+        time_embed_dim (`int`, *optional*, defaults to `32`): 
+                Time step embedding dimension
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32): 
+                Parameters `dtype`
     """
     time_embed_dim: int = 32
     dtype: jnp.dtype = jnp.float32
@@ -60,7 +62,8 @@ class FlaxTimesteps(nn.Module):
     Wrapper Module for sinusoidal Time step Embeddings as described in https://arxiv.org/abs/2006.11239
 
     Args:
-        dim (`int`, *optional*, defaults to `32`): time step embedding dimension
+        dim (`int`, *optional*, defaults to `32`): 
+                Time step embedding dimension
     """
     dim: int = 32
 
