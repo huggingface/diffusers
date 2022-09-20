@@ -213,7 +213,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         # add noise to latents using the timesteps
         noise = torch.randn(init_latents.shape, generator=generator, device=self.device)
-        init_latents = self.scheduler.add_noise(init_latents, noise, timesteps).to(self.device)
+        init_latents = self.scheduler.add_noise(init_latents, noise, timesteps)
 
         # get prompt text embeddings
         text_input = self.tokenizer(
@@ -265,8 +265,6 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 sigma = self.scheduler.sigmas[t_index]
                 # the model input needs to be scaled to match the continuous ODE formulation in K-LMS
                 latent_model_input = latent_model_input / ((sigma**2 + 1) ** 0.5)
-                latent_model_input = latent_model_input.to(self.unet.dtype)
-                t = t.to(self.unet.dtype)
 
             # predict the noise residual
             noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
@@ -284,7 +282,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
-        image = self.vae.decode(latents.to(self.vae.dtype)).sample
+        image = self.vae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
