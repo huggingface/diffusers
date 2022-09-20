@@ -402,8 +402,13 @@ class FlaxDiffusionPipeline(ConfigMixin):
                 if issubclass(class_obj, FlaxModelMixin):
                     # TODO(Patrick, Suraj) - Fix this as soon as Safety checker is fixed here
                     if name == "safety_checker":
-                        loaded_sub_model = None
-                        loaded_params = None
+                        class DummyChecker:
+
+                            def __init__(self):
+                                self.dummy = True
+
+                        loaded_sub_model = DummyChecker()
+                        loaded_params = DummyChecker()
                     else:
                         loaded_sub_model, loaded_params = load_method(loadable_folder, from_pt=from_pt, dtype=dtype)
                         params[name] = loaded_params
