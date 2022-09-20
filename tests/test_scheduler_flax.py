@@ -17,8 +17,6 @@ import unittest
 from typing import Dict, List, Tuple
 
 import jax.numpy as jnp
-from jax import random
-
 from diffusers import (
     FlaxDDIMScheduler,
     FlaxDDPMScheduler,
@@ -26,6 +24,7 @@ from diffusers import (
     FlaxPNDMScheduler,
     FlaxScoreSdeVeScheduler,
 )
+from jax import random
 
 
 class FlaxSchedulerCommonTest(unittest.TestCase):
