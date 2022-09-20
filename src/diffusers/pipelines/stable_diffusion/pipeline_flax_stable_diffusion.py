@@ -80,7 +80,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             feature_extractor=feature_extractor,
         )
 
-    def prepare_prompts(self, prompt: Union[str, List[str]]):
+    def prepare_inputs(self, prompt: Union[str, List[str]]):
         if not isinstance(prompt, (str, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 

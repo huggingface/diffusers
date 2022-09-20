@@ -62,6 +62,19 @@ for library in LOADABLE_CLASSES:
     ALL_IMPORTABLE_CLASSES.update(LOADABLE_CLASSES[library])
 
 
+def import_flax_or_no_model(module, class_name):
+    try:
+        # 1. First make sure that if a Flax object is present, import this one
+        class_obj = getattr(module, "Flax" + class_name)
+    except AttributeError:
+        # 2. If this doesn't work, it's not a model and we don't append "Flax"
+        class_obj = getattr(module, class_name)
+    except AttributeError:
+        raise ValueError(f"Neither Flax{class_name} nor {class_name} exist in {module}")
+
+    return class_obj
+
+
 @flax.struct.dataclass
 class FlaxImagePipelineOutput(BaseOutput):
     """
@@ -260,6 +273,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
         local_files_only = kwargs.pop("local_files_only", False)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
+        from_pt = kwargs.pop("from_pt", False)
         dtype = kwargs.pop("dtype", None)
 
         # 1. Download the checkpoints and configs
@@ -353,13 +367,21 @@ class FlaxDiffusionPipeline(ConfigMixin):
                 loaded_sub_model = passed_class_obj[name]
             elif is_pipeline_module:
                 pipeline_module = getattr(pipelines, library_name)
-                class_obj = getattr(pipeline_module, class_name)
+                if from_pt:
+                    class_obj = import_flax_or_no_model(pipeline_module, class_name)
+                else:
+                    class_obj = getattr(pipeline_module, class_name)
+
                 importable_classes = ALL_IMPORTABLE_CLASSES
                 class_candidates = {c: class_obj for c in importable_classes.keys()}
             else:
                 # else we just import it from the library.
                 library = importlib.import_module(library_name)
-                class_obj = getattr(library, class_name)
+                if from_pt:
+                    class_obj = import_flax_or_no_model(library, class_name)
+                else:
+                    class_obj = getattr(library, class_name)
+
                 importable_classes = LOADABLE_CLASSES[library_name]
                 class_candidates = {c: getattr(library, c) for c in importable_classes.keys()}
 
@@ -371,10 +393,6 @@ class FlaxDiffusionPipeline(ConfigMixin):
 
                 load_method = getattr(class_obj, load_method_name)
 
-                loading_kwargs = {}
-                if issubclass(class_obj, flax.linen.Module):
-                    loading_kwargs["dtype"] = dtype
-
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
                     loadable_folder = os.path.join(cached_folder, name)
@@ -382,17 +400,28 @@ class FlaxDiffusionPipeline(ConfigMixin):
                     loaded_sub_model = cached_folder
 
                 if issubclass(class_obj, FlaxModelMixin):
-                    loaded_sub_model, loaded_params = load_method(loadable_folder, **loading_kwargs)
-                    params[name] = loaded_params
+                    # TODO(Patrick, Suraj) - Fix this as soon as Safety checker is fixed here
+                    if name == "safety_checker":
+                        loaded_sub_model = None
+                        loaded_params = None
+                    else:
+                        loaded_sub_model, loaded_params = load_method(loadable_folder, from_pt=from_pt, dtype=dtype)
+                        params[name] = loaded_params
                 elif is_transformers_available() and issubclass(class_obj, FlaxPreTrainedModel):
                     # make sure we don't initialize the weights to save time
-                    loaded_sub_model, loaded_params = load_method(loadable_folder, _do_init=False, **loading_kwargs)
+                    if from_pt:
+                        # TODO(Suraj): Fix this in Transformers. We should be able to use `_do_init=False` here
+                        loaded_sub_model = load_method(loadable_folder, from_pt=from_pt)
+                        loaded_params = loaded_sub_model.params
+                        del loaded_sub_model._params
+                    else:
+                        loaded_sub_model, loaded_params = load_method(loadable_folder, _do_init=False)
                     params[name] = loaded_params
                 elif issubclass(class_obj, SchedulerMixin):
-                    loaded_sub_model = load_method(loadable_folder, **loading_kwargs)
+                    loaded_sub_model = load_method(loadable_folder)
                     params[name] = loaded_sub_model.create_state()
                 else:
-                    loaded_sub_model = load_method(loadable_folder, **loading_kwargs)
+                    loaded_sub_model = load_method(loadable_folder)
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 

@@ -144,7 +144,6 @@ class FlaxSpatialTransformer(nn.Module):
 
     def __call__(self, hidden_states, context, deterministic=True):
         batch, height, width, channels = hidden_states.shape
-        # import ipdb; ipdb.set_trace()
         residual = hidden_states
         hidden_states = self.norm(hidden_states)
         hidden_states = self.proj_in(hidden_states)
