@@ -23,7 +23,8 @@ class FlaxDecoderOutput(BaseOutput):
     Args:
         sample (`jnp.ndarray` of shape `(batch_size, num_channels, height, width)`):
             Decoded output sample of the model. Output of the last layer of the model.
-        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32): parameters `dtype`
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32): 
+            Parameters `dtype`
     """
 
     sample: jnp.ndarray
@@ -50,7 +51,8 @@ class FlaxUpsample2D(nn.Module):
     Args:
         in_channels (`int`):
             Input channels
-        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32): parameters `dtype`
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32): 
+            Parameters `dtype`
     """
 
     in_channels: int
@@ -83,7 +85,8 @@ class FlaxDownsample2D(nn.Module):
     Args:
         in_channels (`int`):
             Input channels
-        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32): parameters `dtype`
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32): 
+            Parameters `dtype`
     """
 
     in_channels: int
@@ -119,7 +122,7 @@ class FlaxResnetBlock2D(nn.Module):
         use_nin_shortcut (:obj:`bool`, *optional*, defaults to `None`):
             Whether to use `nin_shortcut`. This activates a new layer inside ResNet block
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
-            parameters `dtype`
+            Parameters `dtype`
     """
 
     in_channels: int
@@ -189,7 +192,7 @@ class FlaxAttentionBlock(nn.Module):
         num_head_channels (:obj:`int`, *optional*, defaults to `None`):
             Number of attention heads
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
-            parameters `dtype`
+            Parameters `dtype`
 
     """
     channels: int
@@ -264,7 +267,7 @@ class FlaxDownEncoderBlock2D(nn.Module):
         add_downsample (:obj:`bool`, *optional*, defaults to `True`):
             Whether to add downsample layer
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
-            parameters `dtype`
+            Parameters `dtype`
     """
     in_channels: int
     out_channels: int
@@ -316,7 +319,7 @@ class FlaxUpEncoderBlock2D(nn.Module):
         add_downsample (:obj:`bool`, *optional*, defaults to `True`):
             Whether to add downsample layer
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
-            parameters `dtype`
+            Parameters `dtype`
     """
     in_channels: int
     out_channels: int
@@ -366,7 +369,7 @@ class FlaxUNetMidBlock2D(nn.Module):
         attn_num_head_channels (:obj:`int`, *optional*, defaults to `1`):
             Number of attention heads for each attention block
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
-            parameters `dtype`
+            Parameters `dtype`
     """
     in_channels: int
     dropout: float = 0.0
@@ -445,7 +448,7 @@ class FlaxEncoder(nn.Module):
         double_z (:obj:`bool`, *optional*, defaults to `False`):
             Whether to double the last output channels
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
-            parameters `dtype`
+            Parameters `dtype`
     """
     in_channels: int = 3
     out_channels: int = 3
