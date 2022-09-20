@@ -258,14 +258,11 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
                     encoder_hidden_states=encoder_hidden_states,
-                    upsample_size=upsample_size
+                    upsample_size=upsample_size,
                 )
             else:
                 sample = upsample_block(
-                    hidden_states=sample, 
-                    temb=emb, 
-                    res_hidden_states_tuple=res_samples,
-                    upsample_size=upsample_size
+                    hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size
                 )
         # 6. post-process
         # make sure hidden states is in float32
