@@ -96,7 +96,11 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
 
             max_length = text_input.input_ids.shape[-1]
             uncond_input = self.tokenizer(
-                ucond_tokens, padding="max_length", max_length=max_length, return_tensors="np"
+                ucond_tokens,
+                padding="max_length",
+                max_length=max_length,
+                truncation=True,
+                return_tensors="np",
             )
             uncond_embeddings = self.text_encoder(input_ids=uncond_input.input_ids.astype(np.int32))[0]
 
