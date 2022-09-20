@@ -76,7 +76,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
 
     def init_weights(self, rng: jax.random.PRNGKey) -> FrozenDict:
         # init input tensors
-        sample_shape = (1, self.sample_size, self.sample_size, self.in_channels)
+        sample_shape = (1, self.in_channels, self.sample_size, self.sample_size)
         sample = jnp.zeros(sample_shape, dtype=jnp.float32)
         timesteps = jnp.ones((1,), dtype=jnp.int32)
         encoder_hidden_states = jnp.zeros((1, 1, self.cross_attention_dim), dtype=jnp.float32)
@@ -224,6 +224,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         t_emb = self.time_embedding(t_emb)
 
         # 2. pre-process
+        sample = jnp.transpose(sample, (0, 2, 3, 1))
         sample = self.conv_in(sample)
 
         # 3. down
@@ -257,6 +258,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         sample = self.conv_norm_out(sample)
         sample = nn.silu(sample)
         sample = self.conv_out(sample)
+        sample = jnp.transpose(sample, (0, 3, 1, 2))
 
         if not return_dict:
             return (sample,)
