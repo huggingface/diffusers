@@ -55,7 +55,7 @@ class FlaxCrossAttnDownBlock2D(nn.Module):
         self.attentions = attentions
 
         if self.add_downsample:
-            self.downsample = FlaxDownsample2D(self.out_channels, dtype=self.dtype)
+            self.downsamplers_0 = FlaxDownsample2D(self.out_channels, dtype=self.dtype)
 
     def __call__(self, hidden_states, temb, encoder_hidden_states, deterministic=True):
         output_states = ()
@@ -66,7 +66,7 @@ class FlaxCrossAttnDownBlock2D(nn.Module):
             output_states += (hidden_states,)
 
         if self.add_downsample:
-            hidden_states = self.downsample(hidden_states)
+            hidden_states = self.downsamplers_0(hidden_states)
             output_states += (hidden_states,)
 
         return hidden_states, output_states
@@ -96,7 +96,7 @@ class FlaxDownBlock2D(nn.Module):
         self.resnets = resnets
 
         if self.add_downsample:
-            self.downsample = FlaxDownsample2D(self.out_channels, dtype=self.dtype)
+            self.downsamplers_0 = FlaxDownsample2D(self.out_channels, dtype=self.dtype)
 
     def __call__(self, hidden_states, temb, deterministic=True):
         output_states = ()
@@ -106,7 +106,7 @@ class FlaxDownBlock2D(nn.Module):
             output_states += (hidden_states,)
 
         if self.add_downsample:
-            hidden_states = self.downsample(hidden_states)
+            hidden_states = self.downsamplers_0(hidden_states)
             output_states += (hidden_states,)
 
         return hidden_states, output_states
@@ -151,7 +151,7 @@ class FlaxCrossAttnUpBlock2D(nn.Module):
         self.attentions = attentions
 
         if self.add_upsample:
-            self.upsample = FlaxUpsample2D(self.out_channels, dtype=self.dtype)
+            self.upsamplers_0 = FlaxUpsample2D(self.out_channels, dtype=self.dtype)
 
     def __call__(self, hidden_states, res_hidden_states_tuple, temb, encoder_hidden_states, deterministic=True):
         for resnet, attn in zip(self.resnets, self.attentions):
@@ -164,7 +164,7 @@ class FlaxCrossAttnUpBlock2D(nn.Module):
             hidden_states = attn(hidden_states, encoder_hidden_states, deterministic=deterministic)
 
         if self.add_upsample:
-            hidden_states = self.upsample(hidden_states)
+            hidden_states = self.upsamplers_0(hidden_states)
 
         return hidden_states
 
@@ -196,7 +196,7 @@ class FlaxUpBlock2D(nn.Module):
         self.resnets = resnets
 
         if self.add_upsample:
-            self.upsample = FlaxUpsample2D(self.out_channels, dtype=self.dtype)
+            self.upsamplers_0 = FlaxUpsample2D(self.out_channels, dtype=self.dtype)
 
     def __call__(self, hidden_states, res_hidden_states_tuple, temb, deterministic=True):
         for resnet in self.resnets:
@@ -208,7 +208,7 @@ class FlaxUpBlock2D(nn.Module):
             hidden_states = resnet(hidden_states, temb, deterministic=deterministic)
 
         if self.add_upsample:
-            hidden_states = self.upsample(hidden_states)
+            hidden_states = self.upsamplers_0(hidden_states)
 
         return hidden_states
 
