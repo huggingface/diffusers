@@ -24,6 +24,7 @@ import unittest
 from typing import List
 
 from accelerate.utils import write_basic_config
+from diffusers.testing_utils import slow
 
 
 logging.basicConfig(level=logging.DEBUG)
@@ -68,6 +69,7 @@ class ExamplesTests(unittest.TestCase):
         super().tearDownClass()
         shutil.rmtree(cls._tmpdir)
 
+    @slow
     def test_train_unconditional(self):
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
@@ -93,6 +95,7 @@ class ExamplesTests(unittest.TestCase):
             with open(os.path.join(tmpdir, "README.md"), "r") as f:
                 self.assertTrue("learning_rate: 0.001" in f.read())
 
+    @slow
     def test_textual_inversion(self):
         stream_handler = logging.StreamHandler(sys.stdout)
         logger.addHandler(stream_handler)
