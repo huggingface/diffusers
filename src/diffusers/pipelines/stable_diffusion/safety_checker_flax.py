@@ -91,7 +91,7 @@ class FlaxStableDiffusionSafetyCheckerModule(nn.Module):
         return images, has_nsfw_concepts
 
 
-class StableDiffusionSafetyChecker(FlaxPreTrainedModel):
+class FlaxStableDiffusionSafetyChecker(FlaxPreTrainedModel):
     config_class = CLIPConfig
     main_input_name = "clip_input"
     module_class = FlaxStableDiffusionSafetyCheckerModule
