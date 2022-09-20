@@ -18,7 +18,7 @@ import jax.numpy as jnp
 
 class FlaxAttentionBlock(nn.Module):
     r"""
-    A multi-head attention as described in: https://arxiv.org/abs/1706.03762
+    A Flax multi-head attention module as described in: https://arxiv.org/abs/1706.03762
 
     Parameters:
         query_dim (:obj:`int`):
@@ -91,7 +91,7 @@ class FlaxAttentionBlock(nn.Module):
 
 class FlaxBasicTransformerBlock(nn.Module):
     r"""
-    A transformer block layer with `GLU` (Gated Linear Unit) activation function as described in:
+    A Flax transformer block layer with `GLU` (Gated Linear Unit) activation function as described in:
     https://arxiv.org/abs/1706.03762
 
 
