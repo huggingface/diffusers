@@ -25,19 +25,19 @@ class FlaxCrossAttnDownBlock2D(nn.Module):
 
     Parameters:
         in_channels (:obj:`int`):
-              Input channels
+            Input channels
         out_channels (:obj:`int`):
-              Output channels
+            Output channels
         dropout (:obj:`float`, *optional*, defaults to 0.0):
-              Dropout rate
+            Dropout rate
         num_layers (:obj:`int`, *optional*, defaults to 1):
-             Number of attention blocks layers
+            Number of attention blocks layers
         attn_num_head_channels (:obj:`int`, *optional*, defaults to 1):
             Number of attention heads of each spatial transformer block
         add_downsample (:obj:`bool`, *optional*, defaults to `True`):
             Whether to add downsampling layer before each final output
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
-             Parameters `dtype`
+            Parameters `dtype`
     """
     in_channels: int
     out_channels: int
