@@ -19,7 +19,7 @@ import unittest
 import torch
 
 from diffusers import UNet2DModel
-from diffusers.testing_utils import floats_tensor, torch_device
+from diffusers.testing_utils import floats_tensor, slow, torch_device
 
 from .test_modeling_common import ModelTesterMixin
 
@@ -231,6 +231,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
+    @slow
     def test_from_pretrained_hub(self):
         model, loading_info = UNet2DModel.from_pretrained("google/ncsnpp-celebahq-256", output_loading_info=True)
         self.assertIsNotNone(model)
@@ -244,6 +245,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
 
         assert image is not None, "Make sure output is not None"
 
+    @slow
     def test_output_pretrained_ve_mid(self):
         model = UNet2DModel.from_pretrained("google/ncsnpp-celebahq-256")
         model.to(torch_device)

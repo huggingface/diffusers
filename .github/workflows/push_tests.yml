@@ -49,4 +49,15 @@ jobs:
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
-        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s tests/
+        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_gpu tests/
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: cat reports/tests_torch_gpu_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: push_torch_test_reports
+        path: reports
