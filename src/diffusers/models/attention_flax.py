@@ -22,15 +22,15 @@ class FlaxAttentionBlock(nn.Module):
 
     Parameters:
         query_dim (:obj:`int`):
-                Input hidden states dimension
+            Input hidden states dimension
         heads (:obj:`int`, *optional*, defaults to 8):
-                Number of heads
+            Number of heads
         dim_head (:obj:`int`, *optional*, defaults to 64):
-                Hidden states dimension inside each head
+            Hidden states dimension inside each head
         dropout (:obj:`float`, *optional*, defaults to 0.0):
-                Dropout rate
+            Dropout rate
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
-                Parameters `dtype`
+            Parameters `dtype`
 
     """
     query_dim: int
@@ -97,15 +97,15 @@ class FlaxBasicTransformerBlock(nn.Module):
 
     Parameters:
         dim (:obj:`int`):
-                Inner hidden states dimension
+            Inner hidden states dimension
         n_heads (:obj:`int`):
-                Number of heads
+            Number of heads
         d_head (:obj:`int`):
-                Hidden states dimension inside each head
+            Hidden states dimension inside each head
         dropout (:obj:`float`, *optional*, defaults to 0.0):
-                Dropout rate
+            Dropout rate
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
-                Parameters `dtype`
+            Parameters `dtype`
     """
     dim: int
     n_heads: int
@@ -150,17 +150,17 @@ class FlaxSpatialTransformer(nn.Module):
 
     Parameters:
         in_channels (:obj:`int`):
-                Input number of channels
+            Input number of channels
         n_heads (:obj:`int`):
-                Number of heads
+            Number of heads
         d_head (:obj:`int`):
-                Hidden states dimension inside each head
+            Hidden states dimension inside each head
         depth (:obj:`int`, *optional*, defaults to 1):
-                Number of transformers block
+            Number of transformers block
         dropout (:obj:`float`, *optional*, defaults to 0.0):
-                Dropout rate
+            Dropout rate
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
-                Parameters `dtype`
+            Parameters `dtype`
     """
     in_channels: int
     n_heads: int
@@ -220,11 +220,11 @@ class FlaxGluFeedForward(nn.Module):
 
     Parameters:
         dim (:obj:`int`):
-                Inner hidden states dimension
+            Inner hidden states dimension
         dropout (:obj:`float`, *optional*, defaults to 0.0):
-                Dropout rate
+            Dropout rate
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
-                Parameters `dtype`
+            Parameters `dtype`
     """
     dim: int
     dropout: float = 0.0
@@ -249,11 +249,11 @@ class FlaxGEGLU(nn.Module):
 
     arameters:
         dim (:obj:`int`):
-                Input hidden states dimension
+            Input hidden states dimension
         dropout (:obj:`float`, *optional*, defaults to 0.0):
-                Dropout rate
+            Dropout rate
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
-                Parameters `dtype`
+            Parameters `dtype`
     """
     dim: int
     dropout: float = 0.0
