@@ -64,10 +64,10 @@ class PNDMSchedulerState:
     timesteps: Optional[jnp.ndarray] = None
 
     # running values
-    cur_model_output: Optional[jnp.ndarray] = None
+    cur_model_output: jnp.ndarray = jnp.array([0])
     counter: int = 0
-    cur_sample: Optional[jnp.ndarray] = None
     ets: jnp.ndarray = jnp.array([])
+    cur_sample: Optional[jnp.ndarray] = None
 
     @classmethod
     def create(cls, num_train_timesteps: int):
@@ -268,14 +268,16 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         if state.counter % 4 == 0:
             state = state.replace(
                 cur_model_output=state.cur_model_output + 1 / 6 * model_output,
-                ets=state.ets.append(model_output),
+                ets=jnp.concatenate((state.ets, model_output[None, ...]), 0)
+                if len(state.ets) > 0
+                else model_output[None, ...],
                 cur_sample=sample,
             )
-        elif (self.counter - 1) % 4 == 0:
+        elif (state.counter - 1) % 4 == 0:
             state = state.replace(cur_model_output=state.cur_model_output + 1 / 3 * model_output)
-        elif (self.counter - 2) % 4 == 0:
+        elif (state.counter - 2) % 4 == 0:
             state = state.replace(cur_model_output=state.cur_model_output + 1 / 3 * model_output)
-        elif (self.counter - 3) % 4 == 0:
+        elif (state.counter - 3) % 4 == 0:
             model_output = state.cur_model_output + 1 / 6 * model_output
             state = state.replace(cur_model_output=0)
 
@@ -331,7 +333,11 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         prev_timestep = timestep - self.config.num_train_timesteps // state.num_inference_steps
 
         if state.counter != 1:
-            state = state.replace(ets=state.ets.append(model_output))
+            state = state.replace(
+                ets=jnp.concatenate((state.ets, model_output[None, ...]), 0)
+                if len(state.ets) > 0
+                else model_output[None, ...]
+            )
         else:
             prev_timestep = timestep
             timestep = timestep + self.config.num_train_timesteps // state.num_inference_steps
