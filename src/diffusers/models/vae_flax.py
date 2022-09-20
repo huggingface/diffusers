@@ -34,12 +34,12 @@ class FlaxAutoencoderKLOutput(BaseOutput):
     Output of AutoencoderKL encoding method.
 
     Args:
-        latent_dist (`DiagonalGaussianDistribution`):
-            Encoded outputs of `Encoder` represented as the mean and logvar of `DiagonalGaussianDistribution`.
-            `DiagonalGaussianDistribution` allows for sampling latents from the distribution.
+        latent_dist (`FlaxDiagonalGaussianDistribution`):
+            Encoded outputs of `Encoder` represented as the mean and logvar of `FlaxDiagonalGaussianDistribution`.
+            `FlaxDiagonalGaussianDistribution` allows for sampling latents from the distribution.
     """
 
-    latent_dist: "DiagonalGaussianDistribution"
+    latent_dist: "FlaxDiagonalGaussianDistribution"
 
 
 class FlaxUpsample2D(nn.Module):
