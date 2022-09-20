@@ -402,8 +402,8 @@ class FlaxDiffusionPipeline(ConfigMixin):
                 if issubclass(class_obj, FlaxModelMixin):
                     # TODO(Patrick, Suraj) - Fix this as soon as Safety checker is fixed here
                     if name == "safety_checker":
-                        class DummyChecker:
 
+                        class DummyChecker:
                             def __init__(self):
                                 self.dummy = True
 

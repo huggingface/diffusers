@@ -53,6 +53,7 @@ if is_transformers_available() and is_flax_available():
                 List of flags denoting whether the corresponding generated image likely represents "not-safe-for-work"
                 (nsfw) content.
         """
+
         images: Union[List[PIL.Image.Image], np.ndarray]
         nsfw_content_detected: List[bool]
 
