@@ -233,77 +233,107 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
             When returning a tuple, the first element is the sample tensor.
 
         """
-        return self.step_plms(
-            state=state, model_output=model_output, timestep=timestep, sample=sample, return_dict=return_dict
+        if self.config.skip_prk_steps:
+            prev_sample, state = self.step_plms(
+                state=state, model_output=model_output, timestep=timestep, sample=sample
+            )
+        else:
+            prev_sample, state = jax.lax.switch(
+                jnp.where(state.counter < len(state.prk_timesteps), 0, 1),
+                [self.step_prk, self.step_plms],
+                state, model_output, timestep, sample
+            )
+
+        if not return_dict:
+            return (prev_sample, state)
+
+        return FlaxSchedulerOutput(prev_sample=prev_sample, state=state)
+
+
+    def step_prk(
+        self,
+        state: PNDMSchedulerState,
+        model_output: jnp.ndarray,
+        timestep: int,
+        sample: jnp.ndarray,
+    ) -> Union[FlaxSchedulerOutput, Tuple]:
+        """
+        Step function propagating the sample with the Runge-Kutta method. RK takes 4 forward passes to approximate the
+        solution to the differential equation.
+
+        Args:
+            state (`PNDMSchedulerState`): the `FlaxPNDMScheduler` state data class instance.
+            model_output (`jnp.ndarray`): direct output from learned diffusion model.
+            timestep (`int`): current discrete timestep in the diffusion chain.
+            sample (`jnp.ndarray`):
+                current instance of sample being created by diffusion process.
+            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+
+        Returns:
+            [`FlaxSchedulerOutput`] or `tuple`: [`FlaxSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
+            When returning a tuple, the first element is the sample tensor.
+
+        """
+        if state.num_inference_steps is None:
+            raise ValueError(
+                "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
+            )
+
+        diff_to_prev = jnp.where(state.counter % 2, 0, self.config.num_train_timesteps // state.num_inference_steps // 2)
+        prev_timestep = timestep - diff_to_prev
+        timestep = state.prk_timesteps[state.counter // 4 * 4]
+
+        def remainder_0(state: PNDMSchedulerState, model_output: jnp.ndarray, ets_at: int):
+            return state.replace(
+                cur_model_output = state.cur_model_output + 1 / 6 * model_output,
+                ets = state.ets.at[ets_at].set(model_output),
+                cur_sample = sample,
+            ), model_output
+
+        def remainder_1(state: PNDMSchedulerState, model_output: jnp.ndarray, ets_at: int):
+            return state.replace(
+                cur_model_output = state.cur_model_output + 1 / 3 * model_output
+            ), model_output
+
+        def remainder_2(state: PNDMSchedulerState, model_output: jnp.ndarray, ets_at: int):
+            return state.replace(
+                cur_model_output = state.cur_model_output + 1 / 3 * model_output
+            ), model_output
+
+        def remainder_3(state: PNDMSchedulerState, model_output: jnp.ndarray, ets_at: int):
+            model_output = state.cur_model_output + 1 / 6 * model_output
+            return state.replace(
+                cur_model_output = jnp.zeros_like(state.cur_model_output)
+            ), model_output
+
+        state, model_output = jax.lax.switch(
+            state.counter % 4,
+            [remainder_0, remainder_1, remainder_2, remainder_3],
+            state, model_output, state.counter // 4
         )
 
-        # if state.counter < len(state.prk_timesteps) and not self.config.skip_prk_steps:
-        #     return self.step_prk(
-        #         state=state, model_output=model_output, timestep=timestep, sample=sample, return_dict=return_dict
+        # if state.counter % 4 == 0:
+        #     state = state.replace(
+        #         cur_model_output=state.cur_model_output + 1 / 6 * model_output,
+        #         ets=state.ets.append(model_output),
+        #         cur_sample=sample,
         #     )
-        # else:
-        #     return self.step_plms(
-        #         state=state, model_output=model_output, timestep=timestep, sample=sample, return_dict=return_dict
-        #     )
+        # elif (self.counter - 1) % 4 == 0:
+        #     state = state.replace(cur_model_output=state.cur_model_output + 1 / 3 * model_output)
+        # elif (self.counter - 2) % 4 == 0:
+        #     state = state.replace(cur_model_output=state.cur_model_output + 1 / 3 * model_output)
+        # elif (self.counter - 3) % 4 == 0:
+        #     model_output = state.cur_model_output + 1 / 6 * model_output
+        #     state = state.replace(cur_model_output=0)
 
-    # def step_prk(
-    #     self,
-    #     state: PNDMSchedulerState,
-    #     model_output: jnp.ndarray,
-    #     timestep: int,
-    #     sample: jnp.ndarray,
-    #     return_dict: bool = True,
-    # ) -> Union[FlaxSchedulerOutput, Tuple]:
-    #     """
-    #     Step function propagating the sample with the Runge-Kutta method. RK takes 4 forward passes to approximate the
-    #     solution to the differential equation.
+        # cur_sample should not be `None`
+        # cur_sample = state.cur_sample if state.cur_sample is not None else sample
+        cur_sample = state.cur_sample
 
-    #     Args:
-    #         state (`PNDMSchedulerState`): the `FlaxPNDMScheduler` state data class instance.
-    #         model_output (`jnp.ndarray`): direct output from learned diffusion model.
-    #         timestep (`int`): current discrete timestep in the diffusion chain.
-    #         sample (`jnp.ndarray`):
-    #             current instance of sample being created by diffusion process.
-    #         return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+        prev_sample = self._get_prev_sample(cur_sample, timestep, prev_timestep, model_output)
+        state = state.replace(counter=state.counter + 1)
 
-    #     Returns:
-    #         [`FlaxSchedulerOutput`] or `tuple`: [`FlaxSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
-    #         When returning a tuple, the first element is the sample tensor.
-
-    #     """
-    #     if state.num_inference_steps is None:
-    #         raise ValueError(
-    #             "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
-    #         )
-
-    #     diff_to_prev = 0 if state.counter % 2 else self.config.num_train_timesteps // state.num_inference_steps // 2
-    #     prev_timestep = timestep - diff_to_prev
-    #     timestep = state.prk_timesteps[state.counter // 4 * 4]
-
-    #     if state.counter % 4 == 0:
-    #         state = state.replace(
-    #             cur_model_output=state.cur_model_output + 1 / 6 * model_output,
-    #             ets=state.ets.append(model_output),
-    #             cur_sample=sample,
-    #         )
-    #     elif (self.counter - 1) % 4 == 0:
-    #         state = state.replace(cur_model_output=state.cur_model_output + 1 / 3 * model_output)
-    #     elif (self.counter - 2) % 4 == 0:
-    #         state = state.replace(cur_model_output=state.cur_model_output + 1 / 3 * model_output)
-    #     elif (self.counter - 3) % 4 == 0:
-    #         model_output = state.cur_model_output + 1 / 6 * model_output
-    #         state = state.replace(cur_model_output=0)
-
-    #     # cur_sample should not be `None`
-    #     cur_sample = state.cur_sample if state.cur_sample is not None else sample
-
-    #     prev_sample = self._get_prev_sample(cur_sample, timestep, prev_timestep, model_output)
-    #     state = state.replace(counter=state.counter + 1)
-
-    #     if not return_dict:
-    #         return (prev_sample, state)
-
-    #     return FlaxSchedulerOutput(prev_sample=prev_sample, state=state)
+        return (prev_sample, state)
 
     def step_plms(
         self,
@@ -311,7 +341,6 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
-        return_dict: bool = True,
     ) -> Union[FlaxSchedulerOutput, Tuple]:
         """
         Step function propagating the sample with the linear multi-step method. This has one forward pass with multiple
@@ -426,10 +455,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         prev_sample = self._get_prev_sample(sample, timestep, prev_timestep, model_output)
         state = state.replace(counter=state.counter + 1)
 
-        if not return_dict:
-            return (prev_sample, state)
-
-        return FlaxSchedulerOutput(prev_sample=prev_sample, state=state)
+        return (prev_sample, state)
 
     def _get_prev_sample(self, sample, timestep, prev_timestep, model_output):
         # See formula (9) of PNDM paper https://arxiv.org/pdf/2202.09778.pdf
