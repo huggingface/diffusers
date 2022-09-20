@@ -23,7 +23,7 @@ class FlaxDecoderOutput(BaseOutput):
     Args:
         sample (`jnp.ndarray` of shape `(batch_size, num_channels, height, width)`):
             Decoded output sample of the model. Output of the last layer of the model.
-        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32): 
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
     """
 
@@ -51,7 +51,7 @@ class FlaxUpsample2D(nn.Module):
     Args:
         in_channels (`int`):
             Input channels
-        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32): 
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
     """
 
@@ -85,7 +85,7 @@ class FlaxDownsample2D(nn.Module):
     Args:
         in_channels (`int`):
             Input channels
-        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32): 
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
     """
 
