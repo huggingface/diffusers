@@ -393,12 +393,7 @@ class DiffusionPipeline(ConfigMixin):
                     if issubclass(class_obj, class_candidate):
                         load_method_name = importable_classes[class_name][1]
 
-                try:
-                    load_method = getattr(class_obj, load_method_name)
-                except:
-                    import ipdb
-
-                    ipdb.set_trace()
+                load_method = getattr(class_obj, load_method_name)
 
                 loading_kwargs = {}
                 if issubclass(class_obj, torch.nn.Module):
