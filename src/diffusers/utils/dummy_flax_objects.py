@@ -25,6 +25,13 @@ class FlaxAutoencoderKL(metaclass=DummyObject):
         requires_backends(self, ["flax"])
 
 
+class FlaxDiffusionPipeline(metaclass=DummyObject):
+    _backends = ["flax"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["flax"])
+
+
 class FlaxDDIMScheduler(metaclass=DummyObject):
     _backends = ["flax"]
 
@@ -61,13 +68,6 @@ class FlaxPNDMScheduler(metaclass=DummyObject):
 
 
 class FlaxScoreSdeVeScheduler(metaclass=DummyObject):
-    _backends = ["flax"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["flax"])
-
-
-class FlaxDiffusionPipeline(metaclass=DummyObject):
     _backends = ["flax"]
 
     def __init__(self, *args, **kwargs):

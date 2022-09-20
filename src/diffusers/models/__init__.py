@@ -12,8 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .unet_2d import UNet2DModel
-from .unet_2d_condition import UNet2DConditionModel
-from .unet_2d_condition_flax import FlaxUNet2DConditionModel
-from .vae import AutoencoderKL, VQModel
-from .vae_flax import FlaxAutoencoderKL
+from ..utils import is_torch_available, is_flax_available
+
+if is_torch_available():
+    from .unet_2d import UNet2DModel
+    from .unet_2d_condition import UNet2DConditionModel
+    from .vae import AutoencoderKL, VQModel
+
+if is_flax_available():
+    from .unet_2d_condition_flax import FlaxUNet2DConditionModel
+    from .vae_flax import FlaxAutoencoderKL
