@@ -354,7 +354,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
             # TODO(Patrick, Suraj) - delete later
             if class_name == "DummyChecker":
                 library_name = "stable_diffusion"
-                class_name = "StableDiffusionSafetyChecker"
+                class_name = "FlaxStableDiffusionSafetyChecker"
 
             is_pipeline_module = hasattr(pipelines, library_name)
             loaded_sub_model = None
@@ -421,16 +421,14 @@ class FlaxDiffusionPipeline(ConfigMixin):
                     loaded_sub_model = cached_folder
 
                 if issubclass(class_obj, FlaxModelMixin):
-                    # TODO(Patrick, Suraj) - Fix this as soon as Safety checker is fixed here
+                    loaded_sub_model, loaded_params = load_method(loadable_folder, from_pt=from_pt, dtype=dtype)
+                    params[name] = loaded_params
+                elif is_transformers_available() and issubclass(class_obj, FlaxPreTrainedModel):
+                    # make sure we don't initialize the weights to save time
                     if name == "safety_checker":
                         loaded_sub_model = DummyChecker()
                         loaded_params = DummyChecker()
-                    else:
-                        loaded_sub_model, loaded_params = load_method(loadable_folder, from_pt=from_pt, dtype=dtype)
-                        params[name] = loaded_params
-                elif is_transformers_available() and issubclass(class_obj, FlaxPreTrainedModel):
-                    # make sure we don't initialize the weights to save time
-                    if from_pt:
+                    elif from_pt:
                         # TODO(Suraj): Fix this in Transformers. We should be able to use `_do_init=False` here
                         loaded_sub_model = load_method(loadable_folder, from_pt=from_pt)
                         loaded_params = loaded_sub_model.params
