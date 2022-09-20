@@ -172,7 +172,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             self.unet.in_channels,
         )
         if latents is None:
-            latents = jax.random.normal(prng_seed, shape=latents_shape, dtype=self.dtype)
+            latents = jax.random.normal(prng_seed, shape=latents_shape, dtype=jnp.float32)
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
