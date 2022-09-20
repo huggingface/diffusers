@@ -559,7 +559,7 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
 
     def init_weights(self, rng: jax.random.PRNGKey) -> FrozenDict:
         # init input tensors
-        sample_shape = (1, self.sample_size, self.sample_size, self.in_channels)
+        sample_shape = (1, self.in_channels, self.sample_size, self.sample_size)
         sample = jnp.zeros(sample_shape, dtype=jnp.float32)
 
         params_rng, dropout_rng, gaussian_rng = jax.random.split(rng, 3)
@@ -568,6 +568,8 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
         return self.init(rngs, sample)["params"]
 
     def encode(self, sample, deterministic: bool = True, return_dict: bool = True):
+        sample = jnp.transpose(sample, (0, 2, 3, 1))
+
         hidden_states = self.encoder(sample, deterministic=deterministic)
         moments = self.quant_conv(hidden_states)
         posterior = DiagonalGaussianDistribution(moments)
@@ -583,6 +585,8 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
 
         hidden_states = self.post_quant_conv(latents)
         hidden_states = self.decoder(hidden_states, deterministic=deterministic)
+
+        hidden_states = jnp.transpose(hidden_states, (0, 3, 1, 2))
 
         if not return_dict:
             return (hidden_states,)
