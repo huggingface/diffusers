@@ -1,4 +1,3 @@
-import warnings
 from typing import Dict, List, Optional, Union
 
 import jax
@@ -55,20 +54,6 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         super().__init__()
         scheduler = scheduler.set_format("np")
         self.dtype = dtype
-
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
-            warnings.warn(
-                f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
-                f" should be set to 1 istead of {scheduler.config.steps_offset}. Please make sure "
-                "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
-                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
-                " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
-                " file",
-                DeprecationWarning,
-            )
-            new_config = dict(scheduler.config)
-            new_config["steps_offset"] = 1
-            scheduler._internal_dict = FrozenDict(new_config)
 
         self.register_modules(
             vae=vae,
@@ -167,9 +152,9 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         # TODO: check it because the shape is different from Pytorhc StableDiffusionPipeline
         latents_shape = (
             batch_size,
-            self.unet.sample_size,
-            self.unet.sample_size,
             self.unet.in_channels,
+            self.unet.sample_size,
+            self.unet.sample_size,
         )
         if latents is None:
             latents = jax.random.normal(prng_seed, shape=latents_shape, dtype=self.dtype)

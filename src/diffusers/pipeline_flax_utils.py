@@ -62,6 +62,11 @@ for library in LOADABLE_CLASSES:
     ALL_IMPORTABLE_CLASSES.update(LOADABLE_CLASSES[library])
 
 
+class DummyChecker:
+    def __init__(self):
+        self.dummy = True
+
+
 def import_flax_or_no_model(module, class_name):
     try:
         # 1. First make sure that if a Flax object is present, import this one
@@ -172,8 +177,19 @@ class FlaxDiffusionPipeline(ConfigMixin):
                 if save_method_name is not None:
                     break
 
+            # TODO(Patrick, Suraj): to delete after
+            if isinstance(sub_model, DummyChecker):
+                continue
+
             save_method = getattr(sub_model, save_method_name)
-            save_method(os.path.join(save_directory, pipeline_component_name))
+            expects_params = "params" in set(inspect.signature(save_method).parameters.keys())
+
+            if expects_params:
+                save_method(
+                    os.path.join(save_directory, pipeline_component_name), params=params[pipeline_component_name]
+                )
+            else:
+                save_method(os.path.join(save_directory, pipeline_component_name))
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
@@ -335,6 +351,11 @@ class FlaxDiffusionPipeline(ConfigMixin):
 
         # 3. Load each module in the pipeline
         for name, (library_name, class_name) in init_dict.items():
+            # TODO(Patrick, Suraj) - delete later
+            if class_name == "DummyChecker":
+                library_name = "stable_diffusion"
+                class_name = "StableDiffusionSafetyChecker"
+
             is_pipeline_module = hasattr(pipelines, library_name)
             loaded_sub_model = None
 
@@ -402,11 +423,6 @@ class FlaxDiffusionPipeline(ConfigMixin):
                 if issubclass(class_obj, FlaxModelMixin):
                     # TODO(Patrick, Suraj) - Fix this as soon as Safety checker is fixed here
                     if name == "safety_checker":
-
-                        class DummyChecker:
-                            def __init__(self):
-                                self.dummy = True
-
                         loaded_sub_model = DummyChecker()
                         loaded_params = DummyChecker()
                     else:

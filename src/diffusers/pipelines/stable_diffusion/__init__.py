@@ -6,7 +6,6 @@ import numpy as np
 import PIL
 from PIL import Image
 
-from ...schedulers.scheduling_pndm_flax import PNDMSchedulerState
 from ...utils import BaseOutput, is_flax_available, is_onnx_available, is_transformers_available
 
 
