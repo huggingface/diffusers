@@ -21,7 +21,6 @@ from typing import Optional, Tuple, Union
 
 import flax
 import jax.numpy as jnp
-from jax import random
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
@@ -60,11 +59,12 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> jnp.ndarray:
 class DDIMSchedulerState:
     # setable values
     timesteps: jnp.ndarray
+    alphas_cumprod: jnp.ndarray
     num_inference_steps: Optional[int] = None
 
     @classmethod
-    def create(cls, num_train_timesteps: int):
-        return cls(timesteps=jnp.arange(0, num_train_timesteps)[::-1])
+    def create(cls, num_train_timesteps: int, alphas_cumprod: jnp.ndarray):
+        return cls(timesteps=jnp.arange(0, num_train_timesteps)[::-1], alphas_cumprod=alphas_cumprod)
 
 
 @dataclass
@@ -112,13 +112,9 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[jnp.ndarray] = None,
-        clip_sample: bool = True,
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
     ):
-        if trained_betas is not None:
-            self.betas = jnp.asarray(trained_betas)
         if beta_schedule == "linear":
             self.betas = jnp.linspace(beta_start, beta_end, num_train_timesteps, dtype=jnp.float32)
         elif beta_schedule == "scaled_linear":
@@ -131,19 +127,24 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
         self.alphas = 1.0 - self.betas
-        self.alphas_cumprod = jnp.cumprod(self.alphas, axis=0)
+
+        # HACK for now - clean up later (PVP)
+        self._alphas_cumprod = jnp.cumprod(self.alphas, axis=0)
 
         # At every step in ddim, we are looking into the previous alphas_cumprod
         # For the final step, there is no previous alphas_cumprod because we are already at 0
         # `set_alpha_to_one` decides whether we set this parameter simply to one or
         # whether we use the final alpha of the "non-previous" one.
-        self.final_alpha_cumprod = jnp.array(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
+        self.final_alpha_cumprod = jnp.array(1.0) if set_alpha_to_one else float(self._alphas_cumprod[0])
 
-        self.state = DDIMSchedulerState.create(num_train_timesteps=num_train_timesteps)
+    def create_state(self):
+        return DDIMSchedulerState.create(
+            num_train_timesteps=self.config.num_train_timesteps, alphas_cumprod=self._alphas_cumprod
+        )
 
-    def _get_variance(self, timestep, prev_timestep):
-        alpha_prod_t = self.alphas_cumprod[timestep]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
+    def _get_variance(self, timestep, prev_timestep, alphas_cumprod):
+        alpha_prod_t = alphas_cumprod[timestep]
+        alpha_prod_t_prev = jnp.where(prev_timestep >= 0, alphas_cumprod[prev_timestep], self.final_alpha_cumprod)
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
@@ -177,9 +178,6 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
-        key: random.KeyArray,
-        eta: float = 0.0,
-        use_clipped_model_output: bool = False,
         return_dict: bool = True,
     ) -> Union[FlaxSchedulerOutput, Tuple]:
         """
@@ -221,40 +219,27 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
         # 1. get previous step value (=t-1)
         prev_timestep = timestep - self.config.num_train_timesteps // state.num_inference_steps
 
+        alphas_cumprod = state.alphas_cumprod
+
         # 2. compute alphas, betas
-        alpha_prod_t = self.alphas_cumprod[timestep]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
+        alpha_prod_t = alphas_cumprod[timestep]
+        alpha_prod_t_prev = jnp.where(prev_timestep >= 0, alphas_cumprod[prev_timestep], self.final_alpha_cumprod)
         beta_prod_t = 1 - alpha_prod_t
 
         # 3. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
         pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
 
-        # 4. Clip "predicted x_0"
-        if self.config.clip_sample:
-            pred_original_sample = jnp.clip(pred_original_sample, -1, 1)
-
-        # 5. compute variance: "sigma_t(η)" -> see formula (16)
+        # 4. compute variance: "sigma_t(η)" -> see formula (16)
         # σ_t = sqrt((1 − α_t−1)/(1 − α_t)) * sqrt(1 − α_t/α_t−1)
-        variance = self._get_variance(timestep, prev_timestep)
-        std_dev_t = eta * variance ** (0.5)
+        variance = self._get_variance(timestep, prev_timestep, alphas_cumprod)
+        std_dev_t = variance ** (0.5)
 
-        if use_clipped_model_output:
-            # the model_output is always re-derived from the clipped x_0 in Glide
-            model_output = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
-
-        # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+        # 5. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
         pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * model_output
 
-        # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+        # 6. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
         prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
-
-        if eta > 0:
-            key = random.split(key, num=1)
-            noise = random.normal(key=key, shape=model_output.shape)
-            variance = self._get_variance(timestep, prev_timestep) ** (0.5) * eta * noise
-
-            prev_sample = prev_sample + variance
 
         if not return_dict:
             return (prev_sample, state)

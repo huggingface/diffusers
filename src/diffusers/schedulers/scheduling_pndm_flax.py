@@ -148,7 +148,8 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         # mainly at formula (9), (12), (13) and the Algorithm 2.
         self.pndm_order = 4
 
-        self.state = PNDMSchedulerState.create(num_train_timesteps=num_train_timesteps)
+    def create_state(self):
+        return PNDMSchedulerState.create(num_train_timesteps=self.config.num_train_timesteps)
 
     def set_timesteps(self, state: PNDMSchedulerState, num_inference_steps: int) -> PNDMSchedulerState:
         """
