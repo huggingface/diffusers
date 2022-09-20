@@ -73,6 +73,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     cross_attention_dim: int = 1280
     dropout: float = 0.0
     dtype: jnp.dtype = jnp.float32
+    freq_shift: int = 0
 
     def init_weights(self, rng: jax.random.PRNGKey) -> FrozenDict:
         # init input tensors
@@ -100,7 +101,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         )
 
         # time
-        self.time_proj = FlaxTimesteps(block_out_channels[0])
+        self.time_proj = FlaxTimesteps(block_out_channels[0], freq_shift=self.config.freq_shift)
         self.time_embedding = FlaxTimestepEmbedding(time_embed_dim, dtype=self.dtype)
 
         # down
