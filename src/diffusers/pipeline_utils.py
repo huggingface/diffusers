@@ -341,6 +341,10 @@ class DiffusionPipeline(ConfigMixin):
 
         # 3. Load each module in the pipeline
         for name, (library_name, class_name) in init_dict.items():
+            # 3.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
+            if class_name.startswith("Flax"):
+                class_name = class_name[4:]
+
             is_pipeline_module = hasattr(pipelines, library_name)
             loaded_sub_model = None
 
@@ -389,7 +393,12 @@ class DiffusionPipeline(ConfigMixin):
                     if issubclass(class_obj, class_candidate):
                         load_method_name = importable_classes[class_name][1]
 
-                load_method = getattr(class_obj, load_method_name)
+                try:
+                    load_method = getattr(class_obj, load_method_name)
+                except:
+                    import ipdb
+
+                    ipdb.set_trace()
 
                 loading_kwargs = {}
                 if issubclass(class_obj, torch.nn.Module):
