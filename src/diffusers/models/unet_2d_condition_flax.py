@@ -39,10 +39,23 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     This model inherits from [`FlaxModelMixin`]. Check the superclass documentation for the generic methods the library
     implements for all the models (such as downloading or saving, etc.)
 
+    Also, this model is a Flax Linen [flax.linen.Module](https://flax.readthedocs.io/en/latest/flax.linen.html#module)
+    subclass. Use it as a regular Flax linen Module and refer to the Flax documentation for all matter related to
+    general usage and behavior.
+
+    Finally, this model supports inherent JAX features such as:
+    - [Just-In-Time (JIT) compilation](https://jax.readthedocs.io/en/latest/jax.html#just-in-time-compilation-jit)
+    - [Automatic Differentiation](https://jax.readthedocs.io/en/latest/jax.html#automatic-differentiation)
+    - [Vectorization](https://jax.readthedocs.io/en/latest/jax.html#vectorization-vmap)
+    - [Parallelization](https://jax.readthedocs.io/en/latest/jax.html#parallelization-pmap)
+
     Parameters:
-        sample_size (`int`, *optional*): The size of the input sample.
-        in_channels (`int`, *optional*, defaults to 4): The number of channels in the input sample.
-        out_channels (`int`, *optional*, defaults to 4): The number of channels in the output.
+        sample_size (`int`, *optional*):
+            The size of the input sample.
+        in_channels (`int`, *optional*, defaults to 4):
+            The number of channels in the input sample.
+        out_channels (`int`, *optional*, defaults to 4):
+            The number of channels in the output.
         down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
             The tuple of downsample blocks to use. The corresponding class names will be: "FlaxCrossAttnDownBlock2D",
             "FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxDownBlock2D"
@@ -51,10 +64,14 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D"
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
-        layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
-        attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
-        cross_attention_dim (`int`, *optional*, defaults to 768): The dimension of the cross attention features.
-        dropout (`float`, *optional*, defaults to 0): Dropout probability for down, up and bottleneck blocks.
+        layers_per_block (`int`, *optional*, defaults to 2):
+            The number of layers per block.
+        attention_head_dim (`int`, *optional*, defaults to 8):
+            The dimension of the attention heads.
+        cross_attention_dim (`int`, *optional*, defaults to 768):
+            The dimension of the cross attention features.
+        dropout (`float`, *optional*, defaults to 0):
+            Dropout probability for down, up and bottleneck blocks.
     """
 
     sample_size: int = 32
