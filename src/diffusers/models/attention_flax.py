@@ -247,7 +247,7 @@ class FlaxGEGLU(nn.Module):
     Flax implementation of a Linear layer followed by the variant of the gated linear unit activation function from
     https://arxiv.org/abs/2002.05202.
 
-    arameters:
+    Parameters:
         dim (:obj:`int`):
             Input hidden states dimension
         dropout (:obj:`float`, *optional*, defaults to 0.0):
