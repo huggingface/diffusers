@@ -17,6 +17,27 @@ import jax.numpy as jnp
 
 
 class FlaxAttentionBlock(nn.Module):
+    r"""
+    A multi-head attention as described in: https://arxiv.org/abs/1706.03762
+
+    This model is a Flax Linen [flax.linen.Module](https://flax.readthedocs.io/en/latest/flax.linen.html#module)
+    subclass. Use it as a regular Flax linen Module and refer to the Flax documentation for all matter related to
+    general usage and behavior.
+
+    Finally, this model supports inherent JAX features such as:
+    - [Just-In-Time (JIT) compilation](https://jax.readthedocs.io/en/latest/jax.html#just-in-time-compilation-jit)
+    - [Automatic Differentiation](https://jax.readthedocs.io/en/latest/jax.html#automatic-differentiation)
+    - [Vectorization](https://jax.readthedocs.io/en/latest/jax.html#vectorization-vmap)
+    - [Parallelization](https://jax.readthedocs.io/en/latest/jax.html#parallelization-pmap)
+
+    Parameters:
+        query_dim (:obj:`int`): hidden states dimension
+        heads (:obj:`int`, *optional*, defaults to 8): Number of heads
+        dim_head (:obj:`int`, *optional*, defaults to 64): hidden states dimension inside each head
+        dropout (:obj:`float`, *optional*, defaults to 0.0): Dropout rate
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32): parameters `dtype`
+
+    """
     query_dim: int
     heads: int = 8
     dim_head: int = 64
@@ -74,6 +95,27 @@ class FlaxAttentionBlock(nn.Module):
 
 
 class FlaxBasicTransformerBlock(nn.Module):
+    r"""
+    A transformer block layer with `GLU` (Gated Linear Unit) activation function as described in:
+    https://arxiv.org/abs/1706.03762
+
+    This model is a Flax Linen [flax.linen.Module](https://flax.readthedocs.io/en/latest/flax.linen.html#module)
+    subclass. Use it as a regular Flax linen Module and refer to the Flax documentation for all matter related to
+    general usage and behavior.
+
+    Finally, this model supports inherent JAX features such as:
+    - [Just-In-Time (JIT) compilation](https://jax.readthedocs.io/en/latest/jax.html#just-in-time-compilation-jit)
+    - [Automatic Differentiation](https://jax.readthedocs.io/en/latest/jax.html#automatic-differentiation)
+    - [Vectorization](https://jax.readthedocs.io/en/latest/jax.html#vectorization-vmap)
+    - [Parallelization](https://jax.readthedocs.io/en/latest/jax.html#parallelization-pmap)
+
+    Parameters:
+        dim (:obj:`int`): Inner hidden states dimension
+        n_heads (:obj:`int`): Number of heads
+        d_head (:obj:`int`): Hidden states dimension inside each head
+        dropout (:obj:`float`, *optional*, defaults to 0.0): Dropout rate
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32): parameters `dtype`
+    """
     dim: int
     n_heads: int
     d_head: int
@@ -110,6 +152,28 @@ class FlaxBasicTransformerBlock(nn.Module):
 
 
 class FlaxSpatialTransformer(nn.Module):
+    r"""
+    A Spatial Transformer layer with Gated Linear Unit (GLU) activation function as described in:
+    https://arxiv.org/pdf/1506.02025.pdf
+
+    This model is a Flax Linen [flax.linen.Module](https://flax.readthedocs.io/en/latest/flax.linen.html#module)
+    subclass. Use it as a regular Flax linen Module and refer to the Flax documentation for all matter related to
+    general usage and behavior.
+
+    Finally, this model supports inherent JAX features such as:
+    - [Just-In-Time (JIT) compilation](https://jax.readthedocs.io/en/latest/jax.html#just-in-time-compilation-jit)
+    - [Automatic Differentiation](https://jax.readthedocs.io/en/latest/jax.html#automatic-differentiation)
+    - [Vectorization](https://jax.readthedocs.io/en/latest/jax.html#vectorization-vmap)
+    - [Parallelization](https://jax.readthedocs.io/en/latest/jax.html#parallelization-pmap)
+
+    Parameters:
+        in_channels (:obj:`int`): Input number of channels
+        n_heads (:obj:`int`): Number of heads
+        d_head (:obj:`int`): Hidden states dimension inside each head
+        depth (:obj:`int`, *optional*, defaults to 1): Number of transformers block
+        dropout (:obj:`float`, *optional*, defaults to 0.0): Dropout rate
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32): parameters `dtype`
+    """
     in_channels: int
     n_heads: int
     d_head: int
@@ -163,6 +227,15 @@ class FlaxSpatialTransformer(nn.Module):
 
 
 class FlaxGluFeedForward(nn.Module):
+    r"""
+    Flax module that encapsulates two Linear layers separated by a gated linear unit activation from:
+    https://arxiv.org/abs/2002.05202
+
+    Parameters:
+        dim (:obj:`int`): Inner hidden states dimension
+        dropout (:obj:`float`, *optional*, defaults to 0.0): Dropout rate
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32): parameters `dtype`
+    """
     dim: int
     dropout: float = 0.0
     dtype: jnp.dtype = jnp.float32
@@ -180,6 +253,14 @@ class FlaxGluFeedForward(nn.Module):
 
 
 class FlaxGEGLU(nn.Module):
+    r"""
+    Flax implementation of a Linear layer followed by the variant of the gated linear unit activation function from
+    https://arxiv.org/abs/2002.05202.
+
+    arameters:
+        dim (:obj:`int`): Input hidden states dimension dropout (:obj:`float`, *optional*, defaults to 0.0): Dropout
+        rate dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32): parameters `dtype`
+    """
     dim: int
     dropout: float = 0.0
     dtype: jnp.dtype = jnp.float32
