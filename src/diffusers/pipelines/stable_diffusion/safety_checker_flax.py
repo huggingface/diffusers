@@ -23,7 +23,7 @@ class FlaxStableDiffusionSafetyCheckerModule(nn.Module):
 
     def setup(self):
         self.vision_model = FlaxCLIPVisionModule(self.config.vision_config)
-        self.visual_projection = nn.Dense(self.config.projection_dim, use_bias=False)
+        self.visual_projection = nn.Dense(self.config.projection_dim, use_bias=False, dtype=self.dtype)
 
         self.concept_embeds = self.param("concept_embeds", jax.nn.initializers.ones, (17, self.config.projection_dim))
         self.special_care_embeds = self.param(
