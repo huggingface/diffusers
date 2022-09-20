@@ -75,7 +75,7 @@ class ExamplesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/unconditional_image_generation/train_unconditional.py
-                --dataset_name huggan/flowers-102-categories
+                --dataset_name huggan/few-shot-aurora
                 --resolution 64
                 --output_dir {tmpdir}
                 --train_batch_size 4
