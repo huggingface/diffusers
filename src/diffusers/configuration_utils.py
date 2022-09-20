@@ -160,12 +160,19 @@ class ConfigMixin:
         if "dtype" in unused_kwargs:
             init_dict["dtype"] = unused_kwargs.pop("dtype")
 
+        # Return model and optionally state and/or unused_kwargs
         model = cls(**init_dict)
+        return_tuple = (model,)
+
+        # Some components (Flax schedulers) have a state.
+        if getattr(cls, "has_state", False):       # Check for "create_state" in model instead?
+            state = model.create_state()
+            return_tuple += (state,)
 
         if return_unused_kwargs:
-            return model, unused_kwargs
+            return return_tuple + (unused_kwargs,)
         else:
-            return model
+            return return_tuple if len(return_tuple) > 1 else model
 
     @classmethod
     def get_config_dict(
