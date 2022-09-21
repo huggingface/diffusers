@@ -24,14 +24,11 @@ import numpy as np
 
 from huggingface_hub import hf_hub_download
 
-from .utils import is_onnx_available, logging
+from .utils import ONNX_WEIGHTS_NAME, is_onnx_available, logging
 
 
 if is_onnx_available():
     import onnxruntime as ort
-
-
-ONNX_WEIGHTS_NAME = "model.onnx"
 
 
 logger = logging.get_logger(__name__)

@@ -19,7 +19,7 @@ import jax.numpy as jnp
 
 # This is like models.embeddings.get_timestep_embedding (PyTorch) but
 # less general (only handles the case we currently need).
-def get_sinusoidal_embeddings(timesteps, embedding_dim):
+def get_sinusoidal_embeddings(timesteps, embedding_dim, freq_shift: float = 1):
     """
     This matches the implementation in Denoising Diffusion Probabilistic Models: Create sinusoidal timestep embeddings.
 
@@ -29,7 +29,7 @@ def get_sinusoidal_embeddings(timesteps, embedding_dim):
     embeddings. :return: an [N x dim] tensor of positional embeddings.
     """
     half_dim = embedding_dim // 2
-    emb = math.log(10000) / (half_dim - 1)
+    emb = math.log(10000) / (half_dim - freq_shift)
     emb = jnp.exp(jnp.arange(half_dim) * -emb)
     emb = timesteps[:, None] * emb[None, :]
     emb = jnp.concatenate([jnp.cos(emb), jnp.sin(emb)], -1)
@@ -50,7 +50,8 @@ class FlaxTimestepEmbedding(nn.Module):
 
 class FlaxTimesteps(nn.Module):
     dim: int = 32
+    freq_shift: float = 1
 
     @nn.compact
     def __call__(self, timesteps):
-        return get_sinusoidal_embeddings(timesteps, self.dim)
+        return get_sinusoidal_embeddings(timesteps, self.dim, freq_shift=self.freq_shift)
