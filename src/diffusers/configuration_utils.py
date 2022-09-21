@@ -164,8 +164,8 @@ class ConfigMixin:
         model = cls(**init_dict)
         return_tuple = (model,)
 
-        # Some components (Flax schedulers) have a state.
-        if getattr(cls, "has_state", False):       # Check for "create_state" in model instead?
+        # Flax schedulers have a state, so return it.
+        if cls.__name__.startswith("Flax") and hasattr(model, "create_state") and getattr(model, "has_state", False):
             state = model.create_state()
             return_tuple += (state,)
 
@@ -282,7 +282,7 @@ class ConfigMixin:
         # remove general kwargs if present in dict
         if "kwargs" in expected_keys:
             expected_keys.remove("kwargs")
-        # remove flax interal keys
+        # remove flax internal keys
         if hasattr(cls, "_flax_internal_args"):
             for arg in cls._flax_internal_args:
                 expected_keys.remove(arg)

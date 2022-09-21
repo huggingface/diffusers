@@ -13,11 +13,14 @@
 # limitations under the License.
 
 import argparse
+import os
+import shutil
 from pathlib import Path
 
 import torch
 from torch.onnx import export
 
+import onnx
 from diffusers import StableDiffusionOnnxPipeline, StableDiffusionPipeline
 from diffusers.onnx_utils import OnnxRuntimeModel
 from packaging import version
@@ -92,10 +95,11 @@ def convert_models(model_path: str, output_path: str, opset: int):
     )
 
     # UNET
+    unet_path = output_path / "unet" / "model.onnx"
     onnx_export(
         pipeline.unet,
         model_args=(torch.randn(2, 4, 64, 64), torch.LongTensor([0, 1]), torch.randn(2, 77, 768), False),
-        output_path=output_path / "unet" / "model.onnx",
+        output_path=unet_path,
         ordered_input_names=["sample", "timestep", "encoder_hidden_states", "return_dict"],
         output_names=["out_sample"],  # has to be different from "sample" for correct tracing
         dynamic_axes={
@@ -105,6 +109,21 @@ def convert_models(model_path: str, output_path: str, opset: int):
         },
         opset=opset,
         use_external_data_format=True,  # UNet is > 2GB, so the weights need to be split
+    )
+    unet_model_path = str(unet_path.absolute().as_posix())
+    unet_dir = os.path.dirname(unet_model_path)
+    unet = onnx.load(unet_model_path)
+    # clean up existing tensor files
+    shutil.rmtree(unet_dir)
+    os.mkdir(unet_dir)
+    # collate external tensor files into one
+    onnx.save_model(
+        unet,
+        unet_model_path,
+        save_as_external_data=True,
+        all_tensors_to_one_file=True,
+        location="weights.pb",
+        convert_attribute=False,
     )
 
     # VAE ENCODER

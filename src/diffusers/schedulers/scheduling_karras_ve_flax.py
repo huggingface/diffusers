@@ -47,7 +47,7 @@ class FlaxKarrasVeOutput(BaseOutput):
             Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
         derivative (`jnp.ndarray` of shape `(batch_size, num_channels, height, width)` for images):
-            Derivate of predicted original image sample (x_0).
+            Derivative of predicted original image sample (x_0).
         state (`KarrasVeSchedulerState`): the `FlaxKarrasVeScheduler` state data class.
     """
 

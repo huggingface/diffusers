@@ -1,4 +1,3 @@
-import warnings
 from typing import Dict, List, Optional, Union
 
 import jax
@@ -31,7 +30,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`FlaxUNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
-        scheduler ([`FlaxSchedulerMixin`]):
+        scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
             [`FlaxDDIMScheduler`], [`FlaxLMSDiscreteScheduler`], or [`FlaxPNDMScheduler`].
         safety_checker ([`FlaxStableDiffusionSafetyChecker`]):
@@ -56,20 +55,6 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         scheduler = scheduler.set_format("np")
         self.dtype = dtype
 
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
-            warnings.warn(
-                f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
-                f" should be set to 1 istead of {scheduler.config.steps_offset}. Please make sure "
-                "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
-                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
-                " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
-                " file",
-                DeprecationWarning,
-            )
-            new_config = dict(scheduler.config)
-            new_config["steps_offset"] = 1
-            scheduler._internal_dict = FrozenDict(new_config)
-
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -80,7 +65,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             feature_extractor=feature_extractor,
         )
 
-    def prepare_prompts(self, prompt: Union[str, List[str]]):
+    def prepare_inputs(self, prompt: Union[str, List[str]]):
         if not isinstance(prompt, (str, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
@@ -167,9 +152,9 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         # TODO: check it because the shape is different from Pytorhc StableDiffusionPipeline
         latents_shape = (
             batch_size,
-            self.unet.sample_size,
-            self.unet.sample_size,
             self.unet.in_channels,
+            self.unet.sample_size,
+            self.unet.sample_size,
         )
         if latents is None:
             latents = jax.random.normal(prng_seed, shape=latents_shape, dtype=jnp.float32)
@@ -193,7 +178,6 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
                 jnp.array(latents_input),
                 jnp.array(timestep, dtype=jnp.int32),
                 encoder_hidden_states=context,
-                rngs={},
             ).sample
             # perform guidance
             noise_pred_uncond, noise_prediction_text = jnp.split(noise_pred, 2, axis=0)
