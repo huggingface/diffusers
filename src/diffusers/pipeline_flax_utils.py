@@ -427,7 +427,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
                     # make sure we don't initialize the weights to save time
                     if name == "safety_checker":
                         loaded_sub_model = DummyChecker()
-                        loaded_params = DummyChecker()
+                        loaded_params = {}
                     elif from_pt:
                         # TODO(Suraj): Fix this in Transformers. We should be able to use `_do_init=False` here
                         loaded_sub_model = load_method(loadable_folder, from_pt=from_pt)
