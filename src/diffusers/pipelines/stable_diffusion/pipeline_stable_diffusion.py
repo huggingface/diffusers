@@ -249,6 +249,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             extra_step_kwargs["eta"] = eta
 
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
+            torch.cuda.nvtx.range_push(f"denoise-{i}")
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             if isinstance(self.scheduler, LMSDiscreteScheduler):
@@ -269,6 +270,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 latents = self.scheduler.step(noise_pred, i, latents, **extra_step_kwargs).prev_sample
             else:
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+            torch.cuda.nvtx.range_pop()
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
