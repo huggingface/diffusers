@@ -104,6 +104,7 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
             `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
             stable diffusion.
     """
+
     @property
     def has_state(self):
         return True
