@@ -148,11 +148,11 @@ class SpatialTransformer(nn.Module):
         # note: if no context is given, cross-attention defaults to self-attention
         batch, channel, height, weight = hidden_states.shape
         residual = hidden_states
-        hidden_states = self.norm(hidden_states)
-        hidden_states = self.proj_in(hidden_states)
+        hidden_states = self.norm(hidden_states) # 2, 320, 64, 64
+        hidden_states = self.proj_in(hidden_states) # 2, 320, 64, 64
         hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * weight, channel)
         for block in self.transformer_blocks:
-            hidden_states = block(hidden_states, context=context)
+            hidden_states = block(hidden_states, context=context) # 2, 4096, 320
         hidden_states = hidden_states.reshape(batch, height, weight, channel).permute(0, 3, 1, 2)
         hidden_states = self.proj_out(hidden_states)
         return hidden_states + residual
@@ -241,10 +241,10 @@ class CrossAttention(nn.Module):
         self.to_out = nn.Sequential(nn.Linear(inner_dim, query_dim), nn.Dropout(dropout))
 
     def reshape_heads_to_batch_dim(self, tensor):
-        batch_size, seq_len, dim = tensor.shape
+        batch_size, seq_len, dim = tensor.shape # 2, 4096, 320
         head_size = self.heads
-        tensor = tensor.reshape(batch_size, seq_len, head_size, dim // head_size)
-        tensor = tensor.permute(0, 2, 1, 3).reshape(batch_size * head_size, seq_len, dim // head_size)
+        tensor = tensor.reshape(batch_size, seq_len, head_size, dim // head_size) # 2, 4096, 8, 40
+        tensor = tensor.permute(0, 2, 1, 3).reshape(batch_size * head_size, seq_len, dim // head_size) # 16, 4096, 40
         return tensor
 
     def reshape_batch_dim_to_heads(self, tensor):
@@ -271,7 +271,7 @@ class CrossAttention(nn.Module):
         # attention, what we cannot get enough of
 
         if self._slice_size is None or query.shape[0] // self._slice_size == 1:
-            hidden_states = self._attention(query, key, value)
+            hidden_states = self._attention(query, key, value) # 2, 4096, 320
         else:
             hidden_states = self._sliced_attention(query, key, value, sequence_length, dim)
 
@@ -286,11 +286,11 @@ class CrossAttention(nn.Module):
             beta=0,
             alpha=self.scale,
         )
-        attention_probs = attention_scores.softmax(dim=-1)
+        attention_probs = attention_scores.softmax(dim=-1) # 16, 4096, 77
         # compute attention output
-        hidden_states = torch.matmul(attention_probs, value)
+        hidden_states = torch.matmul(attention_probs, value) # 16, 4096, 40
         # reshape hidden_states
-        hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
+        hidden_states = self.reshape_batch_dim_to_heads(hidden_states) # 2, 4096, 320
         return hidden_states
 
     def _sliced_attention(self, query, key, value, sequence_length, dim):
