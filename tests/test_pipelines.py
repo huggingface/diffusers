@@ -46,11 +46,10 @@ from diffusers import (
     UNet2DModel,
     VQModel,
 )
-from diffusers.modeling_utils import WEIGHTS_NAME
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.testing_utils import floats_tensor, load_image, slow, torch_device
-from diffusers.utils import CONFIG_NAME
+from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 

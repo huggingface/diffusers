@@ -154,8 +154,11 @@ class ConfigMixin:
 
         """
         config_dict = cls.get_config_dict(pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs)
-
         init_dict, unused_kwargs = cls.extract_init_dict(config_dict, **kwargs)
+
+        # Allow dtype to be specified on initialization
+        if "dtype" in unused_kwargs:
+            init_dict["dtype"] = unused_kwargs.pop("dtype")
 
         model = cls(**init_dict)
 

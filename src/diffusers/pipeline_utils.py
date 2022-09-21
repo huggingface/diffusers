@@ -30,10 +30,8 @@ from PIL import Image
 from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
-from .modeling_utils import WEIGHTS_NAME
-from .onnx_utils import ONNX_WEIGHTS_NAME
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from .utils import CONFIG_NAME, DIFFUSERS_CACHE, BaseOutput, logging
+from .utils import CONFIG_NAME, DIFFUSERS_CACHE, ONNX_WEIGHTS_NAME, WEIGHTS_NAME, BaseOutput, logging
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
@@ -341,6 +339,10 @@ class DiffusionPipeline(ConfigMixin):
 
         # 3. Load each module in the pipeline
         for name, (library_name, class_name) in init_dict.items():
+            # 3.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
+            if class_name.startswith("Flax"):
+                class_name = class_name[4:]
+
             is_pipeline_module = hasattr(pipelines, library_name)
             loaded_sub_model = None
 

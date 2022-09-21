@@ -28,11 +28,16 @@ from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, R
 from requests import HTTPError
 
 from .modeling_flax_pytorch_utils import convert_pytorch_state_dict_to_flax
-from .modeling_utils import WEIGHTS_NAME, load_state_dict
-from .utils import CONFIG_NAME, DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT, logging
+from .modeling_utils import load_state_dict
+from .utils import (
+    CONFIG_NAME,
+    DIFFUSERS_CACHE,
+    FLAX_WEIGHTS_NAME,
+    HUGGINGFACE_CO_RESOLVE_ENDPOINT,
+    WEIGHTS_NAME,
+    logging,
+)
 
-
-FLAX_WEIGHTS_NAME = "diffusion_flax_model.msgpack"
 
 logger = logging.get_logger(__name__)
 
@@ -307,7 +312,7 @@ class FlaxModelMixin:
         # Load model
         if os.path.isdir(pretrained_model_name_or_path):
             if from_pt:
-                if not os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME):
+                if not os.path.isfile(os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)):
                     raise EnvironmentError(
                         f"Error no file named {WEIGHTS_NAME} found in directory {pretrained_model_name_or_path} "
                     )
@@ -315,8 +320,8 @@ class FlaxModelMixin:
             elif os.path.isfile(os.path.join(pretrained_model_name_or_path, FLAX_WEIGHTS_NAME)):
                 # Load from a Flax checkpoint
                 model_file = os.path.join(pretrained_model_name_or_path, FLAX_WEIGHTS_NAME)
-            # At this stage we don't have a weight file so we will raise an error.
-            elif os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME):
+            # Check if pytorch weights exist instead
+            elif os.path.isfile(os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)):
                 raise EnvironmentError(
                     f"{WEIGHTS_NAME} file found in directory {pretrained_model_name_or_path}. Please load the model"
                     " using  `from_pt=True`."
