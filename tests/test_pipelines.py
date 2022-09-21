@@ -1373,12 +1373,9 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_stable_diffusion_onnx(self):
-        from scripts.convert_stable_diffusion_checkpoint_to_onnx import convert_models
-
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            convert_models("CompVis/stable-diffusion-v1-4", tmpdirname, opset=14)
-
-            sd_pipe = StableDiffusionOnnxPipeline.from_pretrained(tmpdirname, provider="CUDAExecutionProvider")
+        sd_pipe = StableDiffusionOnnxPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CUDAExecutionProvider", use_auth_token=True
+        )
 
         prompt = "A painting of a squirrel eating a burger"
         np.random.seed(0)
