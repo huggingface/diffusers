@@ -156,12 +156,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
     def create_state(self):
         return PNDMSchedulerState.create(num_train_timesteps=self.config.num_train_timesteps)
 
-    def set_timesteps(
-        self,
-        state: PNDMSchedulerState,
-        shape: Tuple,
-        num_inference_steps: int
-    ) -> PNDMSchedulerState:
+    def set_timesteps(self, state: PNDMSchedulerState, shape: Tuple, num_inference_steps: int) -> PNDMSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -204,9 +199,9 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
             timesteps=jnp.concatenate([state.prk_timesteps, state.plms_timesteps]).astype(jnp.int64),
             counter=0,
             # Will be zeros, not really empty
-            cur_model_output = jnp.empty(shape),
-            cur_sample = jnp.empty(shape),
-            ets = jnp.empty((4,) + shape),
+            cur_model_output=jnp.empty(shape),
+            cur_sample=jnp.empty(shape),
+            ets=jnp.empty((4,) + shape),
         )
 
     def step(
@@ -244,14 +239,17 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
             prev_sample, state = jax.lax.switch(
                 jnp.where(state.counter < len(state.prk_timesteps), 0, 1),
                 [self.step_prk, self.step_plms],
-                state, model_output, timestep, sample
+                # Args to either branch
+                state,
+                model_output,
+                timestep,
+                sample,
             )
 
         if not return_dict:
             return (prev_sample, state)
 
         return FlaxSchedulerOutput(prev_sample=prev_sample, state=state)
-
 
     def step_prk(
         self,
@@ -282,37 +280,39 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
             )
 
-        diff_to_prev = jnp.where(state.counter % 2, 0, self.config.num_train_timesteps // state.num_inference_steps // 2)
+        diff_to_prev = jnp.where(
+            state.counter % 2, 0, self.config.num_train_timesteps // state.num_inference_steps // 2
+        )
         prev_timestep = timestep - diff_to_prev
         timestep = state.prk_timesteps[state.counter // 4 * 4]
 
         def remainder_0(state: PNDMSchedulerState, model_output: jnp.ndarray, ets_at: int):
-            return state.replace(
-                cur_model_output = state.cur_model_output + 1 / 6 * model_output,
-                ets = state.ets.at[ets_at].set(model_output),
-                cur_sample = sample,
-            ), model_output
+            return (
+                state.replace(
+                    cur_model_output=state.cur_model_output + 1 / 6 * model_output,
+                    ets=state.ets.at[ets_at].set(model_output),
+                    cur_sample=sample,
+                ),
+                model_output,
+            )
 
         def remainder_1(state: PNDMSchedulerState, model_output: jnp.ndarray, ets_at: int):
-            return state.replace(
-                cur_model_output = state.cur_model_output + 1 / 3 * model_output
-            ), model_output
+            return state.replace(cur_model_output=state.cur_model_output + 1 / 3 * model_output), model_output
 
         def remainder_2(state: PNDMSchedulerState, model_output: jnp.ndarray, ets_at: int):
-            return state.replace(
-                cur_model_output = state.cur_model_output + 1 / 3 * model_output
-            ), model_output
+            return state.replace(cur_model_output=state.cur_model_output + 1 / 3 * model_output), model_output
 
         def remainder_3(state: PNDMSchedulerState, model_output: jnp.ndarray, ets_at: int):
             model_output = state.cur_model_output + 1 / 6 * model_output
-            return state.replace(
-                cur_model_output = jnp.zeros_like(state.cur_model_output)
-            ), model_output
+            return state.replace(cur_model_output=jnp.zeros_like(state.cur_model_output)), model_output
 
         state, model_output = jax.lax.switch(
             state.counter % 4,
             [remainder_0, remainder_1, remainder_2, remainder_3],
-            state, model_output, state.counter // 4
+            # Args to either branch
+            state,
+            model_output,
+            state.counter // 4,
         )
 
         # if state.counter % 4 == 0:
@@ -386,7 +386,9 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         #     timestep = timestep + self.config.num_train_timesteps // state.num_inference_steps
 
         prev_timestep = jnp.where(state.counter == 1, timestep, prev_timestep)
-        timestep = jnp.where(state.counter == 1, timestep + self.config.num_train_timesteps // state.num_inference_steps, timestep)
+        timestep = jnp.where(
+            state.counter == 1, timestep + self.config.num_train_timesteps // state.num_inference_steps, timestep
+        )
 
         # Reference:
         # if len(state.ets) == 1 and state.counter == 0:
@@ -406,31 +408,31 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         def counter_0(state: PNDMSchedulerState):
             ets = state.ets.at[0].set(model_output)
             return state.replace(
-                ets = ets,
-                cur_sample = sample,
-                cur_model_output = jnp.array(model_output, dtype=jnp.float32),
+                ets=ets,
+                cur_sample=sample,
+                cur_model_output=jnp.array(model_output, dtype=jnp.float32),
             )
 
         def counter_1(state: PNDMSchedulerState):
             return state.replace(
-                cur_model_output = (model_output + state.ets[0]) / 2,
+                cur_model_output=(model_output + state.ets[0]) / 2,
             )
 
         def counter_2(state: PNDMSchedulerState):
             ets = state.ets.at[1].set(model_output)
             return state.replace(
-                ets = ets,
-                cur_model_output = (3 * ets[1] - ets[0]) / 2,
-                cur_sample = sample,
+                ets=ets,
+                cur_model_output=(3 * ets[1] - ets[0]) / 2,
+                cur_sample=sample,
             )
 
         def counter_3(state: PNDMSchedulerState):
             ets = state.ets.at[2].set(model_output)
             return state.replace(
-                ets = ets,
-                cur_model_output = (23 * ets[2] - 16 * ets[1] + 5 * ets[0]) / 12,
-                cur_sample = sample,
-            )            
+                ets=ets,
+                cur_model_output=(23 * ets[2] - 16 * ets[1] + 5 * ets[0]) / 12,
+                cur_sample=sample,
+            )
 
         def counter_other(state: PNDMSchedulerState):
             ets = state.ets.at[3].set(model_output)
@@ -441,9 +443,9 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
             ets = ets.at[2].set(ets[3])
 
             return state.replace(
-                ets = ets,
-                cur_model_output = next_model_output,
-                cur_sample = sample,
+                ets=ets,
+                cur_model_output=next_model_output,
+                cur_sample=sample,
             )
 
         counter = jnp.clip(state.counter, 0, 4)
