@@ -117,7 +117,7 @@ class FlaxResnetBlock2D(nn.Module):
             Input channels
         out_channels (`int`):
             Output channels
-        dropout_prob (:obj:`float`, *optional*, defaults to 0.0):
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
             Dropout rate
         use_nin_shortcut (:obj:`bool`, *optional*, defaults to `None`):
             Whether to use `nin_shortcut`. This activates a new layer inside ResNet block
