@@ -28,11 +28,16 @@ from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, R
 from requests import HTTPError
 
 from .modeling_flax_pytorch_utils import convert_pytorch_state_dict_to_flax
-from .modeling_utils import WEIGHTS_NAME, load_state_dict
-from .utils import CONFIG_NAME, DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT, logging
+from .modeling_utils import load_state_dict
+from .utils import (
+    CONFIG_NAME,
+    DIFFUSERS_CACHE,
+    FLAX_WEIGHTS_NAME,
+    HUGGINGFACE_CO_RESOLVE_ENDPOINT,
+    WEIGHTS_NAME,
+    logging,
+)
 
-
-FLAX_WEIGHTS_NAME = "diffusion_flax_model.msgpack"
 
 logger = logging.get_logger(__name__)
 

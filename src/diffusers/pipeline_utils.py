@@ -30,10 +30,8 @@ from PIL import Image
 from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
-from .modeling_utils import WEIGHTS_NAME
-from .onnx_utils import ONNX_WEIGHTS_NAME
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from .utils import CONFIG_NAME, DIFFUSERS_CACHE, BaseOutput, logging
+from .utils import CONFIG_NAME, DIFFUSERS_CACHE, ONNX_WEIGHTS_NAME, WEIGHTS_NAME, BaseOutput, logging
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
