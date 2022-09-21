@@ -41,4 +41,15 @@ jobs:
 
     - name: Run all non-slow selected tests on CPU
       run: |
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s tests/
+        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_cpu tests/
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: cat reports/tests_torch_cpu_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: pr_torch_test_reports
+        path: reports

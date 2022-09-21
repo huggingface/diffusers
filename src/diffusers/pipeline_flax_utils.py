@@ -17,26 +17,27 @@
 import importlib
 import inspect
 import os
-from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import numpy as np
-import torch
 
-import diffusers
+import flax
 import PIL
+from flax.core.frozen_dict import FrozenDict
 from huggingface_hub import snapshot_download
 from PIL import Image
 from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
-from .modeling_utils import WEIGHTS_NAME
-from .onnx_utils import ONNX_WEIGHTS_NAME
-from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from .utils import CONFIG_NAME, DIFFUSERS_CACHE, BaseOutput, logging
+from .modeling_flax_utils import FLAX_WEIGHTS_NAME, FlaxModelMixin
+from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME, SchedulerMixin
+from .utils import CONFIG_NAME, DIFFUSERS_CACHE, BaseOutput, is_transformers_available, logging
 
 
-INDEX_FILE = "diffusion_pytorch_model.bin"
+if is_transformers_available():
+    from transformers import FlaxPreTrainedModel
+
+INDEX_FILE = "diffusion_flax_model.bin"
 
 
 logger = logging.get_logger(__name__)
@@ -44,15 +45,14 @@ logger = logging.get_logger(__name__)
 
 LOADABLE_CLASSES = {
     "diffusers": {
-        "ModelMixin": ["save_pretrained", "from_pretrained"],
+        "FlaxModelMixin": ["save_pretrained", "from_pretrained"],
         "SchedulerMixin": ["save_config", "from_config"],
-        "DiffusionPipeline": ["save_pretrained", "from_pretrained"],
-        "OnnxRuntimeModel": ["save_pretrained", "from_pretrained"],
+        "FlaxDiffusionPipeline": ["save_pretrained", "from_pretrained"],
     },
     "transformers": {
         "PreTrainedTokenizer": ["save_pretrained", "from_pretrained"],
         "PreTrainedTokenizerFast": ["save_pretrained", "from_pretrained"],
-        "PreTrainedModel": ["save_pretrained", "from_pretrained"],
+        "FlaxPreTrainedModel": ["save_pretrained", "from_pretrained"],
         "FeatureExtractionMixin": ["save_pretrained", "from_pretrained"],
     },
 }
@@ -62,8 +62,26 @@ for library in LOADABLE_CLASSES:
     ALL_IMPORTABLE_CLASSES.update(LOADABLE_CLASSES[library])
 
 
-@dataclass
-class ImagePipelineOutput(BaseOutput):
+class DummyChecker:
+    def __init__(self):
+        self.dummy = True
+
+
+def import_flax_or_no_model(module, class_name):
+    try:
+        # 1. First make sure that if a Flax object is present, import this one
+        class_obj = getattr(module, "Flax" + class_name)
+    except AttributeError:
+        # 2. If this doesn't work, it's not a model and we don't append "Flax"
+        class_obj = getattr(module, class_name)
+    except AttributeError:
+        raise ValueError(f"Neither Flax{class_name} nor {class_name} exist in {module}")
+
+    return class_obj
+
+
+@flax.struct.dataclass
+class FlaxImagePipelineOutput(BaseOutput):
     """
     Output class for image pipelines.
 
@@ -76,14 +94,14 @@ class ImagePipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
 
 
-class DiffusionPipeline(ConfigMixin):
+class FlaxDiffusionPipeline(ConfigMixin):
     r"""
     Base class for all models.
 
-    [`DiffusionPipeline`] takes care of storing all components (models, schedulers, processors) for diffusion pipelines
-    and handles methods for loading, downloading and saving models as well as a few methods common to all pipelines to:
+    [`FlaxDiffusionPipeline`] takes care of storing all components (models, schedulers, processors) for diffusion
+    pipelines and handles methods for loading, downloading and saving models as well as a few methods common to all
+    pipelines to:
 
-        - move all PyTorch modules to the device of your choice
         - enabling/disabling the progress bar for the denoising iteration
 
     Class attributes:
@@ -123,11 +141,13 @@ class DiffusionPipeline(ConfigMixin):
             # set models
             setattr(self, name, module)
 
-    def save_pretrained(self, save_directory: Union[str, os.PathLike]):
+    def save_pretrained(self, save_directory: Union[str, os.PathLike], params: Union[Dict, FrozenDict]):
+        # TODO: handle inference_state
         """
         Save all variables of the pipeline that can be saved and loaded as well as the pipelines configuration file to
         a directory. A pipeline variable can be saved and loaded if its class implements both a save and loading
-        method. The pipeline can easily be re-loaded using the `[`~DiffusionPipeline.from_pretrained`]` class method.
+        method. The pipeline can easily be re-loaded using the `[`~FlaxDiffusionPipeline.from_pretrained`]` class
+        method.
 
         Arguments:
             save_directory (`str` or `os.PathLike`):
@@ -157,32 +177,19 @@ class DiffusionPipeline(ConfigMixin):
                 if save_method_name is not None:
                     break
 
+            # TODO(Patrick, Suraj): to delete after
+            if isinstance(sub_model, DummyChecker):
+                continue
+
             save_method = getattr(sub_model, save_method_name)
-            save_method(os.path.join(save_directory, pipeline_component_name))
+            expects_params = "params" in set(inspect.signature(save_method).parameters.keys())
 
-    def to(self, torch_device: Optional[Union[str, torch.device]] = None):
-        if torch_device is None:
-            return self
-
-        module_names, _ = self.extract_init_dict(dict(self.config))
-        for name in module_names.keys():
-            module = getattr(self, name)
-            if isinstance(module, torch.nn.Module):
-                module.to(torch_device)
-        return self
-
-    @property
-    def device(self) -> torch.device:
-        r"""
-        Returns:
-            `torch.device`: The torch device on which the pipeline is located.
-        """
-        module_names, _ = self.extract_init_dict(dict(self.config))
-        for name in module_names.keys():
-            module = getattr(self, name)
-            if isinstance(module, torch.nn.Module):
-                return module.device
-        return torch.device("cpu")
+            if expects_params:
+                save_method(
+                    os.path.join(save_directory, pipeline_component_name), params=params[pipeline_component_name]
+                )
+            else:
+                save_method(os.path.join(save_directory, pipeline_component_name))
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
@@ -206,9 +213,9 @@ class DiffusionPipeline(ConfigMixin):
                       https://huggingface.co/ Valid repo ids have to be located under a user or organization name, like
                       `CompVis/ldm-text2im-large-256`.
                     - A path to a *directory* containing pipeline weights saved using
-                      [`~DiffusionPipeline.save_pretrained`], e.g., `./my_pipeline_directory/`.
-            torch_dtype (`str` or `torch.dtype`, *optional*):
-                Override the default `torch.dtype` and load the model under this dtype. If `"auto"` is passed the dtype
+                      [`~FlaxDiffusionPipeline.save_pretrained`], e.g., `./my_pipeline_directory/`.
+            dtype (`str` or `jnp.dtype`, *optional*):
+                Override the default `jnp.dtype` and load the model under this dtype. If `"auto"` is passed the dtype
                 will be automatically derived from the model's weights.
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
@@ -257,21 +264,21 @@ class DiffusionPipeline(ConfigMixin):
         Examples:
 
         ```py
-        >>> from diffusers import DiffusionPipeline
+        >>> from diffusers import FlaxDiffusionPipeline
 
         >>> # Download pipeline from huggingface.co and cache.
-        >>> pipeline = DiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large-256")
+        >>> pipeline = FlaxDiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large-256")
 
         >>> # Download pipeline that requires an authorization token
         >>> # For more information on access tokens, please refer to this section
         >>> # of the documentation](https://huggingface.co/docs/hub/security-tokens)
-        >>> pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+        >>> pipeline = FlaxDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
 
         >>> # Download pipeline, but overwrite scheduler
         >>> from diffusers import LMSDiscreteScheduler
 
         >>> scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
-        >>> pipeline = DiffusionPipeline.from_pretrained(
+        >>> pipeline = FlaxDiffusionPipeline.from_pretrained(
         ...     "CompVis/stable-diffusion-v1-4", scheduler=scheduler, use_auth_token=True
         ... )
         ```
@@ -282,8 +289,8 @@ class DiffusionPipeline(ConfigMixin):
         local_files_only = kwargs.pop("local_files_only", False)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
-        torch_dtype = kwargs.pop("torch_dtype", None)
-        provider = kwargs.pop("provider", None)
+        from_pt = kwargs.pop("from_pt", False)
+        dtype = kwargs.pop("dtype", None)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -300,7 +307,7 @@ class DiffusionPipeline(ConfigMixin):
             # make sure we only download sub-folders and `diffusers` filenames
             folder_names = [k for k in config_dict.keys() if not k.startswith("_")]
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
-            allow_patterns += [WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, ONNX_WEIGHTS_NAME, cls.config_name]
+            allow_patterns += [FLAX_WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, cls.config_name]
 
             # download all allow_patterns
             cached_folder = snapshot_download(
@@ -320,7 +327,7 @@ class DiffusionPipeline(ConfigMixin):
 
         # 2. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
-        if cls != DiffusionPipeline:
+        if cls != FlaxDiffusionPipeline:
             pipeline_class = cls
         else:
             diffusers_module = importlib.import_module(cls.__module__.split(".")[0])
@@ -336,14 +343,18 @@ class DiffusionPipeline(ConfigMixin):
 
         init_kwargs = {}
 
+        # inference_params
+        params = {}
+
         # import it here to avoid circular import
         from diffusers import pipelines
 
         # 3. Load each module in the pipeline
         for name, (library_name, class_name) in init_dict.items():
-            # 3.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
-            if class_name.startswith("Flax"):
-                class_name = class_name[4:]
+            # TODO(Patrick, Suraj) - delete later
+            if class_name == "DummyChecker":
+                library_name = "stable_diffusion"
+                class_name = "FlaxStableDiffusionSafetyChecker"
 
             is_pipeline_module = hasattr(pipelines, library_name)
             loaded_sub_model = None
@@ -377,13 +388,21 @@ class DiffusionPipeline(ConfigMixin):
                 loaded_sub_model = passed_class_obj[name]
             elif is_pipeline_module:
                 pipeline_module = getattr(pipelines, library_name)
-                class_obj = getattr(pipeline_module, class_name)
+                if from_pt:
+                    class_obj = import_flax_or_no_model(pipeline_module, class_name)
+                else:
+                    class_obj = getattr(pipeline_module, class_name)
+
                 importable_classes = ALL_IMPORTABLE_CLASSES
                 class_candidates = {c: class_obj for c in importable_classes.keys()}
             else:
                 # else we just import it from the library.
                 library = importlib.import_module(library_name)
-                class_obj = getattr(library, class_name)
+                if from_pt:
+                    class_obj = import_flax_or_no_model(library, class_name)
+                else:
+                    class_obj = getattr(library, class_name)
+
                 importable_classes = LOADABLE_CLASSES[library_name]
                 class_candidates = {c: getattr(library, c) for c in importable_classes.keys()}
 
@@ -395,24 +414,38 @@ class DiffusionPipeline(ConfigMixin):
 
                 load_method = getattr(class_obj, load_method_name)
 
-                loading_kwargs = {}
-                if issubclass(class_obj, torch.nn.Module):
-                    loading_kwargs["torch_dtype"] = torch_dtype
-                if issubclass(class_obj, diffusers.OnnxRuntimeModel):
-                    loading_kwargs["provider"] = provider
-
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
-                    loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
+                    loadable_folder = os.path.join(cached_folder, name)
                 else:
-                    # else load from the root directory
-                    loaded_sub_model = load_method(cached_folder, **loading_kwargs)
+                    loaded_sub_model = cached_folder
+
+                if issubclass(class_obj, FlaxModelMixin):
+                    loaded_sub_model, loaded_params = load_method(loadable_folder, from_pt=from_pt, dtype=dtype)
+                    params[name] = loaded_params
+                elif is_transformers_available() and issubclass(class_obj, FlaxPreTrainedModel):
+                    # make sure we don't initialize the weights to save time
+                    if name == "safety_checker":
+                        loaded_sub_model = DummyChecker()
+                        loaded_params = DummyChecker()
+                    elif from_pt:
+                        # TODO(Suraj): Fix this in Transformers. We should be able to use `_do_init=False` here
+                        loaded_sub_model = load_method(loadable_folder, from_pt=from_pt)
+                        loaded_params = loaded_sub_model.params
+                        del loaded_sub_model._params
+                    else:
+                        loaded_sub_model, loaded_params = load_method(loadable_folder, _do_init=False)
+                    params[name] = loaded_params
+                elif issubclass(class_obj, SchedulerMixin):
+                    loaded_sub_model = load_method(loadable_folder)
+                    params[name] = loaded_sub_model.create_state()
+                else:
+                    loaded_sub_model = load_method(loadable_folder)
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
-        # 4. Instantiate the pipeline
-        model = pipeline_class(**init_kwargs)
-        return model
+        model = pipeline_class(**init_kwargs, dtype=dtype)
+        return model, params
 
     @staticmethod
     def numpy_to_pil(images):
@@ -426,6 +459,7 @@ class DiffusionPipeline(ConfigMixin):
 
         return pil_images
 
+    # TODO: make it compatible with jax.lax
     def progress_bar(self, iterable):
         if not hasattr(self, "_progress_bar_config"):
             self._progress_bar_config = {}
