@@ -65,7 +65,7 @@ jobs:
 
 
   run_examples_single_gpu:
-    name: Diffusers tests
+    name: Examples tests
     strategy:
       fail-fast: false
       matrix:
