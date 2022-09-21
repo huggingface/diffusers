@@ -82,8 +82,8 @@ class ExamplesTestsAccelerate(unittest.TestCase):
                 --resolution 64
                 --output_dir {tmpdir}
                 --train_batch_size 4
-                --num_epochs 2
-                --gradient_accumulation_steps 2
+                --num_epochs 1
+                --gradient_accumulation_steps 1
                 --learning_rate 1e-3
                 --lr_warmup_steps 5
                 --mixed_precision fp16
@@ -92,9 +92,9 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             run_command(self._launch_args + test_args, return_stdout=True)
             # save_pretrained smoke test
             self.assertTrue(os.path.isfile(os.path.join(tmpdir, "unet", "diffusion_pytorch_model.bin")))
-            # model card generation smoke test
-            with open(os.path.join(tmpdir, "README.md"), "r") as f:
-                self.assertTrue("learning_rate: 0.001" in f.read())
+            self.assertTrue(os.path.isfile(os.path.join(tmpdir, "scheduler", "scheduler_config.json")))
+            # logging test
+            self.assertTrue(len(os.listdir(os.path.join(tmpdir, "logs", "train_unconditional"))) > 0)
 
     @slow
     def test_textual_inversion(self):
