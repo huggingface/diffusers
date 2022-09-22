@@ -315,24 +315,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
             state.counter // 4,
         )
 
-        # if state.counter % 4 == 0:
-        #     state = state.replace(
-        #         cur_model_output=state.cur_model_output + 1 / 6 * model_output,
-        #         ets=state.ets.append(model_output),
-        #         cur_sample=sample,
-        #     )
-        # elif (self.counter - 1) % 4 == 0:
-        #     state = state.replace(cur_model_output=state.cur_model_output + 1 / 3 * model_output)
-        # elif (self.counter - 2) % 4 == 0:
-        #     state = state.replace(cur_model_output=state.cur_model_output + 1 / 3 * model_output)
-        # elif (self.counter - 3) % 4 == 0:
-        #     model_output = state.cur_model_output + 1 / 6 * model_output
-        #     state = state.replace(cur_model_output=0)
-
-        # cur_sample should not be `None`
-        # cur_sample = state.cur_sample if state.cur_sample is not None else sample
         cur_sample = state.cur_sample
-
         prev_sample = self._get_prev_sample(cur_sample, timestep, prev_timestep, model_output)
         state = state.replace(counter=state.counter + 1)
 
