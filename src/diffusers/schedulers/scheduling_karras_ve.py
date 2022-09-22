@@ -35,10 +35,14 @@ class KarrasVeOutput(BaseOutput):
             denoising loop.
         derivative (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
             Derivative of predicted original image sample (x_0).
+        pred_original_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+            The predicted denoised sample (x_{0}) based on the model output from the current timestep.
+            `pred_original_sample` can be used to preview progress or for guidance.
     """
 
     prev_sample: torch.FloatTensor
     derivative: torch.FloatTensor
+    pred_original_sample: Optional[torch.FloatTensor] = None
 
 
 class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
@@ -153,7 +157,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
             sigma_hat (`float`): TODO
             sigma_prev (`float`): TODO
             sample_hat (`torch.FloatTensor` or `np.ndarray`): TODO
-            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than KarrasVeOutput class
 
             KarrasVeOutput: updated sample in the diffusion chain and derivative (TODO double check).
         Returns:
@@ -170,7 +174,9 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (sample_prev, derivative)
 
-        return KarrasVeOutput(prev_sample=sample_prev, derivative=derivative)
+        return KarrasVeOutput(
+            prev_sample=sample_prev, derivative=derivative, pred_original_sample=pred_original_sample
+        )
 
     def step_correct(
         self,
@@ -192,7 +198,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
             sample_hat (`torch.FloatTensor` or `np.ndarray`): TODO
             sample_prev (`torch.FloatTensor` or `np.ndarray`): TODO
             derivative (`torch.FloatTensor` or `np.ndarray`): TODO
-            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than KarrasVeOutput class
 
         Returns:
             prev_sample (TODO): updated sample in the diffusion chain. derivative (TODO): TODO
@@ -205,7 +211,9 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (sample_prev, derivative)
 
-        return KarrasVeOutput(prev_sample=sample_prev, derivative=derivative)
+        return KarrasVeOutput(
+            prev_sample=sample_prev, derivative=derivative, pred_original_sample=pred_original_sample
+        )
 
     def add_noise(self, original_samples, noise, timesteps):
         raise NotImplementedError()
