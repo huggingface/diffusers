@@ -175,7 +175,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         model_normal_load.eval()
         arr_normal_load = model_normal_load(noise, time_step)["sample"]
 
-        assert torch.allclose(arr_accelerate["sample"], arr_normal_load, rtol=1e-3)
+        assert torch.allclose(arr_accelerate, arr_normal_load, rtol=1e-3)
 
     @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
     def test_memory_footprint_gets_reduced(self):
