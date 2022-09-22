@@ -15,8 +15,8 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 import math
-from typing import Optional, Tuple, Union
 from dataclasses import dataclass
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
