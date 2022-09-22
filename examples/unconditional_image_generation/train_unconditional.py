@@ -59,6 +59,11 @@ def main(args):
             "UpBlock2D",
         ),
     )
+
+    if args.ort:
+        from torch_ort import ORTModule
+        model = ORTModule(model)
+
     noise_scheduler = DDPMScheduler(num_train_timesteps=1000, tensor_format="pt")
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -237,6 +242,7 @@ if __name__ == "__main__":
             "and an Nvidia Ampere GPU."
         ),
     )
+    parser.add_argument("--ort", action="store_true")
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
