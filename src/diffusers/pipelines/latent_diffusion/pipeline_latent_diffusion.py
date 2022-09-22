@@ -10,13 +10,41 @@ from transformers.activations import ACT2FN
 from transformers.configuration_utils import PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutput
 from transformers.modeling_utils import PreTrainedModel
+from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.utils import logging
 
-from ...pipeline_utils import DiffusionPipeline
+from ...models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
+from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 
 
 class LDMTextToImagePipeline(DiffusionPipeline):
-    def __init__(self, vqvae, bert, tokenizer, unet, scheduler):
+    r"""
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    Parameters:
+        vqvae ([`VQModel`]):
+            Vector-quantized (VQ) Model to encode and decode images to and from latent representations.
+        bert ([`LDMBertModel`]):
+            Text-encoder model based on [BERT](ttps://huggingface.co/docs/transformers/model_doc/bert) architecture.
+        tokenizer (`transformers.BertTokenizer`):
+            Tokenizer of class
+            [BertTokenizer](https://huggingface.co/docs/transformers/model_doc/bert#transformers.BertTokenizer).
+        unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
+        scheduler ([`SchedulerMixin`]):
+            A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
+            [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
+    """
+
+    def __init__(
+        self,
+        vqvae: Union[VQModel, AutoencoderKL],
+        bert: PreTrainedModel,
+        tokenizer: PreTrainedTokenizer,
+        unet: Union[UNet2DModel, UNet2DConditionModel],
+        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+    ):
         super().__init__()
         scheduler = scheduler.set_format("pt")
         self.register_modules(vqvae=vqvae, bert=bert, tokenizer=tokenizer, unet=unet, scheduler=scheduler)
@@ -32,10 +60,40 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
+        return_dict: bool = True,
         **kwargs,
-    ):
-        # eta corresponds to η in paper and should be between [0, 1]
+    ) -> Union[Tuple, ImagePipelineOutput]:
+        r"""
+        Args:
+            prompt (`str` or `List[str]`):
+                The prompt or prompts to guide the image generation.
+            height (`int`, *optional*, defaults to 256):
+                The height in pixels of the generated image.
+            width (`int`, *optional*, defaults to 256):
+                The width in pixels of the generated image.
+            num_inference_steps (`int`, *optional*, defaults to 50):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
+            guidance_scale (`float`, *optional*, defaults to 1.0):
+                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+                `guidance_scale` is defined as `w` of equation 2. of [Imagen
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
+                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt` at
+                the, usually at the expense of lower image quality.
+            generator (`torch.Generator`, *optional*):
+                A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
+                deterministic.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generate image. Choose between
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+            return_dict (`bool`, *optional*):
+                Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
 
+        Returns:
+            [`~pipeline_utils.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if
+            `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
+            generated images.
+        """
         if "torch_device" in kwargs:
             device = kwargs.pop("torch_device")
             warnings.warn(
@@ -95,25 +153,28 @@ class LDMTextToImagePipeline(DiffusionPipeline):
                 context = torch.cat([uncond_embeddings, text_embeddings])
 
             # predict the noise residual
-            noise_pred = self.unet(latents_input, t, encoder_hidden_states=context)["sample"]
+            noise_pred = self.unet(latents_input, t, encoder_hidden_states=context).sample
             # perform guidance
             if guidance_scale != 1.0:
                 noise_pred_uncond, noise_prediction_text = noise_pred.chunk(2)
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_prediction_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, **extra_kwargs)["prev_sample"]
+            latents = self.scheduler.step(noise_pred, t, latents, **extra_kwargs).prev_sample
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
-        image = self.vqvae.decode(latents)
+        image = self.vqvae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
-        return {"sample": image}
+        if not return_dict:
+            return (image,)
+
+        return ImagePipelineOutput(images=image)
 
 
 ################################################################################
@@ -417,7 +478,7 @@ class LDMBertEncoderLayer(nn.Module):
 class LDMBertPreTrainedModel(PreTrainedModel):
     config_class = LDMBertConfig
     base_model_prefix = "model"
-    supports_gradient_checkpointing = True
+    _supports_gradient_checkpointing = True
     _keys_to_ignore_on_load_unexpected = [r"encoder\.version", r"decoder\.version"]
 
     def _init_weights(self, module):
@@ -525,7 +586,7 @@ class LDMBertEncoder(LDMBertPreTrainedModel):
                 Whether or not to return the hidden states of all layers. See `hidden_states` under returned tensors
                 for more detail.
             return_dict (`bool`, *optional*):
-                Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
+                Whether or not to return a [`~utils.BaseModelOutput`] instead of a plain tuple.
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -614,7 +675,7 @@ class LDMBertEncoder(LDMBertPreTrainedModel):
 
 
 class LDMBertModel(LDMBertPreTrainedModel):
-    def __init__(self, config):
+    def __init__(self, config: LDMBertConfig):
         super().__init__(config)
         self.model = LDMBertEncoder(config)
         self.to_logits = nn.Linear(config.hidden_size, config.vocab_size)
@@ -630,7 +691,6 @@ class LDMBertModel(LDMBertPreTrainedModel):
         output_hidden_states=None,
         return_dict=None,
     ):
-
         outputs = self.model(
             input_ids,
             attention_mask=attention_mask,

@@ -16,13 +16,14 @@
 # and https://github.com/hojonathanho/diffusion
 
 import math
-from typing import Optional, Union
+import warnings
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
@@ -30,11 +31,17 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
 
-    :param num_diffusion_timesteps: the number of betas to produce. :param alpha_bar: a lambda that takes an argument t
-    from 0 to 1 and
-                      produces the cumulative product of (1-beta) up to that part of the diffusion process.
-    :param max_beta: the maximum beta to use; use values lower than 1 to
+    Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
+    to that part of the diffusion process.
+
+
+    Args:
+        num_diffusion_timesteps (`int`): the number of betas to produce.
+        max_beta (`float`): the maximum beta to use; use values lower than 1 to
                      prevent singularities.
+
+    Returns:
+        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
     """
 
     def alpha_bar(time_step):
@@ -49,6 +56,40 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
 
 
 class DDIMScheduler(SchedulerMixin, ConfigMixin):
+    """
+    Denoising diffusion implicit models is a scheduler that extends the denoising procedure introduced in denoising
+    diffusion probabilistic models (DDPMs) with non-Markovian guidance.
+
+    [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
+    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
+    [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
+    [`~ConfigMixin.from_config`] functions.
+
+    For more details, see the original paper: https://arxiv.org/abs/2010.02502
+
+    Args:
+        num_train_timesteps (`int`): number of diffusion steps used to train the model.
+        beta_start (`float`): the starting `beta` value of inference.
+        beta_end (`float`): the final `beta` value.
+        beta_schedule (`str`):
+            the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
+            `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
+        trained_betas (`np.ndarray`, optional):
+            option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
+        clip_sample (`bool`, default `True`):
+            option to clip predicted sample between -1 and 1 for numerical stability.
+        set_alpha_to_one (`bool`, default `True`):
+            each diffusion step uses the value of alphas product at that step and at the previous one. For the final
+            step there is no previous alpha. When this option is `True` the previous alpha product is fixed to `1`,
+            otherwise it uses the value of alpha at step 0.
+        steps_offset (`int`, default `0`):
+            an offset added to the inference steps. You can use a combination of `offset=1` and
+            `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
+            stable diffusion.
+        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays.
+
+    """
+
     @register_to_config
     def __init__(
         self,
@@ -57,12 +98,13 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
         trained_betas: Optional[np.ndarray] = None,
-        timestep_values: Optional[np.ndarray] = None,
         clip_sample: bool = True,
         set_alpha_to_one: bool = True,
+        steps_offset: int = 0,
         tensor_format: str = "pt",
     ):
-
+        if trained_betas is not None:
+            self.betas = np.asarray(trained_betas)
         if beta_schedule == "linear":
             self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
         elif beta_schedule == "scaled_linear":
@@ -79,7 +121,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         # At every step in ddim, we are looking into the previous alphas_cumprod
         # For the final step, there is no previous alphas_cumprod because we are already at 0
-        # `set_alpha_to_one` decides whether we set this paratemer simply to one or
+        # `set_alpha_to_one` decides whether we set this parameter simply to one or
         # whether we use the final alpha of the "non-previous" one.
         self.final_alpha_cumprod = np.array(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
 
@@ -100,11 +142,31 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
-    def set_timesteps(self, num_inference_steps: int, offset: int = 0):
+    def set_timesteps(self, num_inference_steps: int, **kwargs):
+        """
+        Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
+
+        Args:
+            num_inference_steps (`int`):
+                the number of diffusion steps used when generating samples with a pre-trained model.
+        """
+
+        offset = self.config.steps_offset
+
+        if "offset" in kwargs:
+            warnings.warn(
+                "`offset` is deprecated as an input argument to `set_timesteps` and will be removed in v0.4.0."
+                " Please pass `steps_offset` to `__init__` instead.",
+                DeprecationWarning,
+            )
+
+            offset = kwargs["offset"]
+
         self.num_inference_steps = num_inference_steps
-        self.timesteps = np.arange(
-            0, self.config.num_train_timesteps, self.config.num_train_timesteps // self.num_inference_steps
-        )[::-1].copy()
+        step_ratio = self.config.num_train_timesteps // self.num_inference_steps
+        # creates integer timesteps by multiplying by ratio
+        # casting to int to avoid issues when num_inference_step is power of 3
+        self.timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy()
         self.timesteps += offset
         self.set_format(tensor_format=self.tensor_format)
 
@@ -116,7 +178,28 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         eta: float = 0.0,
         use_clipped_model_output: bool = False,
         generator=None,
-    ):
+        return_dict: bool = True,
+    ) -> Union[SchedulerOutput, Tuple]:
+        """
+        Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
+        process from the learned model outputs (most often the predicted noise).
+
+        Args:
+            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            timestep (`int`): current discrete timestep in the diffusion chain.
+            sample (`torch.FloatTensor` or `np.ndarray`):
+                current instance of sample being created by diffusion process.
+            eta (`float`): weight of noise for added noise in diffusion step.
+            use_clipped_model_output (`bool`): TODO
+            generator: random number generator.
+            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+
+        Returns:
+            [`~schedulers.scheduling_utils.SchedulerOutput`] or `tuple`:
+            [`~schedulers.scheduling_utils.SchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            returning a tuple, the first element is the sample tensor.
+
+        """
         if self.num_inference_steps is None:
             raise ValueError(
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
@@ -130,7 +213,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # - pred_original_sample -> f_theta(x_t, t) or x_0
         # - std_dev_t -> sigma_t
         # - eta -> η
-        # - pred_sample_direction -> "direction pointingc to x_t"
+        # - pred_sample_direction -> "direction pointing to x_t"
         # - pred_prev_sample -> "x_t-1"
 
         # 1. get previous step value (=t-1)
@@ -139,6 +222,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # 2. compute alphas, betas
         alpha_prod_t = self.alphas_cumprod[timestep]
         alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
+
         beta_prod_t = 1 - alpha_prod_t
 
         # 3. compute predicted original sample from predicted noise also called
@@ -174,7 +258,10 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
             prev_sample = prev_sample + variance
 
-        return {"prev_sample": prev_sample}
+        if not return_dict:
+            return (prev_sample,)
+
+        return SchedulerOutput(prev_sample=prev_sample)
 
     def add_noise(
         self,
@@ -182,6 +269,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         noise: Union[torch.FloatTensor, np.ndarray],
         timesteps: Union[torch.IntTensor, np.ndarray],
     ) -> Union[torch.FloatTensor, np.ndarray]:
+        if self.tensor_format == "pt":
+            timesteps = timesteps.to(self.alphas_cumprod.device)
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
         sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5

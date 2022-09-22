@@ -130,7 +130,7 @@ def main(args):
             bsz = clean_images.shape[0]
             # Sample a random timestep for each image
             timesteps = torch.randint(
-                0, noise_scheduler.num_train_timesteps, (bsz,), device=clean_images.device
+                0, noise_scheduler.config.num_train_timesteps, (bsz,), device=clean_images.device
             ).long()
 
             # Add noise to the clean images according to the noise magnitude at each timestep
@@ -139,7 +139,7 @@ def main(args):
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
-                noise_pred = model(noisy_images, timesteps)["sample"]
+                noise_pred = model(noisy_images, timesteps).sample
                 loss = F.mse_loss(noise_pred, noise)
                 accelerator.backward(loss)
 
@@ -174,7 +174,7 @@ def main(args):
 
                 generator = torch.manual_seed(0)
                 # run pipeline in inference (sample random noise and denoise)
-                images = pipeline(generator=generator, batch_size=args.eval_batch_size, output_type="numpy")["sample"]
+                images = pipeline(generator=generator, batch_size=args.eval_batch_size, output_type="numpy").images
 
                 # denormalize the images and save to tensorboard
                 images_processed = (images * 255).round().astype("uint8")

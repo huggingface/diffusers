@@ -19,7 +19,12 @@ from torch import nn
 
 
 def get_timestep_embedding(
-    timesteps, embedding_dim, flip_sin_to_cos=False, downscale_freq_shift=1, scale=1, max_period=10000
+    timesteps: torch.Tensor,
+    embedding_dim: int,
+    flip_sin_to_cos: bool = False,
+    downscale_freq_shift: float = 1,
+    scale: float = 1,
+    max_period: int = 10000,
 ):
     """
     This matches the implementation in Denoising Diffusion Probabilistic Models: Create sinusoidal timestep embeddings.
@@ -55,7 +60,7 @@ def get_timestep_embedding(
 
 
 class TimestepEmbedding(nn.Module):
-    def __init__(self, channel, time_embed_dim, act_fn="silu"):
+    def __init__(self, channel: int, time_embed_dim: int, act_fn: str = "silu"):
         super().__init__()
 
         self.linear_1 = nn.Linear(channel, time_embed_dim)
@@ -75,7 +80,7 @@ class TimestepEmbedding(nn.Module):
 
 
 class Timesteps(nn.Module):
-    def __init__(self, num_channels, flip_sin_to_cos, downscale_freq_shift):
+    def __init__(self, num_channels: int, flip_sin_to_cos: bool, downscale_freq_shift: float):
         super().__init__()
         self.num_channels = num_channels
         self.flip_sin_to_cos = flip_sin_to_cos
@@ -94,7 +99,7 @@ class Timesteps(nn.Module):
 class GaussianFourierProjection(nn.Module):
     """Gaussian Fourier embeddings for noise levels."""
 
-    def __init__(self, embedding_size=256, scale=1.0):
+    def __init__(self, embedding_size: int = 256, scale: float = 1.0):
         super().__init__()
         self.weight = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)
 

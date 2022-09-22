@@ -1,15 +1,60 @@
-from typing import Dict, Optional, Tuple, Union
+from dataclasses import dataclass
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
+from ..utils import BaseOutput
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from .unet_blocks import UNetMidBlock2D, get_down_block, get_up_block
 
 
+@dataclass
+class UNet2DOutput(BaseOutput):
+    """
+    Args:
+        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+            Hidden states output. Output of last layer of model.
+    """
+
+    sample: torch.FloatTensor
+
+
 class UNet2DModel(ModelMixin, ConfigMixin):
+    r"""
+    UNet2DModel is a 2D UNet model that takes in a noisy sample and a timestep and returns sample shaped output.
+
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
+    implements for all the model (such as downloading or saving, etc.)
+
+    Parameters:
+        sample_size (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`, *optional*):
+            Input sample size.
+        in_channels (`int`, *optional*, defaults to 3): Number of channels in the input image.
+        out_channels (`int`, *optional*, defaults to 3): Number of channels in the output.
+        center_input_sample (`bool`, *optional*, defaults to `False`): Whether to center the input sample.
+        time_embedding_type (`str`, *optional*, defaults to `"positional"`): Type of time embedding to use.
+        freq_shift (`int`, *optional*, defaults to 0): Frequency shift for fourier time embedding.
+        flip_sin_to_cos (`bool`, *optional*, defaults to :
+            obj:`False`): Whether to flip sin to cos for fourier time embedding.
+        down_block_types (`Tuple[str]`, *optional*, defaults to :
+            obj:`("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D")`): Tuple of downsample block
+            types.
+        up_block_types (`Tuple[str]`, *optional*, defaults to :
+            obj:`("AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D")`): Tuple of upsample block types.
+        block_out_channels (`Tuple[int]`, *optional*, defaults to :
+            obj:`(224, 448, 672, 896)`): Tuple of block output channels.
+        layers_per_block (`int`, *optional*, defaults to `2`): The number of layers per block.
+        mid_block_scale_factor (`float`, *optional*, defaults to `1`): The scale factor for the mid block.
+        downsample_padding (`int`, *optional*, defaults to `1`): The padding for the downsample convolution.
+        act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
+        attention_head_dim (`int`, *optional*, defaults to `8`): The attention head dimension.
+        norm_num_groups (`int`, *optional*, defaults to `32`): The number of groups for the normalization.
+        norm_eps (`float`, *optional*, defaults to `1e-5`): The epsilon for the normalization.
+    """
+
     @register_to_config
     def __init__(
         self,
@@ -69,6 +114,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 add_downsample=not is_final_block,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
+                resnet_groups=norm_num_groups,
                 attn_num_head_channels=attention_head_dim,
                 downsample_padding=downsample_padding,
             )
@@ -106,6 +152,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 add_upsample=not is_final_block,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
+                resnet_groups=norm_num_groups,
                 attn_num_head_channels=attention_head_dim,
             )
             self.up_blocks.append(up_block)
@@ -118,8 +165,22 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, 3, padding=1)
 
     def forward(
-        self, sample: torch.FloatTensor, timestep: Union[torch.Tensor, float, int]
-    ) -> Dict[str, torch.FloatTensor]:
+        self,
+        sample: torch.FloatTensor,
+        timestep: Union[torch.Tensor, float, int],
+        return_dict: bool = True,
+    ) -> Union[UNet2DOutput, Tuple]:
+        """r
+        Args:
+            sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
+            timestep (`torch.FloatTensor` or `float` or `int): (batch) timesteps
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.unet_2d.UNet2DOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.unet_2d.UNet2DOutput`] or `tuple`: [`~models.unet_2d.UNet2DOutput`] if `return_dict` is True,
+            otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
+        """
         # 0. center input if necessary
         if self.config.center_input_sample:
             sample = 2 * sample - 1.0
@@ -181,6 +242,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             timesteps = timesteps.reshape((sample.shape[0], *([1] * len(sample.shape[1:]))))
             sample = sample / timesteps
 
-        output = {"sample": sample}
+        if not return_dict:
+            return (sample,)
 
-        return output
+        return UNet2DOutput(sample=sample)

@@ -3,9 +3,18 @@
 [Textual inversion](https://arxiv.org/abs/2208.01618) is a method to personalize text2image models like stable diffusion on your own images using just 3-5 examples.
 The `textual_inversion.py` script shows how to implement the training procedure and adapt it for stable diffusion.
 
+## Running on Colab 
+
+Colab for training 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_textual_inversion_training.ipynb)
+
+Colab for inference
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/stable_conceptualizer_inference.ipynb)
+
+## Running locally 
 ### Installing the dependencies
 
-Before running the scipts, make sure to install the library's training dependencies:
+Before running the scripts, make sure to install the library's training dependencies:
 
 ```bash
 pip install diffusers[training] accelerate transformers
@@ -24,7 +33,7 @@ You need to accept the model license before downloading or using the weights. In
 
 You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section of the documentation](https://huggingface.co/docs/hub/security-tokens).
 
-Run the following command to autheticate your token
+Run the following command to authenticate your token
 
 ```bash
 huggingface-cli login
@@ -64,19 +73,18 @@ A full training run takes ~1 hour on one V100 GPU.
 
 Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline`. Make sure to include the `placeholder_token` in your prompt.
 
-
 ```python
 
 from torch import autocast
 from diffusers import StableDiffusionPipeline
 
 model_id = "path-to-your-trained-model"
-pipe = pipe = StableDiffusionPipeline.from_pretrained(model_id,torch_dtype=torch.float16).to("cuda")
+pipe = StableDiffusionPipeline.from_pretrained(model_id,torch_dtype=torch.float16).to("cuda")
 
 prompt = "A <cat-toy> backpack"
 
 with autocast("cuda"):
-    image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5)["sample"][0]
+    image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
 
 image.save("cat-backpack.png")
 ```
