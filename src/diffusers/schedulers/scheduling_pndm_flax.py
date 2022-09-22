@@ -238,7 +238,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         else:
             prev_sample, state = jax.lax.switch(
                 jnp.where(state.counter < len(state.prk_timesteps), 0, 1),
-                [self.step_prk, self.step_plms],
+                (self.step_prk, self.step_plms),
                 # Args to either branch
                 state,
                 model_output,
