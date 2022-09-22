@@ -164,4 +164,4 @@ tags
 
 # DS_Store (MacOS)
 .DS_Store
-*.INFO
+log
