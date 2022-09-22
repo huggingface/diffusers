@@ -72,14 +72,7 @@ class AttentionBlock(nn.Module):
 
         # get scores
         scale = 1 / math.sqrt(math.sqrt(self.channels / self.num_heads))
-
-        attention_scores = torch.baddbmm(
-            torch.empty(query_states.shape[0], query_states.shape[1], key_states.shape[1], dtype=query_states.dtype, device=query_states.device),
-            query_states,
-            key_states.transpose(-1, -2),
-            beta=0,
-            alpha=scale,
-        )
+        attention_scores = torch.matmul(query_states * scale, key_states.transpose(-1, -2) * scale) #TODO: use baddmm
         attention_probs = torch.softmax(attention_scores.float(), dim=-1).type(attention_scores.dtype)
 
         # compute attention output
