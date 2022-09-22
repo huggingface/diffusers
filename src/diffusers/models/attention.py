@@ -113,6 +113,7 @@ class SpatialTransformer(nn.Module):
         d_head: int,
         depth: int = 1,
         dropout: float = 0.0,
+        num_groups: int = 32,
         context_dim: Optional[int] = None,
     ):
         super().__init__()
@@ -120,7 +121,7 @@ class SpatialTransformer(nn.Module):
         self.d_head = d_head
         self.in_channels = in_channels
         inner_dim = n_heads * d_head
-        self.norm = torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
+        self.norm = torch.nn.GroupNorm(num_groups=num_groups, num_channels=in_channels, eps=1e-6, affine=True)
 
         self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
 
@@ -248,12 +249,14 @@ class CrossAttention(nn.Module):
         return tensor
 
     def forward(self, hidden_states, context=None, mask=None):
-        batch_size, sequence_length, dim = hidden_states.shape
+        batch_size, sequence_length, _ = hidden_states.shape
 
         query = self.to_q(hidden_states)
         context = context if context is not None else hidden_states
         key = self.to_k(context)
         value = self.to_v(context)
+
+        dim = query.shape[-1]
 
         query = self.reshape_heads_to_batch_dim(query)
         key = self.reshape_heads_to_batch_dim(key)
@@ -262,11 +265,24 @@ class CrossAttention(nn.Module):
         # TODO(PVP) - mask is currently never used. Remember to re-implement when used
 
         # attention, what we cannot get enough of
-        hidden_states = self._attention(query, key, value, sequence_length, dim)
+
+        if self._slice_size is None or query.shape[0] // self._slice_size == 1:
+            hidden_states = self._attention(query, key, value)
+        else:
+            hidden_states = self._sliced_attention(query, key, value, sequence_length, dim)
 
         return self.to_out(hidden_states)
 
-    def _attention(self, query, key, value, sequence_length, dim):
+    def _attention(self, query, key, value):
+        attention_scores = torch.matmul(query, key.transpose(-1, -2)) * self.scale
+        attention_probs = attention_scores.softmax(dim=-1)
+        # compute attention output
+        hidden_states = torch.matmul(attention_probs, value)
+        # reshape hidden_states
+        hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
+        return hidden_states
+
+    def _sliced_attention(self, query, key, value, sequence_length, dim):
         batch_size_attention = query.shape[0]
         hidden_states = torch.zeros(
             (batch_size_attention, sequence_length, dim // self.heads), device=query.device, dtype=query.dtype

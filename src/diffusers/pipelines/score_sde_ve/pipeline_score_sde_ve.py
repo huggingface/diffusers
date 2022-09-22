@@ -43,7 +43,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
                 deterministic.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `nd.array`.
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
 
@@ -80,7 +80,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
             sigma_t = self.scheduler.sigmas[i] * torch.ones(shape[0], device=self.device)
 
             # correction step
-            for _ in range(self.scheduler.correct_steps):
+            for _ in range(self.scheduler.config.correct_steps):
                 model_output = self.unet(sample, sigma_t).sample
                 sample = self.scheduler.step_correct(model_output, sample, generator=generator).prev_sample
 
