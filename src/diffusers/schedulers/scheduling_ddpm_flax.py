@@ -23,7 +23,7 @@ import jax.numpy as jnp
 from jax import random
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_utils import BaseScheduler, SchedulerOutput
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> jnp.ndarray:
@@ -71,7 +71,7 @@ class FlaxSchedulerOutput(SchedulerOutput):
     state: DDPMSchedulerState
 
 
-class FlaxDDPMScheduler(SchedulerMixin, ConfigMixin):
+class FlaxDDPMScheduler(BaseScheduler, ConfigMixin):
     """
     Denoising diffusion probabilistic models (DDPMs) explores the connections between denoising score matching and
     Langevin dynamics sampling.

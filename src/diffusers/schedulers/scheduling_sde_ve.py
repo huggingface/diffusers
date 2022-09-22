@@ -23,7 +23,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_utils import BaseScheduler, SchedulerOutput
 
 
 @dataclass
@@ -43,7 +43,7 @@ class SdeVeOutput(BaseOutput):
     prev_sample_mean: torch.FloatTensor
 
 
-class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
+class ScoreSdeVeScheduler(BaseScheduler, ConfigMixin):
     """
     The variance exploding stochastic differential equation (SDE) scheduler.
 

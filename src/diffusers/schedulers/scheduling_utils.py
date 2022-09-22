@@ -11,16 +11,47 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import math
 from dataclasses import dataclass
-from typing import Union
+from typing import Optional, Union
 
 import numpy as np
 import torch
 
+from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
 
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
+
+
+def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
+    """
+    Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
+    (1-beta) over time from t = [0,1].
+
+    Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
+    to that part of the diffusion process.
+
+
+    Args:
+        num_diffusion_timesteps (`int`): the number of betas to produce.
+        max_beta (`float`): the maximum beta to use; use values lower than 1 to
+                     prevent singularities.
+
+    Returns:
+        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
+    """
+
+    def alpha_bar(time_step):
+        return math.cos((time_step + 0.008) / 1.008 * math.pi / 2) ** 2
+
+    betas = []
+    for i in range(num_diffusion_timesteps):
+        t1 = i / num_diffusion_timesteps
+        t2 = (i + 1) / num_diffusion_timesteps
+        betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
+    return np.array(betas, dtype=np.float32)
 
 
 @dataclass
@@ -37,13 +68,60 @@ class SchedulerOutput(BaseOutput):
     prev_sample: torch.FloatTensor
 
 
-class SchedulerMixin:
+class BaseScheduler(ConfigMixin):
     """
     Mixin containing common functions for the schedulers.
     """
 
     config_name = SCHEDULER_CONFIG_NAME
     ignore_for_config = ["tensor_format"]
+
+    @register_to_config
+    def __init__(
+        self,
+        beta_start: Optional[float] = None,
+        beta_end: Optional[float] = None,
+        sigma_min: Optional[float] = None,
+        sigma_max: Optional[float] = None,
+        num_train_timesteps: int = 1000,
+        beta_schedule: Optional[str] = None,
+        trained_betas: Optional[np.ndarray] = None,
+        tensor_format: str = "pt",
+        **kwargs,
+    ):
+        if beta_start is not None and beta_end is not None:
+            if trained_betas is not None:
+                self.betas = np.asarray(trained_betas)
+            elif beta_schedule == "linear":
+                self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
+            elif beta_schedule == "scaled_linear":
+                # this schedule is very specific to the latent diffusion model.
+                self.betas = (
+                    np.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=np.float32) ** 2
+                )
+            elif beta_schedule == "squaredcos_cap_v2":
+                # Glide cosine schedule
+                self.betas = betas_for_alpha_bar(num_train_timesteps)
+            else:
+                raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+
+            self.alphas = 1.0 - self.betas
+            self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
+            self.one = np.array(1.0)
+        elif sigma_min is not None and sigma_max is not None:
+            self.set_sigmas(num_train_timesteps, sigma_min, sigma_max)
+        else:
+            raise ValueError("Either beta_start and beta_end or sigma_min and sigma_max must be provided.")
+
+        # setable values
+        self.num_inference_steps = None
+        self.timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
+
+        self.tensor_format = tensor_format
+        self.set_format(tensor_format=tensor_format)
+
+    def set_sigmas(self, num_train_timesteps, sigma_min, sigma_max):
+        raise NotImplementedError("set_sigmas is not implemented for this scheduler.")
 
     def set_format(self, tensor_format="pt"):
         self.tensor_format = tensor_format

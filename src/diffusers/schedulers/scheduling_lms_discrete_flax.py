@@ -20,7 +20,7 @@ import jax.numpy as jnp
 from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_utils import BaseScheduler, SchedulerOutput
 
 
 @flax.struct.dataclass
@@ -41,7 +41,7 @@ class FlaxSchedulerOutput(SchedulerOutput):
     state: LMSDiscreteSchedulerState
 
 
-class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
+class FlaxLMSDiscreteScheduler(BaseScheduler, ConfigMixin):
     """
     Linear Multistep Scheduler for discrete beta schedules. Based on the original k-diffusion implementation by
     Katherine Crowson:

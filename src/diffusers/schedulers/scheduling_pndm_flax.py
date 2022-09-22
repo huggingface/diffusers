@@ -22,7 +22,7 @@ import flax
 import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_utils import BaseScheduler, SchedulerOutput
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps: int, max_beta=0.999) -> jnp.ndarray:
@@ -79,7 +79,7 @@ class FlaxSchedulerOutput(SchedulerOutput):
     state: PNDMSchedulerState
 
 
-class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
+class FlaxPNDMScheduler(BaseScheduler, ConfigMixin):
     """
     Pseudo numerical methods for diffusion models (PNDM) proposes using more advanced ODE integration techniques,
     namely Runge-Kutta method and a linear multi-step method.

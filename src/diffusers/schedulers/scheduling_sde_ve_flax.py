@@ -22,7 +22,7 @@ import jax.numpy as jnp
 from jax import random
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_utils import BaseScheduler, SchedulerOutput
 
 
 @flax.struct.dataclass
@@ -56,7 +56,7 @@ class FlaxSdeVeOutput(SchedulerOutput):
     prev_sample_mean: Optional[jnp.ndarray] = None
 
 
-class FlaxScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
+class FlaxScoreSdeVeScheduler(BaseScheduler, ConfigMixin):
     """
     The variance exploding stochastic differential equation (SDE) scheduler.
 

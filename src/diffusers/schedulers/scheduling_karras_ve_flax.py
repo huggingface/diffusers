@@ -22,7 +22,7 @@ from jax import random
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils import BaseScheduler
 
 
 @flax.struct.dataclass
@@ -56,7 +56,7 @@ class FlaxKarrasVeOutput(BaseOutput):
     state: KarrasVeSchedulerState
 
 
-class FlaxKarrasVeScheduler(SchedulerMixin, ConfigMixin):
+class FlaxKarrasVeScheduler(BaseScheduler, ConfigMixin):
     """
     Stochastic sampling from Karras et al. [1] tailored to the Variance-Expanding (VE) models [2]. Use Algorithm 2 and
     the VE column of Table 1 from [1] for reference.

@@ -21,7 +21,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils import BaseScheduler
 
 
 @dataclass
@@ -41,7 +41,7 @@ class KarrasVeOutput(BaseOutput):
     derivative: torch.FloatTensor
 
 
-class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
+class KarrasVeScheduler(BaseScheduler, ConfigMixin):
     """
     Stochastic sampling from Karras et al. [1] tailored to the Variance-Expanding (VE) models [2]. Use Algorithm 2 and
     the VE column of Table 1 from [1] for reference.
