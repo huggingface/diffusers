@@ -198,10 +198,10 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
         return state.replace(
             timesteps=jnp.concatenate([state.prk_timesteps, state.plms_timesteps]).astype(jnp.int64),
             counter=0,
-            # Will be zeros, not really empty
-            cur_model_output=jnp.empty(shape),
-            cur_sample=jnp.empty(shape),
-            ets=jnp.empty((4,) + shape),
+            # Reserve space for the state variables
+            cur_model_output=jnp.zeros(shape),
+            cur_sample=jnp.zeros(shape),
+            ets=jnp.zeros((4,) + shape),
         )
 
     def step(
