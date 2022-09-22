@@ -242,7 +242,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (pred_prev_sample,)
 
-        return SchedulerOutput(prev_sample=pred_prev_sample)
+        return SchedulerOutput(prev_sample=pred_prev_sample, pred_original_sample=pred_original_sample)
 
     def add_noise(
         self,

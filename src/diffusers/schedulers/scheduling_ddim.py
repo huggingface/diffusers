@@ -261,7 +261,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (prev_sample,)
 
-        return SchedulerOutput(prev_sample=prev_sample)
+        return SchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
 
     def add_noise(
         self,
