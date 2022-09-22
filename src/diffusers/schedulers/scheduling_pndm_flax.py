@@ -308,7 +308,7 @@ class FlaxPNDMScheduler(SchedulerMixin, ConfigMixin):
 
         state, model_output = jax.lax.switch(
             state.counter % 4,
-            [remainder_0, remainder_1, remainder_2, remainder_3],
+            (remainder_0, remainder_1, remainder_2, remainder_3),
             # Args to either branch
             state,
             model_output,
