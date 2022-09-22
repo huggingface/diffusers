@@ -478,7 +478,7 @@ class LDMBertEncoderLayer(nn.Module):
 class LDMBertPreTrainedModel(PreTrainedModel):
     config_class = LDMBertConfig
     base_model_prefix = "model"
-    supports_gradient_checkpointing = True
+    _supports_gradient_checkpointing = True
     _keys_to_ignore_on_load_unexpected = [r"encoder\.version", r"decoder\.version"]
 
     def _init_weights(self, module):

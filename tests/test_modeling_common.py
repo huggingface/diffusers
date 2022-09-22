@@ -246,3 +246,21 @@ class ModelTesterMixin:
             outputs_tuple = model(**inputs_dict, return_dict=False)
 
         recursive_check(outputs_tuple, outputs_dict)
+
+    def test_enable_disable_gradient_checkpointing(self):
+        if not self.model_class._supports_gradient_checkpointing:
+            return  # Skip test if model does not support gradient checkpointing
+
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+
+        # at init model should have gradient checkpointing disabled
+        model = self.model_class(**init_dict)
+        self.assertFalse(model.is_gradient_checkpointing)
+
+        # check enable works
+        model.enable_gradient_checkpointing()
+        self.assertTrue(model.is_gradient_checkpointing)
+
+        # check disable works
+        model.disable_gradient_checkpointing()
+        self.assertFalse(model.is_gradient_checkpointing)
