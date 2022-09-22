@@ -26,7 +26,7 @@ from .scheduling_utils import SchedulerMixin
 
 
 @dataclass
-class DDPMSchedulerOutput(BaseOutput):
+class LMSDiscreteSchedulerOutput(BaseOutput):
     """
     Output class for the scheduler's step function output.
 
@@ -153,7 +153,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sample: Union[torch.FloatTensor, np.ndarray],
         order: int = 4,
         return_dict: bool = True,
-    ) -> Union[DDPMSchedulerOutput, Tuple]:
+    ) -> Union[LMSDiscreteSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -164,11 +164,11 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             sample (`torch.FloatTensor` or `np.ndarray`):
                 current instance of sample being created by diffusion process.
             order: coefficient for multi-step inference.
-            return_dict (`bool`): option for returning tuple rather than DDPMSchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than LMSDiscreteSchedulerOutput class
 
         Returns:
-            [`~schedulers.scheduling_utils.DDPMSchedulerOutput`] or `tuple`:
-            [`~schedulers.scheduling_utils.DDPMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            [`~schedulers.scheduling_utils.LMSDiscreteSchedulerOutput`] or `tuple`:
+            [`~schedulers.scheduling_utils.LMSDiscreteSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is the sample tensor.
 
         """
@@ -195,7 +195,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (prev_sample,)
 
-        return DDPMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
+        return LMSDiscreteSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
 
     def add_noise(
         self,
