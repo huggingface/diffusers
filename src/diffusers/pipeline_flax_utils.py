@@ -437,8 +437,8 @@ class FlaxDiffusionPipeline(ConfigMixin):
                         loaded_sub_model, loaded_params = load_method(loadable_folder, _do_init=False)
                     params[name] = loaded_params
                 elif issubclass(class_obj, SchedulerMixin):
-                    loaded_sub_model = load_method(loadable_folder)
-                    params[name] = loaded_sub_model.create_state()
+                    loaded_sub_model, scheduler_state = load_method(loadable_folder)
+                    params[name] = scheduler_state
                 else:
                     loaded_sub_model = load_method(loadable_folder)
 

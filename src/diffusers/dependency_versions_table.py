@@ -2,7 +2,7 @@
 # 1. modify the `_deps` dict in setup.py
 # 2. run `make deps_table_update``
 deps = {
-    "Pillow": "Pillow",
+    "Pillow": "Pillow<10.0",
     "accelerate": "accelerate>=0.11.0",
     "black": "black==22.8",
     "datasets": "datasets",
@@ -15,8 +15,10 @@ deps = {
     "isort": "isort>=5.5.4",
     "jax": "jax>=0.2.8,!=0.3.2,<=0.3.6",
     "jaxlib": "jaxlib>=0.1.65,<=0.3.6",
-    "modelcards": "modelcards==0.1.4",
+    "modelcards": "modelcards>=0.1.4",
     "numpy": "numpy",
+    "onnxruntime": "onnxruntime",
+    "onnxruntime-gpu": "onnxruntime-gpu",
     "pytest": "pytest",
     "pytest-timeout": "pytest-timeout",
     "pytest-xdist": "pytest-xdist",
@@ -25,5 +27,6 @@ deps = {
     "requests": "requests",
     "tensorboard": "tensorboard",
     "torch": "torch>=1.4",
+    "torchvision": "torchvision",
     "transformers": "transformers>=4.21.0",
 }

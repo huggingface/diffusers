@@ -160,12 +160,19 @@ class ConfigMixin:
         if "dtype" in unused_kwargs:
             init_dict["dtype"] = unused_kwargs.pop("dtype")
 
+        # Return model and optionally state and/or unused_kwargs
         model = cls(**init_dict)
+        return_tuple = (model,)
+
+        # Flax schedulers have a state, so return it.
+        if cls.__name__.startswith("Flax") and hasattr(model, "create_state") and getattr(model, "has_state", False):
+            state = model.create_state()
+            return_tuple += (state,)
 
         if return_unused_kwargs:
-            return model, unused_kwargs
+            return return_tuple + (unused_kwargs,)
         else:
-            return model
+            return return_tuple if len(return_tuple) > 1 else model
 
     @classmethod
     def get_config_dict(
@@ -449,6 +456,9 @@ def flax_register_to_config(cls):
 
         # Make sure init_kwargs override default kwargs
         new_kwargs = {**default_kwargs, **init_kwargs}
+        # dtype should be part of `init_kwargs`, but not `new_kwargs`
+        if "dtype" in new_kwargs:
+            new_kwargs.pop("dtype")
 
         # Get positional arguments aligned with kwargs
         for i, arg in enumerate(args):
