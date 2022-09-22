@@ -46,11 +46,10 @@ from diffusers import (
     UNet2DModel,
     VQModel,
 )
-from diffusers.modeling_utils import WEIGHTS_NAME
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.testing_utils import floats_tensor, load_image, slow, torch_device
-from diffusers.utils import CONFIG_NAME
+from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -1374,12 +1373,9 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_stable_diffusion_onnx(self):
-        from scripts.convert_stable_diffusion_checkpoint_to_onnx import convert_models
-
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            convert_models("CompVis/stable-diffusion-v1-4", tmpdirname, opset=14)
-
-            sd_pipe = StableDiffusionOnnxPipeline.from_pretrained(tmpdirname, provider="CUDAExecutionProvider")
+        sd_pipe = StableDiffusionOnnxPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CUDAExecutionProvider", use_auth_token=True
+        )
 
         prompt = "A painting of a squirrel eating a burger"
         np.random.seed(0)

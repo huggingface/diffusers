@@ -3,12 +3,21 @@ from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
+import torch.utils.checkpoint
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput
 from .embeddings import TimestepEmbedding, Timesteps
-from .unet_blocks import UNetMidBlock2DCrossAttn, get_down_block, get_up_block
+from .unet_blocks import (
+    CrossAttnDownBlock2D,
+    CrossAttnUpBlock2D,
+    DownBlock2D,
+    UNetMidBlock2DCrossAttn,
+    UpBlock2D,
+    get_down_block,
+    get_up_block,
+)
 
 
 @dataclass
@@ -53,6 +62,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         cross_attention_dim (`int`, *optional*, defaults to 1280): The dimension of the cross attention features.
         attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
     """
+
+    _supports_gradient_checkpointing = True
 
     @register_to_config
     def __init__(
@@ -188,6 +199,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             if hasattr(block, "attentions") and block.attentions is not None:
                 block.set_attention_slice(slice_size)
 
+    def _set_gradient_checkpointing(self, module, value=False):
+        if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D, CrossAttnUpBlock2D, UpBlock2D)):
+            module.gradient_checkpointing = value
+
     def forward(
         self,
         sample: torch.FloatTensor,
@@ -234,7 +249,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "attentions") and downsample_block.attentions is not None:
                 sample, res_samples = downsample_block(
-                    hidden_states=sample, temb=emb, encoder_hidden_states=encoder_hidden_states
+                    hidden_states=sample,
+                    temb=emb,
+                    encoder_hidden_states=encoder_hidden_states,
                 )
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb)

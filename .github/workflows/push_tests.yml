@@ -59,5 +59,56 @@ jobs:
       if: ${{ always() }}
       uses: actions/upload-artifact@v2
       with:
-        name: push_torch_test_reports
+        name: torch_test_reports
+        path: reports
+
+
+
+  run_examples_single_gpu:
+    name: Examples tests
+    strategy:
+      fail-fast: false
+      matrix:
+        machine_type: [ single-gpu ]
+    runs-on: [ self-hosted, docker-gpu, '${{ matrix.machine_type }}' ]
+    container:
+      image: nvcr.io/nvidia/pytorch:22.07-py3
+      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
+
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: NVIDIA-SMI
+      run: |
+        nvidia-smi
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip uninstall -y torch torchvision torchtext
+        python -m pip install torch --extra-index-url https://download.pytorch.org/whl/cu116
+        python -m pip install -e .[quality,test,training]
+
+    - name: Environment
+      run: |
+        python utils/print_env.py
+
+    - name: Run example tests on GPU
+      env:
+        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      run: |
+        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=examples_torch_gpu examples/
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: cat reports/examples_torch_gpu_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: examples_test_reports
         path: reports
