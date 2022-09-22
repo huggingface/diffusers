@@ -109,7 +109,7 @@ class BaseScheduler(ConfigMixin):
             self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
             self.one = np.array(1.0)
         elif sigma_min is not None and sigma_max is not None:
-            self.set_sigmas(num_train_timesteps, sigma_min, sigma_max)
+            self.schedule = None
         else:
             raise ValueError("Either beta_start and beta_end or sigma_min and sigma_max must be provided.")
 
@@ -120,8 +120,14 @@ class BaseScheduler(ConfigMixin):
         self.tensor_format = tensor_format
         self.set_format(tensor_format=tensor_format)
 
-    def set_sigmas(self, num_train_timesteps, sigma_min, sigma_max):
-        raise NotImplementedError("set_sigmas is not implemented for this scheduler.")
+    def set_schedule(self, num_inference_steps: int):
+        raise NotImplementedError("set_schedule is not implemented for this scheduler.")
+
+    def t_to_sigma(self, t: int):
+        raise NotImplementedError("t_to_sigma is not implemented for this scheduler.")
+
+    def sigma_to_t(self, t: int):
+        raise NotImplementedError("sigma_to_t is not implemented for this scheduler.")
 
     def set_format(self, tensor_format="pt"):
         self.tensor_format = tensor_format

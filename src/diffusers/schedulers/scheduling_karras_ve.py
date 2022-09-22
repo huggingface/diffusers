@@ -74,16 +74,15 @@ class KarrasVeScheduler(BaseScheduler, ConfigMixin):
 
     """
 
-    @register_to_config
-    def __init__(
-        self,
-        sigma_min: float = 0.02,
-        sigma_max: float = 100,
-        s_noise: float = 1.007,
-        s_churn: float = 80,
-        s_min: float = 0.05,
-        s_max: float = 50,
-        tensor_format: str = "pt",
+    def __old_init__(
+            self,
+            sigma_min: float = 0.02,
+            sigma_max: float = 100,
+            s_noise: float = 1.007,
+            s_churn: float = 80,
+            s_min: float = 0.05,
+            s_max: float = 50,
+            tensor_format: str = "pt",
     ):
         # setable values
         self.num_inference_steps = None
@@ -93,7 +92,17 @@ class KarrasVeScheduler(BaseScheduler, ConfigMixin):
         self.tensor_format = tensor_format
         self.set_format(tensor_format=tensor_format)
 
-    def set_timesteps(self, num_inference_steps: int):
+    def __init__(
+        self,
+        s_noise: float = 1.007,
+        s_churn: float = 80,
+        s_min: float = 0.05,
+        s_max: float = 50,
+        **kwargs,
+    ):
+        super().__init__(s_noise=s_noise, s_churn=s_churn, s_min=s_min, s_max=s_max, **kwargs)
+
+    def set_schedule(self, num_inference_steps: int):
         """
         Sets the continuous timesteps used for the diffusion chain. Supporting function to be run before inference.
 
