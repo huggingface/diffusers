@@ -52,7 +52,7 @@ def parse_args():
         "--class_data_dir",
         type=str,
         default=None,
-        required=True,
+        required=False,
         help="A folder containing the training data of class images.",
     )
     parser.add_argument(
@@ -68,10 +68,10 @@ def parse_args():
         help="The prompt to specify images in the same class as provided intance images.",
     )
     parser.add_argument(
-        "--without_prior_preservation",
+        "--with_prior_preservation",
         default=False,
         action="store_true",
-        help="Flag to remove prior perservation loss.",
+        help="Flag to add prior perservation loss.",
     )
     parser.add_argument(
         "--num_class_images",
@@ -123,7 +123,7 @@ def parse_args():
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=1e-5,
+        default=5e-6,
         help="Initial learning rate (after the potential warmup period) to use.",
     )
     parser.add_argument(
@@ -193,6 +193,13 @@ def parse_args():
 
     if args.instance_data_dir is None:
         raise ValueError("You must specify a train data directory.")
+    
+    if args.with_prior_preservation:
+        if args.class_data_dir is None:
+            raise ValueError("You must specify a data directory for class images.")
+        if args.class_prompt is None:
+            raise ValueError("You must specify prompt for class images.")
+
 
     return args
 
@@ -222,7 +229,7 @@ class DreamBoothDataset(Dataset):
 
         if class_data_root is not None:
             self.class_data_root = Path(class_data_root)
-            assert self.class_data_root.exists(), "Class images root doesn't exists."
+            self.class_data_root.mkdir(parents=True, exist_ok=True)
             self.class_images_path = list(Path(class_data_root).iterdir())
             self.num_class_images = len(self.class_images_path)
             self._length = max(self.num_class_images, self.num_instance_images)
@@ -289,6 +296,19 @@ class DreamBoothDataset(Dataset):
 
         return example
 
+class PromptDataset(Dataset):
+    def __init__(self, prompt, num_samples):
+        self.prompt = prompt
+        self.num_samples = num_samples
+    
+    def __len__(self):
+        return self.num_samples
+    
+    def __getitem__(self, index):
+        example = {}
+        example["prompt"] = self.prompt
+        example["index"] = index
+        return example
 
 def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
     if token is None:
@@ -314,7 +334,7 @@ def main():
     if args.seed is not None:
         set_seed(args.seed)
 
-    if not args.without_prior_preservation:
+    if args.with_prior_preservation:
         class_images_dir = Path(args.class_data_dir)
         if not class_images_dir.exists():
             class_images_dir.mkdir(parents=True)
@@ -324,27 +344,24 @@ def main():
             sd_model = StableDiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path, use_auth_token=args.use_auth_token
             )
-            sd_model = accelerator.prepare(sd_model)
-            sd_model.to(accelerator.device)
-
             num_new_images = args.num_class_images - cur_class_images
             logger.info(f"Number of class images to sample: {num_new_images}.")
-            total_prompts = [args.class_prompt] * num_new_images
-            batch_prompts = [
-                total_prompts[x : x + args.sample_batch_size] for x in range(0, num_new_images, args.sample_batch_size)
-            ]
 
-            img_id = cur_class_images
-            for text in tqdm(
-                batch_prompts, desc="Generating class images", disable=not accelerator.is_local_main_process
+            sample_dataset = PromptDataset(args.class_prompt, num_new_images)
+            sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=args.sample_batch_size)
+
+            sd_model, sample_dataloader = accelerator.prepare(sd_model, sample_dataloader)
+            sd_model.to(accelerator.device)
+
+            for example in tqdm(
+                sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
             ):
                 with torch.no_grad():
-                    images = sd_model(text, height=512, width=512, num_inference_steps=50)["sample"]
+                    images = sd_model(example["prompt"], height=512, width=512, num_inference_steps=50)["sample"]
 
-                for image in images:
-                    image.save(class_images_dir / f"{img_id}.jpg")
-                    img_id += 1
-        del sd_model
+                for image, index in zip(images, example["index"]):
+                    image.save(class_images_dir / f"{index + cur_class_images}.jpg")
+            del sd_model
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -363,7 +380,7 @@ def main():
         elif args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
-    # Load the tokenizer and add the placeholder token as a additional special token
+    # Load the tokenizer
     if args.tokenizer_name:
         tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_name)
     elif args.pretrained_model_name_or_path:
@@ -401,7 +418,7 @@ def main():
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
         instance_prompt=args.instance_prompt,
-        class_data_root=args.class_data_dir if not args.without_prior_preservation else None,
+        class_data_root=args.class_data_dir if args.with_prior_preservation else None,
         class_prompt=args.class_prompt,
         tokenizer=tokenizer,
         size=args.resolution,
@@ -423,15 +440,12 @@ def main():
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
 
-    text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        text_encoder, optimizer, train_dataloader, lr_scheduler
+    text_encoder, vae, unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        text_encoder, vae, unet, optimizer, train_dataloader, lr_scheduler
     )
 
-    # Move vae and unet to device
-    vae.to(accelerator.device)
-    unet.to(accelerator.device)
-
-    # Keep vae in eval model as we don't train it
+    # Keep text_encoder and vae in eval model as we don't train it
+    text_encoder.eval()
     vae.eval()
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -463,19 +477,20 @@ def main():
     global_step = 0
 
     for epoch in range(args.num_train_epochs):
-        text_encoder.train()
+        unet.train()
         for step, batch in enumerate(train_dataloader):
-            with accelerator.accumulate(text_encoder):
+            with accelerator.accumulate(unet):
                 # Convert images to latent space
-                if not args.without_prior_preservation:
+                if args.with_prior_preservation:
                     images = torch.cat([batch["instance_images"], batch["class_images"]], dim=0)
                     input_ids = torch.cat([batch["instance_prompt_ids"], batch["class_prompt_ids"]], dim=0)
                 else:
                     images = batch["instance_images"]
                     input_ids = batch["instance_prompt_ids"]
 
-                latents = vae.encode(images).latent_dist.sample().detach()
-                latents = latents * 0.18215
+                with torch.no_grad():
+                    latents = vae.encode(images).latent_dist.sample()
+                    latents = latents * 0.18215
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn(latents.shape).to(latents.device)
@@ -490,7 +505,8 @@ def main():
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # Get the text embedding for conditioning
-                encoder_hidden_states = text_encoder(input_ids)[0]
+                with torch.no_grad():
+                    encoder_hidden_states = text_encoder(input_ids)[0]
 
                 # Predict the noise residual
                 noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
@@ -520,8 +536,8 @@ def main():
     if accelerator.is_main_process:
         pipeline = StableDiffusionPipeline(
             text_encoder=accelerator.unwrap_model(text_encoder),
-            vae=vae,
-            unet=unet,
+            vae=accelerator.unwrap_model(vae),
+            unet=accelerator.unwrap_model(unet),
             tokenizer=tokenizer,
             scheduler=PNDMScheduler(
                 beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True
