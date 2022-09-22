@@ -193,13 +193,12 @@ def parse_args():
 
     if args.instance_data_dir is None:
         raise ValueError("You must specify a train data directory.")
-    
+
     if args.with_prior_preservation:
         if args.class_data_dir is None:
             raise ValueError("You must specify a data directory for class images.")
         if args.class_prompt is None:
             raise ValueError("You must specify prompt for class images.")
-
 
     return args
 
@@ -296,19 +295,21 @@ class DreamBoothDataset(Dataset):
 
         return example
 
+
 class PromptDataset(Dataset):
     def __init__(self, prompt, num_samples):
         self.prompt = prompt
         self.num_samples = num_samples
-    
+
     def __len__(self):
         return self.num_samples
-    
+
     def __getitem__(self, index):
         example = {}
         example["prompt"] = self.prompt
         example["index"] = index
         return example
+
 
 def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
     if token is None:
