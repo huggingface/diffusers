@@ -10,7 +10,6 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 
-import PIL
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
@@ -20,7 +19,6 @@ from diffusers.optimization import get_scheduler
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from huggingface_hub import HfFolder, Repository, whoami
 from torchvision import transforms
-from torchvision.io import ImageReadMode, read_image
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
@@ -134,6 +132,11 @@ def parse_args():
         type=int,
         default=1,
         help="Number of updates steps to accumulate before performing a backward/update pass.",
+    )
+    parser.add_argument(
+        "--gradient_checkpointing",
+        action="store_true",
+        help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.",
     )
     parser.add_argument(
         "--learning_rate",
@@ -285,6 +288,9 @@ def main():
     freeze_params(vae.parameters())
     freeze_params(text_encoder.parameters())
 
+    if args.gradient_checkpointing:
+        unet.enable_gradient_checkpointing()
+
     if args.scale_lr:
         args.learning_rate = (
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
@@ -416,7 +422,7 @@ def main():
         if args.max_eval_samples is not None:
             dataset["validation"] = dataset["validation"].shuffle(seed=args.seed).select(range(args.max_eval_samples))
         # Set the validation transforms
-        eval_dataset = dataset["validation"].with_transform(preprocess_val)
+        # eval_dataset = dataset["validation"].with_transform(preprocess_val)
 
     def collate_fn(examples):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
@@ -436,7 +442,7 @@ def main():
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, shuffle=True, collate_fn=collate_fn, batch_size=args.train_batch_size
     )
-    eval_dataloader = torch.utils.data.DataLoader(eval_dataset, collate_fn=collate_fn, batch_size=args.eval_batch_size)
+    # eval_dataloader = torch.utils.data.DataLoader(eval_dataset, collate_fn=collate_fn, batch_size=args.eval_batch_size)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
