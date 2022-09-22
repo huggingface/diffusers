@@ -456,6 +456,9 @@ def flax_register_to_config(cls):
 
         # Make sure init_kwargs override default kwargs
         new_kwargs = {**default_kwargs, **init_kwargs}
+        # dtype should be part of `init_kwargs`, but not `new_kwargs`
+        if "dtype" in new_kwargs:
+            new_kwargs.pop("dtype")
 
         # Get positional arguments aligned with kwargs
         for i, arg in enumerate(args):
