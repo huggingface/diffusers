@@ -257,7 +257,7 @@ class MemoryEfficientCrossAttention(nn.Module):
         if self.attention_op is not None:
             return
 
-        _, K, M = x.shape
+        _, M, K = x.shape
         try:
             self.attention_op = xformers.ops.AttentionOpDispatch(
                 dtype=x.dtype,
