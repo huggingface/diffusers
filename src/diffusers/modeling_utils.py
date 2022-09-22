@@ -125,7 +125,7 @@ class ModelMixin(torch.nn.Module):
     """
     config_name = CONFIG_NAME
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
-    supports_gradient_checkpointing = False
+    _supports_gradient_checkpointing = False
 
     def __init__(self):
         super().__init__()
@@ -147,7 +147,7 @@ class ModelMixin(torch.nn.Module):
         Note that in other frameworks this feature can be referred to as "activation checkpointing" or "checkpoint
         activations".
         """
-        if not self.supports_gradient_checkpointing:
+        if not self._supports_gradient_checkpointing:
             raise ValueError(f"{self.__class__.__name__} does not support gradient checkpointing.")
         self.apply(partial(self._set_gradient_checkpointing, value=True))
 
@@ -158,7 +158,7 @@ class ModelMixin(torch.nn.Module):
         Note that in other frameworks this feature can be referred to as "activation checkpointing" or "checkpoint
         activations".
         """
-        if self.supports_gradient_checkpointing:
+        if self._supports_gradient_checkpointing:
             self.apply(partial(self._set_gradient_checkpointing, value=False))
 
     def save_pretrained(
