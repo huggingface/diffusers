@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from typing import Optional, Tuple, Union
+from dataclasses import dataclass
 
 import numpy as np
 import torch
@@ -20,9 +21,8 @@ import torch
 from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin
-from dataclasses import dataclass
 from ..utils import BaseOutput
+from .scheduling_utils import SchedulerMixin
 
 
 @dataclass
