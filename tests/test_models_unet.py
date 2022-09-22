@@ -19,7 +19,7 @@ import unittest
 import torch
 
 from diffusers import UNet2DConditionModel, UNet2DModel
-from diffusers.testing_utils import floats_tensor, torch_device
+from diffusers.testing_utils import floats_tensor, slow, torch_device
 
 from .test_modeling_common import ModelTesterMixin
 
@@ -138,11 +138,13 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         model.eval()
         model.to(torch_device)
 
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
-
-        noise = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
+        noise = torch.randn(
+            1,
+            model.config.in_channels,
+            model.config.sample_size,
+            model.config.sample_size,
+            generator=torch.manual_seed(0),
+        )
         noise = noise.to(torch_device)
         time_step = torch.tensor([10] * noise.shape[0]).to(torch_device)
 
@@ -154,7 +156,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         expected_output_slice = torch.tensor([-13.3258, -20.1100, -15.9873, -17.6617, -23.0596, -17.9419, -13.3675, -16.1889, -12.3800])
         # fmt: on
 
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))
 
 
 class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
@@ -305,6 +307,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
+    @slow
     def test_from_pretrained_hub(self):
         model, loading_info = UNet2DModel.from_pretrained("google/ncsnpp-celebahq-256", output_loading_info=True)
         self.assertIsNotNone(model)
@@ -318,6 +321,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
 
         assert image is not None, "Make sure output is not None"
 
+    @slow
     def test_output_pretrained_ve_mid(self):
         model = UNet2DModel.from_pretrained("google/ncsnpp-celebahq-256")
         model.to(torch_device)
@@ -367,3 +371,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         # fmt: on
 
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
+
+    def test_forward_with_norm_groups(self):
+        # not required for this model
+        pass

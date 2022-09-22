@@ -4,8 +4,8 @@
 from ..utils import DummyObject, requires_backends
 
 
-class LMSDiscreteScheduler(metaclass=DummyObject):
-    _backends = ["scipy"]
+class FlaxStableDiffusionPipeline(metaclass=DummyObject):
+    _backends = ["flax", "transformers"]
 
     def __init__(self, *args, **kwargs):
-        requires_backends(self, ["scipy"])
+        requires_backends(self, ["flax", "transformers"])

@@ -1,6 +1,5 @@
 from functools import partial
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -134,10 +133,10 @@ class FirUpsample2D(nn.Module):
             kernel = [1] * factor
 
         # setup kernel
-        kernel = np.asarray(kernel, dtype=np.float32)
+        kernel = torch.tensor(kernel, dtype=torch.float32)
         if kernel.ndim == 1:
-            kernel = np.outer(kernel, kernel)
-        kernel /= np.sum(kernel)
+            kernel = torch.outer(kernel, kernel)
+        kernel /= torch.sum(kernel)
 
         kernel = kernel * (gain * (factor**2))
 
@@ -150,7 +149,6 @@ class FirUpsample2D(nn.Module):
 
             stride = (factor, factor)
             # Determine data dimensions.
-            stride = [1, 1, factor, factor]
             output_shape = ((x.shape[2] - 1) * factor + convH, (x.shape[3] - 1) * factor + convW)
             output_padding = (
                 output_shape[0] - (x.shape[2] - 1) * stride[0] - convH,
@@ -162,7 +160,7 @@ class FirUpsample2D(nn.Module):
 
             # Transpose weights.
             weight = torch.reshape(weight, (num_groups, -1, inC, convH, convW))
-            weight = weight[..., ::-1, ::-1].permute(0, 2, 1, 3, 4)
+            weight = torch.flip(weight, dims=[3, 4]).permute(0, 2, 1, 3, 4)
             weight = torch.reshape(weight, (num_groups * inC, -1, convH, convW))
 
             x = F.conv_transpose2d(x, weight, stride=stride, output_padding=output_padding, padding=0)
@@ -219,10 +217,10 @@ class FirDownsample2D(nn.Module):
             kernel = [1] * factor
 
         # setup kernel
-        kernel = np.asarray(kernel, dtype=np.float32)
+        kernel = torch.tensor(kernel, dtype=torch.float32)
         if kernel.ndim == 1:
-            kernel = np.outer(kernel, kernel)
-        kernel /= np.sum(kernel)
+            kernel = torch.outer(kernel, kernel)
+        kernel /= torch.sum(kernel)
 
         kernel = kernel * gain
 
@@ -265,7 +263,7 @@ class ResnetBlock2D(nn.Module):
         time_embedding_norm="default",
         kernel=None,
         output_scale_factor=1.0,
-        use_nin_shortcut=None,
+        use_in_shortcut=None,
         up=False,
         down=False,
     ):
@@ -322,10 +320,10 @@ class ResnetBlock2D(nn.Module):
             else:
                 self.downsample = Downsample2D(in_channels, use_conv=False, padding=1, name="op")
 
-        self.use_nin_shortcut = self.in_channels != self.out_channels if use_nin_shortcut is None else use_nin_shortcut
+        self.use_in_shortcut = self.in_channels != self.out_channels if use_in_shortcut is None else use_in_shortcut
 
         self.conv_shortcut = None
-        if self.use_nin_shortcut:
+        if self.use_in_shortcut:
             self.conv_shortcut = torch.nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x, temb):
@@ -333,7 +331,7 @@ class ResnetBlock2D(nn.Module):
 
         # make sure hidden states is in float32
         # when running in half-precision
-        hidden_states = self.norm1(hidden_states.float()).type(hidden_states.dtype)
+        hidden_states = self.norm1(hidden_states).type(hidden_states.dtype)
         hidden_states = self.nonlinearity(hidden_states)
 
         if self.upsample is not None:
@@ -351,7 +349,7 @@ class ResnetBlock2D(nn.Module):
 
         # make sure hidden states is in float32
         # when running in half-precision
-        hidden_states = self.norm2(hidden_states.float()).type(hidden_states.dtype)
+        hidden_states = self.norm2(hidden_states).type(hidden_states.dtype)
         hidden_states = self.nonlinearity(hidden_states)
 
         hidden_states = self.dropout(hidden_states)
@@ -391,16 +389,14 @@ def upsample_2d(x, kernel=None, factor=2, gain=1):
     if kernel is None:
         kernel = [1] * factor
 
-    kernel = np.asarray(kernel, dtype=np.float32)
+    kernel = torch.tensor(kernel, dtype=torch.float32)
     if kernel.ndim == 1:
-        kernel = np.outer(kernel, kernel)
-    kernel /= np.sum(kernel)
+        kernel = torch.outer(kernel, kernel)
+    kernel /= torch.sum(kernel)
 
     kernel = kernel * (gain * (factor**2))
     p = kernel.shape[0] - factor
-    return upfirdn2d_native(
-        x, torch.tensor(kernel, device=x.device), up=factor, pad=((p + 1) // 2 + factor - 1, p // 2)
-    )
+    return upfirdn2d_native(x, kernel.to(device=x.device), up=factor, pad=((p + 1) // 2 + factor - 1, p // 2))
 
 
 def downsample_2d(x, kernel=None, factor=2, gain=1):
@@ -425,14 +421,14 @@ def downsample_2d(x, kernel=None, factor=2, gain=1):
     if kernel is None:
         kernel = [1] * factor
 
-    kernel = np.asarray(kernel, dtype=np.float32)
+    kernel = torch.tensor(kernel, dtype=torch.float32)
     if kernel.ndim == 1:
-        kernel = np.outer(kernel, kernel)
-    kernel /= np.sum(kernel)
+        kernel = torch.outer(kernel, kernel)
+    kernel /= torch.sum(kernel)
 
     kernel = kernel * gain
     p = kernel.shape[0] - factor
-    return upfirdn2d_native(x, torch.tensor(kernel, device=x.device), down=factor, pad=((p + 1) // 2, p // 2))
+    return upfirdn2d_native(x, kernel.to(device=x.device), down=factor, pad=((p + 1) // 2, p // 2))
 
 
 def upfirdn2d_native(input, kernel, up=1, down=1, pad=(0, 0)):

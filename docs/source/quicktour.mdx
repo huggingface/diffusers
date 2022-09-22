@@ -86,11 +86,11 @@ just like we did before only that now you need to pass your `AUTH_TOKEN`:
 >>> generator = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=AUTH_TOKEN)
 ```
 
-If you do not pass your authentification token you will see that the diffusion system will not be correctly 
-downloaded. Forcing the user to pass an authentification token ensures that it can be verified that the 
+If you do not pass your authentication token you will see that the diffusion system will not be correctly 
+downloaded. Forcing the user to pass an authentication token ensures that it can be verified that the 
 user has indeed read and accepted the license, which also means that an internet connection is required.
 
-**Note**: If you do not want to be forced to pass an authentification token, you can also simply download 
+**Note**: If you do not want to be forced to pass an authentication token, you can also simply download 
 the weights locally via:
 
 ```
@@ -98,7 +98,7 @@ git lfs install
 git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
 ```
 
-and then load locally saved weights into the pipeline. This way, you do not need to pass an authentification
+and then load locally saved weights into the pipeline. This way, you do not need to pass an authentication
 token. Assuming that `"./stable-diffusion-v1-4"` is the local path to the cloned stable-diffusion-v1-4 repo,
 you can also load the pipeline as follows:
 
@@ -114,7 +114,7 @@ Running the pipeline is then identical to the code above as it's the same model 
 >>> image.save("image_of_squirrel_painting.png")
 ```
 
-Diffusion systems can be used with multiple different [schedulers]("api/schedulers") each with their
+Diffusion systems can be used with multiple different [schedulers](./api/schedulers) each with their
 pros and cons. By default, Stable Diffusion runs with [`PNDMScheduler`], but it's very simple to 
 use a different scheduler. *E.g.* if you would instead like to use the [`LMSDiscreteScheduler`] scheduler,
 you could use it as follows:
@@ -131,15 +131,15 @@ you could use it as follows:
 
 [Stability AI's](https://stability.ai/) Stable Diffusion model is an impressive image generation model
 and can do much more than just generating images from text. We have dedicated a whole documentation page,
-just for Stable Diffusion [here]("./conceptual/stable_diffusion").
+just for Stable Diffusion [here](./conceptual/stable_diffusion).
 
 If you want to know how to optimize Stable Diffusion to run on less memory, higher inference speeds, on specific hardware, such as Mac, or with [ONNX Runtime](https://onnxruntime.ai/), please have a look at our 
 optimization pages:
 
-- [Optimized PyTorch on GPU]("./optimization/fp16")
-- [Mac OS with PyTorch]("./optimization/mps")
-- [ONNX]("./optimization/onnx)
-- [OpenVINO]("./optimization/open_vino)
+- [Optimized PyTorch on GPU](./optimization/fp16)
+- [Mac OS with PyTorch](./optimization/mps)
+- [ONNX](./optimization/onnx)
+- [OpenVINO](./optimization/open_vino)
 
 If you want to fine-tune or train your diffusion model, please have a look at the [**training section**](./training/overview)
 

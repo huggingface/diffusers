@@ -1,4 +1,5 @@
 import inspect
+import warnings
 from typing import List, Optional, Union
 
 import numpy as np
@@ -8,9 +9,10 @@ import PIL
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
+from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import DDIMScheduler, PNDMScheduler
+from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import logging
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -76,13 +78,28 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[DDIMScheduler, PNDMScheduler],
+        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
         scheduler = scheduler.set_format("pt")
         logger.info("`StableDiffusionInpaintPipeline` is experimental and will very likely change in the future.")
+
+        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
+            warnings.warn(
+                f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
+                f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
+                "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
+                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
+                " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
+                " file",
+                DeprecationWarning,
+            )
+            new_config = dict(scheduler.config)
+            new_config["steps_offset"] = 1
+            scheduler._internal_dict = FrozenDict(new_config)
+
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -118,7 +135,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         back to computing attention in one step.
         """
         # set slice_size = `None` to disable `set_attention_slice`
-        self.enable_attention_slice(None)
+        self.enable_attention_slicing(None)
 
     @torch.no_grad()
     def __call__(
@@ -145,8 +162,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 process. This is the image whose masked region will be inpainted.
             mask_image (`torch.FloatTensor` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, to mask `init_image`. White pixels in the mask will be
-                replaced by noise and therefore repainted, while black pixels will be preserved. The mask image will be
-                converted to a single channel (luminance) before use.
+                replaced by noise and therefore repainted, while black pixels will be preserved. If `mask_image` is a
+                PIL image, it will be converted to a single channel (luminance) before use. If it's a tensor, it should
+                contain one color channel (L) instead of 3, so the expected shape would be `(B, H, W, 1)`.
             strength (`float`, *optional*, defaults to 0.8):
                 Conceptually, indicates how much to inpaint the masked area. Must be between 0 and 1. When `strength`
                 is 1, the denoising process will be run on the masked area for the full number of iterations specified
@@ -169,7 +187,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 deterministic.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `nd.array`.
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
@@ -192,20 +210,15 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
         # set timesteps
-        accepts_offset = "offset" in set(inspect.signature(self.scheduler.set_timesteps).parameters.keys())
-        extra_set_kwargs = {}
-        offset = 0
-        if accepts_offset:
-            offset = 1
-            extra_set_kwargs["offset"] = 1
-
-        self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
+        self.scheduler.set_timesteps(num_inference_steps)
 
         # preprocess image
-        init_image = preprocess_image(init_image).to(self.device)
+        if not isinstance(init_image, torch.FloatTensor):
+            init_image = preprocess_image(init_image)
+        init_image = init_image.to(self.device)
 
         # encode the init image into latents and scale the latents
-        init_latent_dist = self.vae.encode(init_image.to(self.device)).latent_dist
+        init_latent_dist = self.vae.encode(init_image).latent_dist
         init_latents = init_latent_dist.sample(generator=generator)
 
         init_latents = 0.18215 * init_latents
@@ -215,18 +228,26 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         init_latents_orig = init_latents
 
         # preprocess mask
-        mask = preprocess_mask(mask_image).to(self.device)
-        mask = torch.cat([mask] * batch_size)
+        if not isinstance(mask_image, torch.FloatTensor):
+            mask_image = preprocess_mask(mask_image)
+        mask_image = mask_image.to(self.device)
+        mask = torch.cat([mask_image] * batch_size)
 
         # check sizes
         if not mask.shape == init_latents.shape:
             raise ValueError("The mask and init_image should be the same size!")
 
         # get the original timestep using init_timestep
+        offset = self.scheduler.config.get("steps_offset", 0)
         init_timestep = int(num_inference_steps * strength) + offset
         init_timestep = min(init_timestep, num_inference_steps)
-        timesteps = self.scheduler.timesteps[-init_timestep]
-        timesteps = torch.tensor([timesteps] * batch_size, dtype=torch.long, device=self.device)
+        if isinstance(self.scheduler, LMSDiscreteScheduler):
+            timesteps = torch.tensor(
+                [num_inference_steps - init_timestep] * batch_size, dtype=torch.long, device=self.device
+            )
+        else:
+            timesteps = self.scheduler.timesteps[-init_timestep]
+            timesteps = torch.tensor([timesteps] * batch_size, dtype=torch.long, device=self.device)
 
         # add noise to latents using the timesteps
         noise = torch.randn(init_latents.shape, generator=generator, device=self.device)
@@ -271,8 +292,13 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         latents = init_latents
         t_start = max(num_inference_steps - init_timestep + offset, 0)
         for i, t in tqdm(enumerate(self.scheduler.timesteps[t_start:])):
+            t_index = t_start + i
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+            if isinstance(self.scheduler, LMSDiscreteScheduler):
+                sigma = self.scheduler.sigmas[t_index]
+                # the model input needs to be scaled to match the continuous ODE formulation in K-LMS
+                latent_model_input = latent_model_input / ((sigma**2 + 1) ** 0.5)
 
             # predict the noise residual
             noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
@@ -283,10 +309,15 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+            if isinstance(self.scheduler, LMSDiscreteScheduler):
+                latents = self.scheduler.step(noise_pred, t_index, latents, **extra_step_kwargs).prev_sample
+                # masking
+                init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, torch.tensor(t_index))
+            else:
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+                # masking
+                init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, t)
 
-            # masking
-            init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, t)
             latents = (init_latents_proper * mask) + (latents * (1 - mask))
 
         # scale and decode the image latents with vae

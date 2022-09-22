@@ -37,7 +37,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
     and returns sample shaped output.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
-    implements for all the model (such as downloading or saving, etc.)
+    implements for all the models (such as downloading or saving, etc.)
 
     Parameters:
         sample_size (`int`, *optional*): The size of the input sample.
@@ -125,6 +125,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 add_downsample=not is_final_block,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
+                resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=attention_head_dim,
                 downsample_padding=downsample_padding,
@@ -164,6 +165,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 add_upsample=not is_final_block,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
+                resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=attention_head_dim,
             )
@@ -211,7 +213,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         """r
         Args:
             sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
-            timestep (`torch.FloatTensor` or `float` or `int): (batch) timesteps
+            timestep (`torch.FloatTensor` or `float` or `int`): (batch) timesteps
             encoder_hidden_states (`torch.FloatTensor`): (batch, channel, height, width) encoder hidden states
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
