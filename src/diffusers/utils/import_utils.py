@@ -166,6 +166,7 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _accelerate_available = False
 
+
 def is_torch_available():
     return _torch_available
 
@@ -200,6 +201,7 @@ def is_onnx_available():
 
 def is_scipy_available():
     return _scipy_available
+
 
 def is_accelerate_available():
     return _accelerate_available
