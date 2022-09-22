@@ -20,7 +20,27 @@ import torch
 from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_utils import SchedulerMixin
+from dataclasses import dataclass
+from ..utils import BaseOutput
+
+
+@dataclass
+class DDPMSchedulerOutput(BaseOutput):
+    """
+    Output class for the scheduler's step function output.
+
+    Args:
+        prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+            Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
+            denoising loop.
+        pred_original_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+            The predicted denoised sample (x_{0}) based on the model output from the current timestep.
+            `pred_original_sample` can be used to preview progress or for guidance.
+    """
+
+    prev_sample: torch.FloatTensor
+    pred_original_sample: Optional[torch.FloatTensor] = None
 
 
 class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
@@ -133,7 +153,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sample: Union[torch.FloatTensor, np.ndarray],
         order: int = 4,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> Union[DDPMSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -144,11 +164,11 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             sample (`torch.FloatTensor` or `np.ndarray`):
                 current instance of sample being created by diffusion process.
             order: coefficient for multi-step inference.
-            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than DDPMSchedulerOutput class
 
         Returns:
-            [`~schedulers.scheduling_utils.SchedulerOutput`] or `tuple`:
-            [`~schedulers.scheduling_utils.SchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
+            [`~schedulers.scheduling_utils.DDPMSchedulerOutput`] or `tuple`:
+            [`~schedulers.scheduling_utils.DDPMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is the sample tensor.
 
         """
@@ -175,7 +195,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (prev_sample,)
 
-        return SchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
+        return DDPMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
 
     def add_noise(
         self,
