@@ -498,7 +498,7 @@ def main():
     global_step = 0
 
     for epoch in range(args.num_train_epochs):
-        text_encoder.train()
+        unet.train()
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Convert images to latent space
