@@ -73,7 +73,7 @@ not be used for training. If you want to store the gradients during the forward 
 We are more than happy about any contribution to the officially supported pipelines 🤗. We aspire 
 all of our pipelines to be  **self-contained**, **easy-to-tweak**, **beginner-friendly** and for **one-purpose-only**.
 
-- **Self-contained**: A pipeline shall be as self-contained as possible. More specifically, this means that all functionality should be either directly defined in the pipeline file iteslf, should be inherited from (and only from) the [`DiffusionPipeline` class](https://github.com/huggingface/diffusers/blob/5cbed8e0d157f65d3ddc2420dfd09f2df630e978/src/diffusers/pipeline_utils.py#L56) or be directly attached to the model and scheduler components of the pipeline. 
+- **Self-contained**: A pipeline shall be as self-contained as possible. More specifically, this means that all functionality should be either directly defined in the pipeline file itself, should be inherited from (and only from) the [`DiffusionPipeline` class](https://github.com/huggingface/diffusers/blob/5cbed8e0d157f65d3ddc2420dfd09f2df630e978/src/diffusers/pipeline_utils.py#L56) or be directly attached to the model and scheduler components of the pipeline. 
 - **Easy-to-use**: Pipelines should be extremely easy to use - one should be able to load the pipeline and 
 use it for its designated task, *e.g.* text-to-image generation, in just a couple of lines of code. Most 
 logic including pre-processing, an unrolled diffusion loop, and post-processing should all happen inside the `__call__` method.
