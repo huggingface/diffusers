@@ -23,6 +23,7 @@ from .import_utils import (
     USE_TORCH,
     DummyObject,
     is_flax_available,
+    is_oneflow_available,
     is_inflect_available,
     is_modelcards_available,
     is_onnx_available,

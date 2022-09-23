@@ -1,4 +1,4 @@
-from ..utils import is_flax_available, is_onnx_available, is_torch_available, is_transformers_available
+from ..utils import is_flax_available, is_oneflow_available, is_onnx_available, is_torch_available, is_transformers_available
 from .ddim import DDIMPipeline
 from .ddpm import DDPMPipeline
 from .latent_diffusion_uncond import LDMPipeline
@@ -20,3 +20,6 @@ if is_transformers_available() and is_onnx_available():
 
 if is_transformers_available() and is_flax_available():
     from .stable_diffusion import FlaxStableDiffusionPipeline
+
+if is_oneflow_available():
+    from .stable_diffusion import OneFlowStableDiffusionPipeline

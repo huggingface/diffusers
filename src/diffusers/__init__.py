@@ -1,5 +1,6 @@
 from .utils import (
     is_flax_available,
+    is_oneflow_available,
     is_inflect_available,
     is_onnx_available,
     is_scipy_available,
@@ -82,3 +83,11 @@ if is_flax_available() and is_transformers_available():
     from .pipelines import FlaxStableDiffusionPipeline
 else:
     from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
+
+if is_oneflow_available():
+    from .schedulers import (
+        OneFlowLMSDiscreteScheduler
+    )
+    from .pipelines import (
+        OneFlowStableDiffusionPipeline
+    )

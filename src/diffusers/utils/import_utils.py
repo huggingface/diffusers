@@ -171,6 +171,10 @@ def is_tf_available():
 def is_flax_available():
     return _flax_available
 
+def is_oneflow_available():
+    # TODO: check oneflow availability
+    return True
+
 
 def is_transformers_available():
     return _transformers_available

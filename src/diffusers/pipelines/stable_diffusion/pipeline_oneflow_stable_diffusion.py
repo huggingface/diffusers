@@ -173,7 +173,7 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
 
             # Set device as before (to be removed in 0.3.0)
             if device is None:
-                device = "cuda" if torch.cuda.is_available() else "cpu"
+                device = "cuda" if oneflow.cuda.is_available() else "cpu"
             self.to(device)
 
         if isinstance(prompt, str):
@@ -211,7 +211,7 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
+            text_embeddings = oneflow.cat([uncond_embeddings, text_embeddings])
 
         # get the initial random noise unless the user supplied it
 
@@ -221,7 +221,7 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
         latents_device = "cpu" if self.device.type == "mps" else self.device
         latents_shape = (batch_size, self.unet.in_channels, height // 8, width // 8)
         if latents is None:
-            latents = torch.randn(
+            latents = oneflow.randn(
                 latents_shape,
                 generator=generator,
                 device=latents_device,
@@ -250,7 +250,7 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             oneflow.profiler.range_push(f"denoise-{i}")
             # expand the latents if we are doing classifier free guidance
-            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+            latent_model_input = oneflow.cat([latents] * 2) if do_classifier_free_guidance else latents
             if isinstance(self.scheduler, LMSDiscreteScheduler):
                 sigma = self.scheduler.sigmas[i]
                 # the model input needs to be scaled to match the continuous ODE formulation in K-LMS
