@@ -9,6 +9,10 @@ from ...onnx_utils import OnnxRuntimeModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from . import StableDiffusionPipelineOutput
+from .utils import logging
+
+
+logger = logging.get_logger(__name__)
 
 
 class StableDiffusionOnnxPipeline(DiffusionPipeline):
@@ -66,13 +70,20 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         # get prompt text embeddings
-        text_input = self.tokenizer(
+        text_inputs = self.tokenizer(
             prompt,
             padding="max_length",
             max_length=self.tokenizer.model_max_length,
-            truncation=True,
-            return_tensors="np",
+            return_tensors="pt",
         )
+        text_input_ids = text_inputs.input_ids
+
+        if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
+            removed_text = self.tokenizer.batch_decode(text_input_ids[self.tokenizer_model_max_length :])
+            logger.warning(
+                f"The following part of your input was truncated because CLIP can only handle sequences up to {self.tokenizer_model_max_length} tokens: {removed_text}"
+            )
+            text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
         text_embeddings = self.text_encoder(input_ids=text_input.input_ids.astype(np.int32))[0]
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
