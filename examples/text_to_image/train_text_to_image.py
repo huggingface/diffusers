@@ -285,8 +285,8 @@ def main():
     )
 
     # Freeze vae and text_encoder
-    freeze_params(vae.parameters())
-    freeze_params(text_encoder.parameters())
+    # freeze_params(vae.parameters())
+    # freeze_params(text_encoder.parameters())
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
@@ -458,13 +458,13 @@ def main():
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
 
-    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, train_dataloader, lr_scheduler
+    text_encoder, vae, unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        text_encoder, vae, unet, optimizer, train_dataloader, lr_scheduler
     )
 
     # Move vae and unet to device
-    vae.to(accelerator.device)
-    text_encoder.to(accelerator.device)
+    # vae.to(accelerator.device)
+    # text_encoder.to(accelerator.device)
 
     # Keep vae and unet in eval model as we don't train these
     vae.eval()
@@ -502,7 +502,8 @@ def main():
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Convert images to latent space
-                latents = vae.encode(batch["pixel_values"]).latent_dist.sample().detach()
+                with torch.no_grad():
+                    latents = vae.encode(batch["pixel_values"]).latent_dist.sample().detach()
                 latents = latents * 0.18215
 
                 # Sample noise that we'll add to the latents
@@ -516,7 +517,8 @@ def main():
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # Get the text embedding for conditioning
-                encoder_hidden_states = text_encoder(batch["input_ids"])[0]
+                with torch.no_grad():
+                    encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
                 # Predict the noise residual and compute loss
                 noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
@@ -545,8 +547,8 @@ def main():
     if accelerator.is_main_process:
         pipeline = StableDiffusionPipeline(
             text_encoder=accelerator.unwrap_model(text_encoder),
-            vae=vae,
-            unet=unet,
+            vae=accelerator.unwrap_model(vae),
+            unet=accelerator.unwrap_model(unet),
             tokenizer=tokenizer,
             scheduler=PNDMScheduler(
                 beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True
