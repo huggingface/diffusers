@@ -108,6 +108,7 @@ class BaseScheduler(ConfigMixin):
             self.alphas = 1.0 - self.betas
             self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
             self.one = np.array(1.0)
+            self.schedule_type = "beta"
         elif sigma_min is not None and sigma_max is not None:
             self.schedule = None
         else:
@@ -115,7 +116,7 @@ class BaseScheduler(ConfigMixin):
 
         # setable values
         self.num_inference_steps = None
-        self.timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
+        self.timesteps = np.arange(num_train_timesteps, 0, dtype=int)
 
         self.tensor_format = tensor_format
         self.set_format(tensor_format=tensor_format)
@@ -128,6 +129,12 @@ class BaseScheduler(ConfigMixin):
 
     def sigma_to_t(self, t: int):
         raise NotImplementedError("sigma_to_t is not implemented for this scheduler.")
+
+    def scale_model_inputs(self, sample, noise_cond, sigma=None):
+        return sample, noise_cond
+
+    def scale_initial_noise(self, noise):
+        return noise
 
     def set_format(self, tensor_format="pt"):
         self.tensor_format = tensor_format

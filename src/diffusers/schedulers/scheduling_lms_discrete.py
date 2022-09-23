@@ -21,6 +21,7 @@ from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils import BaseScheduler, SchedulerOutput
+from ..models import UNet2DModel
 
 
 class LMSDiscreteScheduler(BaseScheduler, ConfigMixin):
@@ -50,37 +51,13 @@ class LMSDiscreteScheduler(BaseScheduler, ConfigMixin):
     """
 
     @register_to_config
-    def __init__(
-        self,
-        num_train_timesteps: int = 1000,
-        beta_start: float = 0.0001,
-        beta_end: float = 0.02,
-        beta_schedule: str = "linear",
-        trained_betas: Optional[np.ndarray] = None,
-        tensor_format: str = "pt",
-    ):
-        if trained_betas is not None:
-            self.betas = np.asarray(trained_betas)
-        if beta_schedule == "linear":
-            self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
-        elif beta_schedule == "scaled_linear":
-            # this schedule is very specific to the latent diffusion model.
-            self.betas = np.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=np.float32) ** 2
-        else:
-            raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
-        self.alphas = 1.0 - self.betas
-        self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
-
-        self.sigmas = ((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5
+        self.schedule = ((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5
 
         # setable values
-        self.num_inference_steps = None
-        self.timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
         self.derivatives = []
-
-        self.tensor_format = tensor_format
-        self.set_format(tensor_format=tensor_format)
 
     def get_lms_coefficient(self, order, t, current_order):
         """
@@ -104,7 +81,7 @@ class LMSDiscreteScheduler(BaseScheduler, ConfigMixin):
 
         return integrated_coeff
 
-    def set_timesteps(self, num_inference_steps: int):
+    def old_set_timesteps(self, num_inference_steps: int):
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -126,6 +103,28 @@ class LMSDiscreteScheduler(BaseScheduler, ConfigMixin):
 
         self.set_format(tensor_format=self.tensor_format)
 
+    def set_timesteps(self, num_inference_steps: int):
+        """
+        Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
+
+        Args:
+            num_inference_steps (`int`):
+                the number of diffusion steps used when generating samples with a pre-trained model.
+        """
+        self.num_inference_steps = num_inference_steps
+
+        self.timesteps
+
+        self.derivatives = []
+
+        self.set_format(tensor_format=self.tensor_format)
+
+    def scale_model_inputs(self, sample, noise_cond, sigma):
+        return sample / ((sigma**2 + 1) ** 0.5), noise_cond
+
+    def scale_initial_noise(self, noise):
+        return noise * self.sigmas[0]
+
     def step(
         self,
         model_output: Union[torch.FloatTensor, np.ndarray],
@@ -133,6 +132,7 @@ class LMSDiscreteScheduler(BaseScheduler, ConfigMixin):
         sample: Union[torch.FloatTensor, np.ndarray],
         order: int = 4,
         return_dict: bool = True,
+        **kwargs,
     ) -> Union[SchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
