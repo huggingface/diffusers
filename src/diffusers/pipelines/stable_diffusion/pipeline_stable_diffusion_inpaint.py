@@ -315,7 +315,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             else:
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
                 # masking
-                init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, t)
+                init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, torch.LongTensor([t]))
 
             latents = (init_latents_proper * mask) + (latents * (1 - mask))
 

@@ -379,7 +379,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         self,
         original_samples: torch.FloatTensor,
         noise: torch.FloatTensor,
-        timesteps: torch.FloatTensor,
+        timesteps: torch.IntTensor,
     ) -> torch.Tensor:
         timesteps = timesteps.to(self.alphas_cumprod.device)
 
