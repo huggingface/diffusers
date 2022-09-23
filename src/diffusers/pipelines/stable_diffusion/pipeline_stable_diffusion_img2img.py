@@ -231,7 +231,8 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
             removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length :])
             logger.warning(
-                f"The following part of your input was truncated because CLIP can only handle sequences up to {self.tokenizer.model_max_length} tokens: {removed_text}"
+                "The following part of your input was truncated because CLIP can only handle sequences up to"
+                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
             text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
         text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
