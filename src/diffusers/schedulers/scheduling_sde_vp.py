@@ -16,7 +16,8 @@
 
 # TODO(Patrick, Anton, Suraj) - make scheduler framework independent and clean-up a bit
 
-import numpy as np
+import math
+
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
@@ -79,7 +80,7 @@ class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
 
         # add noise
         noise = torch.randn(x.shape, layout=x.layout, generator=generator).to(x.device)
-        x = x_mean + diffusion * np.sqrt(-dt) * noise
+        x = x_mean + diffusion * math.sqrt(-dt) * noise
 
         return x, x_mean
 

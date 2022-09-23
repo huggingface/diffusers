@@ -14,11 +14,11 @@
 
 # DISCLAIMER: This file is strongly influenced by https://github.com/yang-song/score_sde_pytorch
 
+import math
 import warnings
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
-import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
@@ -120,7 +120,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             self.set_timesteps(num_inference_steps, sampling_eps)
 
         self.sigmas = sigma_min * (sigma_max / sigma_min) ** (self.timesteps / sampling_eps)
-        self.discrete_sigmas = torch.exp(torch.linspace(np.log(sigma_min), np.log(sigma_max), num_inference_steps))
+        self.discrete_sigmas = torch.exp(torch.linspace(math.log(sigma_min), math.log(sigma_max), num_inference_steps))
         self.sigmas = torch.tensor([sigma_min * (sigma_max / sigma_min) ** t for t in self.timesteps])
 
     def get_adjacent_sigma(self, timesteps, t):
