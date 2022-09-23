@@ -34,7 +34,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
             [`FlaxDDIMScheduler`], [`FlaxLMSDiscreteScheduler`], or [`FlaxPNDMScheduler`].
         safety_checker ([`FlaxStableDiffusionSafetyChecker`]):
-            Classification module that estimates whether generated images could be considered offsensive or harmful.
+            Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) for details.
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
@@ -149,7 +149,6 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         uncond_embeddings = self.text_encoder(uncond_input.input_ids, params=params["text_encoder"])[0]
         context = jnp.concatenate([uncond_embeddings, text_embeddings])
 
-        # TODO: check it because the shape is different from Pytorhc StableDiffusionPipeline
         latents_shape = (
             batch_size,
             self.unet.in_channels,
@@ -206,9 +205,9 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         #        image = jnp.asarray(image).transpose(0, 2, 3, 1)
         # run safety checker
         # TODO: check when flax safety checker gets merged into main
-        #        safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="np")
+        #        safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="np")
         #        image, has_nsfw_concept = self.safety_checker(
-        #            images=image, clip_input=safety_cheker_input.pixel_values, params=params["safety_params"]
+        #            images=image, clip_input=safety_checker_input.pixel_values, params=params["safety_params"]
         #        )
         has_nsfw_concept = False
 
