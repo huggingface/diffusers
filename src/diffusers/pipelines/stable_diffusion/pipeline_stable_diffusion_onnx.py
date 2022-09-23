@@ -68,10 +68,8 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
         latents: Optional[np.ndarray] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[
-            Callable[[int, np.ndarray, torch.FloatTensor, Union[List[PIL.Image.Image], np.ndarray]], None]
-        ] = None,
-        callback_frequency: Optional[int] = 1,
+        callback: Optional[Callable[[int, np.ndarray, torch.FloatTensor], None]] = None,
+        callback_steps: Optional[int] = 1,
         **kwargs,
     ):
         if isinstance(prompt, str):
@@ -84,12 +82,12 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        if (callback_frequency is None) or (
-            callback_frequency is not None and (not isinstance(callback_frequency, int) or callback_frequency <= 0)
+        if (callback_steps is None) or (
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
             raise ValueError(
-                f"`callback_frequency` has to be a positive integer but is {callback_frequency} of type"
-                f" {type(callback_frequency)}."
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
             )
 
         # get prompt text embeddings
@@ -168,12 +166,8 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
             # call the callback, if provided
-            if callback is not None and i % callback_frequency == 0:
-                image = self.decode_latents(latents)
-                image = self.run_safety_checker(image)[0]
-                if output_type == "pil":
-                    image = self.numpy_to_pil(image)
-                callback(i, t, latents, image)
+            if callback is not None and i % callback_steps == 0:
+                callback(i, t, latents)
 
         image = self.decode_latents(latents)
 

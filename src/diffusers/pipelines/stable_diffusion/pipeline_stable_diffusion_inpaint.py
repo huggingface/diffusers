@@ -187,10 +187,8 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[
-            Callable[[int, np.ndarray, torch.FloatTensor, Union[List[PIL.Image.Image], np.ndarray]], None]
-        ] = None,
-        callback_frequency: Optional[int] = 1,
+        callback: Optional[Callable[[int, np.ndarray, torch.FloatTensor], None]] = None,
+        callback_steps: Optional[int] = 1,
         **kwargs,
     ):
         r"""
@@ -234,10 +232,10 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
             callback (`Callable`, *optional*):
-                A function that will be called every `callback_frequency` steps during inference. The function will be
+                A function that will be called every `callback_steps` steps during inference. The function will be
                 called with the following arguments: `callback(step: int, timestep: np.ndarray, latents:
-                torch.FloatTensor, image: Union[List[PIL.Image.Image], np.ndarray])`.
-            callback_frequency (`int`, *optional*, defaults to 1):
+                torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
 
@@ -258,12 +256,12 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
-        if (callback_frequency is None) or (
-            callback_frequency is not None and (not isinstance(callback_frequency, int) or callback_frequency <= 0)
+        if (callback_steps is None) or (
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
             raise ValueError(
-                f"`callback_frequency` has to be a positive integer but is {callback_frequency} of type"
-                f" {type(callback_frequency)}."
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
             )
 
         # set timesteps
@@ -347,7 +345,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             extra_step_kwargs["eta"] = eta
 
         latents = init_latents
+
         t_start = max(num_inference_steps - init_timestep + offset, 0)
+
         for i, t in tqdm(enumerate(self.scheduler.timesteps[t_start:])):
             t_index = t_start + i
             # expand the latents if we are doing classifier free guidance
@@ -378,12 +378,8 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             latents = (init_latents_proper * mask) + (latents * (1 - mask))
 
             # call the callback, if provided
-            if callback is not None and i % callback_frequency == 0:
-                image = self.decode_latents(latents)
-                image = self.run_safety_checker(image)[0]
-                if output_type == "pil":
-                    image = self.numpy_to_pil(image)
-                callback(i, t, latents, image)
+            if callback is not None and i % callback_steps == 0:
+                callback(i, t, latents)
 
         image = self.decode_latents(latents)
 
