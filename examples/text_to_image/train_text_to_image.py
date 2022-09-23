@@ -273,8 +273,7 @@ class EMAModel:
 
     @torch.no_grad()
     def step(self, new_model):
-        ema_state_dict = {}
-        ema_params = self.averaged_model.state_dict()
+        ema_state_dict = self.averaged_model.state_dict()
 
         self.optimization_step += 1
         self.decay = self.get_decay(self.optimization_step)
@@ -283,24 +282,23 @@ class EMAModel:
             if isinstance(param, dict):
                 continue
             try:
-                ema_param = ema_params[key]
+                ema_param = ema_state_dict[key]
             except KeyError:
                 ema_param = param.float().clone() if param.ndim == 1 else copy.deepcopy(param)
-                ema_params[key] = ema_param
+                ema_state_dict[key] = ema_param
+
+            param = param.clone().detach().to(ema_param.dtype)
 
             if param.requires_grad:
-                param = param.data.to(dtype=ema_param.dtype).to(device=ema_param.device)
-                ema_param.sub_(self.decay * (ema_param - param.data.to(dtype=ema_param.dtype)))
+                ema_state_dict[key].sub_(self.decay * (ema_param - param))
             else:
-                ema_params[key].copy_(param.to(dtype=ema_param.dtype).data.to(device=ema_param.device))
-                ema_param = ema_params[key]
-
-            ema_state_dict[key] = ema_param
+                ema_state_dict[key].copy_(param)
 
         for key, param in new_model.named_buffers():
             ema_state_dict[key] = param
 
         self.averaged_model.load_state_dict(ema_state_dict, strict=False)
+        torch.cuda.empty_cache()
 
 
 def main():
@@ -533,7 +531,7 @@ def main():
     )
 
     if args.use_ema:
-        ema_unet = EMAModel(unet, device="cpu")
+        ema_unet = EMAModel(unet)
 
     # Move vae and unet to device
     # vae.to(accelerator.device)
