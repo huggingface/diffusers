@@ -288,10 +288,11 @@ class EMAModel:
                 ema_param = param.float().clone() if param.ndim == 1 else copy.deepcopy(param)
                 ema_params[key] = ema_param
 
-            if not param.requires_grad:
+            if param.requires_grad:
+                param = param.data.to(dtype=ema_param.dtype).to(device=ema_param.device)
                 ema_param.sub_(self.decay * (ema_param - param.data.to(dtype=ema_param.dtype)))
             else:
-                ema_params[key].copy_(param.to(dtype=ema_param.dtype).data)
+                ema_params[key].copy_(param.to(dtype=ema_param.dtype).data.to(device=ema_param.device))
                 ema_param = ema_params[key]
 
             ema_state_dict[key] = ema_param
