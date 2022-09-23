@@ -549,7 +549,7 @@ class FlaxDecoder(nn.Module):
             Tuple containing the number of output channels for each block
         layers_per_block (:obj:`int`, *optional*, defaults to `2`):
             Number of Resnet layer for each block
-        norm_num_groups (:obj:`int`, *optional*, defaults to `2`):
+        norm_num_groups (:obj:`int`, *optional*, defaults to `32`):
             norm num group
         act_fn (:obj:`str`, *optional*, defaults to `silu`):
             Activation function
@@ -704,7 +704,7 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
             Activation function
         latent_channels (:obj:`int`, *optional*, defaults to `4`):
             Latent space channels
-        norm_num_groups (:obj:`int`, *optional*, defaults to `2`):
+        norm_num_groups (:obj:`int`, *optional*, defaults to `32`):
             Norm num group
         sample_size (:obj:`int`, *optional*, defaults to `32`):
             Sample input size
