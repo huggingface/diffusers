@@ -9,7 +9,7 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from ...schedulers import OneFlowLMSDiscreteScheduler as LMSDiscreteScheduler
 from . import StableDiffusionPipelineOutput
 import oneflow
 
@@ -47,8 +47,8 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
-        safety_checker: StableDiffusionSafetyChecker,
+        scheduler: LMSDiscreteScheduler,
+        safety_checker: None,
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
