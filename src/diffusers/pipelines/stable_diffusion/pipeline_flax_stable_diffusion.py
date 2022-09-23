@@ -149,7 +149,6 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         uncond_embeddings = self.text_encoder(uncond_input.input_ids, params=params["text_encoder"])[0]
         context = jnp.concatenate([uncond_embeddings, text_embeddings])
 
-        # TODO: check it because the shape is different from Pytorch StableDiffusionPipeline
         latents_shape = (
             batch_size,
             self.unet.in_channels,
