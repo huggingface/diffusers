@@ -84,7 +84,7 @@ pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
 with autocast("cuda"):
-    image = pipe(prompt).images[0]
+    image = pipe(prompt).images[0]  
 ```
 
 **Note**: If you don't want to use the token, you can also simply download the model weights
@@ -105,7 +105,7 @@ pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
 with autocast("cuda"):
-    image = pipe(prompt).images[0]
+    image = pipe(prompt).images[0]  
 ```
 
 If you are limited by GPU memory, you might want to consider using the model in `fp16` as 
@@ -124,7 +124,7 @@ pipe = pipe.to("cuda")
 prompt = "a photo of an astronaut riding a horse on mars"
 pipe.enable_attention_slicing()
 with autocast("cuda"):
-    image = pipe(prompt).images[0]
+    image = pipe(prompt).images[0]  
 ```
 
 Finally, if you wish to use a different scheduler, you can simply instantiate
@@ -150,7 +150,7 @@ pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
 with autocast("cuda"):
-    image = pipe(prompt).images[0]
+    image = pipe(prompt).images[0]  
     
 image.save("astronaut_rides_horse.png")
 ```
