@@ -381,7 +381,9 @@ def main():
                 raise ValueError(
                     f"Caption column `{caption_column}` should contain either strings or lists of strings."
                 )
-        input_ids = tokenizer(captions, max_length=tokenizer.model_max_length, padding=True, truncation=True).input_ids
+        input_ids = tokenizer(
+            captions, max_length=tokenizer.model_max_length, padding="do_not_pad", truncation=True
+        ).input_ids
         return input_ids
 
     train_transforms = transforms.Compose(
