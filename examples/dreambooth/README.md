@@ -43,7 +43,7 @@ export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export INSTANCE_DIR="path-to-instance-images"
 export OUTPUT_DIR="path-to-save-model"
 
-python train_dreambooth.py \
+accelerate launch train_dreambooth.py \
   --pretrained_model_name_or_path=$MODEL_NAME --use_auth_token \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
@@ -64,7 +64,7 @@ export INSTANCE_DIR="path-to-instance-images"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
-python train_dreambooth.py \
+accelerate launch train_dreambooth.py \
   --pretrained_model_name_or_path=$MODEL_NAME --use_auth_token \
   --instance_data_dir=$INSTANCE_DIR \
   --class_data_dir=$CLASS_DIR \

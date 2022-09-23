@@ -345,6 +345,7 @@ def main():
             sd_model = StableDiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path, use_auth_token=args.use_auth_token
             )
+            sd_model.set_progress_bar_config(disable=True)
             num_new_images = args.num_class_images - cur_class_images
             logger.info(f"Number of class images to sample: {num_new_images}.")
 
@@ -441,9 +442,13 @@ def main():
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
 
-    text_encoder, vae, unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        text_encoder, vae, unet, optimizer, train_dataloader, lr_scheduler
+    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        unet, optimizer, train_dataloader, lr_scheduler
     )
+
+    # Move text_encode and vae to gpu
+    text_encoder.to(accelerator.device)
+    vae.to(accelerator.device)
 
     # Keep text_encoder and vae in eval model as we don't train it
     text_encoder.eval()
@@ -536,8 +541,8 @@ def main():
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
         pipeline = StableDiffusionPipeline(
-            text_encoder=accelerator.unwrap_model(text_encoder),
-            vae=accelerator.unwrap_model(vae),
+            text_encoder=text_encoder,
+            vae=vae,
             unet=accelerator.unwrap_model(unet),
             tokenizer=tokenizer,
             scheduler=PNDMScheduler(
