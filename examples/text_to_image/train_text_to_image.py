@@ -1,4 +1,5 @@
 import argparse
+import copy
 import math
 import os
 import random
@@ -167,6 +168,7 @@ def parse_args():
     parser.add_argument(
         "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
     )
+    parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
@@ -239,6 +241,65 @@ def freeze_params(params):
 dataset_name_mapping = {
     "image_caption_dataset.py": ("image_path", "caption"),
 }
+
+
+class EMAModel:
+    """
+    Exponential Moving Average of models weights
+    """
+
+    def __init__(
+        self,
+        model,
+        decay=0.9999,
+        device=None,
+    ):
+        self.averaged_model = copy.deepcopy(model).eval()
+        self.averaged_model.requires_grad_(False)
+
+        self.decay = decay
+
+        if device is not None:
+            self.averaged_model = self.averaged_model.to(device=device)
+
+        self.optimization_step = 0
+
+    def get_decay(self, optimization_step):
+        """
+        Compute the decay factor for the exponential moving average.
+        """
+        value = (1 + optimization_step) / (10 + optimization_step)
+        return 1 - min(self.decay, value)
+
+    @torch.no_grad()
+    def step(self, new_model):
+        ema_state_dict = {}
+        ema_params = self.averaged_model.state_dict()
+
+        self.optimization_step += 1
+        self.decay = self.get_decay(self.optimization_step)
+
+        for key, param in new_model.named_parameters():
+            if isinstance(param, dict):
+                continue
+            try:
+                ema_param = ema_params[key]
+            except KeyError:
+                ema_param = param.float().clone() if param.ndim == 1 else copy.deepcopy(param)
+                ema_params[key] = ema_param
+
+            if not param.requires_grad:
+                ema_param.sub_(self.decay * (ema_param - param.data.to(dtype=ema_param.dtype)))
+            else:
+                ema_params[key].copy_(param.to(dtype=ema_param.dtype).data)
+                ema_param = ema_params[key]
+
+            ema_state_dict[key] = ema_param
+
+        for key, param in new_model.named_buffers():
+            ema_state_dict[key] = param
+
+        self.averaged_model.load_state_dict(ema_state_dict, strict=False)
 
 
 def main():
@@ -470,6 +531,9 @@ def main():
         text_encoder, vae, unet, optimizer, train_dataloader, lr_scheduler
     )
 
+    if args.use_ema:
+        ema_unet = EMAModel(unet)
+
     # Move vae and unet to device
     # vae.to(accelerator.device)
     # text_encoder.to(accelerator.device)
@@ -544,6 +608,8 @@ def main():
             if accelerator.sync_gradients:
                 progress_bar.update(1)
                 global_step += 1
+                if args.use_ema:
+                    ema_unet.step(unet)
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
@@ -559,7 +625,7 @@ def main():
         pipeline = StableDiffusionPipeline(
             text_encoder=accelerator.unwrap_model(text_encoder),
             vae=accelerator.unwrap_model(vae),
-            unet=accelerator.unwrap_model(unet),
+            unet=accelerator.unwrap_model(ema_unet.averaged_model if args.use_ema else unet),
             tokenizer=tokenizer,
             scheduler=PNDMScheduler(
                 beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True
