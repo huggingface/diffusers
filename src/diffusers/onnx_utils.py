@@ -114,7 +114,7 @@ class OnnxRuntimeModel:
         cache_dir: Optional[str] = None,
         file_name: Optional[str] = None,
         provider: Optional[str] = None,
-        sess_options: Optional[ort.SessionOptions] = None,
+        sess_options: Optional["ort.SessionOptions"] = None,
         **kwargs,
     ):
         """
