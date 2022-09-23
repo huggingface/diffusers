@@ -350,8 +350,8 @@ def main():
     )
 
     # Freeze vae and text_encoder
-    # freeze_params(vae.parameters())
-    # freeze_params(text_encoder.parameters())
+    freeze_params(vae.parameters())
+    freeze_params(text_encoder.parameters())
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
@@ -527,20 +527,16 @@ def main():
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
 
-    text_encoder, vae, unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        text_encoder, vae, unet, optimizer, train_dataloader, lr_scheduler
+    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        unet, optimizer, train_dataloader, lr_scheduler
     )
 
     if args.use_ema:
         ema_unet = EMAModel(unet)
 
     # Move vae and unet to device
-    # vae.to(accelerator.device)
-    # text_encoder.to(accelerator.device)
-
-    # Keep vae and unet in eval model as we don't train these
-    vae.eval()
-    text_encoder.eval()
+    vae.to(accelerator.device)
+    text_encoder.to(accelerator.device)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -575,10 +571,7 @@ def main():
             with accelerator.accumulate(unet):
                 # Convert images to latent space
                 with torch.no_grad():
-                    if accelerator.num_processes > 1:
-                        latents = vae.module.encode(batch["pixel_values"]).latent_dist.sample().detach()
-                    else:
-                        latents = vae.encode(batch["pixel_values"]).latent_dist.sample().detach()
+                    latents = vae.encode(batch["pixel_values"]).latent_dist.sample().detach()
                 latents = latents * 0.18215
 
                 # Sample noise that we'll add to the latents
@@ -623,8 +616,8 @@ def main():
     # Create the pipeline using the trained modules and save it.
     if accelerator.is_main_process:
         pipeline = StableDiffusionPipeline(
-            text_encoder=accelerator.unwrap_model(text_encoder),
-            vae=accelerator.unwrap_model(vae),
+            text_encoder=text_encoder,
+            vae=vae,
             unet=accelerator.unwrap_model(ema_unet.averaged_model if args.use_ema else unet),
             tokenizer=tokenizer,
             scheduler=PNDMScheduler(
