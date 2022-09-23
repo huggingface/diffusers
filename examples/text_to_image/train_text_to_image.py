@@ -429,7 +429,7 @@ def main():
         input_ids = [example["input_ids"] for example in examples]
         padded_tokens = tokenizer.pad(
             {"input_ids": input_ids},
-            padding="max_length",
+            padding=True,
             max_length=tokenizer.model_max_length,
             return_tensors="pt",
         )
