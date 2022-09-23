@@ -506,7 +506,7 @@ def main():
                 # Convert images to latent space
                 with torch.no_grad():
                     if accelerator.num_processes > 1:
-                        vae.module.encode(batch["pixel_values"]).latent_dist.sample().detach()
+                        latents = vae.module.encode(batch["pixel_values"]).latent_dist.sample().detach()
                     else:
                         latents = vae.encode(batch["pixel_values"]).latent_dist.sample().detach()
                 latents = latents * 0.18215
