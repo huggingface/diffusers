@@ -311,7 +311,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             if isinstance(self.scheduler, LMSDiscreteScheduler):
                 latents = self.scheduler.step(noise_pred, t_index, latents, **extra_step_kwargs).prev_sample
                 # masking
-                init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, torch.tensor(t_index))
+                init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, torch.LongTensor([t_index]))
             else:
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
                 # masking
