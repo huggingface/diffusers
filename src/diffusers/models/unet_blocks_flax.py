@@ -19,6 +19,26 @@ from .resnet_flax import FlaxDownsample2D, FlaxResnetBlock2D, FlaxUpsample2D
 
 
 class FlaxCrossAttnDownBlock2D(nn.Module):
+    r"""
+    Cross Attention 2D Downsizing block - original architecture from Unet transformers:
+    https://arxiv.org/abs/2103.06104
+
+    Parameters:
+        in_channels (:obj:`int`):
+            Input channels
+        out_channels (:obj:`int`):
+            Output channels
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
+            Dropout rate
+        num_layers (:obj:`int`, *optional*, defaults to 1):
+            Number of attention blocks layers
+        attn_num_head_channels (:obj:`int`, *optional*, defaults to 1):
+            Number of attention heads of each spatial transformer block
+        add_downsample (:obj:`bool`, *optional*, defaults to `True`):
+            Whether to add downsampling layer before each final output
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+    """
     in_channels: int
     out_channels: int
     dropout: float = 0.0
@@ -55,7 +75,7 @@ class FlaxCrossAttnDownBlock2D(nn.Module):
         self.attentions = attentions
 
         if self.add_downsample:
-            self.downsample = FlaxDownsample2D(self.out_channels, dtype=self.dtype)
+            self.downsamplers_0 = FlaxDownsample2D(self.out_channels, dtype=self.dtype)
 
     def __call__(self, hidden_states, temb, encoder_hidden_states, deterministic=True):
         output_states = ()
@@ -66,13 +86,30 @@ class FlaxCrossAttnDownBlock2D(nn.Module):
             output_states += (hidden_states,)
 
         if self.add_downsample:
-            hidden_states = self.downsample(hidden_states)
+            hidden_states = self.downsamplers_0(hidden_states)
             output_states += (hidden_states,)
 
         return hidden_states, output_states
 
 
 class FlaxDownBlock2D(nn.Module):
+    r"""
+    Flax 2D downsizing block
+
+    Parameters:
+        in_channels (:obj:`int`):
+            Input channels
+        out_channels (:obj:`int`):
+            Output channels
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
+            Dropout rate
+        num_layers (:obj:`int`, *optional*, defaults to 1):
+            Number of attention blocks layers
+        add_downsample (:obj:`bool`, *optional*, defaults to `True`):
+            Whether to add downsampling layer before each final output
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+    """
     in_channels: int
     out_channels: int
     dropout: float = 0.0
@@ -96,7 +133,7 @@ class FlaxDownBlock2D(nn.Module):
         self.resnets = resnets
 
         if self.add_downsample:
-            self.downsample = FlaxDownsample2D(self.out_channels, dtype=self.dtype)
+            self.downsamplers_0 = FlaxDownsample2D(self.out_channels, dtype=self.dtype)
 
     def __call__(self, hidden_states, temb, deterministic=True):
         output_states = ()
@@ -106,13 +143,33 @@ class FlaxDownBlock2D(nn.Module):
             output_states += (hidden_states,)
 
         if self.add_downsample:
-            hidden_states = self.downsample(hidden_states)
+            hidden_states = self.downsamplers_0(hidden_states)
             output_states += (hidden_states,)
 
         return hidden_states, output_states
 
 
 class FlaxCrossAttnUpBlock2D(nn.Module):
+    r"""
+    Cross Attention 2D Upsampling block - original architecture from Unet transformers:
+    https://arxiv.org/abs/2103.06104
+
+    Parameters:
+        in_channels (:obj:`int`):
+            Input channels
+        out_channels (:obj:`int`):
+            Output channels
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
+            Dropout rate
+        num_layers (:obj:`int`, *optional*, defaults to 1):
+            Number of attention blocks layers
+        attn_num_head_channels (:obj:`int`, *optional*, defaults to 1):
+            Number of attention heads of each spatial transformer block
+        add_upsample (:obj:`bool`, *optional*, defaults to `True`):
+            Whether to add upsampling layer before each final output
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+    """
     in_channels: int
     out_channels: int
     prev_output_channel: int
@@ -151,7 +208,7 @@ class FlaxCrossAttnUpBlock2D(nn.Module):
         self.attentions = attentions
 
         if self.add_upsample:
-            self.upsample = FlaxUpsample2D(self.out_channels, dtype=self.dtype)
+            self.upsamplers_0 = FlaxUpsample2D(self.out_channels, dtype=self.dtype)
 
     def __call__(self, hidden_states, res_hidden_states_tuple, temb, encoder_hidden_states, deterministic=True):
         for resnet, attn in zip(self.resnets, self.attentions):
@@ -164,12 +221,31 @@ class FlaxCrossAttnUpBlock2D(nn.Module):
             hidden_states = attn(hidden_states, encoder_hidden_states, deterministic=deterministic)
 
         if self.add_upsample:
-            hidden_states = self.upsample(hidden_states)
+            hidden_states = self.upsamplers_0(hidden_states)
 
         return hidden_states
 
 
 class FlaxUpBlock2D(nn.Module):
+    r"""
+    Flax 2D upsampling block
+
+    Parameters:
+        in_channels (:obj:`int`):
+            Input channels
+        out_channels (:obj:`int`):
+            Output channels
+        prev_output_channel (:obj:`int`):
+            Output channels from the previous block
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
+            Dropout rate
+        num_layers (:obj:`int`, *optional*, defaults to 1):
+            Number of attention blocks layers
+        add_downsample (:obj:`bool`, *optional*, defaults to `True`):
+            Whether to add downsampling layer before each final output
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+    """
     in_channels: int
     out_channels: int
     prev_output_channel: int
@@ -196,7 +272,7 @@ class FlaxUpBlock2D(nn.Module):
         self.resnets = resnets
 
         if self.add_upsample:
-            self.upsample = FlaxUpsample2D(self.out_channels, dtype=self.dtype)
+            self.upsamplers_0 = FlaxUpsample2D(self.out_channels, dtype=self.dtype)
 
     def __call__(self, hidden_states, res_hidden_states_tuple, temb, deterministic=True):
         for resnet in self.resnets:
@@ -208,12 +284,27 @@ class FlaxUpBlock2D(nn.Module):
             hidden_states = resnet(hidden_states, temb, deterministic=deterministic)
 
         if self.add_upsample:
-            hidden_states = self.upsample(hidden_states)
+            hidden_states = self.upsamplers_0(hidden_states)
 
         return hidden_states
 
 
 class FlaxUNetMidBlock2DCrossAttn(nn.Module):
+    r"""
+    Cross Attention 2D Mid-level block - original architecture from Unet transformers: https://arxiv.org/abs/2103.06104
+
+    Parameters:
+        in_channels (:obj:`int`):
+            Input channels
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
+            Dropout rate
+        num_layers (:obj:`int`, *optional*, defaults to 1):
+            Number of attention blocks layers
+        attn_num_head_channels (:obj:`int`, *optional*, defaults to 1):
+            Number of attention heads of each spatial transformer block
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+    """
     in_channels: int
     dropout: float = 0.0
     num_layers: int = 1
