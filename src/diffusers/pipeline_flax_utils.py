@@ -244,8 +244,8 @@ class FlaxDiffusionPipeline(ConfigMixin):
 
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
-                specific pipeline class. The overritten components are then directly passed to the pipelines `__init__`
-                method. See example below for more information.
+                specific pipeline class. The overwritten components are then directly passed to the pipelines
+                `__init__` method. See example below for more information.
 
         <Tip>
 
@@ -427,7 +427,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
                     # make sure we don't initialize the weights to save time
                     if name == "safety_checker":
                         loaded_sub_model = DummyChecker()
-                        loaded_params = DummyChecker()
+                        loaded_params = {}
                     elif from_pt:
                         # TODO(Suraj): Fix this in Transformers. We should be able to use `_do_init=False` here
                         loaded_sub_model = load_method(loadable_folder, from_pt=from_pt)
@@ -437,8 +437,8 @@ class FlaxDiffusionPipeline(ConfigMixin):
                         loaded_sub_model, loaded_params = load_method(loadable_folder, _do_init=False)
                     params[name] = loaded_params
                 elif issubclass(class_obj, SchedulerMixin):
-                    loaded_sub_model = load_method(loadable_folder)
-                    params[name] = loaded_sub_model.create_state()
+                    loaded_sub_model, scheduler_state = load_method(loadable_folder)
+                    params[name] = scheduler_state
                 else:
                     loaded_sub_model = load_method(loadable_folder)
 

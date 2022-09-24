@@ -23,6 +23,8 @@ class FlaxDecoderOutput(BaseOutput):
     Args:
         sample (`jnp.ndarray` of shape `(batch_size, num_channels, height, width)`):
             Decoded output sample of the model. Output of the last layer of the model.
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
     """
 
     sample: jnp.ndarray
@@ -43,6 +45,16 @@ class FlaxAutoencoderKLOutput(BaseOutput):
 
 
 class FlaxUpsample2D(nn.Module):
+    """
+    Flax implementation of 2D Upsample layer
+
+    Args:
+        in_channels (`int`):
+            Input channels
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+    """
+
     in_channels: int
     dtype: jnp.dtype = jnp.float32
 
@@ -67,6 +79,16 @@ class FlaxUpsample2D(nn.Module):
 
 
 class FlaxDownsample2D(nn.Module):
+    """
+    Flax implementation of 2D Downsample layer
+
+    Args:
+        in_channels (`int`):
+            Input channels
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+    """
+
     in_channels: int
     dtype: jnp.dtype = jnp.float32
 
@@ -87,9 +109,25 @@ class FlaxDownsample2D(nn.Module):
 
 
 class FlaxResnetBlock2D(nn.Module):
+    """
+    Flax implementation of 2D Resnet Block.
+
+    Args:
+        in_channels (`int`):
+            Input channels
+        out_channels (`int`):
+            Output channels
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
+            Dropout rate
+        use_nin_shortcut (:obj:`bool`, *optional*, defaults to `None`):
+            Whether to use `nin_shortcut`. This activates a new layer inside ResNet block
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+    """
+
     in_channels: int
     out_channels: int = None
-    dropout_prob: float = 0.0
+    dropout: float = 0.0
     use_nin_shortcut: bool = None
     dtype: jnp.dtype = jnp.float32
 
@@ -106,7 +144,7 @@ class FlaxResnetBlock2D(nn.Module):
         )
 
         self.norm2 = nn.GroupNorm(num_groups=32, epsilon=1e-6)
-        self.dropout = nn.Dropout(self.dropout_prob)
+        self.dropout_layer = nn.Dropout(self.dropout)
         self.conv2 = nn.Conv(
             out_channels,
             kernel_size=(3, 3),
@@ -135,7 +173,7 @@ class FlaxResnetBlock2D(nn.Module):
 
         hidden_states = self.norm2(hidden_states)
         hidden_states = nn.swish(hidden_states)
-        hidden_states = self.dropout(hidden_states, deterministic)
+        hidden_states = self.dropout_layer(hidden_states, deterministic)
         hidden_states = self.conv2(hidden_states)
 
         if self.conv_shortcut is not None:
@@ -145,6 +183,18 @@ class FlaxResnetBlock2D(nn.Module):
 
 
 class FlaxAttentionBlock(nn.Module):
+    r"""
+    Flax Convolutional based multi-head attention block for diffusion-based VAE.
+
+    Parameters:
+        channels (:obj:`int`):
+            Input channels
+        num_head_channels (:obj:`int`, *optional*, defaults to `None`):
+            Number of attention heads
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+
+    """
     channels: int
     num_head_channels: int = None
     dtype: jnp.dtype = jnp.float32
@@ -202,6 +252,23 @@ class FlaxAttentionBlock(nn.Module):
 
 
 class FlaxDownEncoderBlock2D(nn.Module):
+    r"""
+    Flax Resnet blocks-based Encoder block for diffusion-based VAE.
+
+    Parameters:
+        in_channels (:obj:`int`):
+            Input channels
+        out_channels (:obj:`int`):
+            Output channels
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
+            Dropout rate
+        num_layers (:obj:`int`, *optional*, defaults to 1):
+            Number of Resnet layer block
+        add_downsample (:obj:`bool`, *optional*, defaults to `True`):
+            Whether to add downsample layer
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+    """
     in_channels: int
     out_channels: int
     dropout: float = 0.0
@@ -217,7 +284,7 @@ class FlaxDownEncoderBlock2D(nn.Module):
             res_block = FlaxResnetBlock2D(
                 in_channels=in_channels,
                 out_channels=self.out_channels,
-                dropout_prob=self.dropout,
+                dropout=self.dropout,
                 dtype=self.dtype,
             )
             resnets.append(res_block)
@@ -237,6 +304,23 @@ class FlaxDownEncoderBlock2D(nn.Module):
 
 
 class FlaxUpEncoderBlock2D(nn.Module):
+    r"""
+    Flax Resnet blocks-based Encoder block for diffusion-based VAE.
+
+    Parameters:
+        in_channels (:obj:`int`):
+            Input channels
+        out_channels (:obj:`int`):
+            Output channels
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
+            Dropout rate
+        num_layers (:obj:`int`, *optional*, defaults to 1):
+            Number of Resnet layer block
+        add_downsample (:obj:`bool`, *optional*, defaults to `True`):
+            Whether to add downsample layer
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+    """
     in_channels: int
     out_channels: int
     dropout: float = 0.0
@@ -251,7 +335,7 @@ class FlaxUpEncoderBlock2D(nn.Module):
             res_block = FlaxResnetBlock2D(
                 in_channels=in_channels,
                 out_channels=self.out_channels,
-                dropout_prob=self.dropout,
+                dropout=self.dropout,
                 dtype=self.dtype,
             )
             resnets.append(res_block)
@@ -272,6 +356,21 @@ class FlaxUpEncoderBlock2D(nn.Module):
 
 
 class FlaxUNetMidBlock2D(nn.Module):
+    r"""
+    Flax Unet Mid-Block module.
+
+    Parameters:
+        in_channels (:obj:`int`):
+            Input channels
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
+            Dropout rate
+        num_layers (:obj:`int`, *optional*, defaults to 1):
+            Number of Resnet layer block
+        attn_num_head_channels (:obj:`int`, *optional*, defaults to `1`):
+            Number of attention heads for each attention block
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+    """
     in_channels: int
     dropout: float = 0.0
     num_layers: int = 1
@@ -284,7 +383,7 @@ class FlaxUNetMidBlock2D(nn.Module):
             FlaxResnetBlock2D(
                 in_channels=self.in_channels,
                 out_channels=self.in_channels,
-                dropout_prob=self.dropout,
+                dropout=self.dropout,
                 dtype=self.dtype,
             )
         ]
@@ -300,7 +399,7 @@ class FlaxUNetMidBlock2D(nn.Module):
             res_block = FlaxResnetBlock2D(
                 in_channels=self.in_channels,
                 out_channels=self.in_channels,
-                dropout_prob=self.dropout,
+                dropout=self.dropout,
                 dtype=self.dtype,
             )
             resnets.append(res_block)
@@ -318,6 +417,39 @@ class FlaxUNetMidBlock2D(nn.Module):
 
 
 class FlaxEncoder(nn.Module):
+    r"""
+    Flax Implementation of VAE Encoder.
+
+    This model is a Flax Linen [flax.linen.Module](https://flax.readthedocs.io/en/latest/flax.linen.html#module)
+    subclass. Use it as a regular Flax linen Module and refer to the Flax documentation for all matter related to
+    general usage and behavior.
+
+    Finally, this model supports inherent JAX features such as:
+    - [Just-In-Time (JIT) compilation](https://jax.readthedocs.io/en/latest/jax.html#just-in-time-compilation-jit)
+    - [Automatic Differentiation](https://jax.readthedocs.io/en/latest/jax.html#automatic-differentiation)
+    - [Vectorization](https://jax.readthedocs.io/en/latest/jax.html#vectorization-vmap)
+    - [Parallelization](https://jax.readthedocs.io/en/latest/jax.html#parallelization-pmap)
+
+    Parameters:
+        in_channels (:obj:`int`, *optional*, defaults to 3):
+            Input channels
+        out_channels (:obj:`int`, *optional*, defaults to 3):
+            Output channels
+        down_block_types (:obj:`Tuple[str]`, *optional*, defaults to `(DownEncoderBlock2D)`):
+            DownEncoder block type
+        block_out_channels (:obj:`Tuple[str]`, *optional*, defaults to `(64,)`):
+            Tuple containing the number of output channels for each block
+        layers_per_block (:obj:`int`, *optional*, defaults to `2`):
+            Number of Resnet layer for each block
+        norm_num_groups (:obj:`int`, *optional*, defaults to `2`):
+            norm num group
+        act_fn (:obj:`str`, *optional*, defaults to `silu`):
+            Activation function
+        double_z (:obj:`bool`, *optional*, defaults to `False`):
+            Whether to double the last output channels
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+    """
     in_channels: int = 3
     out_channels: int = 3
     down_block_types: Tuple[str] = ("DownEncoderBlock2D",)
@@ -393,7 +525,39 @@ class FlaxEncoder(nn.Module):
 
 
 class FlaxDecoder(nn.Module):
-    dtype: jnp.dtype = jnp.float32
+    r"""
+    Flax Implementation of VAE Decoder.
+
+    This model is a Flax Linen [flax.linen.Module](https://flax.readthedocs.io/en/latest/flax.linen.html#module)
+    subclass. Use it as a regular Flax linen Module and refer to the Flax documentation for all matter related to
+    general usage and behavior.
+
+    Finally, this model supports inherent JAX features such as:
+    - [Just-In-Time (JIT) compilation](https://jax.readthedocs.io/en/latest/jax.html#just-in-time-compilation-jit)
+    - [Automatic Differentiation](https://jax.readthedocs.io/en/latest/jax.html#automatic-differentiation)
+    - [Vectorization](https://jax.readthedocs.io/en/latest/jax.html#vectorization-vmap)
+    - [Parallelization](https://jax.readthedocs.io/en/latest/jax.html#parallelization-pmap)
+
+    Parameters:
+        in_channels (:obj:`int`, *optional*, defaults to 3):
+            Input channels
+        out_channels (:obj:`int`, *optional*, defaults to 3):
+            Output channels
+        up_block_types (:obj:`Tuple[str]`, *optional*, defaults to `(UpDecoderBlock2D)`):
+            UpDecoder block type
+        block_out_channels (:obj:`Tuple[str]`, *optional*, defaults to `(64,)`):
+            Tuple containing the number of output channels for each block
+        layers_per_block (:obj:`int`, *optional*, defaults to `2`):
+            Number of Resnet layer for each block
+        norm_num_groups (:obj:`int`, *optional*, defaults to `32`):
+            norm num group
+        act_fn (:obj:`str`, *optional*, defaults to `silu`):
+            Activation function
+        double_z (:obj:`bool`, *optional*, defaults to `False`):
+            Whether to double the last output channels
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            parameters `dtype`
+    """
     in_channels: int = 3
     out_channels: int = 3
     up_block_types: Tuple[str] = ("UpDecoderBlock2D",)
@@ -401,6 +565,7 @@ class FlaxDecoder(nn.Module):
     layers_per_block: int = 2
     norm_num_groups: int = 32
     act_fn: str = "silu"
+    dtype: jnp.dtype = jnp.float32
 
     def setup(self):
         block_out_channels = self.block_out_channels
@@ -508,6 +673,44 @@ class FlaxDiagonalGaussianDistribution(object):
 
 @flax_register_to_config
 class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
+    r"""
+    Flax Implementation of Variational Autoencoder (VAE) model with KL loss from the paper Auto-Encoding Variational
+    Bayes by Diederik P. Kingma and Max Welling.
+
+    This model is a Flax Linen [flax.linen.Module](https://flax.readthedocs.io/en/latest/flax.linen.html#module)
+    subclass. Use it as a regular Flax linen Module and refer to the Flax documentation for all matter related to
+    general usage and behavior.
+
+    Finally, this model supports inherent JAX features such as:
+    - [Just-In-Time (JIT) compilation](https://jax.readthedocs.io/en/latest/jax.html#just-in-time-compilation-jit)
+    - [Automatic Differentiation](https://jax.readthedocs.io/en/latest/jax.html#automatic-differentiation)
+    - [Vectorization](https://jax.readthedocs.io/en/latest/jax.html#vectorization-vmap)
+    - [Parallelization](https://jax.readthedocs.io/en/latest/jax.html#parallelization-pmap)
+
+    Parameters:
+        in_channels (:obj:`int`, *optional*, defaults to 3):
+            Input channels
+        out_channels (:obj:`int`, *optional*, defaults to 3):
+            Output channels
+        down_block_types (:obj:`Tuple[str]`, *optional*, defaults to `(DownEncoderBlock2D)`):
+            DownEncoder block type
+        up_block_types (:obj:`Tuple[str]`, *optional*, defaults to `(UpDecoderBlock2D)`):
+            UpDecoder block type
+        block_out_channels (:obj:`Tuple[str]`, *optional*, defaults to `(64,)`):
+            Tuple containing the number of output channels for each block
+        layers_per_block (:obj:`int`, *optional*, defaults to `2`):
+            Number of Resnet layer for each block
+        act_fn (:obj:`str`, *optional*, defaults to `silu`):
+            Activation function
+        latent_channels (:obj:`int`, *optional*, defaults to `4`):
+            Latent space channels
+        norm_num_groups (:obj:`int`, *optional*, defaults to `32`):
+            Norm num group
+        sample_size (:obj:`int`, *optional*, defaults to `32`):
+            Sample input size
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            parameters `dtype`
+    """
     in_channels: int = 3
     out_channels: int = 3
     down_block_types: Tuple[str] = ("DownEncoderBlock2D",)

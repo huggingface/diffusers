@@ -27,7 +27,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         vqvae ([`VQModel`]):
             Vector-quantized (VQ) Model to encode and decode images to and from latent representations.
         bert ([`LDMBertModel`]):
-            Text-encoder model based on [BERT](ttps://huggingface.co/docs/transformers/model_doc/bert) architecture.
+            Text-encoder model based on [BERT](https://huggingface.co/docs/transformers/model_doc/bert) architecture.
         tokenizer (`transformers.BertTokenizer`):
             Tokenizer of class
             [BertTokenizer](https://huggingface.co/docs/transformers/model_doc/bert#transformers.BertTokenizer).
@@ -397,7 +397,7 @@ class LDMBertAttention(nn.Module):
         attn_output = attn_output.transpose(1, 2)
 
         # Use the `embed_dim` from the config (stored in the class) rather than `hidden_state` because `attn_output` can be
-        # partitioned aross GPUs when using tensor-parallelism.
+        # partitioned across GPUs when using tensor-parallelism.
         attn_output = attn_output.reshape(bsz, tgt_len, self.inner_dim)
 
         attn_output = self.out_proj(attn_output)
@@ -478,7 +478,7 @@ class LDMBertEncoderLayer(nn.Module):
 class LDMBertPreTrainedModel(PreTrainedModel):
     config_class = LDMBertConfig
     base_model_prefix = "model"
-    supports_gradient_checkpointing = True
+    _supports_gradient_checkpointing = True
     _keys_to_ignore_on_load_unexpected = [r"encoder\.version", r"decoder\.version"]
 
     def _init_weights(self, module):

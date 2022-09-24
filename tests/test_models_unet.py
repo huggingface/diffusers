@@ -18,7 +18,7 @@ import unittest
 
 import torch
 
-from diffusers import UNet2DModel
+from diffusers import UNet2DConditionModel, UNet2DModel
 from diffusers.testing_utils import floats_tensor, slow, torch_device
 
 from .test_modeling_common import ModelTesterMixin
@@ -157,6 +157,82 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         # fmt: on
 
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))
+
+
+class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
+    model_class = UNet2DConditionModel
+
+    @property
+    def dummy_input(self):
+        batch_size = 4
+        num_channels = 4
+        sizes = (32, 32)
+
+        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        time_step = torch.tensor([10]).to(torch_device)
+        encoder_hidden_states = floats_tensor((batch_size, 4, 32)).to(torch_device)
+
+        return {"sample": noise, "timestep": time_step, "encoder_hidden_states": encoder_hidden_states}
+
+    @property
+    def input_shape(self):
+        return (4, 32, 32)
+
+    @property
+    def output_shape(self):
+        return (4, 32, 32)
+
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = {
+            "block_out_channels": (32, 64),
+            "down_block_types": ("CrossAttnDownBlock2D", "DownBlock2D"),
+            "up_block_types": ("UpBlock2D", "CrossAttnUpBlock2D"),
+            "cross_attention_dim": 32,
+            "attention_head_dim": 8,
+            "out_channels": 4,
+            "in_channels": 4,
+            "layers_per_block": 2,
+            "sample_size": 32,
+        }
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+
+    def test_gradient_checkpointing(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        out = model(**inputs_dict).sample
+        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
+        # we won't calculate the loss and rather backprop on out.sum()
+        model.zero_grad()
+        out.sum().backward()
+
+        # now we save the output and parameter gradients that we will use for comparison purposes with
+        # the non-checkpointed run.
+        output_not_checkpointed = out.data.clone()
+        grad_not_checkpointed = {}
+        for name, param in model.named_parameters():
+            grad_not_checkpointed[name] = param.grad.data.clone()
+
+        model.enable_gradient_checkpointing()
+        out = model(**inputs_dict).sample
+        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
+        # we won't calculate the loss and rather backprop on out.sum()
+        model.zero_grad()
+        out.sum().backward()
+
+        # now we save the output and parameter gradients that we will use for comparison purposes with
+        # the non-checkpointed run.
+        output_checkpointed = out.data.clone()
+        grad_checkpointed = {}
+        for name, param in model.named_parameters():
+            grad_checkpointed[name] = param.grad.data.clone()
+
+        # compare the output and parameters gradients
+        self.assertTrue((output_checkpointed == output_not_checkpointed).all())
+        for name in grad_checkpointed:
+            self.assertTrue(torch.allclose(grad_checkpointed[name], grad_not_checkpointed[name], atol=5e-5))
 
 
 #    TODO(Patrick) - Re-add this test after having cleaned up LDM
