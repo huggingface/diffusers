@@ -244,8 +244,8 @@ class FlaxDiffusionPipeline(ConfigMixin):
 
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
-                specific pipeline class. The overritten components are then directly passed to the pipelines `__init__`
-                method. See example below for more information.
+                specific pipeline class. The overwritten components are then directly passed to the pipelines
+                `__init__` method. See example below for more information.
 
         <Tip>
 
