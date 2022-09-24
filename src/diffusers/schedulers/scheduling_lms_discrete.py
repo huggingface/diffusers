@@ -81,7 +81,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
     ):
         if trained_betas is not None:
             self.betas = np.asarray(trained_betas)
-        if beta_schedule == "linear":
+        elif beta_schedule == "linear":
             self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
