@@ -9,10 +9,10 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler, EulerAScheduler
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
-
+from diffusers.schedulers.scheduling_euler_a import CFGDenoiserForward
 
 class StableDiffusionPipeline(DiffusionPipeline):
     r"""
@@ -238,7 +238,10 @@ class StableDiffusionPipeline(DiffusionPipeline):
         # if we use LMSDiscreteScheduler, let's make sure latents are multiplied by sigmas
         if isinstance(self.scheduler, LMSDiscreteScheduler):
             latents = latents * self.scheduler.sigmas[0]
-
+        elif isinstance(self.scheduler, EulerAScheduler):
+            sigma = self.scheduler.timesteps[0]
+            latents = latents * sigma
+        
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
@@ -247,6 +250,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
+        if generator is not None:
+            extra_step_kwargs["generator"] = generator
 
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             # expand the latents if we are doing classifier free guidance
@@ -256,8 +261,16 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 # the model input needs to be scaled to match the continuous ODE formulation in K-LMS
                 latent_model_input = latent_model_input / ((sigma**2 + 1) ** 0.5)
 
-            # predict the noise residual
-            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+            noise_pred = None
+            if isinstance(self.scheduler, EulerAScheduler):
+                sigma = t.reshape(1)
+                sigma_in = torch.cat([sigma] * 2)
+                # noise_pred = model(latent_model_input,sigma_in,uncond_embeddings, text_embeddings,guidance_scale)
+                noise_pred = CFGDenoiserForward(self.unet, latent_model_input, sigma_in, text_embeddings , guidance_scale,DSsigmas=self.scheduler.DSsigmas)
+                # noise_pred = self.unet(latent_model_input, sigma_in, encoder_hidden_states=text_embeddings).sample
+            else:
+                # predict the noise residual
+                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
 
             # perform guidance
             if do_classifier_free_guidance:
@@ -267,6 +280,10 @@ class StableDiffusionPipeline(DiffusionPipeline):
             # compute the previous noisy sample x_t -> x_t-1
             if isinstance(self.scheduler, LMSDiscreteScheduler):
                 latents = self.scheduler.step(noise_pred, i, latents, **extra_step_kwargs).prev_sample
+            elif isinstance(self.scheduler, EulerAScheduler):
+                if i <  self.scheduler.timesteps.shape[0] - 1: #avoid out of bound error
+                    t_prev = self.scheduler.timesteps[i+1]
+                    latents = self.scheduler.step(noise_pred, t, t_prev, latents, **extra_step_kwargs).prev_sample
             else:
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
