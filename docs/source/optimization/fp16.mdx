@@ -57,6 +57,7 @@ Since we’re using **convolutional networks** (other types currently not suppor
 
 ```python
 import torch
+
 torch.backends.cudnn.benchmark = True
 ```
 
@@ -66,6 +67,7 @@ On Ampere and later CUDA devices matrix multiplications and convolutions can use
 
 ```python
 import torch
+
 torch.backends.cuda.matmul.allow_tf32 = True
 ```
 
@@ -137,9 +139,11 @@ Channels last memory format is an alternative way of ordering NCHW tensors in me
 For example, in order to set the UNet model in our pipeline to use channels last format, we can use the following:
 
 ```python
-print(pipe.unet.conv_out.state_dict()['weight'].stride()) # (2880, 9, 3, 1)
-pipe.unet.to(memory_format=torch.channels_last) # in-place operation
-print(pipe.unet.conv_out.state_dict()['weight'].stride()) # (2880, 1, 960, 320) haveing a stride of 1 for the 2nd dimension proves that it works
+print(pipe.unet.conv_out.state_dict()["weight"].stride())  # (2880, 9, 3, 1)
+pipe.unet.to(memory_format=torch.channels_last)  # in-place operation
+print(
+    pipe.unet.conv_out.state_dict()["weight"].stride()
+)  # (2880, 1, 960, 320) haveing a stride of 1 for the 2nd dimension proves that it works
 ```
 
 ## Tracing
@@ -170,16 +174,16 @@ def generate_inputs():
 
 
 pipe = StableDiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4", 
+    "CompVis/stable-diffusion-v1-4",
     # scheduler=scheduler,
     use_auth_token=True,
     revision="fp16",
-    torch_dtype=torch.float16
+    torch_dtype=torch.float16,
 ).to("cuda")
 unet = pipe.unet
 unet.eval()
-unet.to(memory_format=torch.channels_last) # use channels_last memory format
-unet.forward = functools.partial(unet.forward, return_dict=False) # set return_dict=False as default
+unet.to(memory_format=torch.channels_last)  # use channels_last memory format
+unet.forward = functools.partial(unet.forward, return_dict=False)  # set return_dict=False as default
 
 # warmup
 for _ in range(3):
@@ -187,7 +191,7 @@ for _ in range(3):
         inputs = generate_inputs()
         orig_output = unet(*inputs)
 
-# trace        
+# trace
 print("tracing..")
 unet_traced = torch.jit.trace(unet, inputs)
 unet_traced.eval()
@@ -198,7 +202,7 @@ print("done tracing")
 for _ in range(5):
     with torch.inference_mode():
         inputs = generate_inputs()
-        orig_output = unet_traced(*inputs) 
+        orig_output = unet_traced(*inputs)
 
 
 # benchmarking
@@ -229,16 +233,18 @@ from diffusers import StableDiffusionPipeline
 import torch
 from dataclasses import dataclass
 
+
 @dataclass
-class UNet2DConditionOutput():
+class UNet2DConditionOutput:
     sample: torch.FloatTensor
 
+
 pipe = StableDiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4", 
+    "CompVis/stable-diffusion-v1-4",
     # scheduler=scheduler,
     use_auth_token=True,
     revision="fp16",
-    torch_dtype=torch.float16
+    torch_dtype=torch.float16,
 ).to("cuda")
 
 # use jitted unet
@@ -249,12 +255,14 @@ class TracedUNet(torch.nn.Module):
         super().__init__()
         self.in_channels = pipe.unet.in_channels
         self.device = pipe.unet.device
+
     def forward(self, latent_model_input, t, encoder_hidden_states):
         sample = unet_traced(latent_model_input, t, encoder_hidden_states)[0]
         return UNet2DConditionOutput(sample=sample)
 
+
 pipe.unet = TracedUNet()
 
 with torch.inference_mode():
-    image = pipe([prompt]*1, num_inference_steps=50).images[0]
+    image = pipe([prompt] * 1, num_inference_steps=50).images[0]
 ```
