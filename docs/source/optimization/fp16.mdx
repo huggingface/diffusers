@@ -157,6 +157,10 @@ import functools
 # torch disable grad
 torch.set_grad_enabled(False)
 
+# set variables
+n_experiments = 2
+unet_runs_per_experiment = 50
+
 # load inputs
 def generate_inputs():
     sample = torch.randn(2, 4, 64, 64).half().cuda()
@@ -199,17 +203,17 @@ for _ in range(5):
 
 # benchmarking
 with torch.inference_mode():
-    for _ in range(2):
+    for _ in range(n_experiments):
         torch.cuda.synchronize()
         start_time = time.time()
-        for _ in range(50):
+        for _ in range(unet_runs_per_experiment):
             orig_output = unet_traced(*inputs)
         torch.cuda.synchronize()
         print(f"unet traced inference took {time.time() - start_time:.2f} seconds")
-    for _ in range(2):
+    for _ in range(n_experiments):
         torch.cuda.synchronize()
         start_time = time.time()
-        for _ in range(50):
+        for _ in range(unet_runs_per_experiment):
             orig_output = unet(*inputs)
         torch.cuda.synchronize()
         print(f"unet inference took {time.time() - start_time:.2f} seconds")
@@ -252,5 +256,5 @@ class TracedUNet(torch.nn.Module):
 pipe.unet = TracedUNet()
 
 with torch.inference_mode():
-    image = pipe([prompt]*1, num_inference_steps=5).images[0]
+    image = pipe([prompt]*1, num_inference_steps=50).images[0]
 ```
