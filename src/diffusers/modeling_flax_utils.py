@@ -436,7 +436,7 @@ class FlaxModelMixin:
             )
             cls._missing_keys = missing_keys
 
-        # Mistmatched keys contains tuples key/shape1/shape2 of weights in the checkpoint that have a shape not
+        # Mismatched keys contains tuples key/shape1/shape2 of weights in the checkpoint that have a shape not
         # matching the weights in the model.
         mismatched_keys = []
         for key in state.keys():
