@@ -21,7 +21,8 @@ helper functions:   append_zero(),
                     get_scalings(),
                     DSsigma_to_t(),
                     DiscreteEpsDDPMDenoiserForward(),
-
+                    to_d(),
+                    get_ancestral_step()
 need cleaning 
 '''
 
@@ -61,6 +62,12 @@ def CFGDenoiserForward(Unet, x_in, sigma_in, cond_in, cond_scale,DSsigmas=None):
         noise_pred = DiscreteEpsDDPMDenoiserForward(Unet,x_in, sigma_in,DSsigmas=DSsigmas, cond=cond_in)
         return noise_pred
 
+# from k_samplers sampling.py
+def to_d(x, sigma, denoised):
+    """Converts a denoiser output to a Karras ODE derivative."""
+    return (x - denoised) / append_dims(sigma, x.ndim)
+    
+
 def get_scalings(sigma):
         sigma_data = 1.
         c_out = -sigma
@@ -91,6 +98,13 @@ def DiscreteEpsDDPMDenoiserForward(Unet,input,sigma,DSsigmas=None,**kwargs):
 
 
 
+#from k_samplers sampling.py
+def get_ancestral_step(sigma_from, sigma_to):
+    """Calculates the noise level (sigma_down) to step down to and the amount
+    of noise to add (sigma_up) when doing an ancestral sampling step."""
+    sigma_up = (sigma_to ** 2 * (sigma_from ** 2 - sigma_to ** 2) / sigma_from ** 2) ** 0.5
+    sigma_down = (sigma_to ** 2 - sigma_up ** 2) ** 0.5
+    return sigma_down, sigma_up
 
 
 '''
@@ -260,16 +274,16 @@ class EulerAScheduler(SchedulerMixin, ConfigMixin):
 
         """
         latents = sample
-        sigma_down, sigma_up = sampling.get_ancestral_step(timestep, timestep_prev)
+        sigma_down, sigma_up = get_ancestral_step(timestep, timestep_prev)
         
         # if callback is not None:
         #     callback({'x': latents, 'i': i, 'sigma': timestep, 'sigma_hat': timestep, 'denoised': model_output})
-        d = sampling.to_d(latents, timestep, model_output)
+        d = to_d(latents, timestep, model_output)
         # Euler method
         dt = sigma_down - timestep
         latents = latents + d * dt
         latents = latents + torch.randn_like(latents) * sigma_up
-        return SchedulerOutput(prev_sample=sample_prev)
+        return SchedulerOutput(prev_sample=latents)
 
 
 
