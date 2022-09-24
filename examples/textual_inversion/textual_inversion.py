@@ -16,7 +16,7 @@ import PIL
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
-from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipelineMixedDevices, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from huggingface_hub import HfFolder, Repository, whoami
@@ -27,7 +27,8 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 import albumentations as A
 import gc
 import wandb
-logger = get_logger(__name__)
+# logger = get_logger(__name__)
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 def wandb_setup(
     args: dict,
@@ -38,9 +39,15 @@ def wandb_setup(
         config=args,
     )
 
-def save_progress(text_encoder, vae, unet, tokenizer, args):
+def save_progress(text_encoder, pipeline, placeholder_token_id, accelerator, args):
     print("Saving pipeline")
-    pipeline = StableDiffusionPipeline(
+    pipeline.save_pretrained(args.output_dir)
+    learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_id]
+    learned_embeds = text_encoder.get_input_embeddings().weight[placeholder_token_id]
+    learned_embeds_dict = {args.placeholder_token: learned_embeds.detach().cpu()}
+    torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
+def get_pipeline(text_encoder, vae, unet, tokenizer,accelerator):
+    pipeline = StableDiffusionPipelineMixedDevices(
         text_encoder=accelerator.unwrap_model(text_encoder),
         vae=vae,
         unet=unet,
@@ -48,28 +55,23 @@ def save_progress(text_encoder, vae, unet, tokenizer, args):
         scheduler=PNDMScheduler(
             beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True
         ),
-        safety_checker=StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker"),
         feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
     )
-    pipeline.save_pretrained(args.output_dir)
-    learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_id]
-    learned_embeds_dict = {args.placeholder_token: learned_embeds.detach().cpu()}
-    torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
     return pipeline
 def log_progress(pipeline, args, step, wandb_run, logs={}):
     print("Running pipeline")
 
     prompt = f"A picture of {args.placeholder_token}"
 
-    with autocast("cuda"):
-        image = pipe(prompt, height=args.resolution, width=args.resolution, num_inference_steps=50, guidance_scale=7.5).images[0]
+    with torch.autocast("cuda"):
+        image = pipeline(prompt, height=args.resolution, width=args.resolution, num_inference_steps=50, guidance_scale=7.5).images[0]
 
-    image.save(f"{args.placeholder_token}.png")
+    image.save("output.png")
     wandb_run.log(
         {
             **logs,
             "iter": step,
-            "samples": wandb.Image(f"{args.placeholder_token}.png", caption=prompt),
+            "samples": wandb.Image("output.png", caption=prompt),
         }
     )
 
@@ -91,6 +93,12 @@ def parse_args():
         "--log_frequency",
         type=int,
         default=100,
+        help="Frequency to log/save the model.",
+    )
+    parser.add_argument(
+        "--save_frequency",
+        type=int,
+        default=500,
         help="Frequency to log/save the model.",
     )
     parser.add_argument(
@@ -139,6 +147,9 @@ def parse_args():
     )
     parser.add_argument(
         "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution"
+    )
+    parser.add_argument(
+        "--random_crop", action="store_true", help="Whether to random crop images before resizing to resolution"
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
@@ -299,6 +310,7 @@ class TextualInversionDataset(Dataset):
         set="train",
         placeholder_token="*",
         center_crop=False,
+        random_crop=False
     ):
         self.data_root = data_root
         self.tokenizer = tokenizer
@@ -306,6 +318,7 @@ class TextualInversionDataset(Dataset):
         self.size = size
         self.placeholder_token = placeholder_token
         self.center_crop = center_crop
+        self.random_crop = random_crop
         self.flip_p = flip_p
 
         self.image_paths = [os.path.join(self.data_root, file_path) for file_path in os.listdir(self.data_root)]
@@ -354,8 +367,9 @@ class TextualInversionDataset(Dataset):
 
         # default to score-sde preprocessing
         img = np.array(image).astype(np.uint8)
-        transformed = self.base_transform(image=img)
-        img = transformed["image"]
+        if self.random_crop:
+            transformed = self.base_transform(image=img)
+            img = transformed["image"]
 
         if self.center_crop:
             crop = min(img.shape[0], img.shape[1])
@@ -450,12 +464,12 @@ def main():
 
     # Load models and create wrapper for stable diffusion
     # print('Beginning')
-    # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+    # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
     text_encoder = CLIPTextModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", use_auth_token=args.use_auth_token
     )
     # print('Load text encoder')
-    # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+    # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="vae", use_auth_token=args.use_auth_token
     )
@@ -488,6 +502,9 @@ def main():
         args.learning_rate = (
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
+        # args.learning_rate = (
+        #     args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size
+        # )
 
     # Initialize the optimizer
     optimizer = torch.optim.AdamW(
@@ -511,6 +528,7 @@ def main():
         repeats=args.repeats,
         learnable_property=args.learnable_property,
         center_crop=args.center_crop,
+        random_crop=args.random_crop,
         set="train",
     )
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.train_batch_size, shuffle=True)
@@ -528,26 +546,25 @@ def main():
         num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
-    text_encoder = text_encoder.cpu()
-    # optimizer, lr_scheduler = accelerator.prepare(
-    #     optimizer, lr_scheduler
-    # )
+    text_encoder, optimizer, lr_scheduler = accelerator.prepare(
+        text_encoder, optimizer, lr_scheduler
+    )
     torch.cuda.empty_cache()
     # Move vae and unet to device
     vae.to('cpu')
     # print('Loaded data loader')
-    # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+    # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
     
     # print('Load vae')
-    # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
-    unet.to(accelerator.device)
+    # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
+    unet.to(device)
     # print('Load unet')
-    # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+    # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
     # Keep vae and unet in eval model as we don't train these
     vae.eval()
     unet.eval()
     # print('eval mode')
-    # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+    # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
@@ -562,16 +579,18 @@ def main():
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
+    # total_batch_size = args.train_batch_size * args.gradient_accumulation_steps
 
-    logger.info("***** Running training *****")
-    logger.info(f"  Num examples = {len(train_dataset)}")
-    logger.info(f"  Num Epochs = {args.num_train_epochs}")
-    logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
-    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
-    logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
-    logger.info(f"  Total optimization steps = {args.max_train_steps}")
+
+    print("***** Running training *****")
+    print(f"  Num examples = {len(train_dataset)}")
+    print(f"  Num Epochs = {args.num_train_epochs}")
+    print(f"  Instantaneous batch size per device = {args.train_batch_size}")
+    print(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
+    print(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
+    print(f"  Total optimization steps = {args.max_train_steps}")
     # Only show the progress bar once on each machine.
-    progress_bar = tqdm(range(args.max_train_steps), disable=not accelerator.is_local_main_process)
+    progress_bar = tqdm(range(args.max_train_steps))
     progress_bar.set_description("Steps")
     global_step = 0
     
@@ -579,14 +598,14 @@ def main():
         text_encoder.train()
         for step, batch in enumerate(train_dataloader):
             # print(f'Before gc')
-            # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+            # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
             gc.collect()
             torch.cuda.empty_cache()
             # print(f'After gc')
-            # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+            # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
             with accelerator.accumulate(text_encoder):
                 # print(f'Start of batch')
-                # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+                # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
 
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"]).latent_dist.sample().detach()
@@ -597,33 +616,34 @@ def main():
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
                 # print('Before timestamps')
-                # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
-                timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (bsz,), device=accelerator.device).long()
+                # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
+                timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (bsz,), device=device).long()
                 # print('After timestamps')
-                # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+                # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 # print('Before noisy_latents')
-                # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+                # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
 
-                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps).to(accelerator.device)
+                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps).to(device)
                 # print('After noisy_latents')
-                # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+                # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
                 # Get the text embedding for conditioning
                 # print('Before encoder_hidden_states')
-                # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
-                encoder_hidden_states = text_encoder(batch["input_ids"])[0].to(accelerator.device)
+                # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
+                encoder_hidden_states = text_encoder(batch["input_ids"])[0].to(device)
                 # print('After encoder_hidden_states')
-                # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+                # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
                 # print('Before unet')
-                # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+                # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
                 # Predict the noise residual
                 noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample.to('cpu')
                 # print('After unet')
-                # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+                # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
+                # loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()/args.gradient_accumulation_steps
                 loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
-                # accelerator.backward(loss)
-                loss.backward()
+                accelerator.backward(loss)
+                # loss.backward()
                 # Zero out the gradients for all token embeddings except the newly added
                 # embeddings for the concept, as we only want to optimize the concept embeddings
                 if accelerator.num_processes > 1:
@@ -633,12 +653,12 @@ def main():
                 # Get the index for tokens that we want to zero the grads for
                 index_grads_to_zero = torch.arange(len(tokenizer)) != placeholder_token_id
                 grads.data[index_grads_to_zero, :] = grads.data[index_grads_to_zero, :].fill_(0)
-
+                # if ((step + 1) % args.gradient_accumulation_steps == 0) or (step + 1 == len(train_dataloader)):
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
                 # print('After optimizer and loss')
-                # print(f'Memory allocated: {torch.cuda.memory_allocated(accelerator.device)}')
+                # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
 
                 del noise
                 del noisy_latents
@@ -655,26 +675,33 @@ def main():
             if accelerator.sync_gradients:
                 progress_bar.update(1)
                 global_step += 1
+                if global_step % args.log_frequency == 0:
+                    pipeline=get_pipeline(text_encoder, vae, unet, tokenizer, accelerator)
+                    log_progress(pipeline, args, global_step, wandb_run)
+                    if global_step % args.save_frequency == 0:
+                        save_progress(text_encoder, pipeline, placeholder_token_id, accelerator, args)
 
-            logs = {"loss": loss.detach().cpu().item(), "lr": lr_scheduler.get_last_lr()[0]}
+                    del pipeline
+
+            
+
+            if global_step >= args.max_train_steps:
+                break
+            logs = {"loss": loss.detach().cpu().item()*args.gradient_accumulation_steps, "lr": lr_scheduler.get_last_lr()[0]}
             wandb_run.log(logs)
-
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
             del loss
             if global_step >= args.max_train_steps:
                 break
-            if (global_step % args.log_frequency) == 0:
-                pipeline=save_progress(text_encoder, vae, unet, tokenizer, args)
-                log_progress(pipeline, args, global_step, wandb_run)
-                del piepline
 
         accelerator.wait_for_everyone()
 
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
-        pipeline=save_progress(text_encoder, vae, unet, tokenizer, args)
+        pipeline=get_pipeline(text_encoder, vae, unet, tokenizer, accelerator)
         log_progress(pipeline, args, global_step, wandb_run)
+        save_progress(text_encoder, pipeline, placeholder_token_id, accelerator, args)
         # Also save the newly trained embeddings
 
         if args.push_to_hub:
