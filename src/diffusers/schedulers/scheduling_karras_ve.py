@@ -110,7 +110,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = np.arange(0, self.num_inference_steps)[::-1].copy()
         self.schedule = [
             (
-                self.config.sigma_max
+                self.config.sigma_max**2
                 * (self.config.sigma_min**2 / self.config.sigma_max**2) ** (i / (num_inference_steps - 1))
             )
             for i in self.timesteps
