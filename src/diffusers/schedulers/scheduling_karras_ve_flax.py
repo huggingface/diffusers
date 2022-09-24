@@ -113,7 +113,7 @@ class FlaxKarrasVeScheduler(SchedulerMixin, ConfigMixin):
         timesteps = jnp.arange(0, num_inference_steps)[::-1].copy()
         schedule = [
             (
-                self.config.sigma_max
+                self.config.sigma_max**2
                 * (self.config.sigma_min**2 / self.config.sigma_max**2) ** (i / (num_inference_steps - 1))
             )
             for i in timesteps
