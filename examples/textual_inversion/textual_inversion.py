@@ -43,12 +43,16 @@ def wandb_setup(
         config=args,
     )
 
-def save_progress(text_encoder, pipeline, placeholder_token_ids, accelerator, args):
+def save_progress(text_encoder, pipeline, placeholder_token_ids, accelerator, args, placeholder_token_concat):
     print("Saving pipeline")
     pipeline.save_pretrained(args.output_dir)
     learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_ids]
     learned_embeds = text_encoder.get_input_embeddings().weight[placeholder_token_ids]
-    learned_embeds_dict = {args.placeholder_token: learned_embeds.detach().cpu()}
+    print(placeholder_token_ids, learned_embeds.shape)
+    learned_embeds_dict = {}
+
+    for placeholder_token in placeholder_token_concat.split(' '):
+        learned_embeds_dict[placeholder_token] = learned_embeds[0].detach().cpu()
     torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
 def get_pipeline(text_encoder, vae, unet, tokenizer,accelerator):
     pipeline = StableDiffusionPipelineMixedDevices(
@@ -62,10 +66,10 @@ def get_pipeline(text_encoder, vae, unet, tokenizer,accelerator):
         feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
     )
     return pipeline
-def log_progress(pipeline, args, step, wandb_run, logs={}):
+def log_progress(pipeline, args, step, wandb_run, placeholder_token, logs={}):
     print("Running pipeline")
 
-    prompt = f"A picture of {args.placeholder_token}"
+    prompt = f"A picture of {placeholder_token}"
 
     with torch.autocast("cuda"):
         image = pipeline(prompt, height=args.resolution, width=args.resolution, num_inference_steps=50, guidance_scale=7.5).images[0]
@@ -127,6 +131,7 @@ def predict_replacement_words(images, max_length=100, min_length=50, blip_image_
 def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encoder):
     assert args.num_vec_per_token % len(token_ids) == 0
     placeholder_tokens = [f"{args.placeholder_token}_{i}" for i in range(args.num_vec_per_token)]
+
     for placeholder_token in placeholder_tokens:
         num_added_tokens = tokenizer.add_tokens(placeholder_token)
         if num_added_tokens == 0:
@@ -135,8 +140,8 @@ def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encode
                 " `placeholder_token` that is not already in the tokenizer."
             )
     placeholder_token = " ".join(placeholder_tokens)
-    placeholder_token_ids = tokenizer.encode(placeholder_token)
-    print(placeholder_token_ids)
+    placeholder_token_ids = tokenizer.encode(placeholder_token, add_special_tokens=False)
+    print(f"The placeholder tokens are {placeholder_token} while the ids are {placeholder_token_ids}")
     text_encoder.resize_token_embeddings(len(tokenizer))
     token_embeds = text_encoder.get_input_embeddings().weight.data
     if args.initialize_rest_random:
@@ -719,10 +724,10 @@ def main():
                 global_step += 1
                 if global_step % args.log_frequency == 0:
                     pipeline=get_pipeline(text_encoder, vae, unet, tokenizer, accelerator)
-                    log_progress(pipeline, args, global_step, wandb_run)
+                    log_progress(pipeline, args, global_step, wandb_run, placeholder_token)
 
                     if global_step % args.save_frequency == 0:
-                        save_progress(text_encoder, pipeline, placeholder_token_ids, accelerator, args)
+                        save_progress(text_encoder, pipeline, placeholder_token_ids, accelerator, args, placeholder_token)
 
                     del pipeline
 
@@ -743,8 +748,8 @@ def main():
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
         pipeline=get_pipeline(text_encoder, vae, unet, tokenizer, accelerator)
-        log_progress(pipeline, args, global_step, wandb_run)
-        save_progress(text_encoder, pipeline, placeholder_token_ids, accelerator, args)
+        log_progress(pipeline, args, global_step, wandb_run, placeholder_token)
+        save_progress(text_encoder, pipeline, placeholder_token_ids, accelerator, args, placeholder_token)
         # Also save the newly trained embeddings
 
         if args.push_to_hub:
