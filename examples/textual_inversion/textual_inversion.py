@@ -139,7 +139,7 @@ def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encode
     print(placeholder_token_ids)
     text_encoder.resize_token_embeddings(len(tokenizer))
     token_embeds = text_encoder.get_input_embeddings().weight.data
-    if args.guess_initializer_token:
+    if args.initialize_rest_random:
         # The idea is that the placeholder tokens form adjectives as in x x x white dog.
         for i, placeholder_token_id in enumerate(placeholder_token_ids):
             if len(placeholder_token_ids)-i <len(token_ids):
