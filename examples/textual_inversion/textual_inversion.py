@@ -600,7 +600,7 @@ def main():
         data_root=args.train_data_dir,
         tokenizer=tokenizer,
         size=args.resolution,
-        placeholder_token=args.placeholder_token,
+        placeholder_token=placeholder_token,
         repeats=args.repeats,
         learnable_property=args.learnable_property,
         center_crop=args.center_crop,
@@ -720,6 +720,7 @@ def main():
                 if global_step % args.log_frequency == 0:
                     pipeline=get_pipeline(text_encoder, vae, unet, tokenizer, accelerator)
                     log_progress(pipeline, args, global_step, wandb_run)
+
                     if global_step % args.save_frequency == 0:
                         save_progress(text_encoder, pipeline, placeholder_token_ids, accelerator, args)
 

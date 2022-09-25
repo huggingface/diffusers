@@ -11,7 +11,7 @@ The training time is roughly 21 hours while on colab it's roughly 13 hours.
 Additional changes:
 - Added wandb and made it so that model runs inference every log_frequency number of steps and saves every save_frequency number of steps
 - Added support for having multiple tokens represent the concept. This works as so: given a placeholder token frida, in place of where frida was it'll place frida_1 frida_2 ... frida_n where n is the number of vectors we want to use to represent the concept(num_vec_per_token). For example, "A picture of frida" becomes "A picture of frida_1 frida_2 ... frida_n"
-This idea was taken from the original textual inversion repository (here)[https://github.com/rinongal/textual_inversion]
+This idea was taken from the original textual inversion repository (here)[https://github.com/rinongal/textual_inversion]. Will detail how this works with initializing words later.
 - Added support to guess the words that represent the image. This was an idea I got from the clip interrogator (here)[https://github.com/AUTOMATIC1111/stable-diffusion-webui]. The main idea is that we are not sure that the initial word we provide is the closest token to the given concept. So, if we can have a model to generate the prompt given the image, we can guess what the right prompt is. I used the blip model for this and the result for my dog example is "white dog". Definintely needs improvement but it's pretty nice.
 
 
