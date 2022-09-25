@@ -48,7 +48,6 @@ def save_progress(text_encoder, pipeline, placeholder_token_ids, accelerator, ar
     pipeline.save_pretrained(args.output_dir)
     learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_ids]
     learned_embeds = text_encoder.get_input_embeddings().weight[placeholder_token_ids]
-    print(placeholder_token_ids, learned_embeds.shape)
     learned_embeds_dict = {}
 
     for placeholder_token in placeholder_token_concat.split(' '):
@@ -289,7 +288,7 @@ def parse_args():
     )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_weight_decay", type=float, default=0, help="Weight decay to use.")
+    parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
     parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
     parser.add_argument(
@@ -558,7 +557,6 @@ def main():
         token_ids = tokenizer.encode(args.initializer_token, add_special_tokens=False)
         # regardless of whether the number of token_ids is 1 or more, it'll set one and then keep repeating.
         placeholder_token, placeholder_token_ids = add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encoder)
-    print(f"placeholder token is {placeholder_token} where the ids are {placeholder_token_ids}")
     # Load models and create wrapper for stable diffusion
     
     
@@ -703,6 +701,9 @@ def main():
                 for i in range(1, len(placeholder_token_ids)):
                     grad_mask = grad_mask & (torch.arange(len(tokenizer)) != placeholder_token_ids[i])
                 grads.data[grad_mask, :] = grads.data[grad_mask, :].fill_(0)
+                # Adding back weight decay
+                with torch.no_grad():
+                    text_encoder.get_input_embeddings().weight[~grad_mask, :] -= lr_scheduler.get_last_lr()[0]*args.adam_weight_decay*text_encoder.get_input_embeddings().weight[~grad_mask, :]
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
