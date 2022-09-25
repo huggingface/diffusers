@@ -5,7 +5,7 @@ import os
 import random
 from pathlib import Path
 from typing import Optional
-
+import sys
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -27,6 +27,10 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 import albumentations as A
 import gc
 import wandb
+from torchvision.transforms.functional import InterpolationMode
+sys.path.append('./BLIP')
+from models.blip import blip_decoder
+
 # logger = get_logger(__name__)
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -39,11 +43,11 @@ def wandb_setup(
         config=args,
     )
 
-def save_progress(text_encoder, pipeline, placeholder_token_id, accelerator, args):
+def save_progress(text_encoder, pipeline, placeholder_token_ids, accelerator, args):
     print("Saving pipeline")
     pipeline.save_pretrained(args.output_dir)
-    learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_id]
-    learned_embeds = text_encoder.get_input_embeddings().weight[placeholder_token_id]
+    learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_ids]
+    learned_embeds = text_encoder.get_input_embeddings().weight[placeholder_token_ids]
     learned_embeds_dict = {args.placeholder_token: learned_embeds.detach().cpu()}
     torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
 def get_pipeline(text_encoder, vae, unet, tokenizer,accelerator):
@@ -74,9 +78,96 @@ def log_progress(pipeline, args, step, wandb_run, logs={}):
             "samples": wandb.Image("output.png", caption=prompt),
         }
     )
+def generate_caption(pil_image, blip_model, max_length=100, min_length=50, blip_image_eval_size=384):
+    # Idea from https://colab.research.google.com/github/pharmapsychotic/clip-interrogator/blob/main/clip_interrogator.ipynb#scrollTo=30xPxDSDrJEl
+    gpu_image = transforms.Compose([
+        transforms.Resize((blip_image_eval_size, blip_image_eval_size), interpolation=InterpolationMode.BICUBIC),
+        transforms.ToTensor(),
+        transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
+    ])(pil_image).unsqueeze(0).to(device)
 
+    with torch.no_grad():
+        caption = blip_model.generate(gpu_image, sample=False, num_beams=3, max_length=max_length, min_length=min_length)
+    return caption[0]
+
+def find_longest_common_substring(captions):
+    """
+    Maybe not optimal but it works. Taken from https://www.geeksforgeeks.org/longest-common-substring-array-strings/
+    """
+    first_str_len = len(captions[0])
+    output = ""
+    for i in range(first_str_len):
+        for j in range(i+1, first_str_len+1):
+            # str1[i], str2[j] is the start of the candidate match
+            match = captions[0][i:j]
+            valid_substring = True
+            for k in range(1, len(captions)):
+                if match not in captions[k]:
+                    valid_substring=False
+                    break
+            if valid_substring:
+                if len(match) > len(output):
+                    output = match
+
+    return output
+
+
+def predict_replacement_words(images, max_length=100, min_length=50, blip_image_eval_size=384):
+    blip_model_url = 'https://storage.googleapis.com/sfr-vision-language-research/BLIP/models/model_base_caption_capfilt_large.pth'
+    blip_model = blip_decoder(pretrained=blip_model_url, image_size=blip_image_eval_size, med_config='BLIP/configs/med_config.json', vit='base')
+    blip_model.eval()
+    blip_model = blip_model.to(device)
+    captions = []
+    for image in images:
+        captions.append(generate_caption(Image.open(image), blip_model, max_length, min_length, blip_image_eval_size))
+    longest_common_substring = find_longest_common_substring(captions)
+    del blip_model
+    return longest_common_substring.strip()
+    
+def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encoder):
+    assert args.num_vec_per_token % len(token_ids) == 0
+    placeholder_tokens = [f"{args.placeholder_token}_{i}" for i in range(args.num_vec_per_token)]
+    for placeholder_token in placeholder_tokens:
+        num_added_tokens = tokenizer.add_tokens(placeholder_token)
+        if num_added_tokens == 0:
+            raise ValueError(
+                f"The tokenizer already contains the token {placeholder_token}. Please pass a different"
+                " `placeholder_token` that is not already in the tokenizer."
+            )
+    placeholder_token = " ".join(placeholder_tokens)
+    placeholder_token_ids = tokenizer.encode(placeholder_token)
+    print(placeholder_token_ids)
+    text_encoder.resize_token_embeddings(len(tokenizer))
+    token_embeds = text_encoder.get_input_embeddings().weight.data
+    if args.guess_initializer_token:
+        # The idea is that the placeholder tokens form adjectives as in x x x white dog.
+        for i, placeholder_token_id in enumerate(placeholder_token_ids):
+            if len(placeholder_token_ids)-i <len(token_ids):
+                token_embeds[placeholder_token_id] = token_embeds[token_ids[i % len(token_ids)]]
+            else:
+                token_embeds[placeholder_token_id] = torch.rand_like(token_embeds[placeholder_token_id])
+    else:
+        for i, placeholder_token_id in enumerate(placeholder_token_ids):
+            token_embeds[placeholder_token_id] = token_embeds[token_ids[i % len(token_ids)]]
+    return placeholder_token, placeholder_token_ids
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser.add_argument(
+        "--num_vec_per_token",
+        type=int,
+        default=1,
+        help="The number of vectors used to represent the placeholder token. The higher the number, the better the result at the cost of editability. This can be fixed by prompt editing.",
+    )
+    parser.add_argument(
+        "--guess_initializer_token",
+        action="store_true",
+        help="Guess the string the represent the concept using blip.",
+    )
+    parser.add_argument(
+        "--initialize_rest_random",
+        action="store_true",
+        help="Initialize rest of the placeholder tokens with random.",
+    )
     parser.add_argument(
         "--slice_div",
         type=int,
@@ -444,35 +535,27 @@ def main():
         tokenizer = CLIPTokenizer.from_pretrained(
             args.pretrained_model_name_or_path, subfolder="tokenizer", use_auth_token=args.use_auth_token
         )
-
-    # Add the placeholder token in tokenizer
-    num_added_tokens = tokenizer.add_tokens(args.placeholder_token)
-    if num_added_tokens == 0:
-        raise ValueError(
-            f"The tokenizer already contains the token {args.placeholder_token}. Please pass a different"
-            " `placeholder_token` that is not already in the tokenizer."
-        )
-
-    # Convert the initializer_token, placeholder_token to ids
-    token_ids = tokenizer.encode(args.initializer_token, add_special_tokens=False)
-    # Check if initializer_token is a single token or a sequence of tokens
-    if len(token_ids) > 1:
-        raise ValueError("The initializer token must be a single token.")
-
-    initializer_token_id = token_ids[0]
-    placeholder_token_id = tokenizer.convert_tokens_to_ids(args.placeholder_token)
-
-    # Load models and create wrapper for stable diffusion
-    # print('Beginning')
-    # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
     text_encoder = CLIPTextModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", use_auth_token=args.use_auth_token
     )
-    # print('Load text encoder')
-    # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="vae", use_auth_token=args.use_auth_token
     )
+    # Add the placeholder token in tokenizer
+    # Idea: add tokens as f"{args.placeholder_token}_i" and just have the combination of all that be the placeholder token
+    if args.guess_initializer_token:
+        # 
+        guessed_concept = predict_replacement_words([os.path.join(args.train_data_dir, file_path) for file_path in os.listdir(args.train_data_dir)])
+        token_ids = tokenizer.encode(guessed_concept, add_special_tokens=False)
+        print(f"Guessed concept is {guessed_concept} token ids are {token_ids}")
+        placeholder_token, placeholder_token_ids = add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encoder)
+    else:
+        token_ids = tokenizer.encode(args.initializer_token, add_special_tokens=False)
+        # regardless of whether the number of token_ids is 1 or more, it'll set one and then keep repeating.
+        placeholder_token, placeholder_token_ids = add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encoder)
+    print(f"placeholder token is {placeholder_token} where the ids are {placeholder_token_ids}")
+    # Load models and create wrapper for stable diffusion
+    
     
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", use_auth_token=args.use_auth_token
@@ -481,12 +564,8 @@ def main():
     unet.set_attention_slice(slice_size)
 
     # Resize the token embeddings as we are adding new special tokens to the tokenizer
-    text_encoder.resize_token_embeddings(len(tokenizer))
 
     # Initialise the newly added placeholder token with the embeddings of the initializer token
-    token_embeds = text_encoder.get_input_embeddings().weight.data
-    token_embeds[placeholder_token_id] = token_embeds[initializer_token_id]
-
     # Freeze vae and unet
     freeze_params(vae.parameters())
     freeze_params(unet.parameters())
@@ -502,9 +581,6 @@ def main():
         args.learning_rate = (
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
-        # args.learning_rate = (
-        #     args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size
-        # )
 
     # Initialize the optimizer
     optimizer = torch.optim.AdamW(
@@ -551,20 +627,11 @@ def main():
     )
     torch.cuda.empty_cache()
     # Move vae and unet to device
-    vae.to('cpu')
-    # print('Loaded data loader')
-    # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
-    
-    # print('Load vae')
-    # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
+    vae.to('cpu')   
     unet.to(device)
-    # print('Load unet')
-    # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
     # Keep vae and unet in eval model as we don't train these
     vae.eval()
     unet.eval()
-    # print('eval mode')
-    # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
@@ -597,15 +664,9 @@ def main():
     for epoch in range(args.num_train_epochs):
         text_encoder.train()
         for step, batch in enumerate(train_dataloader):
-            # print(f'Before gc')
-            # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
             gc.collect()
             torch.cuda.empty_cache()
-            # print(f'After gc')
-            # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
             with accelerator.accumulate(text_encoder):
-                # print(f'Start of batch')
-                # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
 
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"]).latent_dist.sample().detach()
@@ -615,35 +676,17 @@ def main():
                 noise = torch.randn(latents.shape).to(latents.device)
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
-                # print('Before timestamps')
-                # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
                 timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (bsz,), device=device).long()
-                # print('After timestamps')
-                # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                # print('Before noisy_latents')
-                # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
 
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps).to(device)
-                # print('After noisy_latents')
-                # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
-                # Get the text embedding for conditioning
-                # print('Before encoder_hidden_states')
-                # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0].to(device)
-                # print('After encoder_hidden_states')
-                # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
-                # print('Before unet')
-                # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
                 # Predict the noise residual
                 noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample.to('cpu')
-                # print('After unet')
-                # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
-                # loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()/args.gradient_accumulation_steps
                 loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
-                accelerator.backward(loss)
-                # loss.backward()
+
+                accelerator.backward(loss.to(device))
                 # Zero out the gradients for all token embeddings except the newly added
                 # embeddings for the concept, as we only want to optimize the concept embeddings
                 if accelerator.num_processes > 1:
@@ -651,14 +694,13 @@ def main():
                 else:
                     grads = text_encoder.get_input_embeddings().weight.grad
                 # Get the index for tokens that we want to zero the grads for
-                index_grads_to_zero = torch.arange(len(tokenizer)) != placeholder_token_id
-                grads.data[index_grads_to_zero, :] = grads.data[index_grads_to_zero, :].fill_(0)
-                # if ((step + 1) % args.gradient_accumulation_steps == 0) or (step + 1 == len(train_dataloader)):
+                grad_mask = torch.arange(len(tokenizer)) != placeholder_token_ids[0]
+                for i in range(1, len(placeholder_token_ids)):
+                    grad_mask = grad_mask & (torch.arange(len(tokenizer)) != placeholder_token_ids[i])
+                grads.data[grad_mask, :] = grads.data[grad_mask, :].fill_(0)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
-                # print('After optimizer and loss')
-                # print(f'Memory allocated: {torch.cuda.memory_allocated(device)}')
 
                 del noise
                 del noisy_latents
@@ -667,7 +709,7 @@ def main():
                 del noise_pred
                 
                 del grads
-                del index_grads_to_zero
+                del grad_mask
                 del text_encoder.get_input_embeddings().weight.grad
                 gc.collect()
                 torch.cuda.empty_cache()
@@ -679,7 +721,7 @@ def main():
                     pipeline=get_pipeline(text_encoder, vae, unet, tokenizer, accelerator)
                     log_progress(pipeline, args, global_step, wandb_run)
                     if global_step % args.save_frequency == 0:
-                        save_progress(text_encoder, pipeline, placeholder_token_id, accelerator, args)
+                        save_progress(text_encoder, pipeline, placeholder_token_ids, accelerator, args)
 
                     del pipeline
 
@@ -701,7 +743,7 @@ def main():
     if accelerator.is_main_process:
         pipeline=get_pipeline(text_encoder, vae, unet, tokenizer, accelerator)
         log_progress(pipeline, args, global_step, wandb_run)
-        save_progress(text_encoder, pipeline, placeholder_token_id, accelerator, args)
+        save_progress(text_encoder, pipeline, placeholder_token_ids, accelerator, args)
         # Also save the newly trained embeddings
 
         if args.push_to_hub:
