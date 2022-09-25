@@ -38,7 +38,7 @@ pip install -e .
 ```
 
 ```bash
-pip install accelerate transformers timm fairscale
+pip install accelerate transformers==4.15.0 timm fairscale
 git clone https://github.com/salesforce/BLIP.git
 ```
 
