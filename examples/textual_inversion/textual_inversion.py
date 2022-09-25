@@ -701,9 +701,7 @@ def main():
                 for i in range(1, len(placeholder_token_ids)):
                     grad_mask = grad_mask & (torch.arange(len(tokenizer)) != placeholder_token_ids[i])
                 grads.data[grad_mask, :] = grads.data[grad_mask, :].fill_(0)
-                # Adding back weight decay
-                with torch.no_grad():
-                    text_encoder.get_input_embeddings().weight[~grad_mask, :] -= lr_scheduler.get_last_lr()[0]*args.adam_weight_decay*text_encoder.get_input_embeddings().weight[~grad_mask, :]
+                
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -721,6 +719,9 @@ def main():
                 torch.cuda.empty_cache()
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
+                # Adding back weight decay
+                with torch.no_grad():
+                    text_encoder.get_input_embeddings().weight[~grad_mask, :] -= lr_scheduler.get_last_lr()[0]*args.adam_weight_decay*text_encoder.get_input_embeddings().weight[~grad_mask, :]
                 progress_bar.update(1)
                 global_step += 1
                 if global_step % args.log_frequency == 0:
