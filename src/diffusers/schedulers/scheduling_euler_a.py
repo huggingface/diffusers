@@ -282,7 +282,7 @@ class EulerAScheduler(SchedulerMixin, ConfigMixin):
         # Euler method
         dt = sigma_down - timestep
         latents = latents + d * dt
-        latents = latents + torch.randn_like(latents) * sigma_up
+        latents = latents + self.randn_like(latents,generator=generator) * sigma_up # use self.randn_like instead of torch.randn_like to get deterministic output
         return SchedulerOutput(prev_sample=latents)
 
 
