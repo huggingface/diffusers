@@ -16,9 +16,10 @@ This idea was taken from the original textual inversion repository (here)[https:
 
 
 Added support for multiple tokens 
-For 6gb gpu memory, run the below command
+For 6gb gpu memory, run the below command. The weight decay should be 0 for now as there is a bug where the weights of the whole embedding gets smaller due to weight decay.
+TODO: fix
 ```
-accelerate launch textual_inversion.py --pretrained_model_name_or_path="CompVis/stable-diffusion-v1-4" --use_auth_token --train_data_dir="frida" --learnable_property="object" --placeholder_token="<frida>" --initializer_token="dog" --resolution=256 --train_batch_size=1  --gradient_accumulation_steps=4 --max_train_steps=3000 --learning_rate=5.0e-04 --scale_lr --lr_scheduler="constant" --lr_warmup_steps=0 --output_dir="textual_inversion_frida" --slice_div=1 --mixed_precision="no" --guess_initializer_token --num_vec_per_token=10 --log_frequency=100 --save_frequency=500
+accelerate launch textual_inversion.py --pretrained_model_name_or_path="CompVis/stable-diffusion-v1-4" --use_auth_token --train_data_dir="frida" --learnable_property="object" --placeholder_token="<frida>" --initializer_token="dog" --resolution=256 --train_batch_size=1  --gradient_accumulation_steps=4 --max_train_steps=3000 --learning_rate=5.0e-04 --scale_lr --lr_scheduler="constant" --lr_warmup_steps=0 --output_dir="textual_inversion_frida" --slice_div=1 --adam_epsilon=1e-8 --mixed_precision="no" --log_frequency=100 --save_frequency=500 --num_vec_per_token=10 --guess_initializer_token --adam_weight_decay=0
 ```
 ## Running on Colab 
 
@@ -38,7 +39,7 @@ pip install -e .
 ```
 
 ```bash
-pip install accelerate transformers timm fairscale
+pip install accelerate transformers==4.21.3 timm fairscale
 git clone https://github.com/salesforce/BLIP.git
 ```
 
