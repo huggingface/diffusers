@@ -18,7 +18,7 @@ This idea was taken from the original textual inversion repository (here)[https:
 Added support for multiple tokens 
 For 6gb gpu memory, run the below command
 ```
-accelerate launch textual_inversion.py --pretrained_model_name_or_path="CompVis/stable-diffusion-v1-4" --use_auth_token --train_data_dir="frida" --learnable_property="object" --placeholder_token="<frida>" --initializer_token="dog" --resolution=256 --train_batch_size=1  --gradient_accumulation_steps=4 --max_train_steps=3000 --learning_rate=5.0e-04 --scale_lr --lr_scheduler="constant" --lr_warmup_steps=0 --output_dir="textual_inversion_frida" --slice_div=1 --mixed_precision="no"
+accelerate launch textual_inversion.py --pretrained_model_name_or_path="CompVis/stable-diffusion-v1-4" --use_auth_token --train_data_dir="frida" --learnable_property="object" --placeholder_token="<frida>" --initializer_token="dog" --resolution=256 --train_batch_size=1  --gradient_accumulation_steps=4 --max_train_steps=3000 --learning_rate=5.0e-04 --scale_lr --lr_scheduler="constant" --lr_warmup_steps=0 --output_dir="textual_inversion_frida" --slice_div=1 --mixed_precision="no" --guess_initializer_token --num_vec_per_token=10 --log_frequency=100 --save_frequency=500
 ```
 ## Running on Colab 
 
