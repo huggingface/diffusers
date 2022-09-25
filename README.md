@@ -15,6 +15,8 @@
     </a>
 </p>
 
+This is a modified version of the below for textual inversion so that it fits in 6Gb of ram.
+
 🤗 Diffusers provides pretrained diffusion models across multiple modalities, such as vision and audio, and serves
 as a modular toolbox for inference and training of diffusion models.
 
