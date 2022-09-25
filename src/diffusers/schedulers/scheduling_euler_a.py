@@ -249,7 +249,7 @@ class EulerAScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         timestep_prev: int,
         sample:float,
-        generator:None,
+        generator: Optional[torch.Generator] = None,
         # ,sigma_hat: float,
         #  sigma_prev: float,
         # sample_hat: Union[torch.FloatTensor, np.ndarray],
@@ -296,7 +296,7 @@ class EulerAScheduler(SchedulerMixin, ConfigMixin):
         sample_hat: Union[torch.FloatTensor, np.ndarray],
         sample_prev: Union[torch.FloatTensor, np.ndarray],
         derivative: Union[torch.FloatTensor, np.ndarray],
-        generator: None,
+        generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
         """
