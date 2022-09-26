@@ -93,12 +93,14 @@ class PNDMPipeline(DiffusionPipeline):
             generator=generator,
         )
         image = image.to(self.device)
+        image = self.scheduler.scale_initial_noise(image)
 
         self.scheduler.set_timesteps(num_inference_steps)
-        for t in self.progress_bar(self.scheduler.timesteps):
+        for step in self.progress_bar(self.scheduler.timesteps):
+            t = self.scheduler.get_noise_condition(step)
             model_output = self.unet(image, t).sample
 
-            image = self.scheduler.step(model_output, t, image).prev_sample
+            image = self.scheduler.step(model_output, step, image).prev_sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()

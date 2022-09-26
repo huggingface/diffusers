@@ -23,7 +23,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils import BaseScheduler, SchedulerMixin
 
 
 @dataclass
@@ -73,7 +73,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     return np.array(betas, dtype=np.float32)
 
 
-class DDPMScheduler(SchedulerMixin, ConfigMixin):
+class DDPMScheduler(BaseScheduler, SchedulerMixin, ConfigMixin):
     """
     Denoising diffusion probabilistic models (DDPMs) explores the connections between denoising score matching and
     Langevin dynamics sampling.
@@ -134,12 +134,19 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         # setable values
         self.num_inference_steps = None
-        self.timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
+        self.schedule = np.arange(0, num_train_timesteps)
+        self.timesteps = self.schedule[::-1].copy()
 
         self.tensor_format = tensor_format
         self.set_format(tensor_format=tensor_format)
 
         self.variance_type = variance_type
+
+    def get_noise_condition(self, step: int):
+        """
+        Returns the input noise condition for a model.
+        """
+        return self.schedule[step]
 
     def set_timesteps(self, num_inference_steps: int):
         """
@@ -218,7 +225,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             returning a tuple, the first element is the sample tensor.
 
         """
-        t = timestep
+        t = self.schedule[timestep]
 
         if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
             model_output, predicted_variance = torch.split(model_output, sample.shape[1], dim=1)
@@ -272,6 +279,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
     ) -> Union[torch.FloatTensor, np.ndarray]:
         if self.tensor_format == "pt":
             timesteps = timesteps.to(self.alphas_cumprod.device)
+        timesteps = self.schedule[timesteps]
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
         sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
