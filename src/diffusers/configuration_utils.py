@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ ConfigMixinuration base class and utilities."""
+import dataclasses
 import functools
 import inspect
 import json
@@ -37,9 +38,16 @@ _re_configuration_file = re.compile(r"config\.(.*)\.json")
 
 class ConfigMixin:
     r"""
-    Base class for all configuration classes. Handles a few parameters common to all models' configurations as well as
-    methods for loading/downloading/saving configurations.
+    Base class for all configuration classes. Stores all configuration parameters under `self.config` Also handles all
+    methods for loading/downloading/saving classes inheriting from [`ConfigMixin`] with
+        - [`~ConfigMixin.from_config`]
+        - [`~ConfigMixin.save_config`]
 
+    Class attributes:
+        - **config_name** (`str`) -- A filename under which the config should stored when calling
+          [`~ConfigMixin.save_config`] (should be overridden by parent class).
+        - **ignore_for_config** (`List[str]`) -- A list of attributes that should not be saved in the config (should be
+          overridden by parent class).
     """
     config_name = None
     ignore_for_config = []
@@ -74,8 +82,6 @@ class ConfigMixin:
         Args:
             save_directory (`str` or `os.PathLike`):
                 Directory where the configuration JSON file will be saved (will be created if it does not exist).
-            kwargs:
-                Additional key word arguments passed along to the [`~utils.PushToHubMixin.push_to_hub`] method.
         """
         if os.path.isfile(save_directory):
             raise AssertionError(f"Provided path ({save_directory}) should be a directory, not a file")
@@ -90,16 +96,83 @@ class ConfigMixin:
 
     @classmethod
     def from_config(cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs):
-        config_dict = cls.get_config_dict(pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs)
+        r"""
+        Instantiate a Python class from a pre-defined JSON-file.
 
+        Parameters:
+            pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
+                Can be either:
+
+                    - A string, the *model id* of a model repo on huggingface.co. Valid model ids should have an
+                      organization name, like `google/ddpm-celebahq-256`.
+                    - A path to a *directory* containing model weights saved using [`~ConfigMixin.save_config`], e.g.,
+                      `./my_model_directory/`.
+
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
+                Path to a directory in which a downloaded pretrained model configuration should be cached if the
+                standard cache should not be used.
+            ignore_mismatched_sizes (`bool`, *optional*, defaults to `False`):
+                Whether or not to raise an error if some of the weights from the checkpoint do not have the same size
+                as the weights of the model (if for instance, you are instantiating a model with 10 labels from a
+                checkpoint with 3 labels).
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
+            resume_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to delete incompletely received files. Will attempt to resume the download if such a
+                file exists.
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
+                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+            output_loading_info(`bool`, *optional*, defaults to `False`):
+                Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
+            local_files_only(`bool`, *optional*, defaults to `False`):
+                Whether or not to only look at local files (i.e., do not try to download the model).
+            use_auth_token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, will use the token generated
+                when running `transformers-cli login` (stored in `~/.huggingface`).
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
+                git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
+                identifier allowed by git.
+            subfolder (`str`, *optional*, defaults to `""`):
+                In case the relevant files are located inside a subfolder of the model repo (either remote in
+                huggingface.co or downloaded locally), you can specify the folder name here.
+
+        <Tip>
+
+        Passing `use_auth_token=True`` is required when you want to use a private model.
+
+        </Tip>
+
+        <Tip>
+
+        Activate the special ["offline-mode"](https://huggingface.co/transformers/installation.html#offline-mode) to
+        use this method in a firewalled environment.
+
+        </Tip>
+
+        """
+        config_dict = cls.get_config_dict(pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs)
         init_dict, unused_kwargs = cls.extract_init_dict(config_dict, **kwargs)
 
+        # Allow dtype to be specified on initialization
+        if "dtype" in unused_kwargs:
+            init_dict["dtype"] = unused_kwargs.pop("dtype")
+
+        # Return model and optionally state and/or unused_kwargs
         model = cls(**init_dict)
+        return_tuple = (model,)
+
+        # Flax schedulers have a state, so return it.
+        if cls.__name__.startswith("Flax") and hasattr(model, "create_state") and getattr(model, "has_state", False):
+            state = model.create_state()
+            return_tuple += (state,)
 
         if return_unused_kwargs:
-            return model, unused_kwargs
+            return return_tuple + (unused_kwargs,)
         else:
-            return model
+            return return_tuple if len(return_tuple) > 1 else model
 
     @classmethod
     def get_config_dict(
@@ -112,6 +185,7 @@ class ConfigMixin:
         use_auth_token = kwargs.pop("use_auth_token", None)
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
+        _ = kwargs.pop("mirror", None)
         subfolder = kwargs.pop("subfolder", None)
 
         user_agent = {"file_type": "config"}
@@ -152,6 +226,7 @@ class ConfigMixin:
                     use_auth_token=use_auth_token,
                     user_agent=user_agent,
                     subfolder=subfolder,
+                    revision=revision,
                 )
 
             except RepositoryNotFoundError:
@@ -207,6 +282,11 @@ class ConfigMixin:
         # remove general kwargs if present in dict
         if "kwargs" in expected_keys:
             expected_keys.remove("kwargs")
+        # remove flax internal keys
+        if hasattr(cls, "_flax_internal_args"):
+            for arg in cls._flax_internal_args:
+                expected_keys.remove(arg)
+
         # remove keys to be ignored
         if len(cls.ignore_for_config) > 0:
             expected_keys = expected_keys - set(cls.ignore_for_config)
@@ -219,11 +299,20 @@ class ConfigMixin:
                 # use value from config dict
                 init_dict[key] = config_dict.pop(key)
 
-        unused_kwargs = config_dict.update(kwargs)
+        config_dict = {k: v for k, v in config_dict.items() if not k.startswith("_")}
+
+        if len(config_dict) > 0:
+            logger.warning(
+                f"The config attributes {config_dict} were passed to {cls.__name__}, "
+                "but are not expected and will be ignored. Please verify your "
+                f"{cls.config_name} configuration file."
+            )
+
+        unused_kwargs = {**config_dict, **kwargs}
 
         passed_keys = set(init_dict.keys())
         if len(expected_keys - passed_keys) > 0:
-            logger.warning(
+            logger.info(
                 f"{expected_keys - passed_keys} was not found in config. Values will be initialized to default values."
             )
 
@@ -297,10 +386,10 @@ class FrozenDict(OrderedDict):
 
 
 def register_to_config(init):
-    """
-    Decorator to apply on the init of classes inheriting from `ConfigMixin` so that all the arguments are automatically
-    sent to `self.register_for_config`. To ignore a specific argument accepted by the init but that shouldn't be
-    registered in the config, use the `ignore_for_config` class variable
+    r"""
+    Decorator to apply on the init of classes inheriting from [`ConfigMixin`] so that all the arguments are
+    automatically sent to `self.register_for_config`. To ignore a specific argument accepted by the init but that
+    shouldn't be registered in the config, use the `ignore_for_config` class variable
 
     Warning: Once decorated, all private arguments (beginning with an underscore) are trashed and not sent to the init!
     """
@@ -337,3 +426,47 @@ def register_to_config(init):
         getattr(self, "register_to_config")(**new_kwargs)
 
     return inner_init
+
+
+def flax_register_to_config(cls):
+    original_init = cls.__init__
+
+    @functools.wraps(original_init)
+    def init(self, *args, **kwargs):
+        if not isinstance(self, ConfigMixin):
+            raise RuntimeError(
+                f"`@register_for_config` was applied to {self.__class__.__name__} init method, but this class does "
+                "not inherit from `ConfigMixin`."
+            )
+
+        # Ignore private kwargs in the init. Retrieve all passed attributes
+        init_kwargs = {k: v for k, v in kwargs.items() if not k.startswith("_")}
+
+        # Retrieve default values
+        fields = dataclasses.fields(self)
+        default_kwargs = {}
+        for field in fields:
+            # ignore flax specific attributes
+            if field.name in self._flax_internal_args:
+                continue
+            if type(field.default) == dataclasses._MISSING_TYPE:
+                default_kwargs[field.name] = None
+            else:
+                default_kwargs[field.name] = getattr(self, field.name)
+
+        # Make sure init_kwargs override default kwargs
+        new_kwargs = {**default_kwargs, **init_kwargs}
+        # dtype should be part of `init_kwargs`, but not `new_kwargs`
+        if "dtype" in new_kwargs:
+            new_kwargs.pop("dtype")
+
+        # Get positional arguments aligned with kwargs
+        for i, arg in enumerate(args):
+            name = fields[i].name
+            new_kwargs[name] = arg
+
+        getattr(self, "register_to_config")(**new_kwargs)
+        original_init(self, *args, **kwargs)
+
+    cls.__init__ = init
+    return cls

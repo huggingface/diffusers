@@ -1,9 +1,10 @@
 import argparse
 
-import OmegaConf
 import torch
 
-from diffusers import UNetLDMModel, VQModel, LDMPipeline, DDIMScheduler
+import OmegaConf
+from diffusers import DDIMScheduler, LDMPipeline, UNetLDMModel, VQModel
+
 
 def convert_ldm_original(checkpoint_path, config_path, output_path):
     config = OmegaConf.load(config_path)
@@ -16,14 +17,14 @@ def convert_ldm_original(checkpoint_path, config_path, output_path):
     for key in keys:
         if key.startswith(first_stage_key):
             first_stage_dict[key.replace(first_stage_key, "")] = state_dict[key]
-    
+
     # extract state_dict for UNetLDM
     unet_state_dict = {}
     unet_key = "model.diffusion_model."
     for key in keys:
         if key.startswith(unet_key):
             unet_state_dict[key.replace(unet_key, "")] = state_dict[key]
-    
+
     vqvae_init_args = config.model.params.first_stage_config.params
     unet_init_args = config.model.params.unet_config.params
 
@@ -53,4 +54,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     convert_ldm_original(args.checkpoint_path, args.config_path, args.output_path)
-

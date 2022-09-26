@@ -1,7 +1,3 @@
-# flake8: noqa
-# There's no way to ignore "F401 '...' imported but unused" warnings in this
-# module, but to preserve other warnings. So, don't check this module at all.
-
 # Copyright 2022 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .unet_2d import UNet2DModel
-from .unet_2d_condition import UNet2DConditionModel
-from .vae import AutoencoderKL, VQModel
+from ..utils import is_flax_available, is_torch_available
+
+
+if is_torch_available():
+    from .unet_2d import UNet2DModel
+    from .unet_2d_condition import UNet2DConditionModel
+    from .vae import AutoencoderKL, VQModel
+
+if is_flax_available():
+    from .unet_2d_condition_flax import FlaxUNet2DConditionModel
+    from .vae_flax import FlaxAutoencoderKL

@@ -53,7 +53,7 @@ def _find_text_in_file(filename, start_prompt, end_prompt):
     return "".join(lines[start_index:end_index]), start_index, end_index, lines
 
 
-# Add here suffixes that are used to identify models, seperated by |
+# Add here suffixes that are used to identify models, separated by |
 ALLOWED_MODEL_SUFFIXES = "Model|Encoder|Decoder|ForConditionalGeneration"
 # Regexes that match TF/Flax/PT model names.
 _re_tf_models = re.compile(r"TF(.*)(?:Model|Encoder|Decoder|ForConditionalGeneration)")
@@ -88,11 +88,11 @@ def _center_text(text, width):
 def get_model_table_from_auto_modules():
     """Generates an up-to-date model table from the content of the auto modules."""
     # Dictionary model names to config.
-    config_maping_names = diffusers_module.models.auto.configuration_auto.CONFIG_MAPPING_NAMES
+    config_mapping_names = diffusers_module.models.auto.configuration_auto.CONFIG_MAPPING_NAMES
     model_name_to_config = {
-        name: config_maping_names[code]
+        name: config_mapping_names[code]
         for code, name in diffusers_module.MODEL_NAMES_MAPPING.items()
-        if code in config_maping_names
+        if code in config_mapping_names
     }
     model_name_to_prefix = {name: config.replace("ConfigMixin", "") for name, config in model_name_to_config.items()}
 

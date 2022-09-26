@@ -15,22 +15,63 @@
 
 
 import warnings
+from typing import Optional, Tuple, Union
 
 import torch
 
-from tqdm.auto import tqdm
-
-from ...pipeline_utils import DiffusionPipeline
+from ...models import UNet2DModel
+from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ...schedulers import PNDMScheduler
 
 
 class PNDMPipeline(DiffusionPipeline):
-    def __init__(self, unet, scheduler):
+    r"""
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    Parameters:
+        unet (`UNet2DModel`): U-Net architecture to denoise the encoded image latents.
+        scheduler ([`SchedulerMixin`]):
+            The `PNDMScheduler` to be used in combination with `unet` to denoise the encoded image.
+    """
+
+    unet: UNet2DModel
+    scheduler: PNDMScheduler
+
+    def __init__(self, unet: UNet2DModel, scheduler: PNDMScheduler):
         super().__init__()
         scheduler = scheduler.set_format("pt")
         self.register_modules(unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
-    def __call__(self, batch_size=1, generator=None, num_inference_steps=50, output_type="pil", **kwargs):
+    def __call__(
+        self,
+        batch_size: int = 1,
+        num_inference_steps: int = 50,
+        generator: Optional[torch.Generator] = None,
+        output_type: Optional[str] = "pil",
+        return_dict: bool = True,
+        **kwargs,
+    ) -> Union[ImagePipelineOutput, Tuple]:
+        r"""
+        Args:
+            batch_size (`int`, `optional`, defaults to 1): The number of images to generate.
+            num_inference_steps (`int`, `optional`, defaults to 50):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
+            generator (`torch.Generator`, `optional`): A [torch
+                generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
+                deterministic.
+            output_type (`str`, `optional`, defaults to `"pil"`): The output format of the generate image. Choose
+                between [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+            return_dict (`bool`, `optional`, defaults to `True`): Whether or not to return a
+                [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~pipeline_utils.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if
+            `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
+            generated images.
+        """
         # For more information on the sampling method you can take a look at Algorithm 2 of
         # the official paper: https://arxiv.org/pdf/2202.09778.pdf
 
@@ -54,14 +95,17 @@ class PNDMPipeline(DiffusionPipeline):
         image = image.to(self.device)
 
         self.scheduler.set_timesteps(num_inference_steps)
-        for t in tqdm(self.scheduler.timesteps):
-            model_output = self.unet(image, t)["sample"]
+        for t in self.progress_bar(self.scheduler.timesteps):
+            model_output = self.unet(image, t).sample
 
-            image = self.scheduler.step(model_output, t, image)["prev_sample"]
+            image = self.scheduler.step(model_output, t, image).prev_sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
-        return {"sample": image}
+        if not return_dict:
+            return (image,)
+
+        return ImagePipelineOutput(images=image)

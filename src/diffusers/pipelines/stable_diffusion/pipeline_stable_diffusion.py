@@ -5,13 +5,15 @@ import random
 
 import torch
 import numpy as np
+from tqdm import tqdm
 
-from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
+from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
 
@@ -42,6 +44,33 @@ def minmax(a):
 
 
 class StableDiffusionPipeline(DiffusionPipeline):
+    r"""
+    Pipeline for text-to-image generation using Stable Diffusion.
+
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    Args:
+        vae ([`AutoencoderKL`]):
+            Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
+        text_encoder ([`CLIPTextModel`]):
+            Frozen text-encoder. Stable Diffusion uses the text portion of
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
+            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
+        tokenizer (`CLIPTokenizer`):
+            Tokenizer of class
+            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
+        unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
+        scheduler ([`SchedulerMixin`]):
+            A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
+            [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
+        safety_checker ([`StableDiffusionSafetyChecker`]):
+            Classification module that estimates whether generated images could be considered offensive or harmful.
+            Please, refer to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) for details.
+        feature_extractor ([`CLIPFeatureExtractor`]):
+            Model that extracts features from generated images to be used as inputs for the `safety_checker`.
+    """
+
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -54,6 +83,21 @@ class StableDiffusionPipeline(DiffusionPipeline):
     ):
         super().__init__()
         scheduler = scheduler.set_format("pt")
+
+        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
+            warnings.warn(
+                f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
+                f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
+                "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
+                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
+                " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
+                " file",
+                DeprecationWarning,
+            )
+            new_config = dict(scheduler.config)
+            new_config["steps_offset"] = 1
+            scheduler._internal_dict = FrozenDict(new_config)
+
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -64,6 +108,33 @@ class StableDiffusionPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
 
+    def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
+        r"""
+        Enable sliced attention computation.
+
+        When this option is enabled, the attention module will split the input tensor in slices, to compute attention
+        in several steps. This is useful to save some memory in exchange for a small speed decrease.
+
+        Args:
+            slice_size (`str` or `int`, *optional*, defaults to `"auto"`):
+                When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
+                a number is provided, uses as many slices as `attention_head_dim // slice_size`. In this case,
+                `attention_head_dim` must be a multiple of `slice_size`.
+        """
+        if slice_size == "auto":
+            # half the attention head size is usually a good trade-off between
+            # speed and memory
+            slice_size = self.unet.config.attention_head_dim // 2
+        self.unet.set_attention_slice(slice_size)
+
+    def disable_attention_slicing(self):
+        r"""
+        Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go
+        back to computing attention in one step.
+        """
+        # set slice_size = `None` to disable `attention slicing`
+        self.enable_attention_slicing(None)
+
     @torch.no_grad()
     def __call__(
         self,
@@ -71,11 +142,11 @@ class StableDiffusionPipeline(DiffusionPipeline):
         text_embeddings: Optional[torch.Tensor] = None,
         height: Optional[int] = 512,
         width: Optional[int] = 512,
-        latents=None,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
         eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
+        latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         use_safety: bool = False,
         weights: Optional[List[float]] = None,
@@ -91,12 +162,57 @@ class StableDiffusionPipeline(DiffusionPipeline):
         noise_strength_before_encode = None,
         loss_callbacks: Optional[List] = None,
         noise: Optional[torch.Tensor] = None,
+        return_dict: bool = True,
         **kwargs,
     ):
         # set seed 
         if seed is not None:
             self.set_seed(seed)
             
+        r"""
+        Function invoked when calling the pipeline for generation.
+
+        Args:
+            prompt (`str` or `List[str]`):
+                The prompt or prompts to guide the image generation.
+            height (`int`, *optional*, defaults to 512):
+                The height in pixels of the generated image.
+            width (`int`, *optional*, defaults to 512):
+                The width in pixels of the generated image.
+            num_inference_steps (`int`, *optional*, defaults to 50):
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
+            guidance_scale (`float`, *optional*, defaults to 7.5):
+                Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
+                `guidance_scale` is defined as `w` of equation 2. of [Imagen
+                Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
+                1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
+                usually at the expense of lower image quality.
+            eta (`float`, *optional*, defaults to 0.0):
+                Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
+                [`schedulers.DDIMScheduler`], will be ignored for others.
+            generator (`torch.Generator`, *optional*):
+                A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
+                deterministic.
+            latents (`torch.FloatTensor`, *optional*):
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
+                tensor will ge generated by sampling using the supplied random `generator`.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generate image. Choose between
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
+                plain tuple.
+
+        Returns:
+            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
+            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
+            When returning a tuple, the first element is a list with the generated images, and the second element is a
+            list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
+            (nsfw) content, according to the `safety_checker`.
+        """
+
         if "torch_device" in kwargs:
             device = kwargs.pop("torch_device")
             warnings.warn(
@@ -157,6 +273,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         if latents is None:
             if start_img is None:
                 latents = noise
+                
             else:
                 # encode start img with vae
                 # make it torch tensor first
@@ -176,18 +293,24 @@ class StableDiffusionPipeline(DiffusionPipeline):
                     # now we calculate how many skeps are skipped (t_start) and at what point the noise is initialized (init_timestep)
                     init_timestep = int(num_inference_steps * img2img_strength) + offset
                     t_start = num_inference_steps - init_timestep + offset
-                    #print("init_timestep:", init_timestep, "t_start: ", t_start)
                     timesteps = int(self.scheduler.timesteps[-init_timestep])
                     timesteps = torch.tensor([timesteps] * batch_size, dtype=torch.long, device=self.device)
-                    # add noise to latents using the timesteps
-                    #noise = torch.randn(latents.shape, generator=generator, device=self.device)
-                    latents = self.scheduler.add_noise(latents, noise, timesteps)
+                    # add noise to latents using the timesteps       
+                    #if isinstance(self.scheduler, LMSDiscreteScheduler):
+                    #    start_timestep = torch.tensor([t_start] * batch_size, dtype=torch.long, device=self.device)
+                    #else:
+                    start_timestep = timesteps
                     
-            # if we use LMSDiscreteScheduler, let's make sure latents are mulitplied by sigmas
-            if isinstance(self.scheduler, LMSDiscreteScheduler):
-                latents = latents * ((self.scheduler.sigmas[t_start]**2 + 1) ** 0.5) #self.scheduler.sigmas[t_start]
+                    
+                    latents = self.scheduler.add_noise(latents, noise, start_timestep)
+                    
+            #self.scheduler.sigmas[t_start]
 
             #print("t_start:", t_start)
+            # if we use LMSDiscreteScheduler, let's make sure latents are mulitplied by sigmas
+            if isinstance(self.scheduler, LMSDiscreteScheduler):
+                latents = latents * ((self.scheduler.sigmas[t_start]**2 + 1) ** 0.5) 
+
 
             
             
@@ -199,7 +322,6 @@ class StableDiffusionPipeline(DiffusionPipeline):
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
-
 
         latent_list = [latents]
         
@@ -217,10 +339,11 @@ class StableDiffusionPipeline(DiffusionPipeline):
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             if isinstance(self.scheduler, LMSDiscreteScheduler):
                 sigma = self.scheduler.sigmas[count]
+
                 latent_model_input = latent_model_input / ((sigma**2 + 1) ** 0.5)
 
             # predict the noise residual
-            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings)["sample"]
+            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
 
             # perform guidance
             if do_classifier_free_guidance:
@@ -263,7 +386,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
                                 # Decode to image space
                                 #denoised_images = self.vae.decode((1 / 0.18215) * latents_x0) / 2 + 0.5  # (0, 1)
                                 #if denoised_images is None:  
-                                denoised_images = self.vae.decode(latents / 0.18215) / 2 + 0.5  # (0, 1)
+                                denoised_images = self.vae.decode(latents / 0.18215)["sample"] / 2 + 0.5  # (0, 1)
+
 
                                 # Calculate loss
                                 loss = callback_dict["loss_function"](denoised_images)
@@ -281,6 +405,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         # scale and decode the image latents with vae
         image = self.decode_image(latents, output_type=output_type)
 
+
         if output_type == "pil" and use_safety:
             # run safety checker
             check_img = self.numpy_to_pil(image.permute(0, 2, 3, 1).numpy())
@@ -289,7 +414,13 @@ class StableDiffusionPipeline(DiffusionPipeline):
         else:
             has_nsfw_concept = False
 
-        return {"sample": image, "nsfw_content_detected": has_nsfw_concept, "latents": latent_list}
+            
+
+        if not return_dict:
+            return (image, has_nsfw_concept)
+
+        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+            
     
     def sample_noise(self, width=512, height=512, batch_size=1, generator=None):
         latents = torch.randn(batch_size, self.unet.in_channels,
@@ -344,7 +475,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         # move to -1 to 1 for vae
         image = (image - 0.5) * 2
         # encode image
-        latents = self.vae.encode(image.to(torch_device))
+        latents = self.vae.encode(image.to(torch_device))["latent_dist"]
         # encoded img is DiagonalGaussianDistribution, need to sample from it or we take the mean instead
         #latents = latents.sample()
         latents = latents.mean
@@ -358,7 +489,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         if output_type == "latent":
             return latents.detach().cpu()
         latents = latents / 0.18215
-        image = self.vae.decode(latents.to(device))
+        image = self.vae.decode(latents.to(device))["sample"]
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu()
         
@@ -373,3 +504,4 @@ class StableDiffusionPipeline(DiffusionPipeline):
         torch.cuda.manual_seed(seed)
         np.random.seed(seed)
         random.seed(seed)
+

@@ -17,15 +17,21 @@
 import importlib
 import inspect
 import os
-from typing import Optional, Union
+from dataclasses import dataclass
+from typing import List, Optional, Union
 
+import numpy as np
 import torch
 
+import diffusers
+import PIL
 from huggingface_hub import snapshot_download
 from PIL import Image
+from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
-from .utils import DIFFUSERS_CACHE, logging
+from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
+from .utils import CONFIG_NAME, DIFFUSERS_CACHE, ONNX_WEIGHTS_NAME, WEIGHTS_NAME, BaseOutput, logging
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
@@ -39,6 +45,7 @@ LOADABLE_CLASSES = {
         "ModelMixin": ["save_pretrained", "from_pretrained"],
         "SchedulerMixin": ["save_config", "from_config"],
         "DiffusionPipeline": ["save_pretrained", "from_pretrained"],
+        "OnnxRuntimeModel": ["save_pretrained", "from_pretrained"],
     },
     "transformers": {
         "PreTrainedTokenizer": ["save_pretrained", "from_pretrained"],
@@ -53,8 +60,35 @@ for library in LOADABLE_CLASSES:
     ALL_IMPORTABLE_CLASSES.update(LOADABLE_CLASSES[library])
 
 
-class DiffusionPipeline(ConfigMixin):
+@dataclass
+class ImagePipelineOutput(BaseOutput):
+    """
+    Output class for image pipelines.
 
+    Args:
+        images (`List[PIL.Image.Image]` or `np.ndarray`)
+            List of denoised PIL images of length `batch_size` or numpy array of shape `(batch_size, height, width,
+            num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
+    """
+
+    images: Union[List[PIL.Image.Image], np.ndarray]
+
+
+class DiffusionPipeline(ConfigMixin):
+    r"""
+    Base class for all models.
+
+    [`DiffusionPipeline`] takes care of storing all components (models, schedulers, processors) for diffusion pipelines
+    and handles methods for loading, downloading and saving models as well as a few methods common to all pipelines to:
+
+        - move all PyTorch modules to the device of your choice
+        - enabling/disabling the progress bar for the denoising iteration
+
+    Class attributes:
+
+        - **config_name** ([`str`]) -- name of the config file that will store the class and module names of all
+          components of the diffusion pipeline.
+    """
     config_name = "model_index.json"
 
     def register_modules(self, **kwargs):
@@ -62,7 +96,7 @@ class DiffusionPipeline(ConfigMixin):
         from diffusers import pipelines
 
         for name, module in kwargs.items():
-            # retrive library
+            # retrieve library
             library = module.__module__.split(".")[0]
 
             # check if the module is a pipeline module
@@ -76,7 +110,7 @@ class DiffusionPipeline(ConfigMixin):
             if library not in LOADABLE_CLASSES or is_pipeline_module:
                 library = pipeline_dir
 
-            # retrive class_name
+            # retrieve class_name
             class_name = module.__class__.__name__
 
             register_dict = {name: (library, class_name)}
@@ -88,6 +122,15 @@ class DiffusionPipeline(ConfigMixin):
             setattr(self, name, module)
 
     def save_pretrained(self, save_directory: Union[str, os.PathLike]):
+        """
+        Save all variables of the pipeline that can be saved and loaded as well as the pipelines configuration file to
+        a directory. A pipeline variable can be saved and loaded if its class implements both a save and loading
+        method. The pipeline can easily be re-loaded using the `[`~DiffusionPipeline.from_pretrained`]` class method.
+
+        Arguments:
+            save_directory (`str` or `os.PathLike`):
+                Directory to which to save. Will be created if it doesn't exist.
+        """
         self.save_config(save_directory)
 
         model_index_dict = dict(self.config)
@@ -128,6 +171,10 @@ class DiffusionPipeline(ConfigMixin):
 
     @property
     def device(self) -> torch.device:
+        r"""
+        Returns:
+            `torch.device`: The torch device on which the pipeline is located.
+        """
         module_names, _ = self.extract_init_dict(dict(self.config))
         for name in module_names.keys():
             module = getattr(self, name)
@@ -138,7 +185,94 @@ class DiffusionPipeline(ConfigMixin):
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
         r"""
-        Add docstrings
+        Instantiate a PyTorch diffusion pipeline from pre-trained pipeline weights.
+
+        The pipeline is set in evaluation mode by default using `model.eval()` (Dropout modules are deactivated).
+
+        The warning *Weights from XXX not initialized from pretrained model* means that the weights of XXX do not come
+        pretrained with the rest of the model. It is up to you to train those weights with a downstream fine-tuning
+        task.
+
+        The warning *Weights from XXX not used in YYY* means that the layer XXX is not used by YYY, therefore those
+        weights are discarded.
+
+        Parameters:
+            pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
+                Can be either:
+
+                    - A string, the *repo id* of a pretrained pipeline hosted inside a model repo on
+                      https://huggingface.co/ Valid repo ids have to be located under a user or organization name, like
+                      `CompVis/ldm-text2im-large-256`.
+                    - A path to a *directory* containing pipeline weights saved using
+                      [`~DiffusionPipeline.save_pretrained`], e.g., `./my_pipeline_directory/`.
+            torch_dtype (`str` or `torch.dtype`, *optional*):
+                Override the default `torch.dtype` and load the model under this dtype. If `"auto"` is passed the dtype
+                will be automatically derived from the model's weights.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
+            resume_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to delete incompletely received files. Will attempt to resume the download if such a
+                file exists.
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
+                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+            output_loading_info(`bool`, *optional*, defaults to `False`):
+                Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
+            local_files_only(`bool`, *optional*, defaults to `False`):
+                Whether or not to only look at local files (i.e., do not try to download the model).
+            use_auth_token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, will use the token generated
+                when running `huggingface-cli login` (stored in `~/.huggingface`).
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
+                git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
+                identifier allowed by git.
+            mirror (`str`, *optional*):
+                Mirror source to accelerate downloads in China. If you are from China and have an accessibility
+                problem, you can set this option to resolve it. Note that we do not guarantee the timeliness or safety.
+                Please refer to the mirror site for more information. specify the folder name here.
+
+            kwargs (remaining dictionary of keyword arguments, *optional*):
+                Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
+                specific pipeline class. The overwritten components are then directly passed to the pipelines
+                `__init__` method. See example below for more information.
+
+        <Tip>
+
+        Passing `use_auth_token=True`` is required when you want to use a private model, *e.g.*
+        `"CompVis/stable-diffusion-v1-4"`
+
+        </Tip>
+
+        <Tip>
+
+        Activate the special ["offline-mode"](https://huggingface.co/diffusers/installation.html#offline-mode) to use
+        this method in a firewalled environment.
+
+        </Tip>
+
+        Examples:
+
+        ```py
+        >>> from diffusers import DiffusionPipeline
+
+        >>> # Download pipeline from huggingface.co and cache.
+        >>> pipeline = DiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large-256")
+
+        >>> # Download pipeline that requires an authorization token
+        >>> # For more information on access tokens, please refer to this section
+        >>> # of the documentation](https://huggingface.co/docs/hub/security-tokens)
+        >>> pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+
+        >>> # Download pipeline, but overwrite scheduler
+        >>> from diffusers import LMSDiscreteScheduler
+
+        >>> scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
+        >>> pipeline = DiffusionPipeline.from_pretrained(
+        ...     "CompVis/stable-diffusion-v1-4", scheduler=scheduler, use_auth_token=True
+        ... )
+        ```
         """
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         resume_download = kwargs.pop("resume_download", False)
@@ -147,10 +281,27 @@ class DiffusionPipeline(ConfigMixin):
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
+        provider = kwargs.pop("provider", None)
+        sess_options = kwargs.pop("sess_options", None)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
         if not os.path.isdir(pretrained_model_name_or_path):
+            config_dict = cls.get_config_dict(
+                pretrained_model_name_or_path,
+                cache_dir=cache_dir,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+            )
+            # make sure we only download sub-folders and `diffusers` filenames
+            folder_names = [k for k in config_dict.keys() if not k.startswith("_")]
+            allow_patterns = [os.path.join(k, "*") for k in folder_names]
+            allow_patterns += [WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, ONNX_WEIGHTS_NAME, cls.config_name]
+
+            # download all allow_patterns
             cached_folder = snapshot_download(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
@@ -159,6 +310,7 @@ class DiffusionPipeline(ConfigMixin):
                 local_files_only=local_files_only,
                 use_auth_token=use_auth_token,
                 revision=revision,
+                allow_patterns=allow_patterns,
             )
         else:
             cached_folder = pretrained_model_name_or_path
@@ -188,6 +340,10 @@ class DiffusionPipeline(ConfigMixin):
 
         # 3. Load each module in the pipeline
         for name, (library_name, class_name) in init_dict.items():
+            # 3.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
+            if class_name.startswith("Flax"):
+                class_name = class_name[4:]
+
             is_pipeline_module = hasattr(pipelines, library_name)
             loaded_sub_model = None
 
@@ -241,6 +397,9 @@ class DiffusionPipeline(ConfigMixin):
                 loading_kwargs = {}
                 if issubclass(class_obj, torch.nn.Module):
                     loading_kwargs["torch_dtype"] = torch_dtype
+                if issubclass(class_obj, diffusers.OnnxRuntimeModel):
+                    loading_kwargs["provider"] = provider
+                    loading_kwargs["sess_options"] = sess_options
 
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
@@ -266,3 +425,16 @@ class DiffusionPipeline(ConfigMixin):
         pil_images = [Image.fromarray(image) for image in images]
 
         return pil_images
+
+    def progress_bar(self, iterable):
+        if not hasattr(self, "_progress_bar_config"):
+            self._progress_bar_config = {}
+        elif not isinstance(self._progress_bar_config, dict):
+            raise ValueError(
+                f"`self._progress_bar_config` should be of type `dict`, but is {type(self._progress_bar_config)}."
+            )
+
+        return tqdm(iterable, **self._progress_bar_config)
+
+    def set_progress_bar_config(self, **kwargs):
+        self._progress_bar_config = kwargs
