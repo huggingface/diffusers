@@ -366,8 +366,8 @@ def main():
                 with context:
                     images = pipeline(example["prompt"]).images
 
-                for image in images:
-                    image.save(class_images_dir / f"{example['index'] + cur_class_images}.jpg")
+                for image, index in (images, example["index"]):
+                    image.save(class_images_dir / f"{index + cur_class_images}.jpg")
 
             del pipeline
             if torch.cuda.is_available():
