@@ -27,11 +27,14 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 
 logger = get_logger(__name__)
+
+
 def save_progress(text_encoder, placeholder_token_id, accelerator, args):
     print("Saving embeddings")
     learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_id]
     learned_embeds_dict = {args.placeholder_token: learned_embeds.detach().cpu()}
     torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
