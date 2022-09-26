@@ -1,6 +1,8 @@
 import argparse
 import math
 import os
+from contextlib import nullcontext
+from enum import auto
 from pathlib import Path
 from typing import Optional
 
@@ -342,28 +344,36 @@ def main():
         cur_class_images = len(list(class_images_dir.iterdir()))
 
         if cur_class_images < args.num_class_images:
-            sd_model = StableDiffusionPipeline.from_pretrained(
-                args.pretrained_model_name_or_path, use_auth_token=args.use_auth_token
+            torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+            pipeline = StableDiffusionPipeline.from_pretrained(
+                args.pretrained_model_name_or_path, use_auth_token=args.use_auth_token, torch_dtype=torch_dtype
             )
-            sd_model.set_progress_bar_config(disable=True)
+            pipeline.set_progress_bar_config(disable=True)
+
             num_new_images = args.num_class_images - cur_class_images
             logger.info(f"Number of class images to sample: {num_new_images}.")
 
             sample_dataset = PromptDataset(args.class_prompt, num_new_images)
             sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=args.sample_batch_size)
 
-            sd_model, sample_dataloader = accelerator.prepare(sd_model, sample_dataloader)
-            sd_model.to(accelerator.device)
+            sample_dataloader = accelerator.prepare(sample_dataloader)
+            pipeline.to(accelerator.device)
 
+            all_images = []
             for example in tqdm(
                 sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
             ):
-                with torch.no_grad():
-                    images = sd_model(example["prompt"], height=512, width=512, num_inference_steps=50).images
+                context = torch.autocast(accelerator.device) if accelerator.device.type == "cuda" else nullcontext
+                with context:
+                    images = pipeline(example["prompt"]).images
+                all_images.extend(images)
 
-                for image, index in zip(images, example["index"]):
-                    image.save(class_images_dir / f"{index + cur_class_images}.jpg")
-            del sd_model
+            for image, example in zip(all_images, sample_dataloader):
+                image.save(class_images_dir / f"{example['index'] + cur_class_images}.jpg")
+
+            del pipeline
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -449,7 +459,6 @@ def main():
     # Move text_encode and vae to gpu
     text_encoder.to(accelerator.device)
     vae.to(accelerator.device)
-
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
