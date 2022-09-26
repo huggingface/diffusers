@@ -2,17 +2,14 @@ import argparse
 import math
 import os
 from contextlib import nullcontext
-from enum import auto
 from pathlib import Path
 from typing import Optional
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch.utils.data import Dataset
 
-import PIL
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
@@ -21,6 +18,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from huggingface_hub import HfFolder, Repository, whoami
 from PIL import Image
+from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
@@ -214,7 +212,6 @@ class DreamBoothDataset(Dataset):
         class_data_root=None,
         class_prompt=None,
         size=512,
-        interpolation="bicubic",
         center_crop=False,
     ):
         self.size = size
@@ -222,7 +219,9 @@ class DreamBoothDataset(Dataset):
         self.tokenizer = tokenizer
 
         self.instance_data_root = Path(instance_data_root)
-        assert self.instance_data_root.exists(), "Instance images root doesn't exists."
+        if not self.instance_data_root.exists():
+            raise ValueError("Instance images root doesn't exists.")
+
         self.instance_images_path = list(Path(instance_data_root).iterdir())
         self.num_instance_images = len(self.instance_images_path)
         self.instance_prompt = instance_prompt
@@ -238,61 +237,41 @@ class DreamBoothDataset(Dataset):
         else:
             self.class_data_root = None
 
-        self.interpolation = {
-            "linear": PIL.Image.LINEAR,
-            "bilinear": PIL.Image.BILINEAR,
-            "bicubic": PIL.Image.BICUBIC,
-            "lanczos": PIL.Image.LANCZOS,
-        }[interpolation]
+        self.image_transforms = transforms.Compose(
+            [
+                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
+                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5]),
+            ]
+        )
 
     def __len__(self):
         return self._length
-
-    def transform_image(self, image: Image):
-        # default to score-sde preprocessing
-        img = np.array(image).astype(np.uint8)
-
-        if self.center_crop:
-            crop = min(img.shape[0], img.shape[1])
-            h, w, = (
-                img.shape[0],
-                img.shape[1],
-            )
-            img = img[(h - crop) // 2 : (h + crop) // 2, (w - crop) // 2 : (w + crop) // 2]
-
-        image = Image.fromarray(img)
-        image = image.resize((self.size, self.size), resample=self.interpolation)
-
-        image = np.array(image).astype(np.uint8)
-        image = (image / 127.5 - 1.0).astype(np.float32)
-        image = torch.from_numpy(image).permute(2, 0, 1)
-        return image
 
     def __getitem__(self, index):
         example = {}
         instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
-        example["instance_images"] = self.transform_image(instance_image)
+        example["instance_images"] = self.image_transforms(instance_image)
         example["instance_prompt_ids"] = self.tokenizer(
             self.instance_prompt,
-            padding="max_length",
+            padding="do_not_pad",
             truncation=True,
             max_length=self.tokenizer.model_max_length,
-            return_tensors="pt",
         ).input_ids[0]
 
         if self.class_data_root:
             class_image = Image.open(self.class_images_path[index % self.num_class_images])
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
-            example["class_images"] = self.transform_image(class_image)
+            example["class_images"] = self.image_transforms(class_image)
             example["class_prompt_ids"] = self.tokenizer(
                 self.class_prompt,
-                padding="max_length",
+                padding="do_not_pad",
                 truncation=True,
                 max_length=self.tokenizer.model_max_length,
-                return_tensors="pt",
             ).input_ids[0]
 
         return example
@@ -434,7 +413,36 @@ def main():
         size=args.resolution,
         center_crop=args.center_crop,
     )
-    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.train_batch_size, shuffle=True)
+
+    def collate_fn(examples):
+        def _collate(input_ids, pixel_values):
+            pixel_values = torch.stack([pixel_value for pixel_value in pixel_values])
+            pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
+
+            input_ids = [input_id for input_id in input_ids]
+            input_ids = tokenizer.pad(
+                {"input_ids": input_ids},
+                padding=True,
+                max_length=tokenizer.model_max_length,
+                return_tensors="pt",
+            ).input_ids
+            return input_ids, pixel_values
+
+        instance_prompt_ids, instance_images = _collate(example["instance_prompt_ids"], example["instance_images"])
+
+        batch = {
+            "instance_images": instance_images,
+            "input_ids": instance_prompt_ids,
+        }
+
+        if args.with_prior_preservation:
+            class_prompt_ids, class_images = _collate(example["class_prompt_ids"], example["class_images"])
+            batch["class_images"] = class_images
+            batch["class_prompt_ids"] = class_prompt_ids
+
+    train_dataloader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn
+    )
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
