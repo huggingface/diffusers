@@ -200,9 +200,10 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.FloatTensor,
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
-        timesteps = timesteps.to(self.sigmas.device)
+        sigmas = self.sigmas.to(original_samples.device)
+        timesteps = timesteps.to(original_samples.device)
 
-        sigma = self.sigmas[timesteps].flatten()
+        sigma = sigmas[timesteps].flatten()
         while len(sigma.shape) < len(original_samples.shape):
             sigma = sigma.unsqueeze(-1)
 
