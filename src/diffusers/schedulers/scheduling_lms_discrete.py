@@ -226,7 +226,7 @@ class LMSDiscreteScheduler(BaseScheduler, SchedulerMixin, ConfigMixin):
         if self.tensor_format == "pt":
             timesteps = timesteps.to(self.sigmas.device)
         # FIXME: accounting for the descending sigmas
-        timesteps = self.num_inference_steps - timesteps - 1
+        timesteps = self.num_inference_steps - timesteps
         sigmas = self.match_shape(self.sigmas[timesteps], noise)
         noisy_samples = original_samples + noise * sigmas
 

@@ -39,7 +39,6 @@ class SchedulerOutput(BaseOutput):
 
 
 class BaseScheduler(abc.ABC):
-
     def scale_initial_noise(self, noise: torch.FloatTensor):
         """
         Scales the initial noise to the correct range for the scheduler.
