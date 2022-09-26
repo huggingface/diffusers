@@ -77,7 +77,7 @@ from setuptools import find_packages, setup
 # 1. all dependencies should be listed here with their version requirements if any
 # 2. once modified, run: `make deps_table_update` to update src/diffusers/dependency_versions_table.py
 _deps = [
-    "Pillow",
+    "Pillow<10.0",  # keep the PIL.Image.Resampling deprecation away
     "accelerate>=0.11.0",
     "black==22.8",
     "datasets",
@@ -90,8 +90,9 @@ _deps = [
     "isort>=5.5.4",
     "jax>=0.2.8,!=0.3.2,<=0.3.6",
     "jaxlib>=0.1.65,<=0.3.6",
-    "modelcards==0.1.4",
+    "modelcards>=0.1.4",
     "numpy",
+    "onnxruntime-gpu",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
@@ -100,6 +101,7 @@ _deps = [
     "requests",
     "tensorboard",
     "torch>=1.4",
+    "torchvision",
     "transformers>=4.21.0",
 ]
 
@@ -171,10 +173,19 @@ extras = {}
 
 
 extras = {}
-extras["quality"] = ["black==22.8", "isort>=5.5.4", "flake8>=3.8.3", "hf-doc-builder"]
-extras["docs"] = ["hf-doc-builder"]
-extras["training"] = ["accelerate", "datasets", "tensorboard", "modelcards"]
-extras["test"] = ["datasets", "onnxruntime", "pytest", "pytest-timeout", "pytest-xdist", "scipy", "transformers"]
+extras["quality"] = deps_list("black", "isort", "flake8", "hf-doc-builder")
+extras["docs"] = deps_list("hf-doc-builder")
+extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "modelcards")
+extras["test"] = deps_list(
+    "datasets",
+    "onnxruntime-gpu",
+    "pytest",
+    "pytest-timeout",
+    "pytest-xdist",
+    "scipy",
+    "torchvision",
+    "transformers"
+)
 extras["torch"] = deps_list("torch")
 
 if os.name == "nt":  # windows
