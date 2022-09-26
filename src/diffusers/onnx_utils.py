@@ -79,7 +79,9 @@ class OnnxRuntimeModel:
 
         src_path = self.model_save_dir.joinpath(self.latest_model_name)
         dst_path = Path(save_directory).joinpath(model_file_name)
-        if not src_path.samefile(dst_path):
+        if dst_path.is_file() and not src_path.samefile(dst_path):
+            shutil.copyfile(src_path, dst_path)
+        elif not dst_path.is_file():
             shutil.copyfile(src_path, dst_path)
 
     def save_pretrained(
