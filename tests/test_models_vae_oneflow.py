@@ -102,15 +102,8 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
 
         output_slice = output[0, -1, -3:, -3:].flatten().cpu()
 
-        # Since the VAE Gaussian prior's generator is seeded on the appropriate device,
-        # the expected output slices are not the same for CPU and GPU.
-        if torch_device in ("mps", "cpu"):
-            expected_output_slice = torch.tensor(
-                [-0.1352, 0.0878, 0.0419, -0.0818, -0.1069, 0.0688, -0.1458, -0.4446, -0.0026]
-            )
-        else:
-            expected_output_slice = torch.tensor(
-                [-0.2421, 0.4642, 0.2507, -0.0438, 0.0682, 0.3160, -0.2018, -0.0727, 0.2485]
-            )
-
+        # NOTE: oneflow's random generator is not aligned with pytorch's
+        expected_output_slice = torch.tensor(
+            [-0.1307,  0.1102,  0.3255, -0.2596, -0.0746, -0.1416, -0.2858, -0.3020, -0.1785]
+        )
         self.assertTrue(np.allclose(output_slice.numpy(), expected_output_slice.numpy(), rtol=1e-2))
