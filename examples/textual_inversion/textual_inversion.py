@@ -50,8 +50,8 @@ def save_progress(text_encoder, pipeline, placeholder_token_ids, accelerator, ar
     learned_embeds = text_encoder.get_input_embeddings().weight[placeholder_token_ids]
     learned_embeds_dict = {}
 
-    for placeholder_token in placeholder_token_concat.split(' '):
-        learned_embeds_dict[placeholder_token] = learned_embeds[0].detach().cpu()
+    for i, placeholder_token in enumerate(placeholder_token_concat.split(' ')):
+        learned_embeds_dict[placeholder_token] = learned_embeds[i].detach().cpu()
     torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
 def get_pipeline(text_encoder, vae, unet, tokenizer,accelerator):
     pipeline = StableDiffusionPipelineMixedDevices(
