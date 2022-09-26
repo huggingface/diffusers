@@ -84,3 +84,4 @@ else:
     from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
 
 from .models.unet_2d_condition_oneflow import OneFlowUNet2DConditionModel
+from .models.vae_oneflow import OneFlowAutoencoderKL
