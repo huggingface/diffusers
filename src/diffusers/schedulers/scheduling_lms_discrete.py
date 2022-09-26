@@ -92,8 +92,9 @@ class LMSDiscreteScheduler(BaseScheduler, SchedulerMixin, ConfigMixin):
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
 
-        self.sigmas = ((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5
-        self.sigmas = self.sigmas[::-1].copy()
+        sigmas = ((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5
+        sigmas = sigmas[::-1].copy()
+        self.sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
 
         # setable values
         self.num_inference_steps = None
@@ -191,7 +192,8 @@ class LMSDiscreteScheduler(BaseScheduler, SchedulerMixin, ConfigMixin):
             When returning a tuple, the first element is the sample tensor.
 
         """
-        timestep = int(self.num_inference_steps - timestep - 1)
+        # FIXME: accounting for the descending sigmas
+        timestep = int(len(self.timesteps) - timestep - 1)
         sigma = self.sigmas[timestep]
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise

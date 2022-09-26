@@ -229,7 +229,7 @@ class SchedulerCommonTest(unittest.TestCase):
                 )
 
         kwargs = dict(self.forward_default_kwargs)
-        num_inference_steps = kwargs.pop("num_inference_steps", None)
+        num_inference_steps = kwargs.pop("num_inference_steps", 50)
 
         for scheduler_class in self.scheduler_classes:
             scheduler_config = self.get_scheduler_config()
@@ -369,9 +369,10 @@ class DDIMSchedulerTest(SchedulerCommonTest):
 
         scheduler.set_timesteps(num_inference_steps)
 
-        for t in scheduler.timesteps:
+        for step in scheduler.timesteps:
+            t = scheduler.get_noise_condition(step)
             residual = model(sample, t)
-            sample = scheduler.step(residual, t, sample, eta).prev_sample
+            sample = scheduler.step(residual, step, sample, eta).prev_sample
 
         return sample
 
@@ -387,7 +388,7 @@ class DDIMSchedulerTest(SchedulerCommonTest):
         scheduler_config = self.get_scheduler_config(steps_offset=1)
         scheduler = scheduler_class(**scheduler_config)
         scheduler.set_timesteps(5)
-        assert torch.equal(scheduler.timesteps, torch.tensor([801, 601, 401, 201, 1]))
+        assert torch.equal(scheduler.schedule[scheduler.timesteps], torch.tensor([801, 601, 401, 201, 1]))
 
     def test_betas(self):
         for beta_start, beta_end in zip([0.0001, 0.001, 0.01, 0.1], [0.002, 0.02, 0.2, 2]):
@@ -668,7 +669,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         scheduler = scheduler_class(**scheduler_config)
         scheduler.set_timesteps(10)
         assert torch.equal(
-            scheduler.timesteps,
+            scheduler.schedule[scheduler.timesteps],
             torch.tensor(
                 [901, 851, 851, 801, 801, 751, 751, 701, 701, 651, 651, 601, 601, 501, 401, 301, 201, 101, 1]
             ),
@@ -988,14 +989,14 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
         scheduler.set_timesteps(self.num_inference_steps)
 
         model = self.dummy_model()
-        sample = self.dummy_sample_deter * scheduler.sigmas[0]
+        sample = scheduler.scale_initial_noise(self.dummy_sample_deter)
 
-        for i, t in enumerate(scheduler.timesteps):
-            sample = sample / ((scheduler.sigmas[i] ** 2 + 1) ** 0.5)
-
+        for step in scheduler.timesteps:
+            sample = scheduler.scale_model_input(sample, step)
+            t = scheduler.get_noise_condition(step)
             model_output = model(sample, t)
 
-            output = scheduler.step(model_output, i, sample)
+            output = scheduler.step(model_output, step, sample)
             sample = output.prev_sample
 
         result_sum = torch.sum(torch.abs(sample))
