@@ -77,6 +77,7 @@ class LDMPipeline(DiffusionPipeline):
             generator=generator,
         )
         latents = latents.to(self.device)
+        latents = self.scheduler.scale_initial_noise(latents)
 
         self.scheduler.set_timesteps(num_inference_steps)
 
@@ -87,11 +88,13 @@ class LDMPipeline(DiffusionPipeline):
         if accepts_eta:
             extra_kwargs["eta"] = eta
 
-        for t in self.progress_bar(self.scheduler.timesteps):
+        for step in self.progress_bar(self.scheduler.timesteps):
             # predict the noise residual
+            latents = self.scheduler.scale_model_input(latents, step)
+            t = self.scheduler.get_noise_condition(step)
             noise_prediction = self.unet(latents, t).sample
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_prediction, t, latents, **extra_kwargs).prev_sample
+            latents = self.scheduler.step(noise_prediction, step, latents, **extra_kwargs).prev_sample
 
         # decode the image latents with the VAE
         image = self.vqvae.decode(latents).sample

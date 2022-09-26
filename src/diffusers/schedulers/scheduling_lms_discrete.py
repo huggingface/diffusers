@@ -22,7 +22,7 @@ from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils import BaseScheduler, SchedulerMixin
 
 
 @dataclass
@@ -43,7 +43,7 @@ class LMSDiscreteSchedulerOutput(BaseOutput):
     pred_original_sample: Optional[torch.FloatTensor] = None
 
 
-class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
+class LMSDiscreteScheduler(BaseScheduler, SchedulerMixin, ConfigMixin):
     """
     Linear Multistep Scheduler for discrete beta schedules. Based on the original k-diffusion implementation by
     Katherine Crowson:
@@ -93,14 +93,35 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
 
         self.sigmas = ((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5
+        self.sigmas = self.sigmas[::-1].copy()
 
         # setable values
         self.num_inference_steps = None
         self.timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
+        self.schedule = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=float)
         self.derivatives = []
 
         self.tensor_format = tensor_format
         self.set_format(tensor_format=tensor_format)
+
+    def scale_initial_noise(self, noise: torch.FloatTensor):
+        """
+        Scales the initial noise to the correct range for the scheduler.
+        """
+        return noise * self.sigmas[0]
+
+    def scale_model_input(self, sample: torch.FloatTensor, step: int):
+        """
+        Scales the model input (`sample`) to the correct range for the scheduler.
+        """
+        sigma = self.sigmas[self.num_inference_steps - step - 1]
+        return sample / ((sigma**2 + 1) ** 0.5)
+
+    def get_noise_condition(self, step: int):
+        """
+        Returns the input noise condition for a model.
+        """
+        return self.schedule[step]
 
     def get_lms_coefficient(self, order, t, current_order):
         """
@@ -133,13 +154,11 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
         self.num_inference_steps = num_inference_steps
-        self.timesteps = np.linspace(self.config.num_train_timesteps - 1, 0, num_inference_steps, dtype=float)
+        self.timesteps = np.arange(0, num_inference_steps)[::-1].copy()
 
-        low_idx = np.floor(self.timesteps).astype(int)
-        high_idx = np.ceil(self.timesteps).astype(int)
-        frac = np.mod(self.timesteps, 1.0)
+        self.schedule = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=float)
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
-        sigmas = (1 - frac) * sigmas[low_idx] + frac * sigmas[high_idx]
+        sigmas = np.interp(self.schedule[::-1], np.arange(0, len(sigmas)), sigmas)
         self.sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
 
         self.derivatives = []
@@ -172,6 +191,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             When returning a tuple, the first element is the sample tensor.
 
         """
+        timestep = int(self.num_inference_steps - timestep - 1)
         sigma = self.sigmas[timestep]
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise

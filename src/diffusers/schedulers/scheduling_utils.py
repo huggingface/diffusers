@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import abc
 from dataclasses import dataclass
 from typing import Union
 
@@ -35,6 +36,28 @@ class SchedulerOutput(BaseOutput):
     """
 
     prev_sample: torch.FloatTensor
+
+
+class BaseScheduler(abc.ABC):
+
+    def scale_initial_noise(self, noise: torch.FloatTensor):
+        """
+        Scales the initial noise to the correct range for the scheduler.
+        """
+        return noise
+
+    def scale_model_input(self, sample: torch.FloatTensor, step: int):
+        """
+        Scales the model input (`sample`) to the correct range for the scheduler.
+        """
+        return sample
+
+    @abc.abstractmethod
+    def get_noise_condition(self, step: int):
+        """
+        Returns the input noise condition for the model (e.g. `timestep` or `sigma`).
+        """
+        raise NotImplementedError("Scheduler must implement the `get_noise_condition` function.")
 
 
 class SchedulerMixin:

@@ -130,6 +130,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             generator=generator,
         )
         latents = latents.to(self.device)
+        latents = self.scheduler.scale_initial_noise(latents)
 
         self.scheduler.set_timesteps(num_inference_steps)
 
@@ -140,7 +141,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         if accepts_eta:
             extra_kwargs["eta"] = eta
 
-        for t in self.progress_bar(self.scheduler.timesteps):
+        for step in self.progress_bar(self.scheduler.timesteps):
             if guidance_scale == 1.0:
                 # guidance_scale of 1 means no guidance
                 latents_input = latents
@@ -153,6 +154,8 @@ class LDMTextToImagePipeline(DiffusionPipeline):
                 context = torch.cat([uncond_embeddings, text_embeddings])
 
             # predict the noise residual
+            latents_input = self.scheduler.scale_model_input(latents_input, step)
+            t = self.scheduler.get_noise_condition(step)
             noise_pred = self.unet(latents_input, t, encoder_hidden_states=context).sample
             # perform guidance
             if guidance_scale != 1.0:
@@ -160,7 +163,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_prediction_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, **extra_kwargs).prev_sample
+            latents = self.scheduler.step(noise_pred, step, latents, **extra_kwargs).prev_sample
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents

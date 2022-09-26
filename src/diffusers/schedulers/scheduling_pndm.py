@@ -22,7 +22,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_utils import BaseScheduler, SchedulerMixin, SchedulerOutput
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
@@ -54,7 +54,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     return np.array(betas, dtype=np.float32)
 
 
-class PNDMScheduler(SchedulerMixin, ConfigMixin):
+class PNDMScheduler(BaseScheduler, SchedulerMixin, ConfigMixin):
     """
     Pseudo numerical methods for diffusion models (PNDM) proposes using more advanced ODE integration techniques,
     namely Runge-Kutta method and a linear multi-step method.
@@ -137,10 +137,16 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         self._timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
         self.prk_timesteps = None
         self.plms_timesteps = None
-        self.timesteps = None
+        self.schedule = None
 
         self.tensor_format = tensor_format
         self.set_format(tensor_format=tensor_format)
+
+    def get_noise_condition(self, step: int):
+        """
+        Returns the input noise condition for a model.
+        """
+        return self.schedule[step]
 
     def set_timesteps(self, num_inference_steps: int, **kwargs) -> torch.FloatTensor:
         """
@@ -185,7 +191,9 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
                 ::-1
             ].copy()  # we copy to avoid having negative strides which are not supported by torch.from_numpy
 
-        self.timesteps = np.concatenate([self.prk_timesteps, self.plms_timesteps]).astype(np.int64)
+        self.schedule = np.concatenate([self.prk_timesteps, self.plms_timesteps]).astype(np.int64)
+        self.schedule = self.schedule[::-1].copy()  # FIXME: create the schedule in ascending order to avoid this
+        self.timesteps = np.arange(0, len(self.schedule))[::-1].copy()
 
         self.ets = []
         self.counter = 0
@@ -217,6 +225,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             returning a tuple, the first element is the sample tensor.
 
         """
+        timestep = self.schedule[timestep]
         if self.counter < len(self.prk_timesteps) and not self.config.skip_prk_steps:
             return self.step_prk(model_output=model_output, timestep=timestep, sample=sample, return_dict=return_dict)
         else:
@@ -387,6 +396,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
     ) -> torch.Tensor:
         if self.tensor_format == "pt":
             timesteps = timesteps.to(self.alphas_cumprod.device)
+        timesteps = self.schedule[timesteps]
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
         sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5

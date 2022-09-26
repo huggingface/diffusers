@@ -25,7 +25,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils import BaseScheduler, SchedulerMixin
 
 
 @dataclass
@@ -75,7 +75,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     return np.array(betas, dtype=np.float32)
 
 
-class DDIMScheduler(SchedulerMixin, ConfigMixin):
+class DDIMScheduler(BaseScheduler, SchedulerMixin, ConfigMixin):
     """
     Denoising diffusion implicit models is a scheduler that extends the denoising procedure introduced in denoising
     diffusion probabilistic models (DDPMs) with non-Markovian guidance.
@@ -147,7 +147,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         # setable values
         self.num_inference_steps = None
-        self.timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
+        self.schedule = np.arange(0, num_train_timesteps)
+        self.timesteps = self.schedule[::-1].copy()
 
         self.tensor_format = tensor_format
         self.set_format(tensor_format=tensor_format)
@@ -161,6 +162,12 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         variance = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
 
         return variance
+
+    def get_noise_condition(self, step: int):
+        """
+        Returns the input noise condition for a model.
+        """
+        return self.schedule[step]
 
     def set_timesteps(self, num_inference_steps: int, **kwargs):
         """
@@ -186,8 +193,10 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         step_ratio = self.config.num_train_timesteps // self.num_inference_steps
         # creates integer timesteps by multiplying by ratio
         # casting to int to avoid issues when num_inference_step is power of 3
-        self.timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy()
-        self.timesteps += offset
+        self.schedule = (np.arange(0, num_inference_steps) * step_ratio).round().copy()
+        self.schedule += offset
+
+        self.timesteps = np.arange(0, num_inference_steps)[::-1].copy()
         self.set_format(tensor_format=self.tensor_format)
 
     def step(
@@ -235,6 +244,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # - eta -> η
         # - pred_sample_direction -> "direction pointing to x_t"
         # - pred_prev_sample -> "x_t-1"
+
+        timestep = self.schedule[timestep]
 
         # 1. get previous step value (=t-1)
         prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
@@ -291,6 +302,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
     ) -> Union[torch.FloatTensor, np.ndarray]:
         if self.tensor_format == "pt":
             timesteps = timesteps.to(self.alphas_cumprod.device)
+        timesteps = self.schedule[timesteps]
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
         sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
