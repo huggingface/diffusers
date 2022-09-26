@@ -17,8 +17,8 @@ import numpy as np
 import oneflow as torch
 from oneflow import nn
 
-from .attention import AttentionBlock, SpatialTransformer
-from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, ResnetBlock2D, Upsample2D
+from .attention_oneflow import AttentionBlock, SpatialTransformer
+from .resnet_oneflow import Downsample2D, FirDownsample2D, FirUpsample2D, ResnetBlock2D, Upsample2D
 
 
 def get_down_block(
