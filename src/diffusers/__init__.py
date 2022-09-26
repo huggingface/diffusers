@@ -82,3 +82,5 @@ if is_flax_available() and is_transformers_available():
     from .pipelines import FlaxStableDiffusionPipeline
 else:
     from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
+
+from .models.unet_2d_condition_oneflow import OneFlowUNet2DConditionModel

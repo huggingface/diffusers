@@ -16,19 +16,16 @@
 import math
 import unittest
 
-import torch
+import oneflow as torch
 
-from diffusers import UNet2DConditionModel, UNet2DModel
+from diffusers import OneFlowUNet2DConditionModel
 from diffusers.testing_utils import floats_tensor, slow, torch_device
 
 from .test_modeling_common import ModelTesterMixin
 
 
-torch.backends.cuda.matmul.allow_tf32 = False
-
-
 class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
-    model_class = UNet2DConditionModel
+    model_class = OneFlowUNet2DConditionModel
 
     @property
     def dummy_input(self):
