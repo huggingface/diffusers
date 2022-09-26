@@ -442,6 +442,7 @@ def main():
             class_images = [example["class_images"] for example in examples]
             batch["class_images"] = class_images
             batch["class_prompt_ids"] = class_prompt_ids
+        return batch
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn
