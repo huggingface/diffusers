@@ -260,7 +260,7 @@ class DreamBoothDataset(Dataset):
             padding="do_not_pad",
             truncation=True,
             max_length=self.tokenizer.model_max_length,
-        ).input_ids[0]
+        ).input_ids
 
         if self.class_data_root:
             class_image = Image.open(self.class_images_path[index % self.num_class_images])
@@ -272,7 +272,7 @@ class DreamBoothDataset(Dataset):
                 padding="do_not_pad",
                 truncation=True,
                 max_length=self.tokenizer.model_max_length,
-            ).input_ids[0]
+            ).input_ids
 
         return example
 
@@ -423,7 +423,6 @@ def main():
             input_ids = tokenizer.pad(
                 {"input_ids": input_ids},
                 padding=True,
-                max_length=tokenizer.model_max_length,
                 return_tensors="pt",
             ).input_ids
             return input_ids, pixel_values
