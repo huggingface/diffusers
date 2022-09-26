@@ -439,6 +439,7 @@ def main():
         if args.with_prior_preservation:
             class_prompt_ids = [example["class_prompt_ids"] for example in examples]
             class_images = [example["class_images"] for example in examples]
+            class_prompt_ids, class_images = _collate(class_prompt_ids, class_images)
             batch["class_images"] = class_images
             batch["class_prompt_ids"] = class_prompt_ids
         return batch
