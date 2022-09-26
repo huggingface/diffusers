@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from genericpath import isdir
 import os
 from functools import partial
 from typing import Callable, List, Optional, Tuple, Union
@@ -66,7 +67,17 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike]):
     Reads a PyTorch checkpoint file, returning properly formatted errors if they arise.
     """
     try:
-        return torch.load(checkpoint_file, map_location="cpu")
+        # this is oneflow saved model, a dir
+        if os.path.isdir(checkpoint_file):
+            return torch.load(checkpoint_file, map_location="cpu")
+        else:
+            import torch as original_torch
+            torch_parameters = original_torch.load(checkpoint_file, map_location="cpu")
+            oneflow_parameters = dict()
+            for key,value in torch_parameters.items():
+                val = value.detach().cpu().numpy()
+                oneflow_parameters[key] = val
+            return oneflow_parameters
     except Exception as e:
         try:
             with open(checkpoint_file) as f:
