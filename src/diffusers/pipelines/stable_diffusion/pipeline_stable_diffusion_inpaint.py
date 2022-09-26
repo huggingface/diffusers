@@ -6,7 +6,6 @@ import numpy as np
 import torch
 
 import PIL
-from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
