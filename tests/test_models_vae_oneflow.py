@@ -103,6 +103,7 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
         output_slice = output[0, -1, -3:, -3:].flatten().cpu()
 
         # NOTE: oneflow's random generator is not aligned with pytorch's
+        # TODO(oneflow): check if oneflow has identical result to pytorch
         expected_output_slice = torch.tensor(
             [-0.1307,  0.1102,  0.3255, -0.2596, -0.0746, -0.1416, -0.2858, -0.3020, -0.1785]
         )
