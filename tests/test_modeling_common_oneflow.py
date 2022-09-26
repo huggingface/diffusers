@@ -220,8 +220,8 @@ class ModelTesterMixin:
                 return
             else:
                 self.assertTrue(
-                    torch.allclose(
-                        set_nan_tensor_to_zero(tuple_object), set_nan_tensor_to_zero(dict_object), atol=1e-5
+                    np.allclose(
+                        set_nan_tensor_to_zero(tuple_object).numpy(), set_nan_tensor_to_zero(dict_object).numpy(), atol=1e-5
                     ),
                     msg=(
                         "Tuple and dict output are not equal. Difference:"
