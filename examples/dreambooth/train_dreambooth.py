@@ -434,7 +434,7 @@ def main():
 
         batch = {
             "instance_images": instance_images,
-            "input_ids": instance_prompt_ids,
+            "instance_prompt_ids": instance_prompt_ids,
         }
 
         if args.with_prior_preservation:
