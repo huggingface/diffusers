@@ -14,8 +14,8 @@
 import numpy as np
 
 # limitations under the License.
-import torch
-from torch import nn
+import oneflow as torch
+from oneflow import nn
 
 from .attention import AttentionBlock, SpatialTransformer
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, ResnetBlock2D, Upsample2D
