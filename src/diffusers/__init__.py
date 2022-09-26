@@ -85,3 +85,7 @@ else:
 
 from .models.unet_2d_condition_oneflow import OneFlowUNet2DConditionModel
 from .models.vae_oneflow import OneFlowAutoencoderKL
+
+from .schedulers import (
+    OneFlowDDIMScheduler
+)

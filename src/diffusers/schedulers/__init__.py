@@ -41,3 +41,7 @@ if is_scipy_available():
     from .scheduling_lms_discrete import LMSDiscreteScheduler
 else:
     from ..utils.dummy_torch_and_scipy_objects import *  # noqa F403
+
+
+from .scheduling_oneflow_utils import OneFlowSchedulerMixin
+from .scheduling_ddim_oneflow import OneFlowDDIMScheduler
