@@ -21,7 +21,7 @@ import oneflow as torch
 from diffusers import OneFlowUNet2DConditionModel
 from diffusers.testing_oneflow_utils import floats_tensor, slow, torch_device
 
-from .test_modeling_common import ModelTesterMixin
+from .test_modeling_common_oneflow import ModelTesterMixin
 
 
 class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
