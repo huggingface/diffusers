@@ -90,3 +90,5 @@ from .schedulers import (
     OneFlowDDIMScheduler,
     OneFlowPNDMScheduler
 )
+
+from .pipelines import OneFlowStableDiffusionPipeline
