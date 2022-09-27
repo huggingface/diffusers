@@ -14,7 +14,7 @@ import PIL.ImageOps
 import requests
 import warnings
 from packaging import version
-from . import __version__
+from .. import __version__
 
 
 global_rng = random.Random()
