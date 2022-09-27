@@ -12,7 +12,6 @@ accelerate launch train_dreambooth.py \
   --instance_prompt="photo of sks person" \
   --class_prompt="photo of a person" \
   --resolution=512 \
-  --mixed_precision="fp16" \
   --use_8bit_adam \
   --train_batch_size=1 \
   --gradient_accumulation_steps=1 \
