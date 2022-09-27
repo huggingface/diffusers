@@ -531,7 +531,8 @@ def main():
                 # Sample a random timestep for each image
                 timesteps = torch.randint(
                     0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device
-                ).long()
+                )
+                timesteps = timsteps.long()
 
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)

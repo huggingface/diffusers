@@ -62,7 +62,7 @@ accelerate launch train_dreambooth.py \
 
 ### Training with prior-preservation loss
 
-prior-preservation is used to avoid overfitting and language-drift. Refer to the paper to learn more about it. For prior-preservation we first generate images using the model with a class prompt and then use those during training along with our data.
+Prior-preservation is used to avoid overfitting and language-drift. Refer to the paper to learn more about it. For prior-preservation we first generate images using the model with a class prompt and then use those during training along with our data.
 According to the paper, it's recommened to generate `num_epochs * num_samples` images for prior-preservation. 200-300 works well for most cases.
 
 ```bash
@@ -129,9 +129,10 @@ Once you have trained a model using above command, the inference can be done sim
 
 from torch import autocast
 from diffusers import StableDiffusionPipeline
+import torch
 
 model_id = "path-to-your-trained-model"
-pipe = StableDiffusionPipeline.from_pretrained(model_id,torch_dtype=torch.float16).to("cuda")
+pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 
 prompt = "A photo of sks dog in a bucket"
 
