@@ -435,7 +435,6 @@ class DDIMSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 172.0067) < 1e-2
         assert abs(result_mean.item() - 0.223967) < 1e-3
-        raise
 
     def test_full_loop_with_set_alpha_to_one(self):
         # We specify different beta, so that the first alpha is 0.99
@@ -550,14 +549,12 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         scheduler.set_timesteps(num_inference_steps)
 
         for i, t in enumerate(scheduler.prk_timesteps):
-            print(f"prk_timesteps #{i} sample {sample.dtype}", sample[0][0][0])
-            print(f"prk_timesteps #{t} t {sample.dtype}", t)
             residual = model(sample, t)
             print(f"prk_timesteps #{i} residual {residual.dtype}", residual[0][0][0])
             sample = scheduler.step_prk(residual, t, sample).prev_sample
 
         for i, t in enumerate(scheduler.plms_timesteps):
-            print(f"plms_timesteps #{i} sample {sample.dtype}", sample[0][0][0])
+
             residual = model(sample, t)
             sample = scheduler.step_plms(residual, t, sample).prev_sample
 

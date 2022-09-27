@@ -340,6 +340,7 @@ class DDIMSchedulerTest(SchedulerCommonTest):
 
     def test_full_loop_no_noise(self):
         sample = self.full_loop()
+
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
@@ -358,13 +359,13 @@ class DDIMSchedulerTest(SchedulerCommonTest):
     def test_full_loop_with_no_set_alpha_to_one(self):
         # We specify different beta, so that the first alpha is 0.99
         sample = self.full_loop(set_alpha_to_one=False, beta_start=0.01)
-        if not isinstance(sample, torch.Tensor):
-            return torch.from_numpy(sample)
+        sample = from_numpy_if_needed(sample)
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
         assert abs(result_sum.item() - 149.0784) < 1e-2
         assert abs(result_mean.item() - 0.1941) < 1e-3
+
 
 class PNDMSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (PNDMScheduler,)
@@ -464,14 +465,12 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         scheduler.set_timesteps(num_inference_steps)
 
         for i, t in enumerate(scheduler.prk_timesteps):
-            print(f"prk_timesteps #{i} sample", sample[0][0][0])
-            print(f"prk_timesteps #{t} t", t)
             residual = model(sample, t)
             print(f"prk_timesteps #{i} residual {residual.dtype}", residual[0][0][0])
             sample = scheduler.step_prk(residual, t, sample).prev_sample
 
         for i, t in enumerate(scheduler.plms_timesteps):
-            print(f"plms_timesteps #{i} sample", sample[0][0][0])
+
             residual = model(sample, t)
             sample = scheduler.step_plms(residual, t, sample).prev_sample
 
