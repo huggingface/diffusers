@@ -41,3 +41,6 @@ if is_transformers_available():
     from .pipelines import LDMTextToImagePipeline, StableDiffusionPipeline
 else:
     from .utils.dummy_transformers_objects import *
+    
+    
+from .callbacks import LPIPSCallback, NormalDistLoss, ContrastLos, LPIPSLoss, create_callbacks
