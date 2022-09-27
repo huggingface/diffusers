@@ -21,7 +21,7 @@ import oneflow as torch
 
 from diffusers import OneFlowDDIMScheduler as DDIMScheduler
 from diffusers import OneFlowPNDMScheduler as PNDMScheduler
-from diffusers.modeling_oneflow_utils import lift_cast, from_numpy_if_needed
+from diffusers.modeling_oneflow_utils import from_numpy_if_needed
 
 class SchedulerCommonTest(unittest.TestCase):
     scheduler_classes = ()
