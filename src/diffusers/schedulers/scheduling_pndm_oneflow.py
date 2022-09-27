@@ -362,6 +362,8 @@ class OneFlowPNDMScheduler(OneFlowSchedulerMixin, ConfigMixin):
         alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
         if (alpha_prod_t_prev.dtype == torch.float64):
             alpha_prod_t_prev = alpha_prod_t_prev.to(dtype=torch.float32)
+        elif isinstance(alpha_prod_t_prev, np.float32):
+            alpha_prod_t_prev = alpha_prod_t_prev.item()
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
@@ -371,8 +373,6 @@ class OneFlowPNDMScheduler(OneFlowSchedulerMixin, ConfigMixin):
         # sqrt(α_(t−δ)) / sqrt(α_t))
         sample_coeff = (alpha_prod_t_prev / alpha_prod_t) ** (0.5)
 
-        if isinstance(alpha_prod_t_prev, np.float32):
-            alpha_prod_t_prev = alpha_prod_t_prev.item()
         # corresponds to denominator of e_θ(x_t, t) in formula (9)
         model_output_denom_coeff = alpha_prod_t * beta_prod_t_prev ** (0.5) + (
             alpha_prod_t * beta_prod_t * alpha_prod_t_prev

@@ -553,6 +553,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         for i, t in enumerate(scheduler.plms_timesteps):
             residual = model(sample, t)
             sample = scheduler.step_plms(residual, t, sample).prev_sample
+            print(i, sample)
 
         return sample
 
@@ -722,6 +723,8 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 198.1318) < 1e-2
         assert abs(result_mean.item() - 0.2580) < 1e-3
+
+        raise
 
     def test_full_loop_with_set_alpha_to_one(self):
         # We specify different beta, so that the first alpha is 0.99
