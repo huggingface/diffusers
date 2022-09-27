@@ -57,7 +57,9 @@ class SchedulerCommonTest(unittest.TestCase):
 
     def dummy_model(self):
         def model(sample, t, *args):
-            return sample * t / (t + 1)
+            sample = lift_cast(sample)
+            t = lift_cast(t)
+            return sample * t / t + 1
 
         return model
 
