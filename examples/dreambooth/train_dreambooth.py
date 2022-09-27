@@ -73,6 +73,7 @@ def parse_args():
         action="store_true",
         help="Flag to add prior perservation loss.",
     )
+    parser.add_argument("--prior_loss_weight", type=float, default=1.0, help="The weight of prior preservation loss.")
     parser.add_argument(
         "--num_class_images",
         type=int,
@@ -540,9 +541,19 @@ def main():
                 # Predict the noise residual
                 noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
 
-                loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
-                accelerator.backward(loss)
+                if args.with_prior_preservation:
+                    noise_pred, noise_pred_prior = torch.chunk(noise_pred, 2, dim=0)
+                    noise, noise_prior = torch.chunk(noise, 2, dim=0)
+                    # compute instance loss
+                    loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
 
+                    # compute prior loss
+                    prior_loss = F.mse_loss(noise_pred_prior, noise_prior, reduction="none").mean([1, 2, 3]).mean()
+                    loss = loss + args.prior_loss_weight * prior_loss
+                else:
+                    loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
+
+                accelerator.backward(loss)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
