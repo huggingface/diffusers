@@ -13,6 +13,7 @@
 # limitations under the License.
 
 
+import warnings
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
@@ -86,7 +87,15 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         s_churn: float = 80,
         s_min: float = 0.05,
         s_max: float = 50,
+        **kwargs,
     ):
+        if "tensor_format" in kwargs:
+            warnings.warn(
+                "`tensor_format` is deprecated as an argument and will be removed in version `0.5.0`."
+                "If you're running your code in PyTorch, you can safely remove this argument.",
+                DeprecationWarning,
+            )
+
         # setable values
         self.num_inference_steps: int = None
         self.timesteps: np.ndarray = None
