@@ -73,8 +73,13 @@ def inplace_add_cast(x, y):
     x += y
 
 def from_numpy_if_needed(*args):
-    if len(args) == 1 and isinstance(args[0], np.ndarray):
-        return torch.from_numpy(args[0])
+    print(args)
+    print("len(args)", len(args))
+    if len(args) == 1:
+        if isinstance(args[0], np.ndarray):
+            return torch.from_numpy(args[0])
+        else:
+            return args[0]
     return [torch.from_numpy(a) if isinstance(a, np.ndarray) else a for a in args]
 
 def print_dtype(*args):
