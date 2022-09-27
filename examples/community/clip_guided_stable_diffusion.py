@@ -60,7 +60,6 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
-        scheduler = scheduler.set_format("pt")
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -274,7 +273,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
                 # the model input needs to be scaled to match the continuous ODE formulation in K-LMS
                 latent_model_input = latent_model_input / ((sigma**2 + 1) ** 0.5)
 
-            # # predict the noise residual
+            # predict the noise residual
             noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
 
             # perform classifier free guidance
