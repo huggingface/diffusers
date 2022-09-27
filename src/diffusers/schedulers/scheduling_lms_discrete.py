@@ -63,9 +63,6 @@ class LMSDiscreteScheduler(BaseScheduler, SchedulerMixin, ConfigMixin):
             `linear` or `scaled_linear`.
         trained_betas (`np.ndarray`, optional):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
-            options to clip the variance used when adding noise to the denoised sample. Choose from `fixed_small`,
-            `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
-        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays.
 
     """
 
@@ -77,20 +74,21 @@ class LMSDiscreteScheduler(BaseScheduler, SchedulerMixin, ConfigMixin):
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
         trained_betas: Optional[np.ndarray] = None,
-        tensor_format: str = "pt",
     ):
         if trained_betas is not None:
-            self.betas = np.asarray(trained_betas)
+            self.betas = torch.from_numpy(trained_betas)
         if beta_schedule == "linear":
-            self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
+            self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = np.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=np.float32) ** 2
+            self.betas = (
+                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
+            )
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
         self.alphas = 1.0 - self.betas
-        self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
+        self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
 
         sigmas = ((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5
         sigmas = sigmas[::-1].copy()
@@ -101,9 +99,6 @@ class LMSDiscreteScheduler(BaseScheduler, SchedulerMixin, ConfigMixin):
         self.timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
         self.schedule = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=float)
         self.derivatives = []
-
-        self.tensor_format = tensor_format
-        self.set_format(tensor_format=tensor_format)
 
     def scale_initial_noise(self, noise: torch.FloatTensor):
         """
@@ -155,22 +150,22 @@ class LMSDiscreteScheduler(BaseScheduler, SchedulerMixin, ConfigMixin):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
         self.num_inference_steps = num_inference_steps
-        self.timesteps = np.arange(0, num_inference_steps)[::-1].copy()
+        timesteps = np.arange(0, num_inference_steps)[::-1].copy()
 
         self.schedule = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=float)
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         sigmas = np.interp(self.schedule[::-1], np.arange(0, len(sigmas)), sigmas)
-        self.sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
+        sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
+        self.sigmas = torch.from_numpy(sigmas)
 
+        self.timesteps = timesteps.astype(int)
         self.derivatives = []
-
-        self.set_format(tensor_format=self.tensor_format)
 
     def step(
         self,
-        model_output: Union[torch.FloatTensor, np.ndarray],
+        model_output: torch.FloatTensor,
         timestep: int,
-        sample: Union[torch.FloatTensor, np.ndarray],
+        sample: torch.FloatTensor,
         order: int = 4,
         return_dict: bool = True,
     ) -> Union[LMSDiscreteSchedulerOutput, Tuple]:
@@ -179,9 +174,9 @@ class LMSDiscreteScheduler(BaseScheduler, SchedulerMixin, ConfigMixin):
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor` or `np.ndarray`):
+            sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
             order: coefficient for multi-step inference.
             return_dict (`bool`): option for returning tuple rather than LMSDiscreteSchedulerOutput class
@@ -225,13 +220,16 @@ class LMSDiscreteScheduler(BaseScheduler, SchedulerMixin, ConfigMixin):
         noise: Union[torch.FloatTensor, np.ndarray],
         timesteps: Union[torch.IntTensor, np.ndarray],
     ) -> Union[torch.FloatTensor, np.ndarray]:
-        if self.tensor_format == "pt":
-            timesteps = timesteps.to(self.sigmas.device)
+        sigmas = self.sigmas.to(original_samples.device)
+        timesteps = timesteps.to(original_samples.device)
         # FIXME: accounting for the descending sigmas
         timesteps = self.num_inference_steps - timesteps - 1
-        sigmas = self.match_shape(self.sigmas[timesteps], noise)
-        noisy_samples = original_samples + noise * sigmas
 
+        sigmas = sigmas[timesteps].flatten()
+        while len(sigmas.shape) < len(original_samples.shape):
+            sigmas = sigmas.unsqueeze(-1)
+
+        noisy_samples = original_samples + noise * sigmas
         return noisy_samples
 
     def __len__(self):

@@ -8,8 +8,7 @@
 
 - Schedulers should provide one or more `def step(...)` functions that should be called iteratively to unroll the diffusion loop during 
 the forward pass.
-- Schedulers should be framework-agnostic, but provide a simple functionality to convert the scheduler into a specific framework, such as PyTorch 
-with a `set_format(...)` method.
+- Schedulers should be framework specific.
 
 ## Examples
 

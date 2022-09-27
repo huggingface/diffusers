@@ -186,7 +186,9 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             latents, scheduler_state = self.scheduler.step(scheduler_state, noise_pred, t, latents).to_tuple()
             return latents, scheduler_state
 
-        scheduler_state = self.scheduler.set_timesteps(params["scheduler"], num_inference_steps=num_inference_steps)
+        scheduler_state = self.scheduler.set_timesteps(
+            params["scheduler"], num_inference_steps=num_inference_steps, shape=latents.shape
+        )
 
         if debug:
             # run with python for loop
