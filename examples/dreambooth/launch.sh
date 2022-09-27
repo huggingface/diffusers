@@ -9,9 +9,11 @@ accelerate launch train_dreambooth.py \
   --class_data_dir=$CLASS_DIR \
   --output_dir=$OUTPUT_DIR \
   --with_prior_preservation \
-  --instance_prompt="photo of sks guy" \
-  --class_prompt="photo of a guy" \
+  --instance_prompt="photo of sks person" \
+  --class_prompt="photo of a person" \
   --resolution=512 \
+  --mixed_precision="fp16" \
+  --use_8bit_adam \
   --train_batch_size=1 \
   --gradient_accumulation_steps=1 \
   --learning_rate=5e-6 \
