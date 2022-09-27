@@ -23,7 +23,7 @@ import oneflow as torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_oneflow_utils import OneFlowSchedulerMixin, SchedulerOutput
-from ..modeling_oneflow_utils import index_cast, inplace_add_cast, print_dtype
+from ..modeling_oneflow_utils import index_cast,  print_dtype
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     """

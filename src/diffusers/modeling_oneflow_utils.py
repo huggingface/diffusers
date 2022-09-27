@@ -33,44 +33,11 @@ import numpy as np
 logger = logging.get_logger(__name__)
 
 
-# TODO(oneflow): workaround to prevent check fail: RuntimeError: (3 vs 2)
-def do_lift_cast(t):
-    # TODO: return f32 if possible
-    if isinstance(t, np.float64) or isinstance(t, np.float32) or isinstance(t, np.int64):
-        return t.item()
-    if isinstance(t, int) or isinstance(t, float):
-        return t
-    if not isinstance(t, torch.Tensor):
-        return torch.from_numpy(t)
-    if t.dtype == torch.float32 or t.dtype == torch.int64:
-        return t.to(dtype=torch.float32)
-    else:
-        return t
-
-def lift_cast(*args):
-    # has both numpy and oneflow tensor
-    if not all([type(a) == type(args[0]) for a in args]):
-        return [do_lift_cast(a) for a in args]
-    # all numpy
-    if all([not isinstance(a, torch.Tensor) for a in args]):
-        return args
-    # all oneflow tensors of same dtype
-    if all([isinstance(a, torch.Tensor) for a in args]) and all([a.dtype == args[0].dtype for a in args]):
-        return args
-    else:
-        return [do_lift_cast(a) for a in args]
-
 def index_cast(indices):
     if isinstance(indices, torch.Tensor):
         return indices.to(dtype=torch.int32)
     else:
         return indices
-
-def inplace_add_cast(x, y):
-    if isinstance(x, torch.Tensor) and isinstance(y, torch.Tensor):
-        if y.dtype != x.dtype:
-            y = y.to(dtype=x.dtype)
-    x += y
 
 def from_numpy_if_needed(*args):
     print(args)
