@@ -406,6 +406,7 @@ def main():
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
+    # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
     if args.use_8bit_adam:
         try:
             import bitsandbytes as bnb
@@ -444,7 +445,8 @@ def main():
         input_ids = [example["instance_prompt_ids"] for example in examples]
         pixel_values = [example["instance_images"] for example in examples]
 
-        # concat class and instance examples for prior preservation
+        # Concat class and instance examples for prior preservation.
+        # We do this to avoid doing two forward passes.
         if args.with_prior_preservation:
             input_ids += [example["class_prompt_ids"] for example in examples]
             pixel_values += [example["class_images"] for example in examples]
@@ -543,13 +545,17 @@ def main():
                 noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
 
                 if args.with_prior_preservation:
+                    # Chunk the noise and noise_pred into two parts and compute the loss on each part separately.
                     noise_pred, noise_pred_prior = torch.chunk(noise_pred, 2, dim=0)
                     noise, noise_prior = torch.chunk(noise, 2, dim=0)
-                    # compute instance loss
+
+                    # Compute instance loss
                     loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
 
-                    # compute prior loss
+                    # Compute prior loss
                     prior_loss = F.mse_loss(noise_pred_prior, noise_prior, reduction="none").mean([1, 2, 3]).mean()
+
+                    # Add the prior loss to the instance loss.
                     loss = loss + args.prior_loss_weight * prior_loss
                 else:
                     loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
