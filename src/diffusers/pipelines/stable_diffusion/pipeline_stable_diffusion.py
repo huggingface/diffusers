@@ -234,7 +234,6 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
-        self.scheduler.timesteps = self.scheduler.timesteps.to(latents_device)
 
         # if we use LMSDiscreteScheduler, let's make sure latents are multiplied by sigmas
         if isinstance(self.scheduler, LMSDiscreteScheduler):
