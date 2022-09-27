@@ -1156,7 +1156,6 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_memory_chunking(self):
-        torch.cuda.reset_peak_memory_stats()
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionPipeline.from_pretrained(
             model_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True
