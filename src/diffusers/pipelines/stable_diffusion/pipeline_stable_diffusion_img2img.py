@@ -1,4 +1,5 @@
 import inspect
+import warnings
 from typing import List, Optional, Union
 
 import numpy as np
@@ -7,11 +8,16 @@ import torch
 import PIL
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
+from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from ...utils import logging
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def preprocess(image):
@@ -46,7 +52,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
-            Classification module that estimates whether generated images could be considered offsensive or harmful.
+            Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) for details.
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
@@ -63,7 +69,21 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
-        scheduler = scheduler.set_format("pt")
+
+        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
+            warnings.warn(
+                f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
+                f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
+                "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
+                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
+                " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
+                " file",
+                DeprecationWarning,
+            )
+            new_config = dict(scheduler.config)
+            new_config["steps_offset"] = 1
+            scheduler._internal_dict = FrozenDict(new_config)
+
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -146,7 +166,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 deterministic.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `nd.array`.
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
@@ -169,14 +189,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
         # set timesteps
-        accepts_offset = "offset" in set(inspect.signature(self.scheduler.set_timesteps).parameters.keys())
-        extra_set_kwargs = {}
-        offset = 0
-        if accepts_offset:
-            offset = 1
-            extra_set_kwargs["offset"] = 1
-
-        self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
+        self.scheduler.set_timesteps(num_inference_steps)
 
         if isinstance(init_image, PIL.Image.Image):
             init_image = preprocess(init_image)
@@ -190,6 +203,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         init_latents = torch.cat([init_latents] * batch_size)
 
         # get the original timestep using init_timestep
+        offset = self.scheduler.config.get("steps_offset", 0)
         init_timestep = int(num_inference_steps * strength) + offset
         init_timestep = min(init_timestep, num_inference_steps)
         if isinstance(self.scheduler, LMSDiscreteScheduler):
@@ -202,17 +216,25 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         # add noise to latents using the timesteps
         noise = torch.randn(init_latents.shape, generator=generator, device=self.device)
-        init_latents = self.scheduler.add_noise(init_latents, noise, timesteps).to(self.device)
+        init_latents = self.scheduler.add_noise(init_latents, noise, timesteps)
 
         # get prompt text embeddings
-        text_input = self.tokenizer(
+        text_inputs = self.tokenizer(
             prompt,
             padding="max_length",
             max_length=self.tokenizer.model_max_length,
-            truncation=True,
             return_tensors="pt",
         )
-        text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
+        text_input_ids = text_inputs.input_ids
+
+        if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
+            removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length :])
+            logger.warning(
+                "The following part of your input was truncated because CLIP can only handle sequences up to"
+                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+            )
+            text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
+        text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -220,7 +242,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
-            max_length = text_input.input_ids.shape[-1]
+            max_length = text_input_ids.shape[-1]
             uncond_input = self.tokenizer(
                 [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="pt"
             )
@@ -249,13 +271,11 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
-            # if we use LMSDiscreteScheduler, let's make sure latents are mulitplied by sigmas
+            # if we use LMSDiscreteScheduler, let's make sure latents are multiplied by sigmas
             if isinstance(self.scheduler, LMSDiscreteScheduler):
                 sigma = self.scheduler.sigmas[t_index]
                 # the model input needs to be scaled to match the continuous ODE formulation in K-LMS
                 latent_model_input = latent_model_input / ((sigma**2 + 1) ** 0.5)
-                latent_model_input = latent_model_input.to(self.unet.dtype)
-                t = t.to(self.unet.dtype)
 
             # predict the noise residual
             noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
@@ -273,14 +293,14 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
-        image = self.vae.decode(latents.to(self.vae.dtype)).sample
+        image = self.vae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
 
         # run safety checker
-        safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
-        image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_cheker_input.pixel_values)
+        safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
+        image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
 
         if output_type == "pil":
             image = self.numpy_to_pil(image)
