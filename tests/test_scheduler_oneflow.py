@@ -20,6 +20,7 @@ import numpy as np
 import oneflow as torch
 
 from diffusers import OneFlowDDIMScheduler as DDIMScheduler
+from diffusers.modeling_oneflow_utils import lift_cast
 
 class SchedulerCommonTest(unittest.TestCase):
     scheduler_classes = ()
@@ -213,8 +214,8 @@ class SchedulerCommonTest(unittest.TestCase):
                 return
             else:
                 self.assertTrue(
-                    torch.allclose(
-                        set_nan_tensor_to_zero(tuple_object), set_nan_tensor_to_zero(dict_object), atol=1e-5
+                    np.allclose(
+                        set_nan_tensor_to_zero(tuple_object).numpy(), set_nan_tensor_to_zero(dict_object).numpy(), atol=1e-5
                     ),
                     msg=(
                         "Tuple and dict output are not equal. Difference:"

@@ -26,6 +26,7 @@ import oneflow as torch
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
 from .scheduling_oneflow_utils import OneFlowSchedulerMixin as SchedulerMixin
+from ..modeling_oneflow_utils import lift_cast
 
 
 @dataclass
@@ -158,6 +159,11 @@ class OneFlowDDIMScheduler(SchedulerMixin, ConfigMixin):
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
+        if not (isinstance(beta_prod_t_prev, np.float64)):
+            beta_prod_t_prev = lift_cast(beta_prod_t_prev)
+            beta_prod_t = lift_cast(beta_prod_t)
+            alpha_prod_t_prev = lift_cast(alpha_prod_t_prev)
+            alpha_prod_t = lift_cast(alpha_prod_t)
         variance = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
 
         return variance

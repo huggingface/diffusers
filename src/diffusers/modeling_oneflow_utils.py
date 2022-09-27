@@ -32,6 +32,13 @@ from .utils import CONFIG_NAME, DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT
 logger = logging.get_logger(__name__)
 
 
+# TODO(oneflow): workaround to prevent check fail: RuntimeError: (3 vs 2)
+def lift_cast(t):
+    if t.dtype == torch.float32:
+        return t.to(dtype=torch.float64)
+    else:
+        return t
+
 def get_parameter_device(parameter: torch.nn.Module):
     try:
         return next(parameter.parameters()).device
