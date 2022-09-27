@@ -15,7 +15,6 @@
 Generic utilities
 """
 
-import warnings
 from collections import OrderedDict
 from dataclasses import fields
 from typing import Any, Tuple
@@ -23,6 +22,7 @@ from typing import Any, Tuple
 import numpy as np
 
 from .import_utils import is_torch_available
+from .testing_utils import deprecate_args
 
 
 def is_tensor(x):
@@ -87,11 +87,7 @@ class BaseOutput(OrderedDict):
         if isinstance(k, str):
             inner_dict = {k: v for (k, v) in self.items()}
             if self.__class__.__name__ in ["StableDiffusionPipelineOutput", "ImagePipelineOutput"] and k == "sample":
-                warnings.warn(
-                    "The keyword 'samples' is deprecated and will be removed in version 0.4.0. Please use `.images` or"
-                    " `'images'` instead.",
-                    DeprecationWarning,
-                )
+                deprecate_args("samples", "0.4.0", "Please use `.images` or `'images'` instead.")
                 return inner_dict["images"]
             return inner_dict[k]
         else:

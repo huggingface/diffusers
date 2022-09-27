@@ -1,6 +1,7 @@
 import os
 import random
 import re
+import inspect
 import unittest
 from distutils.util import strtobool
 from pathlib import Path
@@ -11,7 +12,9 @@ import torch
 import PIL.Image
 import PIL.ImageOps
 import requests
+import warnings
 from packaging import version
+from . import __version__
 
 
 global_rng = random.Random()
@@ -20,6 +23,34 @@ is_torch_higher_equal_than_1_12 = version.parse(version.parse(torch.__version__)
 
 if is_torch_higher_equal_than_1_12:
     torch_device = "mps" if torch.backends.mps.is_available() else torch_device
+
+
+def deprecate_args(*args, deprecated_kwargs=None):
+    values = ()
+    if not isinstance(args[0], tuple):
+        args = (args,)
+
+    for attribute, version_name, message in args:
+        if version.parse(version.parse(__version__).base_version) >= version.parse(version_name):
+            raise ValueError(f"The deprecation tuple {(attribute, version, message)} should be removed since diffusers' version is >= {version}")
+
+        if attribute in deprecated_kwargs or deprecated_kwargs is None:
+            values += (deprecated_kwargs.pop(attribute),)
+
+            warnings.warn(
+                f"The `{attribute}` is deprecated as an argument and will be removed in version {version}. {message}.",
+                DeprecationWarning,
+            )
+
+    if deprecated_kwargs is not None and len(deprecated_kwargs) > 0:
+        call_frame = inspect.getouterframes(inspect.currentframe())[1]
+        filename = call_frame.filename
+        line_number = call_frame.lineno
+        function = call_frame.function
+        key, value = next(iter(deprecated_kwargs.items()))
+        raise TypeError(f"{function} in {filename} line {line_number-1} got an unexpected keyword argument `{key}`")
+
+    return values
 
 
 def parse_flag_from_env(key, default=False):

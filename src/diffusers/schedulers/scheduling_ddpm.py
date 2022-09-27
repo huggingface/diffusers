@@ -15,7 +15,6 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 import math
-import warnings
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
@@ -24,6 +23,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
+from ..testing_utils import deprecate_args
 from .scheduling_utils import SchedulerMixin
 
 
@@ -115,12 +115,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         clip_sample: bool = True,
         **kwargs,
     ):
-        if "tensor_format" in kwargs:
-            warnings.warn(
-                "`tensor_format` is deprecated as an argument and will be removed in version `0.5.0`."
-                "If you're running your code in PyTorch, you can safely remove this argument.",
-                DeprecationWarning,
-            )
+        deprecate_args(kwargs, "tensor_format", "0.5.0", "If you're running your code in PyTorch, you can safely remove this argument.")
 
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
