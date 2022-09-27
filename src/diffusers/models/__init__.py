@@ -23,3 +23,6 @@ if is_torch_available():
 if is_flax_available():
     from .unet_2d_condition_flax import FlaxUNet2DConditionModel
     from .vae_flax import FlaxAutoencoderKL
+
+from .vae_oneflow import OneFlowAutoencoderKL
+from .unet_2d_condition_oneflow import OneFlowUNet2DConditionModel

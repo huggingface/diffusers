@@ -7,7 +7,8 @@ import oneflow as torch
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
-from ...models import AutoencoderKL, UNet2DConditionModel
+from ...models import OneFlowAutoencoderKL as AutoencoderKL
+from ...models import OneFlowUNet2DConditionModel as UNet2DConditionModel
 from ...pipeline_oneflow_utils import DiffusionPipeline
 from ...schedulers import OneFlowDDIMScheduler as DDIMScheduler
 from ...schedulers import OneFlowPNDMScheduler as PNDMScheduler
