@@ -387,7 +387,6 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         if timesteps.device != original_samples.device:
             timesteps = timesteps.to(original_samples.device)
 
-        self.alphas_cumprod
         timesteps = timesteps.to(self.alphas_cumprod.device)
 
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
