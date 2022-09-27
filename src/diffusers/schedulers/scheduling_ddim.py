@@ -120,7 +120,15 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         clip_sample: bool = True,
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
+        **kwargs,
     ):
+        if "tensor_format" in kwargs:
+            warnings.warn(
+                "`tensor_format` is deprecated as an argument and will be removed in version `0.5.0`."
+                "If you're running your code in PyTorch, you can safely remove this argument.",
+                DeprecationWarning,
+            )
+
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
         if beta_schedule == "linear":
