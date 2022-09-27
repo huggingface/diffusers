@@ -45,3 +45,4 @@ else:
 
 from .scheduling_oneflow_utils import OneFlowSchedulerMixin
 from .scheduling_ddim_oneflow import OneFlowDDIMScheduler
+from .scheduling_pndm_oneflow import OneFlowPNDMScheduler

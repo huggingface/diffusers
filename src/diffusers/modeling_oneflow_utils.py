@@ -37,6 +37,8 @@ logger = logging.get_logger(__name__)
 def do_lift_cast(t):
     if isinstance(t, np.float64) or isinstance(t, np.float32):
         return t.item()
+    if isinstance(t, int):
+        return t
     if not isinstance(t, torch.Tensor):
         return torch.from_numpy(t)
     if t.dtype == torch.float32 or t.dtype == torch.int64:
