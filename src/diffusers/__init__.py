@@ -43,4 +43,4 @@ else:
     from .utils.dummy_transformers_objects import *
     
     
-from .callbacks import LPIPSCallback, NormalDistLoss, ContrastLos, LPIPSLoss, create_callbacks
+from .callbacks.callbacks import LPIPSCallback, NormalDistLoss, ContrastLos, LPIPSLoss, create_callbacks

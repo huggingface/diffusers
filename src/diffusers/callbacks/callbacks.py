@@ -1,4 +1,4 @@
-from lpips_utils import LPIPSLoss
+from .lpips_utils import LPIPSLoss
 
 
 class LPIPSCallback:
