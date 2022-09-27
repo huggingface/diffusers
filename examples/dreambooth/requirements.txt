@@ -1,0 +1,6 @@
+accelerate
+torchvision
+transformers
+ftfy
+tensorboard
+modelcards

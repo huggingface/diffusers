@@ -120,7 +120,15 @@ class DDIMScheduler(BaseScheduler, ConfigMixin):
         clip_sample: bool = True,
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
+        **kwargs,
     ):
+        if "tensor_format" in kwargs:
+            warnings.warn(
+                "`tensor_format` is deprecated as an argument and will be removed in version `0.5.0`."
+                "If you're running your code in PyTorch, you can safely remove this argument.",
+                DeprecationWarning,
+            )
+
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
         if beta_schedule == "linear":
@@ -293,7 +301,11 @@ class DDIMScheduler(BaseScheduler, ConfigMixin):
         noise: torch.FloatTensor,
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
-        timesteps = timesteps.to(self.alphas_cumprod.device)
+        if self.alphas_cumprod.device != original_samples.device:
+            self.alphas_cumprod = self.alphas_cumprod.to(original_samples.device)
+
+        if timesteps.device != original_samples.device:
+            timesteps = timesteps.to(original_samples.device)
         timesteps = self.schedule[timesteps]
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()

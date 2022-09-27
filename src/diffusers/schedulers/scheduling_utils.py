@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import abc
+import warnings
 from dataclasses import dataclass
 
 import torch
@@ -58,6 +59,15 @@ class BaseScheduler(abc.ABC):
         """
         raise NotImplementedError("Scheduler must implement the `get_noise_condition` function.")
 
+    def set_format(self, tensor_format="pt"):
+        warnings.warn(
+            "The method `set_format` is deprecated and will be removed in version `0.5.0`."
+            "If you're running your code in PyTorch, you can safely remove this function as the schedulers"
+            "are always in Pytorch",
+            DeprecationWarning,
+        )
+        return self
+
 
 class SchedulerMixin:
     """
@@ -65,3 +75,12 @@ class SchedulerMixin:
     """
 
     config_name = SCHEDULER_CONFIG_NAME
+
+    def set_format(self, tensor_format="pt"):
+        warnings.warn(
+            "The method `set_format` is deprecated and will be removed in version `0.5.0`."
+            "If you're running your code in PyTorch, you can safely remove this function as the schedulers"
+            "are always in Pytorch",
+            DeprecationWarning,
+        )
+        return self
