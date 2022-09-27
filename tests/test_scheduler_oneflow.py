@@ -61,9 +61,7 @@ class SchedulerCommonTest(unittest.TestCase):
     def dummy_model(self):
         def model(sample, t, *args):
             sample = sample.to(dtype=torch.float32)
-            print(t)
             t = t.to(dtype=torch.float32)
-            print(t)
             return sample * t / (t + 1)
 
         return model
@@ -469,9 +467,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
             sample = scheduler.step_prk(residual, t, sample).prev_sample
 
         for i, t in enumerate(scheduler.plms_timesteps):
-            assert not torch.all(torch.isnan(sample)), {"timestep": t.item(), "file": __file__}
             residual = model(sample, t)
-            assert not torch.all(torch.isnan(residual)), {"timestep": t.item(), "file": __file__}
             sample = scheduler.step_plms(residual, t, sample).prev_sample
 
         return sample

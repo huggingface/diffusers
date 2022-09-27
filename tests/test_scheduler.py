@@ -553,7 +553,6 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         for i, t in enumerate(scheduler.plms_timesteps):
             residual = model(sample, t)
             sample = scheduler.step_plms(residual, t, sample).prev_sample
-            print(i, sample)
 
         return sample
 
