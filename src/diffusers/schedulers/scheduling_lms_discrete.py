@@ -106,7 +106,8 @@ class LMSDiscreteScheduler(BaseScheduler, ConfigMixin):
         # setable values
         self.num_inference_steps = None
         self.timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
-        self.schedule = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=float)
+        schedule = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=float)
+        self.schedule = torch.from_numpy(schedule)
         self.derivatives = []
 
     def scale_initial_noise(self, noise: torch.FloatTensor):
@@ -161,11 +162,12 @@ class LMSDiscreteScheduler(BaseScheduler, ConfigMixin):
         self.num_inference_steps = num_inference_steps
         self.timesteps = np.arange(0, num_inference_steps)[::-1].copy()
 
-        self.schedule = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=float)
+        schedule = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=float)
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
-        sigmas = np.interp(self.schedule[::-1], np.arange(0, len(sigmas)), sigmas)
+        sigmas = np.interp(schedule[::-1], np.arange(0, len(sigmas)), sigmas)
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas)
+        self.schedule = torch.from_numpy(schedule)
 
         self.derivatives = []
 
@@ -224,10 +226,10 @@ class LMSDiscreteScheduler(BaseScheduler, ConfigMixin):
 
     def add_noise(
         self,
-        original_samples: Union[torch.FloatTensor, np.ndarray],
-        noise: Union[torch.FloatTensor, np.ndarray],
-        timesteps: Union[torch.IntTensor, np.ndarray],
-    ) -> Union[torch.FloatTensor, np.ndarray]:
+        original_samples: torch.FloatTensor,
+        noise: torch.FloatTensor,
+        timesteps: torch.IntTensor,
+    ) -> torch.FloatTensor:
         sigmas = self.sigmas.to(original_samples.device)
         timesteps = timesteps.to(original_samples.device)
         # FIXME: accounting for the descending sigmas
