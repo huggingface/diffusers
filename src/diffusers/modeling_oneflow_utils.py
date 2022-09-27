@@ -40,6 +40,7 @@ def lift_cast(t):
     if not isinstance(t, torch.Tensor):
         return torch.from_numpy(t)
     if t.dtype == torch.float32 or t.dtype == torch.int64:
+        # print("lift to f64", t.dtype)
         return t.to(dtype=torch.float64)
     else:
         return t

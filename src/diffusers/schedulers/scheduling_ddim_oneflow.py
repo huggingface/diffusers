@@ -163,10 +163,7 @@ class OneFlowDDIMScheduler(SchedulerMixin, ConfigMixin):
         beta_prod_t = lift_cast(beta_prod_t)
         alpha_prod_t_prev = lift_cast(alpha_prod_t_prev)
         alpha_prod_t = lift_cast(alpha_prod_t)
-        print(type(beta_prod_t_prev))
-        print(type(beta_prod_t))
-        print(type(alpha_prod_t_prev))
-        print(type(alpha_prod_t))
+
         variance = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
 
         return variance

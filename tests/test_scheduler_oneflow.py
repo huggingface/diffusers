@@ -359,6 +359,8 @@ class DDIMSchedulerTest(SchedulerCommonTest):
     def test_full_loop_with_no_set_alpha_to_one(self):
         # We specify different beta, so that the first alpha is 0.99
         sample = self.full_loop(set_alpha_to_one=False, beta_start=0.01)
+        if not isinstance(sample, torch.Tensor):
+            return torch.from_numpy(sample)
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
