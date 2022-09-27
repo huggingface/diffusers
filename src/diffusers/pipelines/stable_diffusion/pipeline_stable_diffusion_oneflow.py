@@ -2,7 +2,7 @@ import inspect
 import warnings
 from typing import List, Optional, Union
 
-import torch
+import oneflow as torch
 
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
