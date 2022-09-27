@@ -34,16 +34,28 @@ logger = logging.get_logger(__name__)
 
 
 # TODO(oneflow): workaround to prevent check fail: RuntimeError: (3 vs 2)
-def lift_cast(t):
+def do_lift_cast(t):
     if isinstance(t, np.float64) or isinstance(t, np.float32):
         return t.item()
     if not isinstance(t, torch.Tensor):
         return torch.from_numpy(t)
     if t.dtype == torch.float32 or t.dtype == torch.int64:
-        # print("lift to f64", t.dtype)
         return t.to(dtype=torch.float64)
     else:
         return t
+
+def lift_cast(*args):
+    # has both numpy and oneflow tensor
+    if not all([type(a) == type(args[0]) for a in args]):
+        return [do_lift_cast(a) for a in args]
+    # all numpy
+    if all([not isinstance(a, torch.Tensor) for a in args]):
+        return args
+    # all oneflow tensors of same dtype
+    if all([isinstance(a, torch.Tensor) for a in args]) and all([a.dtype == args[0].dtype for a in args]):
+        return args
+    else:
+        return [do_lift_cast(a) for a in args]
 
 def get_parameter_device(parameter: torch.nn.Module):
     try:

@@ -159,10 +159,7 @@ class OneFlowDDIMScheduler(SchedulerMixin, ConfigMixin):
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
-        beta_prod_t_prev = lift_cast(beta_prod_t_prev)
-        beta_prod_t = lift_cast(beta_prod_t)
-        alpha_prod_t_prev = lift_cast(alpha_prod_t_prev)
-        alpha_prod_t = lift_cast(alpha_prod_t)
+        beta_prod_t_prev, beta_prod_t, alpha_prod_t_prev, alpha_prod_t = lift_cast(beta_prod_t_prev, beta_prod_t, alpha_prod_t_prev, alpha_prod_t)
 
         variance = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
 
@@ -253,10 +250,7 @@ class OneFlowDDIMScheduler(SchedulerMixin, ConfigMixin):
 
         # 3. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        sample = lift_cast(sample)
-        beta_prod_t = lift_cast(beta_prod_t)
-        model_output = lift_cast(model_output)
-        alpha_prod_t = lift_cast(alpha_prod_t)
+        sample, beta_prod_t, model_output, alpha_prod_t = lift_cast(sample, beta_prod_t, model_output, alpha_prod_t)
         pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
 
         # 4. Clip "predicted x_0"

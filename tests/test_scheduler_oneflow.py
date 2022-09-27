@@ -57,8 +57,7 @@ class SchedulerCommonTest(unittest.TestCase):
 
     def dummy_model(self):
         def model(sample, t, *args):
-            sample = lift_cast(sample)
-            t = lift_cast(t)
+            sample, t = lift_cast(sample, t)
             return sample * t / t + 1
 
         return model
@@ -284,6 +283,8 @@ class DDIMSchedulerTest(SchedulerCommonTest):
 
         for t in scheduler.timesteps:
             residual = model(sample, t)
+            print("timestep=========", t)
+            print(residual)
             sample = scheduler.step(residual, t, sample, eta).prev_sample
 
         return sample
