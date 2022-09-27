@@ -16,7 +16,7 @@ deps = {
     "jax": "jax>=0.2.8,!=0.3.2,<=0.3.6",
     "jaxlib": "jaxlib>=0.1.65,<=0.3.6",
     "modelcards": "modelcards>=0.1.4",
-    "numpy": "numpy",    
+    "numpy": "numpy",
     "onnxruntime": "onnxruntime",
     "onnxruntime-gpu": "onnxruntime-gpu",
     "pytest": "pytest",
