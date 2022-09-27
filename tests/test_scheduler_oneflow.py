@@ -281,8 +281,6 @@ class DDIMSchedulerTest(SchedulerCommonTest):
 
         for t in scheduler.timesteps:
             residual = model(sample, t)
-            print("timestep=========", t)
-            print(sample)
             sample = scheduler.step(residual, t, sample, eta).prev_sample
 
         return sample
