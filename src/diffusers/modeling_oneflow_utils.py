@@ -36,7 +36,9 @@ logger = logging.get_logger(__name__)
 # TODO(oneflow): workaround to prevent check fail: RuntimeError: (3 vs 2)
 def lift_cast(t):
     if isinstance(t, np.float64) or isinstance(t, np.float32):
-        return t
+        return t.item()
+    if not isinstance(t, torch.Tensor):
+        return torch.from_numpy(t)
     if t.dtype == torch.float32 or t.dtype == torch.int64:
         return t.to(dtype=torch.float64)
     else:
