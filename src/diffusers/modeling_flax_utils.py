@@ -27,11 +27,17 @@ from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
-from .modeling_utils import WEIGHTS_NAME
-from .utils import CONFIG_NAME, DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT, logging
+from .modeling_flax_pytorch_utils import convert_pytorch_state_dict_to_flax
+from .modeling_utils import load_state_dict
+from .utils import (
+    CONFIG_NAME,
+    DIFFUSERS_CACHE,
+    FLAX_WEIGHTS_NAME,
+    HUGGINGFACE_CO_RESOLVE_ENDPOINT,
+    WEIGHTS_NAME,
+    logging,
+)
 
-
-FLAX_WEIGHTS_NAME = "diffusion_flax_model.msgpack"
 
 logger = logging.get_logger(__name__)
 
@@ -45,7 +51,7 @@ class FlaxModelMixin:
     """
     config_name = CONFIG_NAME
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
-    _flax_internal_args = ["name", "parent"]
+    _flax_internal_args = ["name", "parent", "dtype"]
 
     @classmethod
     def _from_config(cls, config, **kwargs):
@@ -245,6 +251,8 @@ class FlaxModelMixin:
                 The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
                 git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
                 identifier allowed by git.
+            from_pt (`bool`, *optional*, defaults to `False`):
+                Load the model weights from a PyTorch checkpoint save file.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to update the configuration object (after it being loaded) and initiate the model (e.g.,
                 `output_attentions=True`). Behaves differently depending on whether a `config` is provided or
@@ -272,6 +280,7 @@ class FlaxModelMixin:
         config = kwargs.pop("config", None)
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
+        from_pt = kwargs.pop("from_pt", False)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)
@@ -294,32 +303,44 @@ class FlaxModelMixin:
             local_files_only=local_files_only,
             use_auth_token=use_auth_token,
             revision=revision,
+            subfolder=subfolder,
             # model args
             dtype=dtype,
             **kwargs,
         )
 
         # Load model
-        if os.path.isdir(pretrained_model_name_or_path):
-            if os.path.isfile(os.path.join(pretrained_model_name_or_path, FLAX_WEIGHTS_NAME)):
+        pretrained_path_with_subfolder = (
+            pretrained_model_name_or_path
+            if subfolder is None
+            else os.path.join(pretrained_model_name_or_path, subfolder)
+        )
+        if os.path.isdir(pretrained_path_with_subfolder):
+            if from_pt:
+                if not os.path.isfile(os.path.join(pretrained_path_with_subfolder, WEIGHTS_NAME)):
+                    raise EnvironmentError(
+                        f"Error no file named {WEIGHTS_NAME} found in directory {pretrained_path_with_subfolder} "
+                    )
+                model_file = os.path.join(pretrained_path_with_subfolder, WEIGHTS_NAME)
+            elif os.path.isfile(os.path.join(pretrained_path_with_subfolder, FLAX_WEIGHTS_NAME)):
                 # Load from a Flax checkpoint
-                model_file = os.path.join(pretrained_model_name_or_path, FLAX_WEIGHTS_NAME)
-            # At this stage we don't have a weight file so we will raise an error.
-            elif os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME):
+                model_file = os.path.join(pretrained_path_with_subfolder, FLAX_WEIGHTS_NAME)
+            # Check if pytorch weights exist instead
+            elif os.path.isfile(os.path.join(pretrained_path_with_subfolder, WEIGHTS_NAME)):
                 raise EnvironmentError(
-                    f"Error no file named {FLAX_WEIGHTS_NAME} found in directory {pretrained_model_name_or_path} "
-                    "but there is a file for PyTorch weights."
+                    f"{WEIGHTS_NAME} file found in directory {pretrained_path_with_subfolder}. Please load the model"
+                    " using  `from_pt=True`."
                 )
             else:
                 raise EnvironmentError(
                     f"Error no file named {FLAX_WEIGHTS_NAME} or {WEIGHTS_NAME} found in directory "
-                    f"{pretrained_model_name_or_path}."
+                    f"{pretrained_path_with_subfolder}."
                 )
         else:
             try:
                 model_file = hf_hub_download(
                     pretrained_model_name_or_path,
-                    filename=FLAX_WEIGHTS_NAME,
+                    filename=FLAX_WEIGHTS_NAME if not from_pt else WEIGHTS_NAME,
                     cache_dir=cache_dir,
                     force_download=force_download,
                     proxies=proxies,
@@ -369,25 +390,32 @@ class FlaxModelMixin:
                     f"containing a file named {FLAX_WEIGHTS_NAME} or {WEIGHTS_NAME}."
                 )
 
-        try:
-            with open(model_file, "rb") as state_f:
-                state = from_bytes(cls, state_f.read())
-        except (UnpicklingError, msgpack.exceptions.ExtraData) as e:
+        if from_pt:
+            # Step 1: Get the pytorch file
+            pytorch_model_file = load_state_dict(model_file)
+
+            # Step 2: Convert the weights
+            state = convert_pytorch_state_dict_to_flax(pytorch_model_file, model)
+        else:
             try:
-                with open(model_file) as f:
-                    if f.read().startswith("version"):
-                        raise OSError(
-                            "You seem to have cloned a repository without having git-lfs installed. Please"
-                            " install git-lfs and run `git lfs install` followed by `git lfs pull` in the"
-                            " folder you cloned."
-                        )
-                    else:
-                        raise ValueError from e
-            except (UnicodeDecodeError, ValueError):
-                raise EnvironmentError(f"Unable to convert {model_file} to Flax deserializable object. ")
-        # make sure all arrays are stored as jnp.ndarray
-        # NOTE: This is to prevent a bug this will be fixed in Flax >= v0.3.4:
-        # https://github.com/google/flax/issues/1261
+                with open(model_file, "rb") as state_f:
+                    state = from_bytes(cls, state_f.read())
+            except (UnpicklingError, msgpack.exceptions.ExtraData) as e:
+                try:
+                    with open(model_file) as f:
+                        if f.read().startswith("version"):
+                            raise OSError(
+                                "You seem to have cloned a repository without having git-lfs installed. Please"
+                                " install git-lfs and run `git lfs install` followed by `git lfs pull` in the"
+                                " folder you cloned."
+                            )
+                        else:
+                            raise ValueError from e
+                except (UnicodeDecodeError, ValueError):
+                    raise EnvironmentError(f"Unable to convert {model_file} to Flax deserializable object. ")
+            # make sure all arrays are stored as jnp.ndarray
+            # NOTE: This is to prevent a bug this will be fixed in Flax >= v0.3.4:
+            # https://github.com/google/flax/issues/1261
         state = jax.tree_util.tree_map(lambda x: jax.device_put(x, jax.devices("cpu")[0]), state)
 
         # flatten dicts
@@ -408,7 +436,7 @@ class FlaxModelMixin:
             )
             cls._missing_keys = missing_keys
 
-        # Mistmatched keys contains tuples key/shape1/shape2 of weights in the checkpoint that have a shape not
+        # Mismatched keys contains tuples key/shape1/shape2 of weights in the checkpoint that have a shape not
         # matching the weights in the model.
         mismatched_keys = []
         for key in state.keys():

@@ -47,7 +47,7 @@ class FlaxKarrasVeOutput(BaseOutput):
             Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
         derivative (`jnp.ndarray` of shape `(batch_size, num_channels, height, width)` for images):
-            Derivate of predicted original image sample (x_0).
+            Derivative of predicted original image sample (x_0).
         state (`KarrasVeSchedulerState`): the `FlaxKarrasVeScheduler` state data class.
     """
 
@@ -113,7 +113,7 @@ class FlaxKarrasVeScheduler(SchedulerMixin, ConfigMixin):
         timesteps = jnp.arange(0, num_inference_steps)[::-1].copy()
         schedule = [
             (
-                self.config.sigma_max
+                self.config.sigma_max**2
                 * (self.config.sigma_min**2 / self.config.sigma_max**2) ** (i / (num_inference_steps - 1))
             )
             for i in timesteps
