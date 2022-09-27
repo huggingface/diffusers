@@ -50,7 +50,7 @@ from diffusers import OneFlowAutoencoderKL as AutoencoderKL
 from diffusers import OneFlowStableDiffusionPipeline as StableDiffusionPipeline
 from diffusers import OneFlowDDIMScheduler as DDIMScheduler
 from diffusers import OneFlowPNDMScheduler as PNDMScheduler
-from diffusers.pipeline_utils import DiffusionPipeline
+from diffusers.pipeline_oneflow_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.testing_utils import floats_tensor, load_image, slow, torch_device
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME
