@@ -43,8 +43,8 @@ logger = logging.get_logger(__name__)
 LOADABLE_CLASSES = {
     "diffusers": {
         "ModelMixin": ["save_pretrained", "from_pretrained"],
-        "SchedulerMixin": ["save_config", "from_config"],
-        "DiffusionPipeline": ["save_pretrained", "from_pretrained"],
+        "OneFlowSchedulerMixin": ["save_config", "from_config"],
+        "OneFlowDiffusionPipeline": ["save_pretrained", "from_pretrained"],
         "OnnxRuntimeModel": ["save_pretrained", "from_pretrained"],
     },
     "transformers": {
@@ -74,7 +74,7 @@ class ImagePipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
 
 
-class DiffusionPipeline(ConfigMixin):
+class OneFlowDiffusionPipeline(ConfigMixin):
     r"""
     Base class for all models.
 
@@ -316,10 +316,11 @@ class DiffusionPipeline(ConfigMixin):
             cached_folder = pretrained_model_name_or_path
 
         config_dict = cls.get_config_dict(cached_folder)
+        print("config_dict", config_dict)
 
         # 2. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
-        if cls != DiffusionPipeline:
+        if cls != OneFlowDiffusionPipeline:
             pipeline_class = cls
         else:
             diffusers_module = importlib.import_module(cls.__module__.split(".")[0])
@@ -340,13 +341,17 @@ class DiffusionPipeline(ConfigMixin):
 
         # 3. Load each module in the pipeline
         for name, (library_name, class_name) in init_dict.items():
+            print(name, (library_name, class_name))
+            if name in ["scheduler", "unet", "vae"]:
+                class_name = "OneFlow" + class_name
+            print("class_name", class_name, type(class_name))
             # 3.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             if class_name.startswith("Flax"):
                 class_name = class_name[4:]
 
             is_pipeline_module = hasattr(pipelines, library_name)
             loaded_sub_model = None
-
+            print("is_pipeline_module", is_pipeline_module)
             # if the model is in a pipeline module, then we load it from the pipeline
             if name in passed_class_obj:
                 # 1. check that passed_class_obj has correct parent class
@@ -392,6 +397,7 @@ class DiffusionPipeline(ConfigMixin):
                     if issubclass(class_obj, class_candidate):
                         load_method_name = importable_classes[class_name][1]
 
+                print("load_method_name", load_method_name)
                 load_method = getattr(class_obj, load_method_name)
 
                 loading_kwargs = {}
