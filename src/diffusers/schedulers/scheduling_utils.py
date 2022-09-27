@@ -46,7 +46,7 @@ class SchedulerMixin:
     def set_format(self, tensor_format="pt"):
         warnings.warn(
             "The method `set_format` is deprecated and will be removed in version `0.5.0`."
-            "If you're running your code in PyTorch, you can safely remove this function as the schedulers",
+            "If you're running your code in PyTorch, you can safely remove this function as the schedulers"
             "are always in Pytorch",
             DeprecationWarning,
         )
