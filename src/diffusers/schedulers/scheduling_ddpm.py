@@ -22,8 +22,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
-from ..testing_utils import deprecate_args
+from ..utils import BaseOutput, deprecate
 from .scheduling_utils import SchedulerMixin
 
 
@@ -115,7 +114,12 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         clip_sample: bool = True,
         **kwargs,
     ):
-        deprecate_args(kwargs, "tensor_format", "0.5.0", "If you're running your code in PyTorch, you can safely remove this argument.")
+        deprecate(
+            "tensor_format",
+            "0.5.0",
+            "If you're running your code in PyTorch, you can safely remove this argument.",
+            kwargs,
+        )
 
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)

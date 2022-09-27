@@ -1,19 +1,20 @@
+import inspect
 import os
 import random
 import re
-import inspect
 import unittest
+import warnings
 from distutils.util import strtobool
 from pathlib import Path
-from typing import Union
+from typing import Any, Dict, Optional, Union
 
 import torch
 
 import PIL.Image
 import PIL.ImageOps
 import requests
-import warnings
 from packaging import version
+
 from .. import __version__
 
 
@@ -25,24 +26,33 @@ if is_torch_higher_equal_than_1_12:
     torch_device = "mps" if torch.backends.mps.is_available() else torch_device
 
 
-def deprecate_args(*args, deprecated_kwargs=None):
+def deprecate(*args, deprecated_kwargs=Optional[Union[Dict, Any]], standard_warn=True):
     values = ()
     if not isinstance(args[0], tuple):
         args = (args,)
 
     for attribute, version_name, message in args:
         if version.parse(version.parse(__version__).base_version) >= version.parse(version_name):
-            raise ValueError(f"The deprecation tuple {(attribute, version, message)} should be removed since diffusers' version is >= {version}")
-
-        if attribute in deprecated_kwargs or deprecated_kwargs is None:
-            values += (deprecated_kwargs.pop(attribute),)
-
-            warnings.warn(
-                f"The `{attribute}` is deprecated as an argument and will be removed in version {version}. {message}.",
-                DeprecationWarning,
+            raise ValueError(
+                f"The deprecation tuple {(attribute, version, message)} should be removed since diffusers' version is"
+                f" >= {version}"
             )
 
-    if deprecated_kwargs is not None and len(deprecated_kwargs) > 0:
+        warning = None
+        if isinstance(deprecated_kwargs, dict) and attribute in deprecated_kwargs:
+            values += (deprecated_kwargs.pop(attribute),)
+            warning = f"The `{attribute}` argument is deprecated and will be removed in version {version}."
+        elif hasattr(deprecated_kwargs, attribute):
+            values += (getattr(deprecated_kwargs, attribute),)
+            warning = f"The `{attribute}` argument is deprecated and will be removed in version {version}."
+        elif deprecated_kwargs is None:
+            warning = f"`{attribute}` is deprecated and will be removed in version {version}."
+
+        if warning is not None:
+            warning = warning if standard_warn else ""
+            warnings.warn(warning + message, DeprecationWarning)
+
+    if isinstance(deprecated_kwargs, dict) and len(deprecated_kwargs) > 0:
         call_frame = inspect.getouterframes(inspect.currentframe())[1]
         filename = call_frame.filename
         line_number = call_frame.lineno
@@ -50,6 +60,10 @@ def deprecate_args(*args, deprecated_kwargs=None):
         key, value = next(iter(deprecated_kwargs.items()))
         raise TypeError(f"{function} in {filename} line {line_number-1} got an unexpected keyword argument `{key}`")
 
+    if len(values) == 0:
+        return
+    elif len(values) == 1:
+        return values[0]
     return values
 
 
