@@ -232,7 +232,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         # compare the output and parameters gradients
         self.assertTrue((output_checkpointed == output_not_checkpointed).all())
         for name in grad_checkpointed:
-            self.assertTrue(torch.allclose(grad_checkpointed[name], grad_not_checkpointed[name], atol=5e-5))
+            self.assertTrue(torch.allclose(grad_checkpointed[name], grad_not_checkpointed[name], atol=8e-3))
 
 
 #    TODO(Patrick) - Re-add this test after having cleaned up LDM
