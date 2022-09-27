@@ -143,7 +143,7 @@ def _load_state_dict_into_model(model_to_load, state_dict):
     return error_msgs
 
 
-class ModelMixin(torch.nn.Module):
+class OneFlowModelMixin(torch.nn.Module):
     r"""
     Base class for all models.
 

@@ -94,3 +94,4 @@ from .schedulers import (
 
 from .pipelines import OneFlowStableDiffusionPipeline
 from .pipeline_oneflow_utils import OneFlowDiffusionPipeline
+from .modeling_oneflow_utils import OneFlowModelMixin

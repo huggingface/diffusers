@@ -6,7 +6,7 @@ import oneflow.nn as nn
 import oneflow.utils.checkpoint
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..modeling_oneflow_utils import ModelMixin
+from ..modeling_oneflow_utils import OneFlowModelMixin as ModelMixin
 from ..utils import BaseOutput
 from .embeddings_oneflow import TimestepEmbedding, Timesteps
 from .unet_blocks_oneflow import (

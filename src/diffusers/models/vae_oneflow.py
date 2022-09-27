@@ -6,7 +6,7 @@ import oneflow as torch
 import oneflow.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..modeling_oneflow_utils import ModelMixin
+from ..modeling_oneflow_utils import OneFlowModelMixin as ModelMixin
 from ..utils import BaseOutput
 from .unet_blocks_oneflow import UNetMidBlock2D, get_down_block, get_up_block
 
