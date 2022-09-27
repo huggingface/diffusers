@@ -47,6 +47,8 @@ class SchedulerCommonTest(unittest.TestCase):
 
         num_elems = batch_size * num_channels * height * width
         sample = torch.arange(num_elems)
+        # TODO(oneflow): in pytorch, no need for this cast
+        sample = sample.to(torch.float32)
         sample = sample.reshape(num_channels, height, width, batch_size)
         sample = sample / num_elems
         sample = sample.permute(3, 0, 1, 2)
@@ -58,8 +60,9 @@ class SchedulerCommonTest(unittest.TestCase):
 
     def dummy_model(self):
         def model(sample, t, *args):
-            sample, t = lift_cast(sample, t)
-            return sample * t / t + 1
+            sample = sample.to(dtype=torch.float32)
+            t = t.to(dtype=torch.float32)
+            return sample * t / t
 
         return model
 
@@ -217,14 +220,8 @@ class SchedulerCommonTest(unittest.TestCase):
             else:
                 self.assertTrue(
                     np.allclose(
-                        set_nan_tensor_to_zero(tuple_object).numpy(), set_nan_tensor_to_zero(dict_object).numpy(), atol=1e-5
-                    ),
-                    msg=(
-                        "Tuple and dict output are not equal. Difference:"
-                        f" {torch.max(torch.abs(tuple_object - dict_object))}. Tuple has `nan`:"
-                        f" {torch.isnan(tuple_object).any()} and `inf`: {torch.isinf(tuple_object)}. Dict has"
-                        f" `nan`: {torch.isnan(dict_object).any()} and `inf`: {torch.isinf(dict_object)}."
-                    ),
+                        set_nan_tensor_to_zero(tuple_object), set_nan_tensor_to_zero(dict_object), atol=1e-5
+                    )
                 )
 
         kwargs = dict(self.forward_default_kwargs)
@@ -343,7 +340,6 @@ class DDIMSchedulerTest(SchedulerCommonTest):
 
     def test_full_loop_no_noise(self):
         sample = self.full_loop()
-
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
@@ -468,10 +464,14 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         scheduler.set_timesteps(num_inference_steps)
 
         for i, t in enumerate(scheduler.prk_timesteps):
+            print(f"prk_timesteps #{i} sample", sample[0][0][0])
+            print(f"prk_timesteps #{t} t", t)
             residual = model(sample, t)
+            print(f"prk_timesteps #{i} residual {residual.dtype}", residual[0][0][0])
             sample = scheduler.step_prk(residual, t, sample).prev_sample
 
         for i, t in enumerate(scheduler.plms_timesteps):
+            print(f"plms_timesteps #{i} sample", sample[0][0][0])
             residual = model(sample, t)
             sample = scheduler.step_plms(residual, t, sample).prev_sample
 
@@ -507,12 +507,12 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
             output = scheduler.step_prk(residual, 1, sample, **kwargs).prev_sample
             output_pt = scheduler_pt.step_prk(residual_pt, 1, sample_pt, **kwargs).prev_sample
-            assert np.sum(np.abs(output.numpy() - output_pt.numpy())) < 1e-4, "Scheduler outputs are not identical"
+            assert np.sum(np.abs(output - output_pt)) < 1e-4, "Scheduler outputs are not identical"
 
             output = scheduler.step_plms(residual, 1, sample, **kwargs).prev_sample
             output_pt = scheduler_pt.step_plms(residual_pt, 1, sample_pt, **kwargs).prev_sample
 
-            assert np.sum(np.abs(output.numpy() - output_pt.numpy())) < 1e-4, "Scheduler outputs are not identical"
+            assert np.sum(np.abs(output - output_pt)) < 1e-4, "Scheduler outputs are not identical"
 
     def test_set_format(self):
         kwargs = dict(self.forward_default_kwargs)
@@ -638,6 +638,8 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
     def test_full_loop_no_noise(self):
         sample = self.full_loop()
+        sample = from_numpy_if_needed(sample)
+        print(f"final sample", sample[0][0][0])
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
@@ -656,6 +658,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
     def test_full_loop_with_no_set_alpha_to_one(self):
         # We specify different beta, so that the first alpha is 0.99
         sample = self.full_loop(set_alpha_to_one=False, beta_start=0.01)
+        sample = from_numpy_if_needed(sample)
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
