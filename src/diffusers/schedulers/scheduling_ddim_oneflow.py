@@ -163,6 +163,10 @@ class OneFlowDDIMScheduler(SchedulerMixin, ConfigMixin):
             beta_prod_t_prev = beta_prod_t_prev.to(dtype=torch.float32)
         if alpha_prod_t_prev.dtype == torch.float64:
             alpha_prod_t_prev = alpha_prod_t_prev.to(dtype=torch.float32)
+        if isinstance(beta_prod_t_prev, np.float64):
+            beta_prod_t_prev = beta_prod_t_prev.item()
+        if isinstance(alpha_prod_t_prev, np.float32):
+            alpha_prod_t_prev = alpha_prod_t_prev.item()
         variance = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
 
         return variance
