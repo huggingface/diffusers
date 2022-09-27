@@ -1,5 +1,7 @@
 # DreamBooth training example
 
+[![DreamBooth Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ShivamShrirao/diffusers/blob/main/examples/dreambooth/DreamBooth_Stable_Diffusion.ipynb)
+
 [DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few(3~5) images of a subject.
 The `train_dreambooth.py` script shows how to implement the training procedure and adapt it for stable diffusion.
 
