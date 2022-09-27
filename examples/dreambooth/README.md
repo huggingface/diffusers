@@ -1,6 +1,10 @@
-# DreamBooth training example
+Model with just [xformers](https://github.com/facebookresearch/xformers) memory efficient flash attention uses 17.7 GB VRAM with no loss in precision at all, while also increasing speed by around 2 times.
+
+To reduce VRAM usage to 12.5 GB, pass `--use_8bit_adam` flag to use 8 bit adam optimizer from [bitsandbytes](https://github.com/TimDettmers/bitsandbytes).
 
 [![DreamBooth Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ShivamShrirao/diffusers/blob/main/examples/dreambooth/DreamBooth_Stable_Diffusion.ipynb)
+
+# DreamBooth training example
 
 [DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few(3~5) images of a subject.
 The `train_dreambooth.py` script shows how to implement the training procedure and adapt it for stable diffusion.
