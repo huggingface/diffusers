@@ -273,6 +273,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
         if latents is None:
             if start_img is None:
                 latents = noise
+                # if we use LMSDiscreteScheduler, let's make sure latents are mulitplied by sigmas
+                if isinstance(self.scheduler, LMSDiscreteScheduler):
+                    latents = latents * ((self.scheduler.sigmas[t_start]**2 + 1) ** 0.5)  
                 
             else:
                 # encode start img with vae
@@ -296,10 +299,10 @@ class StableDiffusionPipeline(DiffusionPipeline):
                     timesteps = int(self.scheduler.timesteps[-init_timestep])
                     timesteps = torch.tensor([timesteps] * batch_size, dtype=torch.long, device=self.device)
                     # add noise to latents using the timesteps       
-                    #if isinstance(self.scheduler, LMSDiscreteScheduler):
-                    #    start_timestep = torch.tensor([t_start] * batch_size, dtype=torch.long, device=self.device)
-                    #else:
-                    start_timestep = timesteps
+                    if isinstance(self.scheduler, LMSDiscreteScheduler):
+                        start_timestep = torch.tensor([t_start] * batch_size, dtype=torch.long, device=self.device)
+                    else:
+                        start_timestep = timesteps
                     
                     
                     latents = self.scheduler.add_noise(latents, noise, start_timestep)
@@ -307,9 +310,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
             #self.scheduler.sigmas[t_start]
 
             #print("t_start:", t_start)
-            # if we use LMSDiscreteScheduler, let's make sure latents are mulitplied by sigmas
-            if isinstance(self.scheduler, LMSDiscreteScheduler):
-                latents = latents * ((self.scheduler.sigmas[t_start]**2 + 1) ** 0.5) 
+           
+            
 
 
             

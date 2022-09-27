@@ -206,7 +206,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if self.tensor_format == "pt":
             timesteps = timesteps.to(self.sigmas.device)
         
-        new = False
+        new = True
         
         if new:
             sigmas = self.match_shape(self.sigmas[timesteps], noise)
