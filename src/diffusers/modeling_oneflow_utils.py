@@ -65,6 +65,12 @@ def index_cast(indices):
     else:
         return indices
 
+def inplace_add_cast(x, y):
+    if isinstance(x, torch.Tensor) and isinstance(y, torch.Tensor):
+        if y.dtype != x.dtype:
+            y = y.to(dtype=x.dtype)
+    x += y
+
 def from_numpy_if_needed(*args):
     return [torch.from_numpy(a) if isinstance(a, np.ndarray) else a for a in args]
 
