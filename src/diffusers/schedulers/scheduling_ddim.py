@@ -25,7 +25,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import BaseScheduler, SchedulerMixin
+from .scheduling_utils import BaseScheduler
 
 
 @dataclass
@@ -75,7 +75,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> torch.Tensor
     return torch.tensor(betas)
 
 
-class DDIMScheduler(BaseScheduler, SchedulerMixin, ConfigMixin):
+class DDIMScheduler(BaseScheduler, ConfigMixin):
     """
     Denoising diffusion implicit models is a scheduler that extends the denoising procedure introduced in denoising
     diffusion probabilistic models (DDPMs) with non-Markovian guidance.
@@ -194,7 +194,6 @@ class DDIMScheduler(BaseScheduler, SchedulerMixin, ConfigMixin):
         self.schedule += offset
 
         self.timesteps = np.arange(0, num_inference_steps)[::-1].copy()
-        self.set_format(tensor_format=self.tensor_format)
 
     def step(
         self,

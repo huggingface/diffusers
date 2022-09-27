@@ -73,7 +73,7 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
             prompt,
             padding="max_length",
             max_length=self.tokenizer.model_max_length,
-            return_tensors="pt",
+            return_tensors="np",
         )
         text_input_ids = text_inputs.input_ids
 

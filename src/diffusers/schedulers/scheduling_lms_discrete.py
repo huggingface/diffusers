@@ -22,7 +22,7 @@ from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import BaseScheduler, SchedulerMixin
+from .scheduling_utils import BaseScheduler
 
 
 @dataclass
@@ -43,7 +43,7 @@ class LMSDiscreteSchedulerOutput(BaseOutput):
     pred_original_sample: Optional[torch.FloatTensor] = None
 
 
-class LMSDiscreteScheduler(BaseScheduler, SchedulerMixin, ConfigMixin):
+class LMSDiscreteScheduler(BaseScheduler, ConfigMixin):
     """
     Linear Multistep Scheduler for discrete beta schedules. Based on the original k-diffusion implementation by
     Katherine Crowson:
@@ -90,9 +90,9 @@ class LMSDiscreteScheduler(BaseScheduler, SchedulerMixin, ConfigMixin):
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
 
-        sigmas = ((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5
-        sigmas = sigmas[::-1].copy()
-        self.sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
+        sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
+        sigmas = np.concatenate([sigmas[::-1], [0.0]]).astype(np.float32)
+        self.sigmas = torch.from_numpy(sigmas)
 
         # setable values
         self.num_inference_steps = None
@@ -150,7 +150,7 @@ class LMSDiscreteScheduler(BaseScheduler, SchedulerMixin, ConfigMixin):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
         self.num_inference_steps = num_inference_steps
-        timesteps = np.arange(0, num_inference_steps)[::-1].copy()
+        self.timesteps = np.arange(0, num_inference_steps)[::-1].copy()
 
         self.schedule = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=float)
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
@@ -158,7 +158,6 @@ class LMSDiscreteScheduler(BaseScheduler, SchedulerMixin, ConfigMixin):
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas)
 
-        self.timesteps = timesteps.astype(int)
         self.derivatives = []
 
     def step(

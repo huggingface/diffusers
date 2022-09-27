@@ -21,10 +21,10 @@ import math
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils import BaseScheduler
 
 
-class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
+class ScoreSdeVpScheduler(BaseScheduler, ConfigMixin):
     """
     The variance preserving stochastic differential equation (SDE) scheduler.
 
@@ -44,6 +44,12 @@ class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = None
         self.discrete_sigmas = None
         self.timesteps = None
+
+    def get_noise_condition(self, step: int):
+        """
+        Returns the input noise condition for a model.
+        """
+        return self.discrete_sigmas[step]
 
     def set_timesteps(self, num_inference_steps):
         self.timesteps = torch.linspace(1, self.config.sampling_eps, num_inference_steps)

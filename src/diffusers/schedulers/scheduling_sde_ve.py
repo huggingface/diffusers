@@ -23,7 +23,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_utils import BaseScheduler, SchedulerOutput
 
 
 @dataclass
@@ -43,7 +43,7 @@ class SdeVeOutput(BaseOutput):
     prev_sample_mean: torch.FloatTensor
 
 
-class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
+class ScoreSdeVeScheduler(BaseScheduler, ConfigMixin):
     """
     The variance exploding stochastic differential equation (SDE) scheduler.
 
@@ -81,6 +81,12 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = None
 
         self.set_sigmas(num_train_timesteps, sigma_min, sigma_max, sampling_eps)
+
+    def get_noise_condition(self, step: int):
+        """
+        Returns the input noise condition for a model.
+        """
+        return self.timesteps[step]
 
     def set_timesteps(self, num_inference_steps: int, sampling_eps: float = None):
         """

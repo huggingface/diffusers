@@ -31,6 +31,7 @@ if is_torch_available():
     from .pipeline_utils import DiffusionPipeline
     from .pipelines import DDIMPipeline, DDPMPipeline, KarrasVePipeline, LDMPipeline, PNDMPipeline, ScoreSdeVePipeline
     from .schedulers import (
+        BaseScheduler,
         DDIMScheduler,
         DDPMScheduler,
         KarrasVeScheduler,
