@@ -21,7 +21,7 @@ import oneflow as torch
 
 from diffusers import OneFlowDDIMScheduler as DDIMScheduler
 from diffusers import OneFlowPNDMScheduler as PNDMScheduler
-from diffusers.modeling_oneflow_utils import lift_cast
+from diffusers.modeling_oneflow_utils import lift_cast, from_numpy_if_needed
 
 class SchedulerCommonTest(unittest.TestCase):
     scheduler_classes = ()
@@ -409,8 +409,10 @@ class PNDMSchedulerTest(SchedulerCommonTest):
             output = scheduler.step_prk(residual, time_step, sample, **kwargs).prev_sample
             new_output = new_scheduler.step_prk(residual, time_step, sample, **kwargs).prev_sample
 
+            output, new_output = from_numpy_if_needed(output, new_output)
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
+            output, new_output = from_numpy_if_needed(output, new_output)
             output = scheduler.step_plms(residual, time_step, sample, **kwargs).prev_sample
             new_output = new_scheduler.step_plms(residual, time_step, sample, **kwargs).prev_sample
 
@@ -446,11 +448,13 @@ class PNDMSchedulerTest(SchedulerCommonTest):
             output = scheduler.step_prk(residual, time_step, sample, **kwargs).prev_sample
             new_output = new_scheduler.step_prk(residual, time_step, sample, **kwargs).prev_sample
 
+            output, new_output = from_numpy_if_needed(output, new_output)
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
             output = scheduler.step_plms(residual, time_step, sample, **kwargs).prev_sample
             new_output = new_scheduler.step_plms(residual, time_step, sample, **kwargs).prev_sample
 
+            output, new_output = from_numpy_if_needed(output, new_output)
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
     def full_loop(self, **config):
@@ -584,12 +588,12 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         scheduler_config = self.get_scheduler_config(steps_offset=1)
         scheduler = scheduler_class(**scheduler_config)
         scheduler.set_timesteps(10)
-        assert torch.equal(
+        assert torch.all(torch.equal(
             scheduler.timesteps,
             torch.tensor(
                 [901, 851, 851, 801, 801, 751, 751, 701, 701, 651, 651, 601, 601, 501, 401, 301, 201, 101, 1]
             ),
-        )
+        ))
 
     def test_betas(self):
         for beta_start, beta_end in zip([0.0001, 0.001], [0.002, 0.02]):

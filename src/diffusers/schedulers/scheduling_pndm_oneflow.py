@@ -19,11 +19,11 @@ import warnings
 from typing import Optional, Tuple, Union
 
 import numpy as np
-import torch
+import oneflow as torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_oneflow_utils import OneFlowSchedulerMixin, SchedulerOutput
-from ..modeling_oneflow_utils import lift_cast
+from ..modeling_oneflow_utils import lift_cast, index_cast
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     """
@@ -357,6 +357,8 @@ class OneFlowPNDMScheduler(OneFlowSchedulerMixin, ConfigMixin):
         # sample -> x_t
         # model_output -> e_θ(x_t, t)
         # prev_sample -> x_(t−δ)
+        timestep = index_cast(timestep)
+        prev_timestep = index_cast(prev_timestep)
         alpha_prod_t = self.alphas_cumprod[timestep]
         alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
         beta_prod_t = 1 - alpha_prod_t
@@ -368,10 +370,13 @@ class OneFlowPNDMScheduler(OneFlowSchedulerMixin, ConfigMixin):
         # sqrt(α_(t−δ)) / sqrt(α_t))
         sample_coeff = (alpha_prod_t_prev / alpha_prod_t) ** (0.5)
 
+        alpha_prod_t, beta_prod_t, alpha_prod_t_prev = lift_cast(alpha_prod_t, beta_prod_t, alpha_prod_t_prev)
         # corresponds to denominator of e_θ(x_t, t) in formula (9)
         model_output_denom_coeff = alpha_prod_t * beta_prod_t_prev ** (0.5) + (
             alpha_prod_t * beta_prod_t * alpha_prod_t_prev
         ) ** (0.5)
+
+        sample_coeff, sample, alpha_prod_t_prev, alpha_prod_t, model_output, model_output_denom_coeff = lift_cast(sample_coeff, sample, alpha_prod_t_prev, alpha_prod_t, model_output, model_output_denom_coeff)
 
         # full formula (9)
         prev_sample = (
