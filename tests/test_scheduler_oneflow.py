@@ -634,7 +634,6 @@ class PNDMSchedulerTest(SchedulerCommonTest):
     def test_full_loop_no_noise(self):
         sample = self.full_loop()
         sample = from_numpy_if_needed(sample)
-        print(f"final sample", sample[0][0][0])
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
