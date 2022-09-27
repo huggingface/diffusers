@@ -3,8 +3,6 @@
 [DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few(3~5) images of a subject.
 The `train_dreambooth.py` script shows how to implement the training procedure and adapt it for stable diffusion.
 
-## Running on Colab 
-TODO
 
 ## Running locally 
 ### Installing the dependencies
