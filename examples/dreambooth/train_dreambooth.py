@@ -214,6 +214,11 @@ def parse_args():
 
 
 class DreamBoothDataset(Dataset):
+    """
+    A dataset to prepare the instance and class images with the promots for fine-tuning the model.
+    It pre-processes the images and the tokenizes prompts.
+    """
+
     def __init__(
         self,
         instance_data_root,
@@ -288,6 +293,8 @@ class DreamBoothDataset(Dataset):
 
 
 class PromptDataset(Dataset):
+    "A simple dataset to prepare the prompts to generate class images on multiple GPUs."
+
     def __init__(self, prompt, num_samples):
         self.prompt = prompt
         self.num_samples = num_samples
@@ -529,10 +536,8 @@ def main():
                 noise = torch.randn(latents.shape).to(latents.device)
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
-                timesteps = torch.randint(
-                    0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device
-                )
-                timesteps = timsteps.long()
+                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+                timesteps = timesteps.long()
 
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
