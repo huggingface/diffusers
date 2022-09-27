@@ -10,7 +10,8 @@ The `train_dreambooth.py` script shows how to implement the training procedure a
 Before running the scripts, make sure to install the library's training dependencies:
 
 ```bash
-pip install diffusers[training] accelerate transformers
+pip install git+https://github.com/huggingface/diffusers.git
+pip install -r requirements.txt
 ```
 
 And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
