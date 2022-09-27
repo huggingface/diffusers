@@ -46,7 +46,7 @@ class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
             "tensor_format",
             "0.5.0",
             "If you're running your code in PyTorch, you can safely remove this argument.",
-            kwargs,
+            take_from=kwargs,
         )
         self.sigmas = None
         self.discrete_sigmas = None

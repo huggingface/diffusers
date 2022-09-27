@@ -15,8 +15,6 @@ import PIL.ImageOps
 import requests
 from packaging import version
 
-from .. import __version__
-
 
 global_rng = random.Random()
 torch_device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -26,7 +24,10 @@ if is_torch_higher_equal_than_1_12:
     torch_device = "mps" if torch.backends.mps.is_available() else torch_device
 
 
-def deprecate(*args, deprecated_kwargs=Optional[Union[Dict, Any]], standard_warn=True):
+def deprecate(*args, take_from=Optional[Union[Dict, Any]], standard_warn=True):
+    from .. import __version__
+
+    deprecated_kwargs = take_from
     values = ()
     if not isinstance(args[0], tuple):
         args = (args,)

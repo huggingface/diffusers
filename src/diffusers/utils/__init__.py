@@ -35,7 +35,7 @@ from .import_utils import (
 )
 from .logging import get_logger
 from .outputs import BaseOutput
-from .testing_utils import deprecate_args
+from .testing_utils import deprecate
 
 
 logger = get_logger(__name__)
