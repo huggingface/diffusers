@@ -466,11 +466,9 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
         for i, t in enumerate(scheduler.prk_timesteps):
             residual = model(sample, t)
-            print(f"prk_timesteps #{i} residual {residual.dtype}", residual[0][0][0])
             sample = scheduler.step_prk(residual, t, sample).prev_sample
 
         for i, t in enumerate(scheduler.plms_timesteps):
-
             residual = model(sample, t)
             sample = scheduler.step_plms(residual, t, sample).prev_sample
 
