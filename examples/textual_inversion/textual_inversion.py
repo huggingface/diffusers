@@ -29,8 +29,51 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 logger = get_logger(__name__)
 
 
+def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encoder):
+    assert args.num_vec_per_token % len(token_ids) == 0
+    placeholder_tokens = [f"{args.placeholder_token}_{i}" for i in range(args.num_vec_per_token)]
+
+    for placeholder_token in placeholder_tokens:
+        num_added_tokens = tokenizer.add_tokens(placeholder_token)
+        if num_added_tokens == 0:
+            raise ValueError(
+                f"The tokenizer already contains the token {placeholder_token}. Please pass a different"
+                " `placeholder_token` that is not already in the tokenizer."
+            )
+    placeholder_token = " ".join(placeholder_tokens)
+    placeholder_token_ids = tokenizer.encode(placeholder_token, add_special_tokens=False)
+    print(f"The placeholder tokens are {placeholder_token} while the ids are {placeholder_token_ids}")
+    text_encoder.resize_token_embeddings(len(tokenizer))
+    token_embeds = text_encoder.get_input_embeddings().weight.data
+    if args.initialize_rest_random:
+        # The idea is that the placeholder tokens form adjectives as in x x x white dog.
+        for i, placeholder_token_id in enumerate(placeholder_token_ids):
+            if len(placeholder_token_ids) - i < len(token_ids):
+                token_embeds[placeholder_token_id] = token_embeds[token_ids[i % len(token_ids)]]
+            else:
+                token_embeds[placeholder_token_id] = torch.rand_like(token_embeds[placeholder_token_id])
+    else:
+        for i, placeholder_token_id in enumerate(placeholder_token_ids):
+            token_embeds[placeholder_token_id] = token_embeds[token_ids[i % len(token_ids)]]
+    return placeholder_token, placeholder_token_ids
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser.add_argument(
+        "--num_vec_per_token",
+        type=int,
+        default=1,
+        help=(
+            "The number of vectors used to represent the placeholder token. The higher the number, the better the"
+            " result at the cost of editability. This can be fixed by prompt editing."
+        ),
+    )
+    parser.add_argument(
+        "--initialize_rest_random",
+        action="store_true",
+        help="Initialize rest of the placeholder tokens with random.",
+    )
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
@@ -362,23 +405,6 @@ def main():
             args.pretrained_model_name_or_path, subfolder="tokenizer", use_auth_token=args.use_auth_token
         )
 
-    # Add the placeholder token in tokenizer
-    num_added_tokens = tokenizer.add_tokens(args.placeholder_token)
-    if num_added_tokens == 0:
-        raise ValueError(
-            f"The tokenizer already contains the token {args.placeholder_token}. Please pass a different"
-            " `placeholder_token` that is not already in the tokenizer."
-        )
-
-    # Convert the initializer_token, placeholder_token to ids
-    token_ids = tokenizer.encode(args.initializer_token, add_special_tokens=False)
-    # Check if initializer_token is a single token or a sequence of tokens
-    if len(token_ids) > 1:
-        raise ValueError("The initializer token must be a single token.")
-
-    initializer_token_id = token_ids[0]
-    placeholder_token_id = tokenizer.convert_tokens_to_ids(args.placeholder_token)
-
     # Load models and create wrapper for stable diffusion
     text_encoder = CLIPTextModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", use_auth_token=args.use_auth_token
@@ -389,13 +415,11 @@ def main():
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", use_auth_token=args.use_auth_token
     )
-
-    # Resize the token embeddings as we are adding new special tokens to the tokenizer
-    text_encoder.resize_token_embeddings(len(tokenizer))
-
-    # Initialise the newly added placeholder token with the embeddings of the initializer token
-    token_embeds = text_encoder.get_input_embeddings().weight.data
-    token_embeds[placeholder_token_id] = token_embeds[initializer_token_id]
+    token_ids = tokenizer.encode(args.initializer_token, add_special_tokens=False)
+    # regardless of whether the number of token_ids is 1 or more, it'll set one and then keep repeating.
+    placeholder_token, placeholder_token_ids = add_tokens_and_get_placeholder_token(
+        args, token_ids, tokenizer, text_encoder
+    )
 
     # Freeze vae and unet
     freeze_params(vae.parameters())
@@ -431,7 +455,7 @@ def main():
         data_root=args.train_data_dir,
         tokenizer=tokenizer,
         size=args.resolution,
-        placeholder_token=args.placeholder_token,
+        placeholder_token=placeholder_token,
         repeats=args.repeats,
         learnable_property=args.learnable_property,
         center_crop=args.center_crop,
@@ -528,8 +552,10 @@ def main():
                 else:
                     grads = text_encoder.get_input_embeddings().weight.grad
                 # Get the index for tokens that we want to zero the grads for
-                index_grads_to_zero = torch.arange(len(tokenizer)) != placeholder_token_id
-                grads.data[index_grads_to_zero, :] = grads.data[index_grads_to_zero, :].fill_(0)
+                grad_mask = torch.arange(len(tokenizer)) != placeholder_token_ids[0]
+                for i in range(1, len(placeholder_token_ids)):
+                    grad_mask = grad_mask & (torch.arange(len(tokenizer)) != placeholder_token_ids[i])
+                grads.data[grad_mask, :] = grads.data[grad_mask, :].fill_(0)
 
                 optimizer.step()
                 lr_scheduler.step()
@@ -564,8 +590,12 @@ def main():
         )
         pipeline.save_pretrained(args.output_dir)
         # Also save the newly trained embeddings
-        learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_id]
-        learned_embeds_dict = {args.placeholder_token: learned_embeds.detach().cpu()}
+        learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_ids]
+        learned_embeds_dict = {}
+
+        for i, placeholder_token in enumerate(placeholder_token.split(" ")):
+            learned_embeds_dict[placeholder_token] = learned_embeds[i].detach().cpu()
+        torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
         torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
 
         if args.push_to_hub:
