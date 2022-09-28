@@ -9,12 +9,12 @@ accelerate launch train_dreambooth.py \
   --class_data_dir=$CLASS_DIR \
   --output_dir=$OUTPUT_DIR \
   --with_prior_preservation \
-  --instance_prompt="photo of imv person" \
+  --instance_prompt="photo of sks person" \
   --class_prompt="photo of a person" \
   --resolution=512 \
   --train_batch_size=1 \
   --gradient_accumulation_steps=1 \
-  --learning_rate=5e-6 \
+  --learning_rate=3e-6 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
