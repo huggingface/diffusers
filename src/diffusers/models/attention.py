@@ -280,14 +280,7 @@ class CrossAttention(nn.Module):
             # TODO(PVP) - mask is currently never used. Remember to re-implement when used
             # attention, what we cannot get enough of
             if MEM_EFFICIENT_ATTN:
-                dtype = query.dtype
-                if dtype is not torch.float32:      # this xformers kernel only supports float32 for now.
-                    query = query.float()
-                    key = key.float()
-                    value = value.float()
                 hidden_states = xformers.ops.memory_efficient_attention(query, key, value)
-                if dtype is not torch.float32:
-                    hidden_states = hidden_states.to(dtype)
             elif self._slice_size is None or query.shape[0] // self._slice_size == 1:
                 hidden_states = self._attention(query, key, value)
             else:
