@@ -234,14 +234,6 @@ class CrossAttention(nn.Module):
         # is split across the batch axis to save memory
         # You can set slice_size with `set_attention_slice`
         self._slice_size = None
-        self.flash = None
-        if not MEM_EFFICIENT_ATTN:
-            try:
-                # Flash attention thanks to https://github.com/labmlai/annotated_deep_learning_paper_implementations/blob/master/labml_nn/diffusion/stable_diffusion/model/unet_attention.py#L192
-                from flash_attn.flash_attention import FlashAttention
-                self.flash = FlashAttention(softmax_scale=self.scale)
-            except ImportError:
-                self.flash = None
 
         self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
         self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
@@ -270,55 +262,23 @@ class CrossAttention(nn.Module):
         key = self.to_k(context)
         value = self.to_v(context)
 
-        if self.flash is None or self.dim_head > 128 or context is not hidden_states:
-            dim = query.shape[-1]
+        dim = query.shape[-1]
 
-            query = self.reshape_heads_to_batch_dim(query)
-            key = self.reshape_heads_to_batch_dim(key)
-            value = self.reshape_heads_to_batch_dim(value)
+        query = self.reshape_heads_to_batch_dim(query)
+        key = self.reshape_heads_to_batch_dim(key)
+        value = self.reshape_heads_to_batch_dim(value)
 
-            # TODO(PVP) - mask is currently never used. Remember to re-implement when used
-            # attention, what we cannot get enough of
-            if MEM_EFFICIENT_ATTN:
-                hidden_states = xformers.ops.memory_efficient_attention(query, key, value)
-            elif self._slice_size is None or query.shape[0] // self._slice_size == 1:
-                hidden_states = self._attention(query, key, value)
-            else:
-                hidden_states = self._sliced_attention(query, key, value, sequence_length, dim)
-            hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
+        # TODO(PVP) - mask is currently never used. Remember to re-implement when used
+        # attention, what we cannot get enough of
+        if MEM_EFFICIENT_ATTN:
+            # print(torch.is_autocast_enabled(), query.dtype)
+            hidden_states = xformers.ops.memory_efficient_attention(query, key, value)
+        elif self._slice_size is None or query.shape[0] // self._slice_size == 1:
+            hidden_states = self._attention(query, key, value)
         else:
-            hidden_states = self._flash_attention(query, key, value)
+            hidden_states = self._sliced_attention(query, key, value, sequence_length, dim)
+        hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
         return self.to_out(hidden_states)
-
-    def _flash_attention(self, q, k, v):
-        batch_size, seq_len, _ = q.shape
-        # Stack `q`, `k`, `v` vectors for flash attention
-        qkv = torch.stack((q, k, v), dim=2)
-        # Split the heads
-        qkv = qkv.view(batch_size, seq_len, 3, self.heads, self.dim_head)
-
-        # Flash attention works for head sizes `32`, `64` and `128`, so we have to pad the heads to fit this size.
-        if self.dim_head <= 32:
-            pad = 32 - self.dim_head
-        elif self.dim_head <= 64:
-            pad = 64 - self.dim_head
-        elif self.dim_head <= 128:
-            pad = 128 - self.dim_head
-        else:
-            raise ValueError(f'Head size ${self.dim_head} too large for Flash Attention')
-
-        # Pad the heads
-        if pad:
-            qkv = torch.cat((qkv, qkv.new_zeros(batch_size, seq_len, 3, self.heads, pad)), dim=-1)
-
-        # Compute attention
-        # This gives a tensor of shape `[batch_size, seq_len, heads, d_padded]`
-        out, _ = self.flash(qkv)
-        # Truncate the extra head size
-        out = out[:, :, :, :self.dim_head]
-        # Reshape to `[batch_size, seq_len, heads * dim_head]`
-        out = out.reshape(batch_size, seq_len, self.heads * self.dim_head)
-        return out
 
     def _attention(self, query, key, value):
         attention_scores = torch.matmul(query, key.transpose(-1, -2)) * self.scale
