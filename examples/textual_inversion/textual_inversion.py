@@ -596,7 +596,6 @@ def main():
         for i, placeholder_token in enumerate(placeholder_token.split(" ")):
             learned_embeds_dict[placeholder_token] = learned_embeds[i].detach().cpu()
         torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
-        torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
 
         if args.push_to_hub:
             repo.push_to_hub(
