@@ -58,7 +58,7 @@ def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encode
     return placeholder_token, placeholder_token_ids
 
 
-def save_progress(text_encoder, placeholder_token_ids, accelerator, args):
+def save_progress(text_encoder, placeholder_token, placeholder_token_ids, accelerator, args):
     logger.info("Saving embeddings")
     learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_ids]
     learned_embeds_dict = {}
@@ -583,7 +583,7 @@ def main():
                 progress_bar.update(1)
                 global_step += 1
                 if global_step % args.save_steps == 0:
-                    save_progress(text_encoder, placeholder_token_ids, accelerator, args)
+                    save_progress(text_encoder, placeholder_token, placeholder_token_ids, accelerator, args)
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
@@ -609,7 +609,7 @@ def main():
         )
         pipeline.save_pretrained(args.output_dir)
         # Also save the newly trained embeddings
-        save_progress(text_encoder, placeholder_token_ids, accelerator, args)
+        save_progress(text_encoder, placeholder_token, placeholder_token_ids, accelerator, args)
 
         if args.push_to_hub:
             repo.push_to_hub(
