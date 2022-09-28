@@ -17,7 +17,7 @@ Colab for inference
 Before running the scripts, make sure to install the library's training dependencies:
 
 ```bash
-pip install diffusers[training] accelerate transformers
+pip install diffusers"[training]" accelerate "transformers>=4.21.0"
 ```
 
 And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
