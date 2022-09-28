@@ -720,6 +720,7 @@ class PipelineTesterMixin(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
+    @unittest.skip("OneFlowDDPMScheduler not implemented in oneflow")
     def test_smart_download(self):
         model_id = "hf-internal-testing/unet-pipeline-dummy"
         with tempfile.TemporaryDirectory() as tmpdirname:
