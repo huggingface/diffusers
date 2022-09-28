@@ -42,7 +42,7 @@ from diffusers import (
     StableDiffusionInpaintPipeline,
     StableDiffusionOnnxPipeline,
     # StableDiffusionPipeline,
-    UNet2DConditionModel,
+    # UNet2DConditionModel,
     UNet2DModel,
     VQModel,
 )
@@ -50,6 +50,7 @@ from diffusers import OneFlowAutoencoderKL as AutoencoderKL
 from diffusers import OneFlowStableDiffusionPipeline as StableDiffusionPipeline
 from diffusers import OneFlowDDIMScheduler as DDIMScheduler
 from diffusers import OneFlowPNDMScheduler as PNDMScheduler
+from diffusers import OneFlowUNet2DConditionModel as UNet2DConditionModel
 from diffusers.pipeline_oneflow_utils import OneFlowDiffusionPipeline as DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.testing_utils import floats_tensor, load_image, slow, torch_device
