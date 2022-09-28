@@ -40,8 +40,6 @@ def index_cast(indices):
         return indices
 
 def from_numpy_if_needed(*args):
-    print(args)
-    print("len(args)", len(args))
     if len(args) == 1:
         if isinstance(args[0], np.ndarray):
             return torch.from_numpy(args[0])
