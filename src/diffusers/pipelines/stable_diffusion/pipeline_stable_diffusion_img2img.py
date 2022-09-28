@@ -69,7 +69,6 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
-        scheduler = scheduler.set_format("pt")
 
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             warnings.warn(

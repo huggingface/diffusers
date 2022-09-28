@@ -132,7 +132,7 @@ class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         return state.replace(
             num_inference_steps=num_inference_steps,
-            timesteps=timesteps,
+            timesteps=timesteps.astype(int),
             derivatives=jnp.array([]),
             sigmas=sigmas,
         )

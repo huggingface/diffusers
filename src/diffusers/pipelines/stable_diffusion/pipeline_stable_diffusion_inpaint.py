@@ -83,7 +83,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
-        scheduler = scheduler.set_format("pt")
         logger.info("`StableDiffusionInpaintPipeline` is experimental and will very likely change in the future.")
 
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
@@ -320,11 +319,11 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             if isinstance(self.scheduler, LMSDiscreteScheduler):
                 latents = self.scheduler.step(noise_pred, t_index, latents, **extra_step_kwargs).prev_sample
                 # masking
-                init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, torch.tensor(t_index))
+                init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, torch.LongTensor([t_index]))
             else:
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
                 # masking
-                init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, t)
+                init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, torch.LongTensor([t]))
 
             latents = (init_latents_proper * mask) + (latents * (1 - mask))
 

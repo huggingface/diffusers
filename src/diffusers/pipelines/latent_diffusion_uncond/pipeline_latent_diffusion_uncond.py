@@ -23,7 +23,6 @@ class LDMPipeline(DiffusionPipeline):
 
     def __init__(self, vqvae: VQModel, unet: UNet2DModel, scheduler: DDIMScheduler):
         super().__init__()
-        scheduler = scheduler.set_format("pt")
         self.register_modules(vqvae=vqvae, unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
