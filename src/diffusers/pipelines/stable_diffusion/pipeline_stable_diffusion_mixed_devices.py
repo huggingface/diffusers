@@ -1,3 +1,4 @@
+import gc
 import inspect
 import warnings
 from typing import List, Optional, Union
@@ -12,7 +13,7 @@ from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
-import gc
+
 
 class StableDiffusionPipelineMixedDevices(DiffusionPipeline):
     r"""
@@ -193,7 +194,7 @@ class StableDiffusionPipelineMixedDevices(DiffusionPipeline):
             return_tensors="pt",
         )
         # print('text encoder debug')
-        text_embeddings = self.text_encoder(text_input.input_ids.to('cpu'))[0]
+        text_embeddings = self.text_encoder(text_input.input_ids.to("cpu"))[0]
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -205,14 +206,14 @@ class StableDiffusionPipelineMixedDevices(DiffusionPipeline):
             uncond_input = self.tokenizer(
                 [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="pt"
             )
-            
-            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to('cpu'))[0]
+
+            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to("cpu"))[0]
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
-        text_embeddings=text_embeddings.to('cuda')
+        text_embeddings = text_embeddings.to("cuda")
         # print(f'text embeddings are in {text_embeddings.device}')
 
         # get the initial random noise unless the user supplied it
@@ -231,10 +232,9 @@ class StableDiffusionPipelineMixedDevices(DiffusionPipeline):
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
-        latents = latents.to('cpu')
+        latents = latents.to("cpu")
         # print(f'latents are in {latents.device}')
         # print(f'unet is in {self.unet.device}')
-
 
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
@@ -261,15 +261,15 @@ class StableDiffusionPipelineMixedDevices(DiffusionPipeline):
                 sigma = self.scheduler.sigmas[i]
                 # the model input needs to be scaled to match the continuous ODE formulation in K-LMS
                 latent_model_input = latent_model_input / ((sigma**2 + 1) ** 0.5)
-            latent_model_input=latent_model_input.to('cuda')
+            latent_model_input = latent_model_input.to("cuda")
             # print(f'latent_model_input are in {latent_model_input.device}')
-            t=t.to('cuda')
+            t = t.to("cuda")
             # print(f't are in {t.device}')
 
             # predict the noise residual
-            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample.to('cpu')
+            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample.to("cpu")
             del latent_model_input
-            t=t.to('cpu')
+            t = t.to("cpu")
             torch.cuda.empty_cache()
             gc.collect()
             # perform guidance
@@ -291,7 +291,7 @@ class StableDiffusionPipelineMixedDevices(DiffusionPipeline):
         image = image.cpu().permute(0, 2, 3, 1).numpy()
 
         # run safety checker
-        safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to('cpu')
+        safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to("cpu")
         # image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_cheker_input.pixel_values)
 
         if output_type == "pil":

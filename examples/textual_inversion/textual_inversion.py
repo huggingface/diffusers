@@ -1,38 +1,49 @@
 import argparse
+import gc
 import itertools
 import math
 import os
 import random
+import sys
 from pathlib import Path
 from typing import Optional
-import sys
+
 import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch.utils.data import Dataset
 
+import albumentations as A
 import PIL
+import wandb
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
-from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipelineMixedDevices, UNet2DConditionModel
+from diffusers import (
+    AutoencoderKL,
+    DDPMScheduler,
+    PNDMScheduler,
+    StableDiffusionPipelineMixedDevices,
+    UNet2DConditionModel,
+)
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from huggingface_hub import HfFolder, Repository, whoami
 from PIL import Image
 from torchvision import transforms
+from torchvision.transforms.functional import InterpolationMode
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
-import albumentations as A
-import gc
-import wandb
-from torchvision.transforms.functional import InterpolationMode
-sys.path.append('./BLIP')
+
+
+sys.path.append("./BLIP")
 from models.blip import blip_decoder
+
 
 # logger = get_logger(__name__)
 device = "cuda" if torch.cuda.is_available() else "cpu"
+
 
 def wandb_setup(
     args: dict,
@@ -43,16 +54,19 @@ def wandb_setup(
         config=args,
     )
 
+
 def save_progress(text_encoder, pipeline, placeholder_token_ids, accelerator, args, placeholder_token_concat):
     print("Saving pipeline")
     pipeline.save_pretrained(args.output_dir)
     learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_ids]
     learned_embeds_dict = {}
 
-    for i, placeholder_token in enumerate(placeholder_token_concat.split(' ')):
+    for i, placeholder_token in enumerate(placeholder_token_concat.split(" ")):
         learned_embeds_dict[placeholder_token] = learned_embeds[i].detach().cpu()
     torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
-def get_pipeline(text_encoder, vae, unet, tokenizer,accelerator):
+
+
+def get_pipeline(text_encoder, vae, unet, tokenizer, accelerator):
     pipeline = StableDiffusionPipelineMixedDevices(
         text_encoder=accelerator.unwrap_model(text_encoder),
         vae=vae,
@@ -64,13 +78,17 @@ def get_pipeline(text_encoder, vae, unet, tokenizer,accelerator):
         feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
     )
     return pipeline
+
+
 def log_progress(pipeline, args, step, wandb_run, placeholder_token, logs={}):
     print("Running pipeline")
 
     prompt = f"A picture of {placeholder_token}"
 
     with torch.autocast("cuda"):
-        image = pipeline(prompt, height=args.resolution, width=args.resolution, num_inference_steps=50, guidance_scale=7.5).images[0]
+        image = pipeline(
+            prompt, height=args.resolution, width=args.resolution, num_inference_steps=50, guidance_scale=7.5
+        ).images[0]
 
     image.save("output.png")
     wandb_run.log(
@@ -80,17 +98,30 @@ def log_progress(pipeline, args, step, wandb_run, placeholder_token, logs={}):
             "samples": wandb.Image("output.png", caption=prompt),
         }
     )
+
+
 def generate_caption(pil_image, blip_model, max_length=100, min_length=50, blip_image_eval_size=384):
     # Idea from https://colab.research.google.com/github/pharmapsychotic/clip-interrogator/blob/main/clip_interrogator.ipynb#scrollTo=30xPxDSDrJEl
-    gpu_image = transforms.Compose([
-        transforms.Resize((blip_image_eval_size, blip_image_eval_size), interpolation=InterpolationMode.BICUBIC),
-        transforms.ToTensor(),
-        transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
-    ])(pil_image).unsqueeze(0).to(device)
+    gpu_image = (
+        transforms.Compose(
+            [
+                transforms.Resize(
+                    (blip_image_eval_size, blip_image_eval_size), interpolation=InterpolationMode.BICUBIC
+                ),
+                transforms.ToTensor(),
+                transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+            ]
+        )(pil_image)
+        .unsqueeze(0)
+        .to(device)
+    )
 
     with torch.no_grad():
-        caption = blip_model.generate(gpu_image, sample=False, num_beams=3, max_length=max_length, min_length=min_length)
+        caption = blip_model.generate(
+            gpu_image, sample=False, num_beams=3, max_length=max_length, min_length=min_length
+        )
     return caption[0]
+
 
 def find_longest_common_substring(captions):
     """
@@ -99,13 +130,13 @@ def find_longest_common_substring(captions):
     first_str_len = len(captions[0])
     output = ""
     for i in range(first_str_len):
-        for j in range(i+1, first_str_len+1):
+        for j in range(i + 1, first_str_len + 1):
             # str1[i], str2[j] is the start of the candidate match
             match = captions[0][i:j]
             valid_substring = True
             for k in range(1, len(captions)):
                 if match not in captions[k]:
-                    valid_substring=False
+                    valid_substring = False
                     break
             if valid_substring:
                 if len(match) > len(output):
@@ -115,8 +146,15 @@ def find_longest_common_substring(captions):
 
 
 def predict_replacement_words(images, max_length=100, min_length=50, blip_image_eval_size=384):
-    blip_model_url = 'https://storage.googleapis.com/sfr-vision-language-research/BLIP/models/model_base_caption_capfilt_large.pth'
-    blip_model = blip_decoder(pretrained=blip_model_url, image_size=blip_image_eval_size, med_config='BLIP/configs/med_config.json', vit='base')
+    blip_model_url = (
+        "https://storage.googleapis.com/sfr-vision-language-research/BLIP/models/model_base_caption_capfilt_large.pth"
+    )
+    blip_model = blip_decoder(
+        pretrained=blip_model_url,
+        image_size=blip_image_eval_size,
+        med_config="BLIP/configs/med_config.json",
+        vit="base",
+    )
     blip_model.eval()
     blip_model = blip_model.to(device)
     captions = []
@@ -125,9 +163,10 @@ def predict_replacement_words(images, max_length=100, min_length=50, blip_image_
     longest_common_substring = find_longest_common_substring(captions)
     del blip_model
     return longest_common_substring.strip()
-    
+
+
 def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encoder):
-    assert args.num_vec_per_token % len(token_ids) == 0
+    assert args.num_vec_per_token >= len(token_ids)
     placeholder_tokens = [f"{args.placeholder_token}_{i}" for i in range(args.num_vec_per_token)]
 
     for placeholder_token in placeholder_tokens:
@@ -145,7 +184,7 @@ def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encode
     if args.initialize_rest_random:
         # The idea is that the placeholder tokens form adjectives as in x x x white dog.
         for i, placeholder_token_id in enumerate(placeholder_token_ids):
-            if len(placeholder_token_ids)-i <len(token_ids):
+            if len(placeholder_token_ids) - i < len(token_ids):
                 token_embeds[placeholder_token_id] = token_embeds[token_ids[i % len(token_ids)]]
             else:
                 token_embeds[placeholder_token_id] = torch.rand_like(token_embeds[placeholder_token_id])
@@ -153,13 +192,18 @@ def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encode
         for i, placeholder_token_id in enumerate(placeholder_token_ids):
             token_embeds[placeholder_token_id] = token_embeds[token_ids[i % len(token_ids)]]
     return placeholder_token, placeholder_token_ids
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
         "--num_vec_per_token",
         type=int,
         default=1,
-        help="The number of vectors used to represent the placeholder token. The higher the number, the better the result at the cost of editability. This can be fixed by prompt editing.",
+        help=(
+            "The number of vectors used to represent the placeholder token. The higher the number, the better the"
+            " result at the cost of editability. This can be fixed by prompt editing."
+        ),
     )
     parser.add_argument(
         "--guess_initializer_token",
@@ -180,7 +224,7 @@ def parse_args():
     parser.add_argument(
         "--project_name",
         type=str,
-        default='huggingface_textual_inv',
+        default="huggingface_textual_inv",
         help="Name of wandb run",
     )
     parser.add_argument(
@@ -404,7 +448,7 @@ class TextualInversionDataset(Dataset):
         set="train",
         placeholder_token="*",
         center_crop=False,
-        random_crop=False
+        random_crop=False,
     ):
         self.data_root = data_root
         self.tokenizer = tokenizer
@@ -429,10 +473,9 @@ class TextualInversionDataset(Dataset):
             "bicubic": PIL.Image.BICUBIC,
             "lanczos": PIL.Image.LANCZOS,
         }[interpolation]
-        resize_ratio=0.75
-        self.base_transform = A.Compose([
-                A.RandomResizedCrop(self.size, self.size, scale=(resize_ratio, 1), ratio=(1, 1), p=1)
-            ],
+        resize_ratio = 0.75
+        self.base_transform = A.Compose(
+            [A.RandomResizedCrop(self.size, self.size, scale=(resize_ratio, 1), ratio=(1, 1), p=1)],
         )
 
         self.templates = imagenet_style_templates_small if learnable_property == "style" else imagenet_templates_small
@@ -547,18 +590,23 @@ def main():
     # Add the placeholder token in tokenizer
     # Idea: add tokens as f"{args.placeholder_token}_i" and just have the combination of all that be the placeholder token
     if args.guess_initializer_token:
-        # 
-        guessed_concept = predict_replacement_words([os.path.join(args.train_data_dir, file_path) for file_path in os.listdir(args.train_data_dir)])
+        #
+        guessed_concept = predict_replacement_words(
+            [os.path.join(args.train_data_dir, file_path) for file_path in os.listdir(args.train_data_dir)]
+        )
         token_ids = tokenizer.encode(guessed_concept, add_special_tokens=False)
         print(f"Guessed concept is {guessed_concept} token ids are {token_ids}")
-        placeholder_token, placeholder_token_ids = add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encoder)
+        placeholder_token, placeholder_token_ids = add_tokens_and_get_placeholder_token(
+            args, token_ids, tokenizer, text_encoder
+        )
     else:
         token_ids = tokenizer.encode(args.initializer_token, add_special_tokens=False)
         # regardless of whether the number of token_ids is 1 or more, it'll set one and then keep repeating.
-        placeholder_token, placeholder_token_ids = add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encoder)
+        placeholder_token, placeholder_token_ids = add_tokens_and_get_placeholder_token(
+            args, token_ids, tokenizer, text_encoder
+        )
     # Load models and create wrapper for stable diffusion
-    
-    
+
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", use_auth_token=args.use_auth_token
     )
@@ -624,12 +672,10 @@ def main():
         num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
-    text_encoder, optimizer, lr_scheduler = accelerator.prepare(
-        text_encoder, optimizer, lr_scheduler
-    )
+    text_encoder, optimizer, lr_scheduler = accelerator.prepare(text_encoder, optimizer, lr_scheduler)
     torch.cuda.empty_cache()
     # Move vae and unet to device
-    vae.to('cpu')   
+    vae.to("cpu")
     unet.to(device)
     # Keep vae and unet in eval model as we don't train these
     vae.eval()
@@ -650,7 +696,6 @@ def main():
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
     # total_batch_size = args.train_batch_size * args.gradient_accumulation_steps
 
-
     print("***** Running training *****")
     print(f"  Num examples = {len(train_dataset)}")
     print(f"  Num Epochs = {args.num_train_epochs}")
@@ -662,14 +707,13 @@ def main():
     progress_bar = tqdm(range(args.max_train_steps))
     progress_bar.set_description("Steps")
     global_step = 0
-    
+
     for epoch in range(args.num_train_epochs):
         text_encoder.train()
         for step, batch in enumerate(train_dataloader):
             gc.collect()
             torch.cuda.empty_cache()
             with accelerator.accumulate(text_encoder):
-
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"]).latent_dist.sample().detach()
                 latents = latents * 0.18215
@@ -685,7 +729,7 @@ def main():
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps).to(device)
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0].to(device)
                 # Predict the noise residual
-                noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample.to('cpu')
+                noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample.to("cpu")
                 loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
 
                 accelerator.backward(loss.to(device))
@@ -700,7 +744,7 @@ def main():
                 for i in range(1, len(placeholder_token_ids)):
                     grad_mask = grad_mask & (torch.arange(len(tokenizer)) != placeholder_token_ids[i])
                 grads.data[grad_mask, :] = grads.data[grad_mask, :].fill_(0)
-                
+
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -710,9 +754,8 @@ def main():
                 del timesteps
                 del encoder_hidden_states
                 del noise_pred
-                
+
                 del grads
-                del grad_mask
                 del text_encoder.get_input_embeddings().weight.grad
                 gc.collect()
                 torch.cuda.empty_cache()
@@ -720,23 +763,32 @@ def main():
             if accelerator.sync_gradients:
                 # Adding back weight decay
                 with torch.no_grad():
-                    text_encoder.get_input_embeddings().weight[~grad_mask, :] -= lr_scheduler.get_last_lr()[0]*args.adam_weight_decay*text_encoder.get_input_embeddings().weight[~grad_mask, :]
+                    text_encoder.get_input_embeddings().weight[~grad_mask, :] -= (
+                        lr_scheduler.get_last_lr()[0]
+                        * args.adam_weight_decay
+                        * text_encoder.get_input_embeddings().weight[~grad_mask, :]
+                    )
                 progress_bar.update(1)
                 global_step += 1
                 if global_step % args.log_frequency == 0:
-                    pipeline=get_pipeline(text_encoder, vae, unet, tokenizer, accelerator)
+                    pipeline = get_pipeline(text_encoder, vae, unet, tokenizer, accelerator)
                     log_progress(pipeline, args, global_step, wandb_run, placeholder_token)
 
                     if global_step % args.save_frequency == 0:
-                        save_progress(text_encoder, pipeline, placeholder_token_ids, accelerator, args, placeholder_token)
+                        save_progress(
+                            text_encoder, pipeline, placeholder_token_ids, accelerator, args, placeholder_token
+                        )
 
                     del pipeline
+                    del grad_mask
 
-            
 
             if global_step >= args.max_train_steps:
                 break
-            logs = {"loss": loss.detach().cpu().item()*args.gradient_accumulation_steps, "lr": lr_scheduler.get_last_lr()[0]}
+            logs = {
+                "loss": loss.detach().cpu().item() * args.gradient_accumulation_steps,
+                "lr": lr_scheduler.get_last_lr()[0],
+            }
             wandb_run.log(logs)
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
@@ -748,7 +800,7 @@ def main():
 
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
-        pipeline=get_pipeline(text_encoder, vae, unet, tokenizer, accelerator)
+        pipeline = get_pipeline(text_encoder, vae, unet, tokenizer, accelerator)
         log_progress(pipeline, args, global_step, wandb_run, placeholder_token)
         save_progress(text_encoder, pipeline, placeholder_token_ids, accelerator, args, placeholder_token)
         # Also save the newly trained embeddings
