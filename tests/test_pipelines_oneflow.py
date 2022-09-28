@@ -336,8 +336,7 @@ class PipelineFastTests(unittest.TestCase):
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 128, 128, 3)
-        expected_slice = np.array([0.5112, 0.4692, 0.4715, 0.5206, 0.4894, 0.5114, 0.5096, 0.4932, 0.4755])
-
+        expected_slice = np.array([0.65244484, 0.50245994, 0.546379, 0.5757261, 0.5937552, 0.5248434, 0.56001717, 0.5617137, 0.4641921])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -382,7 +381,7 @@ class PipelineFastTests(unittest.TestCase):
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 128, 128, 3)
-        expected_slice = np.array([0.4937, 0.4649, 0.4716, 0.5145, 0.4889, 0.513, 0.513, 0.4905, 0.4738])
+        expected_slice = np.array([0.4574893, 0.46907586, 0.47894412, 0.5719864, 0.6205503, 0.59339994, 0.5450494, 0.47354442, 0.4824788])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 

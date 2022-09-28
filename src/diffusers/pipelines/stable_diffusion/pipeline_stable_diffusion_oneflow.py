@@ -278,6 +278,9 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
+        import numpy as np
+        if isinstance(latents, np.ndarray):
+            latents = torch.from_numpy(latents)
         image = self.vae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
