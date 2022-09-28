@@ -21,6 +21,7 @@ import unittest
 
 import numpy as np
 import oneflow as torch
+import torch as og_torch
 
 import PIL
 from diffusers import (
@@ -337,6 +338,7 @@ class PipelineFastTests(unittest.TestCase):
 
         assert image.shape == (1, 128, 128, 3)
         expected_slice = np.array([0.65244484, 0.50245994, 0.546379, 0.5757261, 0.5937552, 0.5248434, 0.56001717, 0.5617137, 0.4641921])
+        print(image_slice.flatten())
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -382,6 +384,7 @@ class PipelineFastTests(unittest.TestCase):
 
         assert image.shape == (1, 128, 128, 3)
         expected_slice = np.array([0.4574893, 0.46907586, 0.47894412, 0.5719864, 0.6205503, 0.59339994, 0.5450494, 0.47354442, 0.4824788])
+        print(image_slice.flatten())
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -1168,11 +1171,12 @@ class PipelineTesterMixin(unittest.TestCase):
         # make attention efficient
         pipe.enable_attention_slicing()
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        with torch.autocast(torch_device):
-            output_chunked = pipe(
-                [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
-            )
-            image_chunked = output_chunked.images
+        with og_torch.autocast(torch_device):
+            with torch.autocast(torch_device):
+                output_chunked = pipe(
+                    [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
+                )
+                image_chunked = output_chunked.images
 
         mem_bytes = torch.cuda.max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()

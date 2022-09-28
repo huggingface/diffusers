@@ -199,8 +199,8 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
             return_tensors="pt",
         )
         # text_input.input_ids = torch.from_numpy(text_input.input_ids)
-        import torch as original_torch
-        torch_device = original_torch.device(str(self.device))
+        import torch as og_torch
+        torch_device = og_torch.device(str(self.device))
         text_embeddings = self.text_encoder(text_input.input_ids.to(torch_device))[0]
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
@@ -218,7 +218,7 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            text_embeddings = original_torch.cat([uncond_embeddings, text_embeddings])
+            text_embeddings = og_torch.cat([uncond_embeddings, text_embeddings])
         text_embeddings = torch.from_numpy(text_embeddings.detach().numpy())
         # get the initial random noise unless the user supplied it
 

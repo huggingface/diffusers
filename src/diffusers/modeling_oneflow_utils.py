@@ -91,8 +91,8 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike]):
         if os.path.isdir(checkpoint_file):
             return torch.load(checkpoint_file, map_location="cpu")
         else:
-            import torch as original_torch
-            torch_parameters = original_torch.load(checkpoint_file, map_location="cpu")
+            import torch as og_torch
+            torch_parameters = og_torch.load(checkpoint_file, map_location="cpu")
             oneflow_parameters = dict()
             for key,value in torch_parameters.items():
                 val = value.detach().cpu().numpy()
