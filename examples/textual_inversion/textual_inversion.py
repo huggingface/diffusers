@@ -30,7 +30,7 @@ logger = get_logger(__name__)
 
 
 def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encoder):
-    assert args.num_vec_per_token % len(token_ids) == 0
+    assert args.num_vec_per_token >= len(token_ids)
     placeholder_tokens = [f"{args.placeholder_token}_{i}" for i in range(args.num_vec_per_token)]
 
     for placeholder_token in placeholder_tokens:
