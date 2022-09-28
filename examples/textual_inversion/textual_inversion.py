@@ -58,6 +58,16 @@ def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encode
     return placeholder_token, placeholder_token_ids
 
 
+def save_progress(text_encoder, placeholder_token_ids, accelerator, args):
+    logger.info("Saving embeddings")
+    learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_ids]
+    learned_embeds_dict = {}
+
+    for i, placeholder_token in enumerate(placeholder_token.split(" ")):
+        learned_embeds_dict[placeholder_token] = learned_embeds[i].detach().cpu()
+    torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
@@ -70,9 +80,13 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--initialize_rest_random",
-        action="store_true",
-        help="Initialize rest of the placeholder tokens with random.",
+        "--initialize_rest_random", action="store_true", help="Initialize rest of the placeholder tokens with random."
+    )
+    parser.add_argument(
+        "--save_steps",
+        type=int,
+        default=500,
+        help="Save learned_embeds.bin every X updates steps.",
     )
     parser.add_argument(
         "--pretrained_model_name_or_path",
@@ -448,7 +462,10 @@ def main():
 
     # TODO (patil-suraj): load scheduler using args
     noise_scheduler = DDPMScheduler(
-        beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000, tensor_format="pt"
+        beta_start=0.00085,
+        beta_end=0.012,
+        beta_schedule="scaled_linear",
+        num_train_timesteps=1000,
     )
 
     train_dataset = TextualInversionDataset(
@@ -565,6 +582,8 @@ def main():
             if accelerator.sync_gradients:
                 progress_bar.update(1)
                 global_step += 1
+                if global_step % args.save_steps == 0:
+                    save_progress(text_encoder, placeholder_token_ids, accelerator, args)
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
@@ -590,12 +609,7 @@ def main():
         )
         pipeline.save_pretrained(args.output_dir)
         # Also save the newly trained embeddings
-        learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_ids]
-        learned_embeds_dict = {}
-
-        for i, placeholder_token in enumerate(placeholder_token.split(" ")):
-            learned_embeds_dict[placeholder_token] = learned_embeds[i].detach().cpu()
-        torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
+        save_progress(text_encoder, placeholder_token_ids, accelerator, args)
 
         if args.push_to_hub:
             repo.push_to_hub(
