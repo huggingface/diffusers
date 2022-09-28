@@ -81,4 +81,9 @@ else:
 if is_flax_available() and is_transformers_available():
     from .pipelines import FlaxStableDiffusionPipeline
 else:
-    from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
+#    from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
+
+    from .utils.dummy_transformers_objects import *
+    
+    
+from .callbacks import LPIPSCallback, NormalDistLoss, ContrastLoss, LPIPSLoss, create_callbacks
