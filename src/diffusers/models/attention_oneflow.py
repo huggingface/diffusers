@@ -195,6 +195,8 @@ class BasicTransformerBlock(nn.Module):
 
     def forward(self, hidden_states, context=None):
         hidden_states = hidden_states.contiguous() if hidden_states.device.type == "mps" else hidden_states
+        # TODO(oneflow): functional::TensorLayoutProcessor has bug converting the fp16 tensor to fp32, so do it explicitly here
+        hidden_states = hidden_states.contiguous()
         hidden_states = self.attn1(self.norm1(hidden_states)) + hidden_states
         hidden_states = self.attn2(self.norm2(hidden_states), context=context) + hidden_states
         hidden_states = self.ff(self.norm3(hidden_states)) + hidden_states
