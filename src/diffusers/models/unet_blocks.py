@@ -548,7 +548,7 @@ class CrossAttnDownBlock2D(nn.Module):
         output_states = ()
 
         for resnet, attn in zip(self.resnets, self.attentions):
-            if self.training and self.gradient_checkpointing:
+            if self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
@@ -631,7 +631,7 @@ class DownBlock2D(nn.Module):
         output_states = ()
 
         for resnet in self.resnets:
-            if self.training and self.gradient_checkpointing:
+            if self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
@@ -1134,7 +1134,7 @@ class CrossAttnUpBlock2D(nn.Module):
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
-            if self.training and self.gradient_checkpointing:
+            if self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
@@ -1212,7 +1212,7 @@ class UpBlock2D(nn.Module):
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
-            if self.training and self.gradient_checkpointing:
+            if self.gradient_checkpointing:
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):

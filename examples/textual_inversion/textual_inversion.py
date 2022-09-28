@@ -172,6 +172,11 @@ def parse_args():
         ),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
+    parser.add_argument(
+        "--gradient_checkpointing",
+        action="store_true",
+        help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.",
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -473,9 +478,19 @@ def main():
         text_encoder, optimizer, train_dataloader, lr_scheduler
     )
 
-    # Move vae and unet to device
-    vae.to(accelerator.device)
-    unet.to(accelerator.device)
+    if args.gradient_checkpointing:
+        unet.enable_gradient_checkpointing()
+
+    weight_dtype = torch.float32
+    if args.mixed_precision == 'fp16':
+        weight_dtype = torch.float16
+    elif args.mixed_precision == 'bf16':
+        weight_dtype = torch.bfloat16
+
+    # Move vae and unet to device.
+    vae.encoder.to(device=accelerator.device, dtype=weight_dtype)
+    vae.quant_conv.to(accelerator.device, dtype=weight_dtype)
+    unet.to(accelerator.device, dtype=weight_dtype)
 
     # Keep vae and unet in eval model as we don't train these
     vae.eval()
@@ -511,10 +526,11 @@ def main():
     for epoch in range(args.num_train_epochs):
         text_encoder.train()
         for step, batch in enumerate(train_dataloader):
-            with accelerator.accumulate(text_encoder):
+            with accelerator.autocast(), accelerator.accumulate(text_encoder):
                 # Convert images to latent space
-                latents = vae.encode(batch["pixel_values"]).latent_dist.sample().detach()
-                latents = latents * 0.18215
+                with torch.no_grad():
+                    latents = vae.encode(batch["pixel_values"]).latent_dist.sample().detach()
+                    latents = latents * 0.18215
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn(latents.shape).to(latents.device)
