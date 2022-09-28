@@ -1368,7 +1368,7 @@ class PipelineTesterMixin(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-        assert np.abs(expected_image - image).max() < 1e-2
+        assert np.abs(expected_image - image).mean() < 1e-2
 
     @slow
     def test_stable_diffusion_onnx(self):
