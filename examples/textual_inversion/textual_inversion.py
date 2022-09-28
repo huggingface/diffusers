@@ -58,12 +58,12 @@ def add_tokens_and_get_placeholder_token(args, token_ids, tokenizer, text_encode
     return placeholder_token, placeholder_token_ids
 
 
-def save_progress(text_encoder, placeholder_token, placeholder_token_ids, accelerator, args):
+def save_progress(text_encoder, placeholder_tokens, placeholder_token_ids, accelerator, args):
     logger.info("Saving embeddings")
     learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_ids]
     learned_embeds_dict = {}
 
-    for i, placeholder_token in enumerate(placeholder_token.split(" ")):
+    for i, placeholder_token in enumerate(placeholder_tokens.split(" ")):
         learned_embeds_dict[placeholder_token] = learned_embeds[i].detach().cpu()
     torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
 
