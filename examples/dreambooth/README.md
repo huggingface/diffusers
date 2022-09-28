@@ -54,7 +54,7 @@ accelerate launch train_dreambooth.py \
   --pretrained_model_name_or_path=$MODEL_NAME --use_auth_token \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
-  --instance_prompt="a photo of sks dog" \
+  --instance_prompt="a photo of imv dog" \
   --resolution=512 \
   --train_batch_size=1 \
   --gradient_accumulation_steps=1 \
@@ -81,7 +81,7 @@ accelerate launch train_dreambooth.py \
   --class_data_dir=$CLASS_DIR \
   --output_dir=$OUTPUT_DIR \
   --with_prior_preservation --prior_loss_weight=1.0 \
-  --instance_prompt="a photo of sks dog" \
+  --instance_prompt="a photo of imv dog" \
   --class_prompt="a photo of dog" \
   --resolution=512 \
   --train_batch_size=1 \
@@ -111,7 +111,7 @@ accelerate launch train_dreambooth.py \
   --class_data_dir=$CLASS_DIR \
   --output_dir=$OUTPUT_DIR \
   --with_prior_preservation --prior_loss_weight=1.0 \
-  --instance_prompt="a photo of sks dog" \
+  --instance_prompt="a photo of imv dog" \
   --class_prompt="a photo of dog" \
   --resolution=512 \
   --train_batch_size=1 \
@@ -127,7 +127,7 @@ accelerate launch train_dreambooth.py \
 
 ## Inference
 
-Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline`. Make sure to include the `identifier`(e.g. sks in above example) in your prompt.
+Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline`. Make sure to include the `identifier`(e.g. imv in above example) in your prompt.
 
 ```python
 
@@ -138,7 +138,7 @@ import torch
 model_id = "path-to-your-trained-model"
 pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 
-prompt = "A photo of sks dog in a bucket"
+prompt = "A photo of imv dog in a bucket"
 
 with autocast("cuda"):
     image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
