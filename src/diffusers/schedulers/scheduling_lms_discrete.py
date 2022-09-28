@@ -78,6 +78,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule: str = "linear",
         trained_betas: Optional[np.ndarray] = None,
         tensor_format: str = "pt",
+        use_new_add_noise: bool = True,
     ):
         if trained_betas is not None:
             self.betas = np.asarray(trained_betas)
@@ -89,6 +90,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
+        self.use_new_add_noise = use_new_add_noise
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
 
@@ -205,16 +207,13 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
     ) -> Union[torch.FloatTensor, np.ndarray]:
         if self.tensor_format == "pt":
             timesteps = timesteps.to(self.sigmas.device)
-        
-        new = True
-        
-        if new:
+                
+        if self.use_new_add_noise:
             sigmas = self.match_shape(self.sigmas[timesteps], noise)
             noisy_samples = original_samples + noise * sigmas
         else:
             alpha_prod = self.alphas_cumprod[timesteps]
             alpha_prod = self.match_shape(alpha_prod, original_samples)
-
             noisy_samples = (alpha_prod**0.5) * original_samples + ((1 - alpha_prod) ** 0.5) * noise
         
         return noisy_samples

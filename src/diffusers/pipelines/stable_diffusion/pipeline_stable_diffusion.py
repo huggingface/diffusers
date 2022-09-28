@@ -163,6 +163,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
         loss_callbacks: Optional[List] = None,
         noise: Optional[torch.Tensor] = None,
         return_dict: bool = True,
+        multiply_latent_by_sigma: bool = False,
+        scheduler_step_before_callbacks: bool = True,
+        use_callbacks_simple_step: bool = False,
         **kwargs,
     ):
         # set seed 
@@ -212,6 +215,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
+        
 
         if "torch_device" in kwargs:
             device = kwargs.pop("torch_device")
@@ -256,6 +260,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
     
+    
+        self.use_new_add_noise = self.scheduler.use_new_add_noise
         # set timesteps
         accepts_offset = "offset" in set(inspect.signature(self.scheduler.set_timesteps).parameters.keys())
         extra_set_kwargs = {}
@@ -299,22 +305,16 @@ class StableDiffusionPipeline(DiffusionPipeline):
                     timesteps = int(self.scheduler.timesteps[-init_timestep])
                     timesteps = torch.tensor([timesteps] * batch_size, dtype=torch.long, device=self.device)
                     # add noise to latents using the timesteps       
-                    if isinstance(self.scheduler, LMSDiscreteScheduler):
+                    if isinstance(self.scheduler, LMSDiscreteScheduler) and self.use_new_add_noise:
+                        # new noise add method needs the enumerate time step
                         start_timestep = torch.tensor([t_start] * batch_size, dtype=torch.long, device=self.device)
                     else:
                         start_timestep = timesteps
-                    
-                    
                     latents = self.scheduler.add_noise(latents, noise, start_timestep)
                     
-            #self.scheduler.sigmas[t_start]
-
-            #print("t_start:", t_start)
-           
-            
-
-
-            
+                    
+                    if multiply_latent_by_sigma and isinstance(self.scheduler, LMSDiscreteScheduler):
+                        latents = latents * ((self.scheduler.sigmas[t_start]**2 + 1) ** 0.5)  
             
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -368,9 +368,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
             # TODO: dynamic and static thresholding could simply be applied to decoded latent (==img)
             
             
-                
-            # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, count, latents, **extra_step_kwargs)["prev_sample"]
+            if scheduler_step_before_callbacks:
+                # compute the previous noisy sample x_t -> x_t-1
+                latents = self.scheduler.step(noise_pred, count, latents, **extra_step_kwargs)["prev_sample"]
             
             #### ADDITIONAL GUIDANCE ###
             if loss_callbacks is not None:
@@ -383,13 +383,20 @@ class StableDiffusionPipeline(DiffusionPipeline):
                             latents = latents.detach().requires_grad_()
                             if callback_dict["apply_to_image"]:
                                 # Get the predicted x0:
-                                #latents_x0 = latents - sigma * noise_pred
-                                #latents_x0 = self.scheduler.step(noise_pred, count, latents, **extra_step_kwargs)["prev_sample"]
+                                if scheduler_step_before_callbacks:
+                                    latents_x0 = latents
+                                else:
+                                    if use_callbacks_simple_step:
+                                        # do simple step
+                                        latents_x0 = latents - sigma * noise_pred
+                                    else:
+                                        # actually use the scheduler step
+                                        latents_x0 = self.scheduler.step(noise_pred, count, latents, **extra_step_kwargs)["prev_sample"]
+                                
                                 # Decode to image space
                                 #denoised_images = self.vae.decode((1 / 0.18215) * latents_x0) / 2 + 0.5  # (0, 1)
                                 #if denoised_images is None:  
-                                denoised_images = self.vae.decode(latents / 0.18215)["sample"] / 2 + 0.5  # (0, 1)
-
+                                denoised_images = self.vae.decode(latents_x0 / 0.18215)["sample"] / 2 + 0.5  # (0, 1)
 
                                 # Calculate loss
                                 loss = callback_dict["loss_function"](denoised_images)
@@ -399,11 +406,12 @@ class StableDiffusionPipeline(DiffusionPipeline):
                             cond_grad = -torch.autograd.grad(loss * callback_dict["weight"], latents)[0] 
                             # Modify the latents based on this gradient
                             grads += cond_grad * callback_dict["lr"]
-                    
-                    
                     latents = latents.detach() + grads * sigma**2
                             
-        
+            if not scheduler_step_before_callbacks:
+                # compute the previous noisy sample x_t -> x_t-1
+                latents = self.scheduler.step(noise_pred, count, latents, **extra_step_kwargs)["prev_sample"]
+            
         # scale and decode the image latents with vae
         image = self.decode_image(latents, output_type=output_type)
 
