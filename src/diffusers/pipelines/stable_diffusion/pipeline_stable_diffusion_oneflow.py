@@ -219,7 +219,7 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             text_embeddings = og_torch.cat([uncond_embeddings, text_embeddings])
-        text_embeddings = torch.from_numpy(text_embeddings.detach().numpy())
+        text_embeddings = torch.from_numpy(text_embeddings.detach().cpu().numpy())
         # get the initial random noise unless the user supplied it
 
         # Unlike in other pipelines, latents need to be generated in the target device

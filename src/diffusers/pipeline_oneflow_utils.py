@@ -22,6 +22,7 @@ from typing import List, Optional, Union
 
 import numpy as np
 import oneflow as torch
+import torch as og_torch
 
 import diffusers
 import PIL
@@ -166,6 +167,12 @@ class OneFlowDiffusionPipeline(ConfigMixin):
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
+                module.to(torch_device)
+            if isinstance(module, og_torch.nn.Module):
+                if isinstance(torch_device, torch.device):
+                    torch_device = torch.device(str(torch_device))
+                else:
+                    assert isinstance(torch_device, str)
                 module.to(torch_device)
         return self
 
