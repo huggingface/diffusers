@@ -34,6 +34,7 @@ class Upsample2D(nn.Module):
         else:
             self.Conv2d_0 = conv
 
+
     def forward(self, input_tensor):
         assert input_tensor.shape[1] == self.channels
         if self.use_conv_transpose:
@@ -41,14 +42,17 @@ class Upsample2D(nn.Module):
 
         upsample_input = F.interpolate(input_tensor, scale_factor=2.0, mode="nearest")
 
+
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if self.use_conv:
             if self.name == "conv":
+
                 output_tensor = self.conv(upsample_input)
             else:
                 output_tensor = self.Conv2d_0(upsample_input)
 
         return output_tensor
+
 
 
 class Downsample2D(nn.Module):
@@ -84,6 +88,7 @@ class Downsample2D(nn.Module):
         else:
             self.conv = conv
 
+
     def forward(self, input_tensor):
         assert input_tensor.shape[1] == self.channels
         if self.use_conv and self.padding == 0:
@@ -94,6 +99,7 @@ class Downsample2D(nn.Module):
         output_tensor = self.conv(padded_input)
 
         return output_tensor
+
 
 
 class FirUpsample2D(nn.Module):
@@ -174,12 +180,14 @@ class FirUpsample2D(nn.Module):
 
         return output
 
+
     def forward(self, input_tensor):
         if self.use_conv:
             height = self._upsample_2d(input_tensor, self.Conv2d_0.weight, kernel=self.fir_kernel)
             height = height + self.Conv2d_0.bias.reshape(1, -1, 1, 1)
         else:
             height = self._upsample_2d(input_tensor, kernel=self.fir_kernel, factor=2)
+
 
         return height
 
@@ -236,6 +244,7 @@ class FirDownsample2D(nn.Module):
 
         return output_tensor
 
+
     def forward(self, input_tensor):
         if self.use_conv:
             downsample_input = self._downsample_2d(input_tensor, weight=self.Conv2d_0.weight, kernel=self.fir_kernel)
@@ -244,6 +253,7 @@ class FirDownsample2D(nn.Module):
             output_tensor = self._downsample_2d(input_tensor, kernel=self.fir_kernel, factor=2)
 
         return output_tensor
+
 
 
 class ResnetBlock2D(nn.Module):
