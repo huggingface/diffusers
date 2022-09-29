@@ -138,7 +138,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         )
 
     def set_seed(self, seed):
-        deprecate("set_seed", "0.4.0", "Please consider passing a generator instead.")
+        deprecate("set_seed", "0.5.0", "Please consider passing a generator instead.")
         torch.manual_seed(seed)
 
     def step_pred(

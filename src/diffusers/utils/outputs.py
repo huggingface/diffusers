@@ -87,7 +87,7 @@ class BaseOutput(OrderedDict):
         if isinstance(k, str):
             inner_dict = {k: v for (k, v) in self.items()}
             if self.__class__.__name__ in ["StableDiffusionPipelineOutput", "ImagePipelineOutput"] and k == "sample":
-                deprecate("samples", "0.4.0", "Please use `.images` or `'images'` instead.")
+                deprecate("samples", "0.6.0", "Please use `.images` or `'images'` instead.")
                 return inner_dict["images"]
             return inner_dict[k]
         else:
