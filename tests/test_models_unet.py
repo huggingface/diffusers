@@ -199,7 +199,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
     def test_gradient_checkpointing(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
+        model = self.model_class(**init_dict).eval()
         model.to(torch_device)
 
         out = model(**inputs_dict).sample
