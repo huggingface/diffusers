@@ -237,7 +237,10 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         # Some schedulers like PNDM have timesteps as arrays
         # It's more optimzed to move all timesteps to correct device beforehand
-        timesteps_tensor = torch.tensor(self.scheduler.timesteps, device=self.device)
+        if torch.is_tensor(self.scheduler.timesteps):
+            timesteps_tensor = self.scheduler.timesteps.to(self.device)
+        else:
+            timesteps_tensor = torch.tensor(self.scheduler.timesteps.copy(), device=self.device)
 
         # if we use LMSDiscreteScheduler, let's make sure latents are multiplied by sigmas
         if isinstance(self.scheduler, LMSDiscreteScheduler):
