@@ -111,7 +111,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
-        if beta_schedule == "linear":
+        elif beta_schedule == "linear":
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
