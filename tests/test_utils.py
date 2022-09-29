@@ -20,7 +20,6 @@ from diffusers.utils import deprecate
 
 
 class DeprecateTester(unittest.TestCase):
-
     higher_version = ".".join([str(int(__version__.split(".")[0]) + 1)] + __version__.split(".")[1:])
     lower_version = "0.0.1"
 
