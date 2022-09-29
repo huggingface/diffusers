@@ -14,7 +14,6 @@
 # limitations under the License.
 
 
-from os import device_encoding
 from typing import Optional, Tuple, Union
 
 import torch
