@@ -34,7 +34,6 @@ class Upsample2D(nn.Module):
         else:
             self.Conv2d_0 = conv
 
-
     def forward(self, input_tensor):
         assert input_tensor.shape[1] == self.channels
         if self.use_conv_transpose:
@@ -42,17 +41,14 @@ class Upsample2D(nn.Module):
 
         upsample_input = F.interpolate(input_tensor, scale_factor=2.0, mode="nearest")
 
-
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if self.use_conv:
             if self.name == "conv":
-
                 output_tensor = self.conv(upsample_input)
             else:
                 output_tensor = self.Conv2d_0(upsample_input)
 
         return output_tensor
-
 
 
 class Downsample2D(nn.Module):
@@ -88,7 +84,6 @@ class Downsample2D(nn.Module):
         else:
             self.conv = conv
 
-
     def forward(self, input_tensor):
         assert input_tensor.shape[1] == self.channels
         if self.use_conv and self.padding == 0:
@@ -99,7 +94,6 @@ class Downsample2D(nn.Module):
         output_tensor = self.conv(padded_input)
 
         return output_tensor
-
 
 
 class FirUpsample2D(nn.Module):
@@ -169,17 +163,25 @@ class FirUpsample2D(nn.Module):
             weight = torch.flip(weight, dims=[3, 4]).permute(0, 2, 1, 3, 4)
             weight = torch.reshape(weight, (num_groups * inC, -1, convH, convW))
 
-            inverse_conv = F.conv_transpose2d(input_tensor, weight, stride=stride, output_padding=output_padding, padding=0)
+            inverse_conv = F.conv_transpose2d(
+                input_tensor, weight, stride=stride, output_padding=output_padding, padding=0
+            )
 
-            output = upfirdn2d_native(inverse_conv, torch.tensor(kernel, device=inverse_conv.device), pad=((p + 1) // 2 + factor - 1, p // 2 + 1))
+            output = upfirdn2d_native(
+                inverse_conv,
+                torch.tensor(kernel, device=inverse_conv.device),
+                pad=((p + 1) // 2 + factor - 1, p // 2 + 1),
+            )
         else:
             p = kernel.shape[0] - factor
             output = upfirdn2d_native(
-                input_tensor, torch.tensor(kernel, device=input_tensor.device), up=factor, pad=((p + 1) // 2 + factor - 1, p // 2)
+                input_tensor,
+                torch.tensor(kernel, device=input_tensor.device),
+                up=factor,
+                pad=((p + 1) // 2 + factor - 1, p // 2),
             )
 
         return output
-
 
     def forward(self, input_tensor):
         if self.use_conv:
@@ -187,7 +189,6 @@ class FirUpsample2D(nn.Module):
             height = height + self.Conv2d_0.bias.reshape(1, -1, 1, 1)
         else:
             height = self._upsample_2d(input_tensor, kernel=self.fir_kernel, factor=2)
-
 
         return height
 
@@ -236,14 +237,19 @@ class FirDownsample2D(nn.Module):
             _, _, convH, convW = weight.shape
             pad_value = (kernel.shape[0] - factor) + (convW - 1)
             s = [factor, factor]
-            upfirdn_input = upfirdn2d_native(input_tensor, torch.tensor(kernel, device=input_tensor.device), pad=((pad_value + 1) // 2, pad_value // 2))
+            upfirdn_input = upfirdn2d_native(
+                input_tensor,
+                torch.tensor(kernel, device=input_tensor.device),
+                pad=((pad_value + 1) // 2, pad_value // 2),
+            )
             output_tensor = F.conv2d(upfirdn_input, weight, stride=s, padding=0)
         else:
             p = kernel.shape[0] - factor
-            output_tensor = upfirdn2d_native(input_tensor, torch.tensor(kernel, device=input_tensor.device), down=factor, pad=((p + 1) // 2, p // 2))
+            output_tensor = upfirdn2d_native(
+                input_tensor, torch.tensor(kernel, device=input_tensor.device), down=factor, pad=((p + 1) // 2, p // 2)
+            )
 
         return output_tensor
-
 
     def forward(self, input_tensor):
         if self.use_conv:
@@ -253,7 +259,6 @@ class FirDownsample2D(nn.Module):
             output_tensor = self._downsample_2d(input_tensor, kernel=self.fir_kernel, factor=2)
 
         return output_tensor
-
 
 
 class ResnetBlock2D(nn.Module):
@@ -406,7 +411,12 @@ def upsample_2d(input_tensor, kernel=None, factor=2, gain=1):
 
     kernel = kernel * (gain * (factor**2))
     pad_value = kernel.shape[0] - factor
-    return upfirdn2d_native(input_tensor, kernel.to(device=input_tensor.device), up=factor, pad=((pad_value + 1) // 2 + factor - 1, pad_value // 2))
+    return upfirdn2d_native(
+        input_tensor,
+        kernel.to(device=input_tensor.device),
+        up=factor,
+        pad=((pad_value + 1) // 2 + factor - 1, pad_value // 2),
+    )
 
 
 def downsample_2d(input_tensor, kernel=None, factor=2, gain=1):
@@ -438,7 +448,9 @@ def downsample_2d(input_tensor, kernel=None, factor=2, gain=1):
 
     kernel = kernel * gain
     pad_value = kernel.shape[0] - factor
-    return upfirdn2d_native(input_tensor, kernel.to(device=input_tensor.device), down=factor, pad=((pad_value + 1) // 2, pad_value // 2))
+    return upfirdn2d_native(
+        input_tensor, kernel.to(device=input_tensor.device), down=factor, pad=((pad_value + 1) // 2, pad_value // 2)
+    )
 
 
 def upfirdn2d_native(input, kernel, up=1, down=1, pad=(0, 0)):
