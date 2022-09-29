@@ -61,6 +61,8 @@ class AttentionBlock(nn.Module):
         hidden_states = hidden_states.view(batch, channel, height * width).transpose(1, 2)
 
         # proj to q, k, v
+        # TODO(oneflow): functional::TensorLayoutProcessor has bug converting the fp16 tensor to fp32, so do it explicitly here
+        hidden_states = hidden_states.contiguous()
         query_proj = self.query(hidden_states)
         key_proj = self.key(hidden_states)
         value_proj = self.value(hidden_states)
@@ -88,6 +90,8 @@ class AttentionBlock(nn.Module):
         hidden_states = hidden_states.transpose(-1, -2).reshape(batch, channel, height, width)
 
         # res connect and rescale
+        # TODO(oneflow): Add op doesn't support mixed inputs of fp16 and fp32
+        residual = hidden_states.to(dtype=residual.dtype)
         hidden_states = (hidden_states + residual) / self.rescale_output_factor
         return hidden_states
 
