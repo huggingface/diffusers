@@ -76,7 +76,15 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         sigma_max: float = 1348.0,
         sampling_eps: float = 1e-5,
         correct_steps: int = 1,
+        **kwargs,
     ):
+        if "tensor_format" in kwargs:
+            warnings.warn(
+                "`tensor_format` is deprecated as an argument and will be removed in version `0.5.0`."
+                "If you're running your code in PyTorch, you can safely remove this argument.",
+                DeprecationWarning,
+            )
+
         # setable values
         self.timesteps = None
 

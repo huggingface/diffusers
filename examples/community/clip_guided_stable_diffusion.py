@@ -60,7 +60,6 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
-        scheduler = scheduler.set_format("pt")
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -285,7 +284,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
             # perform clip guidance
             if clip_guidance_scale > 0:
                 text_embeddings_for_guidance = (
-                    text_embeddings.chunk(2)[0] if do_classifier_free_guidance else text_embeddings
+                    text_embeddings.chunk(2)[1] if do_classifier_free_guidance else text_embeddings
                 )
                 noise_pred, latents = self.cond_fn(
                     latents,
