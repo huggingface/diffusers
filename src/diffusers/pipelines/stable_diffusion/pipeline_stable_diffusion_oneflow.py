@@ -200,7 +200,9 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
         )
         # text_input.input_ids = torch.from_numpy(text_input.input_ids)
         import torch as og_torch
-        og_torch_device = og_torch.device(str(self.device))
+        # put embeddings on cpu to save VRAM
+        og_torch_device = og_torch.device("cpu")
+        self.text_encoder = self.text_encoder.to(og_torch_device)
         text_embeddings = self.text_encoder(text_input.input_ids.to(og_torch_device))[0]
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
@@ -255,6 +257,7 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
             extra_step_kwargs["eta"] = eta
 
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
+            torch._oneflow_internal.profiler.RangePush(f"denoise_{i}")
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             if isinstance(self.scheduler, LMSDiscreteScheduler):
@@ -275,6 +278,7 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
                 latents = self.scheduler.step(noise_pred, i, latents, **extra_step_kwargs).prev_sample
             else:
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+            torch._oneflow_internal.profiler.RangePop()
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
