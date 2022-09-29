@@ -199,7 +199,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
     def test_gradient_checkpointing(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
+        model = self.model_class(**init_dict).eval()
         model.to(torch_device)
 
         out = model(**inputs_dict).sample
@@ -232,7 +232,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         # compare the output and parameters gradients
         self.assertTrue((output_checkpointed == output_not_checkpointed).all())
         for name in grad_checkpointed:
-            self.assertTrue(torch.allclose(grad_checkpointed[name], grad_not_checkpointed[name], atol=8e-3))
+            self.assertTrue(torch.allclose(grad_checkpointed[name], grad_not_checkpointed[name], atol=5e-5))
 
 
 #    TODO(Patrick) - Re-add this test after having cleaned up LDM
