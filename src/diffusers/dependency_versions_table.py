@@ -17,7 +17,6 @@ deps = {
     "jaxlib": "jaxlib>=0.1.65,<=0.3.6",
     "modelcards": "modelcards>=0.1.4",
     "numpy": "numpy",
-    "onnxruntime": "onnxruntime",
     "onnxruntime-gpu": "onnxruntime-gpu",
     "pytest": "pytest",
     "pytest-timeout": "pytest-timeout",
