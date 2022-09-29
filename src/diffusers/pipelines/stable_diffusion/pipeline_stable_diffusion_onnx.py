@@ -67,7 +67,7 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
         latents: Optional[np.ndarray] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, np.ndarray, torch.FloatTensor], None]] = None,
+        callback: Optional[Callable[[int, int, np.ndarray], None]] = None,
         callback_steps: Optional[int] = 1,
         **kwargs,
     ):
@@ -163,6 +163,8 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
                 latents = self.scheduler.step(noise_pred, i, latents, **extra_step_kwargs).prev_sample
             else:
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+
+            latents = np.array(latents)
 
             # call the callback, if provided
             if callback is not None and i % callback_steps == 0:
