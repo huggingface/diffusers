@@ -1118,6 +1118,8 @@ class CrossAttnUpBlock2D(nn.Module):
         for attn in self.attentions:
             attn._set_attention_slice(slice_size)
 
+        self.gradient_checkpointing = False
+
     def forward(
         self,
         hidden_states,
