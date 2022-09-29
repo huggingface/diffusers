@@ -32,6 +32,9 @@ def deprecate(*args, take_from: Optional[Union[Dict, Any]] = None, standard_warn
     if not isinstance(args[0], tuple):
         args = (args,)
 
+    import ipdb
+
+    ipdb.set_trace()
     for attribute, version_name, message in args:
         if version.parse(version.parse(__version__).base_version) >= version.parse(version_name):
             raise ValueError(
