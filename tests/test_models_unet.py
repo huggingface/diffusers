@@ -271,7 +271,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
     def test_gradient_checkpointing(self):
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
+        model = self.model_class(**init_dict).eval()
         model.to(torch_device)
 
         assert not model.is_gradient_checkpointing and model.training
