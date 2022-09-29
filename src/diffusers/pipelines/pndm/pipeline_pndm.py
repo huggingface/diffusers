@@ -14,6 +14,7 @@
 # limitations under the License.
 
 
+from os import device_encoding
 from typing import Optional, Tuple, Union
 
 import torch
@@ -80,7 +81,7 @@ class PNDMPipeline(DiffusionPipeline):
         )
         image = image.to(self.device)
 
-        self.scheduler.set_timesteps(num_inference_steps)
+        self.scheduler.set_timesteps(num_inference_steps, device=self.device)
         for t in self.progress_bar(self.scheduler.timesteps):
             model_output = self.unet(image, t).sample
 

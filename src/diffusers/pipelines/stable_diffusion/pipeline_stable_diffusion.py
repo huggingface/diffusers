@@ -233,9 +233,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             latents = latents.to(latents_device)
 
         # set timesteps
-        self.scheduler.set_timesteps(num_inference_steps)
-        if isinstance(self.scheduler.timesteps, torch.Tensor):
-            self.scheduler.timesteps = self.scheduler.timesteps.to(self.device)
+        self.scheduler.set_timesteps(num_inference_steps, device=self.device)
 
         # if we use LMSDiscreteScheduler, let's make sure latents are multiplied by sigmas
         if isinstance(self.scheduler, LMSDiscreteScheduler):

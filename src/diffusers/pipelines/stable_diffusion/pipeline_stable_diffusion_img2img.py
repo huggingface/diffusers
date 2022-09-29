@@ -189,7 +189,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
         # set timesteps
-        self.scheduler.set_timesteps(num_inference_steps)
+        self.scheduler.set_timesteps(num_inference_steps, device=self.device)
 
         if isinstance(init_image, PIL.Image.Image):
             init_image = preprocess(init_image)
