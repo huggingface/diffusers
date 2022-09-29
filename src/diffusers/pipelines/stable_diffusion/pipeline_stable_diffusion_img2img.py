@@ -209,8 +209,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents:
-                torch.FloatTensor)`.
+                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
