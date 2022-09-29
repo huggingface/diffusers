@@ -64,7 +64,7 @@ class LDMPipeline(DiffusionPipeline):
         )
         latents = latents.to(self.device)
 
-        self.scheduler.set_timesteps(num_inference_steps, device=self.device)
+        self.scheduler.set_timesteps(num_inference_steps)
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())

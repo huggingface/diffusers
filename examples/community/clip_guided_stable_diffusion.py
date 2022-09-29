@@ -259,7 +259,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
         if accepts_offset:
             extra_set_kwargs["offset"] = 1
 
-        self.scheduler.set_timesteps(num_inference_steps, device=self.device, **extra_set_kwargs)
+        self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
 
         # if we use LMSDiscreteScheduler, let's make sure latents are multiplied by sigmas
         if isinstance(self.scheduler, LMSDiscreteScheduler):

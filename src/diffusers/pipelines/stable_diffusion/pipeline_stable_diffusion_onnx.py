@@ -111,7 +111,7 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
             raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
 
         # set timesteps
-        self.scheduler.set_timesteps(num_inference_steps, device=self.device)
+        self.scheduler.set_timesteps(num_inference_steps)
 
         # if we use LMSDiscreteScheduler, let's make sure latents are multiplied by sigmas
         if isinstance(self.scheduler, LMSDiscreteScheduler):

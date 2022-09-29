@@ -73,7 +73,7 @@ class DDPMPipeline(DiffusionPipeline):
         image = image.to(self.device)
 
         # set step values
-        self.scheduler.set_timesteps(1000, device=self.device)
+        self.scheduler.set_timesteps(1000)
 
         for t in self.progress_bar(self.scheduler.timesteps):
             # 1. predict noise model_output

@@ -80,7 +80,7 @@ class PNDMPipeline(DiffusionPipeline):
         )
         image = image.to(self.device)
 
-        self.scheduler.set_timesteps(num_inference_steps, device=self.device)
+        self.scheduler.set_timesteps(num_inference_steps)
         for t in self.progress_bar(self.scheduler.timesteps):
             model_output = self.unet(image, t).sample
 
