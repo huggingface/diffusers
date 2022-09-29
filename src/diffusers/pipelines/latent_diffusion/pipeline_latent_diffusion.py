@@ -192,7 +192,7 @@ LDMBERT_PRETRAINED_MODEL_ARCHIVE_LIST = [
 
 
 LDMBERT_PRETRAINED_CONFIG_ARCHIVE_MAP = {
-    "ldm-bert": "https://huggingface.co/ldm-bert/resolve/main/config.json",
+    "ldm-bert": "https://huggingface.co/valhalla/ldm-bert/blob/main/config.json",
 }
 
 
