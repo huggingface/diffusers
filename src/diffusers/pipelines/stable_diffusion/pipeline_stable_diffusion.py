@@ -234,8 +234,10 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
-        if isinstance(self.scheduler.timesteps, torch.Tensor):
-            self.scheduler.timesteps = self.scheduler.timesteps.to(self.device)
+
+        # Some schedulers like PNDM have timesteps as arrays
+        # It's more optimzed to move all timesteps to correct device beforehand
+        timesteps_tensor = torch.tensor(self.scheduler.timesteps, device=self.device)
 
         # if we use LMSDiscreteScheduler, let's make sure latents are multiplied by sigmas
         if isinstance(self.scheduler, LMSDiscreteScheduler):
@@ -250,7 +252,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
-        for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
+        for i, t in enumerate(self.progress_bar(timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             if isinstance(self.scheduler, LMSDiscreteScheduler):
