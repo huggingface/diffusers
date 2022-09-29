@@ -40,7 +40,7 @@ def index_cast(indices):
         return indices
 
 def extract_scalar(t):
-    if isinstance(t, torch.Tensor) and t.size() == torch.Size([]):
+    if isinstance(t, torch.Tensor) and t.size() == torch.Size([]) and t.device == torch.device("cpu"):
         return t.item()
     return t
 
