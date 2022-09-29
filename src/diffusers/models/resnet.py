@@ -39,14 +39,14 @@ class Upsample2D(nn.Module):
         if self.use_conv_transpose:
             return self.conv(input_tensor)
 
-        upsample_input = F.interpolate(input_tensor, scale_factor=2.0, mode="nearest")
+        output_tensor = F.interpolate(input_tensor, scale_factor=2.0, mode="nearest")
 
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if self.use_conv:
             if self.name == "conv":
-                output_tensor = self.conv(upsample_input)
+                output_tensor = self.conv(output_tensor)
             else:
-                output_tensor = self.Conv2d_0(upsample_input)
+                output_tensor = self.Conv2d_0(output_tensor)
 
         return output_tensor
 
@@ -88,10 +88,10 @@ class Downsample2D(nn.Module):
         assert input_tensor.shape[1] == self.channels
         if self.use_conv and self.padding == 0:
             pad = (0, 1, 0, 1)
-            padded_input = F.pad(input_tensor, pad, mode="constant", value=0)
+            input_tensor = F.pad(input_tensor, pad, mode="constant", value=0)
 
-        assert padded_input.shape[1] == self.channels
-        output_tensor = self.conv(padded_input)
+        assert input_tensor.shape[1] == self.channels
+        output_tensor = self.conv(input_tensor)
 
         return output_tensor
 
@@ -145,7 +145,7 @@ class FirUpsample2D(nn.Module):
             convW = weight.shape[3]
             inC = weight.shape[1]
 
-            p = (kernel.shape[0] - factor) - (convW - 1)
+            pad_value = (kernel.shape[0] - factor) - (convW - 1)
 
             stride = (factor, factor)
             # Determine data dimensions.
@@ -170,15 +170,15 @@ class FirUpsample2D(nn.Module):
             output = upfirdn2d_native(
                 inverse_conv,
                 torch.tensor(kernel, device=inverse_conv.device),
-                pad=((p + 1) // 2 + factor - 1, p // 2 + 1),
+                pad=((pad_value + 1) // 2 + factor - 1, pad_value // 2 + 1),
             )
         else:
-            p = kernel.shape[0] - factor
+            pad_value = kernel.shape[0] - factor
             output = upfirdn2d_native(
                 input_tensor,
                 torch.tensor(kernel, device=input_tensor.device),
                 up=factor,
-                pad=((p + 1) // 2 + factor - 1, p // 2),
+                pad=((pad_value + 1) // 2 + factor - 1, pad_value // 2),
             )
 
         return output
@@ -236,17 +236,20 @@ class FirDownsample2D(nn.Module):
         if self.use_conv:
             _, _, convH, convW = weight.shape
             pad_value = (kernel.shape[0] - factor) + (convW - 1)
-            s = [factor, factor]
+            stride_value = [factor, factor]
             upfirdn_input = upfirdn2d_native(
                 input_tensor,
                 torch.tensor(kernel, device=input_tensor.device),
                 pad=((pad_value + 1) // 2, pad_value // 2),
             )
-            output_tensor = F.conv2d(upfirdn_input, weight, stride=s, padding=0)
+            output_tensor = F.conv2d(upfirdn_input, weight, stride=stride_value, padding=0)
         else:
-            p = kernel.shape[0] - factor
+            pad_value = kernel.shape[0] - factor
             output_tensor = upfirdn2d_native(
-                input_tensor, torch.tensor(kernel, device=input_tensor.device), down=factor, pad=((p + 1) // 2, p // 2)
+                input_tensor,
+                torch.tensor(kernel, device=input_tensor.device),
+                down=factor,
+                pad=((pad_value + 1) // 2, pad_value // 2),
             )
 
         return output_tensor
@@ -350,10 +353,10 @@ class ResnetBlock2D(nn.Module):
         hidden_states = self.nonlinearity(hidden_states)
 
         if self.upsample is not None:
-            sample_input = self.upsample(input_tensor)
+            input_tensor = self.upsample(input_tensor)
             hidden_states = self.upsample(hidden_states)
         elif self.downsample is not None:
-            sample_input = self.downsample(input_tensor)
+            input_tensor = self.downsample(input_tensor)
             hidden_states = self.downsample(hidden_states)
 
         hidden_states = self.conv1(hidden_states)
@@ -371,9 +374,9 @@ class ResnetBlock2D(nn.Module):
         hidden_states = self.conv2(hidden_states)
 
         if self.conv_shortcut is not None:
-            sample_input = self.conv_shortcut(sample_input)
+            input_tensor = self.conv_shortcut(input_tensor)
 
-        output_tensor = (sample_input + hidden_states) / self.output_scale_factor
+        output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
 
         return output_tensor
 
