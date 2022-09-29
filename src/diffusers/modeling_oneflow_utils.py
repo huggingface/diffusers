@@ -39,6 +39,11 @@ def index_cast(indices):
     else:
         return indices
 
+def extract_scalar(t):
+    if isinstance(t, torch.Tensor) and t.size() == torch.Size([]):
+        return t.item()
+    return t
+
 def from_numpy_if_needed(*args):
     if len(args) == 1:
         if isinstance(args[0], np.ndarray):

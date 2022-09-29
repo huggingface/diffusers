@@ -23,6 +23,7 @@ import oneflow as torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_oneflow_utils import OneFlowSchedulerMixin, SchedulerOutput
+from ..modeling_oneflow_utils import extract_scalar
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     """
@@ -375,6 +376,13 @@ class OneFlowPNDMScheduler(OneFlowSchedulerMixin, ConfigMixin):
         model_output_denom_coeff = alpha_prod_t * beta_prod_t_prev ** (0.5) + (
             alpha_prod_t * beta_prod_t * alpha_prod_t_prev
         ) ** (0.5)
+
+        # TODO(oneflow), oneflow's size [] tensor can't be used as a scalar
+        timestep = extract_scalar(timestep)
+        sample_coeff = extract_scalar(sample_coeff)
+        alpha_prod_t_prev = extract_scalar(alpha_prod_t_prev)
+        alpha_prod_t = extract_scalar(alpha_prod_t)
+        model_output_denom_coeff = extract_scalar(model_output_denom_coeff)
 
         # full formula (9)
         prev_sample = (
