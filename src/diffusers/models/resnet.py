@@ -163,6 +163,7 @@ class FirUpsample2D(nn.Module):
             weight = torch.flip(weight, dims=[3, 4]).permute(0, 2, 1, 3, 4)
             weight = torch.reshape(weight, (num_groups * inC, -1, convH, convW))
 
+<<<<<<< HEAD
             inverse_conv = F.conv_transpose2d(
                 input_tensor, weight, stride=stride, output_padding=output_padding, padding=0
             )
@@ -183,6 +184,19 @@ class FirUpsample2D(nn.Module):
 
         return output
 
+=======
+            inverse_conv = F.conv_transpose2d(input_tensor, weight, stride=stride, output_padding=output_padding, padding=0)
+
+            output = upfirdn2d_native(inverse_conv, torch.tensor(kernel, device=inverse_conv.device), pad=((p + 1) // 2 + factor - 1, p // 2 + 1))
+        else:
+            p = kernel.shape[0] - factor
+            output = upfirdn2d_native(
+                input_tensor, torch.tensor(kernel, device=input_tensor.device), up=factor, pad=((p + 1) // 2 + factor - 1, p // 2)
+            )
+
+        return output
+
+>>>>>>> e25c501 (renamed x to meaningful variable in resnet.py)
     def forward(self, input_tensor):
         if self.use_conv:
             height = self._upsample_2d(input_tensor, self.Conv2d_0.weight, kernel=self.fir_kernel)
@@ -237,6 +251,7 @@ class FirDownsample2D(nn.Module):
             _, _, convH, convW = weight.shape
             pad_value = (kernel.shape[0] - factor) + (convW - 1)
             s = [factor, factor]
+<<<<<<< HEAD
             upfirdn_input = upfirdn2d_native(
                 input_tensor,
                 torch.tensor(kernel, device=input_tensor.device),
@@ -248,6 +263,13 @@ class FirDownsample2D(nn.Module):
             output_tensor = upfirdn2d_native(
                 input_tensor, torch.tensor(kernel, device=input_tensor.device), down=factor, pad=((p + 1) // 2, p // 2)
             )
+=======
+            upfirdn_input = upfirdn2d_native(input_tensor, torch.tensor(kernel, device=input_tensor.device), pad=((pad_value + 1) // 2, pad_value // 2))
+            output_tensor = F.conv2d(upfirdn_input, weight, stride=s, padding=0)
+        else:
+            p = kernel.shape[0] - factor
+            output_tensor = upfirdn2d_native(input_tensor, torch.tensor(kernel, device=input_tensor.device), down=factor, pad=((p + 1) // 2, p // 2))
+>>>>>>> e25c501 (renamed x to meaningful variable in resnet.py)
 
         return output_tensor
 
@@ -411,12 +433,16 @@ def upsample_2d(input_tensor, kernel=None, factor=2, gain=1):
 
     kernel = kernel * (gain * (factor**2))
     pad_value = kernel.shape[0] - factor
+<<<<<<< HEAD
     return upfirdn2d_native(
         input_tensor,
         kernel.to(device=input_tensor.device),
         up=factor,
         pad=((pad_value + 1) // 2 + factor - 1, pad_value // 2),
     )
+=======
+    return upfirdn2d_native(input_tensor, kernel.to(device=input_tensor.device), up=factor, pad=((pad_value + 1) // 2 + factor - 1, pad_value // 2))
+>>>>>>> e25c501 (renamed x to meaningful variable in resnet.py)
 
 
 def downsample_2d(input_tensor, kernel=None, factor=2, gain=1):
@@ -448,9 +474,13 @@ def downsample_2d(input_tensor, kernel=None, factor=2, gain=1):
 
     kernel = kernel * gain
     pad_value = kernel.shape[0] - factor
+<<<<<<< HEAD
     return upfirdn2d_native(
         input_tensor, kernel.to(device=input_tensor.device), down=factor, pad=((pad_value + 1) // 2, pad_value // 2)
     )
+=======
+    return upfirdn2d_native(input_tensor, kernel.to(device=input_tensor.device), down=factor, pad=((pad_value + 1) // 2, pad_value // 2))
+>>>>>>> e25c501 (renamed x to meaningful variable in resnet.py)
 
 
 def upfirdn2d_native(input, kernel, up=1, down=1, pad=(0, 0)):

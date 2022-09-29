@@ -177,14 +177,7 @@ extras["quality"] = deps_list("black", "isort", "flake8", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "modelcards")
 extras["test"] = deps_list(
-    "datasets",
-    "onnxruntime-gpu",
-    "pytest",
-    "pytest-timeout",
-    "pytest-xdist",
-    "scipy",
-    "torchvision",
-    "transformers"
+    "datasets", "onnxruntime-gpu", "pytest", "pytest-timeout", "pytest-xdist", "scipy", "torchvision", "transformers"
 )
 extras["torch"] = deps_list("torch")
 
@@ -193,7 +186,9 @@ if os.name == "nt":  # windows
 else:
     extras["flax"] = deps_list("jax", "jaxlib", "flax")
 
-extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"] + extras["flax"]
+extras["dev"] = (
+    extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"] + extras["flax"]
+)
 
 install_requires = [
     deps["importlib_metadata"],
