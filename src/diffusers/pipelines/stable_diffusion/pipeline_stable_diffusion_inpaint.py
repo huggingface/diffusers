@@ -138,43 +138,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         self.enable_attention_slicing(None)
 
     @torch.no_grad()
-    def decode_latents(self, latents: torch.FloatTensor) -> np.ndarray:
-        r"""
-        Scale and decode the latent representations into images using the VAE.
-
-        Args:
-            latents (`torch.FloatTensor`):
-                Latent representations to decode into images.
-
-        Returns:
-            `np.ndarray`: Decoded images.
-        """
-        latents = 1 / 0.18215 * latents
-        image = self.vae.decode(latents).sample
-
-        image = (image / 2 + 0.5).clamp(0, 1)
-        image = image.cpu().permute(0, 2, 3, 1).numpy()
-        return image
-
-    @torch.no_grad()
-    def run_safety_checker(self, image: np.ndarray) -> Tuple[np.ndarray, List[bool]]:
-        r"""
-        Run the safety checker on the generated images. If potential NSFW content was detected, a warning will be
-        raised and a black image will be returned instead.
-
-        Args:
-            image (`np.ndarray`):
-                Images to run the safety checker on.
-
-        Returns:
-            `Tuple[np.ndarray, List[bool]]`: The first element contains the images that has been processed by the
-            safety checker. The second element is a boolean array indicating whether the images contain NSFW content.
-        """
-        safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
-        image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
-        return image, has_nsfw_concept
-
-    @torch.no_grad()
     def __call__(
         self,
         prompt: Union[str, List[str]],
@@ -380,9 +343,14 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
-        image = self.decode_latents(latents)
+        latents = 1 / 0.18215 * latents
+        image = self.vae.decode(latents).sample
 
-        image, has_nsfw_concept = self.run_safety_checker(image)
+        image = (image / 2 + 0.5).clamp(0, 1)
+        image = image.cpu().permute(0, 2, 3, 1).numpy()
+
+        safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
+        image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
 
         if output_type == "pil":
             image = self.numpy_to_pil(image)

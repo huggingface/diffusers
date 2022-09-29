@@ -43,19 +43,6 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
 
-    def decode_latents(self, latents: torch.FloatTensor) -> np.ndarray:
-        latents = 1 / 0.18215 * latents
-        image = self.vae_decoder(latent_sample=latents)[0]
-
-        image = np.clip(image / 2 + 0.5, 0, 1)
-        image = image.transpose((0, 2, 3, 1))
-        return image
-
-    def run_safety_checker(self, image: np.ndarray) -> Tuple[np.ndarray, List[bool]]:
-        safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="np")
-        image, has_nsfw_concept = self.safety_checker(clip_input=safety_checker_input.pixel_values, images=image)
-        return image, has_nsfw_concept
-
     def __call__(
         self,
         prompt: Union[str, List[str]],
@@ -170,9 +157,14 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
-        image = self.decode_latents(latents)
+        latents = 1 / 0.18215 * latents
+        image = self.vae_decoder(latent_sample=latents)[0]
 
-        image, has_nsfw_concept = self.run_safety_checker(image)
+        image = np.clip(image / 2 + 0.5, 0, 1)
+        image = image.transpose((0, 2, 3, 1))
+
+        safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="np")
+        image, has_nsfw_concept = self.safety_checker(clip_input=safety_checker_input.pixel_values, images=image)
 
         if output_type == "pil":
             image = self.numpy_to_pil(image)
