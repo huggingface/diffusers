@@ -35,7 +35,7 @@ from .import_utils import (
 )
 from .logging import get_logger
 from .outputs import BaseOutput
-from .testing_utils import deprecate
+from .testing_utils import deprecate, floats_tensor, load_image, parse_flag_from_env, slow, torch_device
 
 
 logger = get_logger(__name__)
