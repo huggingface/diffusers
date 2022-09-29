@@ -174,12 +174,12 @@ class FirUpsample2D(nn.Module):
 
         return output
 
-    def forward(self, x):
+    def forward(self, input_tensor):
         if self.use_conv:
-            height = self._upsample_2d(x, self.Conv2d_0.weight, kernel=self.fir_kernel)
+            height = self._upsample_2d(input_tensor, self.Conv2d_0.weight, kernel=self.fir_kernel)
             height = height + self.Conv2d_0.bias.reshape(1, -1, 1, 1)
         else:
-            height = self._upsample_2d(x, kernel=self.fir_kernel, factor=2)
+            height = self._upsample_2d(input_tensor, kernel=self.fir_kernel, factor=2)
 
         return height
 
@@ -194,7 +194,7 @@ class FirDownsample2D(nn.Module):
         self.use_conv = use_conv
         self.out_channels = out_channels
 
-    def _downsample_2d(self, x, weight=None, kernel=None, factor=2, gain=1):
+    def _downsample_2d(self, input_tensor, weight=None, kernel=None, factor=2, gain=1):
         """Fused `Conv2d()` followed by `downsample_2d()`.
 
         Args:
@@ -226,15 +226,15 @@ class FirDownsample2D(nn.Module):
 
         if self.use_conv:
             _, _, convH, convW = weight.shape
-            p = (kernel.shape[0] - factor) + (convW - 1)
+            pad_value = (kernel.shape[0] - factor) + (convW - 1)
             s = [factor, factor]
-            x = upfirdn2d_native(x, torch.tensor(kernel, device=x.device), pad=((p + 1) // 2, p // 2))
-            x = F.conv2d(x, weight, stride=s, padding=0)
+            upfirdn_input = upfirdn2d_native(input_tensor, torch.tensor(kernel, device=input_tensor.device), pad=((pad_value + 1) // 2, pad_value // 2))
+            output_tensor = F.conv2d(upfirdn_input, weight, stride=s, padding=0)
         else:
             p = kernel.shape[0] - factor
-            x = upfirdn2d_native(x, torch.tensor(kernel, device=x.device), down=factor, pad=((p + 1) // 2, p // 2))
+            output_tensor = upfirdn2d_native(input_tensor, torch.tensor(kernel, device=input_tensor.device), down=factor, pad=((p + 1) // 2, p // 2))
 
-        return x
+        return output_tensor
 
     def forward(self, input_tensor):
         if self.use_conv:
