@@ -34,12 +34,18 @@ class Upsample2D(nn.Module):
         else:
             self.Conv2d_0 = conv
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states, output_size=None):
         assert hidden_states.shape[1] == self.channels
+
         if self.use_conv_transpose:
             return self.conv(hidden_states)
 
-        hidden_states = F.interpolate(hidden_states, scale_factor=2.0, mode="nearest")
+        # if `output_size` is passed we force the interpolation output
+        # size and do not make use of `scale_factor=2`
+        if output_size is None:
+            hidden_states = F.interpolate(hidden_states, scale_factor=2.0, mode="nearest")
+        else:
+            hidden_states = F.interpolate(hidden_states, size=output_size, mode="nearest")
 
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if self.use_conv:

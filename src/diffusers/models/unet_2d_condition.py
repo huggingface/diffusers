@@ -7,7 +7,7 @@ import torch.utils.checkpoint
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
-from ..utils import BaseOutput
+from ..utils import BaseOutput, logging
 from .embeddings import TimestepEmbedding, Timesteps
 from .unet_blocks import (
     CrossAttnDownBlock2D,
@@ -18,6 +18,9 @@ from .unet_blocks import (
     get_down_block,
     get_up_block,
 )
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 @dataclass
@@ -145,15 +148,25 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             resnet_groups=norm_num_groups,
         )
 
+        # count how many layers upsample the images
+        self.num_upsamplers = 0
+
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
+            is_final_block = i == len(block_out_channels) - 1
+
             prev_output_channel = output_channel
             output_channel = reversed_block_out_channels[i]
             input_channel = reversed_block_out_channels[min(i + 1, len(block_out_channels) - 1)]
 
-            is_final_block = i == len(block_out_channels) - 1
+            # add upsample block for all BUT final layer
+            if not is_final_block:
+                add_upsample = True
+                self.num_upsamplers += 1
+            else:
+                add_upsample = False
 
             up_block = get_up_block(
                 up_block_type,
@@ -162,7 +175,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 out_channels=output_channel,
                 prev_output_channel=prev_output_channel,
                 temb_channels=time_embed_dim,
-                add_upsample=not is_final_block,
+                add_upsample=add_upsample,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
@@ -223,6 +236,20 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             [`~models.unet_2d_condition.UNet2DConditionOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is the sample tensor.
         """
+        # By default samples have to be AT least a multiple of the overall upsampling factor.
+        # The overall upsampling factor is equal to 2 ** (# num of upsampling layears).
+        # However, the upsampling interpolation output size can be forced to fit any upsampling size
+        # on the fly if necessary.
+        default_overall_up_factor = 2**self.num_upsamplers
+
+        # upsample size should be forwarded when sample is not a multiple of `default_overall_up_factor`
+        forward_upsample_size = False
+        upsample_size = None
+
+        if any(s % default_overall_up_factor != 0 for s in sample.shape[-2:]):
+            logger.info("Forward upsample size to force interpolation output size.")
+            forward_upsample_size = True
+
         # 0. center input if necessary
         if self.config.center_input_sample:
             sample = 2 * sample - 1.0
@@ -262,9 +289,16 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         sample = self.mid_block(sample, emb, encoder_hidden_states=encoder_hidden_states)
 
         # 5. up
-        for upsample_block in self.up_blocks:
+        for i, upsample_block in enumerate(self.up_blocks):
+            is_final_block = i == len(self.up_blocks) - 1
+
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
             down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
+
+            # if we have not reached the final block and need to forward the
+            # upsample size, we do it here
+            if not is_final_block and forward_upsample_size:
+                upsample_size = down_block_res_samples[-1].shape[2:]
 
             if hasattr(upsample_block, "attentions") and upsample_block.attentions is not None:
                 sample = upsample_block(
@@ -272,10 +306,12 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
                     encoder_hidden_states=encoder_hidden_states,
+                    upsample_size=upsample_size,
                 )
             else:
-                sample = upsample_block(hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples)
-
+                sample = upsample_block(
+                    hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size
+                )
         # 6. post-process
         # make sure hidden states is in float32
         # when running in half-precision
