@@ -17,7 +17,7 @@ Before running the scripts, make sure to install the library's training dependen
 
 ```bash
 pip install git+https://github.com/huggingface/diffusers.git
-pip install -r requirements.txt
+pip install -U -r requirements.txt
 ```
 
 And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
