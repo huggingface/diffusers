@@ -279,7 +279,7 @@ class CrossAttention(nn.Module):
 
     def _attention(self, query, key, value):
         batch_size, sequence_length, heads, last_dim = query.shape
-        attn = torch.einsum('bjhd,bihd->bhji', query, key)
+        attn = torch.einsum("bjhd,bihd->bhji", query, key)
         attn = (attn * self.scale).softmax(dim=-1)
 
         value = value.permute(0, 2, 1, 3)
