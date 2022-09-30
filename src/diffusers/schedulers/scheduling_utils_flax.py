@@ -21,7 +21,7 @@ from ..utils import BaseOutput
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
 
-
+@dataclass
 class FlaxSchedulerOutput(BaseOutput):
     """
     Base class for the scheduler's step function output.
