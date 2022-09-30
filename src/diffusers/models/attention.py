@@ -288,20 +288,6 @@ class CrossAttention(nn.Module):
         attn = attn.permute(0, 2, 1, 3)
         return attn.reshape(batch_size, sequence_length, self.heads * last_dim)
 
-        # attention_scores = torch.baddbmm(
-        #     torch.empty(query.shape[0], query.shape[1], key.shape[1], dtype=query.dtype, device=query.device),
-        #     query,
-        #     key.transpose(-1, -2),
-        #     beta=0,
-        #     alpha=self.scale,
-        # )
-        # attention_probs = attention_scores.softmax(dim=-1)
-        # # compute attention output
-        # hidden_states = torch.matmul(attention_probs, value)
-        # # reshape hidden_states
-        # hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
-        # return hidden_states
-
     def _sliced_attention(self, query, key, value, sequence_length, dim):
         batch_size_attention = query.shape[0]
         hidden_states = torch.zeros(
