@@ -37,7 +37,7 @@ class LMSDiscreteSchedulerState:
 
 
 @dataclass
-class LMSSchedulerOutput(FlaxSchedulerOutput):
+class FlaxLMSSchedulerOutput(FlaxSchedulerOutput):
     state: LMSDiscreteSchedulerState
 
 
@@ -145,7 +145,7 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
         order: int = 4,
         return_dict: bool = True,
-    ) -> Union[LMSSchedulerOutput, Tuple]:
+    ) -> Union[FlaxLMSSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -157,10 +157,10 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             sample (`jnp.ndarray`):
                 current instance of sample being created by diffusion process.
             order: coefficient for multi-step inference.
-            return_dict (`bool`): option for returning tuple rather than LMSSchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than FlaxLMSSchedulerOutput class
 
         Returns:
-            [`LMSSchedulerOutput`] or `tuple`: [`LMSSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
+            [`FlaxLMSSchedulerOutput`] or `tuple`: [`FlaxLMSSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
             When returning a tuple, the first element is the sample tensor.
 
         """
@@ -187,7 +187,7 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         if not return_dict:
             return (prev_sample, state)
 
-        return LMSSchedulerOutput(prev_sample=prev_sample, state=state)
+        return FlaxLMSSchedulerOutput(prev_sample=prev_sample, state=state)
 
     def add_noise(
         self,

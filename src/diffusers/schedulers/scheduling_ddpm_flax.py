@@ -67,7 +67,7 @@ class DDPMSchedulerState:
 
 
 @dataclass
-class DDPMSchedulerOutput(FlaxSchedulerOutput):
+class FlaxDDPMSchedulerOutput(FlaxSchedulerOutput):
     state: DDPMSchedulerState
 
 
@@ -191,7 +191,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         key: random.KeyArray,
         predict_epsilon: bool = True,
         return_dict: bool = True,
-    ) -> Union[DDPMSchedulerOutput, Tuple]:
+    ) -> Union[FlaxDDPMSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -205,10 +205,10 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
             key (`random.KeyArray`): a PRNG key.
             predict_epsilon (`bool`):
                 optional flag to use when model predicts the samples directly instead of the noise, epsilon.
-            return_dict (`bool`): option for returning tuple rather than DDPMSchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than FlaxDDPMSchedulerOutput class
 
         Returns:
-            [`DDPMSchedulerOutput`] or `tuple`: [`DDPMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
+            [`FlaxDDPMSchedulerOutput`] or `tuple`: [`FlaxDDPMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
             When returning a tuple, the first element is the sample tensor.
 
         """
@@ -257,7 +257,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         if not return_dict:
             return (pred_prev_sample, state)
 
-        return DDPMSchedulerOutput(prev_sample=pred_prev_sample, state=state)
+        return FlaxDDPMSchedulerOutput(prev_sample=pred_prev_sample, state=state)
 
     def add_noise(
         self,

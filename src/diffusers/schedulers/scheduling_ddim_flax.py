@@ -68,7 +68,7 @@ class DDIMSchedulerState:
 
 
 @dataclass
-class DDIMSchedulerOutput(FlaxSchedulerOutput):
+class FlaxDDIMSchedulerOutput(FlaxSchedulerOutput):
     state: DDIMSchedulerState
 
 
@@ -183,7 +183,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         timestep: int,
         sample: jnp.ndarray,
         return_dict: bool = True,
-    ) -> Union[DDIMSchedulerOutput, Tuple]:
+    ) -> Union[FlaxDDIMSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -197,10 +197,10 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
             key (`random.KeyArray`): a PRNG key.
             eta (`float`): weight of noise for added noise in diffusion step.
             use_clipped_model_output (`bool`): TODO
-            return_dict (`bool`): option for returning tuple rather than DDIMSchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than FlaxDDIMSchedulerOutput class
 
         Returns:
-            [`DDIMSchedulerOutput`] or `tuple`: [`DDIMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
+            [`FlaxDDIMSchedulerOutput`] or `tuple`: [`FlaxDDIMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
             When returning a tuple, the first element is the sample tensor.
 
         """
@@ -252,7 +252,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         if not return_dict:
             return (prev_sample, state)
 
-        return DDIMSchedulerOutput(prev_sample=prev_sample, state=state)
+        return FlaxDDIMSchedulerOutput(prev_sample=prev_sample, state=state)
 
     def add_noise(
         self,
