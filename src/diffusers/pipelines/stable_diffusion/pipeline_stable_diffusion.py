@@ -225,14 +225,22 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 latents_shape,
                 generator=generator,
                 device=latents_device,
+                dtype=text_embeddings.dtype,
             )
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
-        latents = latents.to(self.device)
+            latents = latents.to(latents_device)
 
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
+
+        # Some schedulers like PNDM have timesteps as arrays
+        # It's more optimzed to move all timesteps to correct device beforehand
+        if torch.is_tensor(self.scheduler.timesteps):
+            timesteps_tensor = self.scheduler.timesteps.to(self.device)
+        else:
+            timesteps_tensor = torch.tensor(self.scheduler.timesteps.copy(), device=self.device)
 
         # if we use LMSDiscreteScheduler, let's make sure latents are multiplied by sigmas
         if isinstance(self.scheduler, LMSDiscreteScheduler):
@@ -247,7 +255,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
-        for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
+        for i, t in enumerate(self.progress_bar(timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             if isinstance(self.scheduler, LMSDiscreteScheduler):
@@ -278,7 +286,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         # run safety checker
         safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
-        image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
+        image, has_nsfw_concept = self.safety_checker(
+            images=image, clip_input=safety_checker_input.pixel_values.to(text_embeddings.dtype)
+        )
 
         if output_type == "pil":
             image = self.numpy_to_pil(image)
