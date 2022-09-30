@@ -482,9 +482,9 @@ def main():
         unet.enable_gradient_checkpointing()
 
     weight_dtype = torch.float32
-    if args.mixed_precision == 'fp16':
+    if args.mixed_precision == "fp16":
         weight_dtype = torch.float16
-    elif args.mixed_precision == 'bf16':
+    elif args.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
     # Move vae and unet to device.
