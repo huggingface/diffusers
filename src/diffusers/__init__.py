@@ -74,6 +74,7 @@ if is_flax_available():
         FlaxLMSDiscreteScheduler,
         FlaxPNDMScheduler,
         FlaxScoreSdeVeScheduler,
+        FlaxSchedulerMixin,
     )
 else:
     from .utils.dummy_flax_objects import *  # noqa F403
