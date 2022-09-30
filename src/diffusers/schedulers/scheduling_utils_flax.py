@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import warnings
-import jax.numpy as jnp
 from dataclasses import dataclass
+
+import jax.numpy as jnp
 
 from ..utils import BaseOutput
 
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
-
 
 
 class FlaxSchedulerOutput(BaseOutput):

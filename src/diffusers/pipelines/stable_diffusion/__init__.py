@@ -6,7 +6,7 @@ import numpy as np
 import PIL
 from PIL import Image
 
-from ...utils import BaseOutput, is_flax_available, is_torch_available, is_onnx_available, is_transformers_available
+from ...utils import BaseOutput, is_flax_available, is_onnx_available, is_torch_available, is_transformers_available
 
 
 @dataclass
