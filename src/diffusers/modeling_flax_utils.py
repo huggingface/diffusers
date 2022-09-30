@@ -395,8 +395,8 @@ class FlaxModelMixin:
                 from .modeling_utils import load_state_dict
             else:
                 raise EnvironmentError(
-                    f"Can't load the model in PyTorch format because PyTorch is not installed. "
-                    f"Please, install PyTorch or use native Flax weights."
+                    "Can't load the model in PyTorch format because PyTorch is not installed. "
+                    "Please, install PyTorch or use native Flax weights."
                 )
 
             # Step 1: Get the pytorch file
