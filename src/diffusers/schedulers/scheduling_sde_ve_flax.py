@@ -22,7 +22,7 @@ import jax.numpy as jnp
 from jax import random
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput
 
 
 @flax.struct.dataclass
@@ -38,7 +38,7 @@ class ScoreSdeVeSchedulerState:
 
 
 @dataclass
-class FlaxSdeVeOutput(SchedulerOutput):
+class FlaxSdeVeOutput(FlaxSchedulerOutput):
     """
     Output class for the ScoreSdeVeScheduler's step function output.
 
@@ -56,7 +56,7 @@ class FlaxSdeVeOutput(SchedulerOutput):
     prev_sample_mean: Optional[jnp.ndarray] = None
 
 
-class FlaxScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
+class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
     """
     The variance exploding stochastic differential equation (SDE) scheduler.
 
@@ -168,7 +168,7 @@ class FlaxScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             sample (`jnp.ndarray`):
                 current instance of sample being created by diffusion process.
             generator: random number generator.
-            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than FlaxSdeVeOutput class
 
         Returns:
             [`FlaxSdeVeOutput`] or `tuple`: [`FlaxSdeVeOutput`] if `return_dict` is True, otherwise a `tuple`. When
@@ -216,7 +216,7 @@ class FlaxScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
         key: random.KeyArray,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> Union[FlaxSdeVeOutput, Tuple]:
         """
         Correct the predicted sample based on the output model_output of the network. This is often run repeatedly
         after making the prediction for the previous timestep.
@@ -227,7 +227,7 @@ class FlaxScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             sample (`jnp.ndarray`):
                 current instance of sample being created by diffusion process.
             generator: random number generator.
-            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than FlaxSdeVeOutput class
 
         Returns:
             [`FlaxSdeVeOutput`] or `tuple`: [`FlaxSdeVeOutput`] if `return_dict` is True, otherwise a `tuple`. When
