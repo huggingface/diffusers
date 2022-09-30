@@ -14,39 +14,16 @@ specific language governing permissions and limitations under the License.
 
 We present some techniques and ideas to optimize 🤗 Diffusers _inference_ for memory or speed.
 
-<table>
-<tr>
- <td>
- <td>Latency
- <td>Speedup
-<tr>
-<tr>
- <td>original
- <td>9.50s
- <td>x1
-<tr>
-<tr>
- <td>cuDNN auto-tuner
- <td>9.37s
- <td>x1.01
-<tr>
- <td>autocast (fp16)
- <td>5.47s
- <td>x1.91
-<tr>
- <td>fp16
- <td>3.61s
- <td>x2.91
-<tr>
- <td>channels last
- <td>3.30s
- <td>x2.87
-<tr>
-<tr>
- <td>traced UNet
- <td>3.21s
- <td>x2.96
-</table>
+
+|                  | Latency | Speedup |
+|------------------|---------|---------|
+| original         | 9.50s   | x1      |
+| cuDNN auto-tuner | 9.37s   | x1.01   |
+| autocast (fp16)  | 5.47s   | x1.91   |
+| fp16             | 3.61s   | x2.91   |
+| channels last    | 3.30s   | x2.87   |
+| traced UNet      | 3.21s   | x2.96   |
+
 <em>obtained on NVIDIA TITAN RTX by generating a single image of size 512x512 from the prompt "a photo of an astronaut riding a horse on mars" with 50 DDIM steps.</em>
 
 ## Enable cuDNN auto-tuner
