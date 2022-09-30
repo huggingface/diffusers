@@ -380,6 +380,7 @@ We also want to thank @heejkoo for the very helpful overview of papers, code and
 
 ## Citation
 
+```bibtex
 @misc{von-platen-etal-2022-diffusers,
   author = {Patrick von Platen, Suraj Patil, Anton Lozhkov, Pedro Cuenca, Nathan Lambert, Kashif Rasul, Mishig Davaadorj},
   title = {Diffusers: State-of-the-art diffusion models},
@@ -388,3 +389,4 @@ We also want to thank @heejkoo for the very helpful overview of papers, code and
   journal = {GitHub repository},
   howpublished = {\url{https://github.com/huggingface/diffusers}}
 }
+```
