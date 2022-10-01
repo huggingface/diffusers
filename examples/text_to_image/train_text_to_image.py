@@ -567,6 +567,7 @@ def main():
 
     for epoch in range(args.num_train_epochs):
         unet.train()
+        total_loss = 0.0
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Convert images to latent space
@@ -589,6 +590,7 @@ def main():
                 # Predict the noise residual and compute loss
                 noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
                 loss = F.mse_loss(noise_pred, noise, reduction="mean")
+                total_loss += loss.detach().float()
 
                 accelerator.backward(loss)
                 optimizer.step()
@@ -609,9 +611,11 @@ def main():
             if global_step >= args.max_train_steps:
                 break
 
-        accelerator.wait_for_everyone()
+        logger.info(f"epoch {epoch}: train_loss: {total_loss.item() / len(train_dataloader)}")
+        accelerator.log({"epoch": epoch, "train_loss": total_loss.item() / len(train_dataloader)}, step=global_step)
 
     # Create the pipeline using the trained modules and save it.
+    accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         pipeline = StableDiffusionPipeline(
             text_encoder=text_encoder,
