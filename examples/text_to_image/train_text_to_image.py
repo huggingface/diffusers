@@ -210,6 +210,16 @@ def parse_args():
             "and an Nvidia Ampere GPU."
         ),
     )
+    parser.add_argument(
+        "--report_to",
+        type=str,
+        default="tensorboard",
+        help=(
+            'The integration to report the results and logs to. Supported platforms are `"tensorboard"`,'
+            ' `"wandb"` and `"comet_ml"`. Use `"all"` (default) to report to all integrations.'
+            "Only applicable when `--with_tracking` is passed."
+        ),
+    )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
 
     args = parser.parse_args()
@@ -309,7 +319,7 @@ def main():
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
-        log_with="tensorboard",
+        log_with=args.report_to,
         logging_dir=logging_dir,
     )
 
