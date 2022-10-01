@@ -1,5 +1,6 @@
 import argparse
 import copy
+import logging
 import math
 import os
 import random
@@ -310,6 +311,12 @@ def main():
         mixed_precision=args.mixed_precision,
         log_with="tensorboard",
         logging_dir=logging_dir,
+    )
+
+    logging.basicConfig(
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S",
+        level=logging.INFO,
     )
 
     # If passed along, set the training seed now.
