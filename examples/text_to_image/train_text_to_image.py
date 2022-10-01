@@ -506,7 +506,6 @@ def main():
         padded_tokens = tokenizer.pad(
             {"input_ids": input_ids},
             padding=True,
-            max_length=tokenizer.model_max_length,
             return_tensors="pt",
         )
         return {
