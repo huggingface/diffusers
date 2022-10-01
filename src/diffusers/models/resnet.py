@@ -34,21 +34,21 @@ class Upsample2D(nn.Module):
         else:
             self.Conv2d_0 = conv
 
-    def forward(self, input_tensor):
-        assert input_tensor.shape[1] == self.channels
+    def forward(self, hidden_states):
+        assert hidden_states.shape[1] == self.channels
         if self.use_conv_transpose:
-            return self.conv(input_tensor)
+            return self.conv(hidden_states)
 
-        output_tensor = F.interpolate(input_tensor, scale_factor=2.0, mode="nearest")
+        hidden_states = F.interpolate(hidden_states, scale_factor=2.0, mode="nearest")
 
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if self.use_conv:
             if self.name == "conv":
-                output_tensor = self.conv(output_tensor)
+                hidden_states = self.conv(hidden_states)
             else:
-                output_tensor = self.Conv2d_0(output_tensor)
+                hidden_states = self.Conv2d_0(hidden_states)
 
-        return output_tensor
+        return hidden_states
 
 
 class Downsample2D(nn.Module):
@@ -84,16 +84,16 @@ class Downsample2D(nn.Module):
         else:
             self.conv = conv
 
-    def forward(self, input_tensor):
-        assert input_tensor.shape[1] == self.channels
+    def forward(self, hidden_states):
+        assert hidden_states.shape[1] == self.channels
         if self.use_conv and self.padding == 0:
             pad = (0, 1, 0, 1)
-            input_tensor = F.pad(input_tensor, pad, mode="constant", value=0)
+            hidden_states = F.pad(hidden_states, pad, mode="constant", value=0)
 
-        assert input_tensor.shape[1] == self.channels
-        output_tensor = self.conv(input_tensor)
+        assert hidden_states.shape[1] == self.channels
+        hidden_states = self.conv(hidden_states)
 
-        return output_tensor
+        return hidden_states
 
 
 class FirUpsample2D(nn.Module):
@@ -106,7 +106,7 @@ class FirUpsample2D(nn.Module):
         self.fir_kernel = fir_kernel
         self.out_channels = out_channels
 
-    def _upsample_2d(self, input_tensor, weight=None, kernel=None, factor=2, gain=1):
+    def _upsample_2d(self, hidden_states, weight=None, kernel=None, factor=2, gain=1):
         """Fused `upsample_2d()` followed by `Conv2d()`.
 
         Args:
@@ -149,14 +149,17 @@ class FirUpsample2D(nn.Module):
 
             stride = (factor, factor)
             # Determine data dimensions.
-            output_shape = ((input_tensor.shape[2] - 1) * factor + convH, (input_tensor.shape[3] - 1) * factor + convW)
+            output_shape = (
+                (hidden_states.shape[2] - 1) * factor + convH,
+                (hidden_states.shape[3] - 1) * factor + convW,
+            )
             output_padding = (
-                output_shape[0] - (input_tensor.shape[2] - 1) * stride[0] - convH,
-                output_shape[1] - (input_tensor.shape[3] - 1) * stride[1] - convW,
+                output_shape[0] - (hidden_states.shape[2] - 1) * stride[0] - convH,
+                output_shape[1] - (hidden_states.shape[3] - 1) * stride[1] - convW,
             )
             assert output_padding[0] >= 0 and output_padding[1] >= 0
             inC = weight.shape[1]
-            num_groups = input_tensor.shape[1] // inC
+            num_groups = hidden_states.shape[1] // inC
 
             # Transpose weights.
             weight = torch.reshape(weight, (num_groups, -1, inC, convH, convW))
@@ -164,7 +167,7 @@ class FirUpsample2D(nn.Module):
             weight = torch.reshape(weight, (num_groups * inC, -1, convH, convW))
 
             inverse_conv = F.conv_transpose2d(
-                input_tensor, weight, stride=stride, output_padding=output_padding, padding=0
+                hidden_states, weight, stride=stride, output_padding=output_padding, padding=0
             )
 
             output = upfirdn2d_native(
@@ -175,20 +178,20 @@ class FirUpsample2D(nn.Module):
         else:
             pad_value = kernel.shape[0] - factor
             output = upfirdn2d_native(
-                input_tensor,
-                torch.tensor(kernel, device=input_tensor.device),
+                hidden_states,
+                torch.tensor(kernel, device=hidden_states.device),
                 up=factor,
                 pad=((pad_value + 1) // 2 + factor - 1, pad_value // 2),
             )
 
         return output
 
-    def forward(self, input_tensor):
+    def forward(self, hidden_states):
         if self.use_conv:
-            height = self._upsample_2d(input_tensor, self.Conv2d_0.weight, kernel=self.fir_kernel)
+            height = self._upsample_2d(hidden_states, self.Conv2d_0.weight, kernel=self.fir_kernel)
             height = height + self.Conv2d_0.bias.reshape(1, -1, 1, 1)
         else:
-            height = self._upsample_2d(input_tensor, kernel=self.fir_kernel, factor=2)
+            height = self._upsample_2d(hidden_states, kernel=self.fir_kernel, factor=2)
 
         return height
 
@@ -203,7 +206,7 @@ class FirDownsample2D(nn.Module):
         self.use_conv = use_conv
         self.out_channels = out_channels
 
-    def _downsample_2d(self, input_tensor, weight=None, kernel=None, factor=2, gain=1):
+    def _downsample_2d(self, hidden_states, weight=None, kernel=None, factor=2, gain=1):
         """Fused `Conv2d()` followed by `downsample_2d()`.
 
         Args:
@@ -238,30 +241,30 @@ class FirDownsample2D(nn.Module):
             pad_value = (kernel.shape[0] - factor) + (convW - 1)
             stride_value = [factor, factor]
             upfirdn_input = upfirdn2d_native(
-                input_tensor,
-                torch.tensor(kernel, device=input_tensor.device),
+                hidden_states,
+                torch.tensor(kernel, device=hidden_states.device),
                 pad=((pad_value + 1) // 2, pad_value // 2),
             )
-            output_tensor = F.conv2d(upfirdn_input, weight, stride=stride_value, padding=0)
+            hidden_states = F.conv2d(upfirdn_input, weight, stride=stride_value, padding=0)
         else:
             pad_value = kernel.shape[0] - factor
-            output_tensor = upfirdn2d_native(
-                input_tensor,
-                torch.tensor(kernel, device=input_tensor.device),
+            hidden_states = upfirdn2d_native(
+                hidden_states,
+                torch.tensor(kernel, device=hidden_states.device),
                 down=factor,
                 pad=((pad_value + 1) // 2, pad_value // 2),
             )
 
-        return output_tensor
+        return hidden_states
 
-    def forward(self, input_tensor):
+    def forward(self, hidden_states):
         if self.use_conv:
-            downsample_input = self._downsample_2d(input_tensor, weight=self.Conv2d_0.weight, kernel=self.fir_kernel)
-            output_tensor = downsample_input + self.Conv2d_0.bias.reshape(1, -1, 1, 1)
+            downsample_input = self._downsample_2d(hidden_states, weight=self.Conv2d_0.weight, kernel=self.fir_kernel)
+            hidden_states = downsample_input + self.Conv2d_0.bias.reshape(1, -1, 1, 1)
         else:
-            output_tensor = self._downsample_2d(input_tensor, kernel=self.fir_kernel, factor=2)
+            hidden_states = self._downsample_2d(hidden_states, kernel=self.fir_kernel, factor=2)
 
-        return output_tensor
+        return hidden_states
 
 
 class ResnetBlock2D(nn.Module):
@@ -382,11 +385,11 @@ class ResnetBlock2D(nn.Module):
 
 
 class Mish(torch.nn.Module):
-    def forward(self, input_tensor):
-        return input_tensor * torch.tanh(torch.nn.functional.softplus(input_tensor))
+    def forward(self, hidden_states):
+        return hidden_states * torch.tanh(torch.nn.functional.softplus(hidden_states))
 
 
-def upsample_2d(input_tensor, kernel=None, factor=2, gain=1):
+def upsample_2d(hidden_states, kernel=None, factor=2, gain=1):
     r"""Upsample2D a batch of 2D images with the given filter.
 
     Args:
@@ -415,14 +418,14 @@ def upsample_2d(input_tensor, kernel=None, factor=2, gain=1):
     kernel = kernel * (gain * (factor**2))
     pad_value = kernel.shape[0] - factor
     return upfirdn2d_native(
-        input_tensor,
-        kernel.to(device=input_tensor.device),
+        hidden_states,
+        kernel.to(device=hidden_states.device),
         up=factor,
         pad=((pad_value + 1) // 2 + factor - 1, pad_value // 2),
     )
 
 
-def downsample_2d(input_tensor, kernel=None, factor=2, gain=1):
+def downsample_2d(hidden_states, kernel=None, factor=2, gain=1):
     r"""Downsample2D a batch of 2D images with the given filter.
 
     Args:
@@ -452,7 +455,7 @@ def downsample_2d(input_tensor, kernel=None, factor=2, gain=1):
     kernel = kernel * gain
     pad_value = kernel.shape[0] - factor
     return upfirdn2d_native(
-        input_tensor, kernel.to(device=input_tensor.device), down=factor, pad=((pad_value + 1) // 2, pad_value // 2)
+        hidden_states, kernel.to(device=hidden_states.device), down=factor, pad=((pad_value + 1) // 2, pad_value // 2)
     )
 
 
@@ -464,6 +467,7 @@ def upfirdn2d_native(input, kernel, up=1, down=1, pad=(0, 0)):
 
     _, channel, in_h, in_w = input.shape
     input = input.reshape(-1, in_h, in_w, 1)
+    # Rename this variable (input); it shadows a builtin.sonarlint(python:S5806)
 
     _, in_h, in_w, minor = input.shape
     kernel_h, kernel_w = kernel.shape
