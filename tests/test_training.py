@@ -41,7 +41,6 @@ class TrainingTests(unittest.TestCase):
             beta_end=0.02,
             beta_schedule="linear",
             clip_sample=True,
-            tensor_format="pt",
         )
         ddim_scheduler = DDIMScheduler(
             num_train_timesteps=1000,
@@ -49,7 +48,6 @@ class TrainingTests(unittest.TestCase):
             beta_end=0.02,
             beta_schedule="linear",
             clip_sample=True,
-            tensor_format="pt",
         )
 
         assert ddpm_scheduler.config.num_train_timesteps == ddim_scheduler.config.num_train_timesteps

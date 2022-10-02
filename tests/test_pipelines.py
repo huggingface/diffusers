@@ -191,7 +191,7 @@ class PipelineFastTests(unittest.TestCase):
 
     def test_ddim(self):
         unet = self.dummy_uncond_unet
-        scheduler = DDIMScheduler(tensor_format="pt")
+        scheduler = DDIMScheduler()
 
         ddpm = DDIMPipeline(unet=unet, scheduler=scheduler)
         ddpm.to(torch_device)
@@ -220,7 +220,7 @@ class PipelineFastTests(unittest.TestCase):
 
     def test_pndm_cifar10(self):
         unet = self.dummy_uncond_unet
-        scheduler = PNDMScheduler(tensor_format="pt")
+        scheduler = PNDMScheduler()
 
         pndm = PNDMPipeline(unet=unet, scheduler=scheduler)
         pndm.to(torch_device)
@@ -242,7 +242,7 @@ class PipelineFastTests(unittest.TestCase):
 
     def test_ldm_text2img(self):
         unet = self.dummy_cond_unet
-        scheduler = DDIMScheduler(tensor_format="pt")
+        scheduler = DDIMScheduler()
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
@@ -336,10 +336,59 @@ class PipelineFastTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_stable_diffusion_ddim_factor_8(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        unet = self.dummy_cond_unet
+        scheduler = DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
+
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        # make sure here that pndm scheduler skips prk
+        sd_pipe = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=self.dummy_safety_checker,
+            feature_extractor=self.dummy_extractor,
+        )
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A painting of a squirrel eating a burger"
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        output = sd_pipe(
+            [prompt],
+            generator=generator,
+            guidance_scale=6.0,
+            height=536,
+            width=536,
+            num_inference_steps=2,
+            output_type="np",
+        )
+        image = output.images
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 134, 134, 3)
+        expected_slice = np.array([0.7834, 0.5488, 0.5781, 0.46, 0.3609, 0.5369, 0.542, 0.4855, 0.5557])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
     def test_stable_diffusion_pndm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
-        scheduler = PNDMScheduler(tensor_format="pt", skip_prk_steps=True)
+        scheduler = PNDMScheduler(skip_prk_steps=True)
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
@@ -460,7 +509,7 @@ class PipelineFastTests(unittest.TestCase):
 
     def test_score_sde_ve_pipeline(self):
         unet = self.dummy_uncond_unet
-        scheduler = ScoreSdeVeScheduler(tensor_format="pt")
+        scheduler = ScoreSdeVeScheduler()
 
         sde_ve = ScoreSdeVePipeline(unet=unet, scheduler=scheduler)
         sde_ve.to(torch_device)
@@ -484,7 +533,7 @@ class PipelineFastTests(unittest.TestCase):
 
     def test_ldm_uncond(self):
         unet = self.dummy_uncond_unet
-        scheduler = DDIMScheduler(tensor_format="pt")
+        scheduler = DDIMScheduler()
         vae = self.dummy_vq_model
 
         ldm = LDMPipeline(unet=unet, vqvae=vae, scheduler=scheduler)
@@ -512,7 +561,7 @@ class PipelineFastTests(unittest.TestCase):
 
     def test_karras_ve_pipeline(self):
         unet = self.dummy_uncond_unet
-        scheduler = KarrasVeScheduler(tensor_format="pt")
+        scheduler = KarrasVeScheduler()
 
         pipe = KarrasVePipeline(unet=unet, scheduler=scheduler)
         pipe.to(torch_device)
@@ -535,7 +584,7 @@ class PipelineFastTests(unittest.TestCase):
     def test_stable_diffusion_img2img(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
-        scheduler = PNDMScheduler(tensor_format="pt", skip_prk_steps=True)
+        scheduler = PNDMScheduler(skip_prk_steps=True)
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
@@ -646,7 +695,7 @@ class PipelineFastTests(unittest.TestCase):
     def test_stable_diffusion_inpaint(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
-        scheduler = PNDMScheduler(tensor_format="pt", skip_prk_steps=True)
+        scheduler = PNDMScheduler(skip_prk_steps=True)
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
@@ -842,7 +891,6 @@ class PipelineTesterMixin(unittest.TestCase):
 
         unet = UNet2DModel.from_pretrained(model_id)
         scheduler = DDPMScheduler.from_config(model_id)
-        scheduler = scheduler.set_format("pt")
 
         ddpm = DDPMPipeline(unet=unet, scheduler=scheduler)
         ddpm.to(torch_device)
@@ -882,7 +930,7 @@ class PipelineTesterMixin(unittest.TestCase):
         model_id = "google/ddpm-cifar10-32"
 
         unet = UNet2DModel.from_pretrained(model_id)
-        scheduler = DDIMScheduler(tensor_format="pt")
+        scheduler = DDIMScheduler()
 
         ddim = DDIMPipeline(unet=unet, scheduler=scheduler)
         ddim.to(torch_device)
@@ -902,7 +950,7 @@ class PipelineTesterMixin(unittest.TestCase):
         model_id = "google/ddpm-cifar10-32"
 
         unet = UNet2DModel.from_pretrained(model_id)
-        scheduler = PNDMScheduler(tensor_format="pt")
+        scheduler = PNDMScheduler()
 
         pndm = PNDMPipeline(unet=unet, scheduler=scheduler)
         pndm.to(torch_device)
@@ -1043,8 +1091,8 @@ class PipelineTesterMixin(unittest.TestCase):
         model_id = "google/ddpm-cifar10-32"
 
         unet = UNet2DModel.from_pretrained(model_id)
-        ddpm_scheduler = DDPMScheduler(tensor_format="pt")
-        ddim_scheduler = DDIMScheduler(tensor_format="pt")
+        ddpm_scheduler = DDPMScheduler()
+        ddim_scheduler = DDIMScheduler()
 
         ddpm = DDPMPipeline(unet=unet, scheduler=ddpm_scheduler)
         ddpm.to(torch_device)
@@ -1067,8 +1115,8 @@ class PipelineTesterMixin(unittest.TestCase):
         model_id = "google/ddpm-cifar10-32"
 
         unet = UNet2DModel.from_pretrained(model_id)
-        ddpm_scheduler = DDPMScheduler(tensor_format="pt")
-        ddim_scheduler = DDIMScheduler(tensor_format="pt")
+        ddpm_scheduler = DDPMScheduler()
+        ddim_scheduler = DDIMScheduler()
 
         ddpm = DDPMPipeline(unet=unet, scheduler=ddpm_scheduler)
         ddpm.to(torch_device)
@@ -1093,7 +1141,7 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_karras_ve_pipeline(self):
         model_id = "google/ncsnpp-celebahq-256"
         model = UNet2DModel.from_pretrained(model_id)
-        scheduler = KarrasVeScheduler(tensor_format="pt")
+        scheduler = KarrasVeScheduler()
 
         pipe = KarrasVePipeline(unet=model, scheduler=scheduler)
         pipe.to(torch_device)
@@ -1104,7 +1152,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
         assert image.shape == (1, 256, 256, 3)
-        expected_slice = np.array([0.26815, 0.1581, 0.2658, 0.23248, 0.1550, 0.2539, 0.1131, 0.1024, 0.0837])
+        expected_slice = np.array([0.578, 0.5811, 0.5924, 0.5809, 0.587, 0.5886, 0.5861, 0.5802, 0.586])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @slow
