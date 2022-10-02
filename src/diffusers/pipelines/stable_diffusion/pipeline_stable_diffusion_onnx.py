@@ -6,16 +6,16 @@ import numpy as np
 from transformers import CLIPFeatureExtractor, CLIPTokenizer
 
 from ...onnx_utils import OnnxRuntimeModel
-from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import logging
 from . import StableDiffusionPipelineOutput
+from .pipeline_stable_diffusion import StableDiffusionPipeline
 
 
 logger = logging.get_logger(__name__)
 
 
-class StableDiffusionOnnxPipeline(DiffusionPipeline):
+class StableDiffusionOnnxPipeline(StableDiffusionPipeline):
     vae_decoder: OnnxRuntimeModel
     text_encoder: OnnxRuntimeModel
     tokenizer: CLIPTokenizer
@@ -58,12 +58,7 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
         return_dict: bool = True,
         **kwargs,
     ):
-        if isinstance(prompt, str):
-            batch_size = 1
-        elif isinstance(prompt, list):
-            batch_size = len(prompt)
-        else:
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        batch_size = self._validate_prompt(prompt)
 
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -151,16 +146,9 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
             else:
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
-        # scale and decode the image latents with vae
-        latents = 1 / 0.18215 * latents
-        image = self.vae_decoder(latent_sample=latents)[0]
+        image = self._decode_image(latents)
 
-        image = np.clip(image / 2 + 0.5, 0, 1)
-        image = image.transpose((0, 2, 3, 1))
-
-        # run safety checker
-        safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="np")
-        image, has_nsfw_concept = self.safety_checker(clip_input=safety_checker_input.pixel_values, images=image)
+        image, has_nsfw_concept = self._run_safety_checker(image)
 
         if output_type == "pil":
             image = self.numpy_to_pil(image)
