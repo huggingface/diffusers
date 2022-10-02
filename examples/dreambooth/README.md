@@ -6,7 +6,7 @@ Caching the outputs of VAE and Text Encoder and freeing them also helped in redu
 
 [![DreamBooth Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ShivamShrirao/diffusers/blob/main/examples/dreambooth/DreamBooth_Stable_Diffusion.ipynb)
 
-Use the table below to choose the best flags based on your memory and speed requirements. Tested on Tesla T4 GPU.
+Use the table below to choose the best flags based on your memory and speed requirements. Tested on Tesla T4 GPU with `--cache_latents` flag.
 
 | `fp16` | `train_batch_size` | `gradient_accumulation_steps` | `gradient_checkpointing` | `use_8bit_adam` | GB VRAM usage | Speed (it/s) |
 | ---- | ------------------ | ----------------------------- | ----------------------- | --------------- | ---------- | ------------ |
