@@ -17,7 +17,7 @@ Use the table below to choose the best flags based on your memory and speed requ
 | no   | 1                  | 1                             | FALSE                   | TRUE            | 11.17      | 0.49         |
 | fp16 | 1                  | 2                             | TRUE                    | TRUE            | 11.56      | 1            |
 | fp16 | 2                  | 1                             | FALSE                   | TRUE            | 13.67      | 0.82         |
-| fp16 | 1                  | 2                             | FALSE                   | TRUE            | 13.7       | 1.2          |
+| fp16 | 1                  | 2                             | FALSE                   | TRUE            | 13.7       | 0.83          |
 | fp16 | 1                  | 1                             | TRUE                    | FALSE           | 15.79      | 0.77         |
 
 # DreamBooth training example
