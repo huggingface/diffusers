@@ -162,7 +162,11 @@ class StableDiffusionOnnxPipeline(StableDiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
-        image = self._decode_image(latents)
+        latents = 1 / 0.18215 * latents
+        image = self.vae_decoder(latent_sample=latents)[0]
+
+        image = np.clip(image / 2 + 0.5, 0, 1)
+        image = image.transpose((0, 2, 3, 1))
 
         image, has_nsfw_concept = self._run_safety_checker(image)
 

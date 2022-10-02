@@ -122,7 +122,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
     def _decode_image(self, latents):
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
-        image = self.vae.decode(latents.to(self.vae.dtype)).sample
+        image = self.vae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         return image.cpu().permute(0, 2, 3, 1).numpy()
@@ -134,7 +134,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         return image, has_nsfw_concept
 
-    def _get_text_embeddings(self, prompt, guidance_scale, batch_size):
+    def _get_text_embeddings(self, prompt, batch_size, guidance_scale):
         # get prompt text embeddings
         text_inputs = self.tokenizer(
             prompt,
