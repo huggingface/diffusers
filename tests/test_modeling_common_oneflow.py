@@ -21,7 +21,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import oneflow as torch
 
-from diffusers.modeling_oneflow_utils import ModelMixin
+from diffusers.modeling_oneflow_utils import OneFlowModelMixin as ModelMixin
 from diffusers.testing_oneflow_utils import torch_device
 from diffusers.training_oneflow_utils import EMAModel
 
