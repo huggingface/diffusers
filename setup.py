@@ -67,11 +67,12 @@ To create the package for pypi.
     you need to go back to main before executing this.
 """
 
-import re
 import os
+import re
 from distutils.core import Command
 
 from setuptools import find_packages, setup
+
 
 # IMPORTANT:
 # 1. all dependencies should be listed here with their version requirements if any
