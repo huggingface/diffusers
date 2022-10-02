@@ -18,7 +18,7 @@ import numpy as np
 import oneflow as torch
 
 from diffusers import OneFlowAutoencoderKL as AutoencoderKL
-from diffusers.modeling_oneflow_utils import ModelMixin
+from diffusers.modeling_oneflow_utils import OneFlowModelMixin as ModelMixin
 from diffusers.testing_oneflow_utils import floats_tensor, torch_device
 
 from .test_modeling_common_oneflow import ModelTesterMixin
