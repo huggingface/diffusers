@@ -270,6 +270,9 @@ class CrossAttention(nn.Module):
         # TODO(PVP) - mask is currently never used. Remember to re-implement when used
         # attention, what we cannot get enough of
         if MEM_EFFICIENT_ATTN:
+            query = query.contiguous()
+            key = key.contiguous()
+            value = value.contiguous()
             hidden_states = xformers.ops.memory_efficient_attention(query, key, value)
         elif self._slice_size is None or query.shape[0] // self._slice_size == 1:
             hidden_states = self._attention(query, key, value)
