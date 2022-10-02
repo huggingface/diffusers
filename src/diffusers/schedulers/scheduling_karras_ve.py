@@ -13,6 +13,7 @@
 # limitations under the License.
 
 
+import warnings
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
@@ -74,7 +75,6 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
             A reasonable range is [0, 10].
         s_max (`float`): the end value of the sigma range where we add noise.
             A reasonable range is [0.2, 80].
-        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays.
 
     """
 
@@ -87,15 +87,19 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         s_churn: float = 80,
         s_min: float = 0.05,
         s_max: float = 50,
-        tensor_format: str = "pt",
+        **kwargs,
     ):
-        # setable values
-        self.num_inference_steps = None
-        self.timesteps = None
-        self.schedule = None  # sigma(t_i)
+        if "tensor_format" in kwargs:
+            warnings.warn(
+                "`tensor_format` is deprecated as an argument and will be removed in version `0.5.0`."
+                "If you're running your code in PyTorch, you can safely remove this argument.",
+                DeprecationWarning,
+            )
 
-        self.tensor_format = tensor_format
-        self.set_format(tensor_format=tensor_format)
+        # setable values
+        self.num_inference_steps: int = None
+        self.timesteps: np.ndarray = None
+        self.schedule: torch.FloatTensor = None  # sigma(t_i)
 
     def set_timesteps(self, num_inference_steps: int):
         """
@@ -108,20 +112,18 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         """
         self.num_inference_steps = num_inference_steps
         self.timesteps = np.arange(0, self.num_inference_steps)[::-1].copy()
-        self.schedule = [
+        schedule = [
             (
                 self.config.sigma_max**2
                 * (self.config.sigma_min**2 / self.config.sigma_max**2) ** (i / (num_inference_steps - 1))
             )
             for i in self.timesteps
         ]
-        self.schedule = np.array(self.schedule, dtype=np.float32)
-
-        self.set_format(tensor_format=self.tensor_format)
+        self.schedule = torch.tensor(schedule, dtype=torch.float32)
 
     def add_noise_to_input(
-        self, sample: Union[torch.FloatTensor, np.ndarray], sigma: float, generator: Optional[torch.Generator] = None
-    ) -> Tuple[Union[torch.FloatTensor, np.ndarray], float]:
+        self, sample: torch.FloatTensor, sigma: float, generator: Optional[torch.Generator] = None
+    ) -> Tuple[torch.FloatTensor, float]:
         """
         Explicit Langevin-like "churn" step of adding noise to the sample according to a factor gamma_i ≥ 0 to reach a
         higher noise level sigma_hat = sigma_i + gamma_i*sigma_i.
@@ -142,10 +144,10 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        model_output: Union[torch.FloatTensor, np.ndarray],
+        model_output: torch.FloatTensor,
         sigma_hat: float,
         sigma_prev: float,
-        sample_hat: Union[torch.FloatTensor, np.ndarray],
+        sample_hat: torch.FloatTensor,
         return_dict: bool = True,
     ) -> Union[KarrasVeOutput, Tuple]:
         """
@@ -153,10 +155,10 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         process from the learned model outputs (most often the predicted noise).
 
         Args:
-            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
             sigma_hat (`float`): TODO
             sigma_prev (`float`): TODO
-            sample_hat (`torch.FloatTensor` or `np.ndarray`): TODO
+            sample_hat (`torch.FloatTensor`): TODO
             return_dict (`bool`): option for returning tuple rather than KarrasVeOutput class
 
             KarrasVeOutput: updated sample in the diffusion chain and derivative (TODO double check).
@@ -180,24 +182,24 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
 
     def step_correct(
         self,
-        model_output: Union[torch.FloatTensor, np.ndarray],
+        model_output: torch.FloatTensor,
         sigma_hat: float,
         sigma_prev: float,
-        sample_hat: Union[torch.FloatTensor, np.ndarray],
-        sample_prev: Union[torch.FloatTensor, np.ndarray],
-        derivative: Union[torch.FloatTensor, np.ndarray],
+        sample_hat: torch.FloatTensor,
+        sample_prev: torch.FloatTensor,
+        derivative: torch.FloatTensor,
         return_dict: bool = True,
     ) -> Union[KarrasVeOutput, Tuple]:
         """
         Correct the predicted sample based on the output model_output of the network. TODO complete description
 
         Args:
-            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
+            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
             sigma_hat (`float`): TODO
             sigma_prev (`float`): TODO
-            sample_hat (`torch.FloatTensor` or `np.ndarray`): TODO
-            sample_prev (`torch.FloatTensor` or `np.ndarray`): TODO
-            derivative (`torch.FloatTensor` or `np.ndarray`): TODO
+            sample_hat (`torch.FloatTensor`): TODO
+            sample_prev (`torch.FloatTensor`): TODO
+            derivative (`torch.FloatTensor`): TODO
             return_dict (`bool`): option for returning tuple rather than KarrasVeOutput class
 
         Returns:

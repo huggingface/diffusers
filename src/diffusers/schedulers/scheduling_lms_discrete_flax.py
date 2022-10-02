@@ -61,8 +61,6 @@ class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             `linear` or `scaled_linear`.
         trained_betas (`jnp.ndarray`, optional):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
-            options to clip the variance used when adding noise to the denoised sample. Choose from `fixed_small`,
-            `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
     """
 
     @register_to_config
@@ -76,7 +74,7 @@ class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
     ):
         if trained_betas is not None:
             self.betas = jnp.asarray(trained_betas)
-        if beta_schedule == "linear":
+        elif beta_schedule == "linear":
             self.betas = jnp.linspace(beta_start, beta_end, num_train_timesteps, dtype=jnp.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
@@ -134,7 +132,7 @@ class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         return state.replace(
             num_inference_steps=num_inference_steps,
-            timesteps=timesteps,
+            timesteps=timesteps.astype(int),
             derivatives=jnp.array([]),
             sigmas=sigmas,
         )
