@@ -1,8 +1,24 @@
-Model with just [xformers](https://github.com/facebookresearch/xformers) memory efficient flash attention uses 17.7 GB VRAM with no loss in precision at all, while also increasing speed by around 2 times.
+Model with just [xformers](https://github.com/facebookresearch/xformers) memory efficient flash attention uses 15.79 GB VRAM with `--gradient_checkpointing` else 17.7 GB. Both have no loss in precision at all. gradient_checkpointing recalculates intermediate activations to save memory at cost of speed.
 
-To reduce VRAM usage to 12.5 GB, pass `--use_8bit_adam` flag to use 8 bit adam optimizer from [bitsandbytes](https://github.com/TimDettmers/bitsandbytes).
+To reduce VRAM usage to 9.92 GB, pass `--gradient_checkpointing` and `--use_8bit_adam` flag to use 8 bit adam optimizer from [bitsandbytes](https://github.com/TimDettmers/bitsandbytes).
+
+Caching the outputs of VAE and Text Encoder and freeing them also helped in reducing memory 
 
 [![DreamBooth Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ShivamShrirao/diffusers/blob/main/examples/dreambooth/DreamBooth_Stable_Diffusion.ipynb)
+
+Use the table below to choose the best flags based on your memory and speed requirements. Tested on Tesla T4 GPU.
+
+| `fp16` | `train_batch_size` | `gradient_accumulation_steps` | `gradient_checkpointing` | `use_8bit_adam` | GB VRAM usage | Speed (it/s) |
+| ---- | ------------------ | ----------------------------- | ----------------------- | --------------- | ---------- | ------------ |
+| fp16 | 1                  | 1                             | TRUE                    | TRUE            | 9.92       | 0.93         |
+| no   | 1                  | 1                             | TRUE                    | TRUE            | 10.08      | 0.42         |
+| fp16 | 2                  | 1                             | TRUE                    | TRUE            | 10.4       | 0.66         |
+| fp16 | 1                  | 1                             | FALSE                   | TRUE            | 11.17      | 1.14         |
+| no   | 1                  | 1                             | FALSE                   | TRUE            | 11.17      | 0.49         |
+| fp16 | 1                  | 2                             | TRUE                    | TRUE            | 11.56      | 1            |
+| fp16 | 2                  | 1                             | FALSE                   | TRUE            | 13.67      | 0.82         |
+| fp16 | 1                  | 2                             | FALSE                   | TRUE            | 13.7       | 1.2          |
+| fp16 | 1                  | 1                             | TRUE                    | FALSE           | 15.79      | 0.77         |
 
 # DreamBooth training example
 
