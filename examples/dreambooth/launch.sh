@@ -18,7 +18,6 @@ accelerate launch train_dreambooth.py \
   --mixed_precision="fp16" \
   --use_8bit_adam \
   --gradient_accumulation_steps=1 \
-  --cache_latents \
   --learning_rate=5e-6 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \

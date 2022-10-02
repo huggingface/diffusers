@@ -194,7 +194,7 @@ def parse_args():
             "and an Nvidia Ampere GPU."
         ),
     )
-    parser.add_argument("--cache_latents", action="store_true", help="Precompute and cache latents from VAE.")
+    parser.add_argument("--not_cache_latents", action="store_true", help="Do not precompute and cache latents from VAE.")
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
 
     args = parser.parse_args()
@@ -504,7 +504,7 @@ def main():
     text_encoder.to(accelerator.device)
     vae.to(accelerator.device)
 
-    if args.cache_latents:
+    if not args.not_cache_latents:
         latents_cache = []
         text_encoder_cache = []
         for batch in tqdm(train_dataloader, desc="Caching latents"):
@@ -572,7 +572,7 @@ def main():
             with accelerator.accumulate(unet):
                 # Convert images to latent space
                 with torch.no_grad():
-                    if args.cache_latents:
+                    if not args.not_cache_latents:
                         latent_dist = batch[0][0]
                     else:
                         latent_dist = vae.encode(batch["pixel_values"]).latent_dist
@@ -591,7 +591,7 @@ def main():
 
                 # Get the text embedding for conditioning
                 with torch.no_grad():
-                    if args.cache_latents:
+                    if not args.not_cache_latents:
                         encoder_hidden_states = batch[0][1]
                     else:
                         encoder_hidden_states = text_encoder(batch["input_ids"])[0]
