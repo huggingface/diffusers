@@ -109,6 +109,69 @@ class StableDiffusionPipeline(DiffusionPipeline):
         # set slice_size = `None` to disable `attention slicing`
         self.enable_attention_slicing(None)
 
+    @staticmethod
+    def _validate_prompt(prompt):
+        if isinstance(prompt, str):
+            batch_size = 1
+        elif isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        return batch_size
+
+    def _decode_image(self, latents):
+        # scale and decode the image latents with vae
+        latents = 1 / 0.18215 * latents
+        image = self.vae.decode(latents.to(self.vae.dtype)).sample
+
+        image = (image / 2 + 0.5).clamp(0, 1)
+        return image.cpu().permute(0, 2, 3, 1).numpy()
+
+    def _run_safety_checker(self, image):
+        # run safety checker
+        safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
+        image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
+
+        return image, has_nsfw_concept
+
+    def _get_text_embeddings(self, prompt, guidance_scale, batch_size):
+        # get prompt text embeddings
+        text_inputs = self.tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=self.tokenizer.model_max_length,
+            return_tensors="pt",
+        )
+        text_input_ids = text_inputs.input_ids
+
+        if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
+            removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length :])
+            logger.warning(
+                "The following part of your input was truncated because CLIP can only handle sequences up to"
+                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+            )
+            text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
+        text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
+
+        # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
+        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+        # corresponds to doing no classifier free guidance.
+        do_classifier_free_guidance = guidance_scale > 1.0
+        # get unconditional embeddings for classifier free guidance
+        if do_classifier_free_guidance:
+            max_length = text_input_ids.shape[-1]
+            uncond_input = self.tokenizer(
+                [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="pt"
+            )
+            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
+
+            # For classifier free guidance, we need to do two forward passes.
+            # Here we concatenate the unconditional and text embeddings into a single batch
+            # to avoid doing two forward passes
+            text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
+
+        return text_embeddings, do_classifier_free_guidance
+
     @torch.no_grad()
     def __call__(
         self,
@@ -176,12 +239,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
 
-        if isinstance(prompt, str):
-            batch_size = 1
-        elif isinstance(prompt, list):
-            batch_size = len(prompt)
-        else:
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        batch_size = self._validate_prompt(prompt)
 
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -194,40 +252,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
-        # get prompt text embeddings
-        text_inputs = self.tokenizer(
-            prompt,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            return_tensors="pt",
-        )
-        text_input_ids = text_inputs.input_ids
-
-        if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
-            removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length :])
-            logger.warning(
-                "The following part of your input was truncated because CLIP can only handle sequences up to"
-                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
-            )
-            text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
-        text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
-
-        # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
-        # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = guidance_scale > 1.0
-        # get unconditional embeddings for classifier free guidance
-        if do_classifier_free_guidance:
-            max_length = text_input_ids.shape[-1]
-            uncond_input = self.tokenizer(
-                [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="pt"
-            )
-            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
-
-            # For classifier free guidance, we need to do two forward passes.
-            # Here we concatenate the unconditional and text embeddings into a single batch
-            # to avoid doing two forward passes
-            text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
+        text_embeddings, do_classifier_free_guidance = self._get_text_embeddings(prompt, batch_size, guidance_scale)
 
         # get the initial random noise unless the user supplied it
 
@@ -297,17 +322,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
-        latents = 1 / 0.18215 * latents
-        image = self.vae.decode(latents).sample
+        image = self._decode_image(latents)
 
-        image = (image / 2 + 0.5).clamp(0, 1)
-        image = image.cpu().permute(0, 2, 3, 1).numpy()
-
-        safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
-        image, has_nsfw_concept = self.safety_checker(
-            images=image, clip_input=safety_checker_input.pixel_values.to(text_embeddings.dtype)
-        )
-
+        image, has_nsfw_concept = self._run_safety_checker(image)
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
