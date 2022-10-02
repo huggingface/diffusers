@@ -100,6 +100,8 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike]):
             torch_parameters = og_torch.load(checkpoint_file, map_location="cpu")
             oneflow_parameters = dict()
             for key,value in torch_parameters.items():
+                if value.is_cuda:
+                    raise ValueError(f"torch model is not on cpu, it is on {value.device}")
                 val = value.detach().cpu().numpy()
                 oneflow_parameters[key] = val
             return oneflow_parameters
