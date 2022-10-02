@@ -3,7 +3,6 @@
 # Does not convert optimizer state or any other thing.
 
 import argparse
-import os
 import os.path as osp
 
 import torch
