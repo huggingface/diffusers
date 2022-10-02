@@ -1446,31 +1446,35 @@ class PipelineTesterMixin(unittest.TestCase):
             nonlocal number_of_steps
             number_of_steps += 1
             if step == 0:
-                latents = np.array(latents)
+                latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array(
-                    [-1.2277, -0.3692, -0.2123, -1.3709, -1.4505, -0.6718, -0.3112, -1.2481, -1.0674]
+                    [1.8285, 1.2857, -0.1024, 1.2406, -2.3068, 1.0747, -0.0818, -0.6520, -2.9506]
                 )
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
 
         test_callback_fn.has_been_called = False
 
-        pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", use_auth_token=True, revision="fp16", torch_dtype=torch.float16
+        )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
 
         prompt = "Andromeda galaxy in a bottle"
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        pipe(
-            prompt=prompt,
-            num_inference_steps=50,
-            guidance_scale=7.5,
-            generator=generator,
-            callback=test_callback_fn,
-            callback_steps=1,
-        )
+        with torch.autocast(torch_device):
+            pipe(
+                prompt=prompt,
+                num_inference_steps=50,
+                guidance_scale=7.5,
+                generator=generator,
+                callback=test_callback_fn,
+                callback_steps=1,
+            )
         assert test_callback_fn.has_been_called
         assert number_of_steps == 51
 
@@ -1484,10 +1488,10 @@ class PipelineTesterMixin(unittest.TestCase):
             nonlocal number_of_steps
             number_of_steps += 1
             if step == 0:
-                latents = np.array(latents)
+                latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 96)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([0.5486, 0.8705, 1.4053, 1.6771, 2.0729, 0.7256, 1.5693, -0.1298, -1.3520])
+                expected_slice = np.array([0.9052, -0.0184, 0.4810, 0.2898, 0.5851, 1.4920, 0.5362, 1.9838, 0.0530])
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
 
         test_callback_fn.has_been_called = False
@@ -1498,23 +1502,27 @@ class PipelineTesterMixin(unittest.TestCase):
         )
         init_image = init_image.resize((768, 512))
 
-        pipe = StableDiffusionImg2ImgPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", use_auth_token=True, revision="fp16", torch_dtype=torch.float16
+        )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
 
         prompt = "A fantasy landscape, trending on artstation"
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        pipe(
-            prompt=prompt,
-            init_image=init_image,
-            strength=0.75,
-            num_inference_steps=50,
-            guidance_scale=7.5,
-            generator=generator,
-            callback=test_callback_fn,
-            callback_steps=1,
-        )
+        with torch.autocast(torch_device):
+            pipe(
+                prompt=prompt,
+                init_image=init_image,
+                strength=0.75,
+                num_inference_steps=50,
+                guidance_scale=7.5,
+                generator=generator,
+                callback=test_callback_fn,
+                callback_steps=1,
+            )
         assert test_callback_fn.has_been_called
         assert number_of_steps == 38
 
@@ -1528,11 +1536,11 @@ class PipelineTesterMixin(unittest.TestCase):
             nonlocal number_of_steps
             number_of_steps += 1
             if step == 0:
-                latents = np.array(latents)
+                latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array(
-                    [-0.4155, -0.4140, 1.1430, -2.0722, 2.2523, -1.8766, -0.4917, 0.3338, 0.9667]
+                    [-0.5472, 1.1218, -0.5505, -0.9390, -1.0794, 0.4063, 0.5158, 0.6429, -1.5246]
                 )
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -1547,24 +1555,28 @@ class PipelineTesterMixin(unittest.TestCase):
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
 
-        pipe = StableDiffusionInpaintPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", use_auth_token=True, revision="fp16", torch_dtype=torch.float16
+        )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
 
         prompt = "A red cat sitting on a park bench"
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        pipe(
-            prompt=prompt,
-            init_image=init_image,
-            mask_image=mask_image,
-            strength=0.75,
-            num_inference_steps=50,
-            guidance_scale=7.5,
-            generator=generator,
-            callback=test_callback_fn,
-            callback_steps=1,
-        )
+        with torch.autocast(torch_device):
+            pipe(
+                prompt=prompt,
+                init_image=init_image,
+                mask_image=mask_image,
+                strength=0.75,
+                num_inference_steps=50,
+                guidance_scale=7.5,
+                generator=generator,
+                callback=test_callback_fn,
+                callback_steps=1,
+            )
         assert test_callback_fn.has_been_called
         assert number_of_steps == 38
 
@@ -1587,7 +1599,7 @@ class PipelineTesterMixin(unittest.TestCase):
         test_callback_fn.has_been_called = False
 
         pipe = StableDiffusionOnnxPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", use_auth_token=True, revision="onnx", provider="CUDAExecutionProvider"
+            "CompVis/stable-diffusion-v1-4", use_auth_token=True, revision="onnx", provider="CPUExecutionProvider"
         )
         pipe.set_progress_bar_config(disable=None)
 
