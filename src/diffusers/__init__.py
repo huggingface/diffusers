@@ -73,6 +73,7 @@ if is_flax_available():
         FlaxKarrasVeScheduler,
         FlaxLMSDiscreteScheduler,
         FlaxPNDMScheduler,
+        FlaxSchedulerMixin,
         FlaxScoreSdeVeScheduler,
     )
 else:
