@@ -17,6 +17,7 @@ from .safety_checker import StableDiffusionSafetyChecker
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+
 class CoreStableDiffusionPipeline(DiffusionPipeline):
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
