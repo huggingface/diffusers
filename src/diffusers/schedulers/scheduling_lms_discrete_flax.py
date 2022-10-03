@@ -160,8 +160,8 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than FlaxLMSSchedulerOutput class
 
         Returns:
-            [`FlaxLMSSchedulerOutput`] or `tuple`: [`FlaxLMSSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
-            When returning a tuple, the first element is the sample tensor.
+            [`FlaxLMSSchedulerOutput`] or `tuple`: [`FlaxLMSSchedulerOutput`] if `return_dict` is True, otherwise a
+            `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         sigma = state.sigmas[timestep]

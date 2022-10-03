@@ -227,8 +227,8 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than FlaxPNDMSchedulerOutput class
 
         Returns:
-            [`FlaxPNDMSchedulerOutput`] or `tuple`: [`FlaxPNDMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
-            When returning a tuple, the first element is the sample tensor.
+            [`FlaxPNDMSchedulerOutput`] or `tuple`: [`FlaxPNDMSchedulerOutput`] if `return_dict` is True, otherwise a
+            `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         if self.config.skip_prk_steps:
@@ -271,8 +271,8 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than FlaxPNDMSchedulerOutput class
 
         Returns:
-            [`FlaxPNDMSchedulerOutput`] or `tuple`: [`FlaxPNDMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
-            When returning a tuple, the first element is the sample tensor.
+            [`FlaxPNDMSchedulerOutput`] or `tuple`: [`FlaxPNDMSchedulerOutput`] if `return_dict` is True, otherwise a
+            `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         if state.num_inference_steps is None:
@@ -341,8 +341,8 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than FlaxPNDMSchedulerOutput class
 
         Returns:
-            [`FlaxPNDMSchedulerOutput`] or `tuple`: [`FlaxPNDMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
-            When returning a tuple, the first element is the sample tensor.
+            [`FlaxPNDMSchedulerOutput`] or `tuple`: [`FlaxPNDMSchedulerOutput`] if `return_dict` is True, otherwise a
+            `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         if state.num_inference_steps is None:
