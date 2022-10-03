@@ -19,6 +19,11 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class CoreStableDiffusionPipeline(DiffusionPipeline):
+    r"""
+    Common pipeline functionality for all stable diffusion pipelines.
+
+    """
+
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
         Enable sliced attention computation.
