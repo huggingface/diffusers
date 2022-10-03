@@ -24,8 +24,9 @@ BOND_TYPES = {t: i for i, t in enumerate(BT.names.values())}
 
 class MultiLayerPerceptron(nn.Module):
     """
-    Parameters:
     Multi-layer Perceptron. Note there is no activation or dropout in the last layer.
+
+    Args:
         input_dim (int): input dimension
         hidden_dim (list of int): hidden dimensions
         activation (str or function, optional): activation function
@@ -664,10 +665,11 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
         ## Invariant features of edges (bond graph, local)
         if isinstance(sigma_edge, torch.Tensor):
             edge_inv_local = self.grad_local_dist_mlp(h_pair_local) * (
-                        1.0 / sigma_edge[local_edge_mask])  # (E_local, 1)
+                1.0 / sigma_edge[local_edge_mask]
+            )  # (E_local, 1)
         else:
             edge_inv_local = self.grad_local_dist_mlp(h_pair_local) * (1.0 / sigma_edge)  # (E_local, 1)
-            
+
         if return_edges:
             return edge_inv_global, edge_inv_local, edge_index, edge_type, edge_length, local_edge_mask
         else:
@@ -905,12 +907,12 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
                     edge_inv_local, pos, edge_index[:, local_edge_mask], edge_length[local_edge_mask]
                 )
                 if clip_local is not None:
-                    node_eq_local = clip_norm(node_eq_local, limit=clip_local)
+                    node_eq_local = self.clip_norm(node_eq_local, limit=clip_local)
                 # Global
                 if sigmas[i] < global_start_sigma:
                     edge_inv_global = edge_inv_global * (1 - local_edge_mask.view(-1, 1).float())
                     node_eq_global = eq_transform(edge_inv_global, pos, edge_index, edge_length)
-                    node_eq_global = clip_norm(node_eq_global, limit=clip)
+                    node_eq_global = self.clip_norm(node_eq_global, limit=clip)
                 else:
                     node_eq_global = 0
                 # Sum
@@ -982,12 +984,17 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
                 if torch.isnan(pos).any():
                     print("NaN detected. Please restart.")
                     raise FloatingPointError()
-                pos = center_pos(pos, batch)
+                pos = pos - scatter_mean(pos, batch, dim=0)[batch]  # center_pos(pos, batch)
                 if clip_pos is not None:
                     pos = torch.clamp(pos, min=-clip_pos, max=clip_pos)
                 pos_traj.append(pos.clone().cpu())
 
         return pos, pos_traj
+
+    def clip_norm(vec, limit, p=2):
+        norm = torch.norm(vec, dim=-1, p=2, keepdim=True)
+        denom = torch.where(norm > limit, limit / norm, torch.ones_like(norm))
+        return vec * denom
 
 
 def is_bond(edge_type):
@@ -1024,12 +1031,6 @@ def regularize_bond_length(edge_type, edge_length, rng=5.0):
     return d
 
 
-def center_pos(pos, batch):
-    pos_center = pos - scatter_mean(pos, batch, dim=0)[batch]
-    return pos_center
-
-
-def clip_norm(vec, limit, p=2):
-    norm = torch.norm(vec, dim=-1, p=2, keepdim=True)
-    denom = torch.where(norm > limit, limit / norm, torch.ones_like(norm))
-    return vec * denom
+# def center_pos(pos, batch):
+#     pos_center = pos - scatter_mean(pos, batch, dim=0)[batch]
+#     return pos_center
