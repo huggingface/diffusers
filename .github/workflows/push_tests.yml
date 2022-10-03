@@ -51,7 +51,7 @@ jobs:
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        python3 utils/print_env.py
 
     - name: Run all (incl. slow) tests on GPU
       env:
@@ -103,7 +103,7 @@ jobs:
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        python3 utils/print_env.py
 
     - name: Run example tests on GPU
       env:
