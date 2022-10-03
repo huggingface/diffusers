@@ -217,6 +217,8 @@ def is_torch_scatter_available():
 def is_torch_geometric_available():
     # the model source of the Molecule Generation GNN requires a specific torch geometric version
     # for more info, see the original repo https://github.com/MinkaiXu/GeoDiff or our colab in readme
+    if not _torch_geometric_available:
+        return False
     return _torch_geometric_version == "1.7.2"
 
 
