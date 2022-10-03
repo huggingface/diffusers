@@ -209,6 +209,7 @@ def is_onnx_available():
 def is_scipy_available():
     return _scipy_available
 
+
 def is_torch_scatter_available():
     return _torch_scatter_available
 
@@ -217,6 +218,7 @@ def is_torch_geometric_available():
     # the model source of the Molecule Generation GNN requires a specific torch geometric version
     # for more info, see the original repo https://github.com/MinkaiXu/GeoDiff or our colab in readme
     return _torch_geometric_version == "1.7.2"
+
 
 # docstyle-ignore
 FLAX_IMPORT_ERROR = """
@@ -271,7 +273,6 @@ TORCH_GEOMETRIC_IMPORT_ERROR = """
 {0} requires version 1.7.2 of torch_geometric but it was not found in your environment. You can install it with conda:
 `conda install -c rusty1s pytorch-geometric=1.7.2`, given pytorch 1.8
 """
-
 
 
 BACKENDS_MAPPING = OrderedDict(

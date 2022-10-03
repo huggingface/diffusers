@@ -1,8 +1,7 @@
 # Model adapted from GeoDiff https://github.com/MinkaiXu/GeoDiff
 # Model inspired by https://github.com/DeepGraphLearning/torchdrug/tree/master/torchdrug/models
-from typing import Callable, Dict, Union
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Callable, Tuple, Union
 
 import numpy as np
 import torch
@@ -19,6 +18,7 @@ from torch_sparse import SparseTensor, coalesce
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput
+
 
 @dataclass
 class MoleculeGNNOutput(BaseOutput):
@@ -244,9 +244,8 @@ class GINEncoder(torch.nn.Module):
     def forward(self, z, edge_index, edge_attr):
         """
         Input:
-            data: (torch_geometric.data.Data): batched graph
-            edge_index: bond indices of the original graph (num_node, hidden)
-            edge_attr: edge feature tensor with shape (num_edge, hidden)
+            data: (torch_geometric.data.Data): batched graph edge_index: bond indices of the original graph (num_node,
+            hidden) edge_attr: edge feature tensor with shape (num_edge, hidden)
         Output:
             node_feature: graph feature
         """
@@ -437,8 +436,8 @@ def get_distance(pos, edge_index):
 
 def graph_field_network(score_d, pos, edge_index, edge_length):
     """
-    Transformation to make the epsilon predicted from the diffusion model roto-translational equivariant.
-    See equations 5-7 of the GeoDiff Paper https://arxiv.org/pdf/2203.02923.pdf
+    Transformation to make the epsilon predicted from the diffusion model roto-translational equivariant. See equations
+    5-7 of the GeoDiff Paper https://arxiv.org/pdf/2203.02923.pdf
     """
     N = pos.size(0)
     dd_dr = (1.0 / edge_length) * (pos[edge_index[0]] - pos[edge_index[1]])  # (E, 3)
@@ -561,13 +560,13 @@ class MoleculeGNN(ModelMixin, ConfigMixin):
             edge_length=edge_length,
             edge_attr=edge_attr_global,
         )
-        ## Assemble pairwise features
+        # Assemble pairwise features
         h_pair_global = assemble_atom_pair_feature(
             node_attr=node_attr_global,
             edge_index=edge_index,
             edge_attr=edge_attr_global,
         )  # (E_global, 2H)
-        ## Invariant features of edges (radius graph, global)
+        # Invariant features of edges (radius graph, global)
         edge_inv_global = self.grad_global_dist_mlp(h_pair_global) * (1.0 / sigma_edge)  # (E_global, 1)
 
         # Encoding local
@@ -580,14 +579,14 @@ class MoleculeGNN(ModelMixin, ConfigMixin):
             edge_index=edge_index[:, local_edge_mask],
             edge_attr=edge_attr_local[local_edge_mask],
         )
-        ## Assemble pairwise features
+        # Assemble pairwise features
         h_pair_local = assemble_atom_pair_feature(
             node_attr=node_attr_local,
             edge_index=edge_index[:, local_edge_mask],
             edge_attr=edge_attr_local[local_edge_mask],
         )  # (E_local, 2H)
 
-        ## Invariant features of edges (bond graph, local)
+        # Invariant features of edges (bond graph, local)
         if isinstance(sigma_edge, torch.Tensor):
             edge_inv_local = self.grad_local_dist_mlp(h_pair_local) * (
                 1.0 / sigma_edge[local_edge_mask]
@@ -621,8 +620,8 @@ class MoleculeGNN(ModelMixin, ConfigMixin):
                 Whether or not to return a [`~models.molecule_gnn.MoleculeGNNOutput`] instead of a plain tuple.
 
         Returns:
-            [`~models.molecule_gnn.MoleculeGNNOutput`] or `tuple`: [`~models.molecule_gnn.MoleculeGNNOutput`] if `return_dict` is True,
-            otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
+            [`~models.molecule_gnn.MoleculeGNNOutput`] or `tuple`: [`~models.molecule_gnn.MoleculeGNNOutput`] if
+            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
         """
 
         # unpack sample

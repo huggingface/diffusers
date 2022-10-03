@@ -13,23 +13,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
 import tempfile
+import unittest
 
 import torch
 
-from diffusers.testing_utils import floats_tensor, slow, torch_device
+from diffusers.utils import is_torch_geometric_available
+from diffusers.utils.testing_utils import torch_device
 
 from .test_modeling_common import ModelTesterMixin
-from diffusers.utils import is_torch_geometric_available
+
 
 if is_torch_geometric_available():
     from diffusers import MoleculeGNN
 else:
-    from diffusers.utils.dummy_torch_geometric_objects import *
+    from diffusers.utils.dummy_torch_geometric_objects import *  # noqa F403
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+
 
 class MoleculeGNNTests(ModelTesterMixin, unittest.TestCase):
     model_class = MoleculeGNN
@@ -103,7 +105,6 @@ class MoleculeGNNTests(ModelTesterMixin, unittest.TestCase):
                     output = output["sample"]
 
             self.assertIsNotNone(output)
-            expected_shape = inputs_dict["sample"].shape
             shapes = self.output_shapes()
             self.assertEqual(output[0].shape, shapes.shape_0, "Input and output shapes do not match")
             self.assertEqual(output[1].shape, shapes.shape_1, "Input and output shapes do not match")
@@ -148,8 +149,7 @@ class MoleculeGNNTests(ModelTesterMixin, unittest.TestCase):
 
         output_slice = output[:3][:].flatten()
         # fmt: off
-        expected_output_slice = torch.tensor([ -3.7335,  -7.4622, -29.5600,  16.9646, -11.2205, -32.5315,   1.2303,
-          4.2985,   8.8828])
+        expected_output_slice = torch.tensor([-3.7335, -7.4622, -29.5600, 16.9646, -11.2205, -32.5315, 1.2303, 4.2985, 8.8828])
         # fmt: on
 
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))

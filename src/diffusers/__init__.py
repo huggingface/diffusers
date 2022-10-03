@@ -4,7 +4,6 @@ from .utils import (
     is_onnx_available,
     is_scipy_available,
     is_torch_available,
-    is_inflect_available,
     is_torch_geometric_available,
     is_transformers_available,
     is_unidecode_available,
@@ -20,7 +19,7 @@ from .utils import logging
 
 if is_torch_available():
     from .modeling_utils import ModelMixin
-    from .models import AutoencoderKL, MoleculeGNN, UNet2DConditionModel, UNet2DModel, VQModel
+    from .models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
     from .optimization import (
         get_constant_schedule,
         get_constant_schedule_with_warmup,
@@ -85,9 +84,9 @@ if is_flax_available() and is_transformers_available():
     from .pipelines import FlaxStableDiffusionPipeline
 else:
     from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
-    from .utils.dummy_transformers_objects import *
+    from .utils.dummy_transformers_objects import *  # noqa F403
 
 if is_torch_geometric_available():
     from .models import MoleculeGNN
 else:
-    from .utils.dummy_torch_geometric_objects import *
+    from .utils.dummy_torch_geometric_objects import *  # noqa F403
