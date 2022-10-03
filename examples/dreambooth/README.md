@@ -2,7 +2,9 @@ To reduce VRAM usage to 9.92 GB, pass `--gradient_checkpointing` and `--use_8bit
 
 Model with just [xformers](https://github.com/facebookresearch/xformers) memory efficient flash attention uses 15.79 GB VRAM with `--gradient_checkpointing` else 17.7 GB. Both have no loss in precision at all. gradient_checkpointing recalculates intermediate activations to save memory at cost of some speed.
 
-Caching the outputs of VAE and Text Encoder and freeing them also helped in reducing memory 
+Caching the outputs of VAE and Text Encoder and freeing them also helped in reducing memory.
+
+You can now convert to ckpt format using this script to use in UIs like AUTOMATIC1111. Check notebook for example usage. https://gist.github.com/jachiam/8a5c0b607e38fcc585168b90c686eb05
 
 [![DreamBooth Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ShivamShrirao/diffusers/blob/main/examples/dreambooth/DreamBooth_Stable_Diffusion.ipynb)
 
