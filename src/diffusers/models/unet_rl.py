@@ -17,7 +17,7 @@ from .embeddings import get_timestep_embedding
 class TemporalUNetOutput(BaseOutput):
     """
     Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+        sample (`torch.FloatTensor` of shape `(batch, horizon, obs_dimension)`):
             Hidden states output. Output of last layer of model.
     """
 
@@ -59,10 +59,8 @@ class Conv1dBlock(nn.Module):
         self.block = nn.Sequential(
             nn.Conv1d(inp_channels, out_channels, kernel_size, padding=kernel_size // 2),
             RearrangeDim(),
-            #            Rearrange("batch channels horizon -> batch channels 1 horizon"),
             nn.GroupNorm(n_groups, out_channels),
             RearrangeDim(),
-            #            Rearrange("batch channels 1 horizon -> batch channels horizon"),
             nn.Mish(),
         )
 
@@ -156,8 +154,8 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
     ) -> Union[TemporalUNetOutput, Tuple]:
         """r
         Args:
-            sample (`torch.FloatTensor`): TODO verify shape (batch, channel, height, width) noisy inputs tensor
-            timestep (`torch.FloatTensor` or `float` or `int): TODO verify batch (batch) timesteps
+            sample (`torch.FloatTensor`): (batch, horizon, obs_dimension) noisy inputs tensor
+            timestep (`torch.FloatTensor` or `float` or `int): batch (batch) timesteps
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.unet_2d.UNet2DOutput`] instead of a plain tuple.
 
@@ -165,7 +163,6 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
             [`~models.unet_2d.UNet2DOutput`] or `tuple`: [`~models.unet_2d.UNet2DOutput`] if `return_dict` is True,
             otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
         """
-        # x = sample
         sample = sample.permute(0, 2, 1)
 
         t = self.time_mlp(timestep)
@@ -194,69 +191,3 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
             return (sample,)
 
         return TemporalUNetOutput(sample=sample)
-
-
-class TemporalValue(nn.Module):
-    def __init__(
-        self,
-        horizon,
-        transition_dim,
-        cond_dim,
-        dim=32,
-        time_dim=None,
-        out_dim=1,
-        dim_mults=(1, 2, 4, 8),
-    ):
-        super().__init__()
-
-        dims = [transition_dim, *map(lambda m: dim * m, dim_mults)]
-        in_out = list(zip(dims[:-1], dims[1:]))
-
-        time_dim = time_dim or dim
-        self.time_mlp = nn.Sequential(
-            SinusoidalPosEmb(dim),
-            nn.Linear(dim, dim * 4),
-            nn.Mish(),
-            nn.Linear(dim * 4, dim),
-        )
-
-        self.blocks = nn.ModuleList([])
-
-        print(in_out)
-        for dim_in, dim_out in in_out:
-            self.blocks.append(
-                nn.ModuleList(
-                    [
-                        ResidualTemporalBlock(dim_in, dim_out, kernel_size=5, embed_dim=time_dim, horizon=horizon),
-                        ResidualTemporalBlock(dim_out, dim_out, kernel_size=5, embed_dim=time_dim, horizon=horizon),
-                        Downsample1D(dim_out),
-                    ]
-                )
-            )
-
-            horizon = horizon // 2
-
-        fc_dim = dims[-1] * max(horizon, 1)
-
-        self.final_block = nn.Sequential(
-            nn.Linear(fc_dim + time_dim, fc_dim // 2),
-            nn.Mish(),
-            nn.Linear(fc_dim // 2, out_dim),
-        )
-
-    def forward(self, x, cond, time, *args):
-        """
-        x : [ batch x horizon x transition ]
-        """
-        x = x.permute(0, 2, 1)
-
-        t = self.time_mlp(time)
-
-        for resnet, resnet2, downsample in self.blocks:
-            x = resnet(x, t)
-            x = resnet2(x, t)
-            x = downsample(x)
-
-        x = x.view(len(x), -1)
-        out = self.final_block(torch.cat([x, t], dim=-1))
-        return out
