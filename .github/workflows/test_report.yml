@@ -12,13 +12,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download Test Report
-        uses: actions/download-artifact@v3
+        uses: dawidd6/action-download-artifact@v2
         with:
-          name: pr_torch_test_results
+          # leaving out `name` so it gets all artifacts
+          #   including torch, pr_torch, and examples.
           workflow: ${{ github.event.workflow.id }}
           run_id: ${{ github.event.workflow_run.id }}
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v3
         with:
           commit: ${{github.event.workflow_run.head_sha}}
-          report_paths: 'reports/*junit.xml'
+          report_paths: '**/reports/*junit.xml'
