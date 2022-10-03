@@ -21,8 +21,8 @@ from typing import Any, Tuple
 
 import numpy as np
 
+from .deprecation_utils import deprecate
 from .import_utils import is_torch_available
-from .testing_utils import deprecate
 
 
 def is_tensor(x):
