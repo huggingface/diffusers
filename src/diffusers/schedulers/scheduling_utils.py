@@ -13,6 +13,8 @@
 # limitations under the License.
 import warnings
 from dataclasses import dataclass
+from typing import Optional
+from enum import Enum
 
 import torch
 
@@ -20,6 +22,12 @@ from ..utils import BaseOutput
 
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
+
+
+class SchedulerType(Enum):
+
+    CONTINUOUS = "continous"
+    DISCRETE = "discrete"
 
 
 @dataclass
@@ -42,6 +50,7 @@ class SchedulerMixin:
     """
 
     config_name = SCHEDULER_CONFIG_NAME
+    type: Optional[SchedulerType] = None
 
     def set_format(self, tensor_format="pt"):
         warnings.warn(

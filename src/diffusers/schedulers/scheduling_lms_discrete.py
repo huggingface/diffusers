@@ -23,7 +23,7 @@ from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils import SchedulerMixin, SchedulerType
 
 
 @dataclass
@@ -66,6 +66,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
 
     """
+    type = SchedulerType.CONTINUOUS
 
     @register_to_config
     def __init__(
@@ -178,7 +179,8 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             When returning a tuple, the first element is the sample tensor.
 
         """
-        sigma = self.sigmas[timestep]
+        index = (self.config.num_train_timesteps - timestep) // (self.config.num_train_timesteps // self.num_inference_steps)
+        sigma = self.sigmas[index]
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         pred_original_sample = sample - sigma * model_output
@@ -190,8 +192,8 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.derivatives.pop(0)
 
         # 3. Compute linear multistep coefficients
-        order = min(timestep + 1, order)
-        lms_coeffs = [self.get_lms_coefficient(order, timestep, curr_order) for curr_order in range(order)]
+        order = min(index + 1, order)
+        lms_coeffs = [self.get_lms_coefficient(order, index, curr_order) for curr_order in range(order)]
 
         # 4. Compute previous sample based on the derivatives path
         prev_sample = sample + sum(

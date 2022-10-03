@@ -55,6 +55,10 @@ class ConfigMixin:
     def register_to_config(self, **kwargs):
         if self.config_name is None:
             raise NotImplementedError(f"Make sure that {self.__class__} has defined a class name `config_name`")
+
+        if hasattr(self, "type") and self.type is None:
+            raise NotImplementedError(f"Make sure that {self.__class__} has defined a scheduler type")
+
         kwargs["_class_name"] = self.__class__.__name__
         kwargs["_diffusers_version"] = __version__
 
