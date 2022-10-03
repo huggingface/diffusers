@@ -41,7 +41,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         python -m pip uninstall -y torch torchvision torchtext
-        python -m pip install torch --extra-index-url https://download.pytorch.org/whl/cu116
+        python -m conda install pytorch torchvision torchaudio cudatoolkit=11.6 -c pytorch -c conda-forge
         python -m pip install -e .[quality,test]
 
     - name: Environment
@@ -52,7 +52,7 @@ jobs:
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
-        python -m pytest -s -v --make-reports=tests_torch_gpu tests/
+        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_gpu tests/
 
     - name: Failure short reports
       if: ${{ failure() }}
@@ -91,7 +91,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         python -m pip uninstall -y torch torchvision torchtext
-        python -m pip install torch --extra-index-url https://download.pytorch.org/whl/cu116
+        python -m conda install pytorch torchvision torchaudio cudatoolkit=11.6 -c pytorch -c conda-forge
         python -m pip install -e .[quality,test,training]
 
     - name: Environment
@@ -102,7 +102,7 @@ jobs:
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
-        python -m pytest -s -v --make-reports=examples_torch_gpu examples/
+        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=examples_torch_gpu examples/
 
     - name: Failure short reports
       if: ${{ failure() }}

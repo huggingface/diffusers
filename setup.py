@@ -95,6 +95,7 @@ _deps = [
     "onnxruntime-gpu",
     "pytest",
     "pytest-timeout",
+    "pytest-xdist",
     "scipy",
     "regex!=2019.12.17",
     "requests",
@@ -180,6 +181,7 @@ extras["test"] = deps_list(
     "onnxruntime-gpu",
     "pytest",
     "pytest-timeout",
+    "pytest-xdist",
     "scipy",
     "torchvision",
     "transformers"
