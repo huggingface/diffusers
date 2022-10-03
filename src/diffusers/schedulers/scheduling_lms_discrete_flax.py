@@ -20,7 +20,7 @@ import jax.numpy as jnp
 from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput
 
 
 @flax.struct.dataclass
@@ -37,11 +37,11 @@ class LMSDiscreteSchedulerState:
 
 
 @dataclass
-class FlaxSchedulerOutput(SchedulerOutput):
+class FlaxLMSSchedulerOutput(FlaxSchedulerOutput):
     state: LMSDiscreteSchedulerState
 
 
-class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
+class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
     """
     Linear Multistep Scheduler for discrete beta schedules. Based on the original k-diffusion implementation by
     Katherine Crowson:
@@ -147,7 +147,7 @@ class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
         order: int = 4,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> Union[FlaxLMSSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -159,11 +159,11 @@ class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             sample (`jnp.ndarray`):
                 current instance of sample being created by diffusion process.
             order: coefficient for multi-step inference.
-            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than FlaxLMSSchedulerOutput class
 
         Returns:
-            [`FlaxSchedulerOutput`] or `tuple`: [`FlaxSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
-            When returning a tuple, the first element is the sample tensor.
+            [`FlaxLMSSchedulerOutput`] or `tuple`: [`FlaxLMSSchedulerOutput`] if `return_dict` is True, otherwise a
+            `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         sigma = state.sigmas[timestep]
@@ -189,7 +189,7 @@ class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (prev_sample, state)
 
-        return FlaxSchedulerOutput(prev_sample=prev_sample, state=state)
+        return FlaxLMSSchedulerOutput(prev_sample=prev_sample, state=state)
 
     def add_noise(
         self,
