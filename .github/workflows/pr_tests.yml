@@ -18,7 +18,7 @@ env:
 
 jobs:
   run_tests_cpu:
-    name: PyTorch tests
+    name: Diffusers tests
     runs-on: [ self-hosted, docker-gpu ]
     container:
       image: python:3.7
