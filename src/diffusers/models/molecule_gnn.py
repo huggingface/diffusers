@@ -1,6 +1,8 @@
 # Model adapted from GeoDiff https://github.com/MinkaiXu/GeoDiff
 # Model inspired by https://github.com/DeepGraphLearning/torchdrug/tree/master/torchdrug/models
 from typing import Callable, Dict, Union
+from dataclasses import dataclass
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -16,6 +18,17 @@ from torch_sparse import SparseTensor, coalesce
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
+from ..utils import BaseOutput
+
+@dataclass
+class MoleculeGNNOutput(BaseOutput):
+    """
+    Args:
+        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+            Hidden states output. Output of last layer of model.
+    """
+
+    sample: torch.FloatTensor
 
 
 class MultiLayerPerceptron(nn.Module):
@@ -591,6 +604,7 @@ class MoleculeGNN(ModelMixin, ConfigMixin):
         self,
         sample,
         timestep: Union[torch.Tensor, float, int],
+        return_dict: bool = True,
         sigma=1.0,
         global_start_sigma=0.5,
         w_global=1.0,
@@ -598,7 +612,18 @@ class MoleculeGNN(ModelMixin, ConfigMixin):
         extend_radius=True,
         clip_local=None,
         clip_global=1000.0,
-    ) -> Dict[str, torch.FloatTensor]:
+    ) -> Union[MoleculeGNNOutput, Tuple]:
+        r"""
+        Args:
+            sample: packed torch geometric object
+            timestep (`torch.FloatTensor` or `float` or `int): TODO verify type and shape (batch) timesteps
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.molecule_gnn.MoleculeGNNOutput`] instead of a plain tuple.
+
+        Returns:
+            [`~models.molecule_gnn.MoleculeGNNOutput`] or `tuple`: [`~models.molecule_gnn.MoleculeGNNOutput`] if `return_dict` is True,
+            otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
+        """
 
         # unpack sample
         atom_type = sample.atom_type
@@ -638,7 +663,11 @@ class MoleculeGNN(ModelMixin, ConfigMixin):
 
         # Sum
         eps_pos = node_eq_local + node_eq_global * w_global
-        return {"sample": -eps_pos}
+
+        if not return_dict:
+            return (-eps_pos,)
+
+        return MoleculeGNNOutput(sample=torch.FloatTensor(-eps_pos))
 
 
 def clip_norm(vec, limit, p=2):

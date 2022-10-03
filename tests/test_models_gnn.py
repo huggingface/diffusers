@@ -188,3 +188,7 @@ class MoleculeGNNTests(ModelTesterMixin, unittest.TestCase):
 
         self.assertEqual(output_1[0].shape, output_2[0].shape)
         self.assertEqual(output_1[1].shape, output_2[1].shape)
+
+    def test_forward_with_norm_groups(self):
+        # not implemented for this model
+        pass
