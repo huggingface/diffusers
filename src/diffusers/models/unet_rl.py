@@ -1,4 +1,6 @@
 # model adapted from diffuser https://github.com/jannerm/diffuser/blob/main/diffuser/models/temporal.py
+from dataclasses import dataclass
+from typing import Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -7,7 +9,19 @@ from diffusers.models.resnet import Downsample1D, ResidualTemporalBlock, Upsampl
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
+from ..utils import BaseOutput
 from .embeddings import get_timestep_embedding
+
+
+@dataclass
+class TemporalUNetOutput(BaseOutput):
+    """
+    Args:
+        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+            Hidden states output. Output of last layer of model.
+    """
+
+    sample: torch.FloatTensor
 
 
 class SinusoidalPosEmb(nn.Module):
@@ -131,36 +145,55 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
             nn.Conv1d(dim, transition_dim, 1),
         )
 
-    def forward(self, sample, timestep):
-        """
-        x : [ batch x horizon x transition ]
-        """
-        x = sample
+    # def forward(self, sample, timestep):
+    #     """
+    # x : [ batch x horizon x transition ] #"""
+    def forward(
+        self,
+        sample: torch.FloatTensor,
+        timestep: Union[torch.Tensor, float, int],
+        return_dict: bool = True,
+    ) -> Union[TemporalUNetOutput, Tuple]:
+        """r
+        Args:
+            sample (`torch.FloatTensor`): TODO verify shape (batch, channel, height, width) noisy inputs tensor
+            timestep (`torch.FloatTensor` or `float` or `int): TODO verify batch (batch) timesteps
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~models.unet_2d.UNet2DOutput`] instead of a plain tuple.
 
-        x = x.permute(0, 2, 1)
+        Returns:
+            [`~models.unet_2d.UNet2DOutput`] or `tuple`: [`~models.unet_2d.UNet2DOutput`] if `return_dict` is True,
+            otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
+        """
+        # x = sample
+        sample = sample.permute(0, 2, 1)
 
         t = self.time_mlp(timestep)
         h = []
 
         for resnet, resnet2, downsample in self.downs:
-            x = resnet(x, t)
-            x = resnet2(x, t)
-            h.append(x)
-            x = downsample(x)
+            sample = resnet(sample, t)
+            sample = resnet2(sample, t)
+            h.append(sample)
+            sample = downsample(sample)
 
-        x = self.mid_block1(x, t)
-        x = self.mid_block2(x, t)
+        sample = self.mid_block1(sample, t)
+        sample = self.mid_block2(sample, t)
 
         for resnet, resnet2, upsample in self.ups:
-            x = torch.cat((x, h.pop()), dim=1)
-            x = resnet(x, t)
-            x = resnet2(x, t)
-            x = upsample(x)
+            sample = torch.cat((sample, h.pop()), dim=1)
+            sample = resnet(sample, t)
+            sample = resnet2(sample, t)
+            sample = upsample(sample)
 
-        x = self.final_conv(x)
+        sample = self.final_conv(sample)
 
-        x = x.permute(0, 2, 1)
-        return x
+        sample = sample.permute(0, 2, 1)
+
+        if not return_dict:
+            return (sample,)
+
+        return TemporalUNetOutput(sample=sample)
 
 
 class TemporalValue(nn.Module):
@@ -196,7 +229,7 @@ class TemporalValue(nn.Module):
                     [
                         ResidualTemporalBlock(dim_in, dim_out, kernel_size=5, embed_dim=time_dim, horizon=horizon),
                         ResidualTemporalBlock(dim_out, dim_out, kernel_size=5, embed_dim=time_dim, horizon=horizon),
-                        Downsample1d(dim_out),
+                        Downsample1D(dim_out),
                     ]
                 )
             )

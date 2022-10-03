@@ -18,7 +18,7 @@ import unittest
 
 import torch
 
-from diffusers import UNet2DConditionModel, UNet2DModel
+from diffusers import TemporalUNet, UNet2DConditionModel, UNet2DModel
 from diffusers.testing_utils import floats_tensor, slow, torch_device
 
 from .test_modeling_common import ModelTesterMixin
@@ -374,4 +374,85 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
 
     def test_forward_with_norm_groups(self):
         # not required for this model
+        pass
+
+
+class TemporalUNetModelTests(ModelTesterMixin, unittest.TestCase):
+    model_class = TemporalUNet
+
+    @property
+    def dummy_input(self):
+        batch_size = 4
+        num_features = 14
+        seq_len = 16
+
+        noise = floats_tensor((batch_size, seq_len, num_features)).to(torch_device)
+        time_step = torch.tensor([10] * batch_size).to(torch_device)
+
+        return {"sample": noise, "timestep": time_step}
+
+    @property
+    def input_shape(self):
+        return (4, 16, 14)
+
+    @property
+    def output_shape(self):
+        return (4, 16, 14)
+
+    def test_ema_training(self):
+        pass
+
+    def test_training(self):
+        pass
+
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = {
+            "training_horizon": 128,
+            "dim": 32,
+            "dim_mults": [1, 4, 8],
+            "predict_epsilon": False,
+            "clip_denoised": True,
+            "transition_dim": 14,
+            "cond_dim": 3,
+        }
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+
+    def test_from_pretrained_hub(self):
+        model, loading_info = TemporalUNet.from_pretrained(
+            "fusing/ddpm-unet-rl-hopper-hor128", output_loading_info=True
+        )
+        self.assertIsNotNone(model)
+        self.assertEqual(len(loading_info["missing_keys"]), 0)
+
+        model.to(torch_device)
+        image = model(**self.dummy_input)
+
+        assert image is not None, "Make sure output is not None"
+
+    def test_output_pretrained(self):
+        model = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor128")
+        model.eval()
+
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        num_features = model.transition_dim
+        seq_len = 16
+        noise = torch.randn((1, seq_len, num_features))
+        time_step = torch.full((num_features,), 0)
+
+        with torch.no_grad():
+            output = model(noise, time_step).sample
+
+        output_slice = output[0, -3:, -3:].flatten()
+        # fmt: off
+        expected_output_slice = torch.tensor([-0.2714, 0.1042, -0.0794, -0.2820, 0.0803, -0.0811, -0.2345, 0.0580, -0.0584])
+        # fmt: on
+
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))
+
+    def test_forward_with_norm_groups(self):
+        # Not implemented yet for this UNet
         pass
