@@ -32,7 +32,7 @@ jobs:
 
     - name: NVIDIA-SMI
       run: |
-        nvidia-smi
+        nvidia-smi 
 
     - name: Install dependencies
       run: |
@@ -61,7 +61,6 @@ jobs:
       with:
         name: torch_test_reports
         path: reports
-
 
 
   run_examples_single_gpu:
