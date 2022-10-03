@@ -1,5 +1,5 @@
 # Model adapted from GeoDiff https://github.com/MinkaiXu/GeoDiff
-from typing import Callable, Union
+from typing import Callable, Union, Dict
 
 import numpy as np
 import torch
@@ -520,7 +520,7 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
         self.model_global = nn.ModuleList([self.edge_encoder_global, self.encoder_global, self.grad_global_dist_mlp])
         self.model_local = nn.ModuleList([self.edge_encoder_local, self.encoder_local, self.grad_local_dist_mlp])
 
-    def forward(
+    def _forward(
         self,
         atom_type,
         pos,
@@ -613,28 +613,28 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
         else:
             return edge_inv_global, edge_inv_local
 
-    def get_residual_params(
+    def forward(
         self,
-        t,
-        batch,
+        sample,
+        timestep: Union[torch.Tensor, float, int],
         extend_order=False,
         extend_radius=True,
         clip_local=None,
-    ):
-        atom_type = batch.atom_type
-        bond_index = batch.edge_index
-        bond_type = batch.edge_type
-        num_graphs = batch.num_graphs
-        pos = batch.pos
+    )-> Dict[str, torch.FloatTensor]:
+        atom_type = sample.atom_type
+        bond_index = sample.edge_index
+        bond_type = sample.edge_type
+        num_graphs = sample.num_graphs
+        pos = sample.pos
 
-        timesteps = torch.full(size=(num_graphs,), fill_value=t, dtype=torch.long, device=pos.device)
+        timesteps = torch.full(size=(num_graphs,), fill_value=timestep, dtype=torch.long, device=pos.device)
 
-        edge_inv_global, edge_inv_local, edge_index, edge_type, edge_length, local_edge_mask = self.forward(
+        edge_inv_global, edge_inv_local, edge_index, edge_type, edge_length, local_edge_mask = self._forward(
             atom_type=atom_type,
-            pos=batch.pos,
+            pos=sample.pos,
             bond_index=bond_index,
             bond_type=bond_type,
-            batch=batch.batch,
+            batch=sample.batch,
             time_step=timesteps,
             return_edges=True,
             extend_order=extend_order,
@@ -677,7 +677,7 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
 
         # Sum
         eps_pos = node_eq_local + node_eq_global * w_global
-        return -eps_pos
+        return {"sample": -eps_pos}
 
 
 def clip_norm(vec, limit, p=2):
