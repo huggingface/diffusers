@@ -109,12 +109,16 @@ jobs:
     - name: Environment
       run: |
         python3 utils/print_env.py
+        echo $CUDA_CACHE_PATH
+        ls -lah /mnt/cuda_cache
 
     - name: Run example tests on GPU
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
         python3 -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=examples_torch_gpu examples/
+        echo $CUDA_CACHE_PATH
+        ls -lah /mnt/cuda_cache
 
     - name: Failure short reports
       if: ${{ failure() }}
