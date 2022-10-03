@@ -14,7 +14,7 @@ from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import logging
 from . import StableDiffusionPipelineOutput
-from .pipeline_stable_diffusion import StableDiffusionPipeline
+from .pipeline_stable_diffusion import CoreStableDiffusionPipeline
 from .safety_checker import StableDiffusionSafetyChecker
 
 
@@ -44,7 +44,7 @@ def preprocess_mask(mask):
     return mask
 
 
-class StableDiffusionInpaintPipeline(StableDiffusionPipeline):
+class StableDiffusionInpaintPipeline(CoreStableDiffusionPipeline):
     r"""
     Pipeline for text-guided image inpainting using Stable Diffusion. *This is an experimental feature*.
 

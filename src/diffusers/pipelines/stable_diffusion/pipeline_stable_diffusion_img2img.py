@@ -13,7 +13,7 @@ from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import logging
 from . import StableDiffusionPipelineOutput
-from .pipeline_stable_diffusion import StableDiffusionPipeline
+from .pipeline_stable_diffusion import CoreStableDiffusionPipeline
 from .safety_checker import StableDiffusionSafetyChecker
 
 
@@ -30,7 +30,7 @@ def preprocess(image):
     return 2.0 * image - 1.0
 
 
-class StableDiffusionImg2ImgPipeline(StableDiffusionPipeline):
+class StableDiffusionImg2ImgPipeline(CoreStableDiffusionPipeline):
     r"""
     Pipeline for text-guided image to image generation using Stable Diffusion.
 

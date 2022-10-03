@@ -9,13 +9,13 @@ from ...onnx_utils import OnnxRuntimeModel
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import logging
 from . import StableDiffusionPipelineOutput
-from .pipeline_stable_diffusion import StableDiffusionPipeline
+from .pipeline_stable_diffusion import CoreStableDiffusionPipeline
 
 
 logger = logging.get_logger(__name__)
 
 
-class StableDiffusionOnnxPipeline(StableDiffusionPipeline):
+class StableDiffusionOnnxPipeline(CoreStableDiffusionPipeline):
     vae_decoder: OnnxRuntimeModel
     text_encoder: OnnxRuntimeModel
     tokenizer: CLIPTokenizer
