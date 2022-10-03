@@ -26,7 +26,7 @@ jobs:
     runs-on: [ self-hosted, docker-gpu, '${{ matrix.machine_type }}' ]
     container:
       image: nvcr.io/nvidia/pytorch:22.07-py3
-      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/hf_cache:"$HF_HOME" -v /mnt/pip_cache:"$PIP_CACHE"
+      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache -v /mnt/pip_cache:/mnt/pip_cache
 
     steps:
     - name: Checkout diffusers
@@ -77,7 +77,7 @@ jobs:
     runs-on: [ self-hosted, docker-gpu, '${{ matrix.machine_type }}' ]
     container:
       image: nvcr.io/nvidia/pytorch:22.07-py3
-      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/hf_cache:"$HF_HOME" -v /mnt/pip_cache:"$PIP_CACHE"
+      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache -v /mnt/pip_cache:/mnt/pip_cache
 
     steps:
     - name: Checkout diffusers
