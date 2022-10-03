@@ -15,6 +15,7 @@
 
 import os
 
+from .deprecation_utils import deprecate
 from .import_utils import (
     ENV_VARS_TRUE_AND_AUTO_VALUES,
     ENV_VARS_TRUE_VALUES,
@@ -35,6 +36,7 @@ from .import_utils import (
 )
 from .logging import get_logger
 from .outputs import BaseOutput
+from .testing_utils import floats_tensor, load_image, parse_flag_from_env, slow, torch_device
 
 
 logger = get_logger(__name__)
