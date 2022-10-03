@@ -1422,18 +1422,18 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     def test_stable_diffusion_onnx(self):
         sd_pipe = StableDiffusionOnnxPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CUDAExecutionProvider", use_auth_token=True
+            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider", use_auth_token=True
         )
 
         prompt = "A painting of a squirrel eating a burger"
         np.random.seed(0)
-        output = sd_pipe([prompt], guidance_scale=6.0, num_inference_steps=20, output_type="np")
+        output = sd_pipe([prompt], guidance_scale=6.0, num_inference_steps=5, output_type="np")
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.0385, 0.0252, 0.0234, 0.0287, 0.0358, 0.0287, 0.0276, 0.0235, 0.0010])
+        expected_slice = np.array([0.3602, 0.3688, 0.3652, 0.3895, 0.3782, 0.3747, 0.3927, 0.4241, 0.4327])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     @slow
@@ -1592,7 +1592,7 @@ class PipelineTesterMixin(unittest.TestCase):
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array(
-                    [-0.6254, -0.2742, -1.0710, 0.2296, -1.1683, 0.6913, -2.0605, -0.0682, 0.9700]
+                    [-0.5950, -0.3039, -1.1672, 0.1594, -1.1572, 0.6719, -1.9712, -0.0403, 0.9592]
                 )
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -1606,6 +1606,6 @@ class PipelineTesterMixin(unittest.TestCase):
         prompt = "Andromeda galaxy in a bottle"
 
         np.random.seed(0)
-        pipe(prompt=prompt, num_inference_steps=50, guidance_scale=7.5, callback=test_callback_fn, callback_steps=1)
+        pipe(prompt=prompt, num_inference_steps=5, guidance_scale=7.5, callback=test_callback_fn, callback_steps=1)
         assert test_callback_fn.has_been_called
-        assert number_of_steps == 51
+        assert number_of_steps == 6
