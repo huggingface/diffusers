@@ -14,7 +14,7 @@
 import warnings
 from dataclasses import dataclass
 
-import torch
+import jax.numpy as jnp
 
 from ..utils import BaseOutput
 
@@ -23,20 +23,20 @@ SCHEDULER_CONFIG_NAME = "scheduler_config.json"
 
 
 @dataclass
-class SchedulerOutput(BaseOutput):
+class FlaxSchedulerOutput(BaseOutput):
     """
     Base class for the scheduler's step function output.
 
     Args:
-        prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        prev_sample (`jnp.ndarray` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
     """
 
-    prev_sample: torch.FloatTensor
+    prev_sample: jnp.ndarray
 
 
-class SchedulerMixin:
+class FlaxSchedulerMixin:
     """
     Mixin containing common functions for the schedulers.
     """

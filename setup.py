@@ -92,7 +92,6 @@ _deps = [
     "jaxlib>=0.1.65,<=0.3.6",
     "modelcards>=0.1.4",
     "numpy",
-    "onnxruntime",
     "onnxruntime-gpu",
     "pytest",
     "pytest-timeout",
@@ -181,7 +180,6 @@ extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "modelca
 extras["test"] = deps_list(
     "accelerate",
     "datasets",
-    "onnxruntime",
     "onnxruntime-gpu",
     "pytest",
     "pytest-timeout",
@@ -197,7 +195,9 @@ if os.name == "nt":  # windows
 else:
     extras["flax"] = deps_list("jax", "jaxlib", "flax")
 
-extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"] + extras["flax"]
+extras["dev"] = (
+    extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"] + extras["flax"]
+)
 
 install_requires = [
     deps["importlib_metadata"],
