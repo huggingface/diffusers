@@ -11,12 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import warnings
 from dataclasses import dataclass
 
 import torch
 
-from ..utils import BaseOutput
+from ..utils import BaseOutput, deprecate
 
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
@@ -44,10 +43,10 @@ class SchedulerMixin:
     config_name = SCHEDULER_CONFIG_NAME
 
     def set_format(self, tensor_format="pt"):
-        warnings.warn(
-            "The method `set_format` is deprecated and will be removed in version `0.5.0`."
-            "If you're running your code in PyTorch, you can safely remove this function as the schedulers"
-            "are always in Pytorch",
-            DeprecationWarning,
+        deprecate(
+            "set_format",
+            "0.5.0",
+            "If you're running your code in PyTorch, you can safely remove this function as the schedulers are always"
+            " in Pytorch",
         )
         return self
