@@ -506,31 +506,32 @@ def get_beta_schedule(beta_schedule, *, beta_start, beta_end, num_diffusion_time
 
 
 class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
-    def __init__(self, config):
+    def __init__(self, hidden_dim, num_convs, num_convs_local, cutoff, mlp_act, beta_schedule, beta_start, beta_end, num_diffusion_timesteps, edge_order, edge_encoder, smooth_conv):
         super().__init__()
-        self.config = config
+        self.cutoff = cutoff
+        self.edge_encoder = edge_encoder
 
         """
         edge_encoder:  Takes both edge type and edge length as input and outputs a vector
         [Note]: node embedding is done in SchNetEncoder
         """
-        self.edge_encoder_global = MLPEdgeEncoder(config.hidden_dim, config.mlp_act)  # get_edge_encoder(config)
-        self.edge_encoder_local = MLPEdgeEncoder(config.hidden_dim, config.mlp_act)  # get_edge_encoder(config)
+        self.edge_encoder_global = MLPEdgeEncoder(hidden_dim, mlp_act)  # get_edge_encoder(config)
+        self.edge_encoder_local = MLPEdgeEncoder(hidden_dim, mlp_act)  # get_edge_encoder(config)
 
         """
         The graph neural network that extracts node-wise features.
         """
         self.encoder_global = SchNetEncoder(
-            hidden_channels=config.hidden_dim,
-            num_filters=config.hidden_dim,
-            num_interactions=config.num_convs,
+            hidden_channels=hidden_dim,
+            num_filters=hidden_dim,
+            num_interactions=num_convs,
             edge_channels=self.edge_encoder_global.out_channels,
-            cutoff=config.cutoff,
-            smooth=config.smooth_conv,
+            cutoff=cutoff,
+            smooth=smooth_conv,
         )
         self.encoder_local = GINEncoder(
-            hidden_dim=config.hidden_dim,
-            num_convs=config.num_convs_local,
+            hidden_dim=hidden_dim,
+            num_convs=num_convs_local,
         )
 
         """
@@ -538,11 +539,11 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
             gradients w.r.t. edge_length (out_dim = 1).
         """
         self.grad_global_dist_mlp = MultiLayerPerceptron(
-            2 * config.hidden_dim, [config.hidden_dim, config.hidden_dim // 2, 1], activation=config.mlp_act
+            2 * hidden_dim, [hidden_dim, hidden_dim // 2, 1], activation=mlp_act
         )
 
         self.grad_local_dist_mlp = MultiLayerPerceptron(
-            2 * config.hidden_dim, [config.hidden_dim, config.hidden_dim // 2, 1], activation=config.mlp_act
+            2 * hidden_dim, [hidden_dim, hidden_dim // 2, 1], activation=mlp_act
         )
 
         """
@@ -551,15 +552,15 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
         self.model_global = nn.ModuleList([self.edge_encoder_global, self.encoder_global, self.grad_global_dist_mlp])
         self.model_local = nn.ModuleList([self.edge_encoder_local, self.encoder_local, self.grad_local_dist_mlp])
 
-        self.model_type = config.type  # config.type  # 'diffusion'; 'dsm'
+        self.model_type = type  # type  # 'diffusion'; 'dsm'
 
         # denoising diffusion
         ## betas
         betas = get_beta_schedule(
-            beta_schedule=config.beta_schedule,
-            beta_start=config.beta_start,
-            beta_end=config.beta_end,
-            num_diffusion_timesteps=config.num_diffusion_timesteps,
+            beta_schedule=beta_schedule,
+            beta_start=beta_start,
+            beta_end=beta_end,
+            num_diffusion_timesteps=num_diffusion_timesteps,
         )
         betas = torch.from_numpy(betas).float()
         self.betas = nn.Parameter(betas, requires_grad=False)
@@ -599,8 +600,8 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
                 edge_index=bond_index,
                 edge_type=bond_type,
                 batch=batch,
-                order=self.config.edge_order,
-                cutoff=self.config.cutoff,
+                order=self.edge_order,
+                cutoff=self.cutoff,
                 extend_order=extend_order,
                 extend_radius=extend_radius,
                 is_sidechain=is_sidechain,
@@ -743,14 +744,14 @@ class DualEncoderEpsNetwork(ModelMixin, ConfigMixin):
         train_edge_mask = is_train_edge(edge_index, is_sidechain)
         d_perturbed = torch.where(train_edge_mask.unsqueeze(-1), d_perturbed, d_gt)
 
-        if self.config.edge_encoder == "gaussian":
+        if self.edge_encoder == "gaussian":
             # Distances must be greater than 0
             d_sgn = torch.sign(d_perturbed)
             d_perturbed = torch.clamp(d_perturbed * d_sgn, min=0.01, max=float("inf"))
         d_target = (d_gt - d_perturbed) / (1.0 - a_edge).sqrt() * a_edge.sqrt()  # (E_global, 1), denoising direction
 
         global_mask = torch.logical_and(
-            torch.logical_or(d_perturbed <= self.config.cutoff, local_edge_mask.unsqueeze(-1)),
+            torch.logical_or(d_perturbed <= self.cutoff, local_edge_mask.unsqueeze(-1)),
             ~local_edge_mask.unsqueeze(-1),
         )
         target_d_global = torch.where(global_mask, d_target, torch.zeros_like(d_target))
