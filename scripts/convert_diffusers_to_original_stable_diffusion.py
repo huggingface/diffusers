@@ -211,17 +211,17 @@ if __name__ == "__main__":
     text_enc_path = osp.join(args.model_path, "text_encoder", "pytorch_model.bin")
 
     # Convert the UNet model
-    unet_state_dict = torch.load(unet_path)
+    unet_state_dict = torch.load(unet_path, map_location='cpu')
     unet_state_dict = convert_unet_state_dict(unet_state_dict)
     unet_state_dict = {"model.diffusion_model." + k: v for k, v in unet_state_dict.items()}
 
     # Convert the VAE model
-    vae_state_dict = torch.load(vae_path)
+    vae_state_dict = torch.load(vae_path, map_location='cpu')
     vae_state_dict = convert_vae_state_dict(vae_state_dict)
     vae_state_dict = {"first_stage_model." + k: v for k, v in vae_state_dict.items()}
 
     # Convert the text encoder model
-    text_enc_dict = torch.load(text_enc_path)
+    text_enc_dict = torch.load(text_enc_path, map_location='cpu')
     text_enc_dict = convert_text_enc_state_dict(text_enc_dict)
     text_enc_dict = {"cond_stage_model.transformer." + k: v for k, v in text_enc_dict.items()}
 
