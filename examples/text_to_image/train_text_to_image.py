@@ -595,7 +595,7 @@ def main():
 
     for epoch in range(args.num_train_epochs):
         unet.train()
-        total_loss = 0.0
+        train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Convert images to latent space
@@ -618,7 +618,9 @@ def main():
                 # Predict the noise residual and compute loss
                 noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
                 loss = F.mse_loss(noise_pred, noise, reduction="mean")
-                total_loss += loss.detach().float()
+
+                avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
+                train_loss += avg_loss.item() / args.gradient_accumulation_steps
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
@@ -629,19 +631,18 @@ def main():
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
-                progress_bar.update(1)
-                global_step += 1
                 if args.use_ema:
                     ema_unet.step(unet)
+                progress_bar.update(1)
+                global_step += 1
+                accelerator.log({"train_loss": train_loss}, step=global_step)
+                train_loss = 0.0
 
-            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+            logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
 
             if global_step >= args.max_train_steps:
                 break
-
-        logger.info(f"epoch {epoch}: train_loss: {total_loss.item() / len(train_dataloader)}")
-        accelerator.log({"epoch": epoch, "train_loss": total_loss.item() / len(train_dataloader)}, step=global_step)
 
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
