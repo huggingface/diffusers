@@ -566,7 +566,8 @@ def main():
                     loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
 
                 accelerator.backward(loss)
-                accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
+                if accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
