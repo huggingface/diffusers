@@ -23,7 +23,7 @@ import jax.numpy as jnp
 from jax import random
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> jnp.ndarray:
@@ -67,11 +67,11 @@ class DDPMSchedulerState:
 
 
 @dataclass
-class FlaxSchedulerOutput(SchedulerOutput):
+class FlaxDDPMSchedulerOutput(FlaxSchedulerOutput):
     state: DDPMSchedulerState
 
 
-class FlaxDDPMScheduler(SchedulerMixin, ConfigMixin):
+class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
     """
     Denoising diffusion probabilistic models (DDPMs) explores the connections between denoising score matching and
     Langevin dynamics sampling.
@@ -191,7 +191,7 @@ class FlaxDDPMScheduler(SchedulerMixin, ConfigMixin):
         key: random.KeyArray,
         predict_epsilon: bool = True,
         return_dict: bool = True,
-    ) -> Union[FlaxSchedulerOutput, Tuple]:
+    ) -> Union[FlaxDDPMSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -205,11 +205,11 @@ class FlaxDDPMScheduler(SchedulerMixin, ConfigMixin):
             key (`random.KeyArray`): a PRNG key.
             predict_epsilon (`bool`):
                 optional flag to use when model predicts the samples directly instead of the noise, epsilon.
-            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than FlaxDDPMSchedulerOutput class
 
         Returns:
-            [`FlaxSchedulerOutput`] or `tuple`: [`FlaxSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
-            When returning a tuple, the first element is the sample tensor.
+            [`FlaxDDPMSchedulerOutput`] or `tuple`: [`FlaxDDPMSchedulerOutput`] if `return_dict` is True, otherwise a
+            `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         t = timestep
@@ -257,7 +257,7 @@ class FlaxDDPMScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (pred_prev_sample, state)
 
-        return FlaxSchedulerOutput(prev_sample=pred_prev_sample, state=state)
+        return FlaxDDPMSchedulerOutput(prev_sample=pred_prev_sample, state=state)
 
     def add_noise(
         self,
