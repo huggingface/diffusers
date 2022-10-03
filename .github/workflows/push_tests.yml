@@ -46,7 +46,7 @@ jobs:
         apt update
         apt install -y git git-lfs python3 python3-pip
         python3 -m pip install --upgrade pip
-        python3 -m pip install torch=='$PYTORCH' torchvision --extra-index-url https://download.pytorch.org/whl/cu116
+        python3 -m pip install torch=="$PYTORCH" torchvision --extra-index-url https://download.pytorch.org/whl/cu116
         python3 -m pip install -e .[quality,test]
 
     - name: Environment
@@ -98,7 +98,7 @@ jobs:
         apt update
         apt install -y git git-lfs python3 python3-pip
         python3 -m pip install --upgrade pip
-        python3 -m pip install torch=='$PYTORCH' torchvision --extra-index-url https://download.pytorch.org/whl/cu116
+        python3 -m pip install torch=="$PYTORCH" torchvision --extra-index-url https://download.pytorch.org/whl/cu116
         python3 -m pip install -e .[quality,test,training]
 
     - name: Environment
