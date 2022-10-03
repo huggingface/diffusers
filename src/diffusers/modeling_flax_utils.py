@@ -27,8 +27,8 @@ from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
+from . import is_torch_available
 from .modeling_flax_pytorch_utils import convert_pytorch_state_dict_to_flax
-from .modeling_utils import load_state_dict
 from .utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
@@ -391,6 +391,14 @@ class FlaxModelMixin:
                 )
 
         if from_pt:
+            if is_torch_available():
+                from .modeling_utils import load_state_dict
+            else:
+                raise EnvironmentError(
+                    "Can't load the model in PyTorch format because PyTorch is not installed. "
+                    "Please, install PyTorch or use native Flax weights."
+                )
+
             # Step 1: Get the pytorch file
             pytorch_model_file = load_state_dict(model_file)
 
