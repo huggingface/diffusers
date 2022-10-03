@@ -20,7 +20,6 @@ deps = {
     "onnxruntime-gpu": "onnxruntime-gpu",
     "pytest": "pytest",
     "pytest-timeout": "pytest-timeout",
-    "pytest-xdist": "pytest-xdist",
     "scipy": "scipy",
     "regex": "regex!=2019.12.17",
     "requests": "requests",

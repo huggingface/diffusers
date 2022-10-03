@@ -81,12 +81,6 @@ def test_progress_bar(capsys):
 
 
 class PipelineFastTests(unittest.TestCase):
-    def tearDown(self):
-        # clean up the VRAM after each test
-        super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
-
     @property
     def dummy_image(self):
         batch_size = 1
@@ -753,12 +747,6 @@ class PipelineFastTests(unittest.TestCase):
 
 
 class PipelineTesterMixin(unittest.TestCase):
-    def tearDown(self):
-        # clean up the VRAM after each test
-        super().tearDown()
-        gc.collect()
-        torch.cuda.empty_cache()
-
     def test_smart_download(self):
         model_id = "hf-internal-testing/unet-pipeline-dummy"
         with tempfile.TemporaryDirectory() as tmpdirname:
