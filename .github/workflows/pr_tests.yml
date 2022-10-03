@@ -11,7 +11,6 @@ concurrency:
 
 env:
   HF_HOME: /mnt/cache
-  PIP_CACHE: /mnt/pip_cache
   OMP_NUM_THREADS: 8
   MKL_NUM_THREADS: 8
   PYTEST_TIMEOUT: 60
@@ -22,7 +21,7 @@ jobs:
     runs-on: [ self-hosted, docker-gpu ]
     container:
       image: python:3.7
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ -v /mnt/pip_cache:/mnt/pip_cache
+      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
 
     steps:
     - name: Checkout diffusers
@@ -34,7 +33,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         python -m pip install torch --extra-index-url https://download.pytorch.org/whl/cpu --cache-dir="$PIP_CACHE"
-        python -m pip install -e .[quality,test] --cache-dir="$PIP_CACHE"
+        python -m pip install -e .[quality,test]
 
     - name: Environment
       run: |
