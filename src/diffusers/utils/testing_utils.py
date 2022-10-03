@@ -2,7 +2,6 @@ import os
 import random
 import re
 import unittest
-import warnings
 from distutils.util import strtobool
 from pathlib import Path
 from typing import Union
