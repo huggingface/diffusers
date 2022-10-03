@@ -41,7 +41,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         python -m pip uninstall -y torch torchvision torchtext
-        python -m conda install pytorch torchvision torchaudio cudatoolkit=11.6 -c pytorch -c conda-forge
+        python -m conda install pytorch==1.12.1 torchvision torchaudio cudatoolkit=11.6 -c pytorch -c conda-forge
         python -m pip install -e .[quality,test]
 
     - name: Environment
@@ -91,7 +91,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         python -m pip uninstall -y torch torchvision torchtext
-        python -m conda install pytorch torchvision torchaudio cudatoolkit=11.6 -c pytorch -c conda-forge
+        python -m conda install pytorch==1.12.1 torchvision torchaudio cudatoolkit=11.6 -c pytorch -c conda-forge
         python -m pip install -e .[quality,test,training]
 
     - name: Environment
