@@ -11,6 +11,7 @@ concurrency:
 
 env:
   HF_HOME: /mnt/cache
+  PIP_CACHE: /mnt/pip_cache
   OMP_NUM_THREADS: 8
   MKL_NUM_THREADS: 8
   PYTEST_TIMEOUT: 60
