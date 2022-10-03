@@ -133,18 +133,14 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             )
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
-<<<<<<< HEAD
             self.betas = betas_for_alpha_bar(num_train_timesteps)
-=======
-            self.betas = betas_for_alpha_bar(timesteps)
         elif beta_schedule == "sigmoid":
 
             def sigmoid(x):
                 return 1 / (np.exp(-x) + 1)
 
-            betas = np.linspace(-6, 6, timesteps)
+            betas = np.linspace(-6, 6, num_train_timesteps)
             self.betas = sigmoid(betas) * (beta_end - beta_start) + beta_start
->>>>>>> beaa1e0 (add sigmoid beta schedule to ddpm)
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
