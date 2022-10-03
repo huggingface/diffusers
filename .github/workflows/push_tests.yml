@@ -15,9 +15,6 @@ env:
   PYTEST_TIMEOUT: 1000
   RUN_SLOW: yes
   PYTORCH: 1.12.1
-  CUDA_CACHE_DISABLE: 0
-  CUDA_CACHE_MAXSIZE: 34359738368  # 32GB
-  CUDA_CACHE_PATH: /mnt/cuda_cache
 
 jobs:
   run_tests_single_gpu:
@@ -29,6 +26,10 @@ jobs:
     runs-on: [ self-hosted, docker-gpu, '${{ matrix.machine_type }}' ]
     container:
       image: nvidia/cuda:11.6.1-cudnn8-devel-ubuntu20.04
+      env:
+        CUDA_CACHE_DISABLE: 0
+        CUDA_CACHE_MAXSIZE: 34359738368  # 32GB
+        CUDA_CACHE_PATH: /mnt/cuda_cache
       options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/ -v /mnt/cuda_cache:/mnt/cuda_cache
 
     steps:
@@ -81,6 +82,10 @@ jobs:
     runs-on: [ self-hosted, docker-gpu, '${{ matrix.machine_type }}' ]
     container:
       image: nvidia/cuda:11.6.1-cudnn8-devel-ubuntu20.04
+      env:
+        CUDA_CACHE_DISABLE: 0
+        CUDA_CACHE_MAXSIZE: 34359738368  # 32GB
+        CUDA_CACHE_PATH: /mnt/cuda_cache
       options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/ -v /mnt/cuda_cache:/mnt/cuda_cache
 
     steps:
