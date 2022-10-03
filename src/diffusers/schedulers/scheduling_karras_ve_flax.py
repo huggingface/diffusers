@@ -99,7 +99,9 @@ class FlaxKarrasVeScheduler(SchedulerMixin, ConfigMixin):
     ):
         self.state = KarrasVeSchedulerState.create()
 
-    def set_timesteps(self, state: KarrasVeSchedulerState, num_inference_steps: int) -> KarrasVeSchedulerState:
+    def set_timesteps(
+        self, state: KarrasVeSchedulerState, num_inference_steps: int, shape: Tuple
+    ) -> KarrasVeSchedulerState:
         """
         Sets the continuous timesteps used for the diffusion chain. Supporting function to be run before inference.
 

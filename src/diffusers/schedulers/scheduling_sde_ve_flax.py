@@ -95,7 +95,7 @@ class FlaxScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         self.state = self.set_sigmas(state, num_train_timesteps, sigma_min, sigma_max, sampling_eps)
 
     def set_timesteps(
-        self, state: ScoreSdeVeSchedulerState, num_inference_steps: int, sampling_eps: float = None
+        self, state: ScoreSdeVeSchedulerState, num_inference_steps: int, shape: Tuple, sampling_eps: float = None
     ) -> ScoreSdeVeSchedulerState:
         """
         Sets the continuous timesteps used for the diffusion chain. Supporting function to be run before inference.
