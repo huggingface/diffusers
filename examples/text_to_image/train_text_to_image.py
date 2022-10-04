@@ -227,11 +227,6 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
         return f"{organization}/{model_id}"
 
 
-def freeze_params(params):
-    for param in params:
-        param.requires_grad = False
-
-
 dataset_name_mapping = {
     "image_caption_dataset.py": ("image_path", "caption"),
 }
@@ -350,8 +345,8 @@ def main():
     )
 
     # Freeze vae and text_encoder
-    freeze_params(vae.parameters())
-    freeze_params(text_encoder.parameters())
+    vae.requires_grad_(False)
+    text_encoder.requires_grad_(False)
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
@@ -449,9 +444,8 @@ def main():
                 raise ValueError(
                     f"Caption column `{caption_column}` should contain either strings or lists of strings."
                 )
-        input_ids = tokenizer(
-            captions, max_length=tokenizer.model_max_length, padding="do_not_pad", truncation=True
-        ).input_ids
+        inputs = tokenizer(captions, max_length=tokenizer.model_max_length, padding="do_not_pad", truncation=True)
+        input_ids = inputs.input_ids
         return input_ids
 
     train_transforms = transforms.Compose(
