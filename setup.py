@@ -92,7 +92,7 @@ _deps = [
     "jaxlib>=0.1.65,<=0.3.6",
     "modelcards>=0.1.4",
     "numpy",
-    "onnxruntime-gpu",
+    "onnxruntime",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
@@ -178,7 +178,7 @@ extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "modelcards")
 extras["test"] = deps_list(
     "datasets",
-    "onnxruntime-gpu",
+    "onnxruntime",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",

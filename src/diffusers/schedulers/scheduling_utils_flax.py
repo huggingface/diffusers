@@ -11,31 +11,32 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import warnings
 from dataclasses import dataclass
 
-import torch
+import jax.numpy as jnp
 
-from ..utils import BaseOutput, deprecate
+from ..utils import BaseOutput
 
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
 
 
 @dataclass
-class SchedulerOutput(BaseOutput):
+class FlaxSchedulerOutput(BaseOutput):
     """
     Base class for the scheduler's step function output.
 
     Args:
-        prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+        prev_sample (`jnp.ndarray` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
     """
 
-    prev_sample: torch.FloatTensor
+    prev_sample: jnp.ndarray
 
 
-class SchedulerMixin:
+class FlaxSchedulerMixin:
     """
     Mixin containing common functions for the schedulers.
     """
@@ -43,10 +44,10 @@ class SchedulerMixin:
     config_name = SCHEDULER_CONFIG_NAME
 
     def set_format(self, tensor_format="pt"):
-        deprecate(
-            "set_format",
-            "0.5.0",
-            "If you're running your code in PyTorch, you can safely remove this function as the schedulers are always"
-            " in Pytorch",
+        warnings.warn(
+            "The method `set_format` is deprecated and will be removed in version `0.5.0`."
+            "If you're running your code in PyTorch, you can safely remove this function as the schedulers"
+            "are always in Pytorch",
+            DeprecationWarning,
         )
         return self
