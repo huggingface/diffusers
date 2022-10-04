@@ -37,7 +37,10 @@ from .import_utils import (
 )
 from .logging import get_logger
 from .outputs import BaseOutput
-from .testing_utils import floats_tensor, load_image, parse_flag_from_env, slow, torch_device
+
+
+if is_torch_available():
+    from .testing_utils import floats_tensor, load_image, parse_flag_from_env, slow, torch_device
 
 
 logger = get_logger(__name__)
