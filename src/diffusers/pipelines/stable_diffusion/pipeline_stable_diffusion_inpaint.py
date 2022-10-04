@@ -295,16 +295,16 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
-            ucond_tokens: List[str]
+            uncond_tokens: List[str]
             if negative_prompt is None:
-                ucond_tokens = [""] * batch_size
+                uncond_tokens = [""] * batch_size
             elif type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     "`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
                     " {type(prompt)}."
                 )
             elif isinstance(negative_prompt, str):
-                ucond_tokens = [negative_prompt] * batch_size
+                uncond_tokens = [negative_prompt] * batch_size
             elif batch_size != len(negative_prompt):
                 raise ValueError(
                     f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
@@ -312,11 +312,11 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                     " the batch size of `prompt`."
                 )
             else:
-                ucond_tokens = negative_prompt
+                uncond_tokens = negative_prompt
 
             max_length = text_input_ids.shape[-1]
             uncond_input = self.tokenizer(
-                ucond_tokens,
+                uncond_tokens,
                 padding="max_length",
                 max_length=max_length,
                 truncation=True,
