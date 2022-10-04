@@ -15,13 +15,13 @@
 Generic utilities
 """
 
-import warnings
 from collections import OrderedDict
 from dataclasses import fields
 from typing import Any, Tuple
 
 import numpy as np
 
+from .deprecation_utils import deprecate
 from .import_utils import is_torch_available
 
 
@@ -87,11 +87,7 @@ class BaseOutput(OrderedDict):
         if isinstance(k, str):
             inner_dict = {k: v for (k, v) in self.items()}
             if self.__class__.__name__ in ["StableDiffusionPipelineOutput", "ImagePipelineOutput"] and k == "sample":
-                warnings.warn(
-                    "The keyword 'samples' is deprecated and will be removed in version 0.4.0. Please use `.images` or"
-                    " `'images'` instead.",
-                    DeprecationWarning,
-                )
+                deprecate("samples", "0.6.0", "Please use `.images` or `'images'` instead.")
                 return inner_dict["images"]
             return inner_dict[k]
         else:

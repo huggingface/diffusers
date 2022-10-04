@@ -15,14 +15,13 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/yang-song/score_sde_pytorch
 
 import math
-import warnings
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..utils import BaseOutput, deprecate
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
@@ -78,12 +77,12 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         correct_steps: int = 1,
         **kwargs,
     ):
-        if "tensor_format" in kwargs:
-            warnings.warn(
-                "`tensor_format` is deprecated as an argument and will be removed in version `0.5.0`."
-                "If you're running your code in PyTorch, you can safely remove this argument.",
-                DeprecationWarning,
-            )
+        deprecate(
+            "tensor_format",
+            "0.5.0",
+            "If you're running your code in PyTorch, you can safely remove this argument.",
+            take_from=kwargs,
+        )
 
         # setable values
         self.timesteps = None
@@ -139,11 +138,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         )
 
     def set_seed(self, seed):
-        warnings.warn(
-            "The method `set_seed` is deprecated and will be removed in version `0.4.0`. Please consider passing a"
-            " generator instead.",
-            DeprecationWarning,
-        )
+        deprecate("set_seed", "0.5.0", "Please consider passing a generator instead.")
         torch.manual_seed(seed)
 
     def step_pred(

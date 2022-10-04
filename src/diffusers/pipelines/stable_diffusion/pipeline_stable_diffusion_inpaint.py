@@ -1,5 +1,4 @@
 import inspect
-import warnings
 from typing import Callable, List, Optional, Union
 
 import numpy as np
@@ -13,7 +12,7 @@ from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from ...utils import logging
+from ...utils import deprecate, logging
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
@@ -86,15 +85,15 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         logger.info("`StableDiffusionInpaintPipeline` is experimental and will very likely change in the future.")
 
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
-            warnings.warn(
+            deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
                 f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
                 "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
                 " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
                 " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
-                " file",
-                DeprecationWarning,
+                " file"
             )
+            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
             new_config = dict(scheduler.config)
             new_config["steps_offset"] = 1
             scheduler._internal_dict = FrozenDict(new_config)
