@@ -101,6 +101,7 @@ class StableDiffusionImg2ImgPipeline(CoreStableDiffusionPipeline):
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
@@ -205,7 +206,9 @@ class StableDiffusionImg2ImgPipeline(CoreStableDiffusionPipeline):
         noise = torch.randn(init_latents.shape, generator=generator, device=self.device)
         init_latents = self.scheduler.add_noise(init_latents, noise, timesteps)
 
-        text_embeddings, do_classifier_free_guidance = self._get_text_embeddings(prompt, batch_size, guidance_scale)
+        text_embeddings, do_classifier_free_guidance = self._get_text_embeddings(
+            prompt, batch_size, guidance_scale, negative_prompt
+        )
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.

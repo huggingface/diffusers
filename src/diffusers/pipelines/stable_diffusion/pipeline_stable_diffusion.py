@@ -285,7 +285,9 @@ class StableDiffusionPipeline(CoreStableDiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
-        text_embeddings, do_classifier_free_guidance = self._get_text_embeddings(prompt, batch_size, guidance_scale)
+        text_embeddings, do_classifier_free_guidance = self._get_text_embeddings(
+            prompt, batch_size, guidance_scale, negative_prompt
+        )
 
         # get the initial random noise unless the user supplied it
 
