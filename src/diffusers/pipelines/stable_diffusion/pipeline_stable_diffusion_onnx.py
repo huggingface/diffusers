@@ -1,5 +1,5 @@
 import inspect
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import numpy as np
 
@@ -56,6 +56,8 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
         latents: Optional[np.ndarray] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        callback: Optional[Callable[[int, int, np.ndarray], None]] = None,
+        callback_steps: Optional[int] = 1,
         **kwargs,
     ):
         if isinstance(prompt, str):
@@ -67,6 +69,14 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
 
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
+
+        if (callback_steps is None) or (
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+        ):
+            raise ValueError(
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
+            )
 
         # get prompt text embeddings
         text_inputs = self.tokenizer(
@@ -151,14 +161,18 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
             else:
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
-        # scale and decode the image latents with vae
+            latents = np.array(latents)
+
+            # call the callback, if provided
+            if callback is not None and i % callback_steps == 0:
+                callback(i, t, latents)
+
         latents = 1 / 0.18215 * latents
         image = self.vae_decoder(latent_sample=latents)[0]
 
         image = np.clip(image / 2 + 0.5, 0, 1)
         image = image.transpose((0, 2, 3, 1))
 
-        # run safety checker
         safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="np")
         image, has_nsfw_concept = self.safety_checker(clip_input=safety_checker_input.pixel_values, images=image)
 

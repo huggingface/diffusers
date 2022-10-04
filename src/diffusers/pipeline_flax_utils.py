@@ -30,7 +30,7 @@ from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
 from .modeling_flax_utils import FLAX_WEIGHTS_NAME, FlaxModelMixin
-from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME, SchedulerMixin
+from .schedulers.scheduling_utils_flax import SCHEDULER_CONFIG_NAME, FlaxSchedulerMixin
 from .utils import CONFIG_NAME, DIFFUSERS_CACHE, BaseOutput, is_transformers_available, logging
 
 
@@ -46,7 +46,7 @@ logger = logging.get_logger(__name__)
 LOADABLE_CLASSES = {
     "diffusers": {
         "FlaxModelMixin": ["save_pretrained", "from_pretrained"],
-        "SchedulerMixin": ["save_config", "from_config"],
+        "FlaxSchedulerMixin": ["save_config", "from_config"],
         "FlaxDiffusionPipeline": ["save_pretrained", "from_pretrained"],
     },
     "transformers": {
@@ -436,7 +436,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
                     else:
                         loaded_sub_model, loaded_params = load_method(loadable_folder, _do_init=False)
                     params[name] = loaded_params
-                elif issubclass(class_obj, SchedulerMixin):
+                elif issubclass(class_obj, FlaxSchedulerMixin):
                     loaded_sub_model, scheduler_state = load_method(loadable_folder)
                     params[name] = scheduler_state
                 else:
