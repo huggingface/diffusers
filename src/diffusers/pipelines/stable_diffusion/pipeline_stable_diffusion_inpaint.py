@@ -303,7 +303,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             elif isinstance(negative_prompt, str):
                 ucond_tokens = [negative_prompt] * batch_size
             elif batch_size != len(negative_prompt):
-                raise ValueError("The length of `negative_prompt` should be equal to batch_size.")
+                raise ValueError(f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`: {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches the batch size of `prompt`.")
             else:
                 ucond_tokens = negative_prompt
 
