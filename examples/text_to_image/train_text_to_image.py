@@ -54,9 +54,6 @@ def parse_args():
     )
     parser.add_argument("--train_data_dir", type=str, default=None, help="A folder containing the training data.")
     parser.add_argument(
-        "--validation_data_dir", type=str, default=None, help="A folder containing the validation data."
-    )
-    parser.add_argument(
         "--image_column", type=str, default="image", help="The column of the dataset containing an image."
     )
     parser.add_argument(
@@ -73,21 +70,6 @@ def parse_args():
             "For debugging purposes or quicker training, truncate the number of training examples to this "
             "value if set."
         ),
-    )
-    parser.add_argument(
-        "--max_eval_samples",
-        type=int,
-        default=None,
-        help=(
-            "For debugging purposes or quicker training, truncate the number of evaluation examples to this "
-            "value if set."
-        ),
-    )
-    parser.add_argument(
-        "--train_val_split",
-        type=float,
-        default=0.15,
-        help="Percent to split off of train for validation",
     )
     parser.add_argument(
         "--output_dir",
@@ -123,9 +105,6 @@ def parse_args():
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
-    )
-    parser.add_argument(
-        "--eval_batch_size", type=int, default=16, help="Batch size (per device) for the eval dataloader."
     )
     parser.add_argument("--num_train_epochs", type=int, default=100)
     parser.add_argument(
@@ -232,8 +211,8 @@ def parse_args():
         args.local_rank = env_local_rank
 
     # Sanity checks
-    if args.dataset_name is None and args.train_data_dir is None and args.validation_data_dir is None:
-        raise ValueError("Need either a dataset name or a training/validation folder.")
+    if args.dataset_name is None and args.train_data_dir is None:
+        raise ValueError("Need either a dataset name or a training folder.")
 
     return args
 
@@ -425,8 +404,6 @@ def main():
         data_files = {}
         if args.train_dir is not None:
             data_files["train"] = os.path.join(args.train_dir, "**")
-        if args.validation_dir is not None:
-            data_files["validation"] = os.path.join(args.validation_dir, "**")
         dataset = load_dataset(
             "imagefolder",
             data_files=data_files,
@@ -434,13 +411,6 @@ def main():
         )
         # See more about loading custom images at
         # https://huggingface.co/docs/datasets/v2.4.0/en/image_process#imagefolder.
-
-    # If we don't have a validation split, split off a percentage of train as validation.
-    args.train_val_split = None if "validation" in dataset.keys() else args.train_val_split
-    if isinstance(args.train_val_split, float) and args.train_val_split > 0.0:
-        split = dataset["train"].train_test_split(args.train_val_split)
-        dataset["train"] = split["train"]
-        dataset["validation"] = split["test"]
 
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.
@@ -493,14 +463,6 @@ def main():
             transforms.Normalize([0.5], [0.5]),
         ]
     )
-    val_transforms = transforms.Compose(
-        [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(args.resolution),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
-        ]
-    )
 
     def preprocess_train(examples):
         images = [image.convert("RGB") for image in examples[image_column]]
@@ -509,21 +471,11 @@ def main():
 
         return examples
 
-    def preprocess_val(examples):
-        images = [image.convert("RGB") for image in examples[image_column]]
-        examples["pixel_values"] = [val_transforms(image) for image in images]
-        examples["input_ids"] = tokenize_captions(examples, is_train=False)
-        return examples
-
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
             dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
         # Set the training transforms
         train_dataset = dataset["train"].with_transform(preprocess_train)
-        if args.max_eval_samples is not None:
-            dataset["validation"] = dataset["validation"].shuffle(seed=args.seed).select(range(args.max_eval_samples))
-        # Set the validation transforms
-        # eval_dataset = dataset["validation"].with_transform(preprocess_val)
 
     def collate_fn(examples):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
@@ -539,7 +491,6 @@ def main():
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, shuffle=True, collate_fn=collate_fn, batch_size=args.train_batch_size
     )
-    # eval_dataloader = torch.utils.data.DataLoader(eval_dataset, collate_fn=collate_fn, batch_size=args.eval_batch_size)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
