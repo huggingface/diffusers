@@ -116,6 +116,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         width: int = 512,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         eta: float = 0.0,
         generator: Optional[torch.Generator] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -144,6 +145,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `guidance_scale` is less than `1`).
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
@@ -217,9 +221,32 @@ class StableDiffusionPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
+            uncond_tokens: List[str]
+            if negative_prompt is None:
+                uncond_tokens = [""] * batch_size
+            elif type(prompt) is not type(negative_prompt):
+                raise TypeError(
+                    "`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    " {type(prompt)}."
+                )
+            elif isinstance(negative_prompt, str):
+                uncond_tokens = [negative_prompt] * batch_size
+            elif batch_size != len(negative_prompt):
+                raise ValueError(
+                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+                    " the batch size of `prompt`."
+                )
+            else:
+                uncond_tokens = negative_prompt
+
             max_length = text_input_ids.shape[-1]
             uncond_input = self.tokenizer(
-                [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="pt"
+                uncond_tokens,
+                padding="max_length",
+                max_length=max_length,
+                truncation=True,
+                return_tensors="pt",
             )
             uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
 
