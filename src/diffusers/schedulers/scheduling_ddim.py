@@ -159,7 +159,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = None
         self.timesteps = np.arange(0, num_train_timesteps)[::-1]
 
-    def scale_model_input(self, sample, timestep):
+    def scale_model_input(self, sample: torch.FloatTensor, timestep):
         return sample
 
     def _get_variance(self, timestep, prev_timestep):

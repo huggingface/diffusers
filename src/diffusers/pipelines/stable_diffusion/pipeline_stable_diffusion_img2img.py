@@ -222,14 +222,9 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         offset = self.scheduler.config.get("steps_offset", 0)
         init_timestep = int(num_inference_steps * strength) + offset
         init_timestep = min(init_timestep, num_inference_steps)
-        # FIXME
-        if isinstance(self.scheduler, LMSDiscreteScheduler):
-            timesteps = torch.tensor(
-                [num_inference_steps - init_timestep] * batch_size, dtype=torch.long, device=self.device
-            )
-        else:
-            timesteps = self.scheduler.timesteps[-init_timestep]
-            timesteps = torch.tensor([timesteps] * batch_size, dtype=torch.long, device=self.device)
+
+        timesteps = self.scheduler.timesteps[-init_timestep]
+        timesteps = torch.tensor([timesteps] * batch_size, device=self.device)
 
         # add noise to latents using the timesteps
         noise = torch.randn(init_latents.shape, generator=generator, device=self.device)
@@ -288,8 +283,6 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         timesteps_tensor = torch.tensor(self.scheduler.timesteps[t_start:], device=self.device)
 
         for i, t in enumerate(self.progress_bar(timesteps_tensor)):
-            t_index = t_start + i
-
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)

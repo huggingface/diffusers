@@ -201,7 +201,7 @@ class SchedulerCommonTest(unittest.TestCase):
                 )
 
         kwargs = dict(self.forward_default_kwargs)
-        num_inference_steps = kwargs.pop("num_inference_steps", None)
+        num_inference_steps = kwargs.pop("num_inference_steps", 50)
 
         for scheduler_class in self.scheduler_classes:
             scheduler_config = self.get_scheduler_config()
@@ -845,7 +845,7 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
 
     def test_betas(self):
         for beta_start, beta_end in zip([0.00001, 0.0001, 0.001], [0.0002, 0.002, 0.02]):
-            self.check_over_configs(beta_start=beta_start, beta_end=beta_end)
+            self.check_over_configs(beta_start=beta_start, beta_end=beta_end, time_step=0.0)
 
     def test_schedules(self):
         for schedule in ["linear", "scaled_linear"]:
@@ -863,14 +863,14 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
         scheduler.set_timesteps(self.num_inference_steps)
 
         model = self.dummy_model()
-        sample = self.dummy_sample_deter * scheduler.sigmas[0]
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
 
         for i, t in enumerate(scheduler.timesteps):
-            sample = sample / ((scheduler.sigmas[i] ** 2 + 1) ** 0.5)
+            sample = scheduler.scale_model_input(sample, t)
 
             model_output = model(sample, t)
 
-            output = scheduler.step(model_output, i, sample)
+            output = scheduler.step(model_output, t, sample)
             sample = output.prev_sample
 
         result_sum = torch.sum(torch.abs(sample))

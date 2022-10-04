@@ -256,13 +256,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         offset = self.scheduler.config.get("steps_offset", 0)
         init_timestep = int(num_inference_steps * strength) + offset
         init_timestep = min(init_timestep, num_inference_steps)
-        if isinstance(self.scheduler, LMSDiscreteScheduler):
-            timesteps = torch.tensor(
-                [num_inference_steps - init_timestep] * batch_size, dtype=torch.long, device=self.device
-            )
-        else:
-            timesteps = self.scheduler.timesteps[-init_timestep]
-            timesteps = torch.tensor([timesteps] * batch_size, dtype=torch.long, device=self.device)
+
+        timesteps = self.scheduler.timesteps[-init_timestep]
+        timesteps = torch.tensor([timesteps] * batch_size, device=self.device)
 
         # add noise to latents using the timesteps
         noise = torch.randn(init_latents.shape, generator=generator, device=self.device)
@@ -335,13 +331,8 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
-            if isinstance(self.scheduler, LMSDiscreteScheduler):
-                # masking
-                t_index = t_start + i
-                init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, torch.LongTensor([t_index]))
-            else:
-                # masking
-                init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, torch.LongTensor([t]))
+            # masking
+            init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, torch.tensor([t]))
 
             latents = (init_latents_proper * mask) + (latents * (1 - mask))
 

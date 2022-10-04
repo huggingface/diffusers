@@ -344,7 +344,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         return SchedulerOutput(prev_sample=prev_sample)
 
-    def scale_model_input(self, sample, timestep):
+    def scale_model_input(self, sample: torch.FloatTensor, timestep):
         return sample
 
     def _get_prev_sample(self, sample, timestep, prev_timestep, model_output):

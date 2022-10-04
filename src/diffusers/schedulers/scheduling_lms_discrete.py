@@ -111,10 +111,14 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(timesteps)
         self.derivatives = []
 
-    def scale_model_input(self, sample, timestep):
+    def scale_model_input(
+        self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
+    ) -> torch.FloatTensor:
         """
         Scale the model input to match the ODE solver in K-LMS
         """
+        if isinstance(timestep, torch.Tensor):
+            timestep = timestep.to(self.timesteps.device)
         step_index = (self.timesteps == timestep).nonzero().item()
         sigma = self.sigmas[step_index]
         sample = sample / ((sigma**2 + 1) ** 0.5)
@@ -166,7 +170,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.FloatTensor,
-        timestep: float,
+        timestep: Union[float, torch.FloatTensor],
         sample: torch.FloatTensor,
         order: int = 4,
         return_dict: bool = True,
@@ -189,6 +193,8 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             When returning a tuple, the first element is the sample tensor.
 
         """
+        if isinstance(timestep, torch.Tensor):
+            timestep = timestep.to(self.timesteps.device)
         step_index = (self.timesteps == timestep).nonzero().item()
         sigma = self.sigmas[step_index]
 
@@ -219,12 +225,14 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self,
         original_samples: torch.FloatTensor,
         noise: torch.FloatTensor,
-        timesteps: torch.IntTensor,
+        timesteps: torch.FloatTensor,
     ) -> torch.FloatTensor:
         sigmas = self.sigmas.to(original_samples.device)
+        schedule_timesteps = self.timesteps.to(original_samples.device)
         timesteps = timesteps.to(original_samples.device)
+        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
 
-        sigma = sigmas[timesteps].flatten()
+        sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):
             sigma = sigma.unsqueeze(-1)
 
