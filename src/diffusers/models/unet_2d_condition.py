@@ -313,8 +313,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                     hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size
                 )
         # 6. post-process
-        # make sure hidden states is in float32
-        # when running in half-precision
         sample = self.conv_norm_out(sample)
         sample = self.conv_act(sample)
         sample = self.conv_out(sample)
