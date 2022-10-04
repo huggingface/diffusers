@@ -22,7 +22,7 @@ import torch
 from diffusers.models.attention import AttentionBlock, SpatialTransformer
 from diffusers.models.embeddings import get_timestep_embedding
 from diffusers.models.resnet import Downsample2D, Upsample2D
-from diffusers.testing_utils import torch_device
+from diffusers.utils import torch_device
 
 
 torch.backends.cuda.matmul.allow_tf32 = False

@@ -16,7 +16,6 @@
 # and https://github.com/hojonathanho/diffusion
 
 import math
-import warnings
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
@@ -24,7 +23,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..utils import BaseOutput, deprecate
 from .scheduling_utils import SchedulerMixin
 
 
@@ -122,12 +121,12 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         steps_offset: int = 0,
         **kwargs,
     ):
-        if "tensor_format" in kwargs:
-            warnings.warn(
-                "`tensor_format` is deprecated as an argument and will be removed in version `0.5.0`."
-                "If you're running your code in PyTorch, you can safely remove this argument.",
-                DeprecationWarning,
-            )
+        deprecate(
+            "tensor_format",
+            "0.5.0",
+            "If you're running your code in PyTorch, you can safely remove this argument.",
+            take_from=kwargs,
+        )
 
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
@@ -175,17 +174,10 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
-
-        offset = self.config.steps_offset
-
-        if "offset" in kwargs:
-            warnings.warn(
-                "`offset` is deprecated as an input argument to `set_timesteps` and will be removed in v0.4.0."
-                " Please pass `steps_offset` to `__init__` instead.",
-                DeprecationWarning,
-            )
-
-            offset = kwargs["offset"]
+        deprecated_offset = deprecate(
+            "offset", "0.5.0", "Please pass `steps_offset` to `__init__` instead.", take_from=kwargs
+        )
+        offset = deprecated_offset or self.config.steps_offset
 
         self.num_inference_steps = num_inference_steps
         step_ratio = self.config.num_train_timesteps // self.num_inference_steps
