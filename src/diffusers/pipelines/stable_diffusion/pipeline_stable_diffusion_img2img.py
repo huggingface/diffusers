@@ -283,8 +283,11 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         t_start = max(num_inference_steps - init_timestep + offset, 0)
 
         # Some schedulers like PNDM have timesteps as arrays
-        # It's more optimzed to move all timesteps to correct device beforehand
-        timesteps_tensor = torch.tensor(self.scheduler.timesteps[t_start:], device=self.device)
+        # It's more optimized to move all timesteps to correct device beforehand
+        if torch.is_tensor(self.scheduler.timesteps):
+            timesteps_tensor = self.scheduler.timesteps[t_start:].to(self.device)
+        else:
+            timesteps_tensor = torch.tensor(self.scheduler.timesteps[t_start:].copy(), device=self.device)
 
         for i, t in enumerate(self.progress_bar(timesteps_tensor)):
             t_index = t_start + i

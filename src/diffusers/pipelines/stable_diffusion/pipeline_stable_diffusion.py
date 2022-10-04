@@ -251,7 +251,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps)
 
         # Some schedulers like PNDM have timesteps as arrays
-        # It's more optimzed to move all timesteps to correct device beforehand
+        # It's more optimized to move all timesteps to correct device beforehand
         if torch.is_tensor(self.scheduler.timesteps):
             timesteps_tensor = self.scheduler.timesteps.to(self.device)
         else:
