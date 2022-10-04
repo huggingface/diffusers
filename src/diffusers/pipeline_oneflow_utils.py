@@ -169,7 +169,7 @@ class OneFlowDiffusionPipeline(ConfigMixin):
             if isinstance(module, torch.nn.Module):
                 module.to(torch_device)
             if isinstance(module, og_torch.nn.Module):
-                if "SafetyChecker" in str(type(module)):
+                if "SafetyChecker" in str(type(module)) or "CLIPTextModel" in str(type(module)):
                     print("skipping", type(module), "on:", module.device)
                     continue
                 else:
