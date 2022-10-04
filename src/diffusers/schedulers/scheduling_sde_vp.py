@@ -14,9 +14,8 @@
 
 # DISCLAIMER: This file is strongly influenced by https://github.com/yang-song/score_sde_pytorch
 
-# TODO(Patrick, Anton, Suraj) - make scheduler framework independent and clean-up a bit
-from typing import Union
 import math
+from typing import Union
 
 import torch
 
