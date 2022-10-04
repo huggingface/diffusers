@@ -120,7 +120,7 @@ print(pipe.unet.conv_out.state_dict()["weight"].stride())  # (2880, 9, 3, 1)
 pipe.unet.to(memory_format=torch.channels_last)  # in-place operation
 print(
     pipe.unet.conv_out.state_dict()["weight"].stride()
-)  # (2880, 1, 960, 320) haveing a stride of 1 for the 2nd dimension proves that it works
+)  # (2880, 1, 960, 320) having a stride of 1 for the 2nd dimension proves that it works
 ```
 
 ## Tracing
