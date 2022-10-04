@@ -23,6 +23,7 @@ from .import_utils import (
     USE_TF,
     USE_TORCH,
     DummyObject,
+    is_accelerate_available,
     is_flax_available,
     is_inflect_available,
     is_modelcards_available,
