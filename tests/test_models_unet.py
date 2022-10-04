@@ -19,7 +19,7 @@ import unittest
 import torch
 
 from diffusers import UNet2DConditionModel, UNet2DModel
-from diffusers.testing_utils import floats_tensor, slow, torch_device
+from diffusers.utils import floats_tensor, slow, torch_device
 
 from .test_modeling_common import ModelTesterMixin
 
@@ -199,7 +199,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
     def test_gradient_checkpointing(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        model = self.model_class(**init_dict)
+        model = self.model_class(**init_dict).eval()
         model.to(torch_device)
 
         out = model(**inputs_dict).sample

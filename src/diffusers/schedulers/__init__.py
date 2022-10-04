@@ -34,10 +34,12 @@ if is_flax_available():
     from .scheduling_lms_discrete_flax import FlaxLMSDiscreteScheduler
     from .scheduling_pndm_flax import FlaxPNDMScheduler
     from .scheduling_sde_ve_flax import FlaxScoreSdeVeScheduler
+    from .scheduling_utils_flax import FlaxSchedulerMixin
 else:
     from ..utils.dummy_flax_objects import *  # noqa F403
 
-if is_scipy_available():
+
+if is_scipy_available() and is_torch_available():
     from .scheduling_lms_discrete import LMSDiscreteScheduler
 else:
     from ..utils.dummy_torch_and_scipy_objects import *  # noqa F403
