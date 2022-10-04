@@ -48,8 +48,7 @@ from diffusers import (
 )
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from diffusers.testing_utils import floats_tensor, load_image, slow, torch_device
-from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME
+from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, load_image, slow, torch_device
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -1422,16 +1421,190 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     def test_stable_diffusion_onnx(self):
         sd_pipe = StableDiffusionOnnxPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CUDAExecutionProvider", use_auth_token=True
+            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider", use_auth_token=True
         )
 
         prompt = "A painting of a squirrel eating a burger"
         np.random.seed(0)
-        output = sd_pipe([prompt], guidance_scale=6.0, num_inference_steps=20, output_type="np")
+        output = sd_pipe([prompt], guidance_scale=6.0, num_inference_steps=5, output_type="np")
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.0385, 0.0252, 0.0234, 0.0287, 0.0358, 0.0287, 0.0276, 0.0235, 0.0010])
+        expected_slice = np.array([0.3602, 0.3688, 0.3652, 0.3895, 0.3782, 0.3747, 0.3927, 0.4241, 0.4327])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    def test_stable_diffusion_text2img_intermediate_state(self):
+        number_of_steps = 0
+
+        def test_callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
+            test_callback_fn.has_been_called = True
+            nonlocal number_of_steps
+            number_of_steps += 1
+            if step == 0:
+                latents = latents.detach().cpu().numpy()
+                assert latents.shape == (1, 4, 64, 64)
+                latents_slice = latents[0, -3:, -3:, -1]
+                expected_slice = np.array(
+                    [1.8285, 1.2857, -0.1024, 1.2406, -2.3068, 1.0747, -0.0818, -0.6520, -2.9506]
+                )
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
+
+        test_callback_fn.has_been_called = False
+
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", use_auth_token=True, revision="fp16", torch_dtype=torch.float16
+        )
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        prompt = "Andromeda galaxy in a bottle"
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        with torch.autocast(torch_device):
+            pipe(
+                prompt=prompt,
+                num_inference_steps=50,
+                guidance_scale=7.5,
+                generator=generator,
+                callback=test_callback_fn,
+                callback_steps=1,
+            )
+        assert test_callback_fn.has_been_called
+        assert number_of_steps == 51
+
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    def test_stable_diffusion_img2img_intermediate_state(self):
+        number_of_steps = 0
+
+        def test_callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
+            test_callback_fn.has_been_called = True
+            nonlocal number_of_steps
+            number_of_steps += 1
+            if step == 0:
+                latents = latents.detach().cpu().numpy()
+                assert latents.shape == (1, 4, 64, 96)
+                latents_slice = latents[0, -3:, -3:, -1]
+                expected_slice = np.array([0.9052, -0.0184, 0.4810, 0.2898, 0.5851, 1.4920, 0.5362, 1.9838, 0.0530])
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
+
+        test_callback_fn.has_been_called = False
+
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/img2img/sketch-mountains-input.jpg"
+        )
+        init_image = init_image.resize((768, 512))
+
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", use_auth_token=True, revision="fp16", torch_dtype=torch.float16
+        )
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        prompt = "A fantasy landscape, trending on artstation"
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        with torch.autocast(torch_device):
+            pipe(
+                prompt=prompt,
+                init_image=init_image,
+                strength=0.75,
+                num_inference_steps=50,
+                guidance_scale=7.5,
+                generator=generator,
+                callback=test_callback_fn,
+                callback_steps=1,
+            )
+        assert test_callback_fn.has_been_called
+        assert number_of_steps == 38
+
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    def test_stable_diffusion_inpaint_intermediate_state(self):
+        number_of_steps = 0
+
+        def test_callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
+            test_callback_fn.has_been_called = True
+            nonlocal number_of_steps
+            number_of_steps += 1
+            if step == 0:
+                latents = latents.detach().cpu().numpy()
+                assert latents.shape == (1, 4, 64, 64)
+                latents_slice = latents[0, -3:, -3:, -1]
+                expected_slice = np.array(
+                    [-0.5472, 1.1218, -0.5505, -0.9390, -1.0794, 0.4063, 0.5158, 0.6429, -1.5246]
+                )
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
+
+        test_callback_fn.has_been_called = False
+
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/overture-creations-5sI6fQgYIuo.png"
+        )
+        mask_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
+        )
+
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", use_auth_token=True, revision="fp16", torch_dtype=torch.float16
+        )
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        prompt = "A red cat sitting on a park bench"
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        with torch.autocast(torch_device):
+            pipe(
+                prompt=prompt,
+                init_image=init_image,
+                mask_image=mask_image,
+                strength=0.75,
+                num_inference_steps=50,
+                guidance_scale=7.5,
+                generator=generator,
+                callback=test_callback_fn,
+                callback_steps=1,
+            )
+        assert test_callback_fn.has_been_called
+        assert number_of_steps == 38
+
+    @slow
+    def test_stable_diffusion_onnx_intermediate_state(self):
+        number_of_steps = 0
+
+        def test_callback_fn(step: int, timestep: int, latents: np.ndarray) -> None:
+            test_callback_fn.has_been_called = True
+            nonlocal number_of_steps
+            number_of_steps += 1
+            if step == 0:
+                assert latents.shape == (1, 4, 64, 64)
+                latents_slice = latents[0, -3:, -3:, -1]
+                expected_slice = np.array(
+                    [-0.5950, -0.3039, -1.1672, 0.1594, -1.1572, 0.6719, -1.9712, -0.0403, 0.9592]
+                )
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
+
+        test_callback_fn.has_been_called = False
+
+        pipe = StableDiffusionOnnxPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", use_auth_token=True, revision="onnx", provider="CPUExecutionProvider"
+        )
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "Andromeda galaxy in a bottle"
+
+        np.random.seed(0)
+        pipe(prompt=prompt, num_inference_steps=5, guidance_scale=7.5, callback=test_callback_fn, callback_steps=1)
+        assert test_callback_fn.has_been_called
+        assert number_of_steps == 6

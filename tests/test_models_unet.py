@@ -19,7 +19,7 @@ import unittest
 import torch
 
 from diffusers import UNet2DConditionModel, UNet2DModel
-from diffusers.testing_utils import floats_tensor, slow, torch_device
+from diffusers.utils import floats_tensor, slow, torch_device
 
 from .test_modeling_common import ModelTesterMixin
 
