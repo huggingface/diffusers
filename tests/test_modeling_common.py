@@ -22,8 +22,8 @@ import numpy as np
 import torch
 
 from diffusers.modeling_utils import ModelMixin
-from diffusers.testing_utils import torch_device
 from diffusers.training_utils import EMAModel
+from diffusers.utils import torch_device
 
 
 class ModelTesterMixin:
