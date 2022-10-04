@@ -299,7 +299,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             if negative_prompt is None:
                 ucond_tokens = [""] * batch_size
             elif type(prompt) is not type(negative_prompt):
-                raise TypeError("`negative_prompt` should be the same type to `prompt`.")
+                raise TypeError("`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} != {type(prompt)}.")
             elif isinstance(negative_prompt, str):
                 ucond_tokens = [negative_prompt] * batch_size
             elif batch_size != len(negative_prompt):
