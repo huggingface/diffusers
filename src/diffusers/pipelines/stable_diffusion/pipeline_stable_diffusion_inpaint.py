@@ -318,7 +318,10 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
         # Some schedulers like PNDM have timesteps as arrays
         # It's more optimzed to move all timesteps to correct device beforehand
-        timesteps_tensor = torch.tensor(self.scheduler.timesteps[t_start:], device=self.device)
+        if torch.is_tensor(self.scheduler.timesteps):
+            timesteps_tensor = torch.tensor(self.scheduler.timesteps[t_start:], device=self.device)
+        else:
+            timesteps_tensor = torch.tensor(self.scheduler.timesteps.copy()[t_start:], device=self.device)
 
         for i, t in tqdm(enumerate(timesteps_tensor)):
             t_index = t_start + i
