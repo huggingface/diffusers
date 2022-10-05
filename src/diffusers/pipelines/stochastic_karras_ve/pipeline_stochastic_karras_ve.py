@@ -69,7 +69,7 @@ class KarrasVePipeline(DiffusionPipeline):
         model = self.unet
 
         # sample x_0 ~ N(0, sigma_0^2 * I)
-        sample = torch.randn(*shape) * self.scheduler.config.sigma_max
+        sample = torch.randn(*shape) * self.scheduler.init_noise_sigma
         sample = sample.to(self.device)
 
         self.scheduler.set_timesteps(num_inference_steps)

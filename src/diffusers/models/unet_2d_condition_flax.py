@@ -215,7 +215,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         return_dict: bool = True,
         train: bool = False,
     ) -> Union[FlaxUNet2DConditionOutput, Tuple]:
-        """r
+        r"""
         Args:
             sample (`jnp.ndarray`): (channel, height, width) noisy inputs tensor
             timestep (`jnp.ndarray` or `float` or `int`): timesteps

@@ -21,6 +21,7 @@ from typing import Callable, List, Optional, Tuple, Union
 import torch
 from torch import Tensor, device
 
+from diffusers.utils import is_accelerate_available
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
@@ -269,7 +270,8 @@ class ModelMixin(torch.nn.Module):
 
         <Tip>
 
-        Passing `use_auth_token=True`` is required when you want to use a private model.
+         It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
+         models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
         </Tip>
 
@@ -293,33 +295,13 @@ class ModelMixin(torch.nn.Module):
         from_auto_class = kwargs.pop("_from_auto", False)
         torch_dtype = kwargs.pop("torch_dtype", None)
         subfolder = kwargs.pop("subfolder", None)
+        device_map = kwargs.pop("device_map", None)
 
         user_agent = {"file_type": "model", "framework": "pytorch", "from_auto_class": from_auto_class}
 
         # Load config if we don't provide a configuration
         config_path = pretrained_model_name_or_path
-        model, unused_kwargs = cls.from_config(
-            config_path,
-            cache_dir=cache_dir,
-            return_unused_kwargs=True,
-            force_download=force_download,
-            resume_download=resume_download,
-            proxies=proxies,
-            local_files_only=local_files_only,
-            use_auth_token=use_auth_token,
-            revision=revision,
-            subfolder=subfolder,
-            **kwargs,
-        )
 
-        if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
-            raise ValueError(
-                f"{torch_dtype} needs to be of type `torch.dtype`, e.g. `torch.float16`, but is {type(torch_dtype)}."
-            )
-        elif torch_dtype is not None:
-            model = model.to(torch_dtype)
-
-        model.register_to_config(_name_or_path=pretrained_model_name_or_path)
         # This variable will flag if we're loading a sharded checkpoint. In this case the archive file is just the
         # Load model
         pretrained_model_name_or_path = str(pretrained_model_name_or_path)
@@ -357,7 +339,7 @@ class ModelMixin(torch.nn.Module):
                     f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier "
                     "listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a "
                     "token having permission to this repo with `use_auth_token` or log in with `huggingface-cli "
-                    "login` and pass `use_auth_token=True`."
+                    "login`."
                 )
             except RevisionNotFoundError:
                 raise EnvironmentError(
@@ -391,25 +373,81 @@ class ModelMixin(torch.nn.Module):
                 )
 
             # restore default dtype
-        state_dict = load_state_dict(model_file)
-        model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
-            model,
-            state_dict,
-            model_file,
-            pretrained_model_name_or_path,
-            ignore_mismatched_sizes=ignore_mismatched_sizes,
-        )
 
-        # Set model in evaluation mode to deactivate DropOut modules by default
-        model.eval()
+        if device_map == "auto":
+            if is_accelerate_available():
+                import accelerate
+            else:
+                raise ImportError("Please install accelerate via `pip install accelerate`")
 
-        if output_loading_info:
+            with accelerate.init_empty_weights():
+                model, unused_kwargs = cls.from_config(
+                    config_path,
+                    cache_dir=cache_dir,
+                    return_unused_kwargs=True,
+                    force_download=force_download,
+                    resume_download=resume_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                    subfolder=subfolder,
+                    device_map=device_map,
+                    **kwargs,
+                )
+
+            accelerate.load_checkpoint_and_dispatch(model, model_file, device_map)
+
+            loading_info = {
+                "missing_keys": [],
+                "unexpected_keys": [],
+                "mismatched_keys": [],
+                "error_msgs": [],
+            }
+        else:
+            model, unused_kwargs = cls.from_config(
+                config_path,
+                cache_dir=cache_dir,
+                return_unused_kwargs=True,
+                force_download=force_download,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+                subfolder=subfolder,
+                device_map=device_map,
+                **kwargs,
+            )
+
+            state_dict = load_state_dict(model_file)
+            model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
+                model,
+                state_dict,
+                model_file,
+                pretrained_model_name_or_path,
+                ignore_mismatched_sizes=ignore_mismatched_sizes,
+            )
+
             loading_info = {
                 "missing_keys": missing_keys,
                 "unexpected_keys": unexpected_keys,
                 "mismatched_keys": mismatched_keys,
                 "error_msgs": error_msgs,
             }
+
+        if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
+            raise ValueError(
+                f"{torch_dtype} needs to be of type `torch.dtype`, e.g. `torch.float16`, but is {type(torch_dtype)}."
+            )
+        elif torch_dtype is not None:
+            model = model.to(torch_dtype)
+
+        model.register_to_config(_name_or_path=pretrained_model_name_or_path)
+
+        # Set model in evaluation mode to deactivate DropOut modules by default
+        model.eval()
+        if output_loading_info:
             return model, loading_info
 
         return model

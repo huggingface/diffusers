@@ -67,11 +67,12 @@ To create the package for pypi.
     you need to go back to main before executing this.
 """
 
-import re
 import os
+import re
 from distutils.core import Command
 
 from setuptools import find_packages, setup
+
 
 # IMPORTANT:
 # 1. all dependencies should be listed here with their version requirements if any
@@ -85,7 +86,7 @@ _deps = [
     "flake8>=3.8.3",
     "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
-    "huggingface-hub>=0.9.1",
+    "huggingface-hub>=0.10.0",
     "importlib_metadata",
     "isort>=5.5.4",
     "jax>=0.2.8,!=0.3.2,<=0.3.6",
@@ -177,6 +178,7 @@ extras["quality"] = deps_list("black", "isort", "flake8", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "modelcards")
 extras["test"] = deps_list(
+    "accelerate",
     "datasets",
     "onnxruntime",
     "pytest",

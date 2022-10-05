@@ -201,7 +201,7 @@ class SchedulerCommonTest(unittest.TestCase):
                 )
 
         kwargs = dict(self.forward_default_kwargs)
-        num_inference_steps = kwargs.pop("num_inference_steps", None)
+        num_inference_steps = kwargs.pop("num_inference_steps", 50)
 
         for scheduler_class in self.scheduler_classes:
             scheduler_config = self.get_scheduler_config()
@@ -225,6 +225,27 @@ class SchedulerCommonTest(unittest.TestCase):
             outputs_tuple = scheduler.step(residual, 0, sample, return_dict=False, **kwargs)
 
             recursive_check(outputs_tuple, outputs_dict)
+
+    def test_scheduler_public_api(self):
+        for scheduler_class in self.scheduler_classes:
+            scheduler_config = self.get_scheduler_config()
+            scheduler = scheduler_class(**scheduler_config)
+            self.assertTrue(
+                hasattr(scheduler, "init_noise_sigma"),
+                f"{scheduler_class} does not implement a required attribute `init_noise_sigma`",
+            )
+            self.assertTrue(
+                hasattr(scheduler, "scale_model_input"),
+                f"{scheduler_class} does not implement a required class method `scale_model_input(sample, timestep)`",
+            )
+            self.assertTrue(
+                hasattr(scheduler, "step"),
+                f"{scheduler_class} does not implement a required class method `step(...)`",
+            )
+
+            sample = self.dummy_sample
+            scaled_sample = scheduler.scale_model_input(sample, 0.0)
+            self.assertEqual(sample.shape, scaled_sample.shape)
 
 
 class DDPMSchedulerTest(SchedulerCommonTest):
@@ -354,7 +375,7 @@ class DDIMSchedulerTest(SchedulerCommonTest):
         scheduler_config = self.get_scheduler_config(steps_offset=1)
         scheduler = scheduler_class(**scheduler_config)
         scheduler.set_timesteps(5)
-        assert np.equal(scheduler.timesteps, np.array([801, 601, 401, 201, 1])).all()
+        assert torch.equal(scheduler.timesteps, torch.LongTensor([801, 601, 401, 201, 1]))
 
     def test_betas(self):
         for beta_start, beta_end in zip([0.0001, 0.001, 0.01, 0.1], [0.002, 0.02, 0.2, 2]):
@@ -568,10 +589,12 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         scheduler_config = self.get_scheduler_config(steps_offset=1)
         scheduler = scheduler_class(**scheduler_config)
         scheduler.set_timesteps(10)
-        assert np.equal(
+        assert torch.equal(
             scheduler.timesteps,
-            np.array([901, 851, 851, 801, 801, 751, 751, 701, 701, 651, 651, 601, 601, 501, 401, 301, 201, 101, 1]),
-        ).all()
+            torch.LongTensor(
+                [901, 851, 851, 801, 801, 751, 751, 701, 701, 651, 651, 601, 601, 501, 401, 301, 201, 101, 1]
+            ),
+        )
 
     def test_betas(self):
         for beta_start, beta_end in zip([0.0001, 0.001], [0.002, 0.02]):
@@ -863,14 +886,14 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
         scheduler.set_timesteps(self.num_inference_steps)
 
         model = self.dummy_model()
-        sample = self.dummy_sample_deter * scheduler.sigmas[0]
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
 
         for i, t in enumerate(scheduler.timesteps):
-            sample = sample / ((scheduler.sigmas[i] ** 2 + 1) ** 0.5)
+            sample = scheduler.scale_model_input(sample, t)
 
             model_output = model(sample, t)
 
-            output = scheduler.step(model_output, i, sample)
+            output = scheduler.step(model_output, t, sample)
             sample = output.prev_sample
 
         result_sum = torch.sum(torch.abs(sample))

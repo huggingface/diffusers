@@ -144,6 +144,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
@@ -180,6 +181,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `guidance_scale` is less than `1`).
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
@@ -256,13 +260,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         offset = self.scheduler.config.get("steps_offset", 0)
         init_timestep = int(num_inference_steps * strength) + offset
         init_timestep = min(init_timestep, num_inference_steps)
-        if isinstance(self.scheduler, LMSDiscreteScheduler):
-            timesteps = torch.tensor(
-                [num_inference_steps - init_timestep] * batch_size, dtype=torch.long, device=self.device
-            )
-        else:
-            timesteps = self.scheduler.timesteps[-init_timestep]
-            timesteps = torch.tensor([timesteps] * batch_size, dtype=torch.long, device=self.device)
+
+        timesteps = self.scheduler.timesteps[-init_timestep]
+        timesteps = torch.tensor([timesteps] * batch_size, device=self.device)
 
         # add noise to latents using the timesteps
         noise = torch.randn(init_latents.shape, generator=generator, device=self.device)
@@ -292,9 +292,32 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
+            uncond_tokens: List[str]
+            if negative_prompt is None:
+                uncond_tokens = [""] * batch_size
+            elif type(prompt) is not type(negative_prompt):
+                raise TypeError(
+                    "`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    " {type(prompt)}."
+                )
+            elif isinstance(negative_prompt, str):
+                uncond_tokens = [negative_prompt] * batch_size
+            elif batch_size != len(negative_prompt):
+                raise ValueError(
+                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+                    " the batch size of `prompt`."
+                )
+            else:
+                uncond_tokens = negative_prompt
+
             max_length = text_input_ids.shape[-1]
             uncond_input = self.tokenizer(
-                [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="pt"
+                uncond_tokens,
+                padding="max_length",
+                max_length=max_length,
+                truncation=True,
+                return_tensors="pt",
             )
             uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
 
@@ -317,17 +340,13 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         t_start = max(num_inference_steps - init_timestep + offset, 0)
 
         # Some schedulers like PNDM have timesteps as arrays
-        # It's more optimzed to move all timesteps to correct device beforehand
-        timesteps_tensor = torch.tensor(self.scheduler.timesteps[t_start:], device=self.device)
+        # It's more optimized to move all timesteps to correct device beforehand
+        timesteps = self.scheduler.timesteps[t_start:].to(self.device)
 
-        for i, t in tqdm(enumerate(timesteps_tensor)):
-            t_index = t_start + i
+        for i, t in tqdm(enumerate(timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-            if isinstance(self.scheduler, LMSDiscreteScheduler):
-                sigma = self.scheduler.sigmas[t_index]
-                # the model input needs to be scaled to match the continuous ODE formulation in K-LMS
-                latent_model_input = latent_model_input / ((sigma**2 + 1) ** 0.5)
+            latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
             # predict the noise residual
             noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
@@ -338,14 +357,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            if isinstance(self.scheduler, LMSDiscreteScheduler):
-                latents = self.scheduler.step(noise_pred, t_index, latents, **extra_step_kwargs).prev_sample
-                # masking
-                init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, torch.LongTensor([t_index]))
-            else:
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
-                # masking
-                init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, torch.LongTensor([t]))
+            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+            # masking
+            init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, torch.tensor([t]))
 
             latents = (init_latents_proper * mask) + (latents * (1 - mask))
 

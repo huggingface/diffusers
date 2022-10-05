@@ -1001,7 +1001,7 @@ class PipelineTesterMixin(unittest.TestCase):
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion(self):
         # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1", use_auth_token=True)
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1")
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -1023,7 +1023,7 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_fast_ddim(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1", use_auth_token=True)
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1")
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -1158,9 +1158,9 @@ class PipelineTesterMixin(unittest.TestCase):
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_lms_stable_diffusion_pipeline(self):
         model_id = "CompVis/stable-diffusion-v1-1"
-        pipe = StableDiffusionPipeline.from_pretrained(model_id, use_auth_token=True).to(torch_device)
+        pipe = StableDiffusionPipeline.from_pretrained(model_id).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-        scheduler = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler", use_auth_token=True)
+        scheduler = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler")
         pipe.scheduler = scheduler
 
         prompt = "a photograph of an astronaut riding a horse"
@@ -1179,9 +1179,9 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_stable_diffusion_memory_chunking(self):
         torch.cuda.reset_peak_memory_stats()
         model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionPipeline.from_pretrained(
-            model_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True
-        ).to(torch_device)
+        pipe = StableDiffusionPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16).to(
+            torch_device
+        )
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "a photograph of an astronaut riding a horse"
@@ -1216,6 +1216,37 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    def test_stable_diffusion_text2img_pipeline_fp16(self):
+        torch.cuda.reset_peak_memory_stats()
+        model_id = "CompVis/stable-diffusion-v1-4"
+        pipe = StableDiffusionPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16).to(
+            torch_device
+        )
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "a photograph of an astronaut riding a horse"
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        output_chunked = pipe(
+            [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
+        )
+        image_chunked = output_chunked.images
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        with torch.autocast(torch_device):
+            output = pipe(
+                [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
+            )
+            image = output.images
+
+        # Make sure results are close enough
+        diff = np.abs(image_chunked.flatten() - image.flatten())
+        # They ARE different since ops are not run always at the same precision
+        # however, they should be extremely close.
+        assert diff.mean() < 2e-2
+
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_text2img_pipeline(self):
         expected_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
@@ -1227,7 +1258,6 @@ class PipelineTesterMixin(unittest.TestCase):
         pipe = StableDiffusionPipeline.from_pretrained(
             model_id,
             safety_checker=self.dummy_safety_checker,
-            use_auth_token=True,
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -1260,7 +1290,6 @@ class PipelineTesterMixin(unittest.TestCase):
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
             model_id,
             safety_checker=self.dummy_safety_checker,
-            use_auth_token=True,
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -1304,7 +1333,6 @@ class PipelineTesterMixin(unittest.TestCase):
             model_id,
             scheduler=lms,
             safety_checker=self.dummy_safety_checker,
-            use_auth_token=True,
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -1348,7 +1376,6 @@ class PipelineTesterMixin(unittest.TestCase):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             model_id,
             safety_checker=self.dummy_safety_checker,
-            use_auth_token=True,
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -1395,7 +1422,6 @@ class PipelineTesterMixin(unittest.TestCase):
             model_id,
             scheduler=lms,
             safety_checker=self.dummy_safety_checker,
-            use_auth_token=True,
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -1421,7 +1447,7 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     def test_stable_diffusion_onnx(self):
         sd_pipe = StableDiffusionOnnxPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider", use_auth_token=True
+            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider"
         )
 
         prompt = "A painting of a squirrel eating a burger"
@@ -1456,7 +1482,7 @@ class PipelineTesterMixin(unittest.TestCase):
         test_callback_fn.has_been_called = False
 
         pipe = StableDiffusionPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", use_auth_token=True, revision="fp16", torch_dtype=torch.float16
+            "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -1502,7 +1528,7 @@ class PipelineTesterMixin(unittest.TestCase):
         init_image = init_image.resize((768, 512))
 
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", use_auth_token=True, revision="fp16", torch_dtype=torch.float16
+            "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -1555,7 +1581,7 @@ class PipelineTesterMixin(unittest.TestCase):
         )
 
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", use_auth_token=True, revision="fp16", torch_dtype=torch.float16
+            "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -1598,7 +1624,7 @@ class PipelineTesterMixin(unittest.TestCase):
         test_callback_fn.has_been_called = False
 
         pipe = StableDiffusionOnnxPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", use_auth_token=True, revision="onnx", provider="CPUExecutionProvider"
+            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider"
         )
         pipe.set_progress_bar_config(disable=None)
 
