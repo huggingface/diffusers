@@ -30,11 +30,13 @@ from PIL import Image
 from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
+from .dynamic_modules_utils import get_class_from_dynamic_module
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from .utils import CONFIG_NAME, DIFFUSERS_CACHE, ONNX_WEIGHTS_NAME, WEIGHTS_NAME, BaseOutput, logging
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
+CUSTOM_PIPELINE_FILE_NAME = "pipeline.py"
 
 
 logger = logging.get_logger(__name__)
@@ -208,6 +210,15 @@ class DiffusionPipeline(ConfigMixin):
             torch_dtype (`str` or `torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model under this dtype. If `"auto"` is passed the dtype
                 will be automatically derived from the model's weights.
+            custom_pipeline (`str`, *optional*):
+                Can be either:
+
+                    - A string, the *repo id* of a custom pipeline, called `pipeline.py`, hosted inside a model repo on
+                      https://huggingface.co/ Valid repo ids have to be located under a user or organization name, like
+                      `CompVis/ldm-text2im-large-256`.
+                    - A path to a *directory* containing a pipeline, called `pipeline.py`, e.g., `./my_pipeline_directory/`.
+
+            torch_dtype (`str` or `torch.dtype`, *optional*):
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
@@ -279,6 +290,7 @@ class DiffusionPipeline(ConfigMixin):
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
+        custom_pipeline = kwargs.pop("custom_pipeline", None)
         provider = kwargs.pop("provider", None)
         sess_options = kwargs.pop("sess_options", None)
 
@@ -299,6 +311,9 @@ class DiffusionPipeline(ConfigMixin):
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
             allow_patterns += [WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, ONNX_WEIGHTS_NAME, cls.config_name]
 
+            if custom_pipeline is not None:
+                allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
+
             # download all allow_patterns
             cached_folder = snapshot_download(
                 pretrained_model_name_or_path,
@@ -317,7 +332,9 @@ class DiffusionPipeline(ConfigMixin):
 
         # 2. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
-        if cls != DiffusionPipeline:
+        if custom_pipeline is not None:
+            pipeline_class = get_class_from_dynamic_module(custom_pipeline, module_file=CUSTOM_PIPELINE_FILE_NAME, cache_dir=custom_pipeline)
+        elif cls != DiffusionPipeline:
             pipeline_class = cls
         else:
             diffusers_module = importlib.import_module(cls.__module__.split(".")[0])
