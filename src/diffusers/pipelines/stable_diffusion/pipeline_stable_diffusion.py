@@ -226,14 +226,14 @@ class StableDiffusionPipeline(DiffusionPipeline):
         if do_classifier_free_guidance:
             uncond_tokens: List[str]
             if negative_prompt is None:
-                uncond_tokens = [""] * batch_size
+                uncond_tokens = [""]
             elif type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     "`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
                     " {type(prompt)}."
                 )
             elif isinstance(negative_prompt, str):
-                uncond_tokens = [negative_prompt] * batch_size
+                uncond_tokens = [negative_prompt]
             elif batch_size != len(negative_prompt):
                 raise ValueError(
                     f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
@@ -260,7 +260,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         # duplicate text embeddings for each generation per prompt
         text_embeddings = text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
-        
+
         # get the initial random noise unless the user supplied it
 
         # Unlike in other pipelines, latents need to be generated in the target device
