@@ -283,6 +283,7 @@ class DiffusionPipeline(ConfigMixin):
         torch_dtype = kwargs.pop("torch_dtype", None)
         provider = kwargs.pop("provider", None)
         sess_options = kwargs.pop("sess_options", None)
+        device_map = kwargs.pop("device_map", None)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -401,6 +402,15 @@ class DiffusionPipeline(ConfigMixin):
                     loading_kwargs["provider"] = provider
                     loading_kwargs["sess_options"] = sess_options
 
+                if library_name == "diffusers":
+                    loading_kwargs["device_map"] = device_map
+
+                # if using transformers and class obj has no _no_split modules, using device map will break loading
+                elif library_name == "transformers":
+                    if getattr(class_obj, "_no_split_modules", None) is not None:
+                        loading_kwargs["device_map"] = device_map
+
+            
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
                     loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
