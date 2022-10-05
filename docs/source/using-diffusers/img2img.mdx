@@ -15,7 +15,6 @@ specific language governing permissions and limitations under the License.
 The [`StableDiffusionImg2ImgPipeline`] lets you pass a text prompt and an initial image to condition the generation of new images.
 
 ```python
-from torch import autocast
 import requests
 from PIL import Image
 from io import BytesIO
@@ -37,8 +36,7 @@ init_image = init_image.resize((768, 512))
 
 prompt = "A fantasy landscape, trending on artstation"
 
-with autocast("cuda"):
-    images = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5).images
+images = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5).images
 
 images[0].save("fantasy_landscape.png")
 ```
