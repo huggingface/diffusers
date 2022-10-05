@@ -226,13 +226,9 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         offset = self.scheduler.config.get("steps_offset", 0)
         init_timestep = int(num_inference_steps * strength) + offset
         init_timestep = min(init_timestep, num_inference_steps)
-        if isinstance(self.scheduler, LMSDiscreteScheduler):
-            timesteps = torch.tensor(
-                [num_inference_steps - init_timestep] * batch_size, dtype=torch.long, device=self.device
-            )
-        else:
-            timesteps = self.scheduler.timesteps[-init_timestep]
-            timesteps = torch.tensor([timesteps] * batch_size, dtype=torch.long, device=self.device)
+
+        timesteps = self.scheduler.timesteps[-init_timestep]
+        timesteps = torch.tensor([timesteps] * batch_size, device=self.device)
 
         # add noise to latents using the timesteps
         noise = torch.randn(init_latents.shape, generator=generator, device=self.device)
@@ -310,16 +306,9 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         timesteps = self.scheduler.timesteps[t_start:].to(self.device)
 
         for i, t in enumerate(self.progress_bar(timesteps)):
-            t_index = t_start + i
-
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-
-            # if we use LMSDiscreteScheduler, let's make sure latents are multiplied by sigmas
-            if isinstance(self.scheduler, LMSDiscreteScheduler):
-                sigma = self.scheduler.sigmas[t_index]
-                # the model input needs to be scaled to match the continuous ODE formulation in K-LMS
-                latent_model_input = latent_model_input / ((sigma**2 + 1) ** 0.5)
+            latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
             # predict the noise residual
             noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
@@ -330,10 +319,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            if isinstance(self.scheduler, LMSDiscreteScheduler):
-                latents = self.scheduler.step(noise_pred, t_index, latents, **extra_step_kwargs).prev_sample
-            else:
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
             # call the callback, if provided
             if callback is not None and i % callback_steps == 0:
