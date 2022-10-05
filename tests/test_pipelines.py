@@ -1626,21 +1626,22 @@ class PipelineTesterMixin(unittest.TestCase):
         gc.collect()
 
         tracemalloc.start()
-        pipeline_accelerate = StableDiffusionPipeline.from_pretrained(
-            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, device_map="auto"
-        )
-        pipeline_accelerate.to(torch_device)
-        _, peak_accelerate = tracemalloc.get_traced_memory()
-
-        del pipeline_accelerate
-        torch.cuda.empty_cache()
-        gc.collect()
-
         pipeline_normal_load = StableDiffusionPipeline.from_pretrained(
-            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, device_map="auto"
+            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True
         )
         pipeline_normal_load.to(torch_device)
         _, peak_normal = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+
+        del pipeline_normal_load
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        tracemalloc.start()
+        _ = StableDiffusionPipeline.from_pretrained(
+            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, device_map="auto"
+        )
+        _, peak_accelerate = tracemalloc.get_traced_memory()
 
         tracemalloc.stop()
 

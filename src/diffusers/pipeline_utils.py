@@ -402,7 +402,7 @@ class DiffusionPipeline(ConfigMixin):
                     loading_kwargs["provider"] = provider
                     loading_kwargs["sess_options"] = sess_options
 
-                if library_name == "diffusers":
+                if issubclass(class_obj, diffusers.ModelMixin):
                     loading_kwargs["device_map"] = device_map
 
                 # if using transformers and class obj has no _no_split modules, using device map will break loading
