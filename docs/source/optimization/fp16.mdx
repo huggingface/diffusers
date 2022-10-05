@@ -75,7 +75,6 @@ pipe = StableDiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     revision="fp16",
     torch_dtype=torch.float16,
-    
 )
 ```
 
@@ -97,7 +96,6 @@ pipe = StableDiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     revision="fp16",
     torch_dtype=torch.float16,
-    
 )
 pipe = pipe.to("cuda")
 
@@ -152,7 +150,6 @@ def generate_inputs():
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    # scheduler=scheduler,
     revision="fp16",
     torch_dtype=torch.float16,
 ).to("cuda")
@@ -217,7 +214,6 @@ class UNet2DConditionOutput:
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    # scheduler=scheduler,
     revision="fp16",
     torch_dtype=torch.float16,
 ).to("cuda")

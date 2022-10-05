@@ -81,7 +81,6 @@ scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="sca
 pipe = StableDiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4", 
     scheduler=scheduler,
-    
 ).to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
@@ -105,7 +104,6 @@ lms = LMSDiscreteScheduler(
 pipe = StableDiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4", 
     scheduler=lms,
-    
 ).to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
