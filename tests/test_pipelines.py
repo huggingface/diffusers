@@ -474,7 +474,7 @@ class PipelineFastTests(unittest.TestCase):
         expected_slice = np.array([0.5067, 0.4689, 0.4614, 0.5233, 0.4903, 0.5112, 0.524, 0.5069, 0.4785])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
-    
+
     def test_stable_diffusion_attention_chunk(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet

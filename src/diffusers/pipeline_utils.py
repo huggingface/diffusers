@@ -410,7 +410,6 @@ class DiffusionPipeline(ConfigMixin):
                     if getattr(class_obj, "_no_split_modules", None) is not None:
                         loading_kwargs["device_map"] = device_map
 
-            
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
                     loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
