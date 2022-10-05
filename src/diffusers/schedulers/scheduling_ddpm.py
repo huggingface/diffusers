@@ -142,11 +142,11 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         # setable values
         self.num_inference_steps = None
-        self.timesteps = np.arange(0, num_train_timesteps)[::-1]
+        self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy())
 
         self.variance_type = variance_type
 
-    def set_timesteps(self, num_inference_steps: int):
+    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -156,9 +156,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         """
         num_inference_steps = min(self.config.num_train_timesteps, num_inference_steps)
         self.num_inference_steps = num_inference_steps
-        self.timesteps = np.arange(
+        timesteps = np.arange(
             0, self.config.num_train_timesteps, self.config.num_train_timesteps // self.num_inference_steps
-        )[::-1]
+        )[::-1].copy()
+        self.timesteps = torch.from_numpy(timesteps).to(device)
 
     def _get_variance(self, t, predicted_variance=None, variance_type=None):
         alpha_prod_t = self.alphas_cumprod[t]
