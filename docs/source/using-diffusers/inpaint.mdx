@@ -17,7 +17,6 @@ The [`StableDiffusionInpaintPipeline`] lets you edit specific parts of an image 
 ```python
 from io import BytesIO
 
-from torch import autocast
 import requests
 import PIL
 
@@ -41,8 +40,7 @@ pipe = StableDiffusionInpaintPipeline.from_pretrained(
 ).to(device)
 
 prompt = "a cat sitting on a bench"
-with autocast("cuda"):
-    images = pipe(prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75).images
+images = pipe(prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75).images
 
 images[0].save("cat_on_bench.png")
 ```
