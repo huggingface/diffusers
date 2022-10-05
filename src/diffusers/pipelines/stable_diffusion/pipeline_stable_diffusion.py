@@ -117,6 +117,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
+        num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[torch.Generator] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -148,6 +149,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
+                The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
@@ -255,12 +258,15 @@ class StableDiffusionPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
 
+        # duplicate text embeddings for each generation per prompt
+        text_embeddings = text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
+        
         # get the initial random noise unless the user supplied it
 
         # Unlike in other pipelines, latents need to be generated in the target device
         # for 1-to-1 results reproducibility with the CompVis implementation.
         # However this currently doesn't work in `mps`.
-        latents_shape = (batch_size, self.unet.in_channels, height // 8, width // 8)
+        latents_shape = (batch_size * num_images_per_prompt, self.unet.in_channels, height // 8, width // 8)
         latents_dtype = text_embeddings.dtype
         if latents is None:
             if self.device.type == "mps":
