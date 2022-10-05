@@ -198,7 +198,8 @@ def get_cached_module_file(
 
     <Tip>
 
-    Passing `` is required when you want to use a private model.
+    You may pass a token in `use_auth_token` if you are not logged in (`huggingface-cli long`) and
+    want to use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
     </Tip>
 
@@ -306,7 +307,8 @@ def get_class_from_dynamic_module(
 
     <Tip>
 
-    Passing `` is required when you want to use a private model.
+    You may pass a token in `use_auth_token` if you are not logged in (`huggingface-cli long`) and
+    want to use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
     </Tip>
 
