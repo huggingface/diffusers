@@ -125,8 +125,6 @@ accelerate launch train_dreambooth.py \
 Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline`. Make sure to include the `identifier`(e.g. sks in above example) in your prompt.
 
 ```python
-
-from torch import autocast
 from diffusers import StableDiffusionPipeline
 import torch
 
@@ -134,9 +132,7 @@ model_id = "path-to-your-trained-model"
 pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 
 prompt = "A photo of sks dog in a bucket"
-
-with autocast("cuda"):
-    image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
 
 image.save("dog-bucket.png")
 ```

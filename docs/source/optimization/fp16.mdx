@@ -68,7 +68,7 @@ Despite the precision loss, in our experience the final image results look the s
 
 ## Half precision weights
 
-To save more GPU memory, you can load the model weights directly in half precision. This involves loading the float16 version of the weights, which was saved to a branch named `fp16`, and telling PyTorch to use the `float16` type when loading them:
+To save more GPU memory and get even more speed, you can load and run the model weights directly in half precision. This involves loading the float16 version of the weights, which was saved to a branch named `fp16`, and telling PyTorch to use the `float16` type when loading them:
 
 ```Python
 pipe = StableDiffusionPipeline.from_pretrained(
@@ -76,6 +76,10 @@ pipe = StableDiffusionPipeline.from_pretrained(
     revision="fp16",
     torch_dtype=torch.float16,
 )
+pipe = pipe.to("cuda")
+
+prompt = "a photo of an astronaut riding a horse on mars"
+image = pipe(prompt).images[0]  
 ```
 
 ## Sliced attention for additional memory savings
@@ -101,8 +105,7 @@ pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
 pipe.enable_attention_slicing()
-with torch.autocast("cuda"):
-    image = pipe(prompt).images[0]  
+image = pipe(prompt).images[0]  
 ```
 
 There's a small performance penalty of about 10% slower inference times, but this method allows you to use Stable Diffusion in as little as 3.2 GB of VRAM!
