@@ -145,7 +145,8 @@ class ConfigMixin:
 
         <Tip>
 
-        Passing ``` is required when you want to use a private model.
+         It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
+         models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
         </Tip>
 
