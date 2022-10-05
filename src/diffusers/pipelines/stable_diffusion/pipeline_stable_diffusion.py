@@ -218,6 +218,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
             text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
         text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
 
+        # duplicate text embeddings for each generation per prompt
+        text_embeddings = text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
+
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
@@ -253,13 +256,13 @@ class StableDiffusionPipeline(DiffusionPipeline):
             )
             uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
 
+            # duplicate unconditional embeddings for each generation per prompt
+            uncond_embeddings = uncond_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
+
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
-
-        # duplicate text embeddings for each generation per prompt
-        text_embeddings = text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
 
         # get the initial random noise unless the user supplied it
 
