@@ -314,7 +314,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             self.assertTrue(torch.allclose(grad_checkpointed[name], grad_not_checkpointed[name], atol=5e-5))
 
         # disable deterministic behavior for gradient checkpointing
-        os.environ["CUBLAS_WORKSPACE_CONFIG"]
+        del os.environ["CUBLAS_WORKSPACE_CONFIG"]
         torch.use_deterministic_algorithms(True)
 
 
