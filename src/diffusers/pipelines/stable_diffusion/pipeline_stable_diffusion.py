@@ -260,19 +260,20 @@ class StableDiffusionPipeline(DiffusionPipeline):
         # Unlike in other pipelines, latents need to be generated in the target device
         # for 1-to-1 results reproducibility with the CompVis implementation.
         # However this currently doesn't work in `mps`.
-        latents_device = "cpu" if self.device.type == "mps" else self.device
         latents_shape = (batch_size, self.unet.in_channels, height // 8, width // 8)
+        latents_dtype = text_embeddings.dtype
         if latents is None:
-            latents = torch.randn(
-                latents_shape,
-                generator=generator,
-                device=latents_device,
-                dtype=text_embeddings.dtype,
-            )
+            if self.device.type == "mps":
+                # randn does not exist on mps
+                latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(
+                    self.device
+                )
+            else:
+                latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
-            latents = latents.to(latents_device)
+            latents = latents.to(self.device)
 
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
