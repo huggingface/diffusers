@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import warnings
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
@@ -110,18 +110,27 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=float)[::-1].copy()
         self.timesteps = torch.from_numpy(timesteps)
         self.derivatives = []
+        self.is_scale_input_called = False
 
     def scale_model_input(
         self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
     ) -> torch.FloatTensor:
         """
-        Scale the model input to match the ODE solver in K-LMS
+        Scales the denoising model input by `(sigma**2 + 1) ** 0.5` to match the K-LMS algorithm.
+
+        Args:
+            sample (`torch.FloatTensor`): input sample
+            timestep (`float` or `torch.FloatTensor`): the current timestep in the diffusion chain
+
+        Returns:
+            `torch.FloatTensor`: scaled input sample
         """
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
         step_index = (self.timesteps == timestep).nonzero().item()
         sigma = self.sigmas[step_index]
         sample = sample / ((sigma**2 + 1) ** 0.5)
+        self.is_scale_input_called = True
         return sample
 
     def get_lms_coefficient(self, order, t, current_order):
@@ -193,6 +202,18 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             When returning a tuple, the first element is the sample tensor.
 
         """
+        if not isinstance(timestep, float) and not isinstance(timestep, torch.FloatTensor):
+            warnings.warn(
+                f"`LMSDiscreteScheduler` timesteps must be `float` or `torch.FloatTensor`, not {type(timestep)}. "
+                "Make sure to pass one of the `scheduler.timesteps`"
+            )
+        if not self.is_scale_input_called:
+            warnings.warn(
+                "The `scale_model_input` function should be called before `step` to ensure correct denoising. "
+                "See `StableDiffusionPipeline` for a usage example."
+            )
+        self.is_scale_input_called = False
+
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
         step_index = (self.timesteps == timestep).nonzero().item()

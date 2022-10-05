@@ -159,7 +159,18 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = None
         self.timesteps = np.arange(0, num_train_timesteps)[::-1]
 
-    def scale_model_input(self, sample: torch.FloatTensor, timestep):
+    def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
+        """
+        Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
+        current timestep.
+
+        Args:
+            sample (`torch.FloatTensor`): input sample
+            timestep (`int`, optional): current timestep
+
+        Returns:
+            `torch.FloatTensor`: scaled input sample
+        """
         return sample
 
     def _get_variance(self, timestep, prev_timestep):
