@@ -315,7 +315,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         latents = init_latents
 
         t_start = max(num_inference_steps - init_timestep + offset, 0)
-        timesteps = self.scheduler.timesteps.copy()[t_start:]
+        timesteps = self.scheduler.timesteps[t_start:]
 
         for i, t in tqdm(enumerate(timesteps)):
             t_index = t_start + i
