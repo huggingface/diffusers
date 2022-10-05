@@ -147,7 +147,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         self.plms_timesteps = None
         self.timesteps = None
 
-    def set_timesteps(self, num_inference_steps: int, **kwargs) -> torch.FloatTensor:
+    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None, **kwargs):
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -184,7 +184,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
                 ::-1
             ].copy()  # we copy to avoid having negative strides which are not supported by torch.from_numpy
 
-        self.timesteps = np.concatenate([self.prk_timesteps, self.plms_timesteps]).astype(np.int64)
+        timesteps = np.concatenate([self.prk_timesteps, self.plms_timesteps]).astype(np.int64)
+        self.timesteps = torch.from_numpy(timesteps).to(device)
 
         self.ets = []
         self.counter = 0

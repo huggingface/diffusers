@@ -402,13 +402,16 @@ class DiffusionPipeline(ConfigMixin):
                     loading_kwargs["provider"] = provider
                     loading_kwargs["sess_options"] = sess_options
 
-                if library_name == "diffusers":
+                if issubclass(class_obj, diffusers.ModelMixin):
                     loading_kwargs["device_map"] = device_map
 
                 # if using transformers and class obj has no _no_split modules, using device map will break loading
+                # so we just use low cpu memory usage to reduce ram usage on cpu
                 elif library_name == "transformers":
                     if getattr(class_obj, "_no_split_modules", None) is not None:
                         loading_kwargs["device_map"] = device_map
+                    else:
+                        loading_kwargs["low_cpu_mem_usage"] = True
 
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
