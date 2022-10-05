@@ -168,6 +168,13 @@ class FlaxSchedulerMixin(metaclass=DummyObject):
         requires_backends(self, ["flax"])
 
 
+class FlaxSchedulerMixin(metaclass=DummyObject):
+    _backends = ["flax"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["flax"])
+
+
 class FlaxScoreSdeVeScheduler(metaclass=DummyObject):
     _backends = ["flax"]
 
