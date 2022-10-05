@@ -198,7 +198,7 @@ def get_cached_module_file(
 
     <Tip>
 
-    Passing `use_auth_token=True` is required when you want to use a private model.
+    Passing `` is required when you want to use a private model.
 
     </Tip>
 
@@ -306,7 +306,7 @@ def get_class_from_dynamic_module(
 
     <Tip>
 
-    Passing `use_auth_token=True` is required when you want to use a private model.
+    Passing `` is required when you want to use a private model.
 
     </Tip>
 

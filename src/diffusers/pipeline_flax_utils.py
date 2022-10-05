@@ -249,7 +249,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
 
         <Tip>
 
-        Passing `use_auth_token=True`` is required when you want to use a private model, *e.g.*
+        Passing ``` is required when you want to use a private model, *e.g.*
         `"CompVis/stable-diffusion-v1-4"`
 
         </Tip>

@@ -114,7 +114,7 @@ pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     revision="fp16", 
     torch_dtype=torch.float16,
-    use_auth_token=True
+    
 ).to(device)
 
 # let's download an initial image
@@ -164,7 +164,7 @@ pipe = StableDiffusionInpaintPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     revision="fp16", 
     torch_dtype=torch.float16,
-    use_auth_token=True
+    
 ).to(device)
 
 prompt = "a cat sitting on a bench"
