@@ -78,7 +78,7 @@ You need to accept the model license before downloading or using the Stable Diff
 # make sure you're logged in with `huggingface-cli login`
 from diffusers import StableDiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
@@ -114,7 +114,6 @@ pipe = StableDiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4", 
     revision="fp16", 
     torch_dtype=torch.float16,
-    use_auth_token=True
 )
 pipe = pipe.to("cuda")
 
@@ -140,7 +139,6 @@ pipe = StableDiffusionPipeline.from_pretrained(
     revision="fp16", 
     torch_dtype=torch.float16,
     scheduler=lms,
-    use_auth_token=True
 )
 pipe = pipe.to("cuda")
 
@@ -169,10 +167,9 @@ pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
     model_id_or_path,
     revision="fp16", 
     torch_dtype=torch.float16,
-    use_auth_token=True
 )
 # or download via git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
-# and pass `model_id_or_path="./stable-diffusion-v1-4"` without having to use `use_auth_token=True`.
+# and pass `model_id_or_path="./stable-diffusion-v1-4"`.
 pipe = pipe.to(device)
 
 # let's download an initial image
@@ -219,10 +216,9 @@ pipe = StableDiffusionInpaintPipeline.from_pretrained(
     model_id_or_path,
     revision="fp16", 
     torch_dtype=torch.float16,
-    use_auth_token=True
 )
 # or download via git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
-# and pass `model_id_or_path="./stable-diffusion-v1-4"` without having to use `use_auth_token=True`.
+# and pass `model_id_or_path="./stable-diffusion-v1-4"`.
 pipe = pipe.to(device)
 
 prompt = "a cat sitting on a bench"

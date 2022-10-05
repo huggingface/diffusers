@@ -37,7 +37,7 @@ mask_image = download_image(mask_url).resize((512, 512))
 
 device = "cuda"
 pipe = StableDiffusionInpaintPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16, use_auth_token=True
+    "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16
 ).to(device)
 
 prompt = "a cat sitting on a bench"
