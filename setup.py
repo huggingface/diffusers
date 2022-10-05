@@ -67,11 +67,12 @@ To create the package for pypi.
     you need to go back to main before executing this.
 """
 
-import re
 import os
+import re
 from distutils.core import Command
 
 from setuptools import find_packages, setup
+
 
 # IMPORTANT:
 # 1. all dependencies should be listed here with their version requirements if any
@@ -103,6 +104,7 @@ _deps = [
     "torch>=1.4",
     "torchvision",
     "transformers>=4.21.0",
+    "accelerate>=0.12.0"
 ]
 
 # this is a lookup table with items like:

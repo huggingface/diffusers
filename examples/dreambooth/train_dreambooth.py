@@ -58,19 +58,19 @@ def parse_args():
         "--instance_prompt",
         type=str,
         default=None,
-        help="The prompt with identifier specifing the instance",
+        help="The prompt with identifier specifying the instance",
     )
     parser.add_argument(
         "--class_prompt",
         type=str,
         default=None,
-        help="The prompt to specify images in the same class as provided intance images.",
+        help="The prompt to specify images in the same class as provided instance images.",
     )
     parser.add_argument(
         "--with_prior_preservation",
         default=False,
         action="store_true",
-        help="Flag to add prior perservation loss.",
+        help="Flag to add prior preservation loss.",
     )
     parser.add_argument("--prior_loss_weight", type=float, default=1.0, help="The weight of prior preservation loss.")
     parser.add_argument(
@@ -214,7 +214,7 @@ def parse_args():
 
 class DreamBoothDataset(Dataset):
     """
-    A dataset to prepare the instance and class images with the promots for fine-tuning the model.
+    A dataset to prepare the instance and class images with the prompts for fine-tuning the model.
     It pre-processes the images and the tokenizes prompts.
     """
 
