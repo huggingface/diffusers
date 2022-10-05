@@ -83,7 +83,6 @@ def main(args):
             args.dataset_name,
             args.dataset_config_name,
             cache_dir=args.cache_dir,
-            use_auth_token=True if args.use_auth_token else None,
             split="train",
         )
     else:
@@ -222,7 +221,6 @@ if __name__ == "__main__":
     parser.add_argument("--ema_power", type=float, default=3 / 4)
     parser.add_argument("--ema_max_decay", type=float, default=0.9999)
     parser.add_argument("--push_to_hub", action="store_true")
-    parser.add_argument("--use_auth_token", action="store_true")
     parser.add_argument("--hub_token", type=str, default=None)
     parser.add_argument("--hub_model_id", type=str, default=None)
     parser.add_argument("--hub_private_repo", action="store_true")

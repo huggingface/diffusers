@@ -86,7 +86,7 @@ _deps = [
     "flake8>=3.8.3",
     "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
-    "huggingface-hub>=0.9.1",
+    "huggingface-hub>=0.10.0",
     "importlib_metadata",
     "isort>=5.5.4",
     "jax>=0.2.8,!=0.3.2,<=0.3.6",
