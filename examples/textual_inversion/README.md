@@ -39,7 +39,7 @@ Run the following command to authenticate your token
 huggingface-cli login
 ```
 
-If you have already cloned the repo, then you won't need to go through these steps. You can simple remove the `--use_auth_token` arg from the following command.
+If you have already cloned the repo, then you won't need to go through these steps. 
 
 <br>
 
@@ -52,7 +52,7 @@ export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export DATA_DIR="path-to-dir-containing-images"
 
 accelerate launch textual_inversion.py \
-  --pretrained_model_name_or_path=$MODEL_NAME --use_auth_token \
+  --pretrained_model_name_or_path=$MODEL_NAME \
   --train_data_dir=$DATA_DIR \
   --learnable_property="object" \
   --placeholder_token="<cat-toy>" --initializer_token="toy" \
