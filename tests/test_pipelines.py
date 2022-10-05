@@ -1179,9 +1179,9 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_stable_diffusion_memory_chunking(self):
         torch.cuda.reset_peak_memory_stats()
         model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionPipeline.from_pretrained(
-            model_id, revision="fp16", torch_dtype=torch.float16
-        ).to(torch_device)
+        pipe = StableDiffusionPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16).to(
+            torch_device
+        )
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "a photograph of an astronaut riding a horse"
@@ -1219,9 +1219,9 @@ class PipelineTesterMixin(unittest.TestCase):
     def test_stable_diffusion_text2img_pipeline_fp16(self):
         torch.cuda.reset_peak_memory_stats()
         model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionPipeline.from_pretrained(
-            model_id, revision="fp16", torch_dtype=torch.float16
-        ).to(torch_device)
+        pipe = StableDiffusionPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16).to(
+            torch_device
+        )
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "a photograph of an astronaut riding a horse"
@@ -1258,7 +1258,6 @@ class PipelineTesterMixin(unittest.TestCase):
         pipe = StableDiffusionPipeline.from_pretrained(
             model_id,
             safety_checker=self.dummy_safety_checker,
-            
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -1291,7 +1290,6 @@ class PipelineTesterMixin(unittest.TestCase):
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
             model_id,
             safety_checker=self.dummy_safety_checker,
-            
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -1335,7 +1333,6 @@ class PipelineTesterMixin(unittest.TestCase):
             model_id,
             scheduler=lms,
             safety_checker=self.dummy_safety_checker,
-            
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -1379,7 +1376,6 @@ class PipelineTesterMixin(unittest.TestCase):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             model_id,
             safety_checker=self.dummy_safety_checker,
-            
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -1426,7 +1422,6 @@ class PipelineTesterMixin(unittest.TestCase):
             model_id,
             scheduler=lms,
             safety_checker=self.dummy_safety_checker,
-            
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

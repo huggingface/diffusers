@@ -249,8 +249,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
 
         <Tip>
 
-        Passing ``` is required when you want to use a private model, *e.g.*
-        `"CompVis/stable-diffusion-v1-4"`
+        Passing ``` is required when you want to use a private model, *e.g.* `"CompVis/stable-diffusion-v1-4"`
 
         </Tip>
 
@@ -278,9 +277,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
         >>> from diffusers import LMSDiscreteScheduler
 
         >>> scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
-        >>> pipeline = FlaxDiffusionPipeline.from_pretrained(
-        ...     "CompVis/stable-diffusion-v1-4", scheduler=scheduler
-        ... )
+        >>> pipeline = FlaxDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler)
         ```
         """
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
