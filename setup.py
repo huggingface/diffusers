@@ -104,7 +104,6 @@ _deps = [
     "torch>=1.4",
     "torchvision",
     "transformers>=4.21.0",
-    "accelerate>=0.12.0"
 ]
 
 # this is a lookup table with items like:
@@ -179,7 +178,15 @@ extras["quality"] = deps_list("black", "isort", "flake8", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "modelcards")
 extras["test"] = deps_list(
-    "datasets", "onnxruntime", "pytest", "pytest-timeout", "pytest-xdist", "scipy", "torchvision", "transformers"
+    "accelerate",
+    "datasets",
+    "onnxruntime",
+    "pytest",
+    "pytest-timeout",
+    "pytest-xdist",
+    "scipy",
+    "torchvision",
+    "transformers"
 )
 extras["torch"] = deps_list("torch")
 
