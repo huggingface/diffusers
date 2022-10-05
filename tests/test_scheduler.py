@@ -201,7 +201,7 @@ class SchedulerCommonTest(unittest.TestCase):
                 )
 
         kwargs = dict(self.forward_default_kwargs)
-        num_inference_steps = kwargs.pop("num_inference_steps", None)
+        num_inference_steps = kwargs.pop("num_inference_steps", 50)
 
         for scheduler_class in self.scheduler_classes:
             scheduler_config = self.get_scheduler_config()
@@ -225,6 +225,27 @@ class SchedulerCommonTest(unittest.TestCase):
             outputs_tuple = scheduler.step(residual, 0, sample, return_dict=False, **kwargs)
 
             recursive_check(outputs_tuple, outputs_dict)
+
+    def test_scheduler_public_api(self):
+        for scheduler_class in self.scheduler_classes:
+            scheduler_config = self.get_scheduler_config()
+            scheduler = scheduler_class(**scheduler_config)
+            self.assertTrue(
+                hasattr(scheduler, "init_noise_sigma"),
+                f"{scheduler_class} does not implement a required attribute `init_noise_sigma`",
+            )
+            self.assertTrue(
+                hasattr(scheduler, "scale_model_input"),
+                f"{scheduler_class} does not implement a required class method `scale_model_input(sample, timestep)`",
+            )
+            self.assertTrue(
+                hasattr(scheduler, "step"),
+                f"{scheduler_class} does not implement a required class method `step(...)`",
+            )
+
+            sample = self.dummy_sample
+            scaled_sample = scheduler.scale_model_input(sample, 0.0)
+            self.assertEqual(sample.shape, scaled_sample.shape)
 
 
 class DDPMSchedulerTest(SchedulerCommonTest):
@@ -865,14 +886,14 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
         scheduler.set_timesteps(self.num_inference_steps)
 
         model = self.dummy_model()
-        sample = self.dummy_sample_deter * scheduler.sigmas[0]
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
 
         for i, t in enumerate(scheduler.timesteps):
-            sample = sample / ((scheduler.sigmas[i] ** 2 + 1) ** 0.5)
+            sample = scheduler.scale_model_input(sample, t)
 
             model_output = model(sample, t)
 
-            output = scheduler.step(model_output, i, sample)
+            output = scheduler.step(model_output, t, sample)
             sample = output.prev_sample
 
         result_sum = torch.sum(torch.abs(sample))
