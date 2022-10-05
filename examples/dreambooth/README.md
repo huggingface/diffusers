@@ -32,7 +32,7 @@ Run the following command to authenticate your token
 huggingface-cli login
 ```
 
-If you have already cloned the repo, then you won't need to go through these steps. You can simple remove the `--use_auth_token` arg from the following command.
+If you have already cloned the repo, then you won't need to go through these steps.
 
 <br>
 
@@ -46,7 +46,7 @@ export INSTANCE_DIR="path-to-instance-images"
 export OUTPUT_DIR="path-to-save-model"
 
 accelerate launch train_dreambooth.py \
-  --pretrained_model_name_or_path=$MODEL_NAME --use_auth_token \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
   --instance_prompt="a photo of sks dog" \
@@ -71,7 +71,7 @@ export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
 accelerate launch train_dreambooth.py \
-  --pretrained_model_name_or_path=$MODEL_NAME --use_auth_token \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --class_data_dir=$CLASS_DIR \
   --output_dir=$OUTPUT_DIR \
@@ -101,7 +101,7 @@ export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
 accelerate launch train_dreambooth.py \
-  --pretrained_model_name_or_path=$MODEL_NAME --use_auth_token \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --class_data_dir=$CLASS_DIR \
   --output_dir=$OUTPUT_DIR \
