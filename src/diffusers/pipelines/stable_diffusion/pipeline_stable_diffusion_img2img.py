@@ -304,7 +304,10 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         latents = init_latents
 
         t_start = max(num_inference_steps - init_timestep + offset, 0)
-        timesteps = self.scheduler.timesteps[t_start:]
+
+        # Some schedulers like PNDM have timesteps as arrays
+        # It's more optimized to move all timesteps to correct device beforehand
+        timesteps = self.scheduler.timesteps[t_start:].to(self.device)
 
         for i, t in enumerate(self.progress_bar(timesteps)):
             t_index = t_start + i

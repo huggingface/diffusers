@@ -2,7 +2,7 @@
 
 - Schedulers are the algorithms to use diffusion models in inference as well as for training. They include the noise schedules and define algorithm-specific diffusion steps.
 - Schedulers can be used interchangeable between diffusion models in inference to find the preferred trade-off between speed and generation quality.
-- Schedulers are available in numpy, but can easily be transformed into PyTorch.
+- Schedulers are available in PyTorch and Jax.
 
 ## API
 

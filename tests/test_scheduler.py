@@ -354,7 +354,7 @@ class DDIMSchedulerTest(SchedulerCommonTest):
         scheduler_config = self.get_scheduler_config(steps_offset=1)
         scheduler = scheduler_class(**scheduler_config)
         scheduler.set_timesteps(5)
-        assert np.equal(scheduler.timesteps, np.array([801, 601, 401, 201, 1])).all()
+        assert torch.equal(scheduler.timesteps, torch.LongTensor([801, 601, 401, 201, 1]))
 
     def test_betas(self):
         for beta_start, beta_end in zip([0.0001, 0.001, 0.01, 0.1], [0.002, 0.02, 0.2, 2]):
@@ -568,10 +568,12 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         scheduler_config = self.get_scheduler_config(steps_offset=1)
         scheduler = scheduler_class(**scheduler_config)
         scheduler.set_timesteps(10)
-        assert np.equal(
+        assert torch.equal(
             scheduler.timesteps,
-            np.array([901, 851, 851, 801, 801, 751, 751, 701, 701, 651, 651, 601, 601, 501, 401, 301, 201, 101, 1]),
-        ).all()
+            torch.LongTensor(
+                [901, 851, 851, 801, 801, 751, 751, 701, 701, 651, 651, 601, 601, 501, 401, 301, 201, 101, 1]
+            ),
+        )
 
     def test_betas(self):
         for beta_start, beta_end in zip([0.0001, 0.001], [0.002, 0.02]):
