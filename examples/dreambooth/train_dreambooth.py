@@ -237,7 +237,7 @@ class DreamBoothDataset(Dataset):
         if class_data_root is not None:
             self.class_data_root = Path(class_data_root)
             self.class_data_root.mkdir(parents=True, exist_ok=True)
-            self.class_images_path = [x for x in Path(class_data_root).iterdir() if x.is_file()]
+            self.class_images_path = [x for x in self.class_data_root.iterdir() if x.is_file()]
             self.num_class_images = len(self.class_images_path)
             self._length = max(self.num_class_images, self.num_instance_images)
             self.class_prompt = class_prompt
@@ -360,7 +360,7 @@ def main():
         if cur_class_images < args.num_class_images:
             torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
             pipeline = StableDiffusionPipeline.from_pretrained(
-                args.pretrained_model_name_or_path, torch_dtype=torch_dtype
+                args.pretrained_model_name_or_path, torch_dtype=torch_dtype, use_auth_token=True
             )
             pipeline.set_progress_bar_config(disable=True)
 
@@ -376,7 +376,8 @@ def main():
             for example in tqdm(
                 sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
             ):
-                images = pipeline(example["prompt"]).images
+                with torch.autocast("cuda"):
+                    images = pipeline(example["prompt"]).images
 
                 for i, image in enumerate(images):
                     image.save(class_images_dir / f"{example['index'][i] + cur_class_images}.jpg")
@@ -406,12 +407,12 @@ def main():
     if args.tokenizer_name:
         tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_name)
     elif args.pretrained_model_name_or_path:
-        tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer")
+        tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer", use_auth_token=True)
 
     # Load models and create wrapper for stable diffusion
-    text_encoder = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder")
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
-    unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
+    text_encoder = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder", use_auth_token=True)
+    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", use_auth_token=True)
+    unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet", use_auth_token=True)
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
@@ -620,7 +621,7 @@ def main():
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
         pipeline = StableDiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path, unet=accelerator.unwrap_model(unet)
+            args.pretrained_model_name_or_path, unet=accelerator.unwrap_model(unet), use_auth_token=True
         )
         pipeline.save_pretrained(args.output_dir)
 
