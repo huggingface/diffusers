@@ -154,7 +154,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         # setable values
         self.num_inference_steps = None
-        self.timesteps = np.arange(0, num_train_timesteps)[::-1]
+        self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy())
 
     def _get_variance(self, timestep, prev_timestep):
         alpha_prod_t = self.alphas_cumprod[timestep]
@@ -166,7 +166,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
-    def set_timesteps(self, num_inference_steps: int, **kwargs):
+    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None, **kwargs):
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -183,7 +183,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         step_ratio = self.config.num_train_timesteps // self.num_inference_steps
         # creates integer timesteps by multiplying by ratio
         # casting to int to avoid issues when num_inference_step is power of 3
-        self.timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1]
+        timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy()
+        self.timesteps = torch.from_numpy(timesteps).to(device)
         self.timesteps += offset
 
     def step(
