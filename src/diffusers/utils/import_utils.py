@@ -137,11 +137,19 @@ except importlib_metadata.PackageNotFoundError:
 
 
 _onnx_available = importlib.util.find_spec("onnxruntime") is not None
-try:
-    _onnxruntime_version = importlib_metadata.version("onnxruntime")
-    logger.debug(f"Successfully imported onnxruntime version {_onnxruntime_version}")
-except importlib_metadata.PackageNotFoundError:
-    _onnx_available = False
+if _onnx_available:
+    candidates = ("onnxruntime", "onnxruntime-gpu", "onnxruntime-directml", "onnxruntime-openvino")
+    _onnxruntime_version = None
+    # For the metadata, we have to look for both onnxruntime and onnxruntime-gpu
+    for pkg in candidates:
+        try:
+            _onnxruntime_version = importlib_metadata.version(pkg)
+            break
+        except importlib_metadata.PackageNotFoundError:
+            pass
+    _onnx_available = _onnxruntime_version is not None
+    if _onnx_available:
+        logger.debug(f"Successfully imported onnxruntime version {_onnxruntime_version}")
 
 
 _scipy_available = importlib.util.find_spec("scipy") is not None
@@ -150,6 +158,13 @@ try:
     logger.debug(f"Successfully imported transformers version {_scipy_version}")
 except importlib_metadata.PackageNotFoundError:
     _scipy_available = False
+
+_accelerate_available = importlib.util.find_spec("accelerate") is not None
+try:
+    _accelerate_version = importlib_metadata.version("accelerate")
+    logger.debug(f"Successfully imported accelerate version {_accelerate_version}")
+except importlib_metadata.PackageNotFoundError:
+    _accelerate_available = False
 
 
 def is_torch_available():
@@ -186,6 +201,10 @@ def is_onnx_available():
 
 def is_scipy_available():
     return _scipy_available
+
+
+def is_accelerate_available():
+    return _accelerate_available
 
 
 # docstyle-ignore

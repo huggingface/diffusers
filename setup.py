@@ -67,17 +67,18 @@ To create the package for pypi.
     you need to go back to main before executing this.
 """
 
-import re
 import os
+import re
 from distutils.core import Command
 
 from setuptools import find_packages, setup
+
 
 # IMPORTANT:
 # 1. all dependencies should be listed here with their version requirements if any
 # 2. once modified, run: `make deps_table_update` to update src/diffusers/dependency_versions_table.py
 _deps = [
-    "Pillow",
+    "Pillow<10.0",  # keep the PIL.Image.Resampling deprecation away
     "accelerate>=0.11.0",
     "black==22.8",
     "datasets",
@@ -85,13 +86,14 @@ _deps = [
     "flake8>=3.8.3",
     "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
-    "huggingface-hub>=0.8.1",
+    "huggingface-hub>=0.9.1",
     "importlib_metadata",
     "isort>=5.5.4",
     "jax>=0.2.8,!=0.3.2,<=0.3.6",
     "jaxlib>=0.1.65,<=0.3.6",
-    "modelcards==0.1.4",
+    "modelcards>=0.1.4",
     "numpy",
+    "onnxruntime",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
@@ -100,7 +102,9 @@ _deps = [
     "requests",
     "tensorboard",
     "torch>=1.4",
+    "torchvision",
     "transformers>=4.21.0",
+    "accelerate>=0.12.0"
 ]
 
 # this is a lookup table with items like:
@@ -171,10 +175,12 @@ extras = {}
 
 
 extras = {}
-extras["quality"] = ["black==22.8", "isort>=5.5.4", "flake8>=3.8.3", "hf-doc-builder"]
-extras["docs"] = ["hf-doc-builder"]
-extras["training"] = ["accelerate", "datasets", "tensorboard", "modelcards"]
-extras["test"] = ["datasets", "onnxruntime", "pytest", "pytest-timeout", "pytest-xdist", "scipy", "transformers"]
+extras["quality"] = deps_list("black", "isort", "flake8", "hf-doc-builder")
+extras["docs"] = deps_list("hf-doc-builder")
+extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "modelcards")
+extras["test"] = deps_list(
+    "datasets", "onnxruntime", "pytest", "pytest-timeout", "pytest-xdist", "scipy", "torchvision", "transformers"
+)
 extras["torch"] = deps_list("torch")
 
 if os.name == "nt":  # windows
@@ -182,7 +188,9 @@ if os.name == "nt":  # windows
 else:
     extras["flax"] = deps_list("jax", "jaxlib", "flax")
 
-extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"] + extras["flax"]
+extras["dev"] = (
+    extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"] + extras["flax"]
+)
 
 install_requires = [
     deps["importlib_metadata"],

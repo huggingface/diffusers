@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import warnings
 from typing import Optional, Tuple, Union
 
 import torch
@@ -43,7 +42,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
                 deterministic.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `nd.array`.
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
 
@@ -52,18 +51,6 @@ class ScoreSdeVePipeline(DiffusionPipeline):
             `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
             generated images.
         """
-
-        if "torch_device" in kwargs:
-            device = kwargs.pop("torch_device")
-            warnings.warn(
-                "`torch_device` is deprecated as an input argument to `__call__` and will be removed in v0.3.0."
-                " Consider using `pipe.to(torch_device)` instead."
-            )
-
-            # Set device as before (to be removed in 0.3.0)
-            if device is None:
-                device = "cuda" if torch.cuda.is_available() else "cpu"
-            self.to(device)
 
         img_size = self.unet.config.sample_size
         shape = (batch_size, 3, img_size, img_size)
@@ -80,7 +67,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
             sigma_t = self.scheduler.sigmas[i] * torch.ones(shape[0], device=self.device)
 
             # correction step
-            for _ in range(self.scheduler.correct_steps):
+            for _ in range(self.scheduler.config.correct_steps):
                 model_output = self.unet(sample, sigma_t).sample
                 sample = self.scheduler.step_correct(model_output, sample, generator=generator).prev_sample
 

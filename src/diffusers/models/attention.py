@@ -72,8 +72,7 @@ class AttentionBlock(nn.Module):
 
         # get scores
         scale = 1 / math.sqrt(math.sqrt(self.channels / self.num_heads))
-
-        attention_scores = torch.matmul(query_states * scale, key_states.transpose(-1, -2) * scale)
+        attention_scores = torch.matmul(query_states * scale, key_states.transpose(-1, -2) * scale)  # TODO: use baddmm
         attention_probs = torch.softmax(attention_scores.float(), dim=-1).type(attention_scores.dtype)
 
         # compute attention output
@@ -113,6 +112,7 @@ class SpatialTransformer(nn.Module):
         d_head: int,
         depth: int = 1,
         dropout: float = 0.0,
+        num_groups: int = 32,
         context_dim: Optional[int] = None,
     ):
         super().__init__()
@@ -120,7 +120,7 @@ class SpatialTransformer(nn.Module):
         self.d_head = d_head
         self.in_channels = in_channels
         inner_dim = n_heads * d_head
-        self.norm = torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
+        self.norm = torch.nn.GroupNorm(num_groups=num_groups, num_channels=in_channels, eps=1e-6, affine=True)
 
         self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
 
@@ -143,10 +143,11 @@ class SpatialTransformer(nn.Module):
         residual = hidden_states
         hidden_states = self.norm(hidden_states)
         hidden_states = self.proj_in(hidden_states)
-        hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * weight, channel)
+        inner_dim = hidden_states.shape[1]
+        hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * weight, inner_dim)
         for block in self.transformer_blocks:
             hidden_states = block(hidden_states, context=context)
-        hidden_states = hidden_states.reshape(batch, height, weight, channel).permute(0, 3, 1, 2)
+        hidden_states = hidden_states.reshape(batch, height, weight, inner_dim).permute(0, 3, 1, 2)
         hidden_states = self.proj_out(hidden_states)
         return hidden_states + residual
 
@@ -248,12 +249,14 @@ class CrossAttention(nn.Module):
         return tensor
 
     def forward(self, hidden_states, context=None, mask=None):
-        batch_size, sequence_length, dim = hidden_states.shape
+        batch_size, sequence_length, _ = hidden_states.shape
 
         query = self.to_q(hidden_states)
         context = context if context is not None else hidden_states
         key = self.to_k(context)
         value = self.to_v(context)
+
+        dim = query.shape[-1]
 
         query = self.reshape_heads_to_batch_dim(query)
         key = self.reshape_heads_to_batch_dim(key)
@@ -271,6 +274,7 @@ class CrossAttention(nn.Module):
         return self.to_out(hidden_states)
 
     def _attention(self, query, key, value):
+        # TODO: use baddbmm for better performance
         attention_scores = torch.matmul(query, key.transpose(-1, -2)) * self.scale
         attention_probs = attention_scores.softmax(dim=-1)
         # compute attention output
@@ -288,7 +292,9 @@ class CrossAttention(nn.Module):
         for i in range(hidden_states.shape[0] // slice_size):
             start_idx = i * slice_size
             end_idx = (i + 1) * slice_size
-            attn_slice = torch.matmul(query[start_idx:end_idx], key[start_idx:end_idx].transpose(1, 2)) * self.scale
+            attn_slice = (
+                torch.matmul(query[start_idx:end_idx], key[start_idx:end_idx].transpose(1, 2)) * self.scale
+            )  # TODO: use baddbmm for better performance
             attn_slice = attn_slice.softmax(dim=-1)
             attn_slice = torch.matmul(attn_slice, value[start_idx:end_idx])
 

@@ -45,9 +45,9 @@ class ConfigMixin:
 
     Class attributes:
         - **config_name** (`str`) -- A filename under which the config should stored when calling
-          [`~ConfigMixin.save_config`] (should be overriden by parent class).
+          [`~ConfigMixin.save_config`] (should be overridden by parent class).
         - **ignore_for_config** (`List[str]`) -- A list of attributes that should not be saved in the config (should be
-          overriden by parent class).
+          overridden by parent class).
     """
     config_name = None
     ignore_for_config = []
@@ -58,6 +58,10 @@ class ConfigMixin:
         kwargs["_class_name"] = self.__class__.__name__
         kwargs["_diffusers_version"] = __version__
 
+        # Special case for `kwargs` used in deprecation warning added to schedulers
+        # TODO: remove this when we remove the deprecation warning, and the `kwargs` argument,
+        # or solve in a more general way.
+        kwargs.pop("kwargs", None)
         for key, value in kwargs.items():
             try:
                 setattr(self, key, value)
@@ -125,7 +129,7 @@ class ConfigMixin:
                 A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
                 'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
             output_loading_info(`bool`, *optional*, defaults to `False`):
-                Whether ot not to also return a dictionary containing missing keys, unexpected keys and error messages.
+                Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
             local_files_only(`bool`, *optional*, defaults to `False`):
                 Whether or not to only look at local files (i.e., do not try to download the model).
             use_auth_token (`str` or *bool*, *optional*):
@@ -154,15 +158,25 @@ class ConfigMixin:
 
         """
         config_dict = cls.get_config_dict(pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs)
-
         init_dict, unused_kwargs = cls.extract_init_dict(config_dict, **kwargs)
 
+        # Allow dtype to be specified on initialization
+        if "dtype" in unused_kwargs:
+            init_dict["dtype"] = unused_kwargs.pop("dtype")
+
+        # Return model and optionally state and/or unused_kwargs
         model = cls(**init_dict)
+        return_tuple = (model,)
+
+        # Flax schedulers have a state, so return it.
+        if cls.__name__.startswith("Flax") and hasattr(model, "create_state") and getattr(model, "has_state", False):
+            state = model.create_state()
+            return_tuple += (state,)
 
         if return_unused_kwargs:
-            return model, unused_kwargs
+            return return_tuple + (unused_kwargs,)
         else:
-            return model
+            return return_tuple if len(return_tuple) > 1 else model
 
     @classmethod
     def get_config_dict(
@@ -272,7 +286,7 @@ class ConfigMixin:
         # remove general kwargs if present in dict
         if "kwargs" in expected_keys:
             expected_keys.remove("kwargs")
-        # remove flax interal keys
+        # remove flax internal keys
         if hasattr(cls, "_flax_internal_args"):
             for arg in cls._flax_internal_args:
                 expected_keys.remove(arg)
@@ -289,11 +303,20 @@ class ConfigMixin:
                 # use value from config dict
                 init_dict[key] = config_dict.pop(key)
 
-        unused_kwargs = config_dict.update(kwargs)
+        config_dict = {k: v for k, v in config_dict.items() if not k.startswith("_")}
+
+        if len(config_dict) > 0:
+            logger.warning(
+                f"The config attributes {config_dict} were passed to {cls.__name__}, "
+                "but are not expected and will be ignored. Please verify your "
+                f"{cls.config_name} configuration file."
+            )
+
+        unused_kwargs = {**config_dict, **kwargs}
 
         passed_keys = set(init_dict.keys())
         if len(expected_keys - passed_keys) > 0:
-            logger.warning(
+            logger.info(
                 f"{expected_keys - passed_keys} was not found in config. Values will be initialized to default values."
             )
 
@@ -437,6 +460,9 @@ def flax_register_to_config(cls):
 
         # Make sure init_kwargs override default kwargs
         new_kwargs = {**default_kwargs, **init_kwargs}
+        # dtype should be part of `init_kwargs`, but not `new_kwargs`
+        if "dtype" in new_kwargs:
+            new_kwargs.pop("dtype")
 
         # Get positional arguments aligned with kwargs
         for i, arg in enumerate(args):

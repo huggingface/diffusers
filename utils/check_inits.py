@@ -288,7 +288,7 @@ def check_submodules():
     if len(module_not_registered) > 0:
         list_of_modules = "\n".join(f"- {module}" for module in module_not_registered)
         raise ValueError(
-            "The following submodules are not properly registed in the main init of Transformers:\n"
+            "The following submodules are not properly registered in the main init of Transformers:\n"
             f"{list_of_modules}\n"
             "Make sure they appear somewhere in the keys of `_import_structure` with an empty list as value."
         )

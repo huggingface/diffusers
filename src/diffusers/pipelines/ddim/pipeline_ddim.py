@@ -14,7 +14,6 @@
 # limitations under the License.
 
 
-import warnings
 from typing import Optional, Tuple, Union
 
 import torch
@@ -36,7 +35,6 @@ class DDIMPipeline(DiffusionPipeline):
 
     def __init__(self, unet, scheduler):
         super().__init__()
-        scheduler = scheduler.set_format("pt")
         self.register_modules(unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
@@ -64,7 +62,7 @@ class DDIMPipeline(DiffusionPipeline):
                 expense of slower inference.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `nd.array`.
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
 
@@ -73,20 +71,6 @@ class DDIMPipeline(DiffusionPipeline):
             `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
             generated images.
         """
-
-        if "torch_device" in kwargs:
-            device = kwargs.pop("torch_device")
-            warnings.warn(
-                "`torch_device` is deprecated as an input argument to `__call__` and will be removed in v0.3.0."
-                " Consider using `pipe.to(torch_device)` instead."
-            )
-
-            # Set device as before (to be removed in 0.3.0)
-            if device is None:
-                device = "cuda" if torch.cuda.is_available() else "cpu"
-            self.to(device)
-
-        # eta corresponds to η in paper and should be between [0, 1]
 
         # Sample gaussian noise to begin loop
         image = torch.randn(
@@ -103,6 +87,7 @@ class DDIMPipeline(DiffusionPipeline):
             model_output = self.unet(image, t).sample
 
             # 2. predict previous mean of image x_t-1 and add variance depending on eta
+            # eta corresponds to η in paper and should be between [0, 1]
             # do x_t -> x_t-1
             image = self.scheduler.step(model_output, t, image, eta).prev_sample
 

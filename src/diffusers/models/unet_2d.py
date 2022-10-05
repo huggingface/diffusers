@@ -114,6 +114,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 add_downsample=not is_final_block,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
+                resnet_groups=norm_num_groups,
                 attn_num_head_channels=attention_head_dim,
                 downsample_padding=downsample_padding,
             )
@@ -151,6 +152,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 add_upsample=not is_final_block,
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
+                resnet_groups=norm_num_groups,
                 attn_num_head_channels=attention_head_dim,
             )
             self.up_blocks.append(up_block)
@@ -168,7 +170,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         timestep: Union[torch.Tensor, float, int],
         return_dict: bool = True,
     ) -> Union[UNet2DOutput, Tuple]:
-        """r
+        r"""
         Args:
             sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
             timestep (`torch.FloatTensor` or `float` or `int): (batch) timesteps

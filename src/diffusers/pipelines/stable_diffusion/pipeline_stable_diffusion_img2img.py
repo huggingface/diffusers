@@ -1,5 +1,5 @@
 import inspect
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import numpy as np
 import torch
@@ -7,11 +7,16 @@ import torch
 import PIL
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
+from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from ...utils import deprecate, logging
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def preprocess(image):
@@ -46,7 +51,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
-            Classification module that estimates whether generated images could be considered offsensive or harmful.
+            Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) for details.
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
@@ -63,7 +68,21 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
-        scheduler = scheduler.set_format("pt")
+
+        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
+            deprecation_message = (
+                f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
+                f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
+                "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
+                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
+                " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
+                " file"
+            )
+            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
+            new_config = dict(scheduler.config)
+            new_config["steps_offset"] = 1
+            scheduler._internal_dict = FrozenDict(new_config)
+
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -109,10 +128,14 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: Optional[int] = 1,
+        **kwargs,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -138,6 +161,9 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `guidance_scale` is less than `1`).
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
@@ -146,10 +172,16 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 deterministic.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `nd.array`.
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
+            callback (`Callable`, *optional*):
+                A function that will be called every `callback_steps` steps during inference. The function will be
+                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function will be called. If not specified, the callback will be
+                called at every step.
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
@@ -168,15 +200,16 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
-        # set timesteps
-        accepts_offset = "offset" in set(inspect.signature(self.scheduler.set_timesteps).parameters.keys())
-        extra_set_kwargs = {}
-        offset = 0
-        if accepts_offset:
-            offset = 1
-            extra_set_kwargs["offset"] = 1
+        if (callback_steps is None) or (
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+        ):
+            raise ValueError(
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
+            )
 
-        self.scheduler.set_timesteps(num_inference_steps, **extra_set_kwargs)
+        # set timesteps
+        self.scheduler.set_timesteps(num_inference_steps)
 
         if isinstance(init_image, PIL.Image.Image):
             init_image = preprocess(init_image)
@@ -190,6 +223,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         init_latents = torch.cat([init_latents] * batch_size)
 
         # get the original timestep using init_timestep
+        offset = self.scheduler.config.get("steps_offset", 0)
         init_timestep = int(num_inference_steps * strength) + offset
         init_timestep = min(init_timestep, num_inference_steps)
         if isinstance(self.scheduler, LMSDiscreteScheduler):
@@ -202,17 +236,25 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         # add noise to latents using the timesteps
         noise = torch.randn(init_latents.shape, generator=generator, device=self.device)
-        init_latents = self.scheduler.add_noise(init_latents, noise, timesteps).to(self.device)
+        init_latents = self.scheduler.add_noise(init_latents, noise, timesteps)
 
         # get prompt text embeddings
-        text_input = self.tokenizer(
+        text_inputs = self.tokenizer(
             prompt,
             padding="max_length",
             max_length=self.tokenizer.model_max_length,
-            truncation=True,
             return_tensors="pt",
         )
-        text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
+        text_input_ids = text_inputs.input_ids
+
+        if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
+            removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length :])
+            logger.warning(
+                "The following part of your input was truncated because CLIP can only handle sequences up to"
+                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+            )
+            text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
+        text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -220,9 +262,28 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
-            max_length = text_input.input_ids.shape[-1]
+            uncond_tokens: List[str]
+            if negative_prompt is None:
+                uncond_tokens = [""] * batch_size
+            elif type(prompt) is not type(negative_prompt):
+                raise TypeError(
+                    "`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    " {type(prompt)}."
+                )
+            elif isinstance(negative_prompt, str):
+                uncond_tokens = [negative_prompt] * batch_size
+            elif batch_size != len(negative_prompt):
+                raise ValueError("The length of `negative_prompt` should be equal to batch_size.")
+            else:
+                uncond_tokens = negative_prompt
+
+            max_length = text_input_ids.shape[-1]
             uncond_input = self.tokenizer(
-                [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="pt"
+                uncond_tokens,
+                padding="max_length",
+                max_length=max_length,
+                truncation=True,
+                return_tensors="pt",
             )
             uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
 
@@ -243,19 +304,22 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         latents = init_latents
 
         t_start = max(num_inference_steps - init_timestep + offset, 0)
-        for i, t in enumerate(self.progress_bar(self.scheduler.timesteps[t_start:])):
+
+        # Some schedulers like PNDM have timesteps as arrays
+        # It's more optimzed to move all timesteps to correct device beforehand
+        timesteps_tensor = torch.tensor(self.scheduler.timesteps[t_start:], device=self.device)
+
+        for i, t in enumerate(self.progress_bar(timesteps_tensor)):
             t_index = t_start + i
 
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
-            # if we use LMSDiscreteScheduler, let's make sure latents are mulitplied by sigmas
+            # if we use LMSDiscreteScheduler, let's make sure latents are multiplied by sigmas
             if isinstance(self.scheduler, LMSDiscreteScheduler):
                 sigma = self.scheduler.sigmas[t_index]
                 # the model input needs to be scaled to match the continuous ODE formulation in K-LMS
                 latent_model_input = latent_model_input / ((sigma**2 + 1) ** 0.5)
-                latent_model_input = latent_model_input.to(self.unet.dtype)
-                t = t.to(self.unet.dtype)
 
             # predict the noise residual
             noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
@@ -271,16 +335,18 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             else:
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
-        # scale and decode the image latents with vae
+            # call the callback, if provided
+            if callback is not None and i % callback_steps == 0:
+                callback(i, t, latents)
+
         latents = 1 / 0.18215 * latents
-        image = self.vae.decode(latents.to(self.vae.dtype)).sample
+        image = self.vae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
 
-        # run safety checker
-        safety_cheker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
-        image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_cheker_input.pixel_values)
+        safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
+        image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
 
         if output_type == "pil":
             image = self.numpy_to_pil(image)
