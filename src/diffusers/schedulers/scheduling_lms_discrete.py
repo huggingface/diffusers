@@ -212,7 +212,6 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 "The `scale_model_input` function should be called before `step` to ensure correct denoising. "
                 "See `StableDiffusionPipeline` for a usage example."
             )
-        self.is_scale_input_called = False
 
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
