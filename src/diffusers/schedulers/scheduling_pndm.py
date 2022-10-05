@@ -129,6 +129,9 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         self.final_alpha_cumprod = torch.tensor(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
 
+        # standard deviation of the initial noise distribution
+        self.init_noise_sigma = 1.0
+
         # For now we only support F-PNDM, i.e. the runge-kutta method
         # For more information on the algorithm please take a look at the paper: https://arxiv.org/pdf/2202.09778.pdf
         # mainly at formula (9), (12), (13) and the Algorithm 2.
@@ -341,6 +344,19 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             return (prev_sample,)
 
         return SchedulerOutput(prev_sample=prev_sample)
+
+    def scale_model_input(self, sample: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+        """
+        Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
+        current timestep.
+
+        Args:
+            sample (`torch.FloatTensor`): input sample
+
+        Returns:
+            `torch.FloatTensor`: scaled input sample
+        """
+        return sample
 
     def _get_prev_sample(self, sample, timestep, prev_timestep, model_output):
         # See formula (9) of PNDM paper https://arxiv.org/pdf/2202.09778.pdf

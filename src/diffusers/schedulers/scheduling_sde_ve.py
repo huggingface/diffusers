@@ -84,10 +84,27 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             take_from=kwargs,
         )
 
+        # standard deviation of the initial noise distribution
+        self.init_noise_sigma = sigma_max
+
         # setable values
         self.timesteps = None
 
         self.set_sigmas(num_train_timesteps, sigma_min, sigma_max, sampling_eps)
+
+    def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
+        """
+        Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
+        current timestep.
+
+        Args:
+            sample (`torch.FloatTensor`): input sample
+            timestep (`int`, optional): current timestep
+
+        Returns:
+            `torch.FloatTensor`: scaled input sample
+        """
+        return sample
 
     def set_timesteps(
         self, num_inference_steps: int, sampling_eps: float = None, device: Union[str, torch.device] = None

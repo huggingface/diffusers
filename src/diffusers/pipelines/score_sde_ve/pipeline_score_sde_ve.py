@@ -57,7 +57,7 @@ class ScoreSdeVePipeline(DiffusionPipeline):
 
         model = self.unet
 
-        sample = torch.randn(*shape, generator=generator) * self.scheduler.config.sigma_max
+        sample = torch.randn(*shape, generator=generator) * self.scheduler.init_noise_sigma
         sample = sample.to(self.device)
 
         self.scheduler.set_timesteps(num_inference_steps)
