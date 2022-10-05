@@ -315,7 +315,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
         # disable deterministic behavior for gradient checkpointing
         del os.environ["CUBLAS_WORKSPACE_CONFIG"]
-        torch.use_deterministic_algorithms(True)
+        torch.use_deterministic_algorithms(False)
 
 
 #    TODO(Patrick) - Re-add this test after having cleaned up LDM
