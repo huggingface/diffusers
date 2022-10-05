@@ -81,13 +81,17 @@ def test_progress_bar(capsys):
 
 class CustomPipelineTests(unittest.TestCase):
     def test_load_custom_pipeline(self):
-        pipeline = DiffusionPipeline.from_pretrained("google/ddpm-cifar10-32", custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline")
+        pipeline = DiffusionPipeline.from_pretrained(
+            "google/ddpm-cifar10-32", custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline"
+        )
         # NOTE that `"CustomPipeline"` is not a class that is defined in this library, but solely on the Hub
         # under https://huggingface.co/hf-internal-testing/diffusers-dummy-pipeline/blob/main/pipeline.py#L24
         assert pipeline.__class__.__name__ == "CustomPipeline"
 
     def test_run_custom_pipeline(self):
-        pipeline = DiffusionPipeline.from_pretrained("google/ddpm-cifar10-32", custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline")
+        pipeline = DiffusionPipeline.from_pretrained(
+            "google/ddpm-cifar10-32", custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline"
+        )
         images, output_str = pipeline(num_inference_steps=2, output_type="np")
 
         assert images[0].shape == (1, 32, 32, 3)

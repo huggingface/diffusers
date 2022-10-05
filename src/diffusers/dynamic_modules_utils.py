@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 from typing import Dict, Optional, Union
 
-from huggingface_hub import hf_hub_download, HfFolder, model_info
+from huggingface_hub import HfFolder, hf_hub_download, model_info
 
 from .utils import DIFFUSERS_DYNAMIC_MODULE_NAME, HF_MODULES_CACHE, logging
 
@@ -154,8 +154,8 @@ def get_class_in_module(class_name, module_path):
 
 def find_pipeline_class(loaded_module):
     """
-    Retrieve pipeline class that inherits from `DiffusionPipeline`.
-    Note that there has to be exactly one class inheriting from `DiffusionPipeline`.
+    Retrieve pipeline class that inherits from `DiffusionPipeline`. Note that there has to be exactly one class
+    inheriting from `DiffusionPipeline`.
     """
     from .pipeline_utils import DiffusionPipeline
 
@@ -165,7 +165,11 @@ def find_pipeline_class(loaded_module):
     for cls_name, cls in cls_members.items():
         if cls_name != DiffusionPipeline.__name__ and issubclass(cls, DiffusionPipeline):
             if pipeline_class is not None:
-                raise ValueError(f"Multiple classes that inherit from {DiffusionPipeline.__name__} have been found: {pipeline_class.__name__}, and {cls_name}. Please make sure to define only one in {loaded_module}.")
+                raise ValueError(
+                    f"Multiple classes that inherit from {DiffusionPipeline.__name__} have been found:"
+                    f" {pipeline_class.__name__}, and {cls_name}. Please make sure to define only one in"
+                    f" {loaded_module}."
+                )
             pipeline_class = cls
 
     return pipeline_class
@@ -221,8 +225,8 @@ def get_cached_module_file(
 
     <Tip>
 
-    You may pass a token in `use_auth_token` if you are not logged in (`huggingface-cli long`) and
-    want to use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models).
+    You may pass a token in `use_auth_token` if you are not logged in (`huggingface-cli long`) and want to use private
+    or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
     </Tip>
 
@@ -365,8 +369,8 @@ def get_class_from_dynamic_module(
 
     <Tip>
 
-    You may pass a token in `use_auth_token` if you are not logged in (`huggingface-cli long`) and
-    want to use private or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models).
+    You may pass a token in `use_auth_token` if you are not logged in (`huggingface-cli long`) and want to use private
+    or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
     </Tip>
 

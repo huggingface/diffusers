@@ -216,7 +216,8 @@ class DiffusionPipeline(ConfigMixin):
                     - A string, the *repo id* of a custom pipeline, called `pipeline.py`, hosted inside a model repo on
                       https://huggingface.co/ Valid repo ids have to be located under a user or organization name, like
                       `CompVis/ldm-text2im-large-256`.
-                    - A path to a *directory* containing a pipeline, called `pipeline.py`, e.g., `./my_pipeline_directory/`.
+                    - A path to a *directory* containing a pipeline, called `pipeline.py`, e.g.,
+                      `./my_pipeline_directory/`.
 
             torch_dtype (`str` or `torch.dtype`, *optional*):
             force_download (`bool`, *optional*, defaults to `False`):
@@ -333,7 +334,9 @@ class DiffusionPipeline(ConfigMixin):
         # 2. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
         if custom_pipeline is not None:
-            pipeline_class = get_class_from_dynamic_module(custom_pipeline, module_file=CUSTOM_PIPELINE_FILE_NAME, cache_dir=custom_pipeline)
+            pipeline_class = get_class_from_dynamic_module(
+                custom_pipeline, module_file=CUSTOM_PIPELINE_FILE_NAME, cache_dir=custom_pipeline
+            )
         elif cls != DiffusionPipeline:
             pipeline_class = cls
         else:
