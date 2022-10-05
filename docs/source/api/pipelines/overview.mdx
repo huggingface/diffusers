@@ -101,7 +101,7 @@ logic including pre-processing, an unrolled diffusion loop, and post-processing 
 from torch import autocast
 from diffusers import StableDiffusionPipeline, LMSDiscreteScheduler
 
-pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
@@ -126,7 +126,7 @@ from diffusers import StableDiffusionImg2ImgPipeline
 # load the pipeline
 device = "cuda"
 pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16, use_auth_token=True
+    "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16
 ).to(device)
 
 # let's download an initial image
@@ -177,7 +177,7 @@ mask_image = download_image(mask_url).resize((512, 512))
 
 device = "cuda"
 pipe = StableDiffusionInpaintPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16, use_auth_token=True
+    "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16
 ).to(device)
 
 prompt = "a cat sitting on a bench"

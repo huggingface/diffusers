@@ -263,14 +263,14 @@ class DiffusionPipeline(ConfigMixin):
         >>> # Download pipeline that requires an authorization token
         >>> # For more information on access tokens, please refer to this section
         >>> # of the documentation](https://huggingface.co/docs/hub/security-tokens)
-        >>> pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+        >>> pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
 
         >>> # Download pipeline, but overwrite scheduler
         >>> from diffusers import LMSDiscreteScheduler
 
         >>> scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
         >>> pipeline = DiffusionPipeline.from_pretrained(
-        ...     "CompVis/stable-diffusion-v1-4", scheduler=scheduler, use_auth_token=True
+        ...     "CompVis/stable-diffusion-v1-4", scheduler=scheduler
         ... )
         ```
         """

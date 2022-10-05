@@ -88,7 +88,7 @@ logic including pre-processing, an unrolled diffusion loop, and post-processing 
 # make sure you're logged in with `huggingface-cli login`
 from diffusers import StableDiffusionPipeline, LMSDiscreteScheduler
 
-pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"

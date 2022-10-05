@@ -56,7 +56,7 @@ If you use a CUDA GPU, you can take advantage of `torch.autocast` to perform inf
 from torch import autocast
 from diffusers import StableDiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
@@ -153,7 +153,7 @@ def generate_inputs():
 pipe = StableDiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     # scheduler=scheduler,
-    use_auth_token=True,
+    
     revision="fp16",
     torch_dtype=torch.float16,
 ).to("cuda")
@@ -219,7 +219,7 @@ class UNet2DConditionOutput:
 pipe = StableDiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     # scheduler=scheduler,
-    use_auth_token=True,
+    
     revision="fp16",
     torch_dtype=torch.float16,
 ).to("cuda")
