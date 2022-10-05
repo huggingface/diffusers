@@ -1,7 +1,6 @@
 import argparse
 import math
 import os
-from contextlib import nullcontext
 from pathlib import Path
 from typing import Optional
 
@@ -346,12 +345,10 @@ def main():
             sample_dataloader = accelerator.prepare(sample_dataloader)
             pipeline.to(accelerator.device)
 
-            context = torch.autocast("cuda") if accelerator.device.type == "cuda" else nullcontext
             for example in tqdm(
                 sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
             ):
-                with context:
-                    images = pipeline(example["prompt"]).images
+                images = pipeline(example["prompt"]).images
 
                 for i, image in enumerate(images):
                     image.save(class_images_dir / f"{example['index'][i] + cur_class_images}.jpg")
