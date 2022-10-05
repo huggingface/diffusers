@@ -100,7 +100,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
 
         # setable values
         self.num_inference_steps: int = None
-        self.timesteps: np.ndarray = None
+        self.timesteps: np.IntTensor = None
         self.schedule: torch.FloatTensor = None  # sigma(t_i)
 
     def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
@@ -117,7 +117,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    def set_timesteps(self, num_inference_steps: int):
+    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
         Sets the continuous timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -127,7 +127,8 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
 
         """
         self.num_inference_steps = num_inference_steps
-        self.timesteps = np.arange(0, self.num_inference_steps)[::-1].copy()
+        timesteps = np.arange(0, self.num_inference_steps)[::-1].copy()
+        self.timesteps = torch.from_numpy(timesteps).to(device)
         schedule = [
             (
                 self.config.sigma_max**2
@@ -135,7 +136,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
             )
             for i in self.timesteps
         ]
-        self.schedule = torch.tensor(schedule, dtype=torch.float32)
+        self.schedule = torch.tensor(schedule, dtype=torch.float32, device=device)
 
     def add_noise_to_input(
         self, sample: torch.FloatTensor, sigma: float, generator: Optional[torch.Generator] = None
