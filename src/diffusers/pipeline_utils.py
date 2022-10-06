@@ -211,13 +211,50 @@ class DiffusionPipeline(ConfigMixin):
                 Override the default `torch.dtype` and load the model under this dtype. If `"auto"` is passed the dtype
                 will be automatically derived from the model's weights.
             custom_pipeline (`str`, *optional*):
+
+                <Tip>
+
+                This is an expiremental feature and is likely to change in the future.
+
+                </Tip warning={true}>
+
                 Can be either:
 
-                    - A string, the *repo id* of a custom pipeline, called `pipeline.py`, hosted inside a model repo on
-                      https://huggingface.co/ Valid repo ids have to be located under a user or organization name, like
-                      `CompVis/ldm-text2im-large-256`.
-                    - A path to a *directory* containing a pipeline, called `pipeline.py`, e.g.,
-                      `./my_pipeline_directory/`.
+                    - A string, the *repo id* of a custom pipeline hosted inside a model repo on
+                      https://huggingface.co/. Valid repo ids have to be located under a user or organization name,
+                      like `hf-internal-testing/diffusers-dummy-pipeline`.
+
+                        <Tip>
+
+                         It is required that the model repo has a file, called `pipeline.py` that defines the custom
+                         pipeline.
+
+                        </Tip>
+
+
+                    - A string, the *file name* of a community pipeline hosted on GitHub under
+                      https://github.com/huggingface/diffusers/tree/main/examples/community. Valid file names have
+                      match exactly the file name without `.py` located under the above link, *e.g.*
+                      `clip_guided_stable_diffusion`.
+
+                        <Tip>
+
+                         Community pipeline are always loaded from the current `main` branch of GitHub.
+
+                        </Tip>
+
+                    - A path to a *directory* containing a custom pipeline, e.g., `./my_pipeline_directory/`.
+
+                        <Tip>
+
+                         It is required that the directory has a file, called `pipeline.py` that defines the custom
+                         pipeline.
+
+                        </Tip>
+
+                For more information on how to load and create custom pipelines, please have a look at [Loading and
+                Creating Custom
+                Pipelines](https://huggingface.co/docs/diffusers/main/en/using-diffusers/custom_pipelines)
 
             torch_dtype (`str` or `torch.dtype`, *optional*):
             force_download (`bool`, *optional*, defaults to `False`):

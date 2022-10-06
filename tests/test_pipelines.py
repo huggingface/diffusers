@@ -123,7 +123,6 @@ class CustomPipelineTests(unittest.TestCase):
             custom_pipeline="clip_guided_stable_diffusion",
             clip_model=clip_model,
             feature_extractor=feature_extractor,
-            use_auth_token=True,
         )
         pipeline = pipeline.to(torch_device)
 
