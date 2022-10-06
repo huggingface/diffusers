@@ -23,7 +23,6 @@ import numpy as np
 import torch
 
 import PIL
-import requests
 from diffusers import (
     AutoencoderKL,
     DDIMPipeline,
@@ -99,15 +98,6 @@ class CustomPipelineTests(unittest.TestCase):
         assert images[0].shape == (1, 32, 32, 3)
         # compare output to https://huggingface.co/hf-internal-testing/diffusers-dummy-pipeline/blob/main/pipeline.py#L102
         assert output_str == "This is a test"
-
-    def test_run_non_existing_pipeline(self):
-        with self.assertRaises(requests.exceptions.HTTPError) as error:
-            _ = DiffusionPipeline.from_pretrained(
-                "google/ddpm-cifar10-32", custom_pipeline="hf-internal-testing/i-do-not-exist"
-            )
-
-        assert "404 Client Error" in str(error.exception)
-        assert "Repository Not Found for url" in str(error.exception)
 
     def test_local_custom_pipeline(self):
         local_custom_pipeline_path = get_tests_dir("fixtures/custom_pipeline")
