@@ -244,9 +244,6 @@ def get_cached_module_file(
     module_file_or_url = os.path.join(pretrained_model_name_or_path, module_file)
     submodule = "local"
 
-    import ipdb
-
-    ipdb.set_trace()
     if os.path.isfile(module_file_or_url):
         resolved_module_file = module_file_or_url
     elif pretrained_model_name_or_path.count("/") == 0:
