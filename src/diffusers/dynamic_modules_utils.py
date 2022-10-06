@@ -242,10 +242,10 @@ def get_cached_module_file(
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
 
     module_file_or_url = os.path.join(pretrained_model_name_or_path, module_file)
-    submodule = "local"
 
     if os.path.isfile(module_file_or_url):
         resolved_module_file = module_file_or_url
+        submodule = "local"
     elif pretrained_model_name_or_path.count("/") == 0:
         # community pipeline on GitHub
         github_url = COMMUNITY_PIPELINES_URL.format(pipeline=pretrained_model_name_or_path)
@@ -259,6 +259,7 @@ def get_cached_module_file(
                 local_files_only=local_files_only,
                 use_auth_token=use_auth_token,
             )
+            submodule = "local"
         except EnvironmentError:
             logger.error(f"Could not locate the {module_file} inside {pretrained_model_name_or_path}.")
             raise
@@ -275,6 +276,7 @@ def get_cached_module_file(
                 local_files_only=local_files_only,
                 use_auth_token=use_auth_token,
             )
+            submodule = os.path.join("local", "--".join(pretrained_model_name_or_path.split("/")))
         except EnvironmentError:
             logger.error(f"Could not locate the {module_file} inside {pretrained_model_name_or_path}.")
             raise
