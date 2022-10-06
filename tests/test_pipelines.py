@@ -193,7 +193,7 @@ class PipelineFastTests(unittest.TestCase):
         scheduler = DDPMScheduler(num_train_timesteps=10)
         pipe = DDIMPipeline(model.half(), scheduler)
 
-        if str(torch_device) == "cpu":
+        if str(torch_device) in ["cpu", "mps"]:
             self.assertRaises(ValueError, pipe.to, torch_device)
         else:
             # moving the pipeline to GPU should work
