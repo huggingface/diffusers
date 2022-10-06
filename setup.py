@@ -84,13 +84,10 @@ _deps = [
     "datasets",
     "filelock",
     "flake8>=3.8.3",
-    "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
     "huggingface-hub>=0.10.0",
     "importlib_metadata",
     "isort>=5.5.4",
-    "jax>=0.2.8,!=0.3.2,<=0.3.6",
-    "jaxlib>=0.1.65,<=0.3.6",
     "modelcards>=0.1.4",
     "numpy",
     "onnxruntime",
@@ -188,15 +185,9 @@ extras["test"] = deps_list(
     "torchvision",
     "transformers"
 )
-extras["torch"] = deps_list("torch")
-
-if os.name == "nt":  # windows
-    extras["flax"] = []  # jax is not supported on windows
-else:
-    extras["flax"] = deps_list("jax", "jaxlib", "flax")
 
 extras["dev"] = (
-    extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"] + extras["flax"]
+    extras["quality"] + extras["test"] + extras["training"] + extras["docs"]
 )
 
 install_requires = [
@@ -207,6 +198,7 @@ install_requires = [
     deps["regex"],
     deps["requests"],
     deps["Pillow"],
+    deps["torch"]
 ]
 
 setup(
