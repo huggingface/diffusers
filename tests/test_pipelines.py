@@ -188,6 +188,17 @@ class PipelineFastTests(unittest.TestCase):
 
         return extract
 
+    def test_pipeline_fp16_cpu_error(self):
+        model = self.dummy_uncond_unet
+        scheduler = DDPMScheduler(num_train_timesteps=10)
+        pipe = DDIMPipeline(model.half(), scheduler)
+
+        if str(torch_device) in ["cpu", "mps"]:
+            self.assertRaises(ValueError, pipe.to, torch_device)
+        else:
+            # moving the pipeline to GPU should work
+            pipe.to(torch_device)
+
     def test_ddim(self):
         unet = self.dummy_uncond_unet
         scheduler = DDIMScheduler()
