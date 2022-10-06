@@ -8,7 +8,7 @@ from .utils import (
 )
 
 
-__version__ = "0.4.0"
+__version__ = "0.4.1.dev0"
 
 from .configuration_utils import ConfigMixin
 from .onnx_utils import OnnxRuntimeModel
