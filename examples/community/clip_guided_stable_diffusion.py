@@ -146,7 +146,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
             image = self.make_cutouts(image, num_cutouts)
         else:
             image = transforms.Resize(self.feature_extractor.size)(image)
-        image = self.normalize(image)
+        image = self.normalize(image).to(latents.dtype)
 
         image_embeddings_clip = self.clip_model.get_image_features(image)
         image_embeddings_clip = image_embeddings_clip / image_embeddings_clip.norm(p=2, dim=-1, keepdim=True)
