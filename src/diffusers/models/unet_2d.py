@@ -170,7 +170,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         timestep: Union[torch.Tensor, float, int],
         return_dict: bool = True,
     ) -> Union[UNet2DOutput, Tuple]:
-        """r
+        r"""
         Args:
             sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
             timestep (`torch.FloatTensor` or `float` or `int): (batch) timesteps

@@ -39,7 +39,7 @@ Run the following command to authenticate your token
 huggingface-cli login
 ```
 
-If you have already cloned the repo, then you won't need to go through these steps. You can simple remove the `--use_auth_token` arg from the following command.
+If you have already cloned the repo, then you won't need to go through these steps. 
 
 <br>
 
@@ -52,7 +52,7 @@ export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export DATA_DIR="path-to-dir-containing-images"
 
 accelerate launch textual_inversion.py \
-  --pretrained_model_name_or_path=$MODEL_NAME --use_auth_token \
+  --pretrained_model_name_or_path=$MODEL_NAME \
   --train_data_dir=$DATA_DIR \
   --learnable_property="object" \
   --placeholder_token="<cat-toy>" --initializer_token="toy" \
@@ -74,8 +74,6 @@ A full training run takes ~1 hour on one V100 GPU.
 Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline`. Make sure to include the `placeholder_token` in your prompt.
 
 ```python
-
-from torch import autocast
 from diffusers import StableDiffusionPipeline
 
 model_id = "path-to-your-trained-model"
@@ -83,8 +81,7 @@ pipe = StableDiffusionPipeline.from_pretrained(model_id,torch_dtype=torch.float1
 
 prompt = "A <cat-toy> backpack"
 
-with autocast("cuda"):
-    image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
 
 image.save("cat-backpack.png")
 ```

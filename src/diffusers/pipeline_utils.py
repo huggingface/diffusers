@@ -166,6 +166,12 @@ class DiffusionPipeline(ConfigMixin):
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
+                if module.dtype == torch.float16 and str(torch_device) in ["cpu", "mps"]:
+                    raise ValueError(
+                        "Pipelines loaded with `torch_dtype=torch.float16` cannot be moved to `cpu` or `mps` "
+                        "due to the lack of support for `float16` operations on those devices in PyTorch. "
+                        "Please remove the `torch_dtype=torch.float16` argument, or use a `cuda` device."
+                    )
                 module.to(torch_device)
         return self
 
@@ -240,8 +246,8 @@ class DiffusionPipeline(ConfigMixin):
 
         <Tip>
 
-        Passing `use_auth_token=True`` is required when you want to use a private model, *e.g.*
-        `"CompVis/stable-diffusion-v1-4"`
+         It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
+         models](https://huggingface.co/docs/hub/models-gated#gated-models), *e.g.* `"CompVis/stable-diffusion-v1-4"`
 
         </Tip>
 
@@ -263,15 +269,13 @@ class DiffusionPipeline(ConfigMixin):
         >>> # Download pipeline that requires an authorization token
         >>> # For more information on access tokens, please refer to this section
         >>> # of the documentation](https://huggingface.co/docs/hub/security-tokens)
-        >>> pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+        >>> pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
 
         >>> # Download pipeline, but overwrite scheduler
         >>> from diffusers import LMSDiscreteScheduler
 
         >>> scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
-        >>> pipeline = DiffusionPipeline.from_pretrained(
-        ...     "CompVis/stable-diffusion-v1-4", scheduler=scheduler, use_auth_token=True
-        ... )
+        >>> pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler)
         ```
         """
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)

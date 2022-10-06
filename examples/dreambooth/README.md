@@ -32,7 +32,7 @@ Run the following command to authenticate your token
 huggingface-cli login
 ```
 
-If you have already cloned the repo, then you won't need to go through these steps. You can simple remove the `--use_auth_token` arg from the following command.
+If you have already cloned the repo, then you won't need to go through these steps.
 
 <br>
 
@@ -46,7 +46,7 @@ export INSTANCE_DIR="path-to-instance-images"
 export OUTPUT_DIR="path-to-save-model"
 
 accelerate launch train_dreambooth.py \
-  --pretrained_model_name_or_path=$MODEL_NAME --use_auth_token \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
   --instance_prompt="a photo of sks dog" \
@@ -62,7 +62,7 @@ accelerate launch train_dreambooth.py \
 ### Training with prior-preservation loss
 
 Prior-preservation is used to avoid overfitting and language-drift. Refer to the paper to learn more about it. For prior-preservation we first generate images using the model with a class prompt and then use those during training along with our data.
-According to the paper, it's recommened to generate `num_epochs * num_samples` images for prior-preservation. 200-300 works well for most cases.
+According to the paper, it's recommended to generate `num_epochs * num_samples` images for prior-preservation. 200-300 works well for most cases.
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
@@ -71,7 +71,7 @@ export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
 accelerate launch train_dreambooth.py \
-  --pretrained_model_name_or_path=$MODEL_NAME --use_auth_token \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --class_data_dir=$CLASS_DIR \
   --output_dir=$OUTPUT_DIR \
@@ -101,7 +101,7 @@ export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
 accelerate launch train_dreambooth.py \
-  --pretrained_model_name_or_path=$MODEL_NAME --use_auth_token \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
   --instance_data_dir=$INSTANCE_DIR \
   --class_data_dir=$CLASS_DIR \
   --output_dir=$OUTPUT_DIR \
@@ -125,8 +125,6 @@ accelerate launch train_dreambooth.py \
 Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline`. Make sure to include the `identifier`(e.g. sks in above example) in your prompt.
 
 ```python
-
-from torch import autocast
 from diffusers import StableDiffusionPipeline
 import torch
 
@@ -134,9 +132,7 @@ model_id = "path-to-your-trained-model"
 pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 
 prompt = "A photo of sks dog in a bucket"
-
-with autocast("cuda"):
-    image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
 
 image.save("dog-bucket.png")
 ```

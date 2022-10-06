@@ -70,7 +70,7 @@ def onnx_export(
 
 @torch.no_grad()
 def convert_models(model_path: str, output_path: str, opset: int):
-    pipeline = StableDiffusionPipeline.from_pretrained(model_path, use_auth_token=True)
+    pipeline = StableDiffusionPipeline.from_pretrained(model_path)
     output_path = Path(output_path)
 
     # TEXT ENCODER
