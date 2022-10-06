@@ -168,8 +168,9 @@ class DiffusionPipeline(ConfigMixin):
             if isinstance(module, torch.nn.Module):
                 if module.dtype == torch.float16 and str(torch_device) in ["cpu", "mps"]:
                     raise ValueError(
-                        "Cannot use `pipeline.to('cpu')` with a pipeline loaded with `torch_dtype=torch.float16` "
-                        "due to the lack of support for `float16` operations on CPU in PyTorch."
+                        "pipeline loaded with `torch_dtype=torch.float16`  can not be put on CPU directly "
+                        "due to the lack of support for `float16` operations on CPU in PyTorch. "
+                        "Please remove the `torch_dtype=torch.float16` argument or set it to `torch_dtype=torch.float32` to use it on cpu"
                     )
                 module.to(torch_device)
         return self
