@@ -145,6 +145,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
+        num_images_per_prompt: Optional[int] = 1,
         eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
@@ -184,6 +185,8 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
+                The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
@@ -242,15 +245,15 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
         init_latents = 0.18215 * init_latents
 
-        # Expand init_latents for batch_size
-        init_latents = torch.cat([init_latents] * batch_size)
+        # Expand init_latents for batch_size and num_images_per_prompt
+        init_latents = torch.cat([init_latents] * batch_size * num_images_per_prompt, dim=0)
         init_latents_orig = init_latents
 
         # preprocess mask
         if not isinstance(mask_image, torch.FloatTensor):
             mask_image = preprocess_mask(mask_image)
         mask_image = mask_image.to(self.device)
-        mask = torch.cat([mask_image] * batch_size)
+        mask = torch.cat([mask_image] * batch_size * num_images_per_prompt)
 
         # check sizes
         if not mask.shape == init_latents.shape:
@@ -262,7 +265,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         init_timestep = min(init_timestep, num_inference_steps)
 
         timesteps = self.scheduler.timesteps[-init_timestep]
-        timesteps = torch.tensor([timesteps] * batch_size, device=self.device)
+        timesteps = torch.tensor([timesteps] * batch_size * num_images_per_prompt, device=self.device)
 
         # add noise to latents using the timesteps
         noise = torch.randn(init_latents.shape, generator=generator, device=self.device)
@@ -286,6 +289,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
         text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
 
+        # duplicate text embeddings for each generation per prompt
+        text_embeddings = text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
+
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
@@ -294,14 +300,14 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         if do_classifier_free_guidance:
             uncond_tokens: List[str]
             if negative_prompt is None:
-                uncond_tokens = [""] * batch_size
+                uncond_tokens = [""]
             elif type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     "`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
                     " {type(prompt)}."
                 )
             elif isinstance(negative_prompt, str):
-                uncond_tokens = [negative_prompt] * batch_size
+                uncond_tokens = [negative_prompt]
             elif batch_size != len(negative_prompt):
                 raise ValueError(
                     f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
@@ -320,6 +326,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 return_tensors="pt",
             )
             uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
+
+            # duplicate unconditional embeddings for each generation per prompt
+            uncond_embeddings = uncond_embeddings.repeat_interleave(batch_size * num_images_per_prompt, dim=0)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
