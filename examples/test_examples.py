@@ -102,7 +102,6 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             test_args = f"""
                 examples/textual_inversion/textual_inversion.py
                 --pretrained_model_name_or_path CompVis/stable-diffusion-v1-4
-                --use_auth_token
                 --train_data_dir docs/source/imgs
                 --learnable_property object
                 --placeholder_token <cat-toy>
