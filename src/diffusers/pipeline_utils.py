@@ -214,7 +214,7 @@ class DiffusionPipeline(ConfigMixin):
 
                 <Tip warning={true}>
 
-                    This is an expiremental feature and is likely to change in the future.
+                    This is an experimental feature and is likely to change in the future.
 
                 </Tip>
 
@@ -233,12 +233,12 @@ class DiffusionPipeline(ConfigMixin):
 
                     - A string, the *file name* of a community pipeline hosted on GitHub under
                       https://github.com/huggingface/diffusers/tree/main/examples/community. Valid file names have
-                      match exactly the file name without `.py` located under the above link, *e.g.*
+                      to match exactly the file name without `.py` located under the above link, *e.g.*
                       `clip_guided_stable_diffusion`.
 
                         <Tip>
 
-                         Community pipeline are always loaded from the current `main` branch of GitHub.
+                         Community pipelines are always loaded from the current `main` branch of GitHub.
 
                         </Tip>
 

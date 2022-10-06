@@ -108,7 +108,7 @@ class CustomPipelineTests(unittest.TestCase):
 
         assert pipeline.__class__.__name__ == "CustomLocalPipeline"
         assert images[0].shape == (1, 32, 32, 3)
-        # compare to https://github.com/huggingface/diffusers/blob/main/tests/fixtures/costum_pipeline/pipeline.py#L102
+        # compare to https://github.com/huggingface/diffusers/blob/main/tests/fixtures/custom_pipeline/pipeline.py#L102
         assert output_str == "This is a local test"
 
     @slow

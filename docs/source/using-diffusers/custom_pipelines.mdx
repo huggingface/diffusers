@@ -20,7 +20,7 @@ via the [`DiffusionPipeline`] class.
 Custom pipelines can be easily loaded from any model repository on the Hub that defines a diffusion pipeline in a `pipeline.py` file.
 Let's load a dummy pipeline from [hf-internal-testing/diffusers-dummy-pipeline](https://huggingface.co/hf-internal-testing/diffusers-dummy-pipeline).
 
-All you need to do is to pass the custom pipeline repo id with the `custom_pipeline` argument along side the repo from where you wish to load the pipeline modules.
+All you need to do is pass the custom pipeline repo id with the `custom_pipeline` argument alongside the repo from where you wish to load the pipeline modules.
 
 ```python
 from diffusers import DiffusionPipeline
@@ -34,16 +34,16 @@ This will load the custom pipeline as defined in the [model repository](https://
 
 <Tip warning={true} >
 
-By loading a costum pipeline from the Hugging Face Hub, you are trusting that the code you are loading 
+By loading a custom pipeline from the Hugging Face Hub, you are trusting that the code you are loading 
 is safe 🔒. Make sure to check out the code online before loading & running it automatically.
 
 </Tip>
 
 ## Loading official community pipelines
 
-Community pipelines are summarized in the [community example folder](https://github.com/huggingface/diffusers/tree/main/examples/community) 
+Community pipelines are summarized in the [community examples folder](https://github.com/huggingface/diffusers/tree/main/examples/community) 
 
-Similarly, you need to pass both the *repo id* from where you wish to load the weigts as well as the `custom_pipeline` argument. Here the `custom_pipeline` argument should consist simply of the filename of the community pipeline excluding the `.py` suffix, *e.g.* `clip_guided_stable_diffusion`.
+Similarly, you need to pass both the *repo id* from where you wish to load the weights as well as the `custom_pipeline` argument. Here the `custom_pipeline` argument should consist simply of the filename of the community pipeline excluding the `.py` suffix, *e.g.* `clip_guided_stable_diffusion`.
 
 Since community pipelines are often more complex, one can mix loading weights from an official *repo id*
 and passing pipeline modules directly.
@@ -111,8 +111,8 @@ class MyPipeline(DiffusionPipeline):
     return image
 ```
 
-Now you can upload this short file under the name `pipeline.py` in your prefered model repository.
-Finally, we can load the custom pipeline by passing the model repository name, *e.g.* `patrickvonplaten/my_custom_pipeline` along side the model repository from where we want to load the `unet` and `scheduler` components.
+Now you can upload this short file under the name `pipeline.py` in your preferred [model repository](https://huggingface.co/docs/hub/models-uploading). For Stable Diffusion pipelines, you may also [join the community organisation for shared pipelines](https://huggingface.co/organizations/sd-diffusers-pipelines-library/share/BUPyDUuHcciGTOKaExlqtfFcyCZsVFdrjr) to upload yours.
+Finally, we can load the custom pipeline by passing the model repository name, *e.g.* `sd-diffusers-pipelines-library/my_custom_pipeline` alongside the model repository from where we want to load the `unet` and `scheduler` components.
 
 ```python
 my_pipeline = DiffusionPipeline.from_pretrained(
