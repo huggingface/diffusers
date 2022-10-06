@@ -15,7 +15,6 @@
 
 import gc
 import math
-import os
 import tracemalloc
 import unittest
 
@@ -270,13 +269,6 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 
     def test_gradient_checkpointing(self):
         # enable deterministic behavior for gradient checkpointing
-        torch.use_deterministic_algorithms(True)
-
-        # from torch docs: "A handful of CUDA operations are nondeterministic if the CUDA version is 10.2 or greater,
-        # unless the environment variable CUBLAS_WORKSPACE_CONFIG=:4096:8 or CUBLAS_WORKSPACE_CONFIG=:16:8 is set."
-        # https://pytorch.org/docs/stable/generated/torch.use_deterministic_algorithms.html
-        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
-
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.model_class(**init_dict)
         model.to(torch_device)
@@ -312,10 +304,6 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertTrue((output_checkpointed == output_not_checkpointed).all())
         for name in grad_checkpointed:
             self.assertTrue(torch.allclose(grad_checkpointed[name], grad_not_checkpointed[name], atol=5e-5))
-
-        # disable deterministic behavior for gradient checkpointing
-        del os.environ["CUBLAS_WORKSPACE_CONFIG"]
-        torch.use_deterministic_algorithms(False)
 
 
 #    TODO(Patrick) - Re-add this test after having cleaned up LDM
