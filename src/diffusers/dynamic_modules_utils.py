@@ -259,7 +259,8 @@ def get_cached_module_file(
                 local_files_only=local_files_only,
                 use_auth_token=False,
             )
-            submodule = "local"
+            submodule = "git"
+            module_file = pretrained_model_name_or_path + ".py"
         except EnvironmentError:
             logger.error(f"Could not locate the {module_file} inside {pretrained_model_name_or_path}.")
             raise
@@ -288,7 +289,7 @@ def get_cached_module_file(
     full_submodule = DIFFUSERS_DYNAMIC_MODULE_NAME + os.path.sep + submodule
     create_dynamic_module(full_submodule)
     submodule_path = Path(HF_MODULES_CACHE) / full_submodule
-    if submodule == "local":
+    if submodule == "local" or submodule == "git":
         # We always copy local files (we could hash the file to see if there was a change, and give them the name of
         # that hash, to only copy when there is a modification but it seems overkill for now).
         # The only reason we do the copy is to avoid putting too many folders in sys.path.
