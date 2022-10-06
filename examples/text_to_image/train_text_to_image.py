@@ -158,14 +158,6 @@ def parse_args():
     parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
-    parser.add_argument(
-        "--use_auth_token",
-        action="store_true",
-        help=(
-            "Will use the token generated when running `huggingface-cli login` (necessary to use this script with"
-            " private models)."
-        ),
-    )
     parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
     parser.add_argument(
         "--hub_model_id",
@@ -329,20 +321,10 @@ def main():
             os.makedirs(args.output_dir, exist_ok=True)
 
     # Load models and create wrapper for stable diffusion
-    tokenizer = CLIPTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="tokenizer",
-        use_auth_token=args.use_auth_token,
-    )
-    text_encoder = CLIPTextModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", use_auth_token=args.use_auth_token
-    )
-    vae = AutoencoderKL.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="vae", use_auth_token=args.use_auth_token
-    )
-    unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", use_auth_token=args.use_auth_token
-    )
+    tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer")
+    text_encoder = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder")
+    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
+    unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
 
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
@@ -393,7 +375,6 @@ def main():
             args.dataset_name,
             args.dataset_config_name,
             cache_dir=args.cache_dir,
-            use_auth_token=True if args.use_auth_token else None,
         )
     else:
         data_files = {}
