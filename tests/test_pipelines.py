@@ -112,18 +112,22 @@ class CustomPipelineTests(unittest.TestCase):
         assert output_str == "This is a local test"
 
     @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_load_pipeline_from_git(self):
         clip_model_id = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 
         feature_extractor = CLIPFeatureExtractor.from_pretrained(clip_model_id)
-        clip_model = CLIPModel.from_pretrained(clip_model_id)
+        clip_model = CLIPModel.from_pretrained(clip_model_id, torch_dtype=torch.float16)
 
         pipeline = DiffusionPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4",
             custom_pipeline="clip_guided_stable_diffusion",
             clip_model=clip_model,
             feature_extractor=feature_extractor,
+            torch_dtype=torch.float16,
+            revision="fp16",
         )
+        pipeline.enable_attention_slicing()
         pipeline = pipeline.to(torch_device)
 
         # NOTE that `"CLIPGuidedStableDiffusion"` is not a class that is defined in the pypi package of th e library, but solely on the community examples folder of GitHub under:
