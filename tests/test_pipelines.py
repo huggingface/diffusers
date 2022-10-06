@@ -49,8 +49,9 @@ from diffusers import (
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, load_image, slow, torch_device
+from diffusers.utils.testing_utils import get_tests_dir
 from PIL import Image
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -97,6 +98,41 @@ class CustomPipelineTests(unittest.TestCase):
         assert images[0].shape == (1, 32, 32, 3)
         # compare output to https://huggingface.co/hf-internal-testing/diffusers-dummy-pipeline/blob/main/pipeline.py#L102
         assert output_str == "This is a test"
+
+    def test_local_custom_pipeline(self):
+        local_custom_pipeline_path = get_tests_dir("fixtures/costum_pipeline")
+        pipeline = DiffusionPipeline.from_pretrained(
+            "google/ddpm-cifar10-32", custom_pipeline=local_custom_pipeline_path
+        )
+        images, output_str = pipeline(num_inference_steps=2, output_type="np")
+
+        assert pipeline.__class__.__name__ == "CustomLocalPipeline"
+        assert images[0].shape == (1, 32, 32, 3)
+        # compare to https://github.com/huggingface/diffusers/blob/main/tests/fixtures/costum_pipeline/pipeline.py#L102
+        assert output_str == "This is a local test"
+
+    @slow
+    def test_load_pipeline_from_git(self):
+        clip_model_id = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
+
+        feature_extractor = CLIPFeatureExtractor.from_pretrained(clip_model_id)
+        clip_model = CLIPModel.from_pretrained(clip_model_id)
+
+        pipeline = DiffusionPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4",
+            custom_pipeline="clip_guided_stable_diffusion",
+            clip_model=clip_model,
+            feature_extractor=feature_extractor,
+            use_auth_token=True,
+        )
+        pipeline = pipeline.to(torch_device)
+
+        # NOTE that `"CLIPGuidedStableDiffusion"` is not a class that is defined in the pypi package of th e library, but solely on the community examples folder of GitHub under:
+        # https://github.com/huggingface/diffusers/blob/main/examples/community/clip_guided_stable_diffusion.py
+        assert pipeline.__class__.__name__ == "CLIPGuidedStableDiffusion"
+
+        image = pipeline("a prompt", num_inference_steps=2, output_type="np").images[0]
+        assert image.shape == (512, 512, 3)
 
 
 class PipelineFastTests(unittest.TestCase):

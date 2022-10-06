@@ -23,9 +23,14 @@ import sys
 from pathlib import Path
 from typing import Dict, Optional, Union
 
-from huggingface_hub import HfFolder, hf_hub_download, model_info
+from huggingface_hub import HfFolder, cached_download, hf_hub_download, model_info
 
 from .utils import DIFFUSERS_DYNAMIC_MODULE_NAME, HF_MODULES_CACHE, logging
+
+
+COMMUNITY_PIPELINES_URL = (
+    "https://raw.githubusercontent.com/huggingface/diffusers/main/examples/community/{pipeline}.py"
+)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -235,11 +240,31 @@ def get_cached_module_file(
     """
     # Download and cache module_file from the repo `pretrained_model_name_or_path` of grab it if it's a local file.
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
+
     module_file_or_url = os.path.join(pretrained_model_name_or_path, module_file)
     submodule = "local"
 
+    import ipdb
+
+    ipdb.set_trace()
     if os.path.isfile(module_file_or_url):
         resolved_module_file = module_file_or_url
+    elif pretrained_model_name_or_path.count("/") == 0:
+        # community pipeline on GitHub
+        github_url = COMMUNITY_PIPELINES_URL.format(pipeline=pretrained_model_name_or_path)
+        try:
+            resolved_module_file = cached_download(
+                github_url,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                proxies=proxies,
+                resume_download=resume_download,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+            )
+        except EnvironmentError:
+            logger.error(f"Could not locate the {module_file} inside {pretrained_model_name_or_path}.")
+            raise
     else:
         try:
             # Load from URL or cache if already cached
