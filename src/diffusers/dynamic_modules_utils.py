@@ -260,6 +260,7 @@ def get_cached_module_file(
                 use_auth_token=False,
             )
             submodule = "git"
+            module_file = pretrained_model_name_or_path + ".py"
         except EnvironmentError:
             logger.error(f"Could not locate the {module_file} inside {pretrained_model_name_or_path}.")
             raise

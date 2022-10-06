@@ -124,7 +124,7 @@ class CustomPipelineTests(unittest.TestCase):
             custom_pipeline="clip_guided_stable_diffusion",
             clip_model=clip_model,
             feature_extractor=feature_extractor,
-            torch_device=torch.float16,
+            torch_dtype=torch.float16,
             revision="fp16",
         )
         pipeline.enable_attention_slicing()
