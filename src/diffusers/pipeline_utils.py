@@ -170,7 +170,7 @@ class DiffusionPipeline(ConfigMixin):
                     raise ValueError(
                         "Pipelines loaded with `torch_dtype=torch.float16` cannot be moved to `cpu` or `mps` "
                         "due to the lack of support for `float16` operations on those devices in PyTorch. "
-                        "Please remove the `torch_dtype=torch.float16` argument, or use a `gpu` device."
+                        "Please remove the `torch_dtype=torch.float16` argument, or use a `cuda` device."
                     )
                 module.to(torch_device)
         return self
