@@ -232,8 +232,8 @@ class DiffusionPipeline(ConfigMixin):
                         </Tip>
 
                     - A string, the *file name* of a community pipeline hosted on GitHub under
-                      https://github.com/huggingface/diffusers/tree/main/examples/community. Valid file names have
-                      to match exactly the file name without `.py` located under the above link, *e.g.*
+                      https://github.com/huggingface/diffusers/tree/main/examples/community. Valid file names have to
+                      match exactly the file name without `.py` located under the above link, *e.g.*
                       `clip_guided_stable_diffusion`.
 
                         <Tip>
