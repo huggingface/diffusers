@@ -215,9 +215,13 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             or isinstance(timestep, torch.IntTensor)
             or isinstance(timestep, torch.LongTensor)
         ):
-            warnings.warn(
-                "Integer timesteps in `LMSDiscreteScheduler.step()` are deprecated and will be removed in version"
-                " 0.5.0. Make sure to pass one of the `scheduler.timesteps`."
+            deprecate(
+                "timestep as an index",
+                "0.5.0",
+                "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
+                " `LMSDiscreteScheduler.step()` will not be supported in future versions. Make sure to pass"
+                " one of the `scheduler.timesteps` as a timestep.",
+                standard_warn=False,
             )
             step_index = timestep
         else:
@@ -257,9 +261,13 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         schedule_timesteps = self.timesteps.to(original_samples.device)
         timesteps = timesteps.to(original_samples.device)
         if isinstance(timesteps, torch.IntTensor) or isinstance(timesteps, torch.LongTensor):
-            warnings.warn(
-                "Integer timesteps in `LMSDiscreteScheduler.add_noise()` are deprecated and will be removed in"
-                " version 0.5.0. Make sure to pass values from `scheduler.timesteps`."
+            deprecate(
+                "timesteps as indices",
+                "0.5.0",
+                "Passing integer indices  (e.g. from `enumerate(timesteps)`) as timesteps to"
+                " `LMSDiscreteScheduler.add_noise()` will not be supported in future versions. Make sure to"
+                " pass values from `scheduler.timesteps` as timesteps.",
+                standard_warn=False,
             )
             step_indices = timesteps
         else:
