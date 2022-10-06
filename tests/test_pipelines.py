@@ -106,7 +106,8 @@ class CustomPipelineTests(unittest.TestCase):
                 "google/ddpm-cifar10-32", custom_pipeline="hf-internal-testing/i-do-not-exist"
             )
 
-        assert "401 Client Error: Repository Not Found for url:" in str(error.exception)
+        assert "404 Client Error" in str(error.exception)
+        assert "Repository Not Found for url" in str(error.exception)
 
     def test_local_custom_pipeline(self):
         local_custom_pipeline_path = get_tests_dir("fixtures/custom_pipeline")
