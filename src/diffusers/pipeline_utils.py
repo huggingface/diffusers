@@ -212,11 +212,11 @@ class DiffusionPipeline(ConfigMixin):
                 will be automatically derived from the model's weights.
             custom_pipeline (`str`, *optional*):
 
-                <Tip>
+                <Tip warning={true}>
 
-                This is an expiremental feature and is likely to change in the future.
+                    This is an expiremental feature and is likely to change in the future.
 
-                </Tip warning={true}>
+                </Tip>
 
                 Can be either:
 
@@ -230,7 +230,6 @@ class DiffusionPipeline(ConfigMixin):
                          pipeline.
 
                         </Tip>
-
 
                     - A string, the *file name* of a community pipeline hosted on GitHub under
                       https://github.com/huggingface/diffusers/tree/main/examples/community. Valid file names have
