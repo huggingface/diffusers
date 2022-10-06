@@ -10,8 +10,7 @@ from diffusers.models.resnet import Downsample1D, ResidualTemporalBlock, Upsampl
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput
-from .embeddings import get_timestep_embedding
-
+from .embeddings import get_timestep_embedding, Timesteps
 
 @dataclass
 class TemporalUNetOutput(BaseOutput):
@@ -23,14 +22,6 @@ class TemporalUNetOutput(BaseOutput):
 
     sample: torch.FloatTensor
 
-
-class SinusoidalPosEmb(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.dim = dim
-
-    def forward(self, x):
-        return get_timestep_embedding(x, self.dim)
 
 
 class RearrangeDim(nn.Module):
@@ -92,7 +83,7 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
 
         time_dim = dim
         self.time_mlp = nn.Sequential(
-            SinusoidalPosEmb(dim),
+            Timesteps(num_channels=dim, flip_sin_to_cos=False, downscale_freq_shift=1),
             nn.Linear(dim, dim * 4),
             nn.Mish(),
             nn.Linear(dim * 4, dim),
