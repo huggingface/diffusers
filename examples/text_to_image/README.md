@@ -35,7 +35,7 @@ If you have already cloned the repo, then you won't need to go through these ste
 
 <br>
 
-```
+```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export dataset_name="lambdalabs/pokemon-blip-captions"
 
