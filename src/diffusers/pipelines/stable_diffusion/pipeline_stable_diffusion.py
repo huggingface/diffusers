@@ -222,7 +222,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
         if self.device.type == "mps":
             # Workaround for `repeat_interleave`. Assumes 3 dims.
             d0, d1, _ = text_embeddings.shape
-            text_embeddings = text_embeddings.repeat(1, num_images_per_prompt, 1).view(d0*num_images_per_prompt, d1, -1)
+            text_embeddings = text_embeddings.repeat(1, num_images_per_prompt, 1).view(
+                d0 * num_images_per_prompt, d1, -1
+            )
         else:
             text_embeddings = text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
 
@@ -265,7 +267,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
             if self.device.type == "mps":
                 # Workaround for `repeat_interleave`. Assumes 3 dims.
                 d0, d1, _ = uncond_embeddings.shape
-                uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1).view(d0*num_images_per_prompt, d1, -1)
+                uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1).view(
+                    d0 * num_images_per_prompt, d1, -1
+                )
             else:
                 uncond_embeddings = uncond_embeddings.repeat_interleave(batch_size * num_images_per_prompt, dim=0)
 
