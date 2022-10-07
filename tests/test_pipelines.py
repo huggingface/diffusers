@@ -1858,14 +1858,14 @@ class PipelineTesterMixin(unittest.TestCase):
                 expected_slice = np.array(
                     [1.1078, 1.5803, 0.2773, -0.0589, -1.7928, -0.3665, -0.4695, -1.0727, -1.1601]
                 )
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
 
         test_callback_fn.has_been_called = False
 
         pipe = StableDiffusionPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16
         )
-        pipe.to(torch_device)
+        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
@@ -1904,7 +1904,7 @@ class PipelineTesterMixin(unittest.TestCase):
                 assert latents.shape == (1, 4, 64, 96)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([0.7071, 0.7831, 0.8300, 1.8140, 1.7840, 1.9402, 1.3651, 1.6590, 1.2828])
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
 
         test_callback_fn.has_been_called = False
 
