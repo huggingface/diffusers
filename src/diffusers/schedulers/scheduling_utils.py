@@ -45,7 +45,7 @@ class SchedulerMixin:
     def set_format(self, tensor_format="pt"):
         deprecate(
             "set_format",
-            "0.5.0",
+            "0.6.0",
             "If you're running your code in PyTorch, you can safely remove this function as the schedulers are always"
             " in Pytorch",
         )

@@ -123,7 +123,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
     ):
         deprecate(
             "tensor_format",
-            "0.5.0",
+            "0.6.0",
             "If you're running your code in PyTorch, you can safely remove this argument.",
             take_from=kwargs,
         )
@@ -192,7 +192,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
         deprecated_offset = deprecate(
-            "offset", "0.5.0", "Please pass `steps_offset` to `__init__` instead.", take_from=kwargs
+            "offset", "0.7.0", "Please pass `steps_offset` to `__init__` instead.", take_from=kwargs
         )
         offset = deprecated_offset or self.config.steps_offset
 
