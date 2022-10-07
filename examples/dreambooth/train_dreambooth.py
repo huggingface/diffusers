@@ -23,6 +23,44 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 logger = get_logger(__name__)
 
+def create_default_args():
+    args = argparse.Namespace()
+    args.pretrained_model_name_or_path = None
+    args.tokenizer_name = None
+    args.instance_data_dir = None
+    args.class_data_dir = None
+    args.instance_prompt = None
+    args.class_prompt = None
+    args.with_prior_preservation = False
+    args.prior_loss_weight = 1.0
+    args.num_class_images = 100
+    args.output_dir = "text-inversion-model"
+    args.seed = None
+    args.resolution = 512
+    args.center_crop = False
+    args.train_batch_size = 4
+    args.sample_batch_size = 4
+    args.num_train_epochs = 1
+    args.gradient_accumulation_steps = 1
+    args.gradient_checkpointing = False
+    args.learning_rate = 5e-6
+    args.scale_lr = False
+    args.lr_scheduler = 'constant'
+    args.lr_warmup_steps = 500
+    args.use_8bit_adam = False
+    args.adam_beta1 = 0.9
+    args.adam_beta2 = 0.999
+    args.adam_weight_decay = 1e-2
+    args.adam_epsilon = 1e-08
+    args.max_grad_norm = 1.0
+    args.push_to_hub = False
+    args.hub_token = None
+    args.hub_model_id = None
+    args.logging_dir = 'logs'
+    args.mixed_precision = "no"
+    args.local_rank = -1
+
+    return args
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
@@ -187,6 +225,10 @@ def parse_args():
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
 
     args = parser.parse_args()
+
+    return args
+
+def validate_args(args):
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
@@ -199,8 +241,6 @@ def parse_args():
             raise ValueError("You must specify a data directory for class images.")
         if args.class_prompt is None:
             raise ValueError("You must specify prompt for class images.")
-
-    return args
 
 
 class DreamBoothDataset(Dataset):
@@ -311,6 +351,10 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 
 def main():
     args = parse_args()
+    train(args)
+
+def train(args):
+    validate_args(args)
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator = Accelerator(
