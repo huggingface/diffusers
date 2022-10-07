@@ -218,7 +218,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
         text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
 
-        # duplicate text embeddings for each generation per prompt, using mps friendly method 
+        # duplicate text embeddings for each generation per prompt, using mps friendly method
         batch_size, seq_len, _ = text_embeddings.shape
         text_embeddings = text_embeddings.repeat(1, num_images_per_prompt, 1).view(
             batch_size * num_images_per_prompt, seq_len, -1
