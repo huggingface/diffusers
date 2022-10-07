@@ -19,6 +19,8 @@ def cosine_distance(image_embeds, text_embeds):
 class StableDiffusionSafetyChecker(PreTrainedModel):
     config_class = CLIPConfig
 
+    _no_split_modules = ["CLIPEncoderLayer"]
+
     def __init__(self, config: CLIPConfig):
         super().__init__(config)
 

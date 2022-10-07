@@ -31,7 +31,11 @@ from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from .utils import CONFIG_NAME, DIFFUSERS_CACHE, ONNX_WEIGHTS_NAME, WEIGHTS_NAME, BaseOutput, logging
+from .utils import CONFIG_NAME, DIFFUSERS_CACHE, ONNX_WEIGHTS_NAME, WEIGHTS_NAME, BaseOutput, logging, is_transformers_available
+
+
+if is_transformers_available():
+    from transformers import PreTrainedModel
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
@@ -402,16 +406,8 @@ class DiffusionPipeline(ConfigMixin):
                     loading_kwargs["provider"] = provider
                     loading_kwargs["sess_options"] = sess_options
 
-                if issubclass(class_obj, diffusers.ModelMixin):
+                if issubclass(class_obj, diffusers.ModelMixin) or is_transformers_available() and issubclass(class_obj, PreTrainedModel):
                     loading_kwargs["device_map"] = device_map
-
-                # if using transformers and class obj has no _no_split modules, using device map will break loading
-                # so we just use low cpu memory usage to reduce ram usage on cpu
-                elif library_name == "transformers":
-                    if getattr(class_obj, "_no_split_modules", None) is not None:
-                        loading_kwargs["device_map"] = device_map
-                    else:
-                        loading_kwargs["low_cpu_mem_usage"] = True
 
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
