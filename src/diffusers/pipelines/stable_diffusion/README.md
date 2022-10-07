@@ -28,16 +28,12 @@ download the weights with `git lfs install; git clone https://huggingface.co/Com
 
 ### Using Stable Diffusion without being logged into the Hub.
 
-If you want to download the model weights using a single Python line, you need to pass the token
-to `use_auth_token` or be logged in via `huggingface-cli login`. 
-For more information on access tokens, please refer to [this section](https://huggingface.co/docs/hub/security-tokens) of the documentation.
-
-Assuming your token is stored under YOUR_TOKEN, you can download the stable diffusion pipeline as follows:
+If you want to download the model weights using a single Python line, you need to be logged in via `huggingface-cli login`. 
 
 ```python
 from diffusers import DiffusionPipeline
 
-pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=YOUR_TOKEN)
+pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
 ```
 
 This however can make it difficult to build applications on top of `diffusers` as you will always have to pass the token around. A potential way to solve this issue is by downloading the weights to a local path `"./stable-diffusion-v1-4"`:
@@ -61,7 +57,7 @@ pipe = StableDiffusionPipeline.from_pretrained("./stable-diffusion-v1-4")
 # make sure you're logged in with `huggingface-cli login`
 from diffusers import StableDiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
@@ -81,7 +77,6 @@ scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="sca
 pipe = StableDiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4", 
     scheduler=scheduler,
-    use_auth_token=True
 ).to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
@@ -105,7 +100,6 @@ lms = LMSDiscreteScheduler(
 pipe = StableDiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4", 
     scheduler=lms,
-    use_auth_token=True
 ).to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"

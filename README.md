@@ -74,11 +74,14 @@ You need to accept the model license before downloading or using the Stable Diff
 
 ### Text-to-Image generation with Stable Diffusion
 
+We recommend using the model in [half-precision (`fp16`)](https://pytorch.org/blog/accelerating-training-on-nvidia-gpus-with-pytorch-automatic-mixed-precision/) as it gives almost always the same results as full
+precision while being roughly twice as fast and requiring half the amount of GPU RAM.
+
 ```python
 # make sure you're logged in with `huggingface-cli login`
 from diffusers import StableDiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", torch_type=torch.float16, revision="fp16")
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
@@ -105,8 +108,8 @@ prompt = "a photo of an astronaut riding a horse on mars"
 image = pipe(prompt).images[0]  
 ```
 
-If you are limited by GPU memory, you might want to consider using the model in `fp16` as 
-well as chunking the attention computation.
+If you are limited by GPU memory, you might want to consider chunking the attention computation in addition 
+to using `fp16`.
 The following snippet should result in less than 4GB VRAM.
 
 ```python
@@ -114,7 +117,6 @@ pipe = StableDiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4", 
     revision="fp16", 
     torch_dtype=torch.float16,
-    use_auth_token=True
 )
 pipe = pipe.to("cuda")
 
@@ -123,7 +125,7 @@ pipe.enable_attention_slicing()
 image = pipe(prompt).images[0]  
 ```
 
-Finally, if you wish to use a different scheduler, you can simply instantiate
+If you wish to use a different scheduler, you can simply instantiate
 it before the pipeline and pass it to `from_pretrained`.
     
 ```python
@@ -140,8 +142,25 @@ pipe = StableDiffusionPipeline.from_pretrained(
     revision="fp16", 
     torch_dtype=torch.float16,
     scheduler=lms,
-    use_auth_token=True
 )
+pipe = pipe.to("cuda")
+
+prompt = "a photo of an astronaut riding a horse on mars"
+image = pipe(prompt).images[0]  
+    
+image.save("astronaut_rides_horse.png")
+```
+
+If you want to run Stable Diffusion on CPU or you want to have maximum precision on GPU, 
+please run the model in the default *full-precision* setting:
+
+```python
+# make sure you're logged in with `huggingface-cli login`
+from diffusers import StableDiffusionPipeline
+
+pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+
+# disable the following line if you run on CPU
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
@@ -169,10 +188,9 @@ pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
     model_id_or_path,
     revision="fp16", 
     torch_dtype=torch.float16,
-    use_auth_token=True
 )
 # or download via git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
-# and pass `model_id_or_path="./stable-diffusion-v1-4"` without having to use `use_auth_token=True`.
+# and pass `model_id_or_path="./stable-diffusion-v1-4"`.
 pipe = pipe.to(device)
 
 # let's download an initial image
@@ -219,10 +237,9 @@ pipe = StableDiffusionInpaintPipeline.from_pretrained(
     model_id_or_path,
     revision="fp16", 
     torch_dtype=torch.float16,
-    use_auth_token=True
 )
 # or download via git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
-# and pass `model_id_or_path="./stable-diffusion-v1-4"` without having to use `use_auth_token=True`.
+# and pass `model_id_or_path="./stable-diffusion-v1-4"`.
 pipe = pipe.to(device)
 
 prompt = "a cat sitting on a bench"

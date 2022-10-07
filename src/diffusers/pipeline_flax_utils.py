@@ -249,8 +249,8 @@ class FlaxDiffusionPipeline(ConfigMixin):
 
         <Tip>
 
-        Passing `use_auth_token=True`` is required when you want to use a private model, *e.g.*
-        `"CompVis/stable-diffusion-v1-4"`
+         It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
+         models](https://huggingface.co/docs/hub/models-gated#gated-models), *e.g.* `"CompVis/stable-diffusion-v1-4"`
 
         </Tip>
 
@@ -272,15 +272,13 @@ class FlaxDiffusionPipeline(ConfigMixin):
         >>> # Download pipeline that requires an authorization token
         >>> # For more information on access tokens, please refer to this section
         >>> # of the documentation](https://huggingface.co/docs/hub/security-tokens)
-        >>> pipeline = FlaxDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+        >>> pipeline = FlaxDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
 
         >>> # Download pipeline, but overwrite scheduler
         >>> from diffusers import LMSDiscreteScheduler
 
         >>> scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
-        >>> pipeline = FlaxDiffusionPipeline.from_pretrained(
-        ...     "CompVis/stable-diffusion-v1-4", scheduler=scheduler, use_auth_token=True
-        ... )
+        >>> pipeline = FlaxDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler)
         ```
         """
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
