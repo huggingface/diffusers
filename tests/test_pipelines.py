@@ -1647,10 +1647,10 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_accelerate_load_works(self):
-        if version.parse(version.parse(transformers.__version__).base_version) < "4.23":
+        if version.parse(version.parse(transformers.__version__).base_version) < version.parse("4.23"):
             return
 
-        if version.parse(version.parse(accelerate.__version__).base_version) < "0.14":
+        if version.parse(version.parse(accelerate.__version__).base_version) < version.parse("0.14"):
             return
 
         model_id = "CompVis/stable-diffusion-v1-4"
@@ -1661,10 +1661,10 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
     def test_stable_diffusion_accelerate_load_reduces_memory_footprint(self):
-        if version.parse(version.parse(transformers.__version__).base_version) < "4.23":
+        if version.parse(version.parse(transformers.__version__).base_version) < version.parse("4.23"):
             return
 
-        if version.parse(version.parse(accelerate.__version__).base_version) < "0.14":
+        if version.parse(version.parse(accelerate.__version__).base_version) < version.parse("0.14"):
             return
 
         pipeline_id = "CompVis/stable-diffusion-v1-4"
