@@ -474,6 +474,16 @@ class RearrangeDim(nn.Module):
         else:
             raise ValueError(f"`len(tensor)`: {len(tensor)} has to be 2, 3 or 4.")
 
+def rearrange_dims(tensor):
+    if len(tensor.shape) == 2:
+        return tensor[:, :, None]
+    if len(tensor.shape) == 3:
+        return tensor[:, :, None, :]
+    elif len(tensor.shape) == 4:
+        return tensor[:, :, 0, :]
+    else:
+        raise ValueError(f"`len(tensor)`: {len(tensor)} has to be 2, 3 or 4.")
+
 
 # unet_rl.py
 class ResidualTemporalBlock(nn.Module):
@@ -486,13 +496,14 @@ class ResidualTemporalBlock(nn.Module):
                 Conv1dBlock(out_channels, out_channels, kernel_size),
             ]
         )
+        self.time_emb_act = nn.Mish()
+        self.time_emb = nn.Linear(embed_dim, out_channels)
 
-        self.time_mlp = nn.Sequential(
-            nn.Mish(),
-            nn.Linear(embed_dim, out_channels),
-            RearrangeDim(),
-            #            Rearrange("batch t -> batch t 1"),
-        )
+        # self.time_mlp = nn.Sequential(
+        #     nn.Mish(),
+        #     nn.Linear(embed_dim, out_channels),
+        #     RearrangeDim(),
+        # )
 
         self.residual_conv = (
             nn.Conv1d(inp_channels, out_channels, 1) if inp_channels != out_channels else nn.Identity()
@@ -503,7 +514,9 @@ class ResidualTemporalBlock(nn.Module):
         x : [ batch_size x inp_channels x horizon ] t : [ batch_size x embed_dim ] returns: out : [ batch_size x
         out_channels x horizon ]
         """
-        out = self.blocks[0](x) + self.time_mlp(t)
+        t = self.time_emb_act(t)
+        t = self.time_emb(t)
+        out = self.blocks[0](x) + rearrange_dims(t)
         out = self.blocks[1](out)
         return out + self.residual_conv(x)
 

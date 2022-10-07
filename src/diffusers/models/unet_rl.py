@@ -10,7 +10,7 @@ from diffusers.models.resnet import Downsample1D, ResidualTemporalBlock, Upsampl
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput
-from .embeddings import get_timestep_embedding, Timesteps
+from .embeddings import get_timestep_embedding, Timesteps, TimestepEmbedding
 
 @dataclass
 class TemporalUNetOutput(BaseOutput):
@@ -78,16 +78,11 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
         self.predict_epsilon = predict_epsilon
         self.clip_denoised = clip_denoised
 
+        self.time_proj = Timesteps(num_channels=dim, flip_sin_to_cos=False, downscale_freq_shift=1)
+        self.time_mlp = TimestepEmbedding(channel=dim, time_embed_dim=4*dim, act_fn="mish", out_dim=dim)
+
         dims = [transition_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
-
-        time_dim = dim
-        self.time_mlp = nn.Sequential(
-            Timesteps(num_channels=dim, flip_sin_to_cos=False, downscale_freq_shift=1),
-            nn.Linear(dim, dim * 4),
-            nn.Mish(),
-            nn.Linear(dim * 4, dim),
-        )
 
         self.downs = nn.ModuleList([])
         self.ups = nn.ModuleList([])
@@ -99,8 +94,8 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
             self.downs.append(
                 nn.ModuleList(
                     [
-                        ResidualTemporalBlock(dim_in, dim_out, embed_dim=time_dim, horizon=training_horizon),
-                        ResidualTemporalBlock(dim_out, dim_out, embed_dim=time_dim, horizon=training_horizon),
+                        ResidualTemporalBlock(dim_in, dim_out, embed_dim=dim, horizon=training_horizon),
+                        ResidualTemporalBlock(dim_out, dim_out, embed_dim=dim, horizon=training_horizon),
                         Downsample1D(dim_out, use_conv=True) if not is_last else nn.Identity(),
                     ]
                 )
@@ -110,8 +105,8 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
                 training_horizon = training_horizon // 2
 
         mid_dim = dims[-1]
-        self.mid_block1 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=time_dim, horizon=training_horizon)
-        self.mid_block2 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=time_dim, horizon=training_horizon)
+        self.mid_block1 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=dim, horizon=training_horizon)
+        self.mid_block2 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=dim, horizon=training_horizon)
 
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
             is_last = ind >= (num_resolutions - 1)
@@ -119,8 +114,8 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
             self.ups.append(
                 nn.ModuleList(
                     [
-                        ResidualTemporalBlock(dim_out * 2, dim_in, embed_dim=time_dim, horizon=training_horizon),
-                        ResidualTemporalBlock(dim_in, dim_in, embed_dim=time_dim, horizon=training_horizon),
+                        ResidualTemporalBlock(dim_out * 2, dim_in, embed_dim=dim, horizon=training_horizon),
+                        ResidualTemporalBlock(dim_in, dim_in, embed_dim=dim, horizon=training_horizon),
                         Upsample1D(dim_in, use_conv_transpose=True) if not is_last else nn.Identity(),
                     ]
                 )
@@ -134,9 +129,6 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
             nn.Conv1d(dim, transition_dim, 1),
         )
 
-    # def forward(self, sample, timestep):
-    #     """
-    # x : [ batch x horizon x transition ] #"""
     def forward(
         self,
         sample: torch.FloatTensor,
@@ -145,7 +137,7 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
     ) -> Union[TemporalUNetOutput, Tuple]:
         """r
         Args:
-            sample (`torch.FloatTensor`): (batch, horizon, obs_dimension) noisy inputs tensor
+            sample (`torch.FloatTensor`): (batch, horizon, obs_dimension + action_dimension) noisy inputs tensor
             timestep (`torch.FloatTensor` or `float` or `int): batch (batch) timesteps
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.unet_2d.UNet2DOutput`] instead of a plain tuple.
@@ -156,24 +148,41 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
         """
         sample = sample.permute(0, 2, 1)
 
-        t = self.time_mlp(timestep)
+        # 1. time
+        timesteps = timestep
+        if not torch.is_tensor(timesteps):
+            timesteps = torch.tensor([timesteps], dtype=torch.long, device=sample.device)
+        elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
+            timesteps = timesteps[None].to(sample.device)
+
+        # t = self.time_mlp(timesteps)
+        t = self.time_proj(timesteps)
+        t = self.time_mlp(t)
+        # t = self.time_embedding(timesteps)
+        # t = self.time_emb_lin1(t)
+        # t = self.time_emb_act(t)
+        # t = self.time_emb_lin2(t)
         h = []
 
+        # 2. down
         for resnet, resnet2, downsample in self.downs:
             sample = resnet(sample, t)
             sample = resnet2(sample, t)
             h.append(sample)
             sample = downsample(sample)
 
+        # 3. mid
         sample = self.mid_block1(sample, t)
         sample = self.mid_block2(sample, t)
 
+        # 4. up
         for resnet, resnet2, upsample in self.ups:
             sample = torch.cat((sample, h.pop()), dim=1)
             sample = resnet(sample, t)
             sample = resnet2(sample, t)
             sample = upsample(sample)
 
+        # 5. post-process
         sample = self.final_conv(sample)
 
         sample = sample.permute(0, 2, 1)
