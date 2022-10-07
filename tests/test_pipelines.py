@@ -17,7 +17,6 @@ import gc
 import os
 import random
 import tempfile
-import tracemalloc
 import unittest
 
 import numpy as np
