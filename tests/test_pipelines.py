@@ -1087,7 +1087,7 @@ class PipelineFastTests(unittest.TestCase):
         assert image.shape == (1, 32, 32, 3)
 
     @unittest.skipIf(torch_device == "cpu", "This test requires a GPU")
-    def test_stable_diffusion_inpaint(self):
+    def test_stable_diffusion_inpaint_fp16(self):
         """Test that stable diffusion inpaint works with fp16"""
         unet = self.dummy_cond_unet
         scheduler = PNDMScheduler(skip_prk_steps=True)
