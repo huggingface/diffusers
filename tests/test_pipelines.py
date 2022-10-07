@@ -1005,6 +1005,124 @@ class PipelineFastTests(unittest.TestCase):
 
         assert images.shape == (batch_size * num_images_per_prompt, 32, 32, 3)
 
+    @unittest.skipIf(torch_device == "cpu", "This test requires a GPU")
+    def test_stable_diffusion_fp16(self):
+        """Test that stable diffusion works with fp16"""
+        unet = self.dummy_cond_unet
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        # put models in fp16
+        unet = unet.half()
+        vae = vae.half()
+        bert = bert.half()
+
+        # make sure here that pndm scheduler skips prk
+        sd_pipe = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=self.dummy_safety_checker,
+            feature_extractor=self.dummy_extractor,
+        )
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A painting of a squirrel eating a burger"
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image = sd_pipe([prompt], generator=generator, num_inference_steps=2, output_type="np").images
+
+        assert image.shape == (1, 128, 128, 3)
+
+    @unittest.skipIf(torch_device == "cpu", "This test requires a GPU")
+    def test_stable_diffusion_img2img_fp16(self):
+        """Test that stable diffusion img2img works with fp16"""
+        unet = self.dummy_cond_unet
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        init_image = self.dummy_image.to(torch_device)
+
+        # put models in fp16
+        unet = unet.half()
+        vae = vae.half()
+        bert = bert.half()
+
+        # make sure here that pndm scheduler skips prk
+        sd_pipe = StableDiffusionImg2ImgPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=self.dummy_safety_checker,
+            feature_extractor=self.dummy_extractor,
+        )
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A painting of a squirrel eating a burger"
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image = sd_pipe(
+            [prompt],
+            generator=generator,
+            num_inference_steps=2,
+            output_type="np",
+            init_image=init_image,
+        ).images
+
+        assert image.shape == (1, 32, 32, 3)
+
+    @unittest.skipIf(torch_device == "cpu", "This test requires a GPU")
+    def test_stable_diffusion_inpaint_fp16(self):
+        """Test that stable diffusion inpaint works with fp16"""
+        unet = self.dummy_cond_unet
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        image = self.dummy_image.cpu().permute(0, 2, 3, 1)[0]
+        init_image = Image.fromarray(np.uint8(image)).convert("RGB")
+        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((128, 128))
+
+        # put models in fp16
+        unet = unet.half()
+        vae = vae.half()
+        bert = bert.half()
+
+        # make sure here that pndm scheduler skips prk
+        sd_pipe = StableDiffusionInpaintPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=self.dummy_safety_checker,
+            feature_extractor=self.dummy_extractor,
+        )
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A painting of a squirrel eating a burger"
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image = sd_pipe(
+            [prompt],
+            generator=generator,
+            num_inference_steps=2,
+            output_type="np",
+            init_image=init_image,
+            mask_image=mask_image,
+        ).images
+
+        assert image.shape == (1, 32, 32, 3)
+
 
 class PipelineTesterMixin(unittest.TestCase):
     def tearDown(self):
