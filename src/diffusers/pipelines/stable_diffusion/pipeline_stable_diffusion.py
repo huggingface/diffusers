@@ -219,7 +219,12 @@ class StableDiffusionPipeline(DiffusionPipeline):
         text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
 
         # duplicate text embeddings for each generation per prompt
-        text_embeddings = text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
+        if self.device.type == "mps":
+            # Workaround for `repeat_interleave`. Assumes 3 dims.
+            d0, d1, _ = text_embeddings.shape
+            text_embeddings = text_embeddings.repeat(1, num_images_per_prompt, 1).view(d0*num_images_per_prompt, d1, -1)
+        else:
+            text_embeddings = text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -257,7 +262,12 @@ class StableDiffusionPipeline(DiffusionPipeline):
             uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
 
             # duplicate unconditional embeddings for each generation per prompt
-            uncond_embeddings = uncond_embeddings.repeat_interleave(batch_size * num_images_per_prompt, dim=0)
+            if self.device.type == "mps":
+                # Workaround for `repeat_interleave`. Assumes 3 dims.
+                d0, d1, _ = uncond_embeddings.shape
+                uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1).view(d0*num_images_per_prompt, d1, -1)
+            else:
+                uncond_embeddings = uncond_embeddings.repeat_interleave(batch_size * num_images_per_prompt, dim=0)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
