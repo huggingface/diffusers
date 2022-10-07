@@ -406,6 +406,10 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         if timesteps.device != original_samples.device:
             timesteps = timesteps.to(original_samples.device)
 
+        # Make sure that alphas_cumprod are in the same dtype as the samples
+        if self.alphas_cumprod.dtype != original_samples.dtype:
+            self.alphas_cumprod = self.alphas_cumprod.to(original_samples.dtype)
+
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()
         while len(sqrt_alpha_prod.shape) < len(original_samples.shape):

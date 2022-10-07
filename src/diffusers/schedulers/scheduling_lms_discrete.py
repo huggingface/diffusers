@@ -257,9 +257,21 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.FloatTensor,
         timesteps: torch.FloatTensor,
     ) -> torch.FloatTensor:
-        sigmas = self.sigmas.to(original_samples.device)
-        schedule_timesteps = self.timesteps.to(original_samples.device)
-        timesteps = timesteps.to(original_samples.device)
+        if self.sigmas.device != original_samples.device:
+            self.sigmas = self.sigmas.to(original_samples.device)
+
+        # Make sure sigmas are in the same dtype as the samples
+        if self.sigmas.dtype != original_samples.dtype:
+            self.sigmas = self.sigmas.to(original_samples.dtype)
+
+        if timesteps.device != original_samples.device:
+            timesteps = timesteps.to(original_samples.device)
+
+        if self.timesteps.device != original_samples.device:
+            self.timesteps = self.timesteps.to(original_samples.device)
+
+        schedule_timesteps = self.timesteps
+
         if isinstance(timesteps, torch.IntTensor) or isinstance(timesteps, torch.LongTensor):
             deprecate(
                 "timesteps as indices",
@@ -273,7 +285,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
 
-        sigma = sigmas[step_indices].flatten()
+        sigma = self.sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):
             sigma = sigma.unsqueeze(-1)
 
