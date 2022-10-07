@@ -20,6 +20,7 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
     config_class = CLIPConfig
 
     _no_split_modules = ["CLIPEncoderLayer"]
+    base_model_prefix = "vision_model"
 
     def __init__(self, config: CLIPConfig):
         super().__init__(config)
@@ -30,8 +31,8 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
         self.concept_embeds = nn.Parameter(torch.ones(17, config.projection_dim), requires_grad=False)
         self.special_care_embeds = nn.Parameter(torch.ones(3, config.projection_dim), requires_grad=False)
 
-        self.register_buffer("concept_embeds_weights", torch.ones(17))
-        self.register_buffer("special_care_embeds_weights", torch.ones(3))
+        self.concept_embeds_weights = nn.Parameter(torch.ones(17), requires_grad=False)
+        self.special_care_embeds_weights = nn.Parameter(torch.ones(3), requires_grad=False)
 
     @torch.no_grad()
     def forward(self, clip_input, images):
