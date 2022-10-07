@@ -257,18 +257,10 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.FloatTensor,
         timesteps: torch.FloatTensor,
     ) -> torch.FloatTensor:
-        if self.sigmas.device != original_samples.device:
-            self.sigmas = self.sigmas.to(original_samples.device)
-
-        # Make sure sigmas are in the same dtype as the samples
-        if self.sigmas.dtype != original_samples.dtype:
-            self.sigmas = self.sigmas.to(original_samples.dtype)
-
-        if timesteps.device != original_samples.device:
-            timesteps = timesteps.to(original_samples.device)
-
-        if self.timesteps.device != original_samples.device:
-            self.timesteps = self.timesteps.to(original_samples.device)
+        # Make sure sigmas and timesteps have the same device and dtype as original_samples
+        self.sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
+        self.timesteps = self.timesteps.to(original_samples.device)
+        timesteps = timesteps.to(original_samples.device)
 
         schedule_timesteps = self.timesteps
 
