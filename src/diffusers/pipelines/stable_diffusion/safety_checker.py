@@ -20,7 +20,6 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
     config_class = CLIPConfig
 
     _no_split_modules = ["CLIPEncoderLayer"]
-    base_model_prefix = "vision_model"
 
     def __init__(self, config: CLIPConfig):
         super().__init__(config)
