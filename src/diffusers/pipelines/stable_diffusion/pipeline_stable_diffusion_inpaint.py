@@ -234,8 +234,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
 
-        
-
         # get prompt text embeddings
         text_inputs = self.tokenizer(
             prompt,
@@ -299,7 +297,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
-        
+
         # preprocess image
         if not isinstance(init_image, torch.FloatTensor):
             init_image = preprocess_image(init_image)
