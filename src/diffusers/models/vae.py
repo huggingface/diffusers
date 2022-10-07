@@ -337,12 +337,16 @@ class DiagonalGaussianDistribution(object):
         self.std = torch.exp(0.5 * self.logvar)
         self.var = torch.exp(self.logvar)
         if self.deterministic:
-            self.var = self.std = torch.zeros_like(self.mean).to(device=self.parameters.device)
+            self.var = self.std = torch.zeros_like(
+                self.mean, device=self.parameters.device, dtype=self.parameters.dtype
+            )
 
     def sample(self, generator: Optional[torch.Generator] = None) -> torch.FloatTensor:
         device = self.parameters.device
         sample_device = "cpu" if device.type == "mps" else device
-        sample = torch.randn(self.mean.shape, generator=generator, device=sample_device).to(device)
+        sample = torch.randn(self.mean.shape, generator=generator, device=sample_device)
+        # make sure sample is on the same device as the parameters and has same dtype
+        sample = sample.to(device=device, dtype=self.parameters.dtype)
         x = self.mean + self.std * sample
         return x
 
