@@ -17,7 +17,6 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
 from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel
-from diffusers.hub_utils import push_to_hub
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from huggingface_hub import HfFolder, Repository, whoami
@@ -570,7 +569,7 @@ def main():
         save_progress(text_encoder, placeholder_token_id, accelerator, args)
 
         if args.push_to_hub:
-            push_to_hub(args, pipeline, repo, commit_message="End of training", blocking=False, auto_lfs_prune=True)
+            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
 
     accelerator.end_training()
 
