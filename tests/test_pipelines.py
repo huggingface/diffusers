@@ -1642,38 +1642,38 @@ class PipelineTesterMixin(unittest.TestCase):
         assert number_of_steps == 6
 
     # @slow
-    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
-    def test_stable_diffusion_accelerate_load_works(self):
-        model_id = "CompVis/stable-diffusion-v1-4"
-        _ = StableDiffusionPipeline.from_pretrained(
-            model_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, device_map="auto"
-        ).to(torch_device)
-
-    @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
-    def test_stable_diffusion_accelerate_load_reduces_memory_footprint(self):
-        pipeline_id = "CompVis/stable-diffusion-v1-4"
-
-        torch.cuda.empty_cache()
-        gc.collect()
-
-        tracemalloc.start()
-        pipeline_normal_load = StableDiffusionPipeline.from_pretrained(
-            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True
-        )
-        pipeline_normal_load.to(torch_device)
-        _, peak_normal = tracemalloc.get_traced_memory()
-        tracemalloc.stop()
-
-        del pipeline_normal_load
-        torch.cuda.empty_cache()
-        gc.collect()
-
-        tracemalloc.start()
-        _ = StableDiffusionPipeline.from_pretrained(
-            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, device_map="auto"
-        )
-        _, peak_accelerate = tracemalloc.get_traced_memory()
-
-        tracemalloc.stop()
-
-        assert peak_accelerate < peak_normal
+#    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+#    def test_stable_diffusion_accelerate_load_works(self):
+#        model_id = "CompVis/stable-diffusion-v1-4"
+#        _ = StableDiffusionPipeline.from_pretrained(
+#            model_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, device_map="auto"
+#        ).to(torch_device)
+#
+#    @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
+#    def test_stable_diffusion_accelerate_load_reduces_memory_footprint(self):
+#        pipeline_id = "CompVis/stable-diffusion-v1-4"
+#
+#        torch.cuda.empty_cache()
+#        gc.collect()
+#
+#        tracemalloc.start()
+#        pipeline_normal_load = StableDiffusionPipeline.from_pretrained(
+#            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True
+#        )
+#        pipeline_normal_load.to(torch_device)
+#        _, peak_normal = tracemalloc.get_traced_memory()
+#        tracemalloc.stop()
+#
+#        del pipeline_normal_load
+#        torch.cuda.empty_cache()
+#        gc.collect()
+#
+#        tracemalloc.start()
+#        _ = StableDiffusionPipeline.from_pretrained(
+#            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, device_map="auto"
+#        )
+#        _, peak_accelerate = tracemalloc.get_traced_memory()
+#
+#        tracemalloc.stop()
+#
+#        assert peak_accelerate < peak_normal
