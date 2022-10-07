@@ -31,7 +31,15 @@ from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from .utils import CONFIG_NAME, DIFFUSERS_CACHE, ONNX_WEIGHTS_NAME, WEIGHTS_NAME, BaseOutput, logging, is_transformers_available
+from .utils import (
+    CONFIG_NAME,
+    DIFFUSERS_CACHE,
+    ONNX_WEIGHTS_NAME,
+    WEIGHTS_NAME,
+    BaseOutput,
+    is_transformers_available,
+    logging,
+)
 
 
 if is_transformers_available():
@@ -406,7 +414,11 @@ class DiffusionPipeline(ConfigMixin):
                     loading_kwargs["provider"] = provider
                     loading_kwargs["sess_options"] = sess_options
 
-                if issubclass(class_obj, diffusers.ModelMixin) or is_transformers_available() and issubclass(class_obj, PreTrainedModel):
+                if (
+                    issubclass(class_obj, diffusers.ModelMixin)
+                    or is_transformers_available()
+                    and issubclass(class_obj, PreTrainedModel)
+                ):
                     loading_kwargs["device_map"] = device_map
 
                 # check if the module is in a subdirectory

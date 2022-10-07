@@ -1642,6 +1642,8 @@ class PipelineTesterMixin(unittest.TestCase):
         assert number_of_steps == 6
 
     # @slow
+
+
 #    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
 #    def test_stable_diffusion_accelerate_load_works(self):
 #        model_id = "CompVis/stable-diffusion-v1-4"
