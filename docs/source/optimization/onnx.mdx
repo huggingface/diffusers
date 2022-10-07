@@ -31,7 +31,6 @@ pipe = StableDiffusionOnnxPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     revision="onnx",
     provider="CUDAExecutionProvider",
-    use_auth_token=True,
 )
 
 prompt = "a photo of an astronaut riding a horse on mars"

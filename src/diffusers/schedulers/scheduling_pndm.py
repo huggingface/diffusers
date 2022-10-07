@@ -104,7 +104,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
     ):
         deprecate(
             "tensor_format",
-            "0.5.0",
+            "0.6.0",
             "If you're running your code in PyTorch, you can safely remove this argument.",
             take_from=kwargs,
         )
@@ -129,6 +129,9 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         self.final_alpha_cumprod = torch.tensor(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
 
+        # standard deviation of the initial noise distribution
+        self.init_noise_sigma = 1.0
+
         # For now we only support F-PNDM, i.e. the runge-kutta method
         # For more information on the algorithm please take a look at the paper: https://arxiv.org/pdf/2202.09778.pdf
         # mainly at formula (9), (12), (13) and the Algorithm 2.
@@ -147,7 +150,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         self.plms_timesteps = None
         self.timesteps = None
 
-    def set_timesteps(self, num_inference_steps: int, **kwargs) -> torch.FloatTensor:
+    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None, **kwargs):
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -156,7 +159,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
         deprecated_offset = deprecate(
-            "offset", "0.5.0", "Please pass `steps_offset` to `__init__` instead.", take_from=kwargs
+            "offset", "0.7.0", "Please pass `steps_offset` to `__init__` instead.", take_from=kwargs
         )
         offset = deprecated_offset or self.config.steps_offset
 
@@ -184,7 +187,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
                 ::-1
             ].copy()  # we copy to avoid having negative strides which are not supported by torch.from_numpy
 
-        self.timesteps = np.concatenate([self.prk_timesteps, self.plms_timesteps]).astype(np.int64)
+        timesteps = np.concatenate([self.prk_timesteps, self.plms_timesteps]).astype(np.int64)
+        self.timesteps = torch.from_numpy(timesteps).to(device)
 
         self.ets = []
         self.counter = 0
@@ -341,6 +345,19 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
 
         return SchedulerOutput(prev_sample=prev_sample)
 
+    def scale_model_input(self, sample: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+        """
+        Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
+        current timestep.
+
+        Args:
+            sample (`torch.FloatTensor`): input sample
+
+        Returns:
+            `torch.FloatTensor`: scaled input sample
+        """
+        return sample
+
     def _get_prev_sample(self, sample, timestep, prev_timestep, model_output):
         # See formula (9) of PNDM paper https://arxiv.org/pdf/2202.09778.pdf
         # this function computes x_(t−δ) using the formula of (9)
@@ -383,11 +400,9 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.FloatTensor,
         timesteps: torch.IntTensor,
     ) -> torch.Tensor:
-        if self.alphas_cumprod.device != original_samples.device:
-            self.alphas_cumprod = self.alphas_cumprod.to(original_samples.device)
-
-        if timesteps.device != original_samples.device:
-            timesteps = timesteps.to(original_samples.device)
+        # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
+        self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        timesteps = timesteps.to(original_samples.device)
 
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()

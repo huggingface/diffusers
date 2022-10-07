@@ -147,9 +147,7 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
 
-        # if we use LMSDiscreteScheduler, let's make sure latents are multiplied by sigmas
-        if isinstance(self.scheduler, LMSDiscreteScheduler):
-            latents = latents * self.scheduler.sigmas[0]
+        latents = latents * self.scheduler.init_noise_sigma
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -163,10 +161,7 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = np.concatenate([latents] * 2) if do_classifier_free_guidance else latents
-            if isinstance(self.scheduler, LMSDiscreteScheduler):
-                sigma = self.scheduler.sigmas[i]
-                # the model input needs to be scaled to match the continuous ODE formulation in K-LMS
-                latent_model_input = latent_model_input / ((sigma**2 + 1) ** 0.5)
+            latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
             # predict the noise residual
             noise_pred = self.unet(
@@ -180,11 +175,7 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            if isinstance(self.scheduler, LMSDiscreteScheduler):
-                latents = self.scheduler.step(noise_pred, i, latents, **extra_step_kwargs).prev_sample
-            else:
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
-
+            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
             latents = np.array(latents)
 
             # call the callback, if provided

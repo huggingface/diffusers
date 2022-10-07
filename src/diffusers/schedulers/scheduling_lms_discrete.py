@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import warnings
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
@@ -78,7 +78,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
     ):
         deprecate(
             "tensor_format",
-            "0.5.0",
+            "0.6.0",
             "If you're running your code in PyTorch, you can safely remove this argument.",
             take_from=kwargs,
         )
@@ -102,11 +102,36 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.concatenate([sigmas[::-1], [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas)
 
+        # standard deviation of the initial noise distribution
+        self.init_noise_sigma = self.sigmas.max()
+
         # setable values
         self.num_inference_steps = None
         timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=float)[::-1].copy()
         self.timesteps = torch.from_numpy(timesteps)
         self.derivatives = []
+        self.is_scale_input_called = False
+
+    def scale_model_input(
+        self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
+    ) -> torch.FloatTensor:
+        """
+        Scales the denoising model input by `(sigma**2 + 1) ** 0.5` to match the K-LMS algorithm.
+
+        Args:
+            sample (`torch.FloatTensor`): input sample
+            timestep (`float` or `torch.FloatTensor`): the current timestep in the diffusion chain
+
+        Returns:
+            `torch.FloatTensor`: scaled input sample
+        """
+        if isinstance(timestep, torch.Tensor):
+            timestep = timestep.to(self.timesteps.device)
+        step_index = (self.timesteps == timestep).nonzero().item()
+        sigma = self.sigmas[step_index]
+        sample = sample / ((sigma**2 + 1) ** 0.5)
+        self.is_scale_input_called = True
+        return sample
 
     def get_lms_coefficient(self, order, t, current_order):
         """
@@ -154,7 +179,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def step(
         self,
         model_output: torch.FloatTensor,
-        timestep: int,
+        timestep: Union[float, torch.FloatTensor],
         sample: torch.FloatTensor,
         order: int = 4,
         return_dict: bool = True,
@@ -165,7 +190,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         Args:
             model_output (`torch.FloatTensor`): direct output from learned diffusion model.
-            timestep (`int`): current discrete timestep in the diffusion chain.
+            timestep (`float`): current timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
             order: coefficient for multi-step inference.
@@ -177,7 +202,31 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             When returning a tuple, the first element is the sample tensor.
 
         """
-        sigma = self.sigmas[timestep]
+        if not self.is_scale_input_called:
+            warnings.warn(
+                "The `scale_model_input` function should be called before `step` to ensure correct denoising. "
+                "See `StableDiffusionPipeline` for a usage example."
+            )
+
+        if isinstance(timestep, torch.Tensor):
+            timestep = timestep.to(self.timesteps.device)
+        if (
+            isinstance(timestep, int)
+            or isinstance(timestep, torch.IntTensor)
+            or isinstance(timestep, torch.LongTensor)
+        ):
+            deprecate(
+                "timestep as an index",
+                "0.7.0",
+                "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
+                " `LMSDiscreteScheduler.step()` will not be supported in future versions. Make sure to pass"
+                " one of the `scheduler.timesteps` as a timestep.",
+                standard_warn=False,
+            )
+            step_index = timestep
+        else:
+            step_index = (self.timesteps == timestep).nonzero().item()
+        sigma = self.sigmas[step_index]
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         pred_original_sample = sample - sigma * model_output
@@ -189,8 +238,8 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.derivatives.pop(0)
 
         # 3. Compute linear multistep coefficients
-        order = min(timestep + 1, order)
-        lms_coeffs = [self.get_lms_coefficient(order, timestep, curr_order) for curr_order in range(order)]
+        order = min(step_index + 1, order)
+        lms_coeffs = [self.get_lms_coefficient(order, step_index, curr_order) for curr_order in range(order)]
 
         # 4. Compute previous sample based on the derivatives path
         prev_sample = sample + sum(
@@ -206,12 +255,29 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self,
         original_samples: torch.FloatTensor,
         noise: torch.FloatTensor,
-        timesteps: torch.IntTensor,
+        timesteps: torch.FloatTensor,
     ) -> torch.FloatTensor:
-        sigmas = self.sigmas.to(original_samples.device)
+        # Make sure sigmas and timesteps have the same device and dtype as original_samples
+        self.sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
+        self.timesteps = self.timesteps.to(original_samples.device)
         timesteps = timesteps.to(original_samples.device)
 
-        sigma = sigmas[timesteps].flatten()
+        schedule_timesteps = self.timesteps
+
+        if isinstance(timesteps, torch.IntTensor) or isinstance(timesteps, torch.LongTensor):
+            deprecate(
+                "timesteps as indices",
+                "0.7.0",
+                "Passing integer indices  (e.g. from `enumerate(timesteps)`) as timesteps to"
+                " `LMSDiscreteScheduler.add_noise()` will not be supported in future versions. Make sure to"
+                " pass values from `scheduler.timesteps` as timesteps.",
+                standard_warn=False,
+            )
+            step_indices = timesteps
+        else:
+            step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+
+        sigma = self.sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):
             sigma = sigma.unsqueeze(-1)
 

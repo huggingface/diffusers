@@ -86,7 +86,7 @@ _deps = [
     "flake8>=3.8.3",
     "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
-    "huggingface-hub>=0.9.1",
+    "huggingface-hub>=0.10.0",
     "importlib_metadata",
     "isort>=5.5.4",
     "jax>=0.2.8,!=0.3.2,<=0.3.6",
@@ -104,7 +104,6 @@ _deps = [
     "torch>=1.4",
     "torchvision",
     "transformers>=4.21.0",
-    "accelerate>=0.12.0"
 ]
 
 # this is a lookup table with items like:
@@ -179,7 +178,15 @@ extras["quality"] = deps_list("black", "isort", "flake8", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "modelcards")
 extras["test"] = deps_list(
-    "datasets", "onnxruntime", "pytest", "pytest-timeout", "pytest-xdist", "scipy", "torchvision", "transformers"
+    "accelerate",
+    "datasets",
+    "onnxruntime",
+    "pytest",
+    "pytest-timeout",
+    "pytest-xdist",
+    "scipy",
+    "torchvision",
+    "transformers"
 )
 extras["torch"] = deps_list("torch")
 
@@ -204,7 +211,7 @@ install_requires = [
 
 setup(
     name="diffusers",
-    version="0.4.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.5.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

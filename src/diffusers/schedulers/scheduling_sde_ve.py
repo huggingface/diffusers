@@ -79,17 +79,36 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
     ):
         deprecate(
             "tensor_format",
-            "0.5.0",
+            "0.6.0",
             "If you're running your code in PyTorch, you can safely remove this argument.",
             take_from=kwargs,
         )
+
+        # standard deviation of the initial noise distribution
+        self.init_noise_sigma = sigma_max
 
         # setable values
         self.timesteps = None
 
         self.set_sigmas(num_train_timesteps, sigma_min, sigma_max, sampling_eps)
 
-    def set_timesteps(self, num_inference_steps: int, sampling_eps: float = None):
+    def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
+        """
+        Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
+        current timestep.
+
+        Args:
+            sample (`torch.FloatTensor`): input sample
+            timestep (`int`, optional): current timestep
+
+        Returns:
+            `torch.FloatTensor`: scaled input sample
+        """
+        return sample
+
+    def set_timesteps(
+        self, num_inference_steps: int, sampling_eps: float = None, device: Union[str, torch.device] = None
+    ):
         """
         Sets the continuous timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -101,7 +120,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         """
         sampling_eps = sampling_eps if sampling_eps is not None else self.config.sampling_eps
 
-        self.timesteps = torch.linspace(1, sampling_eps, num_inference_steps)
+        self.timesteps = torch.linspace(1, sampling_eps, num_inference_steps, device=device)
 
     def set_sigmas(
         self, num_inference_steps: int, sigma_min: float = None, sigma_max: float = None, sampling_eps: float = None
@@ -137,10 +156,6 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             self.discrete_sigmas[timesteps - 1].to(timesteps.device),
         )
 
-    def set_seed(self, seed):
-        deprecate("set_seed", "0.5.0", "Please consider passing a generator instead.")
-        torch.manual_seed(seed)
-
     def step_pred(
         self,
         model_output: torch.FloatTensor,
@@ -148,7 +163,6 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.FloatTensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-        **kwargs,
     ) -> Union[SdeVeOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
@@ -167,9 +181,6 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
-        if "seed" in kwargs and kwargs["seed"] is not None:
-            self.set_seed(kwargs["seed"])
-
         if self.timesteps is None:
             raise ValueError(
                 "`self.timesteps` is not set, you need to run 'set_timesteps' after creating the scheduler"
@@ -212,7 +223,6 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.FloatTensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-        **kwargs,
     ) -> Union[SchedulerOutput, Tuple]:
         """
         Correct the predicted sample based on the output model_output of the network. This is often run repeatedly
@@ -230,9 +240,6 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
-        if "seed" in kwargs and kwargs["seed"] is not None:
-            self.set_seed(kwargs["seed"])
-
         if self.timesteps is None:
             raise ValueError(
                 "`self.timesteps` is not set, you need to run 'set_timesteps' after creating the scheduler"

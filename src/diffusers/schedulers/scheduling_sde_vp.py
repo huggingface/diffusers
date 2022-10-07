@@ -14,9 +14,8 @@
 
 # DISCLAIMER: This file is strongly influenced by https://github.com/yang-song/score_sde_pytorch
 
-# TODO(Patrick, Anton, Suraj) - make scheduler framework independent and clean-up a bit
-
 import math
+from typing import Union
 
 import torch
 
@@ -44,7 +43,7 @@ class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
     def __init__(self, num_train_timesteps=2000, beta_min=0.1, beta_max=20, sampling_eps=1e-3, **kwargs):
         deprecate(
             "tensor_format",
-            "0.5.0",
+            "0.6.0",
             "If you're running your code in PyTorch, you can safely remove this argument.",
             take_from=kwargs,
         )
@@ -52,8 +51,8 @@ class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):
         self.discrete_sigmas = None
         self.timesteps = None
 
-    def set_timesteps(self, num_inference_steps):
-        self.timesteps = torch.linspace(1, self.config.sampling_eps, num_inference_steps)
+    def set_timesteps(self, num_inference_steps, device: Union[str, torch.device] = None):
+        self.timesteps = torch.linspace(1, self.config.sampling_eps, num_inference_steps, device=device)
 
     def step_pred(self, score, x, t, generator=None):
         if self.timesteps is None:
