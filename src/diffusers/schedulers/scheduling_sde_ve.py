@@ -79,7 +79,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
     ):
         deprecate(
             "tensor_format",
-            "0.5.0",
+            "0.6.0",
             "If you're running your code in PyTorch, you can safely remove this argument.",
             take_from=kwargs,
         )
@@ -156,10 +156,6 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             self.discrete_sigmas[timesteps - 1].to(timesteps.device),
         )
 
-    def set_seed(self, seed):
-        deprecate("set_seed", "0.5.0", "Please consider passing a generator instead.")
-        torch.manual_seed(seed)
-
     def step_pred(
         self,
         model_output: torch.FloatTensor,
@@ -167,7 +163,6 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.FloatTensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-        **kwargs,
     ) -> Union[SdeVeOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
@@ -186,9 +181,6 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
-        if "seed" in kwargs and kwargs["seed"] is not None:
-            self.set_seed(kwargs["seed"])
-
         if self.timesteps is None:
             raise ValueError(
                 "`self.timesteps` is not set, you need to run 'set_timesteps' after creating the scheduler"
@@ -231,7 +223,6 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         sample: torch.FloatTensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
-        **kwargs,
     ) -> Union[SchedulerOutput, Tuple]:
         """
         Correct the predicted sample based on the output model_output of the network. This is often run repeatedly
@@ -249,9 +240,6 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
             `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
-        if "seed" in kwargs and kwargs["seed"] is not None:
-            self.set_seed(kwargs["seed"])
-
         if self.timesteps is None:
             raise ValueError(
                 "`self.timesteps` is not set, you need to run 'set_timesteps' after creating the scheduler"

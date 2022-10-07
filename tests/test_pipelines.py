@@ -112,18 +112,22 @@ class CustomPipelineTests(unittest.TestCase):
         assert output_str == "This is a local test"
 
     @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_load_pipeline_from_git(self):
         clip_model_id = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 
         feature_extractor = CLIPFeatureExtractor.from_pretrained(clip_model_id)
-        clip_model = CLIPModel.from_pretrained(clip_model_id)
+        clip_model = CLIPModel.from_pretrained(clip_model_id, torch_dtype=torch.float16)
 
         pipeline = DiffusionPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4",
             custom_pipeline="clip_guided_stable_diffusion",
             clip_model=clip_model,
             feature_extractor=feature_extractor,
+            torch_dtype=torch.float16,
+            revision="fp16",
         )
+        pipeline.enable_attention_slicing()
         pipeline = pipeline.to(torch_device)
 
         # NOTE that `"CLIPGuidedStableDiffusion"` is not a class that is defined in the pypi package of th e library, but solely on the community examples folder of GitHub under:
@@ -242,17 +246,6 @@ class PipelineFastTests(unittest.TestCase):
             return Out()
 
         return extract
-
-    def test_pipeline_fp16_cpu_error(self):
-        model = self.dummy_uncond_unet
-        scheduler = DDPMScheduler(num_train_timesteps=10)
-        pipe = DDIMPipeline(model.half(), scheduler)
-
-        if str(torch_device) in ["cpu", "mps"]:
-            self.assertRaises(ValueError, pipe.to, torch_device)
-        else:
-            # moving the pipeline to GPU should work
-            pipe.to(torch_device)
 
     def test_ddim(self):
         unet = self.dummy_uncond_unet
@@ -1858,6 +1851,14 @@ class PipelineTesterMixin(unittest.TestCase):
                     [1.8285, 1.2857, -0.1024, 1.2406, -2.3068, 1.0747, -0.0818, -0.6520, -2.9506]
                 )
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
+            elif step == 50:
+                latents = latents.detach().cpu().numpy()
+                assert latents.shape == (1, 4, 64, 64)
+                latents_slice = latents[0, -3:, -3:, -1]
+                expected_slice = np.array(
+                    [1.1078, 1.5803, 0.2773, -0.0589, -1.7928, -0.3665, -0.4695, -1.0727, -1.1601]
+                )
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
 
         test_callback_fn.has_been_called = False
 
@@ -1897,6 +1898,12 @@ class PipelineTesterMixin(unittest.TestCase):
                 assert latents.shape == (1, 4, 64, 96)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([0.9052, -0.0184, 0.4810, 0.2898, 0.5851, 1.4920, 0.5362, 1.9838, 0.0530])
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
+            elif step == 37:
+                latents = latents.detach().cpu().numpy()
+                assert latents.shape == (1, 4, 64, 96)
+                latents_slice = latents[0, -3:, -3:, -1]
+                expected_slice = np.array([0.7071, 0.7831, 0.8300, 1.8140, 1.7840, 1.9402, 1.3651, 1.6590, 1.2828])
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
 
         test_callback_fn.has_been_called = False
@@ -1948,6 +1955,12 @@ class PipelineTesterMixin(unittest.TestCase):
                     [-0.5472, 1.1218, -0.5505, -0.9390, -1.0794, 0.4063, 0.5158, 0.6429, -1.5246]
                 )
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
+            elif step == 37:
+                latents = latents.detach().cpu().numpy()
+                assert latents.shape == (1, 4, 64, 64)
+                latents_slice = latents[0, -3:, -3:, -1]
+                expected_slice = np.array([0.4781, 1.1572, 0.6258, 0.2291, 0.2554, -0.1443, 0.7085, -0.1598, -0.5659])
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
 
         test_callback_fn.has_been_called = False
 
@@ -1998,6 +2011,13 @@ class PipelineTesterMixin(unittest.TestCase):
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array(
                     [-0.5950, -0.3039, -1.1672, 0.1594, -1.1572, 0.6719, -1.9712, -0.0403, 0.9592]
+                )
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
+            elif step == 5:
+                assert latents.shape == (1, 4, 64, 64)
+                latents_slice = latents[0, -3:, -3:, -1]
+                expected_slice = np.array(
+                    [-0.4776, -0.0119, -0.8519, -0.0275, -0.9764, 0.9820, -0.3843, 0.3788, 1.2264]
                 )
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
 
