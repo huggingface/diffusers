@@ -17,12 +17,15 @@ import gc
 import os
 import random
 import tempfile
+import tracemalloc
 import unittest
 
 import numpy as np
 import torch
 
+import accelerate
 import PIL
+import transformers
 from diffusers import (
     AutoencoderKL,
     DDIMPipeline,
@@ -49,6 +52,7 @@ from diffusers import (
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, load_image, slow, torch_device
+from packaging import version
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -1640,41 +1644,52 @@ class PipelineTesterMixin(unittest.TestCase):
         assert test_callback_fn.has_been_called
         assert number_of_steps == 6
 
-    # @slow
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    def test_stable_diffusion_accelerate_load_works(self):
+        if version.parse(version.parse(transformers.__version__).base_version) < "4.23":
+            return
 
+        if version.parse(version.parse(accelerate.__version__).base_version) < "0.14":
+            return
 
-#    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
-#    def test_stable_diffusion_accelerate_load_works(self):
-#        model_id = "CompVis/stable-diffusion-v1-4"
-#        _ = StableDiffusionPipeline.from_pretrained(
-#            model_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, device_map="auto"
-#        ).to(torch_device)
-#
-#    @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
-#    def test_stable_diffusion_accelerate_load_reduces_memory_footprint(self):
-#        pipeline_id = "CompVis/stable-diffusion-v1-4"
-#
-#        torch.cuda.empty_cache()
-#        gc.collect()
-#
-#        tracemalloc.start()
-#        pipeline_normal_load = StableDiffusionPipeline.from_pretrained(
-#            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True
-#        )
-#        pipeline_normal_load.to(torch_device)
-#        _, peak_normal = tracemalloc.get_traced_memory()
-#        tracemalloc.stop()
-#
-#        del pipeline_normal_load
-#        torch.cuda.empty_cache()
-#        gc.collect()
-#
-#        tracemalloc.start()
-#        _ = StableDiffusionPipeline.from_pretrained(
-#            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, device_map="auto"
-#        )
-#        _, peak_accelerate = tracemalloc.get_traced_memory()
-#
-#        tracemalloc.stop()
-#
-#        assert peak_accelerate < peak_normal
+        model_id = "CompVis/stable-diffusion-v1-4"
+        _ = StableDiffusionPipeline.from_pretrained(
+            model_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, device_map="auto"
+        ).to(torch_device)
+
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
+    def test_stable_diffusion_accelerate_load_reduces_memory_footprint(self):
+        if version.parse(version.parse(transformers.__version__).base_version) < "4.23":
+            return
+
+        if version.parse(version.parse(accelerate.__version__).base_version) < "0.14":
+            return
+
+        pipeline_id = "CompVis/stable-diffusion-v1-4"
+
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        tracemalloc.start()
+        pipeline_normal_load = StableDiffusionPipeline.from_pretrained(
+            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True
+        )
+        pipeline_normal_load.to(torch_device)
+        _, peak_normal = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+
+        del pipeline_normal_load
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        tracemalloc.start()
+        _ = StableDiffusionPipeline.from_pretrained(
+            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, device_map="auto"
+        )
+        _, peak_accelerate = tracemalloc.get_traced_memory()
+
+        tracemalloc.stop()
+
+        assert peak_accelerate < peak_normal
