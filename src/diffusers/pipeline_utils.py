@@ -170,9 +170,9 @@ class DiffusionPipeline(ConfigMixin):
             if isinstance(module, torch.nn.Module):
                 if module.dtype == torch.float16 and str(torch_device) in ["cpu", "mps"]:
                     logger.warn(
-                    "Pipelines loaded with `torch_dtype=torch.float16` cannot be moved to `cpu` or `mps` "
-                    "due to the lack of support for `float16` operations on those devices in PyTorch. "
-                    "Please remove the `torch_dtype=torch.float16` argument, or use a `cuda` device to run inference."
+                        "Pipelines loaded with `torch_dtype=torch.float16` cannot be moved to `cpu` or `mps` "
+                        "due to the lack of support for `float16` operations on those devices in PyTorch. "
+                        "Please remove the `torch_dtype=torch.float16` argument, or use a `cuda` device to run inference."
                     )
                 module.to(torch_device)
         return self
