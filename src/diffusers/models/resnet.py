@@ -122,8 +122,7 @@ class FirUpsample2D(nn.Module):
         arbitrary order.
 
         Args:
-            hidden_states: Input tensor of the shape `[N, C, H, W]` or `[N, H, W,
-                C]`.
+            hidden_states: Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`.
             weight: Weight tensor of the shape `[filterH, filterW, inChannels,
                 outChannels]`. Grouped convolution can be performed by `inChannels = x.shape[0] // numGroups`.
             kernel: FIR filter of the shape `[firH, firW]` or `[firN]`
@@ -133,8 +132,7 @@ class FirUpsample2D(nn.Module):
 
         Returns:
             output: Tensor of the shape `[N, C, H * factor, W * factor]` or `[N, H * factor, W * factor, C]`, and same
-            datatype as
-        `hidden_states`.
+            datatype as `hidden_states`.
         """
 
         assert isinstance(factor, int) and factor >= 1
@@ -406,8 +404,7 @@ def upsample_2d(hidden_states, kernel=None, factor=2, gain=1):
     a: multiple of the upsampling factor.
 
     Args:
-        hidden_states: Input tensor of the shape `[N, C, H, W]` or `[N, H, W,
-          C]`.
+        hidden_states: Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`.
         kernel: FIR filter of the shape `[firH, firW]` or `[firN]`
           (separable). The default is `[1] * factor`, which corresponds to nearest-neighbor upsampling.
         factor: Integer upsampling factor (default: 2).
@@ -444,8 +441,7 @@ def downsample_2d(hidden_states, kernel=None, factor=2, gain=1):
     shape is a multiple of the downsampling factor.
 
     Args:
-        hidden_states: Input tensor of the shape `[N, C, H, W]` or `[N, H, W,
-          C]`.
+        hidden_states: Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`.
         kernel: FIR filter of the shape `[firH, firW]` or `[firN]`
           (separable). The default is `[1] * factor`, which corresponds to average pooling.
         factor: Integer downsampling factor (default: 2).
