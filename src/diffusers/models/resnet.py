@@ -439,20 +439,7 @@ class Mish(torch.nn.Module):
 
 
 
-class RearrangeDim(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, tensor):
-        if len(tensor.shape) == 2:
-            return tensor[:, :, None]
-        if len(tensor.shape) == 3:
-            return tensor[:, :, None, :]
-        elif len(tensor.shape) == 4:
-            return tensor[:, :, 0, :]
-        else:
-            raise ValueError(f"`len(tensor)`: {len(tensor)} has to be 2, 3 or 4.")
-
+# unet_rl.py
 def rearrange_dims(tensor):
     if len(tensor.shape) == 2:
         return tensor[:, :, None]
@@ -463,6 +450,7 @@ def rearrange_dims(tensor):
     else:
         raise ValueError(f"`len(tensor)`: {len(tensor)} has to be 2, 3 or 4.")
 
+
 class Conv1dBlock(nn.Module):
     """
     Conv1d --> GroupNorm --> Mish
@@ -471,11 +459,9 @@ class Conv1dBlock(nn.Module):
     def __init__(self, inp_channels, out_channels, kernel_size, n_groups=8):
         super().__init__()
 
-
         self.conv1d = nn.Conv1d(inp_channels, out_channels, kernel_size, padding=kernel_size // 2)
         self.group_norm = nn.GroupNorm(n_groups, out_channels)
         self.mish = nn.Mish()
-
 
     def forward(self, x):
         x = self.conv1d(x)
@@ -484,6 +470,7 @@ class Conv1dBlock(nn.Module):
         x = rearrange_dims(x)
         x = self.mish(x)
         return x
+
 
 # unet_rl.py
 class ResidualTemporalBlock(nn.Module):

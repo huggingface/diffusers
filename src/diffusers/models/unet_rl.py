@@ -10,8 +10,9 @@ from diffusers.models.resnet import Downsample1D, ResidualTemporalBlock, Upsampl
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput
-from .embeddings import get_timestep_embedding, Timesteps, TimestepEmbedding
+from .embeddings import TimestepEmbedding, Timesteps
 from .resnet import rearrange_dims
+
 
 @dataclass
 class TemporalUNetOutput(BaseOutput):
@@ -22,24 +23,6 @@ class TemporalUNetOutput(BaseOutput):
     """
 
     sample: torch.FloatTensor
-
-
-
-class RearrangeDim(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, tensor):
-        if len(tensor.shape) == 2:
-            return tensor[:, :, None]
-        if len(tensor.shape) == 3:
-            return tensor[:, :, None, :]
-        elif len(tensor.shape) == 4:
-            return tensor[:, :, 0, :]
-        else:
-            raise ValueError(f"`len(tensor)`: {len(tensor)} has to be 2, 3 or 4.")
-
-
 
 
 
@@ -63,7 +46,7 @@ class TemporalUNet(ModelMixin, ConfigMixin):
         self.clip_denoised = clip_denoised
 
         self.time_proj = Timesteps(num_channels=dim, flip_sin_to_cos=False, downscale_freq_shift=1)
-        self.time_mlp = TimestepEmbedding(channel=dim, time_embed_dim=4*dim, act_fn="mish", out_dim=dim)
+        self.time_mlp = TimestepEmbedding(channel=dim, time_embed_dim=4 * dim, act_fn="mish", out_dim=dim)
 
         dims = [transition_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
