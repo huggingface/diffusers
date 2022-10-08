@@ -40,24 +40,7 @@ class RearrangeDim(nn.Module):
             raise ValueError(f"`len(tensor)`: {len(tensor)} has to be 2, 3 or 4.")
 
 
-class Conv1dBlock(nn.Module):
-    """
-    Conv1d --> GroupNorm --> Mish
-    """
 
-    def __init__(self, inp_channels, out_channels, kernel_size, n_groups=8):
-        super().__init__()
-
-        self.block = nn.Sequential(
-            nn.Conv1d(inp_channels, out_channels, kernel_size, padding=kernel_size // 2),
-            RearrangeDim(),
-            nn.GroupNorm(n_groups, out_channels),
-            RearrangeDim(),
-            nn.Mish(),
-        )
-
-    def forward(self, x):
-        return self.block(x)
 
 
 class TemporalUNet(ModelMixin, ConfigMixin):

@@ -471,17 +471,19 @@ class Conv1dBlock(nn.Module):
     def __init__(self, inp_channels, out_channels, kernel_size, n_groups=8):
         super().__init__()
 
-        self.block = nn.Sequential(
-            nn.Conv1d(inp_channels, out_channels, kernel_size, padding=kernel_size // 2),
-            RearrangeDim(),
-            nn.GroupNorm(n_groups, out_channels),
-            RearrangeDim(),
-            nn.Mish(),
-        )
+
+        self.conv1d = nn.Conv1d(inp_channels, out_channels, kernel_size, padding=kernel_size // 2)
+        self.group_norm = nn.GroupNorm(n_groups, out_channels)
+        self.mish = nn.Mish()
+
 
     def forward(self, x):
-        return self.block(x)
-
+        x = self.conv1d(x)
+        x = rearrange_dims(x)
+        x = self.group_norm(x)
+        x = rearrange_dims(x)
+        x = self.mish(x)
+        return x
 
 # unet_rl.py
 class ResidualTemporalBlock(nn.Module):
@@ -496,12 +498,6 @@ class ResidualTemporalBlock(nn.Module):
         )
         self.time_emb_act = nn.Mish()
         self.time_emb = nn.Linear(embed_dim, out_channels)
-
-        # self.time_mlp = nn.Sequential(
-        #     nn.Mish(),
-        #     nn.Linear(embed_dim, out_channels),
-        #     RearrangeDim(),
-        # )
 
         self.residual_conv = (
             nn.Conv1d(inp_channels, out_channels, 1) if inp_channels != out_channels else nn.Identity()
