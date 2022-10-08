@@ -527,11 +527,11 @@ def main():
 
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps).to(dtype=weight_dtype)
+                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # Get the text embedding for conditioning
                 with torch.no_grad():
-                    encoder_hidden_states = text_encoder(batch["input_ids"])[0].to(dtype=weight_dtype)
+                    encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
                 # Predict the noise residual
                 noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample

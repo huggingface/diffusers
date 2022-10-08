@@ -130,7 +130,10 @@ mixed precision and offloading both parameters and optimizer state to cpu it's
 possible to train on under 8 GB VRAM with a drawback of requiring significantly
 more RAM (about 25 GB).
 
-8-bit optimizer does not seem to be compatible with DeepSpeed at the moment.
+Changing the default Adam optimizer to DeepSpeed's special version of Adam
+`deepspeed.ops.adam.DeepSpeedCPUAdam` gives a substantial speedup but enabling
+it requires CUDA toolchain with the same version as pytorch. 8-bit optimizer
+does not seem to be compatible with DeepSpeed at the moment.
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
