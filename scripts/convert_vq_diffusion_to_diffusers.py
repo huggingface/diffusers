@@ -35,6 +35,7 @@ from accelerate import init_empty_weights, load_checkpoint_and_dispatch
 from diffusers import VQModel
 from diffusers.models.vq_diffusion_attention import VQDiffusionTransformer
 from diffusers.pipelines import VQDiffusionPipeline
+from transformers import CLIPTextModel, CLIPTokenizer
 from yaml.loader import FullLoader
 
 
@@ -819,9 +820,37 @@ if __name__ == "__main__":
 
     # done transformer_model
 
+    # text encoder
+
+    print("loading CLIP text encoder")
+
+    clip_name = "openai/clip-vit-base-patch32"
+
+    # The original VQ-Diffusion specifies the pad value by the int used in the
+    # returned tokens. Each model uses `0` as the pad value. The transformers clip api
+    # specifies the pad value via the token before it has been tokenized. The `!` pad
+    # token is the same as padding with the `0` pad value.
+    pad_token = "!"
+
+    tokenizer_model = CLIPTokenizer.from_pretrained(clip_name, pad_token=pad_token, device_map="auto")
+
+    assert tokenizer_model.convert_tokens_to_ids(pad_token) == 0
+
+    text_encoder_model = CLIPTextModel.from_pretrained(
+        clip_name,
+        # `CLIPTextModel` does not support device_map="auto"
+        # device_map="auto"
+    )
+
+    print("done loading CLIP text encoder")
+
+    # done text encoder
+
     print(f"saving VQ diffusion model, path: {args.dump_path}")
 
-    pipe = VQDiffusionPipeline(vqvae=vqvae_model, transformer=transformer_model)
+    pipe = VQDiffusionPipeline(
+        vqvae=vqvae_model, transformer=transformer_model, tokenizer=tokenizer_model, text_encoder=text_encoder_model
+    )
     pipe.save_pretrained(args.dump_path)
 
     print("done writing VQ diffusion model")

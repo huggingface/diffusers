@@ -1,4 +1,5 @@
 from diffusers import VQDiffusionTransformer, VQModel
+from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...pipeline_utils import DiffusionPipeline
 
@@ -14,6 +15,17 @@ class VQDiffusionPipeline(DiffusionPipeline):
     vqvae: VQModel
     transformer: VQDiffusionTransformer
 
-    def __init__(self, vqvae: VQModel, transformer: VQDiffusionTransformer):
+    def __init__(
+        self,
+        vqvae: VQModel,
+        transformer: VQDiffusionTransformer,
+        text_encoder: CLIPTextModel,
+        tokenizer: CLIPTokenizer,
+    ):
         super().__init__()
-        self.register_modules(vqvae=vqvae, transformer=transformer)
+        self.register_modules(
+            vqvae=vqvae,
+            transformer=transformer,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+        )
