@@ -118,8 +118,8 @@ class FirUpsample2D(nn.Module):
         """Fused `upsample_2d()` followed by `Conv2d()`.
 
         Padding is performed only once at the beginning, not between the operations. The fused op is considerably more
-        efficient than performing the same calculation using standard TensorFlow ops. It supports gradients of arbitrary
-        order.
+        efficient than performing the same calculation using standard TensorFlow ops. It supports gradients of
+        arbitrary order.
 
         Args:
             hidden_states: Input tensor of the shape `[N, C, H, W]` or `[N, H, W,
@@ -132,7 +132,8 @@ class FirUpsample2D(nn.Module):
             gain: Scaling factor for signal magnitude (default: 1.0).
 
         Returns:
-            output: Tensor of the shape `[N, C, H * factor, W * factor]` or `[N, H * factor, W * factor, C]`, and same datatype as
+            output: Tensor of the shape `[N, C, H * factor, W * factor]` or `[N, H * factor, W * factor, C]`, and same
+            datatype as
         `hidden_states`.
         """
 
@@ -218,20 +219,22 @@ class FirDownsample2D(nn.Module):
     def _downsample_2d(self, hidden_states, weight=None, kernel=None, factor=2, gain=1):
         """Fused `Conv2d()` followed by `downsample_2d()`.
         Padding is performed only once at the beginning, not between the operations. The fused op is considerably more
-        efficient than performing the same calculation using standard TensorFlow ops. It supports gradients of arbitrary
-        order.
+        efficient than performing the same calculation using standard TensorFlow ops. It supports gradients of
+        arbitrary order.
 
         Args:
             hidden_states: Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`.
-            weight: Weight tensor of the shape `[filterH, filterW, inChannels, outChannels]`. Grouped convolution can be performed by `inChannels = x.shape[0] // numGroups`.
+            weight:
+                Weight tensor of the shape `[filterH, filterW, inChannels, outChannels]`. Grouped convolution can be
+                performed by `inChannels = x.shape[0] // numGroups`.
             kernel: FIR filter of the shape `[firH, firW]` or `[firN]` (separable). The default is `[1] *
             factor`, which corresponds to average pooling.
             factor: Integer downsampling factor (default: 2).
             gain: Scaling factor for signal magnitude (default: 1.0).
 
         Returns:
-            output: Tensor of the shape `[N, C, H // factor, W // factor]` or `[N, H // factor, W // factor, C]`, and same
-            datatype as `x`.
+            output: Tensor of the shape `[N, C, H // factor, W // factor]` or `[N, H // factor, W // factor, C]`, and
+            same datatype as `x`.
         """
 
         assert isinstance(factor, int) and factor >= 1
@@ -399,8 +402,8 @@ def upsample_2d(hidden_states, kernel=None, factor=2, gain=1):
     r"""Upsample2D a batch of 2D images with the given filter.
     Accepts a batch of 2D images of the shape `[N, C, H, W]` or `[N, H, W, C]` and upsamples each image with the given
     filter. The filter is normalized so that if the input pixels are constant, they will be scaled by the specified
-    `gain`. Pixels outside the image are assumed to be zero, and the filter is padded with zeros so that its shape is a:
-    multiple of the upsampling factor.
+    `gain`. Pixels outside the image are assumed to be zero, and the filter is padded with zeros so that its shape is
+    a: multiple of the upsampling factor.
 
     Args:
         hidden_states: Input tensor of the shape `[N, C, H, W]` or `[N, H, W,
