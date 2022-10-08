@@ -212,8 +212,8 @@ class ValueFunction(ModelMixin, ConfigMixin):
             self.blocks.append(
                 nn.ModuleList(
                     [
-                        ResidualTemporalBlock(dim_in, dim_out, embed_dim=dim, horizon=training_horizon),
-                        ResidualTemporalBlock(dim_out, dim_out, embed_dim=dim, horizon=training_horizon),
+                        ResidualTemporalBlock(dim_in, dim_out, embed_dim=dim),
+                        ResidualTemporalBlock(dim_out, dim_out, embed_dim=dim),
                         Downsample1D(dim_out, use_conv=True),
                     ]
                 )
@@ -226,19 +226,19 @@ class ValueFunction(ModelMixin, ConfigMixin):
         mid_dim_2 = mid_dim // 2
         mid_dim_3 = mid_dim // 4
         ##
-        self.mid_block1 = ResidualTemporalBlock(mid_dim, mid_dim_2, embed_dim=dim, horizon=training_horizon)
+        self.mid_block1 = ResidualTemporalBlock(mid_dim, mid_dim_2, embed_dim=dim)
         self.mid_down1 = Downsample1D(mid_dim_2, use_conv=True)
         training_horizon = training_horizon // 2
         ##
-        self.mid_block2 = ResidualTemporalBlock(mid_dim_2, mid_dim_3, embed_dim=dim, horizon=training_horizon)
+        self.mid_block2 = ResidualTemporalBlock(mid_dim_2, mid_dim_3, embed_dim=dim)
         self.mid_down2 = Downsample1D(mid_dim_3, use_conv=True)
         training_horizon = training_horizon // 2
         ##
         fc_dim = mid_dim_3 * max(training_horizon, 1)
-        self.final_block = nn.ModuleList(
+        self.final_block = nn.ModuleList([
             nn.Linear(fc_dim + dim, fc_dim // 2),
             nn.Mish(),
-            nn.Linear(fc_dim // 2, out_dim),
+            nn.Linear(fc_dim // 2, out_dim),]
         )
 
     def forward(
