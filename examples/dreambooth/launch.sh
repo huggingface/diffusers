@@ -1,6 +1,6 @@
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export INSTANCE_DIR="/home/ubuntu/diffusion_tests/data/shivam"
-export CLASS_DIR="/home/ubuntu/diffusion_tests/data/person"
+export CLASS_DIR="/home/ubuntu/diffusion_tests/data/guy"
 export OUTPUT_DIR="/home/ubuntu/diffusion_tests/models/shivam"
 
 accelerate launch train_dreambooth.py \
@@ -9,11 +9,10 @@ accelerate launch train_dreambooth.py \
   --class_data_dir=$CLASS_DIR \
   --output_dir=$OUTPUT_DIR \
   --with_prior_preservation --prior_loss_weight=1.0 \
-  --instance_prompt="sks person" \
-  --class_prompt="person" \
+  --instance_prompt="photo of sks guy" \
+  --class_prompt="photo of a guy" \
   --seed=3434554 \
   --resolution=512 \
-  --center_crop \
   --train_batch_size=1 \
   --mixed_precision="fp16" \
   --use_8bit_adam \
@@ -21,6 +20,6 @@ accelerate launch train_dreambooth.py \
   --learning_rate=5e-6 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
-  --num_class_images=20 \
+  --num_class_images=50 \
   --sample_batch_size=4 \
   --max_train_steps=1000

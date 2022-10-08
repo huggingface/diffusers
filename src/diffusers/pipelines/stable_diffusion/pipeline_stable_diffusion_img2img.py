@@ -64,8 +64,8 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
-        safety_checker: StableDiffusionSafetyChecker = None,
-        feature_extractor: CLIPFeatureExtractor = None,
+        # safety_checker: StableDiffusionSafetyChecker = None,
+        # feature_extractor: CLIPFeatureExtractor = None,
     ):
         super().__init__()
 

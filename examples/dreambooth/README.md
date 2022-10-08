@@ -4,7 +4,7 @@ Model with just [xformers](https://github.com/facebookresearch/xformers) memory 
 
 Caching the outputs of VAE and Text Encoder and freeing them also helped in reducing memory.
 
-You can now convert to ckpt format using this script to use in UIs like AUTOMATIC1111. https://gist.github.com/jachiam/8a5c0b607e38fcc585168b90c686eb05 Check colab notebook for example usage.
+You can now convert to ckpt format using this script to use in UIs like AUTOMATIC1111. https://github.com/ShivamShrirao/diffusers/raw/main/scripts/convert_diffusers_to_original_stable_diffusion.py Check colab notebook for example usage.
 
 [![DreamBooth Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ShivamShrirao/diffusers/blob/main/examples/dreambooth/DreamBooth_Stable_Diffusion.ipynb)
 

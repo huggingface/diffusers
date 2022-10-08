@@ -3,6 +3,7 @@ import math
 import os
 from pathlib import Path
 from typing import Optional
+from diffusers.pipelines.stable_diffusion import safety_checker
 
 import torch
 import torch.nn.functional as F
@@ -373,14 +374,14 @@ def main():
             sample_dataloader = accelerator.prepare(sample_dataloader)
             pipeline.to(accelerator.device)
 
-            for example in tqdm(
-                sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
-            ):
-                with torch.autocast("cuda"):
+            with torch.autocast("cuda"), torch.inference_mode():
+                for example in tqdm(
+                    sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
+                ):
                     images = pipeline(example["prompt"]).images
 
-                for i, image in enumerate(images):
-                    image.save(class_images_dir / f"{example['index'][i] + cur_class_images}.jpg")
+                    for i, image in enumerate(images):
+                        image.save(class_images_dir / f"{example['index'][i] + cur_class_images}.jpg")
 
             del pipeline
             if torch.cuda.is_available():
@@ -609,7 +610,7 @@ def main():
                 logs = {"loss": loss_avg.avg.item(), "lr": lr_scheduler.get_last_lr()[0]}
                 progress_bar.set_postfix(**logs)
                 accelerator.log(logs, step=global_step)
-            
+
             progress_bar.update(1)
             global_step += 1
 
@@ -621,7 +622,9 @@ def main():
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
         pipeline = StableDiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path, unet=accelerator.unwrap_model(unet), use_auth_token=True
+            args.pretrained_model_name_or_path,
+            unet=accelerator.unwrap_model(unet),
+            use_auth_token=True
         )
         pipeline.save_pretrained(args.output_dir)
 
