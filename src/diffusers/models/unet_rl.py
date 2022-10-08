@@ -11,6 +11,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput
 from .embeddings import get_timestep_embedding, Timesteps, TimestepEmbedding
+from .resnet import rearrange_dims
 
 @dataclass
 class TemporalUNetOutput(BaseOutput):
@@ -59,7 +60,7 @@ class Conv1dBlock(nn.Module):
         return self.block(x)
 
 
-class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
+class TemporalUNet(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
@@ -124,10 +125,10 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
             if not is_last:
                 training_horizon = training_horizon * 2
 
-        self.final_conv = nn.Sequential(
-            Conv1dBlock(dim, dim, kernel_size=5),
-            nn.Conv1d(dim, transition_dim, 1),
-        )
+        self.final_conv1d_1 = nn.Conv1d(dim, dim, 5, padding=2)
+        self.final_conv1d_gn = nn.GroupNorm(8, dim)
+        self.final_conv1d_act = nn.Mish()
+        self.final_conv1d_2 = nn.Conv1d(dim, transition_dim, 1)
 
     def forward(
         self,
@@ -155,13 +156,8 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
         elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)
 
-        # t = self.time_mlp(timesteps)
         t = self.time_proj(timesteps)
         t = self.time_mlp(t)
-        # t = self.time_embedding(timesteps)
-        # t = self.time_emb_lin1(t)
-        # t = self.time_emb_act(t)
-        # t = self.time_emb_lin2(t)
         h = []
 
         # 2. down
@@ -183,7 +179,12 @@ class TemporalUNet(ModelMixin, ConfigMixin):  # (nn.Module):
             sample = upsample(sample)
 
         # 5. post-process
-        sample = self.final_conv(sample)
+        sample = self.final_conv1d_1(sample)
+        sample = rearrange_dims(sample)
+        sample = self.final_conv1d_gn(sample)
+        sample = rearrange_dims(sample)
+        sample = self.final_conv1d_act(sample)
+        sample = self.final_conv1d_2(sample)
 
         sample = sample.permute(0, 2, 1)
 

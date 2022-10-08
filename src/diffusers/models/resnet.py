@@ -438,27 +438,6 @@ class Mish(torch.nn.Module):
         return x * torch.tanh(torch.nn.functional.softplus(x))
 
 
-class Conv1dBlock(nn.Module):
-    """
-    Conv1d --> GroupNorm --> Mish
-    """
-
-    def __init__(self, inp_channels, out_channels, kernel_size, n_groups=8):
-        super().__init__()
-
-        self.block = nn.Sequential(
-            nn.Conv1d(inp_channels, out_channels, kernel_size, padding=kernel_size // 2),
-            RearrangeDim(),
-            #            Rearrange("batch channels horizon -> batch channels 1 horizon"),
-            nn.GroupNorm(n_groups, out_channels),
-            RearrangeDim(),
-            #            Rearrange("batch channels 1 horizon -> batch channels horizon"),
-            nn.Mish(),
-        )
-
-    def forward(self, x):
-        return self.block(x)
-
 
 class RearrangeDim(nn.Module):
     def __init__(self):
@@ -483,6 +462,25 @@ def rearrange_dims(tensor):
         return tensor[:, :, 0, :]
     else:
         raise ValueError(f"`len(tensor)`: {len(tensor)} has to be 2, 3 or 4.")
+
+class Conv1dBlock(nn.Module):
+    """
+    Conv1d --> GroupNorm --> Mish
+    """
+
+    def __init__(self, inp_channels, out_channels, kernel_size, n_groups=8):
+        super().__init__()
+
+        self.block = nn.Sequential(
+            nn.Conv1d(inp_channels, out_channels, kernel_size, padding=kernel_size // 2),
+            RearrangeDim(),
+            nn.GroupNorm(n_groups, out_channels),
+            RearrangeDim(),
+            nn.Mish(),
+        )
+
+    def forward(self, x):
+        return self.block(x)
 
 
 # unet_rl.py
