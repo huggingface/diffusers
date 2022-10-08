@@ -25,8 +25,20 @@ class TemporalUNetOutput(BaseOutput):
     sample: torch.FloatTensor
 
 
-
 class TemporalUNet(ModelMixin, ConfigMixin):
+    """
+    A UNet for multi-dimensional temporal data. This model takes the batch over the `training_horizon`.
+
+    Parameters:
+        training_horizon: horizon of training samples used for diffusion process.
+        transition_dim: state-dimension of samples to predict over
+        cond_dim: held dimension in input (e.g. for actions) -- TODO remove from pretrained
+        predict_epsilon: TODO remove from pretrained
+        clip_denoised: TODO remove from pretrained
+        dim: embedding dimension of model
+        dim_mults: dimension multiples of the up/down blocks
+    """
+
     @register_to_config
     def __init__(
         self,
@@ -45,6 +57,7 @@ class TemporalUNet(ModelMixin, ConfigMixin):
         self.predict_epsilon = predict_epsilon
         self.clip_denoised = clip_denoised
 
+        # time
         self.time_proj = Timesteps(num_channels=dim, flip_sin_to_cos=False, downscale_freq_shift=1)
         self.time_mlp = TimestepEmbedding(channel=dim, time_embed_dim=4 * dim, act_fn="mish", out_dim=dim)
 
@@ -55,14 +68,15 @@ class TemporalUNet(ModelMixin, ConfigMixin):
         self.ups = nn.ModuleList([])
         num_resolutions = len(in_out)
 
+        # down
         for ind, (dim_in, dim_out) in enumerate(in_out):
             is_last = ind >= (num_resolutions - 1)
 
             self.downs.append(
                 nn.ModuleList(
                     [
-                        ResidualTemporalBlock(dim_in, dim_out, embed_dim=dim, horizon=training_horizon),
-                        ResidualTemporalBlock(dim_out, dim_out, embed_dim=dim, horizon=training_horizon),
+                        ResidualTemporalBlock(dim_in, dim_out, embed_dim=dim),
+                        ResidualTemporalBlock(dim_out, dim_out, embed_dim=dim),
                         Downsample1D(dim_out, use_conv=True) if not is_last else nn.Identity(),
                     ]
                 )
@@ -71,18 +85,20 @@ class TemporalUNet(ModelMixin, ConfigMixin):
             if not is_last:
                 training_horizon = training_horizon // 2
 
+        # mid
         mid_dim = dims[-1]
-        self.mid_block1 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=dim, horizon=training_horizon)
-        self.mid_block2 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=dim, horizon=training_horizon)
+        self.mid_block1 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=dim)
+        self.mid_block2 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=dim)
 
+        # up
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
             is_last = ind >= (num_resolutions - 1)
 
             self.ups.append(
                 nn.ModuleList(
                     [
-                        ResidualTemporalBlock(dim_out * 2, dim_in, embed_dim=dim, horizon=training_horizon),
-                        ResidualTemporalBlock(dim_in, dim_in, embed_dim=dim, horizon=training_horizon),
+                        ResidualTemporalBlock(dim_out * 2, dim_in, embed_dim=dim),
+                        ResidualTemporalBlock(dim_in, dim_in, embed_dim=dim),
                         Upsample1D(dim_in, use_conv_transpose=True) if not is_last else nn.Identity(),
                     ]
                 )
@@ -91,6 +107,7 @@ class TemporalUNet(ModelMixin, ConfigMixin):
             if not is_last:
                 training_horizon = training_horizon * 2
 
+        # out
         self.final_conv1d_1 = nn.Conv1d(dim, dim, 5, padding=2)
         self.final_conv1d_gn = nn.GroupNorm(8, dim)
         self.final_conv1d_act = nn.Mish()

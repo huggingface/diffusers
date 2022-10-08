@@ -438,7 +438,6 @@ class Mish(torch.nn.Module):
         return x * torch.tanh(torch.nn.functional.softplus(x))
 
 
-
 # unet_rl.py
 def rearrange_dims(tensor):
     if len(tensor.shape) == 2:
@@ -474,7 +473,7 @@ class Conv1dBlock(nn.Module):
 
 # unet_rl.py
 class ResidualTemporalBlock(nn.Module):
-    def __init__(self, inp_channels, out_channels, embed_dim, horizon, kernel_size=5):
+    def __init__(self, inp_channels, out_channels, embed_dim, kernel_size=5):
         super().__init__()
 
         self.blocks = nn.ModuleList(
@@ -492,8 +491,12 @@ class ResidualTemporalBlock(nn.Module):
 
     def forward(self, x, t):
         """
-        x : [ batch_size x inp_channels x horizon ] t : [ batch_size x embed_dim ] returns: out : [ batch_size x
-        out_channels x horizon ]
+        Args:
+            x : [ batch_size x inp_channels x horizon ]
+            t : [ batch_size x embed_dim ]
+
+        returns:
+            out : [ batch_size x out_channels x horizon ]
         """
         t = self.time_emb_act(t)
         t = self.time_emb(t)
