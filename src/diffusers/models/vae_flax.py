@@ -395,8 +395,8 @@ class FlaxUNetMidBlock2D(nn.Module):
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
-        resnet_groups = self.resnet_groups if self.resnet_groups is not None else min(in_channels // 4, 32)
-        
+        resnet_groups = self.resnet_groups if self.resnet_groups is not None else min(self.in_channels // 4, 32)
+
         # there is always at least one resnet
         resnets = [
             FlaxResnetBlock2D(
