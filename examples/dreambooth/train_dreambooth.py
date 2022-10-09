@@ -151,6 +151,7 @@ def parse_args():
     parser.add_argument(
         "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
     )
+    parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
@@ -201,6 +202,64 @@ def parse_args():
             raise ValueError("You must specify prompt for class images.")
 
     return args
+
+
+class EMAModel:
+    """
+    Exponential Moving Average of models weights
+    """
+
+    def __init__(
+        self,
+        model,
+        decay=0.9999,
+        device=None,
+    ):
+        self.averaged_model = copy.deepcopy(model).eval()
+        self.averaged_model.requires_grad_(False)
+
+        self.decay = decay
+
+        if device is not None:
+            self.averaged_model = self.averaged_model.to(device=device)
+
+        self.optimization_step = 0
+
+    def get_decay(self, optimization_step):
+        """
+        Compute the decay factor for the exponential moving average.
+        """
+        value = (1 + optimization_step) / (10 + optimization_step)
+        return 1 - min(self.decay, value)
+
+    @torch.no_grad()
+    def step(self, new_model):
+        ema_state_dict = self.averaged_model.state_dict()
+
+        self.optimization_step += 1
+        self.decay = self.get_decay(self.optimization_step)
+
+        for key, param in new_model.named_parameters():
+            if isinstance(param, dict):
+                continue
+            try:
+                ema_param = ema_state_dict[key]
+            except KeyError:
+                ema_param = param.float().clone() if param.ndim == 1 else copy.deepcopy(param)
+                ema_state_dict[key] = ema_param
+
+            param = param.clone().detach().to(ema_param.dtype).to(ema_param.device)
+
+            if param.requires_grad:
+                ema_state_dict[key].sub_(self.decay * (ema_param - param))
+            else:
+                ema_state_dict[key].copy_(param)
+
+        for key, param in new_model.named_buffers():
+            ema_state_dict[key] = param
+
+        self.averaged_model.load_state_dict(ema_state_dict, strict=False)
+        torch.cuda.empty_cache()
 
 
 class DreamBoothDataset(Dataset):
@@ -471,6 +530,9 @@ def main():
         unet, optimizer, train_dataloader, lr_scheduler
     )
 
+    if args.use_ema:
+        ema_unet = EMAModel(unet)
+
     # Move text_encode and vae to gpu
     text_encoder.to(accelerator.device)
     vae.to(accelerator.device)
@@ -555,6 +617,8 @@ def main():
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
+                if args.use_ema:
+                    ema_unet.step(unet)
                 progress_bar.update(1)
                 global_step += 1
 
@@ -570,7 +634,8 @@ def main():
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
         pipeline = StableDiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path, unet=accelerator.unwrap_model(unet)
+            args.pretrained_model_name_or_path,
+            unet=accelerator.unwrap_model(ema_unet.averaged_model if args.use_ema else unet),
         )
         pipeline.save_pretrained(args.output_dir)
 
