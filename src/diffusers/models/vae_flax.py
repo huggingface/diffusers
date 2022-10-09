@@ -395,13 +395,15 @@ class FlaxUNetMidBlock2D(nn.Module):
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
+        resnet_groups = self.resnet_groups if self.resnet_groups is not None else min(in_channels // 4, 32)
+
         # there is always at least one resnet
         resnets = [
             FlaxResnetBlock2D(
                 in_channels=self.in_channels,
                 out_channels=self.in_channels,
                 dropout=self.dropout,
-                groups=self.resnet_groups,
+                groups=resnet_groups,
                 dtype=self.dtype,
             )
         ]
@@ -412,7 +414,7 @@ class FlaxUNetMidBlock2D(nn.Module):
             attn_block = FlaxAttentionBlock(
                 channels=self.in_channels,
                 num_head_channels=self.attn_num_head_channels,
-                num_groups=self.resnet_groups,
+                num_groups=resnet_groups,
                 dtype=self.dtype,
             )
             attentions.append(attn_block)
@@ -421,7 +423,7 @@ class FlaxUNetMidBlock2D(nn.Module):
                 in_channels=self.in_channels,
                 out_channels=self.in_channels,
                 dropout=self.dropout,
-                groups=self.resnet_groups,
+                groups=resnet_groups,
                 dtype=self.dtype,
             )
             resnets.append(res_block)
