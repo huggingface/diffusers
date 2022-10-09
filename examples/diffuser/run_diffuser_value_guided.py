@@ -4,6 +4,13 @@ import torch
 import tqdm
 import numpy as np
 import gym 
+from diffusers import DDPMScheduler, TemporalUNet, ValueFunction, ValueFunctionScheduler
+
+
+# model = torch.load("../diffuser/test.torch")
+# hf_value_function = ValueFunction(training_horizon=32, dim=32, dim_mults=(1, 2, 4, 8), transition_dim=14, cond_dim=11)
+# hf_value_function.load_state_dict(model.state_dict())
+# hf_value_function.to_hub("bglick13/hf_value_function")
 
 env_name = "hopper-medium-expert-v2"
 env = gym.make(env_name)
@@ -16,7 +23,7 @@ DTYPE = torch.float
 
 # diffusion model settings
 n_samples = 4   # number of trajectories planned via diffusion
-horizon = 128   # length of sampled trajectories
+horizon = 32   # length of sampled trajectories
 state_dim = env.observation_space.shape[0] 
 action_dim = env.action_space.shape[0]
 num_inference_steps = 100 # number of difusion steps
@@ -48,17 +55,18 @@ obs_raw = obs
 # normalize observations for forward passes
 obs = normalize(obs, data, 'observations')
 
-from diffusers import DDPMScheduler, TemporalUNet, ValueFunction
 
 # Two generators for different parts of the diffusion loop to work in colab
 # generator = torch.Generator(device='cuda')
 generator_cpu = torch.Generator(device='cpu')
 
-scheduler = DDPMScheduler(num_train_timesteps=100,beta_schedule="squaredcos_cap_v2")
+scheduler = ValueFunctionScheduler(num_train_timesteps=100,beta_schedule="squaredcos_cap_v2", clip_sample=False)
 
 # 3 different pretrained models are available for this task. 
 # The horizion represents the length of trajectories used in training.
-network = ValueFunction.from_pretrained("fusing/ddpm-unet-rl-hopper-hor128").to(device=DEVICE)
+network = ValueFunction(training_horizon=horizon, dim=32, dim_mults=(1, 2, 4, 8), transition_dim=14, cond_dim=11)
+
+# network = ValueFunction.from_pretrained("/Users/bglickenhaus/Documents/diffuser/logs/hopper-medium-v2/values/defaults_H32_T20_d0.997").to(device=DEVICE)
 # network = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor256").to(device=DEVICE)
 # network = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor512").to(device=DEVICE)
 def reset_x0(x_in, cond, act_dim):
@@ -82,7 +90,7 @@ batch_size = len(conditions[0])
 shape = (batch_size, horizon, state_dim+action_dim)
 
 # sample random initial noise vector
-x1 = torch.randn(shape, device=DEVICE, generator=generator)
+x1 = torch.randn(shape, device=DEVICE, generator=generator_cpu)
 
 # this model is conditioned from an initial state, so you will see this function
 #  multiple times to change the initial state of generated data to the state 
@@ -102,11 +110,16 @@ for i in tqdm.tqdm(scheduler.timesteps):
     timesteps = torch.full((batch_size,), i, device=DEVICE, dtype=torch.long)
     
     # 1. generate prediction from model
-    with torch.no_grad():
-      residual = network(x, timesteps).sample
+    with torch.enable_grad():
+        x.requires_grad_()
+        y = network(x, timesteps).sample
+        grad = torch.autograd.grad([y.sum()], [x])[0]
+        # tile to (batch_size, 128, 14)
+        x.detach()
+        pass
     
     # 2. use the model prediction to reconstruct an observation (de-noise)
-    obs_reconstruct = scheduler.step(residual, i, x, predict_epsilon=predict_epsilon)["prev_sample"]
+    obs_reconstruct = scheduler.step(grad, i, x, predict_epsilon=predict_epsilon)["prev_sample"]
 
     # 3. [optional] add posterior noise to the sample
     if eta > 0:

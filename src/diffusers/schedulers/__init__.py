@@ -24,6 +24,7 @@ if is_torch_available():
     from .scheduling_sde_ve import ScoreSdeVeScheduler
     from .scheduling_sde_vp import ScoreSdeVpScheduler
     from .scheduling_utils import SchedulerMixin
+    from .scheduling_value_function import ValueFunctionScheduler
 else:
     from ..utils.dummy_pt_objects import *  # noqa F403
 

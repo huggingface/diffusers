@@ -285,8 +285,9 @@ class ValueFunction(ModelMixin, ConfigMixin):
         sample = self.mid_down2(sample)
 
         sample = sample.view(sample.shape[0], -1)
-        sample = torch.cat((sample, t), dim=1)
-        sample = self.final_block(sample)
+        sample = torch.cat((sample, t), dim=-1)
+        for layer in self.final_block:
+            sample = layer(sample)
 
         if not return_dict:
             return (sample,)
