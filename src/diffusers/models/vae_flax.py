@@ -119,7 +119,7 @@ class FlaxResnetBlock2D(nn.Module):
             Output channels
         dropout (:obj:`float`, *optional*, defaults to 0.0):
             Dropout rate
-        groups (:obj:`int`, *optional*, defaults to 32):
+        groups (:obj:`int`, *optional*, defaults to `32`):
             The number of groups to use for group norm.
         use_nin_shortcut (:obj:`bool`, *optional*, defaults to `None`):
             Whether to use `nin_shortcut`. This activates a new layer inside ResNet block
@@ -194,7 +194,7 @@ class FlaxAttentionBlock(nn.Module):
             Input channels
         num_head_channels (:obj:`int`, *optional*, defaults to `None`):
             Number of attention heads
-        num_groups (:obj:`int`, *optional*, defaults to 32):
+        num_groups (:obj:`int`, *optional*, defaults to `32`):
             The number of groups to use for group norm
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
@@ -270,7 +270,7 @@ class FlaxDownEncoderBlock2D(nn.Module):
             Dropout rate
         num_layers (:obj:`int`, *optional*, defaults to 1):
             Number of Resnet layer block
-        resnet_groups (:obj:`int`, *optional*, defaults to 32):
+        resnet_groups (:obj:`int`, *optional*, defaults to `32`):
             The number of groups to use for the Resnet block group norm
         add_downsample (:obj:`bool`, *optional*, defaults to `True`):
             Whether to add downsample layer
@@ -326,7 +326,7 @@ class FlaxUpDecoderBlock2D(nn.Module):
             Dropout rate
         num_layers (:obj:`int`, *optional*, defaults to 1):
             Number of Resnet layer block
-        resnet_groups (:obj:`int`, *optional*, defaults to 32):
+        resnet_groups (:obj:`int`, *optional*, defaults to `32`):
             The number of groups to use for the Resnet block group norm
         add_upsample (:obj:`bool`, *optional*, defaults to `True`):
             Whether to add upsample layer
@@ -380,7 +380,7 @@ class FlaxUNetMidBlock2D(nn.Module):
             Dropout rate
         num_layers (:obj:`int`, *optional*, defaults to 1):
             Number of Resnet layer block
-        resnet_groups (:obj:`int`, *optional*, defaults to 32):
+        resnet_groups (:obj:`int`, *optional*, defaults to `32`):
             The number of groups to use for the Resnet and Attention block group norm
         attn_num_head_channels (:obj:`int`, *optional*, defaults to `1`):
             Number of attention heads for each attention block
@@ -396,7 +396,7 @@ class FlaxUNetMidBlock2D(nn.Module):
 
     def setup(self):
         resnet_groups = self.resnet_groups if self.resnet_groups is not None else min(in_channels // 4, 32)
-
+        
         # there is always at least one resnet
         resnets = [
             FlaxResnetBlock2D(
