@@ -64,9 +64,9 @@ scheduler = ValueFunctionScheduler(num_train_timesteps=100,beta_schedule="square
 
 # 3 different pretrained models are available for this task. 
 # The horizion represents the length of trajectories used in training.
-network = ValueFunction(training_horizon=horizon, dim=32, dim_mults=(1, 2, 4, 8), transition_dim=14, cond_dim=11)
+# network = ValueFunction(training_horizon=horizon, dim=32, dim_mults=(1, 2, 4, 8), transition_dim=14, cond_dim=11)
 
-# network = ValueFunction.from_pretrained("/Users/bglickenhaus/Documents/diffuser/logs/hopper-medium-v2/values/defaults_H32_T20_d0.997").to(device=DEVICE)
+network = ValueFunction.from_pretrained("bglick13/hopper-medium-expert-v2-value-function-hor32").to(device=DEVICE)
 # network = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor256").to(device=DEVICE)
 # network = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor512").to(device=DEVICE)
 def reset_x0(x_in, cond, act_dim):
@@ -119,7 +119,7 @@ for i in tqdm.tqdm(scheduler.timesteps):
         pass
     
     # 2. use the model prediction to reconstruct an observation (de-noise)
-    obs_reconstruct = scheduler.step(grad, i, x, predict_epsilon=predict_epsilon)["prev_sample"]
+    obs_reconstruct = scheduler.step(grad, i, x)["prev_sample"]
 
     # 3. [optional] add posterior noise to the sample
     if eta > 0:
@@ -132,3 +132,8 @@ for i in tqdm.tqdm(scheduler.timesteps):
     # 4. apply conditions to the trajectory
     obs_reconstruct_postcond = reset_x0(obs_reconstruct, conditions, action_dim)
     x = to_torch(obs_reconstruct_postcond)
+sorted_idx = y.argsort(-1, descending=True).squeeze()
+sorted_values = x[sorted_idx]
+actions = sorted_values[:, :, :action_dim]
+actions = de_normalize(actions[0, 0].detach().numpy(), data, key='actions')
+obs, reward, is_done, info = env.step(actions)

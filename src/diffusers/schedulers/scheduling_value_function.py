@@ -199,7 +199,6 @@ class ValueFunctionScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: int,
         sample: torch.FloatTensor,
-        predict_epsilon=True,
         generator=None,
         scale=0.001,
         return_dict: bool = True,
