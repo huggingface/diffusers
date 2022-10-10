@@ -32,9 +32,6 @@ class TemporalUNet(ModelMixin, ConfigMixin):
     Parameters:
         training_horizon: horizon of training samples used for diffusion process.
         transition_dim: state-dimension of samples to predict over
-        cond_dim: held dimension in input (e.g. for actions) -- TODO remove from pretrained
-        predict_epsilon: TODO remove from pretrained
-        clip_denoised: TODO remove from pretrained
         dim: embedding dimension of model
         dim_mults: dimension multiples of the up/down blocks
     """
@@ -44,18 +41,12 @@ class TemporalUNet(ModelMixin, ConfigMixin):
         self,
         training_horizon=128,
         transition_dim=14,
-        cond_dim=3,
-        predict_epsilon=False,
-        clip_denoised=True,
         dim=32,
         dim_mults=(1, 4, 8),
     ):
         super().__init__()
 
         self.transition_dim = transition_dim
-        self.cond_dim = cond_dim
-        self.predict_epsilon = predict_epsilon
-        self.clip_denoised = clip_denoised
 
         # time
         self.time_proj = Timesteps(num_channels=dim, flip_sin_to_cos=False, downscale_freq_shift=1)
@@ -119,7 +110,7 @@ class TemporalUNet(ModelMixin, ConfigMixin):
         timestep: Union[torch.Tensor, float, int],
         return_dict: bool = True,
     ) -> Union[TemporalUNetOutput, Tuple]:
-        """r
+        r"""
         Args:
             sample (`torch.FloatTensor`): (batch, horizon, obs_dimension + action_dimension) noisy inputs tensor
             timestep (`torch.FloatTensor` or `float` or `int): batch (batch) timesteps

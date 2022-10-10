@@ -407,13 +407,9 @@ class TemporalUNetModelTests(ModelTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "training_horizon": 128,
             "dim": 32,
             "dim_mults": [1, 4, 8],
-            "predict_epsilon": False,
-            "clip_denoised": True,
             "transition_dim": 14,
-            "cond_dim": 3,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
