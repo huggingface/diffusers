@@ -170,7 +170,7 @@ class OneFlowDiffusionPipeline(ConfigMixin):
                 module.to(torch_device)
             if isinstance(module, og_torch.nn.Module):
                 if "SafetyChecker" in str(type(module)) or "CLIPTextModel" in str(type(module)):
-                    print("skipping", type(module), "on:", module.device)
+                    print("skipping to-dev movement", type(module), "on:", module.device)
                     continue
                 else:
                     print(f"moving pytorch model to cuda {type(module)}: {module.device} => cuda" )
@@ -354,6 +354,8 @@ class OneFlowDiffusionPipeline(ConfigMixin):
         for name, (library_name, class_name) in init_dict.items():
             if name in ["scheduler", "unet", "vae"]:
                 class_name = "OneFlow" + class_name
+            else:
+                print(f"using non-oneflow module for {name}, {library_name}.{class_name}")
             # 3.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             if class_name.startswith("Flax"):
                 class_name = class_name[4:]

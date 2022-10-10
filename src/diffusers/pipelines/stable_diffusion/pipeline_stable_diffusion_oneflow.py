@@ -4,7 +4,8 @@ from typing import List, Optional, Union
 
 import oneflow as torch
 
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPFeatureExtractor, CLIPTokenizer
+from transformers import OneFlowCLIPTextModel as CLIPTextModel
 
 from ...configuration_utils import FrozenDict
 from ...models import OneFlowAutoencoderKL as AutoencoderKL
