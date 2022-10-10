@@ -128,7 +128,7 @@ DeepSpeed needs to be enabled with `accelerate config`. During configuration
 answer yes to "Do you want to use DeepSpeed?". With DeepSpeed stage 2, fp16
 mixed precision and offloading both parameters and optimizer state to cpu it's
 possible to train on under 8 GB VRAM with a drawback of requiring significantly
-more RAM (about 25 GB).
+more RAM (about 25 GB). See [documentation](https://huggingface.co/docs/accelerate/usage_guides/deepspeed) for more DeepSpeed configuration options.
 
 Changing the default Adam optimizer to DeepSpeed's special version of Adam
 `deepspeed.ops.adam.DeepSpeedCPUAdam` gives a substantial speedup but enabling
