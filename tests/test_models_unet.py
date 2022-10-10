@@ -20,7 +20,7 @@ import unittest
 
 import torch
 
-from diffusers import TemporalUNet, UNet2DConditionModel, UNet2DModel
+from diffusers import UNet1DModel, UNet2DConditionModel, UNet2DModel
 from diffusers.utils import floats_tensor, slow, torch_device
 
 from .test_modeling_common import ModelTesterMixin
@@ -451,7 +451,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
 
 
 class TemporalUNetModelTests(ModelTesterMixin, unittest.TestCase):
-    model_class = TemporalUNet
+    model_class = UNet1DModel
 
     @property
     def dummy_input(self):
@@ -488,7 +488,7 @@ class TemporalUNetModelTests(ModelTesterMixin, unittest.TestCase):
         return init_dict, inputs_dict
 
     def test_from_pretrained_hub(self):
-        model, loading_info = TemporalUNet.from_pretrained(
+        model, loading_info = UNet1DModel.from_pretrained(
             "fusing/ddpm-unet-rl-hopper-hor128", output_loading_info=True
         )
         self.assertIsNotNone(model)
@@ -500,7 +500,7 @@ class TemporalUNetModelTests(ModelTesterMixin, unittest.TestCase):
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained(self):
-        model = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor128")
+        model = UNet1DModel.from_pretrained("fusing/ddpm-unet-rl-hopper-hor128")
         model.eval()
 
         torch.manual_seed(0)
