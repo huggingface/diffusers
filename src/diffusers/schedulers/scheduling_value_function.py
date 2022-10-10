@@ -239,7 +239,7 @@ class ValueFunctionScheduler(SchedulerMixin, ConfigMixin):
         # 2. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (15) from https://arxiv.org/pdf/2006.11239.pdf
 
-        pred_original_sample = sample + scale * model_output
+        pred_original_sample = model_output
 
         # 3. Clip "predicted x_0"
         if self.config.clip_sample:
@@ -262,7 +262,7 @@ class ValueFunctionScheduler(SchedulerMixin, ConfigMixin):
             ).to(model_output.device)
             variance = (self._get_variance(t, predicted_variance=predicted_variance) ** 0.5) * noise
 
-        pred_prev_sample = pred_prev_sample + variance
+            pred_prev_sample = pred_prev_sample + variance * noise
 
         if not return_dict:
             return (pred_prev_sample,)
