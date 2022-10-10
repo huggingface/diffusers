@@ -5,7 +5,8 @@ from typing import Tuple, Union
 import torch
 import torch.nn as nn
 
-from diffusers.models.resnet import Downsample1D, ResidualTemporalBlock, Upsample1D
+from diffusers.models.resnet import ResidualTemporalBlock, Upsample1D
+from diffusers.models.unet_blocks import DownResnetBlock1D
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
@@ -61,13 +62,18 @@ class TemporalUNet(ModelMixin, ConfigMixin):
         for ind, (dim_in, dim_out) in enumerate(in_out):
             is_last = ind >= (num_resolutions - 1)
 
+            # self.down_blocks.append(
+            #     nn.ModuleList(
+            #         [
+            #             ResidualTemporalBlock(dim_in, dim_out, embed_dim=dim),
+            #             ResidualTemporalBlock(dim_out, dim_out, embed_dim=dim),
+            #             Downsample1D(dim_out, use_conv=True) if not is_last else nn.Identity(),
+            #         ]
+            #     )
+            # )
             self.down_blocks.append(
-                nn.ModuleList(
-                    [
-                        ResidualTemporalBlock(dim_in, dim_out, embed_dim=dim),
-                        ResidualTemporalBlock(dim_out, dim_out, embed_dim=dim),
-                        Downsample1D(dim_out, use_conv=True) if not is_last else nn.Identity(),
-                    ]
+                DownResnetBlock1D(
+                    in_channels=dim_in, out_channels=dim_out, temb_channels=dim, add_downsample=(not is_last)
                 )
             )
 
@@ -127,11 +133,14 @@ class TemporalUNet(ModelMixin, ConfigMixin):
         h = []
 
         # 2. down
-        for resnet, resnet2, downsample in self.down_blocks:
-            sample = resnet(sample, t)
-            sample = resnet2(sample, t)
-            h.append(sample)
-            sample = downsample(sample)
+        # for resnet, resnet2, downsample in self.down_blocks:
+        #     sample = resnet(sample, t)
+        #     sample = resnet2(sample, t)
+        #     h.append(sample)
+        #     sample = downsample(sample)
+        for downsample_block in self.down_blocks:
+            sample, res_samples = downsample_block(hidden_states=sample, temb=t)
+            h.append(res_samples[0])
 
         # 3. mid
         sample = self.mid_block1(sample, t)

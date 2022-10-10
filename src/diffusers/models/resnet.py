@@ -7,10 +7,13 @@ import torch.nn.functional as F
 
 class Upsample1D(nn.Module):
     """
-    An upsampling layer with an optional convolution. :param channels: channels in the inputs and outputs. :param
-    use_conv: a bool determining if a convolution is applied. :param dims: determines if the signal is 1D, 2D, or 3D.
-    If 3D, then
-                 upsampling occurs in the inner-two dimensions.
+    An upsampling layer with an optional convolution.
+
+    Parameters:
+            channels: channels in the inputs and outputs.
+            use_conv: a bool determining if a convolution is applied.
+            use_conv_transpose:
+            out_channels:
     """
 
     def __init__(self, channels, use_conv=False, use_conv_transpose=False, out_channels=None, name="conv"):
@@ -21,7 +24,6 @@ class Upsample1D(nn.Module):
         self.use_conv_transpose = use_conv_transpose
         self.name = name
 
-        # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         self.conv = None
         if use_conv_transpose:
             self.conv = nn.ConvTranspose1d(channels, self.out_channels, 4, 2, 1)
@@ -43,10 +45,13 @@ class Upsample1D(nn.Module):
 
 class Downsample1D(nn.Module):
     """
-    A downsampling layer with an optional convolution. :param channels: channels in the inputs and outputs. :param
-    use_conv: a bool determining if a convolution is applied. :param dims: determines if the signal is 1D, 2D, or 3D.
-    If 3D, then
-                 downsampling occurs in the inner-two dimensions.
+    A downsampling layer with an optional convolution.
+
+    Parameters:
+        channels: channels in the inputs and outputs.
+        use_conv: a bool determining if a convolution is applied.
+        out_channels:
+        padding:
     """
 
     def __init__(self, channels, use_conv=False, out_channels=None, padding=1, name="conv"):
@@ -76,7 +81,8 @@ class Upsample2D(nn.Module):
     Parameters:
         channels: channels in the inputs and outputs.
         use_conv: a bool determining if a convolution is applied.
-        dims: determines if the signal is 1D, 2D, or 3D. If 3D, then upsampling occurs in the inner-two dimensions.
+        use_conv_transpose:
+        out_channels:
     """
 
     def __init__(self, channels, use_conv=False, use_conv_transpose=False, out_channels=None, name="conv"):
@@ -129,7 +135,8 @@ class Downsample2D(nn.Module):
     Parameters:
         channels: channels in the inputs and outputs.
         use_conv: a bool determining if a convolution is applied.
-        dims: determines if the signal is 1D, 2D, or 3D. If 3D, then downsampling occurs in the inner-two dimensions.
+        out_channels:
+        padding:
     """
 
     def __init__(self, channels, use_conv=False, out_channels=None, padding=1, name="conv"):
