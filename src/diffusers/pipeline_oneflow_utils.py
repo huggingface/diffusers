@@ -352,8 +352,9 @@ class OneFlowDiffusionPipeline(ConfigMixin):
 
         # 3. Load each module in the pipeline
         for name, (library_name, class_name) in init_dict.items():
-            if name in ["scheduler", "unet", "vae"]:
+            if name in ["scheduler", "unet", "vae", "text_encoder"]:
                 class_name = "OneFlow" + class_name
+                print(f"using oneflow module for {name}, {library_name}.{class_name}")
             else:
                 print(f"using non-oneflow module for {name}, {library_name}.{class_name}")
             # 3.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
@@ -408,8 +409,11 @@ class OneFlowDiffusionPipeline(ConfigMixin):
                     if issubclass(class_obj, class_candidate):
                         load_method_name = importable_classes[class_name][1]
 
-                load_method = getattr(class_obj, load_method_name)
-
+                try:
+                    load_method = getattr(class_obj, load_method_name)
+                except TypeError as e:
+                    print(f"fail to load {library_name}.{class_name} , maybe it is not allowed?")
+                    raise e
                 loading_kwargs = {}
                 if issubclass(class_obj, torch.nn.Module):
                     loading_kwargs["torch_dtype"] = torch_dtype
