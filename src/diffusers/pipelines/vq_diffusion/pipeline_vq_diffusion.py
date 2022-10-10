@@ -1,4 +1,4 @@
-from diffusers import VQModel
+from diffusers import VQDiffusionTransformer, VQModel
 
 from ...pipeline_utils import DiffusionPipeline
 
@@ -12,7 +12,8 @@ from ...pipeline_utils import DiffusionPipeline
 # information on EMA Vector quantizers, see https://arxiv.org/abs/1711.00937.
 class VQDiffusionPipeline(DiffusionPipeline):
     vqvae: VQModel
+    transformer: VQDiffusionTransformer
 
-    def __init__(self, vqvae: VQModel):
+    def __init__(self, vqvae: VQModel, transformer: VQDiffusionTransformer):
         super().__init__()
-        self.register_modules(vqvae=vqvae)
+        self.register_modules(vqvae=vqvae, transformer=transformer)

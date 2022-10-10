@@ -212,10 +212,18 @@ class CrossAttention(nn.Module):
         heads (:obj:`int`,  *optional*, defaults to 8): The number of heads to use for multi-head attention.
         dim_head (:obj:`int`,  *optional*, defaults to 64): The number of channels in each head.
         dropout (:obj:`float`, *optional*, defaults to 0.0): The dropout probability to use.
+        bias (:obj:`bool`, *optional*, defaults to False):
+            Set to `True` for the query, key, and value linear layers to contain a bias parameter.
     """
 
     def __init__(
-        self, query_dim: int, context_dim: Optional[int] = None, heads: int = 8, dim_head: int = 64, dropout: int = 0.0
+        self,
+        query_dim: int,
+        context_dim: Optional[int] = None,
+        heads: int = 8,
+        dim_head: int = 64,
+        dropout: float = 0.0,
+        bias=False,
     ):
         super().__init__()
         inner_dim = dim_head * heads
@@ -228,9 +236,9 @@ class CrossAttention(nn.Module):
         # You can set slice_size with `set_attention_slice`
         self._slice_size = None
 
-        self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
-        self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
-        self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
+        self.to_q = nn.Linear(query_dim, inner_dim, bias=bias)
+        self.to_k = nn.Linear(context_dim, inner_dim, bias=bias)
+        self.to_v = nn.Linear(context_dim, inner_dim, bias=bias)
 
         self.to_out = nn.Sequential(nn.Linear(inner_dim, query_dim), nn.Dropout(dropout))
 

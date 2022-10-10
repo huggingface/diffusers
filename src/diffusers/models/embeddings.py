@@ -115,3 +115,52 @@ class GaussianFourierProjection(nn.Module):
         x_proj = x[:, None] * self.weight[None, :] * 2 * np.pi
         out = torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1)
         return out
+
+
+# TODO(will) - document this. check if throwing errors internally is appropriate
+class DalleMaskImageEmbedding(nn.Module):
+    def __init__(
+        self,
+        num_embed,
+        height,
+        width,
+        embed_dim,
+    ):
+        super().__init__()
+
+        self.height = height
+        self.width = width
+        # TODO(will) add docs on why this is incremented by 1. (Has to do with mask?)
+        self.num_embed = num_embed + 1
+        self.embed_dim = embed_dim
+
+        self.emb = nn.Embedding(self.num_embed, embed_dim)
+        self.height_emb = nn.Embedding(self.height, embed_dim)
+        self.width_emb = nn.Embedding(self.width, embed_dim)
+
+    def forward(self, index):
+        assert index.dim() == 2  # B x L
+        try:
+            index[index < 0] = 0
+            emb = self.emb(index)
+        except:
+            raise RuntimeError(
+                "IndexError: index out of range in self, max index {}, num embed {}".format(
+                    index.max(), self.num_embed
+                )
+            )
+
+        # add col and row embedding
+        if emb.shape[1] > 0:
+            height_emb = self.height_emb(
+                torch.arange(self.height, device=index.device).view(1, self.height)
+            ).unsqueeze(
+                2
+            )  # 1 x H x D -> 1 x H x 1 x D
+            width_emb = self.width_emb(torch.arange(self.width, device=index.device).view(1, self.width)).unsqueeze(
+                1
+            )  # 1 x W x D -> 1 x 1 x W x D
+            pos_emb = (height_emb + width_emb).view(1, self.height * self.width, -1)  # 1 x H x W x D -> 1 x L xD
+            emb = emb + pos_emb[:, : emb.shape[1], :]
+
+        return emb

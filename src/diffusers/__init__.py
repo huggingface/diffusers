@@ -18,7 +18,7 @@ from .utils import logging
 
 if is_torch_available():
     from .modeling_utils import ModelMixin
-    from .models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
+    from .models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQDiffusionTransformer, VQModel
     from .optimization import (
         get_constant_schedule,
         get_constant_schedule_with_warmup,
