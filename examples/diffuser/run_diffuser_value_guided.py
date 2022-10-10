@@ -23,7 +23,7 @@ DEVICE = 'cpu'
 DTYPE = torch.float
 
 # diffusion model settings
-n_samples = 4   # number of trajectories planned via diffusion
+n_samples = 64   # number of trajectories planned via diffusion
 horizon = 32   # length of sampled trajectories
 state_dim = env.observation_space.shape[0] 
 action_dim = env.action_space.shape[0]
