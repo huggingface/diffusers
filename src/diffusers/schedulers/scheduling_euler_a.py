@@ -91,7 +91,8 @@ class EulerAScheduler(SchedulerMixin, ConfigMixin):
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
         tensor_format: str = "pt",
-        num_inference_steps = None
+        num_inference_steps = None,
+        device = 'cuda'
     ):
         if trained_betas is not None:
             self.betas = np.asarray(trained_betas)
@@ -106,6 +107,7 @@ class EulerAScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
+        self.device = device
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
 
@@ -118,13 +120,12 @@ class EulerAScheduler(SchedulerMixin, ConfigMixin):
         # setable values
         self.num_inference_steps = num_inference_steps
         self.timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
-
         # get sigmas
         self.DSsigmas = ((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5
         self.sigmas = self.get_sigmas(self.DSsigmas,self.num_inference_steps)
         self.tensor_format = tensor_format
         self.set_format(tensor_format=tensor_format)
-
+        
         
     #A# take number of steps as input
     #A# store 1) number of steps 2) timesteps 3) schedule 
@@ -285,7 +286,8 @@ class EulerAScheduler(SchedulerMixin, ConfigMixin):
         if n is None:
             return self.append_zero(sigmas.flip(0))
         t_max = len(sigmas) - 1 # = 999
-        t = torch.linspace(t_max, 0, n, device="cpu")
+        device = self.device
+        t = torch.linspace(t_max, 0, n, device=device)
         # t = torch.linspace(t_max, 0, n, device=sigmas.device)
         return self.append_zero(self.t_to_sigma(t,sigmas))
 
