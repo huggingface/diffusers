@@ -450,7 +450,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         pass
 
 
-class TemporalUNetModelTests(ModelTesterMixin, unittest.TestCase):
+class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
     model_class = UNet1DModel
 
     @property

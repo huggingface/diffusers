@@ -523,6 +523,7 @@ class DownResnetBlock1D(nn.Module):
 
         return hidden_states, output_states
 
+
 class UpResnetBlock1D(nn.Module):
     def __init__(
         self,

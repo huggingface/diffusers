@@ -5,7 +5,7 @@ from typing import Tuple, Union
 import torch
 import torch.nn as nn
 
-from diffusers.models.resnet import ResidualTemporalBlock, Upsample1D
+from diffusers.models.resnet import ResidualTemporalBlock
 from diffusers.models.unet_blocks import DownResnetBlock1D, UpResnetBlock1D
 
 from ..configuration_utils import ConfigMixin, register_to_config
@@ -77,7 +77,11 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
             is_last = ind >= (num_resolutions - 1)
 
-            self.up_blocks.append(UpResnetBlock1D(in_channels=dim_out*2, out_channels=dim_in, temb_channels=dim, add_upsample=(not is_last)))
+            self.up_blocks.append(
+                UpResnetBlock1D(
+                    in_channels=dim_out * 2, out_channels=dim_in, temb_channels=dim, add_upsample=(not is_last)
+                )
+            )
 
         # out
         self.final_conv1d_1 = nn.Conv1d(dim, dim, 5, padding=2)
@@ -90,7 +94,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         sample: torch.FloatTensor,
         timestep: Union[torch.Tensor, float, int],
         return_dict: bool = True,
-    ) -> Union[TemporalUNetOutput, Tuple]:
+    ) -> Union[UNet1DOutput, Tuple]:
         r"""
         Args:
             sample (`torch.FloatTensor`): (batch, horizon, obs_dimension + action_dimension) noisy inputs tensor
@@ -141,4 +145,4 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         if not return_dict:
             return (sample,)
 
-        return TemporalUNetOutput(sample=sample)
+        return UNet1DOutput(sample=sample)
