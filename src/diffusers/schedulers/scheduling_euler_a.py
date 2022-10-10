@@ -108,7 +108,7 @@ class EulerAScheduler(SchedulerMixin, ConfigMixin):
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
         self.device = device
-        self.alphas = 1.0 - torch.from_numpy(self.betas)
+        self.alphas = 1.0 - torch.from_numpy(self.betas).device(self.device)
         self.alphas_cumprod = torch.cumprod(self.alphas, axis=0)
 
         # At every step in ddim, we are looking into the previous alphas_cumprod
