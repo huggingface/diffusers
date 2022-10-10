@@ -1,6 +1,12 @@
-import jax
+from diffusers.utils import is_flax_available
+from diffusers.utils.testing_utils import require_flax
 
 
+if is_flax_available():
+    import jax
+
+
+@require_flax
 class FlaxModelTesterMixin:
     def test_output(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
