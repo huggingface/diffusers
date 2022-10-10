@@ -40,7 +40,7 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
         cos_dist = cosine_distance(image_embeds, self.concept_embeds).cpu()
 
         # cast to float32 to as numpy does not support bfloat16
-        if image_embeds == torch.bfloat16:
+        if image_embeds.dtype == torch.bfloat16:
             special_cos_dist = special_cos_dist.float().numpy()
             cos_dist = cos_dist.float().numpy()
         else:
