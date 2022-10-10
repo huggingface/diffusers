@@ -13,7 +13,6 @@
 # limitations under the License.
 
 
-import warnings
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
@@ -21,7 +20,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..utils import BaseOutput, deprecate
 from .scheduling_utils import SchedulerMixin
 
 
@@ -89,19 +88,36 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         s_max: float = 50,
         **kwargs,
     ):
-        if "tensor_format" in kwargs:
-            warnings.warn(
-                "`tensor_format` is deprecated as an argument and will be removed in version `0.5.0`."
-                "If you're running your code in PyTorch, you can safely remove this argument.",
-                DeprecationWarning,
-            )
+        deprecate(
+            "tensor_format",
+            "0.6.0",
+            "If you're running your code in PyTorch, you can safely remove this argument.",
+            take_from=kwargs,
+        )
+
+        # standard deviation of the initial noise distribution
+        self.init_noise_sigma = sigma_max
 
         # setable values
         self.num_inference_steps: int = None
-        self.timesteps: np.ndarray = None
+        self.timesteps: np.IntTensor = None
         self.schedule: torch.FloatTensor = None  # sigma(t_i)
 
-    def set_timesteps(self, num_inference_steps: int):
+    def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
+        """
+        Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
+        current timestep.
+
+        Args:
+            sample (`torch.FloatTensor`): input sample
+            timestep (`int`, optional): current timestep
+
+        Returns:
+            `torch.FloatTensor`: scaled input sample
+        """
+        return sample
+
+    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
         Sets the continuous timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -111,7 +127,8 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
 
         """
         self.num_inference_steps = num_inference_steps
-        self.timesteps = np.arange(0, self.num_inference_steps)[::-1].copy()
+        timesteps = np.arange(0, self.num_inference_steps)[::-1].copy()
+        self.timesteps = torch.from_numpy(timesteps).to(device)
         schedule = [
             (
                 self.config.sigma_max**2
@@ -119,7 +136,7 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
             )
             for i in self.timesteps
         ]
-        self.schedule = torch.tensor(schedule, dtype=torch.float32)
+        self.schedule = torch.tensor(schedule, dtype=torch.float32, device=device)
 
     def add_noise_to_input(
         self, sample: torch.FloatTensor, sigma: float, generator: Optional[torch.Generator] = None

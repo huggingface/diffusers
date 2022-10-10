@@ -15,7 +15,6 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 import math
-import warnings
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
@@ -23,7 +22,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..utils import BaseOutput, deprecate
 from .scheduling_utils import SchedulerMixin
 
 
@@ -115,12 +114,12 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         clip_sample: bool = True,
         **kwargs,
     ):
-        if "tensor_format" in kwargs:
-            warnings.warn(
-                "`tensor_format` is deprecated as an argument and will be removed in version `0.5.0`."
-                "If you're running your code in PyTorch, you can safely remove this argument.",
-                DeprecationWarning,
-            )
+        deprecate(
+            "tensor_format",
+            "0.6.0",
+            "If you're running your code in PyTorch, you can safely remove this argument.",
+            take_from=kwargs,
+        )
 
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
@@ -134,6 +133,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
+        elif beta_schedule == "sigmoid":
+            # GeoDiff sigmoid schedule
+            betas = torch.linspace(-6, 6, num_train_timesteps)
+            self.betas = torch.sigmoid(betas) * (beta_end - beta_start) + beta_start
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
@@ -141,13 +144,30 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
         self.one = torch.tensor(1.0)
 
+        # standard deviation of the initial noise distribution
+        self.init_noise_sigma = 1.0
+
         # setable values
         self.num_inference_steps = None
-        self.timesteps = np.arange(0, num_train_timesteps)[::-1]
+        self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy())
 
         self.variance_type = variance_type
 
-    def set_timesteps(self, num_inference_steps: int):
+    def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
+        """
+        Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
+        current timestep.
+
+        Args:
+            sample (`torch.FloatTensor`): input sample
+            timestep (`int`, optional): current timestep
+
+        Returns:
+            `torch.FloatTensor`: scaled input sample
+        """
+        return sample
+
+    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -157,9 +177,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         """
         num_inference_steps = min(self.config.num_train_timesteps, num_inference_steps)
         self.num_inference_steps = num_inference_steps
-        self.timesteps = np.arange(
+        timesteps = np.arange(
             0, self.config.num_train_timesteps, self.config.num_train_timesteps // self.num_inference_steps
-        )[::-1]
+        )[::-1].copy()
+        self.timesteps = torch.from_numpy(timesteps).to(device)
 
     def _get_variance(self, t, predicted_variance=None, variance_type=None):
         alpha_prod_t = self.alphas_cumprod[t]
@@ -277,11 +298,9 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.FloatTensor,
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
-        if self.alphas_cumprod.device != original_samples.device:
-            self.alphas_cumprod = self.alphas_cumprod.to(original_samples.device)
-
-        if timesteps.device != original_samples.device:
-            timesteps = timesteps.to(original_samples.device)
+        # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
+        self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        timesteps = timesteps.to(original_samples.device)
 
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()

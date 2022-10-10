@@ -21,7 +21,7 @@ jobs:
     runs-on: [ self-hosted, docker-gpu ]
     container:
       image: python:3.7
-      options: --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
+      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
 
     steps:
     - name: Checkout diffusers

@@ -16,7 +16,6 @@
 # and https://github.com/hojonathanho/diffusion
 
 import math
-import warnings
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
@@ -24,7 +23,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..utils import BaseOutput, deprecate
 from .scheduling_utils import SchedulerMixin
 
 
@@ -122,12 +121,12 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         steps_offset: int = 0,
         **kwargs,
     ):
-        if "tensor_format" in kwargs:
-            warnings.warn(
-                "`tensor_format` is deprecated as an argument and will be removed in version `0.5.0`."
-                "If you're running your code in PyTorch, you can safely remove this argument.",
-                DeprecationWarning,
-            )
+        deprecate(
+            "tensor_format",
+            "0.6.0",
+            "If you're running your code in PyTorch, you can safely remove this argument.",
+            take_from=kwargs,
+        )
 
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
@@ -153,9 +152,26 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # whether we use the final alpha of the "non-previous" one.
         self.final_alpha_cumprod = torch.tensor(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
 
+        # standard deviation of the initial noise distribution
+        self.init_noise_sigma = 1.0
+
         # setable values
         self.num_inference_steps = None
-        self.timesteps = np.arange(0, num_train_timesteps)[::-1]
+        self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy())
+
+    def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
+        """
+        Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
+        current timestep.
+
+        Args:
+            sample (`torch.FloatTensor`): input sample
+            timestep (`int`, optional): current timestep
+
+        Returns:
+            `torch.FloatTensor`: scaled input sample
+        """
+        return sample
 
     def _get_variance(self, timestep, prev_timestep):
         alpha_prod_t = self.alphas_cumprod[timestep]
@@ -167,7 +183,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
-    def set_timesteps(self, num_inference_steps: int, **kwargs):
+    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None, **kwargs):
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -175,23 +191,17 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
-
-        offset = self.config.steps_offset
-
-        if "offset" in kwargs:
-            warnings.warn(
-                "`offset` is deprecated as an input argument to `set_timesteps` and will be removed in v0.4.0."
-                " Please pass `steps_offset` to `__init__` instead.",
-                DeprecationWarning,
-            )
-
-            offset = kwargs["offset"]
+        deprecated_offset = deprecate(
+            "offset", "0.7.0", "Please pass `steps_offset` to `__init__` instead.", take_from=kwargs
+        )
+        offset = deprecated_offset or self.config.steps_offset
 
         self.num_inference_steps = num_inference_steps
         step_ratio = self.config.num_train_timesteps // self.num_inference_steps
         # creates integer timesteps by multiplying by ratio
         # casting to int to avoid issues when num_inference_step is power of 3
-        self.timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1]
+        timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy()
+        self.timesteps = torch.from_numpy(timesteps).to(device)
         self.timesteps += offset
 
     def step(
@@ -273,8 +283,9 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
 
         if eta > 0:
+            # randn_like does not support generator https://github.com/pytorch/pytorch/issues/27072
             device = model_output.device if torch.is_tensor(model_output) else "cpu"
-            noise = torch.randn(model_output.shape, generator=generator).to(device)
+            noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator).to(device)
             variance = self._get_variance(timestep, prev_timestep) ** (0.5) * eta * noise
 
             prev_sample = prev_sample + variance
@@ -290,11 +301,9 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.FloatTensor,
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
-        if self.alphas_cumprod.device != original_samples.device:
-            self.alphas_cumprod = self.alphas_cumprod.to(original_samples.device)
-
-        if timesteps.device != original_samples.device:
-            timesteps = timesteps.to(original_samples.device)
+        # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
+        self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        timesteps = timesteps.to(original_samples.device)
 
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()
