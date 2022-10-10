@@ -30,7 +30,6 @@ class TemporalUNet(ModelMixin, ConfigMixin):
     A UNet for multi-dimensional temporal data. This model takes the batch over the `training_horizon`.
 
     Parameters:
-        training_horizon: horizon of training samples used for diffusion process.
         transition_dim: state-dimension of samples to predict over
         dim: embedding dimension of model
         dim_mults: dimension multiples of the up/down blocks
@@ -39,7 +38,6 @@ class TemporalUNet(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        training_horizon=128,
         transition_dim=14,
         dim=32,
         dim_mults=(1, 4, 8),
@@ -55,15 +53,15 @@ class TemporalUNet(ModelMixin, ConfigMixin):
         dims = [transition_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
 
-        self.downs = nn.ModuleList([])
-        self.ups = nn.ModuleList([])
+        self.down_blocks = nn.ModuleList([])
+        self.up_blocks = nn.ModuleList([])
         num_resolutions = len(in_out)
 
         # down
         for ind, (dim_in, dim_out) in enumerate(in_out):
             is_last = ind >= (num_resolutions - 1)
 
-            self.downs.append(
+            self.down_blocks.append(
                 nn.ModuleList(
                     [
                         ResidualTemporalBlock(dim_in, dim_out, embed_dim=dim),
@@ -72,9 +70,6 @@ class TemporalUNet(ModelMixin, ConfigMixin):
                     ]
                 )
             )
-
-            if not is_last:
-                training_horizon = training_horizon // 2
 
         # mid
         mid_dim = dims[-1]
@@ -85,7 +80,7 @@ class TemporalUNet(ModelMixin, ConfigMixin):
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
             is_last = ind >= (num_resolutions - 1)
 
-            self.ups.append(
+            self.up_blocks.append(
                 nn.ModuleList(
                     [
                         ResidualTemporalBlock(dim_out * 2, dim_in, embed_dim=dim),
@@ -94,9 +89,6 @@ class TemporalUNet(ModelMixin, ConfigMixin):
                     ]
                 )
             )
-
-            if not is_last:
-                training_horizon = training_horizon * 2
 
         # out
         self.final_conv1d_1 = nn.Conv1d(dim, dim, 5, padding=2)
@@ -135,7 +127,7 @@ class TemporalUNet(ModelMixin, ConfigMixin):
         h = []
 
         # 2. down
-        for resnet, resnet2, downsample in self.downs:
+        for resnet, resnet2, downsample in self.down_blocks:
             sample = resnet(sample, t)
             sample = resnet2(sample, t)
             h.append(sample)
@@ -146,7 +138,7 @@ class TemporalUNet(ModelMixin, ConfigMixin):
         sample = self.mid_block2(sample, t)
 
         # 4. up
-        for resnet, resnet2, upsample in self.ups:
+        for resnet, resnet2, upsample in self.up_blocks:
             sample = torch.cat((sample, h.pop()), dim=1)
             sample = resnet(sample, t)
             sample = resnet2(sample, t)
