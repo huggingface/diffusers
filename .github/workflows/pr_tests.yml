@@ -72,7 +72,7 @@ jobs:
     - name: Setup miniconda
       uses: ./.github/actions/setup-miniconda
       with:
-        python-version: 3.7
+        python-version: 3.8
 
     - name: Install dependencies
       run: |
