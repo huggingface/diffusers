@@ -77,7 +77,7 @@ def parse_args():
         type=int,
         default=100,
         help=(
-            "Minimal class images for prior perversation loss. If not have enough images, additional images will be"
+            "Minimal class images for prior preservation loss. If not have enough images, additional images will be"
             " sampled with class_prompt."
         ),
     )
