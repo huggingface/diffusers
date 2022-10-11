@@ -89,7 +89,7 @@ jobs:
     - name: Run all fast tests on MPS
       shell: arch -arch arm64 bash {0}
       run: |
-        ${CONDA_RUN} python -m pytest -o faulthandler_timeout=30 -s -v --make-reports=tests_torch_mps tests/
+        ${CONDA_RUN} python -m pytest -o faulthandler_timeout=30 -n 1 --max-worker-restart=8 --dist=loadfile -s -v --make-reports=tests_torch_mps tests/
 
     - name: Failure short reports
       if: ${{ failure() }}
