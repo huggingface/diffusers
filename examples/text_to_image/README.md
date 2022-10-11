@@ -83,6 +83,19 @@ accelerate launch train_text_to_image.py \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
-  --output_dir="sd-pokemon-model
+  --output_dir="sd-pokemon-model"
 ```
 
+Once the training is finished the model will be saved in the `output_dir` specified in the command. In this example it's `sd-pokemon-model`. To load the fine-tuned model for inference just pass that path to `StableDiffusionPipeline`
+
+
+```python
+from diffusers import StableDiffusionPipeline
+
+model_path = "path_to_saved_model"
+pipe = StableDiffusionPipeline.from_pretrained(model_path, torch_dtype=torch.float16)
+pipe.to("cuda")
+
+image = pipe(prompt="yoda").images[0]
+image.save("yoda-pokemon.png")
+```
