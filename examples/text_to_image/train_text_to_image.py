@@ -230,7 +230,7 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 
 
 dataset_name_mapping = {
-    "image_caption_dataset.py": ("image_path", "caption"),
+    "lambdalabs/pokemon-blip-captions": ("image", "text"),
 }
 
 
