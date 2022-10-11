@@ -43,7 +43,8 @@ def parse_args():
         default=None,
         help=(
             "The name of the Dataset (from the HuggingFace hub) to train on (could be your own, possibly private,"
-            " dataset)."
+            " dataset). It can also be a path pointing to a local copy of a dataset in your filesystem,"
+            " or to a folder containing files that 🤗 Datasets can understand."
         ),
     )
     parser.add_argument(
@@ -105,7 +106,7 @@ def parse_args():
     parser.add_argument(
         "--center_crop",
         action="store_true",
-        help="Whether to center crop images before resizing to resolution (if not set, use random crop)",
+        help="Whether to center crop images before resizing to resolution (if not set, random crop will be used)",
     )
     parser.add_argument(
         "--random_flip",
