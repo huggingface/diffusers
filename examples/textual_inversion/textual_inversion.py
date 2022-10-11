@@ -569,9 +569,7 @@ def main():
         save_progress(text_encoder, placeholder_token_id, accelerator, args)
 
         if args.push_to_hub:
-            repo.push_to_hub(
-                args, pipeline, repo, commit_message="End of training", blocking=False, auto_lfs_prune=True
-            )
+            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
 
     accelerator.end_training()
 

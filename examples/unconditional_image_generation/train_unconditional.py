@@ -9,7 +9,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_dataset
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
-from diffusers.hub_utils import init_git_repo, push_to_hub
+from diffusers.hub_utils import init_git_repo
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from torchvision.transforms import (
@@ -185,7 +185,7 @@ def main(args):
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
                 # save the model
                 if args.push_to_hub:
-                    push_to_hub(args, pipeline, repo, commit_message=f"Epoch {epoch}", blocking=False)
+                    repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=False)
                 else:
                     pipeline.save_pretrained(args.output_dir)
         accelerator.wait_for_everyone()

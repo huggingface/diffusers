@@ -32,7 +32,19 @@ from tqdm.auto import tqdm
 from .configuration_utils import ConfigMixin
 from .dynamic_modules_utils import get_class_from_dynamic_module
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from .utils import CONFIG_NAME, DIFFUSERS_CACHE, ONNX_WEIGHTS_NAME, WEIGHTS_NAME, BaseOutput, logging
+from .utils import (
+    CONFIG_NAME,
+    DIFFUSERS_CACHE,
+    ONNX_WEIGHTS_NAME,
+    WEIGHTS_NAME,
+    BaseOutput,
+    is_transformers_available,
+    logging,
+)
+
+
+if is_transformers_available():
+    from transformers import PreTrainedModel
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
@@ -169,10 +181,12 @@ class DiffusionPipeline(ConfigMixin):
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
                 if module.dtype == torch.float16 and str(torch_device) in ["cpu", "mps"]:
-                    raise ValueError(
-                        "Pipelines loaded with `torch_dtype=torch.float16` cannot be moved to `cpu` or `mps` "
-                        "due to the lack of support for `float16` operations on those devices in PyTorch. "
-                        "Please remove the `torch_dtype=torch.float16` argument, or use a `cuda` device."
+                    logger.warning(
+                        "Pipelines loaded with `torch_dtype=torch.float16` cannot run with `cpu` or `mps` device. It"
+                        " is not recommended to move them to `cpu` or `mps` as running them will fail. Please make"
+                        " sure to use a `cuda` device to run the pipeline in inference. due to the lack of support for"
+                        " `float16` operations on those devices in PyTorch. Please remove the"
+                        " `torch_dtype=torch.float16` argument, or use a `cuda` device to run inference."
                     )
                 module.to(torch_device)
         return self
@@ -336,6 +350,7 @@ class DiffusionPipeline(ConfigMixin):
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         provider = kwargs.pop("provider", None)
         sess_options = kwargs.pop("sess_options", None)
+        device_map = kwargs.pop("device_map", None)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -460,6 +475,13 @@ class DiffusionPipeline(ConfigMixin):
                 if issubclass(class_obj, diffusers.OnnxRuntimeModel):
                     loading_kwargs["provider"] = provider
                     loading_kwargs["sess_options"] = sess_options
+
+                if (
+                    issubclass(class_obj, diffusers.ModelMixin)
+                    or is_transformers_available()
+                    and issubclass(class_obj, PreTrainedModel)
+                ):
+                    loading_kwargs["device_map"] = device_map
 
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):

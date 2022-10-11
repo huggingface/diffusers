@@ -206,7 +206,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--opset",
         default=14,
-        type=str,
+        type=int,
         help="The version of the ONNX operator set to use.",
     )
 
