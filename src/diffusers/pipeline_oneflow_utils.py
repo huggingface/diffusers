@@ -167,9 +167,6 @@ class OneFlowDiffusionPipeline(ConfigMixin):
         module_names, _ = self.extract_init_dict(dict(self.config))
         for name in module_names.keys():
             module = getattr(self, name)
-            if "SafetyChecker" in str(type(module)):
-                print("skipping to-dev movement", type(module), "on:", module.device)
-                continue
             if isinstance(module, torch.nn.Module):
                 module.to(torch_device)
             if isinstance(module, og_torch.nn.Module):
