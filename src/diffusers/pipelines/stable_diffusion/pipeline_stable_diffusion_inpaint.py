@@ -234,43 +234,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
 
-        # preprocess image
-        if not isinstance(init_image, torch.FloatTensor):
-            init_image = preprocess_image(init_image)
-        init_image = init_image.to(self.device)
-
-        # encode the init image into latents and scale the latents
-        init_latent_dist = self.vae.encode(init_image).latent_dist
-        init_latents = init_latent_dist.sample(generator=generator)
-
-        init_latents = 0.18215 * init_latents
-
-        # Expand init_latents for batch_size and num_images_per_prompt
-        init_latents = torch.cat([init_latents] * batch_size * num_images_per_prompt, dim=0)
-        init_latents_orig = init_latents
-
-        # preprocess mask
-        if not isinstance(mask_image, torch.FloatTensor):
-            mask_image = preprocess_mask(mask_image)
-        mask_image = mask_image.to(self.device)
-        mask = torch.cat([mask_image] * batch_size * num_images_per_prompt)
-
-        # check sizes
-        if not mask.shape == init_latents.shape:
-            raise ValueError("The mask and init_image should be the same size!")
-
-        # get the original timestep using init_timestep
-        offset = self.scheduler.config.get("steps_offset", 0)
-        init_timestep = int(num_inference_steps * strength) + offset
-        init_timestep = min(init_timestep, num_inference_steps)
-
-        timesteps = self.scheduler.timesteps[-init_timestep]
-        timesteps = torch.tensor([timesteps] * batch_size * num_images_per_prompt, device=self.device)
-
-        # add noise to latents using the timesteps
-        noise = torch.randn(init_latents.shape, generator=generator, device=self.device)
-        init_latents = self.scheduler.add_noise(init_latents, noise, timesteps)
-
         # get prompt text embeddings
         text_inputs = self.tokenizer(
             prompt,
@@ -334,6 +297,43 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
+
+        # preprocess image
+        if not isinstance(init_image, torch.FloatTensor):
+            init_image = preprocess_image(init_image)
+
+        # encode the init image into latents and scale the latents
+        latents_dtype = text_embeddings.dtype
+        init_image = init_image.to(device=self.device, dtype=latents_dtype)
+        init_latent_dist = self.vae.encode(init_image).latent_dist
+        init_latents = init_latent_dist.sample(generator=generator)
+        init_latents = 0.18215 * init_latents
+
+        # Expand init_latents for batch_size and num_images_per_prompt
+        init_latents = torch.cat([init_latents] * batch_size * num_images_per_prompt, dim=0)
+        init_latents_orig = init_latents
+
+        # preprocess mask
+        if not isinstance(mask_image, torch.FloatTensor):
+            mask_image = preprocess_mask(mask_image)
+        mask_image = mask_image.to(device=self.device, dtype=latents_dtype)
+        mask = torch.cat([mask_image] * batch_size * num_images_per_prompt)
+
+        # check sizes
+        if not mask.shape == init_latents.shape:
+            raise ValueError("The mask and init_image should be the same size!")
+
+        # get the original timestep using init_timestep
+        offset = self.scheduler.config.get("steps_offset", 0)
+        init_timestep = int(num_inference_steps * strength) + offset
+        init_timestep = min(init_timestep, num_inference_steps)
+
+        timesteps = self.scheduler.timesteps[-init_timestep]
+        timesteps = torch.tensor([timesteps] * batch_size * num_images_per_prompt, device=self.device)
+
+        # add noise to latents using the timesteps
+        noise = torch.randn(init_latents.shape, generator=generator, device=self.device, dtype=latents_dtype)
+        init_latents = self.scheduler.add_noise(init_latents, noise, timesteps)
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.

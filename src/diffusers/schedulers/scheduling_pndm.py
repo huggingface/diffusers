@@ -104,7 +104,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
     ):
         deprecate(
             "tensor_format",
-            "0.5.0",
+            "0.6.0",
             "If you're running your code in PyTorch, you can safely remove this argument.",
             take_from=kwargs,
         )
@@ -159,7 +159,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
         deprecated_offset = deprecate(
-            "offset", "0.5.0", "Please pass `steps_offset` to `__init__` instead.", take_from=kwargs
+            "offset", "0.7.0", "Please pass `steps_offset` to `__init__` instead.", take_from=kwargs
         )
         offset = deprecated_offset or self.config.steps_offset
 
@@ -400,11 +400,9 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.FloatTensor,
         timesteps: torch.IntTensor,
     ) -> torch.Tensor:
-        if self.alphas_cumprod.device != original_samples.device:
-            self.alphas_cumprod = self.alphas_cumprod.to(original_samples.device)
-
-        if timesteps.device != original_samples.device:
-            timesteps = timesteps.to(original_samples.device)
+        # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
+        self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        timesteps = timesteps.to(original_samples.device)
 
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()

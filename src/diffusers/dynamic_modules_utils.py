@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2021 The HuggingFace Inc. team.
+# Copyright 2022 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 """Utilities to dynamically load objects from the Hub."""
 
 import importlib
+import inspect
 import os
 import re
 import shutil
@@ -22,9 +23,14 @@ import sys
 from pathlib import Path
 from typing import Dict, Optional, Union
 
-from huggingface_hub import cached_download
+from huggingface_hub import HfFolder, cached_download, hf_hub_download, model_info
 
 from .utils import DIFFUSERS_DYNAMIC_MODULE_NAME, HF_MODULES_CACHE, logging
+
+
+COMMUNITY_PIPELINES_URL = (
+    "https://raw.githubusercontent.com/huggingface/diffusers/main/examples/community/{pipeline}.py"
+)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -145,7 +151,33 @@ def get_class_in_module(class_name, module_path):
     """
     module_path = module_path.replace(os.path.sep, ".")
     module = importlib.import_module(module_path)
+
+    if class_name is None:
+        return find_pipeline_class(module)
     return getattr(module, class_name)
+
+
+def find_pipeline_class(loaded_module):
+    """
+    Retrieve pipeline class that inherits from `DiffusionPipeline`. Note that there has to be exactly one class
+    inheriting from `DiffusionPipeline`.
+    """
+    from .pipeline_utils import DiffusionPipeline
+
+    cls_members = dict(inspect.getmembers(loaded_module, inspect.isclass))
+
+    pipeline_class = None
+    for cls_name, cls in cls_members.items():
+        if cls_name != DiffusionPipeline.__name__ and issubclass(cls, DiffusionPipeline):
+            if pipeline_class is not None:
+                raise ValueError(
+                    f"Multiple classes that inherit from {DiffusionPipeline.__name__} have been found:"
+                    f" {pipeline_class.__name__}, and {cls_name}. Please make sure to define only one in"
+                    f" {loaded_module}."
+                )
+            pipeline_class = cls
+
+    return pipeline_class
 
 
 def get_cached_module_file(
@@ -208,16 +240,36 @@ def get_cached_module_file(
     """
     # Download and cache module_file from the repo `pretrained_model_name_or_path` of grab it if it's a local file.
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
+
     module_file_or_url = os.path.join(pretrained_model_name_or_path, module_file)
-    submodule = "local"
 
     if os.path.isfile(module_file_or_url):
         resolved_module_file = module_file_or_url
+        submodule = "local"
+    elif pretrained_model_name_or_path.count("/") == 0:
+        # community pipeline on GitHub
+        github_url = COMMUNITY_PIPELINES_URL.format(pipeline=pretrained_model_name_or_path)
+        try:
+            resolved_module_file = cached_download(
+                github_url,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                proxies=proxies,
+                resume_download=resume_download,
+                local_files_only=local_files_only,
+                use_auth_token=False,
+            )
+            submodule = "git"
+            module_file = pretrained_model_name_or_path + ".py"
+        except EnvironmentError:
+            logger.error(f"Could not locate the {module_file} inside {pretrained_model_name_or_path}.")
+            raise
     else:
         try:
             # Load from URL or cache if already cached
-            resolved_module_file = cached_download(
-                module_file_or_url,
+            resolved_module_file = hf_hub_download(
+                pretrained_model_name_or_path,
+                module_file,
                 cache_dir=cache_dir,
                 force_download=force_download,
                 proxies=proxies,
@@ -225,7 +277,7 @@ def get_cached_module_file(
                 local_files_only=local_files_only,
                 use_auth_token=use_auth_token,
             )
-
+            submodule = os.path.join("local", "--".join(pretrained_model_name_or_path.split("/")))
         except EnvironmentError:
             logger.error(f"Could not locate the {module_file} inside {pretrained_model_name_or_path}.")
             raise
@@ -237,20 +289,55 @@ def get_cached_module_file(
     full_submodule = DIFFUSERS_DYNAMIC_MODULE_NAME + os.path.sep + submodule
     create_dynamic_module(full_submodule)
     submodule_path = Path(HF_MODULES_CACHE) / full_submodule
-    # We always copy local files (we could hash the file to see if there was a change, and give them the name of
-    # that hash, to only copy when there is a modification but it seems overkill for now).
-    # The only reason we do the copy is to avoid putting too many folders in sys.path.
-    shutil.copy(resolved_module_file, submodule_path / module_file)
-    for module_needed in modules_needed:
-        module_needed = f"{module_needed}.py"
-        shutil.copy(os.path.join(pretrained_model_name_or_path, module_needed), submodule_path / module_needed)
+    if submodule == "local" or submodule == "git":
+        # We always copy local files (we could hash the file to see if there was a change, and give them the name of
+        # that hash, to only copy when there is a modification but it seems overkill for now).
+        # The only reason we do the copy is to avoid putting too many folders in sys.path.
+        shutil.copy(resolved_module_file, submodule_path / module_file)
+        for module_needed in modules_needed:
+            module_needed = f"{module_needed}.py"
+            shutil.copy(os.path.join(pretrained_model_name_or_path, module_needed), submodule_path / module_needed)
+    else:
+        # Get the commit hash
+        # TODO: we will get this info in the etag soon, so retrieve it from there and not here.
+        if isinstance(use_auth_token, str):
+            token = use_auth_token
+        elif use_auth_token is True:
+            token = HfFolder.get_token()
+        else:
+            token = None
+
+        commit_hash = model_info(pretrained_model_name_or_path, revision=revision, token=token).sha
+
+        # The module file will end up being placed in a subfolder with the git hash of the repo. This way we get the
+        # benefit of versioning.
+        submodule_path = submodule_path / commit_hash
+        full_submodule = full_submodule + os.path.sep + commit_hash
+        create_dynamic_module(full_submodule)
+
+        if not (submodule_path / module_file).exists():
+            shutil.copy(resolved_module_file, submodule_path / module_file)
+        # Make sure we also have every file with relative
+        for module_needed in modules_needed:
+            if not (submodule_path / module_needed).exists():
+                get_cached_module_file(
+                    pretrained_model_name_or_path,
+                    f"{module_needed}.py",
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    resume_download=resume_download,
+                    proxies=proxies,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                    local_files_only=local_files_only,
+                )
     return os.path.join(full_submodule, module_file)
 
 
 def get_class_from_dynamic_module(
     pretrained_model_name_or_path: Union[str, os.PathLike],
     module_file: str,
-    class_name: str,
+    class_name: Optional[str] = None,
     cache_dir: Optional[Union[str, os.PathLike]] = None,
     force_download: bool = False,
     resume_download: bool = False,

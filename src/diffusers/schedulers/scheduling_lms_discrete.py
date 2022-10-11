@@ -78,7 +78,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
     ):
         deprecate(
             "tensor_format",
-            "0.5.0",
+            "0.6.0",
             "If you're running your code in PyTorch, you can safely remove this argument.",
             take_from=kwargs,
         )
@@ -217,7 +217,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         ):
             deprecate(
                 "timestep as an index",
-                "0.5.0",
+                "0.7.0",
                 "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
                 " `LMSDiscreteScheduler.step()` will not be supported in future versions. Make sure to pass"
                 " one of the `scheduler.timesteps` as a timestep.",
@@ -257,13 +257,17 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.FloatTensor,
         timesteps: torch.FloatTensor,
     ) -> torch.FloatTensor:
-        sigmas = self.sigmas.to(original_samples.device)
-        schedule_timesteps = self.timesteps.to(original_samples.device)
+        # Make sure sigmas and timesteps have the same device and dtype as original_samples
+        self.sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
+        self.timesteps = self.timesteps.to(original_samples.device)
         timesteps = timesteps.to(original_samples.device)
+
+        schedule_timesteps = self.timesteps
+
         if isinstance(timesteps, torch.IntTensor) or isinstance(timesteps, torch.LongTensor):
             deprecate(
                 "timesteps as indices",
-                "0.5.0",
+                "0.7.0",
                 "Passing integer indices  (e.g. from `enumerate(timesteps)`) as timesteps to"
                 " `LMSDiscreteScheduler.add_noise()` will not be supported in future versions. Make sure to"
                 " pass values from `scheduler.timesteps` as timesteps.",
@@ -273,7 +277,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
 
-        sigma = sigmas[step_indices].flatten()
+        sigma = self.sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):
             sigma = sigma.unsqueeze(-1)
 
