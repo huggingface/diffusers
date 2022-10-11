@@ -10,14 +10,14 @@ import wandb
 wandb.init(project="diffusers-value-guided-rl")
 
 config = dict(
-    n_samples=64,
+    n_samples=4,
     horizon=32,
-    num_inference_steps=20,
-    n_guide_steps=2,
+    num_inference_steps=100,
+    n_guide_steps=0,
     scale_grad_by_std=True,
     scale=0.001,
     eta=0.0,
-    t_grad_cutoff=4
+    t_grad_cutoff=0
 )
 
 # model = torch.load("../diffuser/test.torch")
@@ -73,7 +73,7 @@ scheduler = ValueFunctionScheduler(num_train_timesteps=config['num_inference_ste
 # network = ValueFunction(training_horizon=horizon, dim=32, dim_mults=(1, 2, 4, 8), transition_dim=14, cond_dim=11)
 
 network = ValueFunction.from_pretrained("bglick13/hopper-medium-expert-v2-value-function-hor32").to(device=DEVICE)
-unet = UNet1DModel.from_pretrained("fusing/ddpm-unet-rl-hopper-hor128").to(device=DEVICE)
+unet = UNet1DModel.from_pretrained("bglick13/hopper-medium-expert-v2-unet-hor32").to(device=DEVICE)
 # network = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor256").to(device=DEVICE)
 # network = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor512").to(device=DEVICE)
 def reset_x0(x_in, cond, act_dim):
@@ -91,7 +91,7 @@ obs = env.reset()
 # env.set_state(qpos, qvel)
 total_reward = 0
 done = False
-T = 200
+T = 400
 rollout = [obs.copy()]
 trajectories = []
 y_maxes = []
