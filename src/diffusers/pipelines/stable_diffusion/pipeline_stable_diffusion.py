@@ -12,7 +12,7 @@ from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler, EulerAScheduler
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
-from diffusers.schedulers.scheduling_euler_a import CFGDenoiserForward
+
 
 class StableDiffusionPipeline(DiffusionPipeline):
     r"""
@@ -263,10 +263,16 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
             noise_pred = None
             if isinstance(self.scheduler, EulerAScheduler):
-                sigma = t.reshape(1)
-                sigma_in = torch.cat([sigma] * 2)
-                # noise_pred = model(latent_model_input,sigma_in,uncond_embeddings, text_embeddings,guidance_scale)
-                noise_pred = CFGDenoiserForward(self.unet, latent_model_input, sigma_in, text_embeddings , guidance_scale,DSsigmas=self.scheduler.DSsigmas)
+                # sigma = t.reshape(1) #A# potential bug: doesn't work on samples > 1 
+                # sigma_in = torch.cat([sigma] * 2)
+                # # noise_pred = CFGDenoiserForward(self.unet, latent_model_input, sigma_in, text_embeddings , guidance_scale,DSsigmas=self.scheduler.DSsigmas)
+                # # noise_pred = DiscreteEpsDDPMDenoiserForward(self.unet,latent_model_input, sigma_in,DSsigmas=self.scheduler.DSsigmas, cond=cond_in)
+                # c_out, c_in = [self.scheduler.append_dims(x, latent_model_input.ndim) for x in self.scheduler.get_scalings(sigma_in)]
+                c_out, c_in, sigma_in = self.scheduler.prepare_input(latent_model_input, t, batch_size)
+                
+                eps = self.unet(latent_model_input * c_in, sigma_in , encoder_hidden_states=text_embeddings).sample
+                noise_pred = latent_model_input + eps * c_out
+
                 # noise_pred = self.unet(latent_model_input, sigma_in, encoder_hidden_states=text_embeddings).sample
             else:
                 # predict the noise residual
