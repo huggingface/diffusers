@@ -386,7 +386,7 @@ def main():
             cache_dir=args.cache_dir,
         )
         # See more about loading custom images at
-        # https://huggingface.co/docs/datasets/v2.4.0/en/image_process#imagefolder.
+        # https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder
 
     # Preprocessing the datasets.
     # We need to tokenize inputs and targets.

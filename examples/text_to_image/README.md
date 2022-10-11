@@ -40,7 +40,7 @@ export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export dataset_name="lambdalabs/pokemon-blip-captions"
 
 accelerate launch ../diffusers/examples/text_to_image/train_text_to_image.py \
-  --pretrained_model_name_or_path=$MODEL_NAME --use_auth_token \
+  --pretrained_model_name_or_path=$MODEL_NAME \
   --dataset_name=$dataset_name \
   --resolution=512 --center_crop --random_flip \
   --train_batch_size=1 --gradient_checkpointing \
