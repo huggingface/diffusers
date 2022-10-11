@@ -327,7 +327,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
         image = self.vae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
-        image = image.cpu().permute(0, 2, 3, 1).numpy()
+
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
 
         safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
         image, has_nsfw_concept = self.safety_checker(
