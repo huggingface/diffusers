@@ -4,7 +4,7 @@ import torch
 import tqdm
 import numpy as np
 import gym 
-from diffusers import DDPMScheduler, TemporalUNet, ValueFunction, ValueFunctionScheduler
+from diffusers import DDPMScheduler, UNet1DModel, ValueFunction, ValueFunctionScheduler
 from helpers import MuJoCoRenderer, show_sample
 
 
@@ -24,8 +24,8 @@ DEVICE = 'cpu'
 DTYPE = torch.float
 
 # diffusion model settings
-n_samples = 4   # number of trajectories planned via diffusion
-horizon = 32   # length of sampled trajectories
+n_samples = 64   # number of trajectories planned via diffusion
+horizon = 64   # length of sampled trajectories
 state_dim = env.observation_space.shape[0] 
 action_dim = env.action_space.shape[0]
 num_inference_steps = 20  # number of difusion steps
@@ -64,7 +64,7 @@ scheduler = ValueFunctionScheduler(num_train_timesteps=num_inference_steps,beta_
 # network = ValueFunction(training_horizon=horizon, dim=32, dim_mults=(1, 2, 4, 8), transition_dim=14, cond_dim=11)
 
 network = ValueFunction.from_pretrained("bglick13/hopper-medium-expert-v2-value-function-hor32").to(device=DEVICE)
-unet = TemporalUNet.from_pretrained("bglick13/hopper-medium-expert-v2-unet-hor32").to(device=DEVICE)
+unet = UNet1DModel.from_pretrained("bglick13/hopper-medium-expert-v2-unet-hor32").to(device=DEVICE)
 # network = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor256").to(device=DEVICE)
 # network = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor512").to(device=DEVICE)
 def reset_x0(x_in, cond, act_dim):
@@ -78,7 +78,7 @@ predict_epsilon = False
 n_guide_steps = 2
 scale_grad_by_std = True
 scale = 0.001
-eta = 1.0 # noise factor for sampling reconstructed state
+eta = 0.0 # noise factor for sampling reconstructed state
 
 ## add a batch dimension and repeat for multiple samples
 ## [ observation_dim ] --> [ n_samples x observation_dim ]
@@ -95,7 +95,7 @@ T = 300
 rollout = [obs.copy()]
 trajectories = []
 y_maxes = []
-t_grad_cutoff = 0 
+t_grad_cutoff = 4
 try:
     for t in tqdm.tqdm(range(T)):
         obs_raw = obs
