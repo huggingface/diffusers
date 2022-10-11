@@ -80,6 +80,7 @@ jobs:
         ${CONDA_RUN} python -m pip install --upgrade pip
         ${CONDA_RUN} python -m pip install --pre torch==${MPS_TORCH_VERSION} --extra-index-url https://download.pytorch.org/whl/nightly/cpu
         ${CONDA_RUN} python -m pip install -e .[quality,test]
+        ${CONDA_RUN} python -m pip uninstall -y pytest-xdist
 
     - name: Environment
       shell: arch -arch arm64 bash {0}
@@ -88,8 +89,9 @@ jobs:
 
     - name: Run all fast tests on MPS
       shell: arch -arch arm64 bash {0}
+      # weird worker crashes on M1 with xdist enabled, so we use the default launcher
       run: |
-        ${CONDA_RUN} python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_mps tests/
+        ${CONDA_RUN} python -m pytest -s -v --make-reports=tests_torch_mps tests/
 
     - name: Failure short reports
       if: ${{ failure() }}
