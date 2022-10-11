@@ -5,7 +5,8 @@ from typing import Tuple, Union
 import torch
 import torch.nn as nn
 
-from diffusers.models.resnet import Downsample1D, ResidualTemporalBlock, Upsample1D
+from diffusers.models.resnet import ResidualTemporalBlock
+from diffusers.models.unet_blocks import DownResnetBlock1D, UpResnetBlock1D
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
@@ -15,7 +16,7 @@ from .resnet import rearrange_dims
 
 
 @dataclass
-class TemporalUNetOutput(BaseOutput):
+class UNet1DOutput(BaseOutput):
     """
     Args:
         sample (`torch.FloatTensor` of shape `(batch, horizon, obs_dimension)`):
@@ -25,16 +26,12 @@ class TemporalUNetOutput(BaseOutput):
     sample: torch.FloatTensor
 
 
-class TemporalUNet(ModelMixin, ConfigMixin):
+class UNet1DModel(ModelMixin, ConfigMixin):
     """
     A UNet for multi-dimensional temporal data. This model takes the batch over the `training_horizon`.
 
     Parameters:
-        training_horizon: horizon of training samples used for diffusion process.
         transition_dim: state-dimension of samples to predict over
-        cond_dim: held dimension in input (e.g. for actions) -- TODO remove from pretrained
-        predict_epsilon: TODO remove from pretrained
-        clip_denoised: TODO remove from pretrained
         dim: embedding dimension of model
         dim_mults: dimension multiples of the up/down blocks
     """
@@ -42,20 +39,13 @@ class TemporalUNet(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        training_horizon=128,
         transition_dim=14,
-        cond_dim=3,
-        predict_epsilon=False,
-        clip_denoised=True,
         dim=32,
         dim_mults=(1, 4, 8),
     ):
         super().__init__()
 
         self.transition_dim = transition_dim
-        self.cond_dim = cond_dim
-        self.predict_epsilon = predict_epsilon
-        self.clip_denoised = clip_denoised
 
         # time
         self.time_proj = Timesteps(num_channels=dim, flip_sin_to_cos=False, downscale_freq_shift=1)
@@ -64,26 +54,19 @@ class TemporalUNet(ModelMixin, ConfigMixin):
         dims = [transition_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
 
-        self.downs = nn.ModuleList([])
-        self.ups = nn.ModuleList([])
+        self.down_blocks = nn.ModuleList([])
+        self.up_blocks = nn.ModuleList([])
         num_resolutions = len(in_out)
 
         # down
         for ind, (dim_in, dim_out) in enumerate(in_out):
             is_last = ind >= (num_resolutions - 1)
 
-            self.downs.append(
-                nn.ModuleList(
-                    [
-                        ResidualTemporalBlock(dim_in, dim_out, embed_dim=dim),
-                        ResidualTemporalBlock(dim_out, dim_out, embed_dim=dim),
-                        Downsample1D(dim_out, use_conv=True) if not is_last else nn.Identity(),
-                    ]
+            self.down_blocks.append(
+                DownResnetBlock1D(
+                    in_channels=dim_in, out_channels=dim_out, temb_channels=dim, add_downsample=(not is_last)
                 )
             )
-
-            if not is_last:
-                training_horizon = training_horizon // 2
 
         # mid
         mid_dim = dims[-1]
@@ -94,18 +77,11 @@ class TemporalUNet(ModelMixin, ConfigMixin):
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
             is_last = ind >= (num_resolutions - 1)
 
-            self.ups.append(
-                nn.ModuleList(
-                    [
-                        ResidualTemporalBlock(dim_out * 2, dim_in, embed_dim=dim),
-                        ResidualTemporalBlock(dim_in, dim_in, embed_dim=dim),
-                        Upsample1D(dim_in, use_conv_transpose=True) if not is_last else nn.Identity(),
-                    ]
+            self.up_blocks.append(
+                UpResnetBlock1D(
+                    in_channels=dim_out * 2, out_channels=dim_in, temb_channels=dim, add_upsample=(not is_last)
                 )
             )
-
-            if not is_last:
-                training_horizon = training_horizon * 2
 
         # out
         self.final_conv1d_1 = nn.Conv1d(dim, dim, 5, padding=2)
@@ -118,8 +94,8 @@ class TemporalUNet(ModelMixin, ConfigMixin):
         sample: torch.FloatTensor,
         timestep: Union[torch.Tensor, float, int],
         return_dict: bool = True,
-    ) -> Union[TemporalUNetOutput, Tuple]:
-        """r
+    ) -> Union[UNet1DOutput, Tuple]:
+        r"""
         Args:
             sample (`torch.FloatTensor`): (batch, horizon, obs_dimension + action_dimension) noisy inputs tensor
             timestep (`torch.FloatTensor` or `float` or `int): batch (batch) timesteps
@@ -139,27 +115,22 @@ class TemporalUNet(ModelMixin, ConfigMixin):
         elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)
 
-        t = self.time_proj(timesteps)
-        t = self.time_mlp(t)
-        h = []
+        temb = self.time_proj(timesteps)
+        temb = self.time_mlp(temb)
+        down_block_res_samples = []
 
         # 2. down
-        for resnet, resnet2, downsample in self.downs:
-            sample = resnet(sample, t)
-            sample = resnet2(sample, t)
-            h.append(sample)
-            sample = downsample(sample)
+        for downsample_block in self.down_blocks:
+            sample, res_samples = downsample_block(hidden_states=sample, temb=temb)
+            down_block_res_samples.append(res_samples[0])
 
         # 3. mid
-        sample = self.mid_block1(sample, t)
-        sample = self.mid_block2(sample, t)
+        sample = self.mid_block1(sample, temb)
+        sample = self.mid_block2(sample, temb)
 
         # 4. up
-        for resnet, resnet2, upsample in self.ups:
-            sample = torch.cat((sample, h.pop()), dim=1)
-            sample = resnet(sample, t)
-            sample = resnet2(sample, t)
-            sample = upsample(sample)
+        for up_block in self.up_blocks:
+            sample = up_block(hidden_states=sample, res_hidden_states=down_block_res_samples.pop(), temb=temb)
 
         # 5. post-process
         sample = self.final_conv1d_1(sample)
@@ -174,7 +145,7 @@ class TemporalUNet(ModelMixin, ConfigMixin):
         if not return_dict:
             return (sample,)
 
-        return TemporalUNetOutput(sample=sample)
+        return UNet1DOutput(sample=sample)
 
 
 class ValueFunction(ModelMixin, ConfigMixin):
