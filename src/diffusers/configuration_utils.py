@@ -423,7 +423,6 @@ def register_to_config(init):
                 if k not in ignore and k not in new_kwargs
             }
         )
-        print(self.__class__.__name__, new_kwargs)
         getattr(self, "register_to_config")(**new_kwargs)
 
     return inner_init
