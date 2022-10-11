@@ -74,16 +74,19 @@ jobs:
         python-version: 3.9
 
     - name: Install dependencies
+      shell: arch -arch arm64 bash {0}
       run: |
         ${CONDA_RUN} python -m pip install --upgrade pip
         ${CONDA_RUN} python -m pip install --pre torch==1.13.0.dev20220830 --extra-index-url https://download.pytorch.org/whl/nightly/cpu
         ${CONDA_RUN} python -m pip install -e .[quality,test]
 
     - name: Environment
+      shell: arch -arch arm64 bash {0}
       run: |
         ${CONDA_RUN} python utils/print_env.py
 
     - name: Run all non-slow selected tests on CPU
+      shell: arch -arch arm64 bash {0}
       run: |
         ${CONDA_RUN} python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_cpu tests/
 
