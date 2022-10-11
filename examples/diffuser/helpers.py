@@ -40,6 +40,7 @@ def show_sample(renderer, observations, filename='sample.mp4', savebase='videos'
     images = np.concatenate(images, axis=2)
     media.write_video(savepath, images, fps=60)
     media.show_video(images, codec='h264', fps=60)
+    return images
 
 # Code adapted from Michael Janner
 # source: https://github.com/jannerm/diffuser/blob/main/diffuser/utils/rendering.py

@@ -6,7 +6,19 @@ import numpy as np
 import gym 
 from diffusers import DDPMScheduler, UNet1DModel, ValueFunction, ValueFunctionScheduler
 from helpers import MuJoCoRenderer, show_sample
+import wandb
+wandb.init(project="diffusers-value-guided-rl")
 
+config = dict(
+    n_samples=64,
+    horizon=32,
+    num_inference_steps=20,
+    n_guide_steps=2,
+    scale_grad_by_std=True,
+    scale=0.001,
+    eta=0.0,
+    t_grad_cutoff=4
+)
 
 # model = torch.load("../diffuser/test.torch")
 # hf_value_function = ValueFunction(training_horizon=32, dim=32, dim_mults=(1, 2, 4, 8), transition_dim=14, cond_dim=11)
@@ -24,11 +36,8 @@ DEVICE = 'cpu'
 DTYPE = torch.float
 
 # diffusion model settings
-n_samples = 64   # number of trajectories planned via diffusion
-horizon = 64   # length of sampled trajectories
 state_dim = env.observation_space.shape[0] 
 action_dim = env.action_space.shape[0]
-num_inference_steps = 20  # number of difusion steps
 
 def normalize(x_in, data, key):
   upper = np.max(data[key], axis=0)
@@ -57,29 +66,20 @@ def to_torch(x_in, dtype=None, device=None):
 # generator = torch.Generator(device='cuda')
 generator_cpu = torch.Generator(device='cpu')
 
-scheduler = ValueFunctionScheduler(num_train_timesteps=num_inference_steps,beta_schedule="squaredcos_cap_v2", clip_sample=False)
+scheduler = ValueFunctionScheduler(num_train_timesteps=config['num_inference_steps'],beta_schedule="squaredcos_cap_v2", clip_sample=False)
 
 # 3 different pretrained models are available for this task. 
 # The horizion represents the length of trajectories used in training.
 # network = ValueFunction(training_horizon=horizon, dim=32, dim_mults=(1, 2, 4, 8), transition_dim=14, cond_dim=11)
 
 network = ValueFunction.from_pretrained("bglick13/hopper-medium-expert-v2-value-function-hor32").to(device=DEVICE)
-unet = UNet1DModel.from_pretrained("bglick13/hopper-medium-expert-v2-unet-hor32").to(device=DEVICE)
+unet = UNet1DModel.from_pretrained("fusing/ddpm-unet-rl-hopper-hor128").to(device=DEVICE)
 # network = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor256").to(device=DEVICE)
 # network = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor512").to(device=DEVICE)
 def reset_x0(x_in, cond, act_dim):
 	for key, val in cond.items():
 		x_in[:, key, act_dim:] = val.clone()
 	return x_in
-
-# network specific constants for inference
-clip_denoised = False
-predict_epsilon = False
-n_guide_steps = 2
-scale_grad_by_std = True
-scale = 0.001
-eta = 0.0 # noise factor for sampling reconstructed state
-
 ## add a batch dimension and repeat for multiple samples
 ## [ observation_dim ] --> [ n_samples x observation_dim ]
 obs = env.reset()
@@ -91,11 +91,10 @@ obs = env.reset()
 # env.set_state(qpos, qvel)
 total_reward = 0
 done = False
-T = 300
+T = 200
 rollout = [obs.copy()]
 trajectories = []
 y_maxes = []
-t_grad_cutoff = 4
 try:
     for t in tqdm.tqdm(range(T)):
         obs_raw = obs
@@ -103,7 +102,7 @@ try:
         # normalize observations for forward passes
         obs = normalize(obs, data, 'observations')
 
-        obs = obs[None].repeat(n_samples, axis=0)
+        obs = obs[None].repeat(config['n_samples'], axis=0)
         conditions = {
             0: to_torch(obs, device=DEVICE)
         }
@@ -111,7 +110,7 @@ try:
         # 2. Call the diffusion model
         # constants for inference
         batch_size = len(conditions[0])
-        shape = (batch_size, horizon, state_dim+action_dim)
+        shape = (batch_size, config['horizon'], state_dim+action_dim)
 
         # sample random initial noise vector
         x1 = torch.randn(shape, device=DEVICE, generator=generator_cpu)
@@ -133,39 +132,37 @@ try:
             timesteps = torch.full((batch_size,), i, device=DEVICE, dtype=torch.long)
             
             # 3. call the sample function
-            for _ in range(n_guide_steps):
+            for _ in range(config['n_guide_steps']):
                 with torch.enable_grad():
                     x.requires_grad_()
                     y = network(x, timesteps).sample
                     grad = torch.autograd.grad([y.sum()], [x])[0]
-                if scale_grad_by_std:
+                if config['scale_grad_by_std']:
                     posterior_variance = scheduler._get_variance(i)
                     grad = posterior_variance * 0.5 * grad
-                grad[timesteps < t_grad_cutoff] = 0
+                grad[timesteps < config['t_grad_cutoff']] = 0
                 x = x.detach()
-                x = x + scale * grad
+                x = x + config['scale'] * grad
                 x = reset_x0(x, conditions, action_dim)
+            y = network(x, timesteps).sample
             prev_x = unet(x, timesteps).sample
             x = scheduler.step(prev_x, i, x)["prev_sample"]
             x = reset_x0(x, conditions, action_dim)
-            if clip_denoised:
-                x.clamp_(-1., 1.)
-            # 2. use the model prediction to reconstruct an observation (de-noise)
             
 
             # 3. [optional] add posterior noise to the sample
-            if eta > 0:
+            if config['eta'] > 0:
                 noise = torch.randn(x.shape, generator=generator_cpu).to(x.device)
                 posterior_variance = scheduler._get_variance(i) # * noise
                 # no noise when t == 0
                 # NOTE: original implementation missing sqrt on posterior_variance
-                x = x + int(i>0) * (0.5 * posterior_variance) * eta * noise  # MJ had as log var, exponentiated
+                x = x + int(i>0) * (0.5 * posterior_variance) * config['eta'] * noise  # MJ had as log var, exponentiated
 
             # 4. apply conditions to the trajectory
             x = reset_x0(x, conditions, action_dim)
             x = to_torch(x)
         sorted_idx = y.argsort(0, descending=True).squeeze()
-        y_maxes.append(y[sorted_idx[0]])
+        y_maxes.append(y[sorted_idx[0]].detach().cpu().numpy())
         sorted_values = x[sorted_idx]
         actions = sorted_values[:, :, :action_dim]
         if t % 10 == 0:
@@ -179,6 +176,7 @@ try:
 
         ## update return
         total_reward += reward
+        wandb.log({"total_reward": total_reward, "reward": reward, "y_max": y_maxes[-1], "diff_from_expert_reward": reward - data['rewards'][t]})
         print(f"Step: {t}, Reward: {reward}, Total Reward: {total_reward}")
         # save observations for rendering
         rollout.append(next_observation.copy())
@@ -188,7 +186,6 @@ except KeyboardInterrupt:
     pass
 
 print(f"Total reward: {total_reward}")
-for i, trajectory in enumerate(trajectories):
-    show_sample(render, trajectory, f"trajectory_{i}.mp4")
 
-show_sample(render, np.expand_dims(np.stack(rollout),axis=0))
+images = show_sample(render, np.expand_dims(np.stack(rollout),axis=0))
+wandb.log({"rollout": wandb.Video('videos/sample.mp4', fps=60, format='mp4')})
