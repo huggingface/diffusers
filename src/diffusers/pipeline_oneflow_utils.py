@@ -53,6 +53,7 @@ LOADABLE_CLASSES = {
         "PreTrainedTokenizerFast": ["save_pretrained", "from_pretrained"],
         "PreTrainedModel": ["save_pretrained", "from_pretrained"],
         "FeatureExtractionMixin": ["save_pretrained", "from_pretrained"],
+        "OneFlowCLIPTextModel": ["save_pretrained", "from_pretrained"],
     },
 }
 
@@ -412,7 +413,7 @@ class OneFlowDiffusionPipeline(ConfigMixin):
                 try:
                     load_method = getattr(class_obj, load_method_name)
                 except TypeError as e:
-                    print(f"fail to load {library_name}.{class_name} , maybe it is not allowed?")
+                    print(f"fail to load {library_name}.{class_name}, class obj: {class_obj}, maybe it is not allowed?")
                     raise e
                 loading_kwargs = {}
                 if issubclass(class_obj, torch.nn.Module):
