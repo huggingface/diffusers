@@ -219,9 +219,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
         text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
-        batch_size, seq_len, _ = text_embeddings.shape
+        bs_embed, seq_len, _ = text_embeddings.shape
         text_embeddings = text_embeddings.repeat(1, num_images_per_prompt, 1).view(
-            batch_size * num_images_per_prompt, seq_len, -1
+            bs_embed * num_images_per_prompt, seq_len, -1
         )
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
@@ -260,8 +260,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
             uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            batch_size, seq_len, _ = uncond_embeddings.shape
-            uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1).view(
+            seq_len = uncond_embeddings.shape[1]
+            uncond_embeddings = uncond_embeddings.repeat(batch_size, num_images_per_prompt, 1).view(
                 batch_size * num_images_per_prompt, seq_len, -1
             )
 
