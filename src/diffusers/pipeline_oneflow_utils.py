@@ -167,19 +167,18 @@ class OneFlowDiffusionPipeline(ConfigMixin):
         module_names, _ = self.extract_init_dict(dict(self.config))
         for name in module_names.keys():
             module = getattr(self, name)
+            if "SafetyChecker" in str(type(module)):
+                print("skipping to-dev movement", type(module), "on:", module.device)
+                continue
             if isinstance(module, torch.nn.Module):
                 module.to(torch_device)
             if isinstance(module, og_torch.nn.Module):
-                if "SafetyChecker" in str(type(module)):
-                    print("skipping to-dev movement", type(module), "on:", module.device)
-                    continue
+                print(f"moving pytorch model to cuda {type(module)}: {module.device} => cuda" )
+                if isinstance(torch_device, torch.device):
+                    torch_device = og_torch.device(str(torch_device))
                 else:
-                    print(f"moving pytorch model to cuda {type(module)}: {module.device} => cuda" )
-                    if isinstance(torch_device, torch.device):
-                        torch_device = og_torch.device(str(torch_device))
-                    else:
-                        assert isinstance(torch_device, str)
-                    module.to(torch_device)
+                    assert isinstance(torch_device, str)
+                module.to(torch_device)
         return self
 
     @property
