@@ -38,8 +38,9 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
         pooled_output = self.vision_model(clip_input)[1]  # pooled_output
         image_embeds = self.visual_projection(pooled_output)
 
-        special_cos_dist = cosine_distance(image_embeds, self.special_care_embeds).cpu().numpy()
-        cos_dist = cosine_distance(image_embeds, self.concept_embeds).cpu().numpy()
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        special_cos_dist = cosine_distance(image_embeds, self.special_care_embeds).cpu().float().numpy()
+        cos_dist = cosine_distance(image_embeds, self.concept_embeds).cpu().float().numpy()
 
         result = []
         batch_size = image_embeds.shape[0]
