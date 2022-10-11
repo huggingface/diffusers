@@ -300,5 +300,6 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
 
         if not return_dict:
             return (image, has_nsfw_concept)
-
+        import torch as og_torch
+        assert og_torch.cuda.is_initialized is False
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
