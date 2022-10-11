@@ -70,7 +70,7 @@ jobs:
         git clean -fxd
 
     - name: Setup miniconda
-      uses: ./.github/actions/setup-miniconda@m1-tests
+      uses: ./.github/actions/setup-miniconda
       with:
         python-version: 3.7
 
