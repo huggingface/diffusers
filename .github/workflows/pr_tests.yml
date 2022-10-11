@@ -13,45 +13,46 @@ env:
   OMP_NUM_THREADS: 8
   MKL_NUM_THREADS: 8
   PYTEST_TIMEOUT: 60
+  MPS_TORCH_VERSION: 1.13.0.dev20220830
 
 jobs:
-#  run_tests_cpu:
-#    name: CPU tests on Ubuntu
-#    runs-on: [ self-hosted, docker-gpu ]
-#    container:
-#      image: python:3.7
-#      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
-#
-#    steps:
-#    - name: Checkout diffusers
-#      uses: actions/checkout@v3
-#      with:
-#        fetch-depth: 2
-#
-#    - name: Install dependencies
-#      run: |
-#        python -m pip install --upgrade pip
-#        python -m pip install torch --extra-index-url https://download.pytorch.org/whl/cpu
-#        python -m pip install -e .[quality,test]
-#
-#    - name: Environment
-#      run: |
-#        python utils/print_env.py
-#
-#    - name: Run all non-slow selected tests on CPU
-#      run: |
-#        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_cpu tests/
-#
-#    - name: Failure short reports
-#      if: ${{ failure() }}
-#      run: cat reports/tests_torch_cpu_failures_short.txt
-#
-#    - name: Test suite reports artifacts
-#      if: ${{ always() }}
-#      uses: actions/upload-artifact@v2
-#      with:
-#        name: pr_torch_test_reports
-#        path: reports
+  run_tests_cpu:
+    name: CPU tests on Ubuntu
+    runs-on: [ self-hosted, docker-gpu ]
+    container:
+      image: python:3.7
+      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install torch --extra-index-url https://download.pytorch.org/whl/cpu
+        python -m pip install -e .[quality,test]
+
+    - name: Environment
+      run: |
+        python utils/print_env.py
+
+    - name: Run all non-slow selected tests on CPU
+      run: |
+        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_cpu tests/
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: cat reports/tests_torch_cpu_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: pr_torch_cpu_test_reports
+        path: reports
 
   run_tests_apple_m1:
     name: MPS tests on Apple M1
@@ -77,7 +78,7 @@ jobs:
       shell: arch -arch arm64 bash {0}
       run: |
         ${CONDA_RUN} python -m pip install --upgrade pip
-        ${CONDA_RUN} python -m pip install --pre torch==1.13.0.dev20220830 --extra-index-url https://download.pytorch.org/whl/nightly/cpu
+        ${CONDA_RUN} python -m pip install --pre torch==${MPS_TORCH_VERSION} --extra-index-url https://download.pytorch.org/whl/nightly/cpu
         ${CONDA_RUN} python -m pip install -e .[quality,test]
 
     - name: Environment
@@ -88,15 +89,15 @@ jobs:
     - name: Run all non-slow selected tests on CPU
       shell: arch -arch arm64 bash {0}
       run: |
-        ${CONDA_RUN} python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_cpu tests/
+        ${CONDA_RUN} python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_mps tests/
 
     - name: Failure short reports
       if: ${{ failure() }}
-      run: cat reports/tests_torch_cpu_failures_short.txt
+      run: cat reports/tests_torch_mps_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
       uses: actions/upload-artifact@v2
       with:
-        name: pr_torch_test_reports
+        name: pr_torch_mps_test_reports
         path: reports
