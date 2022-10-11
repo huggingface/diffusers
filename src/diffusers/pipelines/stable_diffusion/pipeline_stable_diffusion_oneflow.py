@@ -15,7 +15,7 @@ from ...schedulers import OneFlowDDIMScheduler as DDIMScheduler
 from ...schedulers import OneFlowPNDMScheduler as PNDMScheduler
 from ...schedulers import LMSDiscreteScheduler
 from . import StableDiffusionPipelineOutput
-from .safety_checker import StableDiffusionSafetyChecker
+from .safety_checker_oneflow import OneFlowStableDiffusionSafetyChecker as StableDiffusionSafetyChecker
 
 
 class OneFlowStableDiffusionPipeline(DiffusionPipeline):
