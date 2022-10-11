@@ -1,7 +1,6 @@
 import argparse
 import math
 import os
-from contextlib import nullcontext
 from pathlib import Path
 from typing import Optional
 
@@ -58,19 +57,19 @@ def parse_args():
         "--instance_prompt",
         type=str,
         default=None,
-        help="The prompt with identifier specifing the instance",
+        help="The prompt with identifier specifying the instance",
     )
     parser.add_argument(
         "--class_prompt",
         type=str,
         default=None,
-        help="The prompt to specify images in the same class as provided intance images.",
+        help="The prompt to specify images in the same class as provided instance images.",
     )
     parser.add_argument(
         "--with_prior_preservation",
         default=False,
         action="store_true",
-        help="Flag to add prior perservation loss.",
+        help="Flag to add prior preservation loss.",
     )
     parser.add_argument("--prior_loss_weight", type=float, default=1.0, help="The weight of prior preservation loss.")
     parser.add_argument(
@@ -158,14 +157,6 @@ def parse_args():
     parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
-    parser.add_argument(
-        "--use_auth_token",
-        action="store_true",
-        help=(
-            "Will use the token generated when running `huggingface-cli login` (necessary to use this script with"
-            " private models)."
-        ),
-    )
     parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
     parser.add_argument(
         "--hub_model_id",
@@ -214,7 +205,7 @@ def parse_args():
 
 class DreamBoothDataset(Dataset):
     """
-    A dataset to prepare the instance and class images with the promots for fine-tuning the model.
+    A dataset to prepare the instance and class images with the prompts for fine-tuning the model.
     It pre-processes the images and the tokenizes prompts.
     """
 
@@ -244,7 +235,7 @@ class DreamBoothDataset(Dataset):
         if class_data_root is not None:
             self.class_data_root = Path(class_data_root)
             self.class_data_root.mkdir(parents=True, exist_ok=True)
-            self.class_images_path = list(Path(class_data_root).iterdir())
+            self.class_images_path = list(self.class_data_root.iterdir())
             self.num_class_images = len(self.class_images_path)
             self._length = max(self.num_class_images, self.num_instance_images)
             self.class_prompt = class_prompt
@@ -341,7 +332,7 @@ def main():
         if cur_class_images < args.num_class_images:
             torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
             pipeline = StableDiffusionPipeline.from_pretrained(
-                args.pretrained_model_name_or_path, use_auth_token=args.use_auth_token, torch_dtype=torch_dtype
+                args.pretrained_model_name_or_path, torch_dtype=torch_dtype
             )
             pipeline.set_progress_bar_config(disable=True)
 
@@ -354,12 +345,10 @@ def main():
             sample_dataloader = accelerator.prepare(sample_dataloader)
             pipeline.to(accelerator.device)
 
-            context = torch.autocast("cuda") if accelerator.device.type == "cuda" else nullcontext
             for example in tqdm(
                 sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
             ):
-                with context:
-                    images = pipeline(example["prompt"]).images
+                images = pipeline(example["prompt"]).images
 
                 for i, image in enumerate(images):
                     image.save(class_images_dir / f"{example['index'][i] + cur_class_images}.jpg")
@@ -389,20 +378,12 @@ def main():
     if args.tokenizer_name:
         tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_name)
     elif args.pretrained_model_name_or_path:
-        tokenizer = CLIPTokenizer.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="tokenizer", use_auth_token=args.use_auth_token
-        )
+        tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer")
 
     # Load models and create wrapper for stable diffusion
-    text_encoder = CLIPTextModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", use_auth_token=args.use_auth_token
-    )
-    vae = AutoencoderKL.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="vae", use_auth_token=args.use_auth_token
-    )
-    unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", use_auth_token=args.use_auth_token
-    )
+    text_encoder = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder")
+    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
+    unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
@@ -490,9 +471,17 @@ def main():
         unet, optimizer, train_dataloader, lr_scheduler
     )
 
-    # Move text_encode and vae to gpu
-    text_encoder.to(accelerator.device)
-    vae.to(accelerator.device)
+    weight_dtype = torch.float32
+    if args.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif args.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
+
+    # Move text_encode and vae to gpu.
+    # For mixed precision training we cast the text_encoder and vae weights to half-precision
+    # as these models are only used for inference, keeping weights in full precision is not required.
+    text_encoder.to(accelerator.device, dtype=weight_dtype)
+    vae.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -528,11 +517,11 @@ def main():
             with accelerator.accumulate(unet):
                 # Convert images to latent space
                 with torch.no_grad():
-                    latents = vae.encode(batch["pixel_values"]).latent_dist.sample()
+                    latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
                     latents = latents * 0.18215
 
                 # Sample noise that we'll add to the latents
-                noise = torch.randn(latents.shape).to(latents.device)
+                noise = torch.randn_like(latents)
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
                 timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
@@ -558,12 +547,12 @@ def main():
                     loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
 
                     # Compute prior loss
-                    prior_loss = F.mse_loss(noise_pred_prior, noise_prior, reduction="none").mean([1, 2, 3]).mean()
+                    prior_loss = F.mse_loss(noise_pred_prior.float(), noise_prior.float(), reduction="mean")
 
                     # Add the prior loss to the instance loss.
                     loss = loss + args.prior_loss_weight * prior_loss
                 else:
-                    loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
+                    loss = F.mse_loss(noise_pred.float(), noise.float(), reduction="mean")
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
@@ -589,16 +578,12 @@ def main():
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
         pipeline = StableDiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path,
-            unet=accelerator.unwrap_model(unet),
-            use_auth_token=args.use_auth_token,
+            args.pretrained_model_name_or_path, unet=accelerator.unwrap_model(unet)
         )
         pipeline.save_pretrained(args.output_dir)
 
         if args.push_to_hub:
-            repo.push_to_hub(
-                args, pipeline, repo, commit_message="End of training", blocking=False, auto_lfs_prune=True
-            )
+            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
 
     accelerator.end_training()
 

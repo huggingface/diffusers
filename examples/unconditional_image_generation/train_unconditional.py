@@ -9,7 +9,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_dataset
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
-from diffusers.hub_utils import init_git_repo, push_to_hub
+from diffusers.hub_utils import init_git_repo
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
 from torchvision.transforms import (
@@ -83,7 +83,6 @@ def main(args):
             args.dataset_name,
             args.dataset_config_name,
             cache_dir=args.cache_dir,
-            use_auth_token=True if args.use_auth_token else None,
             split="train",
         )
     else:
@@ -143,7 +142,8 @@ def main(args):
                 loss = F.mse_loss(noise_pred, noise)
                 accelerator.backward(loss)
 
-                accelerator.clip_grad_norm_(model.parameters(), 1.0)
+                if accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 lr_scheduler.step()
                 if args.use_ema:
@@ -185,7 +185,7 @@ def main(args):
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
                 # save the model
                 if args.push_to_hub:
-                    push_to_hub(args, pipeline, repo, commit_message=f"Epoch {epoch}", blocking=False)
+                    repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=False)
                 else:
                     pipeline.save_pretrained(args.output_dir)
         accelerator.wait_for_everyone()
@@ -221,7 +221,6 @@ if __name__ == "__main__":
     parser.add_argument("--ema_power", type=float, default=3 / 4)
     parser.add_argument("--ema_max_decay", type=float, default=0.9999)
     parser.add_argument("--push_to_hub", action="store_true")
-    parser.add_argument("--use_auth_token", action="store_true")
     parser.add_argument("--hub_token", type=str, default=None)
     parser.add_argument("--hub_model_id", type=str, default=None)
     parser.add_argument("--hub_private_repo", action="store_true")

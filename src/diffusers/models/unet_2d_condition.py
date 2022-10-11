@@ -223,7 +223,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.Tensor,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
-        """r
+        r"""
         Args:
             sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
             timestep (`torch.FloatTensor` or `float` or `int`): (batch) timesteps
@@ -266,7 +266,12 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         timesteps = timesteps.expand(sample.shape[0])
 
         t_emb = self.time_proj(timesteps)
-        emb = self.time_embedding(t_emb.to(self.dtype))
+
+        # timesteps does not contain any weights and will always return f32 tensors
+        # but time_embedding might actually be running in fp16. so we need to cast here.
+        # there might be better ways to encapsulate this.
+        t_emb = t_emb.to(dtype=self.dtype)
+        emb = self.time_embedding(t_emb)
 
         # 2. pre-process
         sample = self.conv_in(sample)
@@ -313,8 +318,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                     hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size
                 )
         # 6. post-process
-        # make sure hidden states is in float32
-        # when running in half-precision
         sample = self.conv_norm_out(sample)
         sample = self.conv_act(sample)
         sample = self.conv_out(sample)
