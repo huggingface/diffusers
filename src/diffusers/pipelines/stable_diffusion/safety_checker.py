@@ -36,16 +36,9 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
         pooled_output = self.vision_model(clip_input)[1]  # pooled_output
         image_embeds = self.visual_projection(pooled_output)
 
-        special_cos_dist = cosine_distance(image_embeds, self.special_care_embeds).cpu()
-        cos_dist = cosine_distance(image_embeds, self.concept_embeds).cpu()
-
-        # cast to float32 to as numpy does not support bfloat16
-        if image_embeds.dtype == torch.bfloat16:
-            special_cos_dist = special_cos_dist.float().numpy()
-            cos_dist = cos_dist.float().numpy()
-        else:
-            special_cos_dist = special_cos_dist.numpy()
-            cos_dist = cos_dist.numpy()
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        special_cos_dist = cosine_distance(image_embeds, self.special_care_embeds).cpu().float().numpy()
+        cos_dist = cosine_distance(image_embeds, self.concept_embeds).cpu().float().numpy()
 
         result = []
         batch_size = image_embeds.shape[0]
