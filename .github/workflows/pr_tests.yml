@@ -59,29 +59,34 @@ jobs:
     runs-on: [ self-hosted, apple-m1 ]
 
     steps:
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.11-dev"  # the lower versions don't have official arm64 builds yet
-
     - name: Checkout diffusers
       uses: actions/checkout@v3
       with:
         fetch-depth: 2
 
+    - name: Clean checkout
+      shell: arch -arch arm64 bash {0}
+      run: |
+        git clean -fxd
+
+    - name: Setup miniconda
+      uses: ./.github/actions/setup-miniconda@m1-tests
+      with:
+        python-version: 3.7
+
     - name: Install dependencies
       run: |
-        python3 -m pip install --upgrade pip
-        python -m pip install --pre torch==1.13.0.dev20220830 --extra-index-url https://download.pytorch.org/whl/nightly/cpu
-        python -m pip install -e .[quality,test]
+        ${CONDA_RUN} python -m pip install --upgrade pip
+        ${CONDA_RUN} python -m pip install --pre torch==1.13.0.dev20220830 --extra-index-url https://download.pytorch.org/whl/nightly/cpu
+        ${CONDA_RUN} python -m pip install -e .[quality,test]
 
     - name: Environment
       run: |
-        python utils/print_env.py
+        ${CONDA_RUN} python utils/print_env.py
 
     - name: Run all non-slow selected tests on CPU
       run: |
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_cpu tests/
+        ${CONDA_RUN} python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_cpu tests/
 
     - name: Failure short reports
       if: ${{ failure() }}
