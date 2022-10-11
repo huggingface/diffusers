@@ -17,12 +17,15 @@ import gc
 import os
 import random
 import tempfile
+import tracemalloc
 import unittest
 
 import numpy as np
 import torch
 
+import accelerate
 import PIL
+import transformers
 from diffusers import (
     AutoencoderKL,
     DDIMPipeline,
@@ -50,6 +53,7 @@ from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, load_image, slow, torch_device
 from diffusers.utils.testing_utils import get_tests_dir
+from packaging import version
 from PIL import Image
 from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -1005,6 +1009,124 @@ class PipelineFastTests(unittest.TestCase):
 
         assert images.shape == (batch_size * num_images_per_prompt, 32, 32, 3)
 
+    @unittest.skipIf(torch_device == "cpu", "This test requires a GPU")
+    def test_stable_diffusion_fp16(self):
+        """Test that stable diffusion works with fp16"""
+        unet = self.dummy_cond_unet
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        # put models in fp16
+        unet = unet.half()
+        vae = vae.half()
+        bert = bert.half()
+
+        # make sure here that pndm scheduler skips prk
+        sd_pipe = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=self.dummy_safety_checker,
+            feature_extractor=self.dummy_extractor,
+        )
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A painting of a squirrel eating a burger"
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image = sd_pipe([prompt], generator=generator, num_inference_steps=2, output_type="np").images
+
+        assert image.shape == (1, 128, 128, 3)
+
+    @unittest.skipIf(torch_device == "cpu", "This test requires a GPU")
+    def test_stable_diffusion_img2img_fp16(self):
+        """Test that stable diffusion img2img works with fp16"""
+        unet = self.dummy_cond_unet
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        init_image = self.dummy_image.to(torch_device)
+
+        # put models in fp16
+        unet = unet.half()
+        vae = vae.half()
+        bert = bert.half()
+
+        # make sure here that pndm scheduler skips prk
+        sd_pipe = StableDiffusionImg2ImgPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=self.dummy_safety_checker,
+            feature_extractor=self.dummy_extractor,
+        )
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A painting of a squirrel eating a burger"
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image = sd_pipe(
+            [prompt],
+            generator=generator,
+            num_inference_steps=2,
+            output_type="np",
+            init_image=init_image,
+        ).images
+
+        assert image.shape == (1, 32, 32, 3)
+
+    @unittest.skipIf(torch_device == "cpu", "This test requires a GPU")
+    def test_stable_diffusion_inpaint_fp16(self):
+        """Test that stable diffusion inpaint works with fp16"""
+        unet = self.dummy_cond_unet
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        image = self.dummy_image.cpu().permute(0, 2, 3, 1)[0]
+        init_image = Image.fromarray(np.uint8(image)).convert("RGB")
+        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((128, 128))
+
+        # put models in fp16
+        unet = unet.half()
+        vae = vae.half()
+        bert = bert.half()
+
+        # make sure here that pndm scheduler skips prk
+        sd_pipe = StableDiffusionInpaintPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=self.dummy_safety_checker,
+            feature_extractor=self.dummy_extractor,
+        )
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A painting of a squirrel eating a burger"
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image = sd_pipe(
+            [prompt],
+            generator=generator,
+            num_inference_steps=2,
+            output_type="np",
+            init_image=init_image,
+            mask_image=mask_image,
+        ).images
+
+        assert image.shape == (1, 32, 32, 3)
+
 
 class PipelineTesterMixin(unittest.TestCase):
     def tearDown(self):
@@ -1733,13 +1855,21 @@ class PipelineTesterMixin(unittest.TestCase):
                     [1.8285, 1.2857, -0.1024, 1.2406, -2.3068, 1.0747, -0.0818, -0.6520, -2.9506]
                 )
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
+            elif step == 50:
+                latents = latents.detach().cpu().numpy()
+                assert latents.shape == (1, 4, 64, 64)
+                latents_slice = latents[0, -3:, -3:, -1]
+                expected_slice = np.array(
+                    [1.1078, 1.5803, 0.2773, -0.0589, -1.7928, -0.3665, -0.4695, -1.0727, -1.1601]
+                )
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
 
         test_callback_fn.has_been_called = False
 
         pipe = StableDiffusionPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16
         )
-        pipe.to(torch_device)
+        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
@@ -1773,6 +1903,12 @@ class PipelineTesterMixin(unittest.TestCase):
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([0.9052, -0.0184, 0.4810, 0.2898, 0.5851, 1.4920, 0.5362, 1.9838, 0.0530])
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
+            elif step == 37:
+                latents = latents.detach().cpu().numpy()
+                assert latents.shape == (1, 4, 64, 96)
+                latents_slice = latents[0, -3:, -3:, -1]
+                expected_slice = np.array([0.7071, 0.7831, 0.8300, 1.8140, 1.7840, 1.9402, 1.3651, 1.6590, 1.2828])
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
 
         test_callback_fn.has_been_called = False
 
@@ -1822,6 +1958,12 @@ class PipelineTesterMixin(unittest.TestCase):
                 expected_slice = np.array(
                     [-0.5472, 1.1218, -0.5505, -0.9390, -1.0794, 0.4063, 0.5158, 0.6429, -1.5246]
                 )
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
+            elif step == 37:
+                latents = latents.detach().cpu().numpy()
+                assert latents.shape == (1, 4, 64, 64)
+                latents_slice = latents[0, -3:, -3:, -1]
+                expected_slice = np.array([0.4781, 1.1572, 0.6258, 0.2291, 0.2554, -0.1443, 0.7085, -0.1598, -0.5659])
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
 
         test_callback_fn.has_been_called = False
@@ -1875,6 +2017,13 @@ class PipelineTesterMixin(unittest.TestCase):
                     [-0.5950, -0.3039, -1.1672, 0.1594, -1.1572, 0.6719, -1.9712, -0.0403, 0.9592]
                 )
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
+            elif step == 5:
+                assert latents.shape == (1, 4, 64, 64)
+                latents_slice = latents[0, -3:, -3:, -1]
+                expected_slice = np.array(
+                    [-0.4776, -0.0119, -0.8519, -0.0275, -0.9764, 0.9820, -0.3843, 0.3788, 1.2264]
+                )
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
 
         test_callback_fn.has_been_called = False
 
@@ -1889,3 +2038,53 @@ class PipelineTesterMixin(unittest.TestCase):
         pipe(prompt=prompt, num_inference_steps=5, guidance_scale=7.5, callback=test_callback_fn, callback_steps=1)
         assert test_callback_fn.has_been_called
         assert number_of_steps == 6
+
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    def test_stable_diffusion_accelerate_load_works(self):
+        if version.parse(version.parse(transformers.__version__).base_version) < version.parse("4.23"):
+            return
+
+        if version.parse(version.parse(accelerate.__version__).base_version) < version.parse("0.14"):
+            return
+
+        model_id = "CompVis/stable-diffusion-v1-4"
+        _ = StableDiffusionPipeline.from_pretrained(
+            model_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, device_map="auto"
+        ).to(torch_device)
+
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
+    def test_stable_diffusion_accelerate_load_reduces_memory_footprint(self):
+        if version.parse(version.parse(transformers.__version__).base_version) < version.parse("4.23"):
+            return
+
+        if version.parse(version.parse(accelerate.__version__).base_version) < version.parse("0.14"):
+            return
+
+        pipeline_id = "CompVis/stable-diffusion-v1-4"
+
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        tracemalloc.start()
+        pipeline_normal_load = StableDiffusionPipeline.from_pretrained(
+            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True
+        )
+        pipeline_normal_load.to(torch_device)
+        _, peak_normal = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+
+        del pipeline_normal_load
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        tracemalloc.start()
+        _ = StableDiffusionPipeline.from_pretrained(
+            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, device_map="auto"
+        )
+        _, peak_accelerate = tracemalloc.get_traced_memory()
+
+        tracemalloc.stop()
+
+        assert peak_accelerate < peak_normal

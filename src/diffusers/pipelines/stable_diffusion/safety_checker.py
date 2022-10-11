@@ -19,6 +19,8 @@ def cosine_distance(image_embeds, text_embeds):
 class StableDiffusionSafetyChecker(PreTrainedModel):
     config_class = CLIPConfig
 
+    _no_split_modules = ["CLIPEncoderLayer"]
+
     def __init__(self, config: CLIPConfig):
         super().__init__(config)
 
@@ -28,16 +30,17 @@ class StableDiffusionSafetyChecker(PreTrainedModel):
         self.concept_embeds = nn.Parameter(torch.ones(17, config.projection_dim), requires_grad=False)
         self.special_care_embeds = nn.Parameter(torch.ones(3, config.projection_dim), requires_grad=False)
 
-        self.register_buffer("concept_embeds_weights", torch.ones(17))
-        self.register_buffer("special_care_embeds_weights", torch.ones(3))
+        self.concept_embeds_weights = nn.Parameter(torch.ones(17), requires_grad=False)
+        self.special_care_embeds_weights = nn.Parameter(torch.ones(3), requires_grad=False)
 
     @torch.no_grad()
     def forward(self, clip_input, images):
         pooled_output = self.vision_model(clip_input)[1]  # pooled_output
         image_embeds = self.visual_projection(pooled_output)
 
-        special_cos_dist = cosine_distance(image_embeds, self.special_care_embeds).cpu().numpy()
-        cos_dist = cosine_distance(image_embeds, self.concept_embeds).cpu().numpy()
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        special_cos_dist = cosine_distance(image_embeds, self.special_care_embeds).cpu().float().numpy()
+        cos_dist = cosine_distance(image_embeds, self.concept_embeds).cpu().float().numpy()
 
         result = []
         batch_size = image_embeds.shape[0]
