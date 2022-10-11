@@ -86,7 +86,7 @@ jobs:
       run: |
         ${CONDA_RUN} python utils/print_env.py
 
-    - name: Run all non-slow selected tests on CPU
+    - name: Run all non-slow selected tests on MPS
       shell: arch -arch arm64 bash {0}
       run: |
         ${CONDA_RUN} python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_mps tests/
