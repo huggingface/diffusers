@@ -52,7 +52,16 @@ def parse_args():
         default=None,
         help="The config of the Dataset, leave as None if there's only one config.",
     )
-    parser.add_argument("--train_data_dir", type=str, default=None, help="A folder containing the training data.")
+    parser.add_argument(
+        "--train_data_dir",
+        type=str,
+        default=None,
+        help=(
+            "A folder containing the training data. Folder contents must follow the structure described in"
+            " https://huggingface.co/docs/datasets/image_dataset#imagefolder. In particular, a `metadata.jsonl` file"
+            " must exist to provide the captions for the images. Ignored if `dataset_name` is specified."
+        ),
+    )
     parser.add_argument(
         "--image_column", type=str, default="image", help="The column of the dataset containing an image."
     )
