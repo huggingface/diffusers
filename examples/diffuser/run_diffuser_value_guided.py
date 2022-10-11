@@ -16,6 +16,7 @@ from helpers import MuJoCoRenderer, show_sample
 env_name = "hopper-medium-expert-v2"
 env = gym.make(env_name)
 data = env.get_dataset() # dataset is only used for normalization in this colab
+render = MuJoCoRenderer(env)
 
 # Cuda settings for colab
 # torch.cuda.get_device_name(0)
@@ -23,11 +24,11 @@ DEVICE = 'cpu'
 DTYPE = torch.float
 
 # diffusion model settings
-n_samples = 64   # number of trajectories planned via diffusion
+n_samples = 4   # number of trajectories planned via diffusion
 horizon = 32   # length of sampled trajectories
 state_dim = env.observation_space.shape[0] 
 action_dim = env.action_space.shape[0]
-num_inference_steps = 100 # number of difusion steps
+num_inference_steps = 20  # number of difusion steps
 
 def normalize(x_in, data, key):
   upper = np.max(data[key], axis=0)
@@ -56,7 +57,7 @@ def to_torch(x_in, dtype=None, device=None):
 # generator = torch.Generator(device='cuda')
 generator_cpu = torch.Generator(device='cpu')
 
-scheduler = ValueFunctionScheduler(num_train_timesteps=20,beta_schedule="squaredcos_cap_v2", clip_sample=False)
+scheduler = ValueFunctionScheduler(num_train_timesteps=num_inference_steps,beta_schedule="squaredcos_cap_v2", clip_sample=False)
 
 # 3 different pretrained models are available for this task. 
 # The horizion represents the length of trajectories used in training.
@@ -77,13 +78,24 @@ predict_epsilon = False
 n_guide_steps = 2
 scale_grad_by_std = True
 scale = 0.001
+eta = 1.0 # noise factor for sampling reconstructed state
+
 ## add a batch dimension and repeat for multiple samples
 ## [ observation_dim ] --> [ n_samples x observation_dim ]
 obs = env.reset()
+# start_idx = 340
+# obs = data['observations'][start_idx]
+# qpos = data['infos/qpos'][start_idx]
+# qvel = data['infos/qvel'][start_idx]
+
+# env.set_state(qpos, qvel)
 total_reward = 0
 done = False
 T = 300
 rollout = [obs.copy()]
+trajectories = []
+y_maxes = []
+t_grad_cutoff = 0 
 try:
     for t in tqdm.tqdm(range(T)):
         obs_raw = obs
@@ -112,7 +124,6 @@ try:
         # convert a np observation to torch for model forward pass
         x = to_torch(x)
 
-        eta = 1.0 # noise factor for sampling reconstructed state
 
         # run the diffusion process
         # for i in tqdm.tqdm(reversed(range(num_inference_steps)), total=num_inference_steps):
@@ -130,12 +141,11 @@ try:
                 if scale_grad_by_std:
                     posterior_variance = scheduler._get_variance(i)
                     grad = posterior_variance * 0.5 * grad
-                grad[i < 4] = 0
+                grad[timesteps < t_grad_cutoff] = 0
                 x = x.detach()
                 x = x + scale * grad
                 x = reset_x0(x, conditions, action_dim)
             prev_x = unet(x, timesteps).sample
-            # TODO: This should really be a TemporalUnet that predicts previos state given x
             x = scheduler.step(prev_x, i, x)["prev_sample"]
             x = reset_x0(x, conditions, action_dim)
             if clip_denoised:
@@ -143,20 +153,25 @@ try:
             # 2. use the model prediction to reconstruct an observation (de-noise)
             
 
-            # # 3. [optional] add posterior noise to the sample
-            # if eta > 0:
-            #     noise = torch.randn(obs_reconstruct.shape, generator=generator_cpu).to(obs_reconstruct.device)
-            #     posterior_variance = scheduler._get_variance(i) # * noise
-            #     # no noise when t == 0
-            #     # NOTE: original implementation missing sqrt on posterior_variance
-            #     obs_reconstruct = obs_reconstruct + int(i>0) * (0.5 * posterior_variance) * eta* noise  # MJ had as log var, exponentiated
+            # 3. [optional] add posterior noise to the sample
+            if eta > 0:
+                noise = torch.randn(x.shape, generator=generator_cpu).to(x.device)
+                posterior_variance = scheduler._get_variance(i) # * noise
+                # no noise when t == 0
+                # NOTE: original implementation missing sqrt on posterior_variance
+                x = x + int(i>0) * (0.5 * posterior_variance) * eta * noise  # MJ had as log var, exponentiated
 
             # 4. apply conditions to the trajectory
-            # obs_reconstruct_postcond = reset_x0(obs_reconstruct, conditions, action_dim)
+            x = reset_x0(x, conditions, action_dim)
             x = to_torch(x)
         sorted_idx = y.argsort(0, descending=True).squeeze()
+        y_maxes.append(y[sorted_idx[0]])
         sorted_values = x[sorted_idx]
         actions = sorted_values[:, :, :action_dim]
+        if t % 10 == 0:
+            trajectory = sorted_values[:, :, action_dim:][0].unsqueeze(0).detach().numpy()
+            trajectory = de_normalize(trajectory, data, 'observations')
+            trajectories.append(trajectory)
         actions = actions[0, 0].detach().cpu().numpy()
         actions = de_normalize(actions, data, key='actions')
         ## execute action in environment
@@ -173,5 +188,7 @@ except KeyboardInterrupt:
     pass
 
 print(f"Total reward: {total_reward}")
-render = MuJoCoRenderer(env)
+for i, trajectory in enumerate(trajectories):
+    show_sample(render, trajectory, f"trajectory_{i}.mp4")
+
 show_sample(render, np.expand_dims(np.stack(rollout),axis=0))

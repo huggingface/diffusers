@@ -4,6 +4,7 @@ import torch
 import tqdm
 import numpy as np
 import gym 
+import helpers
 
 env_name = "hopper-medium-expert-v2"
 env = gym.make(env_name)
@@ -42,16 +43,11 @@ def to_torch(x_in, dtype=None, device=None):
 		return x_in.to(device).type(dtype)
 	return torch.tensor(x_in, dtype=dtype, device=device)
 
-obs = env.reset()
-obs_raw = obs
 
-# normalize observations for forward passes
-obs = normalize(obs, data, 'observations')
 
 from diffusers import DDPMScheduler, TemporalUNet
 
 # Two generators for different parts of the diffusion loop to work in colab
-generator = torch.Generator(device='cuda')
 generator_cpu = torch.Generator(device='cpu')
 
 scheduler = DDPMScheduler(num_train_timesteps=100,beta_schedule="squaredcos_cap_v2")
@@ -72,50 +68,84 @@ predict_epsilon = network.predict_epsilon
 
 ## add a batch dimension and repeat for multiple samples
 ## [ observation_dim ] --> [ n_samples x observation_dim ]
-obs = obs[None].repeat(n_samples, axis=0)
-conditions = {
-    0: to_torch(obs, device=DEVICE)
-  }
+obs = env.reset()
+total_reward = 0
+done = False
+T = 300
+rollout = [obs.copy()]
 
-# constants for inference
-batch_size = len(conditions[0])
-shape = (batch_size, horizon, state_dim+action_dim)
+try:
+  for t in tqdm.tqdm(range(T)):
+    obs_raw = obs
 
-# sample random initial noise vector
-x1 = torch.randn(shape, device=DEVICE, generator=generator)
+    # normalize observations for forward passes
+    obs = normalize(obs, data, 'observations')
+    obs = obs[None].repeat(n_samples, axis=0)
+    conditions = {
+        0: to_torch(obs, device=DEVICE)
+      }
 
-# this model is conditioned from an initial state, so you will see this function
-#  multiple times to change the initial state of generated data to the state 
-#  generated via env.reset() above or env.step() below
-x = reset_x0(x1, conditions, action_dim)
+    # constants for inference
+    batch_size = len(conditions[0])
+    shape = (batch_size, horizon, state_dim+action_dim)
 
-# convert a np observation to torch for model forward pass
-x = to_torch(x)
+    # sample random initial noise vector
+    x1 = torch.randn(shape, device=DEVICE, generator=generator_cpu)
 
-eta = 1.0 # noise factor for sampling reconstructed state
+    # this model is conditioned from an initial state, so you will see this function
+    #  multiple times to change the initial state of generated data to the state 
+    #  generated via env.reset() above or env.step() below
+    x = reset_x0(x1, conditions, action_dim)
 
-# run the diffusion process
-# for i in tqdm.tqdm(reversed(range(num_inference_steps)), total=num_inference_steps):
-for i in tqdm.tqdm(scheduler.timesteps):
+    # convert a np observation to torch for model forward pass
+    x = to_torch(x)
 
-    # create batch of timesteps to pass into model
-    timesteps = torch.full((batch_size,), i, device=DEVICE, dtype=torch.long)
-    
-    # 1. generate prediction from model
-    with torch.no_grad():
-      residual = network(x, timesteps).sample
-    
-    # 2. use the model prediction to reconstruct an observation (de-noise)
-    obs_reconstruct = scheduler.step(residual, i, x, predict_epsilon=predict_epsilon)["prev_sample"]
+    eta = 1.0 # noise factor for sampling reconstructed state
 
-    # 3. [optional] add posterior noise to the sample
-    if eta > 0:
-      noise = torch.randn(obs_reconstruct.shape, generator=generator_cpu).to(obs_reconstruct.device)
-      posterior_variance = scheduler._get_variance(i) # * noise
-      # no noise when t == 0
-      # NOTE: original implementation missing sqrt on posterior_variance
-      obs_reconstruct = obs_reconstruct + int(i>0) * (0.5 * posterior_variance) * eta* noise  # MJ had as log var, exponentiated
+    # run the diffusion process
+    # for i in tqdm.tqdm(reversed(range(num_inference_steps)), total=num_inference_steps):
+    for i in tqdm.tqdm(scheduler.timesteps):
 
-    # 4. apply conditions to the trajectory
-    obs_reconstruct_postcond = reset_x0(obs_reconstruct, conditions, action_dim)
-    x = to_torch(obs_reconstruct_postcond)
+        # create batch of timesteps to pass into model
+        timesteps = torch.full((batch_size,), i, device=DEVICE, dtype=torch.long)
+        
+        # 1. generate prediction from model
+        with torch.no_grad():
+          residual = network(x, timesteps).sample
+        
+        # 2. use the model prediction to reconstruct an observation (de-noise)
+        obs_reconstruct = scheduler.step(residual, i, x, predict_epsilon=predict_epsilon)["prev_sample"]
+
+        # 3. [optional] add posterior noise to the sample
+        if eta > 0:
+          noise = torch.randn(obs_reconstruct.shape, generator=generator_cpu).to(obs_reconstruct.device)
+          posterior_variance = scheduler._get_variance(i) # * noise
+          # no noise when t == 0
+          # NOTE: original implementation missing sqrt on posterior_variance
+          obs_reconstruct = obs_reconstruct + int(i>0) * (0.5 * posterior_variance) * eta* noise  # MJ had as log var, exponentiated
+
+        # 4. apply conditions to the trajectory
+        obs_reconstruct_postcond = reset_x0(obs_reconstruct, conditions, action_dim)
+        x = to_torch(obs_reconstruct_postcond)
+    plans = helpers.to_np(x[:,:,:action_dim])
+    # select random plan
+    idx = np.random.randint(plans.shape[0])
+    # select action at correct time
+    action = plans[idx, 0, :]
+    actions= de_normalize(action, data, 'actions')
+    ## execute action in environment
+    next_observation, reward, terminal, _ = env.step(action)
+
+    ## update return
+    total_reward += reward
+    print(f"Step: {t}, Reward: {reward}, Total Reward: {total_reward}")
+
+    # save observations for rendering
+    rollout.append(next_observation.copy())
+    obs = next_observation
+except KeyboardInterrupt:
+  pass
+
+print(f"Total reward: {total_reward}")
+render =helpers.MuJoCoRenderer(env)
+helpers.show_sample(render, np.expand_dims(np.stack(rollout),axis=0))
