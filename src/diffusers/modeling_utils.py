@@ -26,6 +26,7 @@ from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
+from . import __version__
 from .utils import CONFIG_NAME, DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT, WEIGHTS_NAME, logging
 
 
@@ -297,7 +298,12 @@ class ModelMixin(torch.nn.Module):
         subfolder = kwargs.pop("subfolder", None)
         device_map = kwargs.pop("device_map", None)
 
-        user_agent = {"file_type": "model", "framework": "pytorch", "from_auto_class": from_auto_class}
+        user_agent = {
+            "diffusers": __version__,
+            "file_type": "model",
+            "framework": "pytorch",
+            "from_auto_class": from_auto_class,
+        }
 
         # Load config if we don't provide a configuration
         config_path = pretrained_model_name_or_path
