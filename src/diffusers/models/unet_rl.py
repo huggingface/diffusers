@@ -5,8 +5,8 @@ from typing import Tuple, Union
 import torch
 import torch.nn as nn
 
-from diffusers.models.resnet import ResidualTemporalBlock1D
-from diffusers.models.unet_1d_blocks import DownResnetBlock1D, UpResnetBlock1D, Downsample1D
+from diffusers.models.resnet import ResidualTemporalBlock1D, Downsample1D
+from diffusers.models.unet_1d_blocks import get_down_block
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
@@ -30,45 +30,49 @@ class ValueFunction(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        transition_dim=14,
-        dim=32,
-        dim_mults=(1, 4, 8),
+        in_channels=14,
+        down_block_types: Tuple[str] = ("DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"),
+        block_out_channels: Tuple[int] = (32, 64, 128, 256),
+        act_fn: str = "mish",
+        norm_num_groups: int = 8,
+        layers_per_block: int = 1,
     ):
         super().__init__()
+        time_embed_dim = block_out_channels[0] * 4
+        self.time_proj = Timesteps(num_channels=block_out_channels[0], flip_sin_to_cos=False, downscale_freq_shift=1)
+        self.time_mlp = TimestepEmbedding(channel=block_out_channels[0], time_embed_dim=time_embed_dim, act_fn="mish", out_dim=block_out_channels[0])
 
-        self.transition_dim = transition_dim
-        self.time_proj = Timesteps(num_channels=dim, flip_sin_to_cos=False, downscale_freq_shift=1)
-        self.time_mlp = TimestepEmbedding(channel=dim, time_embed_dim=4 * dim, act_fn="mish", out_dim=dim)
-
-        dims = [transition_dim, *map(lambda m: dim * m, dim_mults)]
-        in_out = list(zip(dims[:-1], dims[1:]))
 
         self.blocks = nn.ModuleList([])
-        num_resolutions = len(in_out)
+        mid_dim = block_out_channels[-1]
 
-        for ind, (dim_in, dim_out) in enumerate(in_out):
-            is_last = ind >= (num_resolutions - 1)
+        output_channel = in_channels
+        for i, down_block_type in enumerate(down_block_types):
+            input_channel = output_channel
+            output_channel = block_out_channels[i]
+            is_final_block = i == len(block_out_channels) - 1
 
-            self.blocks.append(
-                DownResnetBlock1D(
-                    in_channels=dim_in, out_channels=dim_out, temb_channels=dim, add_downsample=True
-                )
+            down_block_type = down_block_types[i]
+            down_block = get_down_block(
+                down_block_type,
+                num_layers=layers_per_block,
+                in_channels=input_channel,
+                out_channels=output_channel,
+                temb_channels=block_out_channels[0],
+                add_downsample=True,
             )
+            self.blocks.append(down_block)
 
-    
-        mid_dim = dims[-1]
-        mid_dim_2 = mid_dim // 2
-        mid_dim_3 = mid_dim // 4
         ##
-        self.mid_block1 = ResidualTemporalBlock1D(mid_dim, mid_dim_2, embed_dim=dim)
-        self.mid_down1 = Downsample1D(mid_dim_2, use_conv=True)
+        self.mid_block1 = ResidualTemporalBlock1D(mid_dim, mid_dim // 2, embed_dim=block_out_channels[0])
+        self.mid_down1 = Downsample1D(mid_dim // 2, use_conv=True)
         ##
-        self.mid_block2 = ResidualTemporalBlock1D(mid_dim_2, mid_dim_3, embed_dim=dim)
-        self.mid_down2 = Downsample1D(mid_dim_3, use_conv=True)
+        self.mid_block2 = ResidualTemporalBlock1D(mid_dim //2, mid_dim // 4, embed_dim=block_out_channels[0])
+        self.mid_down2 = Downsample1D(mid_dim // 4, use_conv=True)
         ##
-        fc_dim = mid_dim_3
+        fc_dim = mid_dim // 4
         self.final_block = nn.ModuleList([
-            nn.Linear(fc_dim + dim, fc_dim // 2),
+            nn.Linear(fc_dim + block_out_channels[0], fc_dim // 2),
             nn.Mish(),
             nn.Linear(fc_dim // 2, 1),]
         )

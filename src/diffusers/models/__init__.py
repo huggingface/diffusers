@@ -20,7 +20,7 @@ if is_torch_available():
     from .unet_2d import UNet2DModel
     from .unet_2d_condition import UNet2DConditionModel
     from .vae import AutoencoderKL, VQModel
-    from .unet_rl import UNetRLModel
+    from .unet_rl import ValueFunction
 
 if is_flax_available():
     from .unet_2d_condition_flax import FlaxUNet2DConditionModel

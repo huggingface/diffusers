@@ -37,7 +37,6 @@ if is_torch_available():
         PNDMScheduler,
         SchedulerMixin,
         ScoreSdeVeScheduler,
-        ValueFunctionScheduler
     )
     from .training_utils import EMAModel
 else:

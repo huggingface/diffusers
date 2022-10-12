@@ -1,6 +1,6 @@
 
 import torch
-from diffusers import DDPMScheduler, UNet1DModel, ValueFunction, ValueFunctionScheduler
+from diffusers import DDPMScheduler, UNet1DModel, ValueFunction
 import os
 import json
 os.makedirs("hub/hopper-medium-v2/unet/hor32", exist_ok=True)
@@ -9,27 +9,36 @@ os.makedirs("hub/hopper-medium-v2/unet/hor128", exist_ok=True)
 os.makedirs("hub/hopper-medium-v2/value_function", exist_ok=True)
 
 def unet(hor):
+    if hor == 128:
+        down_block_types = ("DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D")
+        block_out_channels = (32, 128, 256)
+        up_block_types = ("UpResnetBlock1D", "UpResnetBlock1D")
+
+    elif hor == 32:
+        down_block_types = ("DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D")
+        block_out_channels = (32, 64, 128, 256)
+        up_block_types = ("UpResnetBlock1D", "UpResnetBlock1D", "UpResnetBlock1D")
     model = torch.load(f"/Users/bglickenhaus/Documents/diffuser/temporal_unet-hopper-hor{hor}.torch")
     state_dict = model.state_dict()
-    hf_value_function = UNet1DModel(dim=32, dim_mults=(1, 4, 8), transition_dim=14)
+    config = dict(down_block_types=down_block_types, block_out_channels=block_out_channels, up_block_types=up_block_types, layers_per_block=1)
+    hf_value_function = UNet1DModel(**config)
+    print(f"length of state dict: {len(state_dict.keys())}")
+    print(f"length of value function dict: {len(hf_value_function.state_dict().keys())}")
     mapping = dict((k, hfk) for k, hfk in zip(model.state_dict().keys(), hf_value_function.state_dict().keys()))
     for k, v in mapping.items():
         state_dict[v] = state_dict.pop(k)
     hf_value_function.load_state_dict(state_dict)
 
     torch.save(hf_value_function.state_dict(), f"hub/hopper-medium-v2/unet/hor{hor}/diffusion_pytorch_model.bin")
-    if hor == 128:
-        dim_mults = (1, 4, 8)
-    elif hor == 32:
-        dim_mults = (1, 2, 4, 8)
-    config = dict(dim=32, dim_mults=dim_mults, transition_dim=14)
     with open(f"hub/hopper-medium-v2/unet/hor{hor}/config.json", "w") as f:
         json.dump(config, f)
 
 def value_function():
+    config = dict(in_channels=14, down_block_types=("DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"), block_out_channels=(32, 64, 128, 256), layers_per_block=1)
+
     model = torch.load("/Users/bglickenhaus/Documents/diffuser/value_function-hopper-hor32.torch")
     state_dict = model.state_dict()
-    hf_value_function = ValueFunction(dim=32, dim_mults=(1, 2, 4, 8), transition_dim=14)
+    hf_value_function = ValueFunction(**config)
     print(f"length of state dict: {len(state_dict.keys())}")
     print(f"length of value function dict: {len(hf_value_function.state_dict().keys())}")
 
@@ -40,11 +49,11 @@ def value_function():
     hf_value_function.load_state_dict(state_dict)
 
     torch.save(hf_value_function.state_dict(), "hub/hopper-medium-v2/value_function/diffusion_pytorch_model.bin")
-    config = dict(dim=32, dim_mults=(1, 2, 4, 8), transition_dim=14)
     with open("hub/hopper-medium-v2/value_function/config.json", "w") as f:
         json.dump(config, f)
 
 
 if __name__ == "__main__":
-    unet()
-    value_function()
+    # unet(32)
+    unet(128)
+    # value_function()
