@@ -15,7 +15,6 @@
 
 import gc
 import math
-import pdb
 import tracemalloc
 import unittest
 
@@ -508,7 +507,9 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
 
         num_features = model.in_channels
         seq_len = 16
-        noise = torch.randn((1, seq_len, num_features)).permute(0, 2, 1) # match original, we can update values and remove
+        noise = torch.randn((1, seq_len, num_features)).permute(
+            0, 2, 1
+        )  # match original, we can update values and remove
         time_step = torch.full((num_features,), 0)
 
         with torch.no_grad():

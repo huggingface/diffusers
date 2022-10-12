@@ -178,7 +178,6 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         sample = self.final_conv1d_act(sample)
         sample = self.final_conv1d_2(sample)
 
-
         if not return_dict:
             return (sample,)
 
