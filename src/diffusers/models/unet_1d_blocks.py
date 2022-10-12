@@ -17,7 +17,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from .resnet import Downsample1D, ResidualTemporalBlock, Upsample1D
+from .resnet import Downsample1D, ResidualTemporalBlock1D, Upsample1D
 
 
 class DownResnetBlock1D(nn.Module):
@@ -46,8 +46,8 @@ class DownResnetBlock1D(nn.Module):
         if groups_out is None:
             groups_out = groups
 
-        self.resnet1 = ResidualTemporalBlock(in_channels, out_channels, embed_dim=temb_channels)
-        self.resnet2 = ResidualTemporalBlock(out_channels, out_channels, embed_dim=temb_channels)
+        self.resnet1 = ResidualTemporalBlock1D(in_channels, out_channels, embed_dim=temb_channels)
+        self.resnet2 = ResidualTemporalBlock1D(out_channels, out_channels, embed_dim=temb_channels)
 
         if non_linearity == "swish":
             self.nonlinearity = lambda x: F.silu(x)
@@ -102,8 +102,8 @@ class UpResnetBlock1D(nn.Module):
         if groups_out is None:
             groups_out = groups
 
-        self.resnet1 = ResidualTemporalBlock(in_channels, out_channels, embed_dim=temb_channels)
-        self.resnet2 = ResidualTemporalBlock(out_channels, out_channels, embed_dim=temb_channels)
+        self.resnet1 = ResidualTemporalBlock1D(2 * in_channels, out_channels, embed_dim=temb_channels)
+        self.resnet2 = ResidualTemporalBlock1D(out_channels, out_channels, embed_dim=temb_channels)
 
         if non_linearity == "swish":
             self.nonlinearity = lambda x: F.silu(x)

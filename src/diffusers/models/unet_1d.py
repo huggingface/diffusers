@@ -17,7 +17,7 @@ from typing import Tuple, Union
 import torch
 import torch.nn as nn
 
-from diffusers.models.resnet import ResidualTemporalBlock
+from diffusers.models.resnet import ResidualTemporalBlock1D
 from diffusers.models.unet_1d_blocks import get_down_block, get_up_block
 
 from ..configuration_utils import ConfigMixin, register_to_config
@@ -46,9 +46,13 @@ class UNet1DModel(ModelMixin, ConfigMixin):
     implements for all the model (such as downloading or saving, etc.)
 
     Parameters:
-        transition_dim: state-dimension of samples to predict over
-        dim: embedding dimension of model
-        dim_mults: dimension multiples of the up/down blocks
+        in_channels:
+        out_channels:
+        down_block_types:
+        up_block_types:
+        block_out_channels:
+        act_fn:
+        norm_num_groups:
     """
 
     @register_to_config
@@ -60,15 +64,17 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         up_block_types: Tuple[str] = ("UpResnetBlock1D", "UpResnetBlock1D"),
         block_out_channels: Tuple[int] = (32, 128, 256),
         act_fn: str = "mish",
+        norm_num_groups: int = 8,
     ):
         super().__init__()
 
-        self.transition_dim = in_channels
         time_embed_dim = block_out_channels[0] * 4
 
         # time
         self.time_proj = Timesteps(num_channels=block_out_channels[0], flip_sin_to_cos=False, downscale_freq_shift=1)
-        self.time_mlp = TimestepEmbedding(channel=block_out_channels[0], time_embed_dim=time_embed_dim, act_fn=act_fn, out_dim=block_out_channels[0])
+        self.time_mlp = TimestepEmbedding(
+            channel=block_out_channels[0], time_embed_dim=time_embed_dim, act_fn=act_fn, out_dim=block_out_channels[0]
+        )
 
         self.down_blocks = nn.ModuleList([])
         self.up_blocks = nn.ModuleList([])
@@ -92,8 +98,8 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             self.down_blocks.append(down_block)
 
         # mid
-        self.mid_block1 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=block_out_channels[0])
-        self.mid_block2 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=block_out_channels[0])
+        self.mid_block1 = ResidualTemporalBlock1D(mid_dim, mid_dim, embed_dim=block_out_channels[0])
+        self.mid_block2 = ResidualTemporalBlock1D(mid_dim, mid_dim, embed_dim=block_out_channels[0])
 
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
@@ -105,7 +111,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
 
             up_block = get_up_block(
                 up_block_type,
-                in_channels=input_channel * 2,
+                in_channels=input_channel,
                 out_channels=output_channel,
                 temb_channels=block_out_channels[0],
                 add_upsample=not is_final_block,
@@ -113,8 +119,9 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             self.up_blocks.append(up_block)
 
         # out
+        num_groups_out = norm_num_groups if norm_num_groups is not None else min(block_out_channels[0] // 4, 32)
         self.final_conv1d_1 = nn.Conv1d(block_out_channels[0], block_out_channels[0], 5, padding=2)
-        self.final_conv1d_gn = nn.GroupNorm(8, block_out_channels[0])
+        self.final_conv1d_gn = nn.GroupNorm(num_groups_out, block_out_channels[0])
         self.final_conv1d_act = nn.Mish()
         self.final_conv1d_2 = nn.Conv1d(block_out_channels[0], out_channels, 1)
 

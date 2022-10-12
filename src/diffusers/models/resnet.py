@@ -501,7 +501,7 @@ class Conv1dBlock(nn.Module):
 
 
 # unet_rl.py
-class ResidualTemporalBlock(nn.Module):
+class ResidualTemporalBlock1D(nn.Module):
     def __init__(self, inp_channels, out_channels, embed_dim, kernel_size=5):
         super().__init__()
 
