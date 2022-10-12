@@ -56,7 +56,7 @@ def run_diffusion(x, scheduler, generator, network, unet, conditions, action_dim
             x = reset_x0(x, conditions, action_dim)
         with torch.no_grad():
             prev_x = unet(x, timesteps).sample
-        x = scheduler.step(prev_x, i, x)["prev_sample"]
+        x = scheduler.step(prev_x, i, x, predict_epsilon=False)["prev_sample"]
         
         # 3. [optional] add posterior noise to the sample
         if config['eta'] > 0:

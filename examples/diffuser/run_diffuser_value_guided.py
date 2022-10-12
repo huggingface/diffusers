@@ -77,7 +77,7 @@ def run():
     # generator = torch.Generator(device='cuda')
     generator = torch.Generator(device=DEVICE)
 
-    scheduler = ValueFunctionScheduler(num_train_timesteps=config['num_inference_steps'],beta_schedule="squaredcos_cap_v2", clip_sample=False)
+    scheduler = DDPMScheduler(num_train_timesteps=config['num_inference_steps'],beta_schedule="squaredcos_cap_v2", clip_sample=False, )
 
     # 3 different pretrained models are available for this task. 
     # The horizion represents the length of trajectories used in training.
