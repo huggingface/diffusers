@@ -55,6 +55,8 @@ class DownResnetBlock1D(nn.Module):
             self.nonlinearity = nn.Mish()
         elif non_linearity == "silu":
             self.nonlinearity = nn.SiLU()
+        else:
+            self.nonlinearity = None
 
         self.downsample = None
         if add_downsample:
@@ -66,6 +68,9 @@ class DownResnetBlock1D(nn.Module):
         hidden_states = self.resnet1(hidden_states, temb)
         hidden_states = self.resnet2(hidden_states, temb)
         output_states += (hidden_states,)
+
+        if self.nonlinearity is not None:
+            hidden_states = self.nonlinearity(hidden_states)
 
         if self.downsample is not None:
             hidden_states = self.downsample(hidden_states)
@@ -106,6 +111,8 @@ class UpResnetBlock1D(nn.Module):
             self.nonlinearity = nn.Mish()
         elif non_linearity == "silu":
             self.nonlinearity = nn.SiLU()
+        else:
+            self.nonlinearity = None
 
         self.upsample = None
         if add_upsample:
@@ -117,6 +124,9 @@ class UpResnetBlock1D(nn.Module):
 
         hidden_states = self.resnet1(hidden_states, temb)
         hidden_states = self.resnet2(hidden_states, temb)
+
+        if self.nonlinearity is not None:
+            hidden_states = self.nonlinearity(hidden_states)
 
         if self.upsample is not None:
             hidden_states = self.upsample(hidden_states)

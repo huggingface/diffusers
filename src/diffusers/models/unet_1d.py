@@ -40,7 +40,10 @@ class UNet1DOutput(BaseOutput):
 
 class UNet1DModel(ModelMixin, ConfigMixin):
     """
-    A UNet for multi-dimensional temporal data. This model takes the batch over the `training_horizon`.
+    UNet1DModel is a 1D UNet model that takes in a noisy sample and a timestep and returns sample shaped output.
+
+    This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
+    implements for all the model (such as downloading or saving, etc.)
 
     Parameters:
         transition_dim: state-dimension of samples to predict over
@@ -51,22 +54,21 @@ class UNet1DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        transition_dim=14,
-        dim=32,
-        dim_mults=(1, 4, 8),
         in_channels: int = 14,
         out_channels: int = 14,
-        down_block_types: Tuple[str] = ["DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"],
-        up_block_types: Tuple[str] = ["UpResnetBlock1D", "UpResnetBlock1D"],
-        block_out_channels: Tuple[int] = [32, 128, 256],
+        down_block_types: Tuple[str] = ("DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"),
+        up_block_types: Tuple[str] = ("UpResnetBlock1D", "UpResnetBlock1D"),
+        block_out_channels: Tuple[int] = (32, 128, 256),
+        act_fn: str = "mish",
     ):
         super().__init__()
 
         self.transition_dim = in_channels
+        time_embed_dim = block_out_channels[0] * 4
 
         # time
-        self.time_proj = Timesteps(num_channels=dim, flip_sin_to_cos=False, downscale_freq_shift=1)
-        self.time_mlp = TimestepEmbedding(channel=dim, time_embed_dim=4 * dim, act_fn="mish", out_dim=dim)
+        self.time_proj = Timesteps(num_channels=block_out_channels[0], flip_sin_to_cos=False, downscale_freq_shift=1)
+        self.time_mlp = TimestepEmbedding(channel=block_out_channels[0], time_embed_dim=time_embed_dim, act_fn=act_fn, out_dim=block_out_channels[0])
 
         self.down_blocks = nn.ModuleList([])
         self.up_blocks = nn.ModuleList([])
@@ -84,14 +86,14 @@ class UNet1DModel(ModelMixin, ConfigMixin):
                 down_block_type,
                 in_channels=input_channel,
                 out_channels=output_channel,
-                temb_channels=dim,
+                temb_channels=block_out_channels[0],
                 add_downsample=not is_final_block,
             )
             self.down_blocks.append(down_block)
 
         # mid
-        self.mid_block1 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=dim)
-        self.mid_block2 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=dim)
+        self.mid_block1 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=block_out_channels[0])
+        self.mid_block2 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=block_out_channels[0])
 
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
@@ -105,16 +107,16 @@ class UNet1DModel(ModelMixin, ConfigMixin):
                 up_block_type,
                 in_channels=input_channel * 2,
                 out_channels=output_channel,
-                temb_channels=dim,
+                temb_channels=block_out_channels[0],
                 add_upsample=not is_final_block,
             )
             self.up_blocks.append(up_block)
 
         # out
-        self.final_conv1d_1 = nn.Conv1d(dim, dim, 5, padding=2)
-        self.final_conv1d_gn = nn.GroupNorm(8, dim)
+        self.final_conv1d_1 = nn.Conv1d(block_out_channels[0], block_out_channels[0], 5, padding=2)
+        self.final_conv1d_gn = nn.GroupNorm(8, block_out_channels[0])
         self.final_conv1d_act = nn.Mish()
-        self.final_conv1d_2 = nn.Conv1d(dim, out_channels, 1)
+        self.final_conv1d_2 = nn.Conv1d(block_out_channels[0], out_channels, 1)
 
     def forward(
         self,
