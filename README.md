@@ -1,6 +1,6 @@
 <p align="center">
     <br>
-    <img src="docs/source/imgs/diffusers_library.jpg" width="400"/>
+    <img src="https://github.com/huggingface/diffusers/raw/main/docs/source/imgs/diffusers_library.jpg" width="400"/>
     <br>
 <p>
 <p align="center">
