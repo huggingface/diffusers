@@ -290,7 +290,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             deprecation_message = (
                 f"You have passed {len(prompt)} text prompts (`prompt`), but only {init_latents.shape[0]} initial"
                 " images (`init_image`). Initial images are now duplicating to match the number of text prompts. Note"
-                " that this behavior is deprecated is will be removed in a version 1.0.0. Please make sure to update"
+                " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
                 " your script to pass as many init images as text prompts to suppress this warning."
             )
             deprecate("len(prompt) != len(init_image)", "1.0.0", deprecation_message, standard_warn=False)
