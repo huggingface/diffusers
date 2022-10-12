@@ -27,7 +27,7 @@ from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
-from . import is_torch_available
+from . import __version__, is_torch_available
 from .modeling_flax_pytorch_utils import convert_pytorch_state_dict_to_flax
 from .utils import (
     CONFIG_NAME,
@@ -286,10 +286,13 @@ class FlaxModelMixin:
         local_files_only = kwargs.pop("local_files_only", False)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
-        from_auto_class = kwargs.pop("_from_auto", False)
         subfolder = kwargs.pop("subfolder", None)
 
-        user_agent = {"file_type": "model", "framework": "flax", "from_auto_class": from_auto_class}
+        user_agent = {
+            "diffusers": __version__,
+            "file_type": "model",
+            "framework": "flax",
+        }
 
         # Load config if we don't provide a configuration
         config_path = config if config is not None else pretrained_model_name_or_path
