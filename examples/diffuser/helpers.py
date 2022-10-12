@@ -6,7 +6,6 @@ import gym
 import warnings
 import tqdm
 
-DEVICE = 'cpu'
 
 DTYPE = torch.float
 def normalize(x_in, data, key):
@@ -21,9 +20,9 @@ def de_normalize(x_in, data, key):
 	x_out = lower + (upper - lower)*(1 + x_in) /2
 	return x_out
 	
-def to_torch(x_in, dtype=None, device=None):
+def to_torch(x_in, dtype=None, device='cuda'):
 	dtype = dtype or DTYPE
-	device = device or DEVICE
+	device = device
 	if type(x_in) is dict:
 		return {k: to_torch(v, dtype, device) for k, v in x_in.items()}
 	elif torch.is_tensor(x_in):
@@ -37,11 +36,11 @@ def reset_x0(x_in, cond, act_dim):
 	return x_in
 
 def run_diffusion(x, scheduler, generator, network, unet, conditions, action_dim, config):
+    y = None
     for i in tqdm.tqdm(scheduler.timesteps):
 
         # create batch of timesteps to pass into model
-        timesteps = torch.full((config['n_samples'],), i, device=DEVICE, dtype=torch.long)
-        
+        timesteps = torch.full((config['n_samples'],), i, device=config['device'], dtype=torch.long)
         # 3. call the sample function
         for _ in range(config['n_guide_steps']):
             with torch.enable_grad():
@@ -55,8 +54,8 @@ def run_diffusion(x, scheduler, generator, network, unet, conditions, action_dim
             x = x.detach()
             x = x + config['scale'] * grad
             x = reset_x0(x, conditions, action_dim)
-        y = network(x, timesteps).sample
-        prev_x = unet(x, timesteps).sample
+        with torch.no_grad():
+            prev_x = unet(x, timesteps).sample
         x = scheduler.step(prev_x, i, x)["prev_sample"]
         
         # 3. [optional] add posterior noise to the sample
@@ -70,6 +69,7 @@ def run_diffusion(x, scheduler, generator, network, unet, conditions, action_dim
         # 4. apply conditions to the trajectory
         x = reset_x0(x, conditions, action_dim)
         x = to_torch(x)
+    # y = network(x, timesteps).sample
     return x, y
 
 def to_np(x_in):
