@@ -4,6 +4,74 @@ import numpy as np
 import torch
 import gym
 import warnings
+import tqdm
+
+DEVICE = 'cpu'
+
+DTYPE = torch.float
+def normalize(x_in, data, key):
+  upper = np.max(data[key], axis=0)
+  lower = np.min(data[key], axis=0)
+  x_out = 2*(x_in - lower)/(upper-lower) - 1
+  return x_out
+
+def de_normalize(x_in, data, key):
+	upper = np.max(data[key], axis=0)
+	lower = np.min(data[key], axis=0)
+	x_out = lower + (upper - lower)*(1 + x_in) /2
+	return x_out
+	
+def to_torch(x_in, dtype=None, device=None):
+	dtype = dtype or DTYPE
+	device = device or DEVICE
+	if type(x_in) is dict:
+		return {k: to_torch(v, dtype, device) for k, v in x_in.items()}
+	elif torch.is_tensor(x_in):
+		return x_in.to(device).type(dtype)
+	return torch.tensor(x_in, dtype=dtype, device=device)
+
+
+def reset_x0(x_in, cond, act_dim):
+	for key, val in cond.items():
+		x_in[:, key, act_dim:] = val.clone()
+	return x_in
+
+def run_diffusion(x, scheduler, generator, network, unet, conditions, action_dim, config):
+    for i in tqdm.tqdm(scheduler.timesteps):
+
+        # create batch of timesteps to pass into model
+        timesteps = torch.full((config['n_samples'],), i, device=DEVICE, dtype=torch.long)
+        
+        # 3. call the sample function
+        for _ in range(config['n_guide_steps']):
+            with torch.enable_grad():
+                x.requires_grad_()
+                y = network(x, timesteps).sample
+                grad = torch.autograd.grad([y.sum()], [x])[0]
+            if config['scale_grad_by_std']:
+                posterior_variance = scheduler._get_variance(i)
+                grad = posterior_variance * 0.5 * grad
+            grad[timesteps < config['t_grad_cutoff']] = 0
+            x = x.detach()
+            x = x + config['scale'] * grad
+            x = reset_x0(x, conditions, action_dim)
+        y = network(x, timesteps).sample
+        prev_x = unet(x, timesteps).sample
+        x = scheduler.step(prev_x, i, x)["prev_sample"]
+        
+        # 3. [optional] add posterior noise to the sample
+        if config['eta'] > 0:
+            noise = torch.randn(x.shape, generator=generator).to(x.device)
+            posterior_variance = scheduler._get_variance(i) # * noise
+            # no noise when t == 0
+            # NOTE: original implementation missing sqrt on posterior_variance
+            x = x + int(i>0) * (0.5 * posterior_variance) * config['eta'] * noise  # MJ had as log var, exponentiated
+
+        # 4. apply conditions to the trajectory
+        x = reset_x0(x, conditions, action_dim)
+        x = to_torch(x)
+    return x, y
+
 def to_np(x_in):
 	if torch.is_tensor(x_in):
 		x_in = x_in.detach().cpu().numpy()
