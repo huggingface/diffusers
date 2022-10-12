@@ -101,11 +101,12 @@ class EulerAScheduler(SchedulerMixin, ConfigMixin):
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
             self.betas = np.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=np.float32) ** 2
-        elif beta_schedule == "squaredcos_cap_v2":
-            # Glide cosine schedule
-            self.betas = betas_for_alpha_bar(num_train_timesteps)
+        # elif beta_schedule == "squaredcos_cap_v2":
+        #     # Glide cosine schedule
+        #     self.betas = betas_for_alpha_bar(num_train_timesteps)
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+
 
         self.device = device
         self.alphas = 1.0 - torch.from_numpy(self.betas).to(self.device)
@@ -124,6 +125,10 @@ class EulerAScheduler(SchedulerMixin, ConfigMixin):
         self.DSsigmas = ((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5
         self.sigmas = self.get_sigmas(self.DSsigmas,self.num_inference_steps)
         self.tensor_format = tensor_format
+        
+        # standard deviation of the initial noise distribution
+        self.init_noise_sigma = self.sigmas[0]
+        
         self.set_format(tensor_format=tensor_format)
         
         
@@ -158,6 +163,25 @@ class EulerAScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = self.sigmas
         self.set_format(tensor_format=self.tensor_format)
 
+
+    def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
+        """
+        Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
+        current timestep.
+
+        Args:
+            sample (`torch.FloatTensor`): input sample
+            timestep (`int`, optional): current timestep
+
+        Returns:
+            `torch.FloatTensor`: scaled input sample
+        """
+        c_out, c_in, sigma_in = self.prepare_input(sample, timestep)
+
+        
+        noise_pred = latent_model_input + eps * c_out
+        sample * c_in, sigma_in
+        return sample *c_in
     def add_noise_to_input(
         self, sample: Union[torch.FloatTensor, np.ndarray], sigma: float, generator: Optional[torch.Generator] = None
     ) -> Tuple[Union[torch.FloatTensor, np.ndarray], float]:
@@ -325,10 +349,10 @@ class EulerAScheduler(SchedulerMixin, ConfigMixin):
         t = (1 - w) * low_idx + w * high_idx
         return t.view(sigma.shape)
     
-    def prepare_input(self,latent_in, t, batch_size):
+    def prepare_input(self,latent_in, t):
         sigma = t.reshape(1) #A# potential bug: doesn't work on samples > 1 
         
-        sigma_in = torch.cat([sigma] * 2 * batch_size)
+        sigma_in = torch.cat([sigma] * latent_in.shape[0])# latent_in.shape[0] => 2 * batch_size 
         # noise_pred = CFGDenoiserForward(self.unet, latent_model_input, sigma_in, text_embeddings , guidance_scale,DSsigmas=self.scheduler.DSsigmas)
         # noise_pred = DiscreteEpsDDPMDenoiserForward(self.unet,latent_model_input, sigma_in,DSsigmas=self.scheduler.DSsigmas, cond=cond_in)
         c_out, c_in = [self.append_dims(x, latent_in.ndim) for x in self.get_scalings(sigma_in)]
