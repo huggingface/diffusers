@@ -19,7 +19,7 @@ import torch
 
 from diffusers import AutoencoderKL
 from diffusers.modeling_utils import ModelMixin
-from diffusers.testing_utils import floats_tensor, torch_device
+from diffusers.utils import floats_tensor, torch_device
 
 from .test_modeling_common import ModelTesterMixin
 
