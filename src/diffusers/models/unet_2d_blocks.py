@@ -10,25 +10,14 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
+# limitations under the License.
 
 import numpy as np
-
-# limitations under the License.
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from .attention import AttentionBlock, SpatialTransformer
-from .resnet import (
-    Downsample1D,
-    Downsample2D,
-    FirDownsample2D,
-    FirUpsample2D,
-    ResidualTemporalBlock,
-    ResnetBlock2D,
-    Upsample1D,
-    Upsample2D,
-)
+from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, ResnetBlock2D, Upsample2D
 
 
 def get_down_block(
@@ -468,112 +457,6 @@ class AttnDownBlock2D(nn.Module):
             output_states += (hidden_states,)
 
         return hidden_states, output_states
-
-
-class DownResnetBlock1D(nn.Module):
-    def __init__(
-        self,
-        *,
-        in_channels,
-        out_channels=None,
-        conv_shortcut=False,
-        temb_channels=32,
-        groups=32,
-        groups_out=None,
-        non_linearity=None,
-        time_embedding_norm="default",
-        output_scale_factor=1.0,
-        add_downsample=True,
-    ):
-        super().__init__()
-        self.in_channels = in_channels
-        out_channels = in_channels if out_channels is None else out_channels
-        self.out_channels = out_channels
-        self.use_conv_shortcut = conv_shortcut
-        self.time_embedding_norm = time_embedding_norm
-        self.add_downsample = add_downsample
-        self.output_scale_factor = output_scale_factor
-
-        if groups_out is None:
-            groups_out = groups
-
-        self.resnet1 = ResidualTemporalBlock(in_channels, out_channels, embed_dim=temb_channels)
-        self.resnet2 = ResidualTemporalBlock(out_channels, out_channels, embed_dim=temb_channels)
-
-        if non_linearity == "swish":
-            self.nonlinearity = lambda x: F.silu(x)
-        elif non_linearity == "mish":
-            self.nonlinearity = nn.Mish()
-        elif non_linearity == "silu":
-            self.nonlinearity = nn.SiLU()
-
-        self.downsample = None
-        if add_downsample:
-            self.downsample = Downsample1D(out_channels, use_conv=True, padding=1)
-
-    def forward(self, hidden_states, temb=None):
-        output_states = ()
-
-        hidden_states = self.resnet1(hidden_states, temb)
-        hidden_states = self.resnet2(hidden_states, temb)
-        output_states += (hidden_states,)
-
-        if self.downsample is not None:
-            hidden_states = self.downsample(hidden_states)
-
-        return hidden_states, output_states
-
-
-class UpResnetBlock1D(nn.Module):
-    def __init__(
-        self,
-        *,
-        in_channels,
-        out_channels=None,
-        temb_channels=32,
-        groups=32,
-        groups_out=None,
-        non_linearity=None,
-        time_embedding_norm="default",
-        output_scale_factor=1.0,
-        add_upsample=True,
-    ):
-        super().__init__()
-        self.in_channels = in_channels
-        out_channels = in_channels if out_channels is None else out_channels
-        self.out_channels = out_channels
-        self.time_embedding_norm = time_embedding_norm
-        self.add_upsample = add_upsample
-        self.output_scale_factor = output_scale_factor
-
-        if groups_out is None:
-            groups_out = groups
-
-        self.resnet1 = ResidualTemporalBlock(in_channels, out_channels, embed_dim=temb_channels)
-        self.resnet2 = ResidualTemporalBlock(out_channels, out_channels, embed_dim=temb_channels)
-
-        if non_linearity == "swish":
-            self.nonlinearity = lambda x: F.silu(x)
-        elif non_linearity == "mish":
-            self.nonlinearity = nn.Mish()
-        elif non_linearity == "silu":
-            self.nonlinearity = nn.SiLU()
-
-        self.upsample = None
-        if add_upsample:
-            self.upsample = Upsample1D(out_channels, use_conv_transpose=True)
-
-    def forward(self, hidden_states, res_hidden_states=None, temb=None):
-        if res_hidden_states is not None:
-            hidden_states = torch.cat((hidden_states, res_hidden_states), dim=1)
-
-        hidden_states = self.resnet1(hidden_states, temb)
-        hidden_states = self.resnet2(hidden_states, temb)
-
-        if self.upsample is not None:
-            hidden_states = self.upsample(hidden_states)
-
-        return hidden_states
 
 
 class CrossAttnDownBlock2D(nn.Module):

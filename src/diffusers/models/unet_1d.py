@@ -1,4 +1,17 @@
-# model adapted from diffuser https://github.com/jannerm/diffuser/blob/main/diffuser/models/temporal.py
+# Copyright 2022 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from dataclasses import dataclass
 from typing import Tuple, Union
 
@@ -6,7 +19,7 @@ import torch
 import torch.nn as nn
 
 from diffusers.models.resnet import ResidualTemporalBlock
-from diffusers.models.unet_blocks import DownResnetBlock1D, UpResnetBlock1D
+from diffusers.models.unet_1d_blocks import DownResnetBlock1D, UpResnetBlock1D
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
@@ -120,8 +133,8 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         down_block_res_samples = []
 
         # 2. down
-        for downsample_block in self.down_blocks:
-            sample, res_samples = downsample_block(hidden_states=sample, temb=temb)
+        for down_block in self.down_blocks:
+            sample, res_samples = down_block(hidden_states=sample, temb=temb)
             down_block_res_samples.append(res_samples[0])
 
         # 3. mid
