@@ -83,6 +83,16 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             new_config["steps_offset"] = 1
             scheduler._internal_dict = FrozenDict(new_config)
 
+        if safety_checker is None:
+            logger.warn(
+                f"You have disabed the safety checker for {self.__class__} by passing `safety_checker=None`.Please"
+                " make sure you have very good reasons for this and have considered the consequences of doing so.The"
+                " `diffusers` team does not recommend disabling the safety under ANY circumstances and strongly"
+                " suggests to not disable the `safety_checker` by NOT passing `safety_checker=None` to"
+                " `from_pretrained`.For more information, please have a look at"
+                " https://github.com/huggingface/diffusers/pull/254"
+            )
+
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -358,10 +368,15 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
 
-        safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
-        image, has_nsfw_concept = self.safety_checker(
-            images=image, clip_input=safety_checker_input.pixel_values.to(text_embeddings.dtype)
-        )
+        if self.safety_checker is not None:
+            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(
+                self.device
+            )
+            image, has_nsfw_concept = self.safety_checker(
+                images=image, clip_input=safety_checker_input.pixel_values.to(text_embeddings.dtype)
+            )
+        else:
+            has_nsfw_concept = None
 
         if output_type == "pil":
             image = self.numpy_to_pil(image)
