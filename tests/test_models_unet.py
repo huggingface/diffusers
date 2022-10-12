@@ -15,6 +15,7 @@
 
 import gc
 import math
+import pdb
 import tracemalloc
 import unittest
 
@@ -459,18 +460,18 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
         num_features = 14
         seq_len = 16
 
-        noise = floats_tensor((batch_size, seq_len, num_features)).to(torch_device)
+        noise = floats_tensor((batch_size, num_features, seq_len)).to(torch_device)
         time_step = torch.tensor([10] * batch_size).to(torch_device)
 
         return {"sample": noise, "timestep": time_step}
 
     @property
     def input_shape(self):
-        return (4, 16, 14)
+        return (4, 14, 16)
 
     @property
     def output_shape(self):
-        return (4, 16, 14)
+        return (4, 14, 16)
 
     def test_ema_training(self):
         pass
@@ -480,9 +481,9 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "dim": 32,
-            "dim_mults": [1, 4, 8],
-            "transition_dim": 14,
+            "block_out_channels": (32, 128, 256),
+            "in_channels": 14,
+            "out_channels": 14,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
@@ -501,25 +502,22 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
 
     def test_output_pretrained(self):
         model = UNet1DModel.from_pretrained("fusing/ddpm-unet-rl-hopper-hor128")
-        model.eval()
-
         torch.manual_seed(0)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(0)
 
-        num_features = model.transition_dim
+        num_features = model.in_channels
         seq_len = 16
-        noise = torch.randn((1, seq_len, num_features))
+        noise = torch.randn((1, seq_len, num_features)).permute(0, 2, 1) # match original, we can update values and remove
         time_step = torch.full((num_features,), 0)
 
         with torch.no_grad():
-            output = model(noise, time_step).sample
+            output = model(noise, time_step).sample.permute(0, 2, 1)
 
         output_slice = output[0, -3:, -3:].flatten()
         # fmt: off
         expected_output_slice = torch.tensor([-0.2714, 0.1042, -0.0794, -0.2820, 0.0803, -0.0811, -0.2345, 0.0580, -0.0584])
         # fmt: on
-
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))
 
     def test_forward_with_norm_groups(self):

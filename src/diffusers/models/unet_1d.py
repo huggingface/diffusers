@@ -145,7 +145,6 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             [`~models.unet_2d.UNet2DOutput`] or `tuple`: [`~models.unet_2d.UNet2DOutput`] if `return_dict` is True,
             otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
         """
-        sample = sample.permute(0, 2, 1)
 
         # 1. time
         timesteps = timestep
@@ -179,7 +178,6 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         sample = self.final_conv1d_act(sample)
         sample = self.final_conv1d_2(sample)
 
-        sample = sample.permute(0, 2, 1)
 
         if not return_dict:
             return (sample,)
