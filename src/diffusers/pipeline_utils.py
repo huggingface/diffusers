@@ -29,7 +29,6 @@ from huggingface_hub import snapshot_download
 from PIL import Image
 from tqdm.auto import tqdm
 
-from . import __version__
 from .configuration_utils import ConfigMixin
 from .dynamic_modules_utils import get_class_from_dynamic_module
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
@@ -374,10 +373,6 @@ class DiffusionPipeline(ConfigMixin):
             if custom_pipeline is not None:
                 allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
 
-            user_agent = {"diffusers": __version__, "pipeline_class": config_dict["_class_name"]}
-            if custom_pipeline is not None:
-                user_agent["custom_pipeline"] = custom_pipeline
-
             # download all allow_patterns
             cached_folder = snapshot_download(
                 pretrained_model_name_or_path,
@@ -388,7 +383,6 @@ class DiffusionPipeline(ConfigMixin):
                 use_auth_token=use_auth_token,
                 revision=revision,
                 allow_patterns=allow_patterns,
-                user_agent=user_agent,
             )
         else:
             cached_folder = pretrained_model_name_or_path
