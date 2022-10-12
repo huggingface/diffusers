@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Union
+from typing import List, Optional, Union
 
 import numpy as np
 
@@ -20,11 +20,11 @@ class StableDiffusionPipelineOutput(BaseOutput):
             num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
         nsfw_content_detected (`List[bool]`)
             List of flags denoting whether the corresponding generated image likely represents "not-safe-for-work"
-            (nsfw) content.
+            (nsfw) content. If safety checker is disabled `None` will be returned.
     """
 
     images: Union[List[PIL.Image.Image], np.ndarray]
-    nsfw_content_detected: List[bool]
+    nsfw_content_detected: Optional[List[bool]]
 
 
 if is_transformers_available() and is_torch_available():
