@@ -133,8 +133,9 @@ class DiffusionPipeline(ConfigMixin):
 
                 register_dict = {name: (library, class_name)}
 
-                # save model index config
-                self.register_to_config(**register_dict)
+
+            # save model index config
+            self.register_to_config(**register_dict)
 
             # set models
             setattr(self, name, module)
