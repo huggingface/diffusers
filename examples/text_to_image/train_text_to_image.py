@@ -239,7 +239,6 @@ class EMAModel:
     """
 
     def __init__(self, parameters: Iterable[torch.nn.Parameter], decay=0.9999):
-
         parameters = list(parameters)
         self.shadow_params = [p.clone().detach() for p in parameters]
 
