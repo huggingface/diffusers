@@ -374,7 +374,8 @@ class DiffusionPipeline(ConfigMixin):
             if custom_pipeline is not None:
                 allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
 
-            user_agent = {"diffusers": __version__, "pipeline_class": config_dict["_class_name"]}
+            requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
+            user_agent = {"diffusers": __version__, "pipeline_class": requested_pipeline_class}
             if custom_pipeline is not None:
                 user_agent["custom_pipeline"] = custom_pipeline
 
