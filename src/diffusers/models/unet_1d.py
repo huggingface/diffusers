@@ -65,6 +65,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         block_out_channels: Tuple[int] = (32, 128, 256),
         act_fn: str = "mish",
         norm_num_groups: int = 8,
+        layers_per_block: int = 1,
     ):
         super().__init__()
 
@@ -90,6 +91,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             down_block_type = down_block_types[i]
             down_block = get_down_block(
                 down_block_type,
+                num_layers=layers_per_block,
                 in_channels=input_channel,
                 out_channels=output_channel,
                 temb_channels=block_out_channels[0],
@@ -111,6 +113,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
 
             up_block = get_up_block(
                 up_block_type,
+                num_layers=layers_per_block,
                 in_channels=input_channel,
                 out_channels=output_channel,
                 temb_channels=block_out_channels[0],

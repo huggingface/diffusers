@@ -25,6 +25,7 @@ class DownResnetBlock1D(nn.Module):
         self,
         in_channels,
         out_channels=None,
+        num_layers=1,
         conv_shortcut=False,
         temb_channels=32,
         groups=32,
@@ -46,8 +47,13 @@ class DownResnetBlock1D(nn.Module):
         if groups_out is None:
             groups_out = groups
 
-        self.resnet1 = ResidualTemporalBlock1D(in_channels, out_channels, embed_dim=temb_channels)
-        self.resnet2 = ResidualTemporalBlock1D(out_channels, out_channels, embed_dim=temb_channels)
+        # there will always be at least one resenet
+        resnets = [ResidualTemporalBlock1D(in_channels, out_channels, embed_dim=temb_channels)]
+
+        for _ in range(num_layers):
+            resnets.append(ResidualTemporalBlock1D(out_channels, out_channels, embed_dim=temb_channels))
+
+        self.resnets = nn.ModuleList(resnets)
 
         if non_linearity == "swish":
             self.nonlinearity = lambda x: F.silu(x)
@@ -65,8 +71,10 @@ class DownResnetBlock1D(nn.Module):
     def forward(self, hidden_states, temb=None):
         output_states = ()
 
-        hidden_states = self.resnet1(hidden_states, temb)
-        hidden_states = self.resnet2(hidden_states, temb)
+        hidden_states = self.resnets[0](hidden_states, temb)
+        for resnet in self.resnets[1:]:
+            hidden_states = resnet(hidden_states, temb)
+
         output_states += (hidden_states,)
 
         if self.nonlinearity is not None:
@@ -83,6 +91,7 @@ class UpResnetBlock1D(nn.Module):
         self,
         in_channels,
         out_channels=None,
+        num_layers=1,
         temb_channels=32,
         groups=32,
         groups_out=None,
@@ -102,8 +111,13 @@ class UpResnetBlock1D(nn.Module):
         if groups_out is None:
             groups_out = groups
 
-        self.resnet1 = ResidualTemporalBlock1D(2 * in_channels, out_channels, embed_dim=temb_channels)
-        self.resnet2 = ResidualTemporalBlock1D(out_channels, out_channels, embed_dim=temb_channels)
+        # there will always be at least one resenet
+        resnets = [ResidualTemporalBlock1D(2 * in_channels, out_channels, embed_dim=temb_channels)]
+
+        for _ in range(num_layers):
+            resnets.append(ResidualTemporalBlock1D(out_channels, out_channels, embed_dim=temb_channels))
+
+        self.resnets = nn.ModuleList(resnets)
 
         if non_linearity == "swish":
             self.nonlinearity = lambda x: F.silu(x)
@@ -122,8 +136,9 @@ class UpResnetBlock1D(nn.Module):
         if res_hidden_states is not None:
             hidden_states = torch.cat((hidden_states, res_hidden_states), dim=1)
 
-        hidden_states = self.resnet1(hidden_states, temb)
-        hidden_states = self.resnet2(hidden_states, temb)
+        hidden_states = self.resnets[0](hidden_states, temb)
+        for resnet in self.resnets[1:]:
+            hidden_states = resnet(hidden_states, temb)
 
         if self.nonlinearity is not None:
             hidden_states = self.nonlinearity(hidden_states)
@@ -158,10 +173,11 @@ class UpBlock1DNoSkip(nn.Module):
     pass
 
 
-def get_down_block(down_block_type, in_channels, out_channels, temb_channels, add_downsample):
+def get_down_block(down_block_type, num_layers, in_channels, out_channels, temb_channels, add_downsample):
     if down_block_type == "DownResnetBlock1D":
         return DownResnetBlock1D(
             in_channels=in_channels,
+            num_layers=num_layers,
             out_channels=out_channels,
             temb_channels=temb_channels,
             add_downsample=add_downsample,
@@ -170,10 +186,14 @@ def get_down_block(down_block_type, in_channels, out_channels, temb_channels, ad
     raise ValueError(f"{down_block_type} does not exist.")
 
 
-def get_up_block(up_block_type, in_channels, out_channels, temb_channels, add_upsample):
+def get_up_block(up_block_type, num_layers, in_channels, out_channels, temb_channels, add_upsample):
     if up_block_type == "UpResnetBlock1D":
         return UpResnetBlock1D(
-            in_channels=in_channels, out_channels=out_channels, temb_channels=temb_channels, add_upsample=add_upsample
+            in_channels=in_channels,
+            num_layers=num_layers,
+            out_channels=out_channels,
+            temb_channels=temb_channels,
+            add_upsample=add_upsample,
         )
 
     raise ValueError(f"{up_block_type} does not exist.")
