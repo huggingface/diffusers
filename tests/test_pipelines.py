@@ -492,7 +492,8 @@ class PipelineFastTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_stable_diffusion_k_lms_from_pretrained(self):
+    def test_from_pretrained_error_message_uninstalled_packages(self):
+        # TODO(Patrick, Pedro) - need better test here for the future
         pipe = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-lms-pipe")
         assert isinstance(pipe, StableDiffusionPipeline)
         assert isinstance(pipe.scheduler, LMSDiscreteScheduler)
