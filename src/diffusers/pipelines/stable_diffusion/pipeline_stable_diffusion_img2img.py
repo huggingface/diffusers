@@ -195,6 +195,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         """
         if isinstance(prompt, str):
             batch_size = 1
+            prompt = [prompt]
         elif isinstance(prompt, list):
             batch_size = len(prompt)
         else:
@@ -284,8 +285,23 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         init_latents = init_latent_dist.sample(generator=generator)
         init_latents = 0.18215 * init_latents
 
-        # expand init_latents for batch_size
-        init_latents = torch.cat([init_latents] * batch_size * num_images_per_prompt, dim=0)
+        if len(prompt) > init_latents.shape[0] and len(prompt) % init_latents.shape[0] == 0:
+            # expand init_latents for batch_size
+            deprecation_message = (
+                f"You have passed {len(prompt)} text prompts (`prompt`), but only {init_latents.shape[0]} initial"
+                " images (`init_image`). Initial images are now duplicating to match the number of text prompts. Note"
+                " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
+                " your script to pass as many init images as text prompts to suppress this warning."
+            )
+            deprecate("len(prompt) != len(init_image)", "1.0.0", deprecation_message, standard_warn=False)
+            additional_image_per_prompt = len(prompt) // init_latents.shape[0]
+            init_latents = torch.cat([init_latents] * additional_image_per_prompt * num_images_per_prompt, dim=0)
+        elif len(prompt) > init_latents.shape[0] and len(prompt) % init_latents.shape[0] != 0:
+            raise ValueError(
+                f"Cannot duplicate `init_image` of batch size {init_latents.shape[0]} to {len(prompt)} text prompts."
+            )
+        else:
+            init_latents = torch.cat([init_latents] * num_images_per_prompt, dim=0)
 
         # get the original timestep using init_timestep
         offset = self.scheduler.config.get("steps_offset", 0)
