@@ -492,6 +492,12 @@ class PipelineFastTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_from_pretrained_error_message_uninstalled_packages(self):
+        # TODO(Patrick, Pedro) - need better test here for the future
+        pipe = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-lms-pipe")
+        assert isinstance(pipe, StableDiffusionPipeline)
+        assert isinstance(pipe.scheduler, LMSDiscreteScheduler)
+
     def test_stable_diffusion_k_lms(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
@@ -697,6 +703,48 @@ class PipelineFastTests(unittest.TestCase):
         expected_slice = np.array([0.4492, 0.3865, 0.4222, 0.5854, 0.5139, 0.4379, 0.4193, 0.48, 0.4218])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_stable_diffusion_img2img_multiple_init_images(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        unet = self.dummy_cond_unet
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        init_image = self.dummy_image.to(device).repeat(2, 1, 1, 1)
+
+        # make sure here that pndm scheduler skips prk
+        sd_pipe = StableDiffusionImg2ImgPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=self.dummy_safety_checker,
+            feature_extractor=self.dummy_extractor,
+        )
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = 2 * ["A painting of a squirrel eating a burger"]
+        generator = torch.Generator(device=device).manual_seed(0)
+        output = sd_pipe(
+            prompt,
+            generator=generator,
+            guidance_scale=6.0,
+            num_inference_steps=2,
+            output_type="np",
+            init_image=init_image,
+        )
+
+        image = output.images
+
+        image_slice = image[-1, -3:, -3:, -1]
+
+        assert image.shape == (2, 32, 32, 3)
+        expected_slice = np.array([0.5144, 0.4447, 0.4735, 0.6676, 0.5526, 0.5454, 0.645, 0.5149, 0.4689])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_img2img_k_lms(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
