@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from dataclasses import dataclass
 from typing import Tuple, Union
 
@@ -19,7 +18,7 @@ import torch
 import torch.nn as nn
 
 from diffusers.models.resnet import ResidualTemporalBlock
-from diffusers.models.unet_1d_blocks import DownResnetBlock1D, UpResnetBlock1D
+from diffusers.models.unet_1d_blocks import get_down_block, get_up_block
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
@@ -55,52 +54,67 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         transition_dim=14,
         dim=32,
         dim_mults=(1, 4, 8),
+        in_channels: int = 14,
+        out_channels: int = 14,
+        down_block_types: Tuple[str] = ["DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"],
+        up_block_types: Tuple[str] = ["UpResnetBlock1D", "UpResnetBlock1D"],
+        block_out_channels: Tuple[int] = [32, 128, 256],
     ):
         super().__init__()
 
-        self.transition_dim = transition_dim
+        self.transition_dim = in_channels
 
         # time
         self.time_proj = Timesteps(num_channels=dim, flip_sin_to_cos=False, downscale_freq_shift=1)
         self.time_mlp = TimestepEmbedding(channel=dim, time_embed_dim=4 * dim, act_fn="mish", out_dim=dim)
 
-        dims = [transition_dim, *map(lambda m: dim * m, dim_mults)]
-        in_out = list(zip(dims[:-1], dims[1:]))
-
         self.down_blocks = nn.ModuleList([])
         self.up_blocks = nn.ModuleList([])
-        num_resolutions = len(in_out)
+        mid_dim = block_out_channels[-1]
 
         # down
-        for ind, (dim_in, dim_out) in enumerate(in_out):
-            is_last = ind >= (num_resolutions - 1)
+        output_channel = in_channels
+        for i, down_block_type in enumerate(down_block_types):
+            input_channel = output_channel
+            output_channel = block_out_channels[i]
+            is_final_block = i == len(block_out_channels) - 1
 
-            self.down_blocks.append(
-                DownResnetBlock1D(
-                    in_channels=dim_in, out_channels=dim_out, temb_channels=dim, add_downsample=(not is_last)
-                )
+            down_block_type = down_block_types[i]
+            down_block = get_down_block(
+                down_block_type,
+                in_channels=input_channel,
+                out_channels=output_channel,
+                temb_channels=dim,
+                add_downsample=not is_final_block,
             )
+            self.down_blocks.append(down_block)
 
         # mid
-        mid_dim = dims[-1]
         self.mid_block1 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=dim)
         self.mid_block2 = ResidualTemporalBlock(mid_dim, mid_dim, embed_dim=dim)
 
         # up
-        for ind, (dim_in, dim_out) in enumerate(reversed(in_out[1:])):
-            is_last = ind >= (num_resolutions - 1)
+        reversed_block_out_channels = list(reversed(block_out_channels))
+        for i, up_block_type in enumerate(up_block_types):
+            input_channel = reversed_block_out_channels[i]
+            output_channel = reversed_block_out_channels[min(i + 1, len(block_out_channels) - 1)]
 
-            self.up_blocks.append(
-                UpResnetBlock1D(
-                    in_channels=dim_out * 2, out_channels=dim_in, temb_channels=dim, add_upsample=(not is_last)
-                )
+            is_final_block = i == len(block_out_channels) - 1
+
+            up_block = get_up_block(
+                up_block_type,
+                in_channels=input_channel * 2,
+                out_channels=output_channel,
+                temb_channels=dim,
+                add_upsample=not is_final_block,
             )
+            self.up_blocks.append(up_block)
 
         # out
         self.final_conv1d_1 = nn.Conv1d(dim, dim, 5, padding=2)
         self.final_conv1d_gn = nn.GroupNorm(8, dim)
         self.final_conv1d_act = nn.Mish()
-        self.final_conv1d_2 = nn.Conv1d(dim, transition_dim, 1)
+        self.final_conv1d_2 = nn.Conv1d(dim, out_channels, 1)
 
     def forward(
         self,

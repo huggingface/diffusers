@@ -23,7 +23,6 @@ from .resnet import Downsample1D, ResidualTemporalBlock, Upsample1D
 class DownResnetBlock1D(nn.Module):
     def __init__(
         self,
-        *,
         in_channels,
         out_channels=None,
         conv_shortcut=False,
@@ -77,7 +76,6 @@ class DownResnetBlock1D(nn.Module):
 class UpResnetBlock1D(nn.Module):
     def __init__(
         self,
-        *,
         in_channels,
         out_channels=None,
         temb_channels=32,
@@ -124,3 +122,48 @@ class UpResnetBlock1D(nn.Module):
             hidden_states = self.upsample(hidden_states)
 
         return hidden_states
+
+
+class DownBlock1D(nn.Module):
+    pass
+
+
+class AttnDownBlock1D(nn.Module):
+    pass
+
+
+class DownBlock1DNoSkip(nn.Module):
+    pass
+
+
+class UpBlock1D(nn.Module):
+    pass
+
+
+class AttnUpBlock1D(nn.Module):
+    pass
+
+
+class UpBlock1DNoSkip(nn.Module):
+    pass
+
+
+def get_down_block(down_block_type, in_channels, out_channels, temb_channels, add_downsample):
+    if down_block_type == "DownResnetBlock1D":
+        return DownResnetBlock1D(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            temb_channels=temb_channels,
+            add_downsample=add_downsample,
+        )
+
+    raise ValueError(f"{down_block_type} does not exist.")
+
+
+def get_up_block(up_block_type, in_channels, out_channels, temb_channels, add_upsample):
+    if up_block_type == "UpResnetBlock1D":
+        return UpResnetBlock1D(
+            in_channels=in_channels, out_channels=out_channels, temb_channels=temb_channels, add_upsample=add_upsample
+        )
+
+    raise ValueError(f"{up_block_type} does not exist.")
