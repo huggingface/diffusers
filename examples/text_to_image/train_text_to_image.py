@@ -568,7 +568,7 @@ def main():
 
                 # Predict the noise residual and compute loss
                 noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
-                loss = F.mse_loss(noise_pred, noise, reduction="mean")
+                loss = F.mse_loss(noise_pred.float(), noise.float(), reduction="mean")
 
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
