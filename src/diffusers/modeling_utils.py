@@ -302,7 +302,6 @@ class ModelMixin(torch.nn.Module):
             "diffusers": __version__,
             "file_type": "model",
             "framework": "pytorch",
-            "from_auto_class": from_auto_class,
         }
 
         # Load config if we don't provide a configuration
