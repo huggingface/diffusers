@@ -206,7 +206,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
             cur_sample=jnp.zeros(shape),
             ets=jnp.zeros((4,) + shape),
         )
-    
+
     def scale_model_input(
         self, state: PNDMSchedulerState, sample: jnp.ndarray, timestep: Optional[int] = None
     ) -> jnp.ndarray:
@@ -215,11 +215,12 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         current timestep.
 
         Args:
-            sample (`torch.FloatTensor`): input sample
+            state (`PNDMSchedulerState`): the `FlaxPNDMScheduler` state data class instance.
+            sample (`jnp.ndarray`): input sample
             timestep (`int`, optional): current timestep
 
         Returns:
-            `torch.FloatTensor`: scaled input sample
+            `jnp.ndarray`: scaled input sample
         """
         return sample
 
