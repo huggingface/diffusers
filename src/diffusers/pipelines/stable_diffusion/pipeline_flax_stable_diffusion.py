@@ -254,15 +254,10 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             element is a list of `bool`s denoting whether the corresponding generated image likely represents
             "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
-        # Delegate to `self.generate` por parallel generation then run safety checker as an additional step
-
-        # TODO: send latents and rest of args if necessary
-        # images = p_generate(prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug)
-
         if jit:
-            images = _p_generate(self, prompt_ids, params, prng_seed, num_inference_steps)
+            images = _p_generate(self, prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug)
         else:
-            images = self._generate(prompt_ids, params, prng_seed, num_inference_steps)
+            images = self._generate(prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug)
 
         safety_params = params["safety_checker"]
         images = (images * 255).round().astype("uint8")
@@ -275,9 +270,10 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         return FlaxStableDiffusionPipelineOutput(images=images, nsfw_content_detected=has_nsfw_concept)
 
 
-@partial(jax.pmap, static_broadcasted_argnums=(0, 4))
-def _p_generate(pipe, prompt_ids, params, prng_seed, num_inference_steps):
-    return pipe._generate(prompt_ids, params, prng_seed, num_inference_steps)
+# TODO: maybe use a config dict instead of so many static argnums
+@partial(jax.pmap, static_broadcasted_argnums=(0, 4, 5, 6, 7, 9))
+def _p_generate(pipe, prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug):
+    return pipe._generate(prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug)
 
 @partial(jax.pmap, static_broadcasted_argnums=(0,))
 def _p_get_safety_scores(pipe, features, params):
