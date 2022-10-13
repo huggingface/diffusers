@@ -58,8 +58,6 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         dtype: jnp.dtype = jnp.float32,
     ):
         super().__init__()
-        # TODO: review and adapt to new scheduler API
-        # scheduler = scheduler.set_format("np")
         self.dtype = dtype
 
         self.register_modules(

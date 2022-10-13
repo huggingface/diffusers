@@ -29,6 +29,7 @@ from huggingface_hub import snapshot_download
 from PIL import Image
 from tqdm.auto import tqdm
 
+from . import __version__
 from .configuration_utils import ConfigMixin
 from .dynamic_modules_utils import get_class_from_dynamic_module
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
@@ -49,6 +50,7 @@ if is_transformers_available():
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
 CUSTOM_PIPELINE_FILE_NAME = "pipeline.py"
+DUMMY_MODULES_FOLDER = "diffusers.utils"
 
 
 logger = logging.get_logger(__name__)
@@ -372,6 +374,11 @@ class DiffusionPipeline(ConfigMixin):
             if custom_pipeline is not None:
                 allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
 
+            requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
+            user_agent = {"diffusers": __version__, "pipeline_class": requested_pipeline_class}
+            if custom_pipeline is not None:
+                user_agent["custom_pipeline"] = custom_pipeline
+
             # download all allow_patterns
             cached_folder = snapshot_download(
                 pretrained_model_name_or_path,
@@ -382,6 +389,7 @@ class DiffusionPipeline(ConfigMixin):
                 use_auth_token=use_auth_token,
                 revision=revision,
                 allow_patterns=allow_patterns,
+                user_agent=user_agent,
             )
         else:
             cached_folder = pretrained_model_name_or_path
@@ -467,9 +475,20 @@ class DiffusionPipeline(ConfigMixin):
                     if issubclass(class_obj, class_candidate):
                         load_method_name = importable_classes[class_name][1]
 
-                load_method = getattr(class_obj, load_method_name)
+                if load_method_name is None:
+                    none_module = class_obj.__module__
+                    if none_module.startswith(DUMMY_MODULES_FOLDER) and "dummy" in none_module:
+                        # call class_obj for nice error message of missing requirements
+                        class_obj()
 
+                    raise ValueError(
+                        f"The component {class_obj} of {pipeline_class} cannot be loaded as it does not seem to have"
+                        f" any of the loading methods defined in {ALL_IMPORTABLE_CLASSES}."
+                    )
+
+                load_method = getattr(class_obj, load_method_name)
                 loading_kwargs = {}
+
                 if issubclass(class_obj, torch.nn.Module):
                     loading_kwargs["torch_dtype"] = torch_dtype
                 if issubclass(class_obj, diffusers.OnnxRuntimeModel):
