@@ -20,7 +20,7 @@ class StableDiffusionPipelineOutput(BaseOutput):
             num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
         nsfw_content_detected (`List[bool]`)
             List of flags denoting whether the corresponding generated image likely represents "not-safe-for-work"
-            (nsfw) content. If safety checker is disabled `None` will be returned.
+            (nsfw) content, or `None` if safety checking could not be performed.
     """
 
     images: Union[List[PIL.Image.Image], np.ndarray]
