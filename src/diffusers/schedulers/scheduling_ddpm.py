@@ -142,6 +142,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
+        self.sigmas = 1 - self.alphas ** 2
         self.one = torch.tensor(1.0)
 
         # standard deviation of the initial noise distribution
@@ -268,8 +269,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         elif prediction_type == "v":
             # v_t = alpha_t * epsilon - sigma_t * x
             # need to merge the PRs for sigma to be available in DDPM
-            # pred_original_sample = sample*self.alphas[t] - model_output * self.sigmas[t]
-            # eps = model_output*self.alphas[t] - sample * self.sigmas[t]
+            pred_original_sample = sample*self.alphas[t] - model_output * self.sigmas[t]
+            eps = model_output*self.alphas[t] - sample * self.sigmas[t]
             raise NotImplementedError(f"v prediction not yet implemented for DDPM")
         else:
             raise ValueError(f"prediction_type given as {prediction_type} must be one of `epsilon`, `sample`, or `v`")
