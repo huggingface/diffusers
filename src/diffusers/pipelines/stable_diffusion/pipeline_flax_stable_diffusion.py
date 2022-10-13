@@ -243,9 +243,8 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             jit (`bool`, defaults to `False`):
-                Whether to run `pmap` versions of the generation and safety scoring functions.
-                NOTE: This argument exists because `__call__` is not yet end-to-end pmap-able.
-                It will be removed in a future release.
+                Whether to run `pmap` versions of the generation and safety scoring functions. NOTE: This argument
+                exists because `__call__` is not yet end-to-end pmap-able. It will be removed in a future release.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.FlaxStableDiffusionPipelineOutput`] instead of
                 a plain tuple.
