@@ -62,11 +62,6 @@ for library in LOADABLE_CLASSES:
     ALL_IMPORTABLE_CLASSES.update(LOADABLE_CLASSES[library])
 
 
-class DummyChecker:
-    def __init__(self):
-        self.dummy = True
-
-
 def import_flax_or_no_model(module, class_name):
     try:
         # 1. First make sure that if a Flax object is present, import this one
@@ -177,10 +172,6 @@ class FlaxDiffusionPipeline(ConfigMixin):
                 if save_method_name is not None:
                     break
 
-            # TODO(Patrick, Suraj): to delete after
-            if isinstance(sub_model, DummyChecker):
-                continue
-
             save_method = getattr(sub_model, save_method_name)
             expects_params = "params" in set(inspect.signature(save_method).parameters.keys())
 
@@ -194,7 +185,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
         r"""
-        Instantiate a PyTorch diffusion pipeline from pre-trained pipeline weights.
+        Instantiate a Flax diffusion pipeline from pre-trained pipeline weights.
 
         The pipeline is set in evaluation mode by default using `model.eval()` (Dropout modules are deactivated).
 
@@ -349,11 +340,6 @@ class FlaxDiffusionPipeline(ConfigMixin):
 
         # 3. Load each module in the pipeline
         for name, (library_name, class_name) in init_dict.items():
-            # TODO(Patrick, Suraj) - delete later
-            if class_name == "DummyChecker":
-                library_name = "stable_diffusion"
-                class_name = "FlaxStableDiffusionSafetyChecker"
-
             is_pipeline_module = hasattr(pipelines, library_name)
             loaded_sub_model = None
 
@@ -422,11 +408,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
                     loaded_sub_model, loaded_params = load_method(loadable_folder, from_pt=from_pt, dtype=dtype)
                     params[name] = loaded_params
                 elif is_transformers_available() and issubclass(class_obj, FlaxPreTrainedModel):
-                    # make sure we don't initialize the weights to save time
-                    if name == "safety_checker":
-                        loaded_sub_model = DummyChecker()
-                        loaded_params = {}
-                    elif from_pt:
+                    if from_pt:
                         # TODO(Suraj): Fix this in Transformers. We should be able to use `_do_init=False` here
                         loaded_sub_model = load_method(loadable_folder, from_pt=from_pt)
                         loaded_params = loaded_sub_model.params
