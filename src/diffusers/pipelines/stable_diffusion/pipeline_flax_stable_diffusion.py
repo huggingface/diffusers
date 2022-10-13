@@ -282,8 +282,11 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         if self.safety_checker is not None:
             safety_params = params["safety_checker"]
             images = (images * 255).round().astype("uint8")
-            images = np.asarray(images).reshape(-1, height, width, 3)
+            num_devices, batch_size = images.shape[:2]
+
+            images = np.asarray(images).reshape(num_devices * batch_size, height, width, 3)
             images, has_nsfw_concept = self._run_safety_checker(images, safety_params, jit)
+            images = np.asarray(images).reshape(num_devices, batch_size, height, width, 3)
         else:
             has_nsfw_concept = False
 
