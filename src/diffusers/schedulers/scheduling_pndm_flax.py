@@ -199,7 +199,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
             )
 
         return state.replace(
-            timesteps=jnp.concatenate([state.prk_timesteps, state.plms_timesteps]).astype(jnp.int64),
+            timesteps=jnp.concatenate([state.prk_timesteps, state.plms_timesteps]).astype(jnp.int32),
             counter=0,
             # Reserve space for the state variables
             cur_model_output=jnp.zeros(shape),
