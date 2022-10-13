@@ -113,23 +113,26 @@ class DiffusionPipeline(ConfigMixin):
 
         for name, module in kwargs.items():
             # retrieve library
-            library = module.__module__.split(".")[0]
+            if module is None:
+                register_dict = {name: (None, None)}
+            else:
+                library = module.__module__.split(".")[0]
 
-            # check if the module is a pipeline module
-            pipeline_dir = module.__module__.split(".")[-2]
-            path = module.__module__.split(".")
-            is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
+                # check if the module is a pipeline module
+                pipeline_dir = module.__module__.split(".")[-2]
+                path = module.__module__.split(".")
+                is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
 
-            # if library is not in LOADABLE_CLASSES, then it is a custom module.
-            # Or if it's a pipeline module, then the module is inside the pipeline
-            # folder so we set the library to module name.
-            if library not in LOADABLE_CLASSES or is_pipeline_module:
-                library = pipeline_dir
+                # if library is not in LOADABLE_CLASSES, then it is a custom module.
+                # Or if it's a pipeline module, then the module is inside the pipeline
+                # folder so we set the library to module name.
+                if library not in LOADABLE_CLASSES or is_pipeline_module:
+                    library = pipeline_dir
 
-            # retrieve class_name
-            class_name = module.__class__.__name__
+                # retrieve class_name
+                class_name = module.__class__.__name__
 
-            register_dict = {name: (library, class_name)}
+                register_dict = {name: (library, class_name)}
 
             # save model index config
             self.register_to_config(**register_dict)
@@ -429,6 +432,7 @@ class DiffusionPipeline(ConfigMixin):
 
             is_pipeline_module = hasattr(pipelines, library_name)
             loaded_sub_model = None
+            sub_model_should_be_defined = True
 
             # if the model is in a pipeline module, then we load it from the pipeline
             if name in passed_class_obj:
@@ -449,6 +453,12 @@ class DiffusionPipeline(ConfigMixin):
                             f"{passed_class_obj[name]} is of type: {type(passed_class_obj[name])}, but should be"
                             f" {expected_class_obj}"
                         )
+                elif passed_class_obj[name] is None:
+                    logger.warn(
+                        f"You have passed `None` for {name} to disable its functionality in {pipeline_class}. Note"
+                        f" that this might lead to problems when using {pipeline_class} and is not recommended."
+                    )
+                    sub_model_should_be_defined = False
                 else:
                     logger.warn(
                         f"You have passed a non-standard module {passed_class_obj[name]}. We cannot verify whether it"
@@ -469,7 +479,7 @@ class DiffusionPipeline(ConfigMixin):
                 importable_classes = LOADABLE_CLASSES[library_name]
                 class_candidates = {c: getattr(library, c) for c in importable_classes.keys()}
 
-            if loaded_sub_model is None:
+            if loaded_sub_model is None and sub_model_should_be_defined:
                 load_method_name = None
                 for class_name, class_candidate in class_candidates.items():
                     if issubclass(class_obj, class_candidate):
