@@ -20,7 +20,6 @@ from typing import Union
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import deprecate
 from .scheduling_utils import SchedulerMixin
 
 
