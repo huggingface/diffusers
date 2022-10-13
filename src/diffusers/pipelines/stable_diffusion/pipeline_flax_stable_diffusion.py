@@ -88,20 +88,25 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         special_cos_dist, cos_dist = self.safety_checker(features, params)
         return (special_cos_dist, cos_dist)
 
-    def _run_safety_checker(self, images, safety_model_params):
-        # safety_model_params should already be replicated
+    def _run_safety_checker(self, images, safety_model_params, jit=False):
+        # safety_model_params should already be replicated when jit is True
         pil_images = [Image.fromarray(image) for image in images]
-        jnp_images = jnp.array(images)
-        jnp_images = shard(jnp_images)
         features = self.feature_extractor(pil_images, return_tensors="np").pixel_values
-        features = shard(features)
 
-        special_cos_dist, cos_dist = _p_get_safety_scores(self, features, safety_model_params)
+        if jit:
+            features = shard(features)
+            special_cos_dist, cos_dist = _p_get_safety_scores(self, features, safety_model_params)
+            special_cos_dist = unshard(special_cos_dist)
+            cos_dist = unshard(cos_dist)
+            safety_model_params = unreplicate(safety_model_params)
+        else:
+            special_cos_dist, cos_dist = self._get_safety_scores(features, safety_model_params)
+
         images, has_nsfw = self.safety_checker.filtered_with_scores(
-            unshard(special_cos_dist),
-            unshard(cos_dist),
+            special_cos_dist,
+            cos_dist,
             images,
-            params = unreplicate(safety_model_params),
+            safety_model_params,
         )
         return images, has_nsfw
         
@@ -201,6 +206,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         guidance_scale: float = 7.5,
         latents: jnp.array = None,
         return_dict: bool = True,
+        jit: bool = False,
         debug: bool = False,
         **kwargs,
     ):
@@ -233,6 +239,10 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+            jit (`bool`, defaults to `False`):
+                Whether to run `pmap` versions of the generation and safety scoring functions.
+                NOTE: This argument exists because `__call__` is not yet end-to-end pmap-able.
+                It will be removed in a future release.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.FlaxStableDiffusionPipelineOutput`] instead of
                 a plain tuple.
@@ -248,12 +258,16 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
 
         # TODO: send latents and rest of args if necessary
         # images = p_generate(prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug)
-        images = _p_generate(self, prompt_ids, params, prng_seed, num_inference_steps)
+
+        if jit:
+            images = _p_generate(self, prompt_ids, params, prng_seed, num_inference_steps)
+        else:
+            images = self._generate(prompt_ids, params, prng_seed, num_inference_steps)
 
         safety_params = params["safety_checker"]
         images = (images * 255).round().astype("uint8")
         images = np.asarray(images).reshape(-1, height, width, 3)
-        images, has_nsfw_concept = self._run_safety_checker(images, safety_params)
+        images, has_nsfw_concept = self._run_safety_checker(images, safety_params, jit)
 
         if not return_dict:
             return (images, has_nsfw_concept)
