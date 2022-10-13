@@ -170,6 +170,8 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             t = jnp.array(scheduler_state.timesteps, dtype=jnp.int32)[step]
             timestep = jnp.broadcast_to(t, latents_input.shape[0])
 
+            latents_input = self.scheduler.scale_model_input(scheduler_state, latents_input, t)
+
             # predict the noise residual
             noise_pred = self.unet.apply(
                 {"params": params["unet"]},
@@ -188,6 +190,9 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         scheduler_state = self.scheduler.set_timesteps(
             params["scheduler"], num_inference_steps=num_inference_steps, shape=latents.shape
         )
+
+        # scale the initial noise by the standard deviation required by the scheduler
+        latents = latents * self.scheduler.init_noise_sigma
 
         if debug:
             # run with python for loop

@@ -153,6 +153,9 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
         # mainly at formula (9), (12), (13) and the Algorithm 2.
         self.pndm_order = 4
 
+        # standard deviation of the initial noise distribution
+        self.init_noise_sigma = 1.0
+
     def create_state(self):
         return PNDMSchedulerState.create(num_train_timesteps=self.config.num_train_timesteps)
 
@@ -196,13 +199,30 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
             )
 
         return state.replace(
-            timesteps=jnp.concatenate([state.prk_timesteps, state.plms_timesteps]).astype(jnp.int64),
+            timesteps=jnp.concatenate([state.prk_timesteps, state.plms_timesteps]).astype(jnp.int32),
             counter=0,
             # Reserve space for the state variables
             cur_model_output=jnp.zeros(shape),
             cur_sample=jnp.zeros(shape),
             ets=jnp.zeros((4,) + shape),
         )
+
+    def scale_model_input(
+        self, state: PNDMSchedulerState, sample: jnp.ndarray, timestep: Optional[int] = None
+    ) -> jnp.ndarray:
+        """
+        Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
+        current timestep.
+
+        Args:
+            state (`PNDMSchedulerState`): the `FlaxPNDMScheduler` state data class instance.
+            sample (`jnp.ndarray`): input sample
+            timestep (`int`, optional): current timestep
+
+        Returns:
+            `jnp.ndarray`: scaled input sample
+        """
+        return sample
 
     def step(
         self,
