@@ -4,7 +4,7 @@ import torch
 import tqdm
 import numpy as np
 import gym 
-from diffusers import DDPMScheduler, UNet1DModel, ValueFunction, ValueFunctionScheduler
+from diffusers import DDPMScheduler, UNet1DModel, ValueFunction
 from helpers import MuJoCoRenderer, show_sample
 import helpers
 import wandb
@@ -39,27 +39,20 @@ image = modal.Image.debian_slim().apt_install([
 
 config = dict(
     n_samples=64,
-    horizon=128,
-    num_inference_steps=200,
-    n_guide_steps=0,
+    horizon=32,
+    num_inference_steps=20,
+    n_guide_steps=2,
     scale_grad_by_std=True,
-    scale=0.001,
+    scale=0.1,
     eta=0.0,
-    t_grad_cutoff=4,
-    device='cuda'
+    t_grad_cutoff=2,
+    device='cpu'
 )
 
-@stub.function(
-    image=image,
-    secret=modal.Secret.from_name("wandb-api-key"),
-    mounts=modal.create_package_mounts(["diffusers"]),
-    gpu=True
-)
-def run():
-    wandb.login(key=os.environ["WANDB_API_KEY"])
+def _run():
     wandb.init(project="diffusers-value-guided-rl")
-
-    env_name = "hopper-medium-expert-v2"
+    wandb.config.update(config)
+    env_name = "hopper-medium-v2"
     env = gym.make(env_name)
     data = env.get_dataset() # dataset is only used for normalization in this colab
     render = MuJoCoRenderer(env)
@@ -77,14 +70,14 @@ def run():
     # generator = torch.Generator(device='cuda')
     generator = torch.Generator(device=DEVICE)
 
-    scheduler = DDPMScheduler(num_train_timesteps=config['num_inference_steps'],beta_schedule="squaredcos_cap_v2", clip_sample=False, )
+    scheduler = DDPMScheduler(num_train_timesteps=config['num_inference_steps'],beta_schedule="squaredcos_cap_v2", clip_sample=False, variance_type="fixed_small_log")
 
     # 3 different pretrained models are available for this task. 
     # The horizion represents the length of trajectories used in training.
     # network = ValueFunction(training_horizon=horizon, dim=32, dim_mults=(1, 2, 4, 8), transition_dim=14, cond_dim=11)
 
-    network = ValueFunction.from_pretrained("bglick13/hopper-medium-expert-v2-value-function-hor32").to(device=DEVICE).eval()
-    unet = UNet1DModel.from_pretrained("bglick13/hopper-medium-expert-v2-unet-hor128").to(device=DEVICE).eval()
+    network = ValueFunction.from_pretrained("bglick13/hopper-medium-v2-value-function-hor32").to(device=DEVICE).eval()
+    unet = UNet1DModel.from_pretrained(f"bglick13/hopper-medium-v2-unet-hor32").to(device=DEVICE).eval()
     # unet = UNet1DModel.from_pretrained("fusing/ddpm-unet-rl-hopper-hor128").to(device=DEVICE)
     # network = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor512").to(device=DEVICE)
 
@@ -92,8 +85,9 @@ def run():
     ## [ observation_dim ] --> [ n_samples x observation_dim ]
     obs = env.reset()
     total_reward = 0
+    total_score = 0
     done = False
-    T = 200
+    T = 1000
     rollout = [obs.copy()]
     trajectories = []
     y_maxes = [0]
@@ -125,7 +119,7 @@ def run():
             # convert a np observation to torch for model forward pass
             x = helpers.to_torch(x, device=DEVICE)
             x, y = helpers.run_diffusion(x, scheduler, generator, network, unet, conditions, action_dim, config)
-            if y:
+            if y is not None:
                 sorted_idx = y.argsort(0, descending=True).squeeze()
                 y_maxes.append(y[sorted_idx[0]].detach().cpu().numpy())
                 sorted_values = x[sorted_idx]
@@ -139,17 +133,18 @@ def run():
 
             actions = actions.detach().cpu().numpy()
             denorm_actions = helpers.de_normalize(actions, data, key='actions')
-            denorm_actions = denorm_actions[np.random.randint(config['n_samples']), 0]
-            # denorm_actions = denorm_actions[0, 0]
+            # denorm_actions = denorm_actions[np.random.randint(config['n_samples']), 0]
+            denorm_actions = denorm_actions[0, 0]
 
 
             ## execute action in environment
             next_observation, reward, terminal, _ = env.step(denorm_actions)
-
+            score = env.get_normalized_score(total_reward)
             ## update return
             total_reward += reward
-            wandb.log({"total_reward": total_reward, "reward": reward, "y_max": y_maxes[-1], "diff_from_expert_reward": reward - data['rewards'][t]})
-            print(f"Step: {t}, Reward: {reward}, Total Reward: {total_reward}")
+            total_score += score
+            wandb.log({"total_reward": total_reward, "reward": reward, "score": score, "total_score": total_score, "y_max": y_maxes[-1], "diff_from_expert_reward": reward - data['rewards'][t]})
+            print(f"Step: {t}, Reward: {reward}, Total Reward: {total_reward}, Score: {score}, Total Score: {total_score}")
             # save observations for rendering
             rollout.append(next_observation.copy())
 
@@ -162,8 +157,18 @@ def run():
     images = show_sample(render, np.expand_dims(np.stack(rollout),axis=0))
     wandb.log({"rollout": wandb.Video("videos/sample.mp4", fps=60, format='mp4')})
 
+@stub.function(
+    image=image,
+    secret=modal.Secret.from_name("wandb-api-key"),
+    mounts=modal.create_package_mounts(["diffusers"]),
+    gpu=True
+)
+def run():
+    wandb.login(key=os.environ["WANDB_API_KEY"])
+    _run()
+
 
 if __name__ == "__main__":
-    # run()
-    with stub.run():
-        run()
+    _run()
+    # with stub.run():
+        # run()

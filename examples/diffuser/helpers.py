@@ -49,13 +49,14 @@ def run_diffusion(x, scheduler, generator, network, unet, conditions, action_dim
                 grad = torch.autograd.grad([y.sum()], [x])[0]
             if config['scale_grad_by_std']:
                 posterior_variance = scheduler._get_variance(i)
-                grad = posterior_variance * 0.5 * grad
+                model_std = torch.exp(0.5 * posterior_variance)
+                grad = model_std * grad
             grad[timesteps < config['t_grad_cutoff']] = 0
             x = x.detach()
             x = x + config['scale'] * grad
             x = reset_x0(x, conditions, action_dim)
-        with torch.no_grad():
-            prev_x = unet(x, timesteps).sample
+        # with torch.no_grad():
+        prev_x = unet(x.permute(0, 2, 1), timesteps).sample.permute(0, 2, 1)
         x = scheduler.step(prev_x, i, x, predict_epsilon=False)["prev_sample"]
         
         # 3. [optional] add posterior noise to the sample
@@ -68,7 +69,7 @@ def run_diffusion(x, scheduler, generator, network, unet, conditions, action_dim
 
         # 4. apply conditions to the trajectory
         x = reset_x0(x, conditions, action_dim)
-        x = to_torch(x)
+        x = to_torch(x, device=config['device'])
     # y = network(x, timesteps).sample
     return x, y
 

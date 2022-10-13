@@ -283,7 +283,13 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             noise = torch.randn(
                 model_output.size(), dtype=model_output.dtype, layout=model_output.layout, generator=generator
             ).to(model_output.device)
-            variance = (self._get_variance(t, predicted_variance=predicted_variance) ** 0.5) * noise
+            if self.variance_type == "fixed_small_log":
+                variance = (self._get_variance(t, predicted_variance=predicted_variance))
+                variance = torch.exp(0.5 * variance)
+                variance = variance * noise
+
+            else:
+                variance = (self._get_variance(t, predicted_variance=predicted_variance) ** 0.5) * noise
 
         pred_prev_sample = pred_prev_sample + variance
 
