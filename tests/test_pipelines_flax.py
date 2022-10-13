@@ -59,10 +59,9 @@ class FlaxPipelineTests(unittest.TestCase):
 
         images = p_sample(prompt_ids, params, prng_seed, num_inference_steps).images
 
-        import ipdb; ipdb.set_trace()
-        assert images.shape == (8, 1, 512, 512, 3)
-        assert (np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 0.06652832) < 1e-3
-        assert (np.abs(images, dtype=np.float32).sum() - 2384849.8) < 1e-2
+        assert images.shape == (8, 1, 64, 64, 3)
+        assert np.abs((np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 4.151474)) < 1e-3
+        assert np.abs((np.abs(images, dtype=np.float32).sum() - 49947.875)) < 1e-2
 
         images_pil = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 
@@ -98,10 +97,9 @@ class FlaxPipelineTests(unittest.TestCase):
         for i, image in enumerate(images_pil):
             image.save(f"/home/patrick/images/flax-test-{i}_fp32.png")
 
-        import ipdb; ipdb.set_trace()
         assert images.shape == (8, 1, 512, 512, 3)
-        assert (np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 0.06652832) < 1e-3
-        assert (np.abs(images, dtype=np.float32).sum() - 2384849.8) < 1e-2
+        assert np.abs((np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 0.05652401)) < 1e-3
+        assert np.abs((np.abs(images, dtype=np.float32).sum() - 2383808.2)) < 1e-2
 
     def test_stable_diffusion_v1_4_bfloat_16(self):
         pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
@@ -130,8 +128,8 @@ class FlaxPipelineTests(unittest.TestCase):
         images = p_sample(prompt_ids, params, prng_seed, num_inference_steps).images
 
         assert images.shape == (8, 1, 512, 512, 3)
-        assert (np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 0.06652832) < 1e-3
-        assert (np.abs(images, dtype=np.float32).sum() - 2384849.8) < 1e-2
+        assert np.abs((np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 0.06652832)) < 1e-3
+        assert np.abs((np.abs(images, dtype=np.float32).sum() - 2384849.8)) < 1e-2
 
     def test_stable_diffusion_v1_4_bfloat_16_with_safety(self):
         pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
@@ -158,5 +156,5 @@ class FlaxPipelineTests(unittest.TestCase):
         images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
 
         assert images.shape == (8, 1, 512, 512, 3)
-        assert (np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 0.06652832) < 1e-3
-        assert (np.abs(images, dtype=np.float32).sum() - 2384849.8) < 1e-2
+        assert np.abs((np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 0.06652832)) < 1e-3
+        assert np.abs((np.abs(images, dtype=np.float32).sum() - 2384849.8)) < 1e-2
