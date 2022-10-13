@@ -7,6 +7,7 @@ from jax import pmap
 from flax.core.frozen_dict import FrozenDict
 from flax.jax_utils import replicate, unreplicate
 from flax.training.common_utils import shard
+from functools import partial
 
 from PIL import Image
 from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel
@@ -85,6 +86,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         )
         return text_input.input_ids
 
+    @partial(jax.pmap, static_broadcasted_argnums=(0,))
     def get_safety_scores(self, features, params):
         special_cos_dist, cos_dist = self.safety_checker(features, params)
         return (special_cos_dist, cos_dist)
@@ -98,8 +100,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
     #     features = jnp.transpose(features, (0, 2, 3, 1))
         features = shard(features)
 
-        p_safety_scores = jax.pmap(self.get_safety_scores)
-        special_cos_dist, cos_dist = p_safety_scores(features, safety_model_params)
+        special_cos_dist, cos_dist = self.get_safety_scores(features, safety_model_params)
         images, has_nsfw = self.safety_checker.filtered_with_scores(
             unshard(special_cos_dist),
             unshard(cos_dist),
@@ -254,10 +255,9 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         prompt_ids = shard(prompt_ids)
         prng_seed = jax.random.split(prng_seed, jax.device_count())
 
-        p_generate = pmap(self.generate, static_broadcasted_argnums=(3,))
         # TODO: send latents if necessary
         # images = p_generate(prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug)
-        images = p_generate(prompt_ids, params, prng_seed, num_inference_steps)
+        images = p_generate(self, prompt_ids, params, prng_seed, num_inference_steps)
 
         safety_params = params["safety_checker"]
         images = jnp.clip(images, 0, 1)
@@ -276,3 +276,7 @@ def unshard(x: jnp.ndarray):
     d, b = x.shape[:2]
     rest = x.shape[2:]
     return x.reshape(d*b, *rest)
+
+@partial(jax.pmap, static_broadcasted_argnums=(0, 4))
+def p_generate(pipe, prompt_ids, params, prng_seed, num_inference_steps):
+    return pipe.generate(prompt_ids, params, prng_seed, num_inference_steps)
