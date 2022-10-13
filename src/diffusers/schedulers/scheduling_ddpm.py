@@ -220,7 +220,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: int,
         sample: torch.FloatTensor,
-        predict_epsilon=True,
+        prediction_type: str = "epsilon",
         generator=None,
         return_dict: bool = True,
     ) -> Union[DDPMSchedulerOutput, Tuple]:
@@ -233,8 +233,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
-            predict_epsilon (`bool`):
-                optional flag to use when model predicts the samples directly instead of the noise, epsilon.
+            prediction_type (`str`):
+                prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
+                process), `sample` (directly predicting the noisy sample), or `v` (see section 2.4
+                https://imagen.research.google/video/paper.pdf)
             generator: random number generator.
             return_dict (`bool`): option for returning tuple rather than DDPMSchedulerOutput class
 
@@ -259,10 +261,15 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         # 2. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (15) from https://arxiv.org/pdf/2006.11239.pdf
-        if predict_epsilon:
+        if prediction_type == "epsilon":
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
-        else:
+        elif prediction_type == "sample":
             pred_original_sample = model_output
+        elif prediction_type == "v":
+            # v_t = alpha_t * epsilon - sigma_t * x
+            raise NotImplementedError(f"v prediction not yet implemented")
+        else:
+            raise ValueError(f"prediction_type given as {prediction_type} must be one of `epsilon`, `sample`, or `v`")
 
         # 3. Clip "predicted x_0"
         if self.config.clip_sample:
