@@ -41,12 +41,3 @@ class SchedulerMixin:
     """
 
     config_name = SCHEDULER_CONFIG_NAME
-
-    def set_format(self, tensor_format="pt"):
-        deprecate(
-            "set_format",
-            "0.7.0",
-            "If you're running your code in PyTorch, you can safely remove this function as the schedulers are always"
-            " in Pytorch",
-        )
-        return self
