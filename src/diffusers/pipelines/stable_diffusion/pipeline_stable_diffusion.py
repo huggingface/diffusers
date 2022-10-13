@@ -312,18 +312,22 @@ class StableDiffusionPipeline(DiffusionPipeline):
         for i, t in enumerate(self.progress_bar(timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-            latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+            # latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-            
-            if isinstance(self.scheduler, EulerAScheduler):
-              
-                c_out, c_in, sigma_in = self.scheduler.prepare_input(latent_model_input, t, batch_size)
-                
-                eps = self.unet(latent_model_input * c_in, sigma_in , encoder_hidden_states=text_embeddings).sample
-                noise_pred = latent_model_input + eps * c_out
+            #TODO merge conform the EulerAScheduler interface to the standardized scheduler interface 
+            if isinstance(self.scheduler, EulerAScheduler): 
+                latent_unscaled = latent_model_input # store the unscaled latent
+                c_out, c_in, sigma_in = self.scheduler.prepare_input(latent_model_input, t)
+                # latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                latent_model_input = latent_unscaled * c_in
+                # sigma_in = self.scheduler.get_sigma_in(latent_model_input,t)
+                eps = self.unet(latent_model_input, sigma_in , encoder_hidden_states=text_embeddings).sample
+                noise_pred = latent_unscaled + eps * c_out
 
             else:
                 # predict the noise residual
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                
                 noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
 
             # perform guidance
@@ -332,11 +336,12 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             if isinstance(self.scheduler, EulerAScheduler):
+                # change from self.scheduler.timesteps.shape[0] - 1 to num_inference_steps
                 if i <  self.scheduler.timesteps.shape[0] - 1: #avoid out of bound error
                     t_prev = self.scheduler.timesteps[i+1]
                     latents = self.scheduler.step(noise_pred, t, t_prev, latents, **extra_step_kwargs).prev_sample
-            # compute the previous noisy sample x_t -> x_t-1
             else: 
+            # compute the previous noisy sample x_t -> x_t-1
                     latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
             # call the callback, if provided

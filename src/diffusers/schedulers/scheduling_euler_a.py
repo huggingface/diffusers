@@ -176,12 +176,16 @@ class EulerAScheduler(SchedulerMixin, ConfigMixin):
         Returns:
             `torch.FloatTensor`: scaled input sample
         """
-        c_out, c_in, sigma_in = self.prepare_input(sample, timestep)
+        # c_out, c_in, sigma_in = self.prepare_input(sample, timestep)
 
         
-        noise_pred = latent_model_input + eps * c_out
-        sample * c_in, sigma_in
-        return sample *c_in
+        # noise_pred = latent_model_input + eps * c_out
+        # sample * c_in, sigma_in
+        # return sample *c_in
+        c_out, c_in, sigma_in = self.prepare_input(sample, timestep)
+
+        return sample * c_in
+
     def add_noise_to_input(
         self, sample: Union[torch.FloatTensor, np.ndarray], sigma: float, generator: Optional[torch.Generator] = None
     ) -> Tuple[Union[torch.FloatTensor, np.ndarray], float]:
@@ -242,7 +246,9 @@ class EulerAScheduler(SchedulerMixin, ConfigMixin):
         # Euler method
         dt = sigma_down - timestep
         latents = latents + d * dt
-        latents = latents + self.randn_like(latents,generator=generator) * sigma_up # use self.randn_like instead of torch.randn_like to get deterministic output
+        # latents = latents + self.randn_like(latents,generator=generator) * sigma_up # use self.randn_like instead of torch.randn_like to get deterministic output
+        noise = torch.randn(latents.shape, dtype=latents.dtype, generator=generator).to(self.device)
+        latents = latents + noise * sigma_up 
         return SchedulerOutput(prev_sample=latents)
 
 
@@ -335,7 +341,7 @@ class EulerAScheduler(SchedulerMixin, ConfigMixin):
         c_in = 1 / (sigma ** 2 + sigma_data ** 2) ** 0.5
         return c_out, c_in
 
-    #DiscreteSchedule DS
+    #DiscreteSchedule -> DS
     def DSsigma_to_t(self, sigma, quantize=None):
         # quantize = self.quantize if quantize is None else quantize
         quantize = False
@@ -350,7 +356,7 @@ class EulerAScheduler(SchedulerMixin, ConfigMixin):
         return t.view(sigma.shape)
     
     def prepare_input(self,latent_in, t):
-        sigma = t.reshape(1) #A# potential bug: doesn't work on samples > 1 
+        sigma = t.reshape(1) 
         
         sigma_in = torch.cat([sigma] * latent_in.shape[0])# latent_in.shape[0] => 2 * batch_size 
         # noise_pred = CFGDenoiserForward(self.unet, latent_model_input, sigma_in, text_embeddings , guidance_scale,DSsigmas=self.scheduler.DSsigmas)
@@ -362,3 +368,13 @@ class EulerAScheduler(SchedulerMixin, ConfigMixin):
         # sigma_in = sigma_in * s_in
         
         return c_out, c_in, sigma_in
+
+    def get_sigma_in(self,latent_in, t):
+        sigma = t.reshape(1)
+        
+        sigma_in = torch.cat([sigma] * latent_in.shape[0])# latent_in.shape[0] => 2 * batch_size 
+        
+        sigma_in = self.DSsigma_to_t(sigma_in)
+        
+        return sigma_in
+    
