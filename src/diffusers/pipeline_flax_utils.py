@@ -188,7 +188,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
         r"""
-        Instantiate a PyTorch diffusion pipeline from pre-trained pipeline weights.
+        Instantiate a Flax diffusion pipeline from pre-trained pipeline weights.
 
         The pipeline is set in evaluation mode by default using `model.eval()` (Dropout modules are deactivated).
 
