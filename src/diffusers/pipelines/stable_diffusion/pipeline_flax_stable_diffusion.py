@@ -251,7 +251,6 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         images = _p_generate(self, prompt_ids, params, prng_seed, num_inference_steps)
 
         safety_params = params["safety_checker"]
-        images = jnp.clip(images, 0, 1)
         images = (images * 255).round().astype("uint8")
         images = np.asarray(images).reshape(-1, height, width, 3)
         images, has_nsfw_concept = self._run_safety_checker(images, safety_params)
