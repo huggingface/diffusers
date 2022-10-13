@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 import torch
 
-from ..utils import BaseOutput, deprecate
+from ..utils import BaseOutput
 
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
