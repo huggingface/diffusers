@@ -14,8 +14,12 @@ from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel
 from ...models import FlaxAutoencoderKL, FlaxUNet2DConditionModel
 from ...pipeline_flax_utils import FlaxDiffusionPipeline
 from ...schedulers import FlaxDDIMScheduler, FlaxLMSDiscreteScheduler, FlaxPNDMScheduler
+from ...utils import logging
 from . import FlaxStableDiffusionPipelineOutput
 from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
@@ -59,6 +63,16 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
     ):
         super().__init__()
         self.dtype = dtype
+
+        if safety_checker is None:
+            logger.warn(
+                f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
+                " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
+                " results in services or applications open to the public. Both the diffusers team and Hugging Face"
+                " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
+                " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
+                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
+            )
 
         self.register_modules(
             vae=vae,
@@ -265,10 +279,23 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
                 prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug
             )
 
-        safety_params = params["safety_checker"]
-        images = (images * 255).round().astype("uint8")
-        images = np.asarray(images).reshape(-1, height, width, 3)
-        images, has_nsfw_concept = self._run_safety_checker(images, safety_params, jit)
+        if self.safety_checker is not None:
+            safety_params = params["safety_checker"]
+            images_uint8_casted = (images * 255).round().astype("uint8")
+            num_devices, batch_size = images.shape[:2]
+
+            images_uint8_casted = np.asarray(images_uint8_casted).reshape(num_devices * batch_size, height, width, 3)
+            images_uint8_casted, has_nsfw_concept = self._run_safety_checker(images_uint8_casted, safety_params, jit)
+            images = np.asarray(images)
+
+            # block images
+            if any(has_nsfw_concept):
+                for i, is_nsfw in enumerate(has_nsfw_concept):
+                    images[i] = np.asarray(images_uint8_casted[i])
+
+            images = images.reshape(num_devices, batch_size, height, width, 3)
+        else:
+            has_nsfw_concept = False
 
         if not return_dict:
             return (images, has_nsfw_concept)
