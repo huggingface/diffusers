@@ -1,14 +1,14 @@
+from functools import partial
 from typing import Dict, List, Optional, Union
+
+import numpy as np
 
 import jax
 import jax.numpy as jnp
-import numpy as np
-from jax import pmap
 from flax.core.frozen_dict import FrozenDict
 from flax.jax_utils import replicate, unreplicate
 from flax.training.common_utils import shard
-from functools import partial
-
+from jax import pmap
 from PIL import Image
 from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel
 
@@ -109,7 +109,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             safety_model_params,
         )
         return images, has_nsfw
-        
+
     def _generate(
         self,
         prompt_ids: jnp.array,
@@ -199,7 +199,6 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         image = (image / 2 + 0.5).clip(0, 1).transpose(0, 2, 3, 1)
         return image
 
-
     def __call__(
         self,
         prompt_ids: jnp.array,
@@ -260,9 +259,13 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
         if jit:
-            images = _p_generate(self, prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug)
+            images = _p_generate(
+                self, prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug
+            )
         else:
-            images = self._generate(prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug)
+            images = self._generate(
+                prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug
+            )
 
         safety_params = params["safety_checker"]
         images = (images * 255).round().astype("uint8")
@@ -277,12 +280,18 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
 
 # TODO: maybe use a config dict instead of so many static argnums
 @partial(jax.pmap, static_broadcasted_argnums=(0, 4, 5, 6, 7, 9))
-def _p_generate(pipe, prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug):
-    return pipe._generate(prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug)
+def _p_generate(
+    pipe, prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug
+):
+    return pipe._generate(
+        prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug
+    )
+
 
 @partial(jax.pmap, static_broadcasted_argnums=(0,))
 def _p_get_safety_scores(pipe, features, params):
     return pipe._get_safety_scores(features, params)
+
 
 def unshard(x: jnp.ndarray):
     # einops.rearrange(x, 'd b ... -> (d b) ...')
