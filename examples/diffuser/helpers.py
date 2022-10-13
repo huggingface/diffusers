@@ -9,16 +9,14 @@ import tqdm
 
 DTYPE = torch.float
 def normalize(x_in, data, key):
-  upper = np.max(data[key], axis=0)
-  lower = np.min(data[key], axis=0)
-  x_out = 2*(x_in - lower)/(upper-lower) - 1
-  return x_out
+    means = data[key].mean(axis=0)
+    stds = data[key].std(axis=0)
+    return (x_in - means) / stds
 
 def de_normalize(x_in, data, key):
-	upper = np.max(data[key], axis=0)
-	lower = np.min(data[key], axis=0)
-	x_out = lower + (upper - lower)*(1 + x_in) /2
-	return x_out
+    means = data[key].mean(axis=0)
+    stds = data[key].std(axis=0)
+    return x_in * stds + means
 	
 def to_torch(x_in, dtype=None, device='cuda'):
 	dtype = dtype or DTYPE
@@ -61,7 +59,7 @@ def run_diffusion(x, scheduler, generator, network, unet, conditions, action_dim
         
         # 3. [optional] add posterior noise to the sample
         if config['eta'] > 0:
-            noise = torch.randn(x.shape, generator=generator).to(x.device)
+            noise = torch.randn(x.shape).to(x.device)
             posterior_variance = scheduler._get_variance(i) # * noise
             # no noise when t == 0
             # NOTE: original implementation missing sqrt on posterior_variance

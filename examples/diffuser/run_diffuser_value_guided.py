@@ -10,6 +10,9 @@ import helpers
 import wandb
 import modal
 import os
+from pytorch_lightning import seed_everything
+
+seed_everything(0)
 
 stub = modal.Stub("diffusers-value-guided")
 image = modal.Image.debian_slim().apt_install([
@@ -34,7 +37,8 @@ image = modal.Image.debian_slim().apt_install([
     "mediapy",
     "Pillow==9.0.0",
     "moviepy",
-    "imageio"
+    "imageio",
+    "pytorch-lightning",
     ])
 
 config = dict(
@@ -46,7 +50,7 @@ config = dict(
     scale=0.1,
     eta=0.0,
     t_grad_cutoff=2,
-    device='cpu'
+    device='cuda'
 )
 
 def _run():
@@ -83,6 +87,7 @@ def _run():
 
     ## add a batch dimension and repeat for multiple samples
     ## [ observation_dim ] --> [ n_samples x observation_dim ]
+    env.seed(0)
     obs = env.reset()
     total_reward = 0
     total_score = 0
@@ -109,7 +114,7 @@ def _run():
             shape = (batch_size, config['horizon'], state_dim+action_dim)
 
             # sample random initial noise vector
-            x1 = torch.randn(shape, device=DEVICE, generator=generator)
+            x1 = torch.randn(shape, device=DEVICE)
 
             # this model is conditioned from an initial state, so you will see this function
             #  multiple times to change the initial state of generated data to the state 
@@ -169,6 +174,6 @@ def run():
 
 
 if __name__ == "__main__":
-    _run()
-    # with stub.run():
-        # run()
+    # _run()
+    with stub.run():
+        run()

@@ -18,7 +18,7 @@ def unet(hor):
         down_block_types = ("DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D")
         block_out_channels = (32, 64, 128, 256)
         up_block_types = ("UpResnetBlock1D", "UpResnetBlock1D", "UpResnetBlock1D")
-    model = torch.load(f"/Users/bglickenhaus/Documents/diffuser/temporal_unet-hopper-hor{hor}.torch")
+    model = torch.load(f"/Users/bglickenhaus/Documents/diffuser/temporal_unet-hopper-mediumv2-hor{hor}.torch")
     state_dict = model.state_dict()
     config = dict(down_block_types=down_block_types, block_out_channels=block_out_channels, up_block_types=up_block_types, layers_per_block=1)
     hf_value_function = UNet1DModel(**config)
@@ -36,13 +36,13 @@ def unet(hor):
 def value_function():
     config = dict(in_channels=14, down_block_types=("DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"), block_out_channels=(32, 64, 128, 256), layers_per_block=1)
 
-    model = torch.load("/Users/bglickenhaus/Documents/diffuser/value_function-hopper-hor32.torch")
-    state_dict = model.state_dict()
+    model = torch.load("/Users/bglickenhaus/Documents/diffuser/value_function-hopper-mediumv2-hor32.torch")
+    state_dict = model
     hf_value_function = ValueFunction(**config)
     print(f"length of state dict: {len(state_dict.keys())}")
     print(f"length of value function dict: {len(hf_value_function.state_dict().keys())}")
 
-    mapping = dict((k, hfk) for k, hfk in zip(model.state_dict().keys(), hf_value_function.state_dict().keys()))
+    mapping = dict((k, hfk) for k, hfk in zip(state_dict.keys(), hf_value_function.state_dict().keys()))
     for k, v in mapping.items():
         state_dict[v] = state_dict.pop(k)
 
