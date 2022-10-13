@@ -59,8 +59,6 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         dtype: jnp.dtype = jnp.float32,
     ):
         super().__init__()
-        # TODO: review and adapt to new scheduler API
-        # scheduler = scheduler.set_format("np")
         self.dtype = dtype
 
         self.register_modules(
@@ -97,7 +95,6 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         jnp_images = jnp.array(images)
         jnp_images = shard(jnp_images)
         features = self.feature_extractor(pil_images, return_tensors="np").pixel_values
-    #     features = jnp.transpose(features, (0, 2, 3, 1))
         features = shard(features)
 
         special_cos_dist, cos_dist = self.get_safety_scores(features, safety_model_params)
