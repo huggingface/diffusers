@@ -84,12 +84,11 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         )
         return text_input.input_ids
 
-    @partial(jax.pmap, static_broadcasted_argnums=(0,))
-    def get_safety_scores(self, features, params):
+    def _get_safety_scores(self, features, params):
         special_cos_dist, cos_dist = self.safety_checker(features, params)
         return (special_cos_dist, cos_dist)
 
-    def run_safety_checker(self, images, safety_model_params):
+    def _run_safety_checker(self, images, safety_model_params):
         # safety_model_params should already be replicated
         pil_images = [Image.fromarray(image) for image in images]
         jnp_images = jnp.array(images)
@@ -97,7 +96,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         features = self.feature_extractor(pil_images, return_tensors="np").pixel_values
         features = shard(features)
 
-        special_cos_dist, cos_dist = self.get_safety_scores(features, safety_model_params)
+        special_cos_dist, cos_dist = _p_get_safety_scores(self, features, safety_model_params)
         images, has_nsfw = self.safety_checker.filtered_with_scores(
             unshard(special_cos_dist),
             unshard(cos_dist),
@@ -106,15 +105,15 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         )
         return images, has_nsfw
         
-    def generate(
+    def _generate(
         self,
         prompt_ids: jnp.array,
         params: Union[Dict, FrozenDict],
         prng_seed: jax.random.PRNGKey,
-        num_inference_steps: Optional[int] = 50,
-        height: Optional[int] = 512,
-        width: Optional[int] = 512,
-        guidance_scale: Optional[float] = 7.5,
+        num_inference_steps: int = 50,
+        height: int = 512,
+        width: int = 512,
+        guidance_scale: float = 7.5,
         latents: Optional[jnp.array] = None,
         debug: bool = False,
     ):
@@ -247,20 +246,15 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         """
         # Delegate to `self.generate` por parallel generation then run safety checker as an additional step
 
-        # TODO: assert dimensions
-        params = replicate(params)
-        prompt_ids = shard(prompt_ids)
-        prng_seed = jax.random.split(prng_seed, jax.device_count())
-
-        # TODO: send latents if necessary
+        # TODO: send latents and rest of args if necessary
         # images = p_generate(prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug)
-        images = p_generate(self, prompt_ids, params, prng_seed, num_inference_steps)
+        images = _p_generate(self, prompt_ids, params, prng_seed, num_inference_steps)
 
         safety_params = params["safety_checker"]
         images = jnp.clip(images, 0, 1)
         images = (images * 255).round().astype("uint8")
         images = np.asarray(images).reshape(-1, height, width, 3)
-        images, has_nsfw_concept = self.run_safety_checker(images, safety_params)
+        images, has_nsfw_concept = self._run_safety_checker(images, safety_params)
 
         if not return_dict:
             return (images, has_nsfw_concept)
@@ -268,12 +262,16 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         return FlaxStableDiffusionPipelineOutput(images=images, nsfw_content_detected=has_nsfw_concept)
 
 
+@partial(jax.pmap, static_broadcasted_argnums=(0, 4))
+def _p_generate(pipe, prompt_ids, params, prng_seed, num_inference_steps):
+    return pipe._generate(prompt_ids, params, prng_seed, num_inference_steps)
+
+@partial(jax.pmap, static_broadcasted_argnums=(0,))
+def _p_get_safety_scores(pipe, features, params):
+    return pipe._get_safety_scores(features, params)
+
 def unshard(x: jnp.ndarray):
     # einops.rearrange(x, 'd b ... -> (d b) ...')
-    d, b = x.shape[:2]
+    num_devices, batch_size = x.shape[:2]
     rest = x.shape[2:]
-    return x.reshape(d*b, *rest)
-
-@partial(jax.pmap, static_broadcasted_argnums=(0, 4))
-def p_generate(pipe, prompt_ids, params, prng_seed, num_inference_steps):
-    return pipe.generate(prompt_ids, params, prng_seed, num_inference_steps)
+    return x.reshape(num_devices * batch_size, *rest)
