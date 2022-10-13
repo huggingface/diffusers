@@ -8,8 +8,12 @@ from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel
 from ...models import FlaxAutoencoderKL, FlaxUNet2DConditionModel
 from ...pipeline_flax_utils import FlaxDiffusionPipeline
 from ...schedulers import FlaxDDIMScheduler, FlaxLMSDiscreteScheduler, FlaxPNDMScheduler
+from ...utils import logging
 from . import FlaxStableDiffusionPipelineOutput
 from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
@@ -53,6 +57,16 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
     ):
         super().__init__()
         self.dtype = dtype
+
+        if safety_checker is None:
+            logger.warn(
+                f"You have disabed the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
+                " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
+                " results in services or applications open to the public. Both the diffusers team and Hugging Face"
+                " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
+                " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
+                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
+            )
 
         self.register_modules(
             vae=vae,
@@ -208,14 +222,12 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
 
         image = (image / 2 + 0.5).clip(0, 1).transpose(0, 2, 3, 1)
 
-        #        image = jnp.asarray(image).transpose(0, 2, 3, 1)
-        # run safety checker
-        # TODO: check when flax safety checker gets merged into main
-        #        safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="np")
-        #        image, has_nsfw_concept = self.safety_checker(
-        #            images=image, clip_input=safety_checker_input.pixel_values, params=params["safety_params"]
-        #        )
-        has_nsfw_concept = False
+        if self.safety_checker is not None:
+            # TODO (Pedro)
+            has_nsfw_concept = False
+            pass
+        else:
+            has_nsfw_concept = False
 
         if not return_dict:
             return (image, has_nsfw_concept)
