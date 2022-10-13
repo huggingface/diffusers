@@ -88,13 +88,6 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         s_max: float = 50,
         **kwargs,
     ):
-        deprecate(
-            "tensor_format",
-            "0.6.0",
-            "If you're running your code in PyTorch, you can safely remove this argument.",
-            take_from=kwargs,
-        )
-
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = sigma_max
 

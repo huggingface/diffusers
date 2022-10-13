@@ -76,13 +76,6 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         trained_betas: Optional[np.ndarray] = None,
         **kwargs,
     ):
-        deprecate(
-            "tensor_format",
-            "0.6.0",
-            "If you're running your code in PyTorch, you can safely remove this argument.",
-            take_from=kwargs,
-        )
-
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
         elif beta_schedule == "linear":
