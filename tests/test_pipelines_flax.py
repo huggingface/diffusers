@@ -87,12 +87,8 @@ class FlaxPipelineTests(unittest.TestCase):
         prompt_ids = shard(prompt_ids)
 
         images = p_sample(prompt_ids, params, prng_seed, num_inference_steps).images
-        images_pil = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 
-        for i, image in enumerate(images_pil):
-            image.save(f"/home/patrick/images/flax-test-{i}.png")
-
-        import ipdb; ipdb.set_trace()
+        assert images.shape == (8, 1, 512, 512, 3)
 
     def test_stable_diffusion_v1_4_bfloat_16(self):
         pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
@@ -119,9 +115,7 @@ class FlaxPipelineTests(unittest.TestCase):
         prompt_ids = shard(prompt_ids)
 
         images = p_sample(prompt_ids, params, prng_seed, num_inference_steps).images
-        images_pil = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 
-        for i, image in enumerate(images_pil):
-            image.save(f"/home/patrick/images/flax-test-{i}.png")
-
-        import ipdb; ipdb.set_trace()
+        assert images.shape == (8, 1, 512, 512, 3)
+        assert (np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 0.06652832) < 1e-3
+        assert (np.abs(images, dtype=np.float32).sum() - 2384849.8) < 1e-2
