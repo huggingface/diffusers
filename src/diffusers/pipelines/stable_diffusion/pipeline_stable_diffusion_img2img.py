@@ -195,7 +195,6 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         """
         if isinstance(prompt, str):
             batch_size = 1
-            prompt = [prompt]
         elif isinstance(prompt, list):
             batch_size = len(prompt)
         else:
@@ -250,8 +249,8 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 uncond_tokens = [""]
             elif type(prompt) is not type(negative_prompt):
                 raise TypeError(
-                    "`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-                    " {type(prompt)}."
+                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    f" {type(prompt)}."
                 )
             elif isinstance(negative_prompt, str):
                 uncond_tokens = [negative_prompt]
@@ -285,6 +284,8 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         init_latents = init_latent_dist.sample(generator=generator)
         init_latents = 0.18215 * init_latents
 
+        if isinstance(prompt, str):
+            prompt = [prompt]
         if len(prompt) > init_latents.shape[0] and len(prompt) % init_latents.shape[0] == 0:
             # expand init_latents for batch_size
             deprecation_message = (
