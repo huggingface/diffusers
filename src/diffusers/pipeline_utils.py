@@ -449,8 +449,7 @@ class DiffusionPipeline(ConfigMixin):
                 elif passed_class_obj[name] is None:
                     logger.warn(
                         f"You have passed `None` for {name} to disable its functionality in {pipeline_class}. Note"
-                        f" that this might lead to problems when using {pipeline_class} and is generally not"
-                        " recommended to do."
+                        f" that this might lead to problems when using {pipeline_class} and is not recommended."
                     )
                     sub_model_should_be_defined = False
                 else:

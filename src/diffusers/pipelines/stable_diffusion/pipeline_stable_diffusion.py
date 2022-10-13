@@ -73,8 +73,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         if safety_checker is None:
             logger.warn(
-                f"You have disabed the safety checker for {self.__class__} by passing `safety_checker=None`.Please"
-                " make sure you have very good reasons for this and have considered the consequences of doing so.The"
+                f"You have disabed the safety checker for {self.__class__} by passing `safety_checker=None`. Please"
+                " make sure you have very good reasons for this and have considered the consequences of doing so. The"
                 " `diffusers` team does not recommend disabling the safety under ANY circumstances and strongly"
                 " suggests to not disable the `safety_checker` by NOT passing `safety_checker=None` to"
                 " `from_pretrained`. For more information, please have a look at"
