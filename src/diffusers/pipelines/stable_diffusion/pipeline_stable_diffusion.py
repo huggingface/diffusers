@@ -73,12 +73,12 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         if safety_checker is None:
             logger.warn(
-                f"You have disabed the safety checker for {self.__class__} by passing `safety_checker=None`.Please"
-                " make sure you have very good reasons for this and have considered the consequences of doing so.The"
-                " `diffusers` team does not recommend disabling the safety under ANY circumstances and strongly"
-                " suggests to not disable the `safety_checker` by NOT passing `safety_checker=None` to"
-                " `from_pretrained`. For more information, please have a look at"
-                " https://github.com/huggingface/diffusers/pull/254"
+                f"You have disabed the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
+                " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
+                " results in services or applications open to the public. Both the diffusers team and Hugging Face"
+                " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
+                " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
+                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
             )
 
         self.register_modules(
