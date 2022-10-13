@@ -267,7 +267,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             pred_original_sample = model_output
         elif prediction_type == "v":
             # v_t = alpha_t * epsilon - sigma_t * x
-            raise NotImplementedError(f"v prediction not yet implemented")
+            # need to merge the PRs for sigma to be available in DDPM
+            # pred_original_sample = sample*self.alphas[t] - model_output * self.sigmas[t]
+            # eps = model_output*self.alphas[t] - sample * self.sigmas[t]
+            raise NotImplementedError(f"v prediction not yet implemented for DDPM")
         else:
             raise ValueError(f"prediction_type given as {prediction_type} must be one of `epsilon`, `sample`, or `v`")
 
