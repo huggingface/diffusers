@@ -34,7 +34,7 @@ if is_flax_available():
 class FlaxPipelineTests(unittest.TestCase):
     def test_dummy_all_tpus(self):
         pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
-            "hf-internal-testing/tiny-stable-diffusion-pipe"
+            "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None
         )
 
         prompt = (
@@ -60,3 +60,30 @@ class FlaxPipelineTests(unittest.TestCase):
         images_pil = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 
         assert len(images_pil) == 8
+
+    def test_stable_diffusion_v1_4(self):
+        pipeline, params = FlaxStableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", revision="flax", safety_checker=None)
+
+        prompt = (
+            "A cinematic film still of Morgan Freeman starring as Jimi Hendrix, portrait, 40mm lens, shallow depth of"
+            " field, close up, split lighting, cinematic"
+        )
+
+        prng_seed = jax.random.PRNGKey(0)
+        num_inference_steps = 4
+
+        num_samples = jax.device_count()
+        prompt = num_samples * [prompt]
+        prompt_ids = pipeline.prepare_inputs(prompt)
+
+        p_sample = pmap(pipeline.__call__, static_broadcasted_argnums=(3,))
+
+        # shard inputs and rng
+        params = replicate(params)
+        prng_seed = jax.random.split(prng_seed, 8)
+        prompt_ids = shard(prompt_ids)
+
+        images = p_sample(prompt_ids, params, prng_seed, num_inference_steps).images
+        images_pil = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
+
+        import ipdb; ipdb.set_trace()

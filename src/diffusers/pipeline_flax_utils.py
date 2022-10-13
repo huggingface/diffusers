@@ -62,11 +62,6 @@ for library in LOADABLE_CLASSES:
     ALL_IMPORTABLE_CLASSES.update(LOADABLE_CLASSES[library])
 
 
-class DummyChecker:
-    def __init__(self):
-        self.dummy = True
-
-
 def import_flax_or_no_model(module, class_name):
     try:
         # 1. First make sure that if a Flax object is present, import this one
@@ -176,10 +171,6 @@ class FlaxDiffusionPipeline(ConfigMixin):
                         break
                 if save_method_name is not None:
                     break
-
-            # TODO(Patrick, Suraj): to delete after
-            if isinstance(sub_model, DummyChecker):
-                continue
 
             save_method = getattr(sub_model, save_method_name)
             expects_params = "params" in set(inspect.signature(save_method).parameters.keys())
@@ -329,6 +320,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
             pipeline_class = cls
         else:
             diffusers_module = importlib.import_module(cls.__module__.split(".")[0])
+            class_name = config_dict["_class_name"] if config_dict["_class_name"].startswith("Flax") else "Flax" + config_dict["_class_name"]
             pipeline_class = getattr(diffusers_module, config_dict["_class_name"])
 
         # some modules can be passed directly to the init
@@ -349,11 +341,6 @@ class FlaxDiffusionPipeline(ConfigMixin):
 
         # 3. Load each module in the pipeline
         for name, (library_name, class_name) in init_dict.items():
-            # TODO(Patrick, Suraj) - delete later
-            if class_name == "DummyChecker":
-                library_name = "stable_diffusion"
-                class_name = "FlaxStableDiffusionSafetyChecker"
-
             is_pipeline_module = hasattr(pipelines, library_name)
             loaded_sub_model = None
 
@@ -386,20 +373,14 @@ class FlaxDiffusionPipeline(ConfigMixin):
                 loaded_sub_model = passed_class_obj[name]
             elif is_pipeline_module:
                 pipeline_module = getattr(pipelines, library_name)
-                if from_pt:
-                    class_obj = import_flax_or_no_model(pipeline_module, class_name)
-                else:
-                    class_obj = getattr(pipeline_module, class_name)
+                class_obj = import_flax_or_no_model(pipeline_module, class_name)
 
                 importable_classes = ALL_IMPORTABLE_CLASSES
                 class_candidates = {c: class_obj for c in importable_classes.keys()}
             else:
                 # else we just import it from the library.
                 library = importlib.import_module(library_name)
-                if from_pt:
-                    class_obj = import_flax_or_no_model(library, class_name)
-                else:
-                    class_obj = getattr(library, class_name)
+                class_obj = import_flax_or_no_model(library, class_name)
 
                 importable_classes = LOADABLE_CLASSES[library_name]
                 class_candidates = {c: getattr(library, c) for c in importable_classes.keys()}
@@ -422,11 +403,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
                     loaded_sub_model, loaded_params = load_method(loadable_folder, from_pt=from_pt, dtype=dtype)
                     params[name] = loaded_params
                 elif is_transformers_available() and issubclass(class_obj, FlaxPreTrainedModel):
-                    # make sure we don't initialize the weights to save time
-                    if name == "safety_checker":
-                        loaded_sub_model = DummyChecker()
-                        loaded_params = {}
-                    elif from_pt:
+                    if from_pt:
                         # TODO(Suraj): Fix this in Transformers. We should be able to use `_do_init=False` here
                         loaded_sub_model = load_method(loadable_folder, from_pt=from_pt)
                         loaded_params = loaded_sub_model.params
