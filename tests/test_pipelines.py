@@ -2275,3 +2275,23 @@ class PipelineTesterMixin(unittest.TestCase):
         tracemalloc.stop()
 
         assert peak_accelerate < peak_normal
+
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
+    def test_stable_diffusion_pipeline_with_unet_on_gpu_only(self):
+        torch.cuda.empty_cache()
+        torch.cuda.reset_max_memory_allocated()
+
+        pipeline_id = "CompVis/stable-diffusion-v1-4"
+        prompt = "Andromeda galaxy in a bottle"
+
+        pipeline = StableDiffusionPipeline.from_pretrained(
+            pipeline_id, revision="fp16", torch_dtype=torch.float32, use_auth_token=True
+        )
+        pipeline.cuda_with_minimal_gpu_usage()
+
+        _ = pipeline(prompt)
+
+        mem_bytes = torch.cuda.max_memory_allocated()
+        # make sure that less than 2.2 GB is allocated
+        assert mem_bytes < 2.2 * 10**9

@@ -125,8 +125,11 @@ class StableDiffusionPipeline(DiffusionPipeline):
         else:
             raise ImportError("Please install accelerate via `pip install accelerate`")
 
-        self.unet.half().cuda()
-        attach_execution_device_hook(self.unet, self.unet.device)
+        device = torch.device("cuda")
+
+        self.unet.half().to(device)
+        attach_execution_device_hook(self.unet, device)
+        self.unet.forward = torch.autocast("cuda")(self.unet.forward)
         self.enable_attention_slicing(1)
 
         for cpu_offloaded_model in [self.text_encoder, self.vae, self.safety_checker]:
