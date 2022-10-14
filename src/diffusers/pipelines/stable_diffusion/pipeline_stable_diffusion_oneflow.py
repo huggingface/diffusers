@@ -208,6 +208,7 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
             return_tensors="np",
         )
         text_input.input_ids = torch.from_numpy(text_input.input_ids)
+        torch._oneflow_internal.profiler.RangePush(f"text-encoder")
         text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
@@ -227,7 +228,7 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
-
+        torch._oneflow_internal.profiler.RangePop()
         # get the initial random noise unless the user supplied it
 
         # Unlike in other pipelines, latents need to be generated in the target device
@@ -304,7 +305,9 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
         # run safety checker
         safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="np")
         safety_checker_input.pixel_values = torch.from_numpy(safety_checker_input.pixel_values).to(self.device)
+        torch._oneflow_internal.profiler.RangePush(f"safety-checker")
         image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
+        torch._oneflow_internal.profiler.RangePop()
 
         if output_type == "pil":
             image = self.numpy_to_pil(image)
