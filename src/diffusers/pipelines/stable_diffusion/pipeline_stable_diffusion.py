@@ -3,6 +3,7 @@ from typing import Callable, List, Optional, Union
 
 import torch
 
+from diffusers.utils import is_accelerate_available
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
@@ -117,6 +118,19 @@ class StableDiffusionPipeline(DiffusionPipeline):
         """
         # set slice_size = `None` to disable `attention slicing`
         self.enable_attention_slicing(None)
+
+    def cuda_with_minimal_gpu_usage(self):
+        if is_accelerate_available():
+            from accelerate.hooks import attach_execution_device_hook
+        else:
+            raise ImportError("Please install accelerate via `pip install accelerate`")
+
+        self.unet.half().cuda()
+        attach_execution_device_hook(self.unet, self.unet.device)
+        self.enable_attention_slicing(1)
+
+        for cpu_offloaded_model in [self.text_encoder, self.vae, self.safety_checker]:
+            attach_execution_device_hook(cpu_offloaded_model, "cpu")
 
     @torch.no_grad()
     def __call__(
@@ -292,7 +306,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
                     self.device
                 )
             else:
-                latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
+                latents = torch.randn(latents_shape, generator=generator, device=self.unet.device, dtype=latents_dtype)
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
