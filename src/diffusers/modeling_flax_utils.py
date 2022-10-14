@@ -27,8 +27,8 @@ from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
+from . import __version__, is_torch_available
 from .modeling_flax_pytorch_utils import convert_pytorch_state_dict_to_flax
-from .modeling_utils import load_state_dict
 from .utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
@@ -286,10 +286,13 @@ class FlaxModelMixin:
         local_files_only = kwargs.pop("local_files_only", False)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
-        from_auto_class = kwargs.pop("_from_auto", False)
         subfolder = kwargs.pop("subfolder", None)
 
-        user_agent = {"file_type": "model", "framework": "flax", "from_auto_class": from_auto_class}
+        user_agent = {
+            "diffusers": __version__,
+            "file_type": "model",
+            "framework": "flax",
+        }
 
         # Load config if we don't provide a configuration
         config_path = config if config is not None else pretrained_model_name_or_path
@@ -357,7 +360,7 @@ class FlaxModelMixin:
                     f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier "
                     "listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a "
                     "token having permission to this repo with `use_auth_token` or log in with `huggingface-cli "
-                    "login` and pass `use_auth_token=True`."
+                    "login`."
                 )
             except RevisionNotFoundError:
                 raise EnvironmentError(
@@ -391,6 +394,14 @@ class FlaxModelMixin:
                 )
 
         if from_pt:
+            if is_torch_available():
+                from .modeling_utils import load_state_dict
+            else:
+                raise EnvironmentError(
+                    "Can't load the model in PyTorch format because PyTorch is not installed. "
+                    "Please, install PyTorch or use native Flax weights."
+                )
+
             # Step 1: Get the pytorch file
             pytorch_model_file = load_state_dict(model_file)
 
@@ -436,9 +447,6 @@ class FlaxModelMixin:
             )
             cls._missing_keys = missing_keys
 
-        # Mismatched keys contains tuples key/shape1/shape2 of weights in the checkpoint that have a shape not
-        # matching the weights in the model.
-        mismatched_keys = []
         for key in state.keys():
             if key in shape_state and state[key].shape != shape_state[key].shape:
                 raise ValueError(
@@ -466,25 +474,12 @@ class FlaxModelMixin:
                 f" {pretrained_model_name_or_path} and are newly initialized: {missing_keys}\nYou should probably"
                 " TRAIN this model on a down-stream task to be able to use it for predictions and inference."
             )
-        elif len(mismatched_keys) == 0:
+        else:
             logger.info(
                 f"All the weights of {model.__class__.__name__} were initialized from the model checkpoint at"
                 f" {pretrained_model_name_or_path}.\nIf your task is similar to the task the model of the checkpoint"
                 f" was trained on, you can already use {model.__class__.__name__} for predictions without further"
                 " training."
-            )
-        if len(mismatched_keys) > 0:
-            mismatched_warning = "\n".join(
-                [
-                    f"- {key}: found shape {shape1} in the checkpoint and {shape2} in the model instantiated"
-                    for key, shape1, shape2 in mismatched_keys
-                ]
-            )
-            logger.warning(
-                f"Some weights of {model.__class__.__name__} were not initialized from the model checkpoint at"
-                f" {pretrained_model_name_or_path} and are newly initialized because the shapes did not"
-                f" match:\n{mismatched_warning}\nYou should probably TRAIN this model on a down-stream task to be able"
-                " to use it for predictions and inference."
             )
 
         # dictionary of key: dtypes for the model params

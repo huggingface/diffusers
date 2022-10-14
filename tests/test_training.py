@@ -18,8 +18,8 @@ import unittest
 import torch
 
 from diffusers import DDIMScheduler, DDPMScheduler, UNet2DModel
-from diffusers.testing_utils import slow
 from diffusers.training_utils import set_seed
+from diffusers.utils.testing_utils import slow
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -41,7 +41,6 @@ class TrainingTests(unittest.TestCase):
             beta_end=0.02,
             beta_schedule="linear",
             clip_sample=True,
-            tensor_format="pt",
         )
         ddim_scheduler = DDIMScheduler(
             num_train_timesteps=1000,
@@ -49,7 +48,6 @@ class TrainingTests(unittest.TestCase):
             beta_end=0.02,
             beta_schedule="linear",
             clip_sample=True,
-            tensor_format="pt",
         )
 
         assert ddpm_scheduler.config.num_train_timesteps == ddim_scheduler.config.num_train_timesteps

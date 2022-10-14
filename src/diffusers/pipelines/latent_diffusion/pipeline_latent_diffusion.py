@@ -1,8 +1,8 @@
-from asyncio import open_unix_connection
 import inspect
-import warnings
 from typing import List, Optional, Tuple, Union
 import random
+
+
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint
@@ -56,23 +56,25 @@ class LDMTextToImagePipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
+        prompt=None,
         text_embeddings=None,
+        height: Optional[int] = 256,
+        width: Optional[int] = 256,
         batch_size=1,
+        torch_device=None,
+        eta=0.0,
+        guidance_scale=3.0,
+        num_inference_steps=50,
+        output_type="pil",
         start_img=None,
         weights=None,
         seed=None,
         noise_strength=None,
-        noise_step=None,
-        verbose=True,
-        prompt: Union[str, List[str]]=None,
-        height: Optional[int] = 256,
-        width: Optional[int] = 256,
-        num_inference_steps: Optional[int] = 50,
-        guidance_scale: Optional[float] = 1.0,
-        eta: Optional[float] = 0.0,
         generator: Optional[torch.Generator] = None,
-        output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        
+        
+        
         **kwargs,
     ) -> Union[Tuple, ImagePipelineOutput]:
         r"""
@@ -100,14 +102,12 @@ class LDMTextToImagePipeline(DiffusionPipeline):
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*):
                 Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
->>>>>>> 57b70c599c048fd764b14ff0e276bdf08ae2cd48
 
         Returns:
             [`~pipeline_utils.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if
             `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
             generated images.
         """
-        
         # eta corresponds to η in paper and should be between [0, 1]
         
         # set seed 
@@ -116,27 +116,13 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             torch.cuda.manual_seed(seed)
             np.random.seed(seed)
             random.seed(seed)
-            
-        if "torch_device" in kwargs:
-            device = kwargs.pop("torch_device")
-            warnings.warn(
-                "`torch_device` is deprecated as an input argument to `__call__` and will be removed in v0.3.0."
-                " Consider using `pipe.to(torch_device)` instead."
-            )
 
-        # Set device as before (to be removed in 0.3.0)
-        if device is None:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.to(device)
-        
+        if torch_device is None:
+            torch_device = "cuda" if torch.cuda.is_available() else "cpu"
         if prompt is not None:
-            if isinstance(prompt, str):
-                batch_size = 1
-            elif isinstance(prompt, list):
-                batch_size = len(prompt)
+            batch_size = len(prompt)
         else:
             batch_size = len(text_embeddings)
-            #raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -152,27 +138,24 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         if text_embeddings is None:
             text_embeddings = self.embed_prompts(prompt, weights=weights)
 
-
-        self.scheduler.set_timesteps(num_inference_steps)
-
         # create starting image/noise
         if start_img is None:
-            latents = torch.randn(batch_size, self.unet.in_channels, height // 8, width // 8, generator=generator, device=device)
+            latents = torch.randn(
+                (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
+                generator=generator,
+            )
+            latents = latents.to(torch_device)
         else:
             # start img is tensor of shape (batch_size, in_channels, sample_size, sample_size)
             # encode start img with vqvae
             
             # make it torch tensor first
-            latents = self.encode_image(start_img, torch_device=device)
+            latents = self.encode_image(start_img, torch_device=torch_device)
             # add noise
-            noise = torch.randn_like(latents)
             if noise_strength is not None:
-                # old method to add noise:
-                latents = latents * (1 - noise_strength) + noise * noise_strength
-            elif noise_step is not None:
-                # now we use the scheduler to add noise
-                latents = self.scheduler.add_noise(latents, noise, noise_step)
-        
+                latents = latents * (1 - noise_strength) + torch.randn_like(latents) * noise_strength
+
+        self.scheduler.set_timesteps(num_inference_steps)
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
@@ -181,7 +164,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         if accepts_eta:
             extra_kwargs["eta"] = eta
 
-        for t in tqdm(self.scheduler.timesteps, disable=not verbose):
+        for t in self.progress_bar(self.scheduler.timesteps):
             if guidance_scale == 1.0:
                 # guidance_scale of 1 means no guidance
                 latents_input = latents
@@ -204,29 +187,27 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             latents = self.scheduler.step(noise_pred, t, latents, **extra_kwargs).prev_sample
 
         # scale and decode the image latents with vae
-        image = self.decode_image(latents, torch_device=device, output_type=output_type)
+        image = self.decode_image(latents, torch_device=torch_device, output_type=output_type)
 
-        if not return_dict:
-            return (image,)
-
-        return ImagePipelineOutput(images=image)
+        return {"sample": image}  
     
     def decode_image(self, latents, torch_device=None, output_type="pil"):
-        if output_type == "latent":
-            return latents.detach().cpu()
         if torch_device is None:
             torch_device = "cuda" if torch.cuda.is_available() else "cpu"
         self.vqvae.to(torch_device)
         latents = 1 / 0.18215 * latents
-        image = self.vqvae.decode(latents.to(torch_device))
-
+        image = self.vqvae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
-        image = image.cpu()
+        image = image.cpu().permute(0, 2, 3, 1)
         if output_type == "pil":
-            image = self.numpy_to_pil(image.permute(0, 2, 3, 1).numpy())
+            image = self.numpy_to_pil(image.numpy())
         elif output_type == "numpy":
-            image = image.permute(0, 2, 3, 1).numpy()
-        return image
+            image = image.numpy()
+    
+        if not return_dict:
+                return (image,)
+
+        return ImagePipelineOutput(images=image)
     
     def encode_image(self, image, torch_device=None):
         if torch_device is None:
@@ -236,23 +217,22 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             if not isinstance(image, np.ndarray):
                 image = np.array(image)
             image = torch.from_numpy(image)
-        if image.ndim == 3:
-            image = image.unsqueeze(0)
+            if image.ndim == 3:
+                image = image.unsqueeze(0)
         # reverse channel dimension
-        if image.shape[-1] == 3:
-            image = image.permute(0, 3, 1, 2)
+        image = image.permute(0, 3, 1, 2)
         # make it float tensor between 0 and 1
         max_val = torch.max(image)
         min_val = torch.min(image)
         image = (image - min_val) / (max_val - min_val)
         # norm img
         image = (image - 0.5) * 2
-        # encode image
+            
         latents = self.vqvae.encode(image.to(torch_device))
-        # encoded img is DiagonalGaussianDistribution, need to sample from it or we take the mean instead
+            
+        # encoded img is DiagonalGaussianDistribution, need to sample from it... (maybe take mean instead)
         #latents = latents.sample()
         latents = latents.mean
-        # norm latents
         latents = latents * 0.18215
         return latents
     
@@ -273,7 +253,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             text_embeddings = torch.sum(torch.stack(text_embeddings) * normed_weights, 0)
         return text_embeddings
 
-
+    
 ################################################################################
 # Code for the text transformer model
 ################################################################################
@@ -289,7 +269,7 @@ LDMBERT_PRETRAINED_MODEL_ARCHIVE_LIST = [
 
 
 LDMBERT_PRETRAINED_CONFIG_ARCHIVE_MAP = {
-    "ldm-bert": "https://huggingface.co/ldm-bert/resolve/main/config.json",
+    "ldm-bert": "https://huggingface.co/valhalla/ldm-bert/blob/main/config.json",
 }
 
 

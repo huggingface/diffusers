@@ -1,9 +1,33 @@
+# Copyright 2022 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 import math
 from typing import Optional
 
 import torch
 import torch.nn.functional as F
 from torch import nn
+
+from einops import rearrange
+
+try:
+    from flash_attn.flash_attn_interface import flash_attn_unpadded_kvpacked_func
+    from flash_attn.bert_padding import unpad_input, pad_input
+    from flash_attn.flash_attention import FlashAttention
+    flash_attn_installed = True
+except ImportError:
+    flash_attn_installed = False
+
 
 
 class AttentionBlock(nn.Module):
@@ -72,8 +96,7 @@ class AttentionBlock(nn.Module):
 
         # get scores
         scale = 1 / math.sqrt(math.sqrt(self.channels / self.num_heads))
-
-        attention_scores = torch.matmul(query_states * scale, key_states.transpose(-1, -2) * scale)
+        attention_scores = torch.matmul(query_states * scale, key_states.transpose(-1, -2) * scale)  # TODO: use baddmm
         attention_probs = torch.softmax(attention_scores.float(), dim=-1).type(attention_scores.dtype)
 
         # compute attention output
@@ -144,10 +167,11 @@ class SpatialTransformer(nn.Module):
         residual = hidden_states
         hidden_states = self.norm(hidden_states)
         hidden_states = self.proj_in(hidden_states)
-        hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * weight, channel)
+        inner_dim = hidden_states.shape[1]
+        hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * weight, inner_dim)
         for block in self.transformer_blocks:
             hidden_states = block(hidden_states, context=context)
-        hidden_states = hidden_states.reshape(batch, height, weight, channel).permute(0, 3, 1, 2)
+        hidden_states = hidden_states.reshape(batch, height, weight, inner_dim).permute(0, 3, 1, 2)
         hidden_states = self.proj_out(hidden_states)
         return hidden_states + residual
 
@@ -227,6 +251,13 @@ class CrossAttention(nn.Module):
         # is split across the batch axis to save memory
         # You can set slice_size with `set_attention_slice`
         self._slice_size = None
+        
+        self.dim_head = dim_head
+        self.context_dim = context_dim
+        self.query_dim = query_dim
+
+        if self.context_dim == self.query_dim and self.dim_head <= 128 and (self.dim_head % 8) == 0 and flash_attn_installed:
+            self.flash_attn = FlashAttention(self.scale)
 
         self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
         self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
@@ -258,9 +289,12 @@ class CrossAttention(nn.Module):
 
         dim = query.shape[-1]
 
+        """
+        # commented out for flash attention
         query = self.reshape_heads_to_batch_dim(query)
         key = self.reshape_heads_to_batch_dim(key)
         value = self.reshape_heads_to_batch_dim(value)
+        """
 
         # TODO(PVP) - mask is currently never used. Remember to re-implement when used
 
@@ -274,6 +308,9 @@ class CrossAttention(nn.Module):
         return self.to_out(hidden_states)
 
     def _attention(self, query, key, value):
+        """
+        # commented out for flash attention
+        # TODO: use baddbmm for better performance
         attention_scores = torch.matmul(query, key.transpose(-1, -2)) * self.scale
         attention_probs = attention_scores.softmax(dim=-1)
         # compute attention output
@@ -281,6 +318,46 @@ class CrossAttention(nn.Module):
         # reshape hidden_states
         hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
         return hidden_states
+        """
+        batch_size = query.shape[0]
+
+        if not flash_attn_installed or batch_size * self.heads < 80 or query.dtype == torch.float32 or (self.dim_head > 128 or (self.dim_head % 8) != 0):
+            query = self.reshape_heads_to_batch_dim(query)
+            key = self.reshape_heads_to_batch_dim(key)
+            value = self.reshape_heads_to_batch_dim(value)
+
+            # TODO: use baddbmm for better performance
+            attention_scores = torch.matmul(query, key.transpose(-1, -2)) * self.scale
+            attention_probs = attention_scores.softmax(dim=-1)
+            # compute attention output
+            hidden_states = torch.matmul(attention_probs, value)
+            # reshape hidden_states
+            out = self.reshape_batch_dim_to_heads(hidden_states)
+        elif self.context_dim == self.query_dim:
+            qkv = torch.stack([
+                query, key, value
+            ], dim=2)
+            qkv = rearrange(qkv, 'b s t (h d) -> b s t h d', h=self.heads)
+            out, _ = self.flash_attn(qkv)
+            out = rearrange(out, 'b s h d -> b s (h d)', h=self.heads)
+        else:
+            h = self.heads
+            kv = torch.stack([key, value], dim=2)
+
+            q_seqlen = query.shape[1]
+            kv_seqlen = kv.shape[1]
+
+            q = rearrange(query, 'b s (h d) -> (b s) h d', h=h)
+            kv = rearrange(kv, 'b s t (h d) -> (b s) t h d', h=h)
+
+            cu_seqlens_q = torch.arange(0, (batch_size + 1) * q_seqlen, step=q_seqlen, dtype=torch.int32, device=q.device)
+            cu_seqlens_k = torch.arange(0, (batch_size + 1) * kv_seqlen, step=kv_seqlen, dtype=torch.int32, device=kv.device)
+
+            out = flash_attn_unpadded_kvpacked_func(q, kv, cu_seqlens_q, cu_seqlens_k, q_seqlen, kv_seqlen, 0.0, self.scale)
+
+            out = rearrange(out, '(b s) h d -> b s (h d)', b = batch_size, h = h)
+        return out
+        
 
     def _sliced_attention(self, query, key, value, sequence_length, dim):
         batch_size_attention = query.shape[0]
@@ -291,7 +368,9 @@ class CrossAttention(nn.Module):
         for i in range(hidden_states.shape[0] // slice_size):
             start_idx = i * slice_size
             end_idx = (i + 1) * slice_size
-            attn_slice = torch.matmul(query[start_idx:end_idx], key[start_idx:end_idx].transpose(1, 2)) * self.scale
+            attn_slice = (
+                torch.matmul(query[start_idx:end_idx], key[start_idx:end_idx].transpose(1, 2)) * self.scale
+            )  # TODO: use baddbmm for better performance
             attn_slice = attn_slice.softmax(dim=-1)
             attn_slice = torch.matmul(attn_slice, value[start_idx:end_idx])
 

@@ -23,7 +23,7 @@ import flax
 import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> jnp.ndarray:
@@ -68,11 +68,11 @@ class DDIMSchedulerState:
 
 
 @dataclass
-class FlaxSchedulerOutput(SchedulerOutput):
+class FlaxDDIMSchedulerOutput(FlaxSchedulerOutput):
     state: DDIMSchedulerState
 
 
-class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
+class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
     """
     Denoising diffusion implicit models is a scheduler that extends the denoising procedure introduced in denoising
     diffusion probabilistic models (DDPMs) with non-Markovian guidance.
@@ -141,6 +141,23 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
         # whether we use the final alpha of the "non-previous" one.
         self.final_alpha_cumprod = jnp.array(1.0) if set_alpha_to_one else float(self._alphas_cumprod[0])
 
+        # standard deviation of the initial noise distribution
+        self.init_noise_sigma = 1.0
+
+    def scale_model_input(
+        self, state: DDIMSchedulerState, sample: jnp.ndarray, timestep: Optional[int] = None
+    ) -> jnp.ndarray:
+        """
+        Args:
+            state (`PNDMSchedulerState`): the `FlaxPNDMScheduler` state data class instance.
+            sample (`jnp.ndarray`): input sample
+            timestep (`int`, optional): current timestep
+
+        Returns:
+            `jnp.ndarray`: scaled input sample
+        """
+        return sample
+
     def create_state(self):
         return DDIMSchedulerState.create(
             num_train_timesteps=self.config.num_train_timesteps, alphas_cumprod=self._alphas_cumprod
@@ -156,7 +173,7 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
-    def set_timesteps(self, state: DDIMSchedulerState, num_inference_steps: int) -> DDIMSchedulerState:
+    def set_timesteps(self, state: DDIMSchedulerState, num_inference_steps: int, shape: Tuple) -> DDIMSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -183,7 +200,7 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: jnp.ndarray,
         return_dict: bool = True,
-    ) -> Union[FlaxSchedulerOutput, Tuple]:
+    ) -> Union[FlaxDDIMSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -197,11 +214,11 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
             key (`random.KeyArray`): a PRNG key.
             eta (`float`): weight of noise for added noise in diffusion step.
             use_clipped_model_output (`bool`): TODO
-            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than FlaxDDIMSchedulerOutput class
 
         Returns:
-            [`FlaxSchedulerOutput`] or `tuple`: [`FlaxSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
-            When returning a tuple, the first element is the sample tensor.
+            [`FlaxDDIMSchedulerOutput`] or `tuple`: [`FlaxDDIMSchedulerOutput`] if `return_dict` is True, otherwise a
+            `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         if state.num_inference_steps is None:
@@ -252,7 +269,7 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (prev_sample, state)
 
-        return FlaxSchedulerOutput(prev_sample=prev_sample, state=state)
+        return FlaxDDIMSchedulerOutput(prev_sample=prev_sample, state=state)
 
     def add_noise(
         self,

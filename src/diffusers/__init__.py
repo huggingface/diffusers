@@ -9,7 +9,7 @@ from .utils import (
 )
 
 
-__version__ = "0.4.0.dev0"
+__version__ = "0.5.1"
 
 from .configuration_utils import ConfigMixin
 from .onnx_utils import OnnxRuntimeModel
@@ -73,6 +73,7 @@ if is_flax_available():
         FlaxKarrasVeScheduler,
         FlaxLMSDiscreteScheduler,
         FlaxPNDMScheduler,
+        FlaxSchedulerMixin,
         FlaxScoreSdeVeScheduler,
     )
 else:
@@ -82,7 +83,5 @@ if is_flax_available() and is_transformers_available():
     from .pipelines import FlaxStableDiffusionPipeline
 else:
     from .utils.dummy_flax_and_transformers_objects import *  # noqa F403
-    #from .utils.dummy_transformers_objects import *
-    
-    
+
 from .callbacks import LPIPSCallback, NormalDistLoss, ContrastLoss, LPIPSLoss, create_callbacks

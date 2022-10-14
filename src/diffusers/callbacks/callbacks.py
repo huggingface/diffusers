@@ -63,3 +63,4 @@ def create_callbacks(use_lpips=False, lpips_image=None, use_normal_dist=False, u
                            "apply_to_image": True}
         callbacks.append(lpips_callback)
     return callbacks
+
