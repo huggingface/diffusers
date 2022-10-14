@@ -159,6 +159,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _scipy_available = False
 
+_accelerate_available = importlib.util.find_spec("accelerate") is not None
+try:
+    _accelerate_version = importlib_metadata.version("accelerate")
+    logger.debug(f"Successfully imported accelerate version {_accelerate_version}")
+except importlib_metadata.PackageNotFoundError:
+    _accelerate_available = False
+
 
 def is_torch_available():
     return _torch_available
@@ -194,6 +201,10 @@ def is_onnx_available():
 
 def is_scipy_available():
     return _scipy_available
+
+
+def is_accelerate_available():
+    return _accelerate_available
 
 
 # docstyle-ignore

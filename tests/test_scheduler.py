@@ -173,34 +173,6 @@ class SchedulerCommonTest(unittest.TestCase):
             self.assertEqual(output_0.shape, sample.shape)
             self.assertEqual(output_0.shape, output_1.shape)
 
-    def test_pytorch_equal_numpy(self):
-        kwargs = dict(self.forward_default_kwargs)
-
-        num_inference_steps = kwargs.pop("num_inference_steps", None)
-
-        for scheduler_class in self.scheduler_classes:
-            sample_pt = self.dummy_sample
-            residual_pt = 0.1 * sample_pt
-
-            sample = sample_pt.numpy()
-            residual = 0.1 * sample
-
-            scheduler_config = self.get_scheduler_config()
-            scheduler = scheduler_class(tensor_format="np", **scheduler_config)
-
-            scheduler_pt = scheduler_class(tensor_format="pt", **scheduler_config)
-
-            if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
-                scheduler.set_timesteps(num_inference_steps)
-                scheduler_pt.set_timesteps(num_inference_steps)
-            elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
-                kwargs["num_inference_steps"] = num_inference_steps
-
-            output = scheduler.step(residual, 1, sample, **kwargs).prev_sample
-            output_pt = scheduler_pt.step(residual_pt, 1, sample_pt, **kwargs).prev_sample
-
-            assert np.sum(np.abs(output - output_pt.numpy())) < 1e-4, "Scheduler outputs are not identical"
-
     def test_scheduler_outputs_equivalence(self):
         def set_nan_tensor_to_zero(t):
             t[t != t] = 0
@@ -229,7 +201,7 @@ class SchedulerCommonTest(unittest.TestCase):
                 )
 
         kwargs = dict(self.forward_default_kwargs)
-        num_inference_steps = kwargs.pop("num_inference_steps", None)
+        num_inference_steps = kwargs.pop("num_inference_steps", 50)
 
         for scheduler_class in self.scheduler_classes:
             scheduler_config = self.get_scheduler_config()
@@ -254,6 +226,27 @@ class SchedulerCommonTest(unittest.TestCase):
 
             recursive_check(outputs_tuple, outputs_dict)
 
+    def test_scheduler_public_api(self):
+        for scheduler_class in self.scheduler_classes:
+            scheduler_config = self.get_scheduler_config()
+            scheduler = scheduler_class(**scheduler_config)
+            self.assertTrue(
+                hasattr(scheduler, "init_noise_sigma"),
+                f"{scheduler_class} does not implement a required attribute `init_noise_sigma`",
+            )
+            self.assertTrue(
+                hasattr(scheduler, "scale_model_input"),
+                f"{scheduler_class} does not implement a required class method `scale_model_input(sample, timestep)`",
+            )
+            self.assertTrue(
+                hasattr(scheduler, "step"),
+                f"{scheduler_class} does not implement a required class method `step(...)`",
+            )
+
+            sample = self.dummy_sample
+            scaled_sample = scheduler.scale_model_input(sample, 0.0)
+            self.assertEqual(sample.shape, scaled_sample.shape)
+
 
 class DDPMSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (DDPMScheduler,)
@@ -266,7 +259,6 @@ class DDPMSchedulerTest(SchedulerCommonTest):
             "beta_schedule": "linear",
             "variance_type": "fixed_small",
             "clip_sample": True,
-            "tensor_format": "pt",
         }
 
         config.update(**kwargs)
@@ -304,10 +296,6 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         assert torch.sum(torch.abs(scheduler._get_variance(0) - 0.0)) < 1e-5
         assert torch.sum(torch.abs(scheduler._get_variance(487) - 0.00979)) < 1e-5
         assert torch.sum(torch.abs(scheduler._get_variance(999) - 0.02)) < 1e-5
-
-    # TODO Make DDPM Numpy compatible
-    def test_pytorch_equal_numpy(self):
-        pass
 
     def test_full_loop_no_noise(self):
         scheduler_class = self.scheduler_classes[0]
@@ -357,9 +345,37 @@ class DDIMSchedulerTest(SchedulerCommonTest):
         config.update(**kwargs)
         return config
 
+    def full_loop(self, **config):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(**config)
+        scheduler = scheduler_class(**scheduler_config)
+
+        num_inference_steps, eta = 10, 0.0
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter
+
+        scheduler.set_timesteps(num_inference_steps)
+
+        for t in scheduler.timesteps:
+            residual = model(sample, t)
+            sample = scheduler.step(residual, t, sample, eta).prev_sample
+
+        return sample
+
     def test_timesteps(self):
         for timesteps in [100, 500, 1000]:
             self.check_over_configs(num_train_timesteps=timesteps)
+
+    def test_steps_offset(self):
+        for steps_offset in [0, 1]:
+            self.check_over_configs(steps_offset=steps_offset)
+
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(steps_offset=1)
+        scheduler = scheduler_class(**scheduler_config)
+        scheduler.set_timesteps(5)
+        assert torch.equal(scheduler.timesteps, torch.LongTensor([801, 601, 401, 201, 1]))
 
     def test_betas(self):
         for beta_start, beta_end in zip([0.0001, 0.001, 0.01, 0.1], [0.002, 0.02, 0.2, 2]):
@@ -398,26 +414,31 @@ class DDIMSchedulerTest(SchedulerCommonTest):
         assert torch.sum(torch.abs(scheduler._get_variance(999, 998) - 0.02)) < 1e-5
 
     def test_full_loop_no_noise(self):
-        scheduler_class = self.scheduler_classes[0]
-        scheduler_config = self.get_scheduler_config()
-        scheduler = scheduler_class(**scheduler_config)
-
-        num_inference_steps, eta = 10, 0.0
-
-        model = self.dummy_model()
-        sample = self.dummy_sample_deter
-
-        scheduler.set_timesteps(num_inference_steps)
-        for t in scheduler.timesteps:
-            residual = model(sample, t)
-
-            sample = scheduler.step(residual, t, sample, eta).prev_sample
+        sample = self.full_loop()
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
         assert abs(result_sum.item() - 172.0067) < 1e-2
         assert abs(result_mean.item() - 0.223967) < 1e-3
+
+    def test_full_loop_with_set_alpha_to_one(self):
+        # We specify different beta, so that the first alpha is 0.99
+        sample = self.full_loop(set_alpha_to_one=True, beta_start=0.01)
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_sum.item() - 149.8295) < 1e-2
+        assert abs(result_mean.item() - 0.1951) < 1e-3
+
+    def test_full_loop_with_no_set_alpha_to_one(self):
+        # We specify different beta, so that the first alpha is 0.99
+        sample = self.full_loop(set_alpha_to_one=False, beta_start=0.01)
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_sum.item() - 149.0784) < 1e-2
+        assert abs(result_mean.item() - 0.1941) < 1e-3
 
 
 class PNDMSchedulerTest(SchedulerCommonTest):
@@ -503,71 +524,25 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-    def test_pytorch_equal_numpy(self):
-        kwargs = dict(self.forward_default_kwargs)
-        num_inference_steps = kwargs.pop("num_inference_steps", None)
+    def full_loop(self, **config):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(**config)
+        scheduler = scheduler_class(**scheduler_config)
 
-        for scheduler_class in self.scheduler_classes:
-            sample_pt = self.dummy_sample
-            residual_pt = 0.1 * sample_pt
-            dummy_past_residuals_pt = [residual_pt + 0.2, residual_pt + 0.15, residual_pt + 0.1, residual_pt + 0.05]
+        num_inference_steps = 10
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter
+        scheduler.set_timesteps(num_inference_steps)
 
-            sample = sample_pt.numpy()
-            residual = 0.1 * sample
-            dummy_past_residuals = [residual + 0.2, residual + 0.15, residual + 0.1, residual + 0.05]
+        for i, t in enumerate(scheduler.prk_timesteps):
+            residual = model(sample, t)
+            sample = scheduler.step_prk(residual, t, sample).prev_sample
 
-            scheduler_config = self.get_scheduler_config()
-            scheduler = scheduler_class(tensor_format="np", **scheduler_config)
+        for i, t in enumerate(scheduler.plms_timesteps):
+            residual = model(sample, t)
+            sample = scheduler.step_plms(residual, t, sample).prev_sample
 
-            scheduler_pt = scheduler_class(tensor_format="pt", **scheduler_config)
-
-            if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
-                scheduler.set_timesteps(num_inference_steps)
-                scheduler_pt.set_timesteps(num_inference_steps)
-            elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
-                kwargs["num_inference_steps"] = num_inference_steps
-
-            # copy over dummy past residuals (must be done after set_timesteps)
-            scheduler.ets = dummy_past_residuals[:]
-            scheduler_pt.ets = dummy_past_residuals_pt[:]
-
-            output = scheduler.step_prk(residual, 1, sample, **kwargs).prev_sample
-            output_pt = scheduler_pt.step_prk(residual_pt, 1, sample_pt, **kwargs).prev_sample
-            assert np.sum(np.abs(output - output_pt.numpy())) < 1e-4, "Scheduler outputs are not identical"
-
-            output = scheduler.step_plms(residual, 1, sample, **kwargs).prev_sample
-            output_pt = scheduler_pt.step_plms(residual_pt, 1, sample_pt, **kwargs).prev_sample
-
-            assert np.sum(np.abs(output - output_pt.numpy())) < 1e-4, "Scheduler outputs are not identical"
-
-    def test_set_format(self):
-        kwargs = dict(self.forward_default_kwargs)
-        num_inference_steps = kwargs.pop("num_inference_steps", None)
-
-        for scheduler_class in self.scheduler_classes:
-            scheduler_config = self.get_scheduler_config()
-            scheduler = scheduler_class(tensor_format="np", **scheduler_config)
-            scheduler_pt = scheduler_class(tensor_format="pt", **scheduler_config)
-
-            if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
-                scheduler.set_timesteps(num_inference_steps)
-                scheduler_pt.set_timesteps(num_inference_steps)
-
-            for key, value in vars(scheduler).items():
-                # we only allow `ets` attr to be a list
-                assert not isinstance(value, list) or key in [
-                    "ets"
-                ], f"Scheduler is not correctly set to np format, the attribute {key} is {type(value)}"
-
-            # check if `scheduler.set_format` does convert correctly attrs to pt format
-            for key, value in vars(scheduler_pt).items():
-                # we only allow `ets` attr to be a list
-                assert not isinstance(value, list) or key in [
-                    "ets"
-                ], f"Scheduler is not correctly set to pt format, the attribute {key} is {type(value)}"
-                assert not isinstance(
-                    value, np.ndarray
-                ), f"Scheduler is not correctly set to pt format, the attribute {key} is {type(value)}"
+        return sample
 
     def test_step_shape(self):
         kwargs = dict(self.forward_default_kwargs)
@@ -606,8 +581,23 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         for timesteps in [100, 1000]:
             self.check_over_configs(num_train_timesteps=timesteps)
 
+    def test_steps_offset(self):
+        for steps_offset in [0, 1]:
+            self.check_over_configs(steps_offset=steps_offset)
+
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(steps_offset=1)
+        scheduler = scheduler_class(**scheduler_config)
+        scheduler.set_timesteps(10)
+        assert torch.equal(
+            scheduler.timesteps,
+            torch.LongTensor(
+                [901, 851, 851, 801, 801, 751, 751, 701, 701, 651, 651, 601, 601, 501, 401, 301, 201, 101, 1]
+            ),
+        )
+
     def test_betas(self):
-        for beta_start, beta_end in zip([0.0001, 0.001, 0.01], [0.002, 0.02, 0.2]):
+        for beta_start, beta_end in zip([0.0001, 0.001], [0.002, 0.02]):
             self.check_over_configs(beta_start=beta_start, beta_end=beta_end)
 
     def test_schedules(self):
@@ -620,7 +610,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
     def test_inference_steps(self):
         for t, num_inference_steps in zip([1, 5, 10], [10, 50, 100]):
-            self.check_over_forward(time_step=t, num_inference_steps=num_inference_steps)
+            self.check_over_forward(num_inference_steps=num_inference_steps)
 
     def test_pow_of_3_inference_steps(self):
         # earlier version of set_timesteps() caused an error indexing alpha's with inference steps as power of 3
@@ -648,28 +638,30 @@ class PNDMSchedulerTest(SchedulerCommonTest):
             scheduler.step_plms(self.dummy_sample, 1, self.dummy_sample).prev_sample
 
     def test_full_loop_no_noise(self):
-        scheduler_class = self.scheduler_classes[0]
-        scheduler_config = self.get_scheduler_config()
-        scheduler = scheduler_class(**scheduler_config)
-
-        num_inference_steps = 10
-        model = self.dummy_model()
-        sample = self.dummy_sample_deter
-        scheduler.set_timesteps(num_inference_steps)
-
-        for i, t in enumerate(scheduler.prk_timesteps):
-            residual = model(sample, t)
-            sample = scheduler.step_prk(residual, i, sample).prev_sample
-
-        for i, t in enumerate(scheduler.plms_timesteps):
-            residual = model(sample, t)
-            sample = scheduler.step_plms(residual, i, sample).prev_sample
-
+        sample = self.full_loop()
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 428.8788) < 1e-2
-        assert abs(result_mean.item() - 0.5584) < 1e-3
+        assert abs(result_sum.item() - 198.1318) < 1e-2
+        assert abs(result_mean.item() - 0.2580) < 1e-3
+
+    def test_full_loop_with_set_alpha_to_one(self):
+        # We specify different beta, so that the first alpha is 0.99
+        sample = self.full_loop(set_alpha_to_one=True, beta_start=0.01)
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_sum.item() - 230.0399) < 1e-2
+        assert abs(result_mean.item() - 0.2995) < 1e-3
+
+    def test_full_loop_with_no_set_alpha_to_one(self):
+        # We specify different beta, so that the first alpha is 0.99
+        sample = self.full_loop(set_alpha_to_one=False, beta_start=0.01)
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_sum.item() - 186.9482) < 1e-2
+        assert abs(result_mean.item() - 0.2434) < 1e-3
 
 
 class ScoreSdeVeSchedulerTest(unittest.TestCase):
@@ -716,7 +708,6 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
             "sigma_min": 0.01,
             "sigma_max": 1348,
             "sampling_eps": 1e-5,
-            "tensor_format": "pt",  # TODO add test for tensor formats
         }
 
         config.update(**kwargs)
@@ -866,7 +857,6 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
             "beta_end": 0.02,
             "beta_schedule": "linear",
             "trained_betas": None,
-            "tensor_format": "pt",
         }
 
         config.update(**kwargs)
@@ -877,7 +867,7 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
             self.check_over_configs(num_train_timesteps=timesteps)
 
     def test_betas(self):
-        for beta_start, beta_end in zip([0.0001, 0.001, 0.01, 0.1], [0.002, 0.02, 0.2, 2]):
+        for beta_start, beta_end in zip([0.00001, 0.0001, 0.001], [0.0002, 0.002, 0.02]):
             self.check_over_configs(beta_start=beta_start, beta_end=beta_end)
 
     def test_schedules(self):
@@ -888,28 +878,6 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
         for t in [0, 500, 800]:
             self.check_over_forward(time_step=t)
 
-    def test_pytorch_equal_numpy(self):
-        for scheduler_class in self.scheduler_classes:
-            sample_pt = self.dummy_sample
-            residual_pt = 0.1 * sample_pt
-
-            sample = sample_pt.numpy()
-            residual = 0.1 * sample
-
-            scheduler_config = self.get_scheduler_config()
-            scheduler_config["tensor_format"] = "np"
-            scheduler = scheduler_class(**scheduler_config)
-
-            scheduler_config["tensor_format"] = "pt"
-            scheduler_pt = scheduler_class(**scheduler_config)
-
-            scheduler.set_timesteps(self.num_inference_steps)
-            scheduler_pt.set_timesteps(self.num_inference_steps)
-
-            output = scheduler.step(residual, 1, sample).prev_sample
-            output_pt = scheduler_pt.step(residual_pt, 1, sample_pt).prev_sample
-            assert np.sum(np.abs(output - output_pt.numpy())) < 1e-4, "Scheduler outputs are not identical"
-
     def test_full_loop_no_noise(self):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
@@ -918,14 +886,14 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
         scheduler.set_timesteps(self.num_inference_steps)
 
         model = self.dummy_model()
-        sample = self.dummy_sample_deter * scheduler.sigmas[0]
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
 
         for i, t in enumerate(scheduler.timesteps):
-            sample = sample / ((scheduler.sigmas[i] ** 2 + 1) ** 0.5)
+            sample = scheduler.scale_model_input(sample, t)
 
             model_output = model(sample, t)
 
-            output = scheduler.step(model_output, i, sample)
+            output = scheduler.step(model_output, t, sample)
             sample = output.prev_sample
 
         result_sum = torch.sum(torch.abs(sample))

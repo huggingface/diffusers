@@ -17,6 +17,22 @@ import jax.numpy as jnp
 
 
 class FlaxAttentionBlock(nn.Module):
+    r"""
+    A Flax multi-head attention module as described in: https://arxiv.org/abs/1706.03762
+
+    Parameters:
+        query_dim (:obj:`int`):
+            Input hidden states dimension
+        heads (:obj:`int`, *optional*, defaults to 8):
+            Number of heads
+        dim_head (:obj:`int`, *optional*, defaults to 64):
+            Hidden states dimension inside each head
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
+            Dropout rate
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+
+    """
     query_dim: int
     heads: int = 8
     dim_head: int = 64
@@ -32,7 +48,7 @@ class FlaxAttentionBlock(nn.Module):
         self.key = nn.Dense(inner_dim, use_bias=False, dtype=self.dtype, name="to_k")
         self.value = nn.Dense(inner_dim, use_bias=False, dtype=self.dtype, name="to_v")
 
-        self.proj_attn = nn.Dense(self.query_dim, dtype=self.dtype, name="to_out")
+        self.proj_attn = nn.Dense(self.query_dim, dtype=self.dtype, name="to_out_0")
 
     def reshape_heads_to_batch_dim(self, tensor):
         batch_size, seq_len, dim = tensor.shape
@@ -74,6 +90,23 @@ class FlaxAttentionBlock(nn.Module):
 
 
 class FlaxBasicTransformerBlock(nn.Module):
+    r"""
+    A Flax transformer block layer with `GLU` (Gated Linear Unit) activation function as described in:
+    https://arxiv.org/abs/1706.03762
+
+
+    Parameters:
+        dim (:obj:`int`):
+            Inner hidden states dimension
+        n_heads (:obj:`int`):
+            Number of heads
+        d_head (:obj:`int`):
+            Hidden states dimension inside each head
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
+            Dropout rate
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+    """
     dim: int
     n_heads: int
     d_head: int
@@ -82,9 +115,9 @@ class FlaxBasicTransformerBlock(nn.Module):
 
     def setup(self):
         # self attention
-        self.self_attn = FlaxAttentionBlock(self.dim, self.n_heads, self.d_head, self.dropout, dtype=self.dtype)
+        self.attn1 = FlaxAttentionBlock(self.dim, self.n_heads, self.d_head, self.dropout, dtype=self.dtype)
         # cross attention
-        self.cross_attn = FlaxAttentionBlock(self.dim, self.n_heads, self.d_head, self.dropout, dtype=self.dtype)
+        self.attn2 = FlaxAttentionBlock(self.dim, self.n_heads, self.d_head, self.dropout, dtype=self.dtype)
         self.ff = FlaxGluFeedForward(dim=self.dim, dropout=self.dropout, dtype=self.dtype)
         self.norm1 = nn.LayerNorm(epsilon=1e-5, dtype=self.dtype)
         self.norm2 = nn.LayerNorm(epsilon=1e-5, dtype=self.dtype)
@@ -93,12 +126,12 @@ class FlaxBasicTransformerBlock(nn.Module):
     def __call__(self, hidden_states, context, deterministic=True):
         # self attention
         residual = hidden_states
-        hidden_states = self.self_attn(self.norm1(hidden_states), deterministic=deterministic)
+        hidden_states = self.attn1(self.norm1(hidden_states), deterministic=deterministic)
         hidden_states = hidden_states + residual
 
         # cross attention
         residual = hidden_states
-        hidden_states = self.cross_attn(self.norm2(hidden_states), context, deterministic=deterministic)
+        hidden_states = self.attn2(self.norm2(hidden_states), context, deterministic=deterministic)
         hidden_states = hidden_states + residual
 
         # feed forward
@@ -110,6 +143,25 @@ class FlaxBasicTransformerBlock(nn.Module):
 
 
 class FlaxSpatialTransformer(nn.Module):
+    r"""
+    A Spatial Transformer layer with Gated Linear Unit (GLU) activation function as described in:
+    https://arxiv.org/pdf/1506.02025.pdf
+
+
+    Parameters:
+        in_channels (:obj:`int`):
+            Input number of channels
+        n_heads (:obj:`int`):
+            Number of heads
+        d_head (:obj:`int`):
+            Hidden states dimension inside each head
+        depth (:obj:`int`, *optional*, defaults to 1):
+            Number of transformers block
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
+            Dropout rate
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+    """
     in_channels: int
     n_heads: int
     d_head: int
@@ -144,7 +196,6 @@ class FlaxSpatialTransformer(nn.Module):
 
     def __call__(self, hidden_states, context, deterministic=True):
         batch, height, width, channels = hidden_states.shape
-        # import ipdb; ipdb.set_trace()
         residual = hidden_states
         hidden_states = self.norm(hidden_states)
         hidden_states = self.proj_in(hidden_states)
@@ -163,18 +214,56 @@ class FlaxSpatialTransformer(nn.Module):
 
 
 class FlaxGluFeedForward(nn.Module):
+    r"""
+    Flax module that encapsulates two Linear layers separated by a gated linear unit activation from:
+    https://arxiv.org/abs/2002.05202
+
+    Parameters:
+        dim (:obj:`int`):
+            Inner hidden states dimension
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
+            Dropout rate
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+    """
+    dim: int
+    dropout: float = 0.0
+    dtype: jnp.dtype = jnp.float32
+
+    def setup(self):
+        # The second linear layer needs to be called
+        # net_2 for now to match the index of the Sequential layer
+        self.net_0 = FlaxGEGLU(self.dim, self.dropout, self.dtype)
+        self.net_2 = nn.Dense(self.dim, dtype=self.dtype)
+
+    def __call__(self, hidden_states, deterministic=True):
+        hidden_states = self.net_0(hidden_states)
+        hidden_states = self.net_2(hidden_states)
+        return hidden_states
+
+
+class FlaxGEGLU(nn.Module):
+    r"""
+    Flax implementation of a Linear layer followed by the variant of the gated linear unit activation function from
+    https://arxiv.org/abs/2002.05202.
+
+    Parameters:
+        dim (:obj:`int`):
+            Input hidden states dimension
+        dropout (:obj:`float`, *optional*, defaults to 0.0):
+            Dropout rate
+        dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
+            Parameters `dtype`
+    """
     dim: int
     dropout: float = 0.0
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
         inner_dim = self.dim * 4
-        self.dense1 = nn.Dense(inner_dim * 2, dtype=self.dtype)
-        self.dense2 = nn.Dense(self.dim, dtype=self.dtype)
+        self.proj = nn.Dense(inner_dim * 2, dtype=self.dtype)
 
     def __call__(self, hidden_states, deterministic=True):
-        hidden_states = self.dense1(hidden_states)
+        hidden_states = self.proj(hidden_states)
         hidden_linear, hidden_gelu = jnp.split(hidden_states, 2, axis=2)
-        hidden_states = hidden_linear * nn.gelu(hidden_gelu)
-        hidden_states = self.dense2(hidden_states)
-        return hidden_states
+        return hidden_linear * nn.gelu(hidden_gelu)

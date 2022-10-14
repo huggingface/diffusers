@@ -15,6 +15,7 @@
 
 import os
 
+from .deprecation_utils import deprecate
 from .import_utils import (
     ENV_VARS_TRUE_AND_AUTO_VALUES,
     ENV_VARS_TRUE_VALUES,
@@ -22,6 +23,7 @@ from .import_utils import (
     USE_TF,
     USE_TORCH,
     DummyObject,
+    is_accelerate_available,
     is_flax_available,
     is_inflect_available,
     is_modelcards_available,
@@ -37,6 +39,10 @@ from .logging import get_logger
 from .outputs import BaseOutput
 
 
+if is_torch_available():
+    from .testing_utils import floats_tensor, load_image, parse_flag_from_env, slow, torch_device
+
+
 logger = get_logger(__name__)
 
 
@@ -47,6 +53,9 @@ default_cache_path = os.path.join(hf_cache_home, "diffusers")
 
 
 CONFIG_NAME = "config.json"
+WEIGHTS_NAME = "diffusion_pytorch_model.bin"
+FLAX_WEIGHTS_NAME = "diffusion_flax_model.msgpack"
+ONNX_WEIGHTS_NAME = "model.onnx"
 HUGGINGFACE_CO_RESOLVE_ENDPOINT = "https://huggingface.co"
 DIFFUSERS_CACHE = default_cache_path
 DIFFUSERS_DYNAMIC_MODULE_NAME = "diffusers_modules"
