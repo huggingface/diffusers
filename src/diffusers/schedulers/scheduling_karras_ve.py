@@ -86,7 +86,6 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         s_churn: float = 80,
         s_min: float = 0.05,
         s_max: float = 50,
-        **kwargs,
     ):
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = sigma_max
