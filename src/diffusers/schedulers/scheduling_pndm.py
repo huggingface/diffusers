@@ -100,7 +100,6 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         skip_prk_steps: bool = False,
         set_alpha_to_one: bool = False,
         steps_offset: int = 0,
-        **kwargs,
     ):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
