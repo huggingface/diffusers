@@ -112,7 +112,6 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         trained_betas: Optional[np.ndarray] = None,
         variance_type: str = "fixed_small",
         clip_sample: bool = True,
-        **kwargs,
     ):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
