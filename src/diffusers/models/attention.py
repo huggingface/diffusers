@@ -18,6 +18,17 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from einops import rearrange
+
+try:
+    from flash_attn.flash_attn_interface import flash_attn_unpadded_kvpacked_func
+    from flash_attn.bert_padding import unpad_input, pad_input
+    from flash_attn.flash_attention import FlashAttention
+    flash_attn_installed = True
+except ImportError:
+    flash_attn_installed = False
+
+
 
 class AttentionBlock(nn.Module):
     """
@@ -240,6 +251,13 @@ class CrossAttention(nn.Module):
         # is split across the batch axis to save memory
         # You can set slice_size with `set_attention_slice`
         self._slice_size = None
+        
+        self.dim_head = dim_head
+        self.context_dim = context_dim
+        self.query_dim = query_dim
+
+        if self.context_dim == self.query_dim and self.dim_head <= 128 and (self.dim_head % 8) == 0 and flash_attn_installed:
+            self.flash_attn = FlashAttention(self.scale)
 
         self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
         self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
@@ -271,9 +289,12 @@ class CrossAttention(nn.Module):
 
         dim = query.shape[-1]
 
+        """
+        # commented out for flash attention
         query = self.reshape_heads_to_batch_dim(query)
         key = self.reshape_heads_to_batch_dim(key)
         value = self.reshape_heads_to_batch_dim(value)
+        """
 
         # TODO(PVP) - mask is currently never used. Remember to re-implement when used
 
@@ -287,6 +308,8 @@ class CrossAttention(nn.Module):
         return self.to_out(hidden_states)
 
     def _attention(self, query, key, value):
+        """
+        # commented out for flash attention
         # TODO: use baddbmm for better performance
         attention_scores = torch.matmul(query, key.transpose(-1, -2)) * self.scale
         attention_probs = attention_scores.softmax(dim=-1)
@@ -295,6 +318,46 @@ class CrossAttention(nn.Module):
         # reshape hidden_states
         hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
         return hidden_states
+        """
+        batch_size = query.shape[0]
+
+        if not flash_attn_installed or batch_size * self.heads < 80 or query.dtype == torch.float32 or (self.dim_head > 128 or (self.dim_head % 8) != 0):
+            query = self.reshape_heads_to_batch_dim(query)
+            key = self.reshape_heads_to_batch_dim(key)
+            value = self.reshape_heads_to_batch_dim(value)
+
+            # TODO: use baddbmm for better performance
+            attention_scores = torch.matmul(query, key.transpose(-1, -2)) * self.scale
+            attention_probs = attention_scores.softmax(dim=-1)
+            # compute attention output
+            hidden_states = torch.matmul(attention_probs, value)
+            # reshape hidden_states
+            out = self.reshape_batch_dim_to_heads(hidden_states)
+        elif self.context_dim == self.query_dim:
+            qkv = torch.stack([
+                query, key, value
+            ], dim=2)
+            qkv = rearrange(qkv, 'b s t (h d) -> b s t h d', h=self.heads)
+            out, _ = self.flash_attn(qkv)
+            out = rearrange(out, 'b s h d -> b s (h d)', h=self.heads)
+        else:
+            h = self.heads
+            kv = torch.stack([key, value], dim=2)
+
+            q_seqlen = query.shape[1]
+            kv_seqlen = kv.shape[1]
+
+            q = rearrange(query, 'b s (h d) -> (b s) h d', h=h)
+            kv = rearrange(kv, 'b s t (h d) -> (b s) t h d', h=h)
+
+            cu_seqlens_q = torch.arange(0, (batch_size + 1) * q_seqlen, step=q_seqlen, dtype=torch.int32, device=q.device)
+            cu_seqlens_k = torch.arange(0, (batch_size + 1) * kv_seqlen, step=kv_seqlen, dtype=torch.int32, device=kv.device)
+
+            out = flash_attn_unpadded_kvpacked_func(q, kv, cu_seqlens_q, cu_seqlens_k, q_seqlen, kv_seqlen, 0.0, self.scale)
+
+            out = rearrange(out, '(b s) h d -> b s (h d)', b = batch_size, h = h)
+        return out
+        
 
     def _sliced_attention(self, query, key, value, sequence_length, dim):
         batch_size_attention = query.shape[0]

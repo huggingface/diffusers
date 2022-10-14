@@ -74,6 +74,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
         trained_betas: Optional[np.ndarray] = None,
+        use_new_add_noise: bool = True,
         **kwargs,
     ):
         deprecate(
@@ -82,6 +83,8 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             "If you're running your code in PyTorch, you can safely remove this argument.",
             take_from=kwargs,
         )
+        
+        self.use_new_add_noise = use_new_add_noise
 
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
@@ -111,6 +114,13 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(timesteps)
         self.derivatives = []
         self.is_scale_input_called = False
+        
+        
+    def get_current_step(self, timestep: Union[float, torch.FloatTensor]):
+        if isinstance(timestep, torch.Tensor):
+            timestep = timestep.to(self.timesteps.device)
+        step_index = (self.timesteps == timestep).nonzero().item()
+        return step_index
 
     def scale_model_input(
         self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
@@ -125,9 +135,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         Returns:
             `torch.FloatTensor`: scaled input sample
         """
-        if isinstance(timestep, torch.Tensor):
-            timestep = timestep.to(self.timesteps.device)
-        step_index = (self.timesteps == timestep).nonzero().item()
+        step_index = self.get_current_step(timestep)
         sigma = self.sigmas[step_index]
         sample = sample / ((sigma**2 + 1) ** 0.5)
         self.is_scale_input_called = True
@@ -277,11 +285,23 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
 
-        sigma = self.sigmas[step_indices].flatten()
-        while len(sigma.shape) < len(original_samples.shape):
-            sigma = sigma.unsqueeze(-1)
-
-        noisy_samples = original_samples + noise * sigma
+        if self.use_new_add_noise:
+            sigma = self.sigmas[step_indices].flatten()
+            while len(sigma.shape) < len(original_samples.shape):
+                sigma = sigma.unsqueeze(-1)
+            sigma = sigma.to(original_samples.dtype)
+            noisy_samples = original_samples + noise * sigma
+        else:
+            alpha_prod = self.alphas_cumprod[step_indices].flatten().to(original_samples.device)
+            
+            while len(alpha_prod.shape) < len(original_samples.shape):
+                alpha_prod = alpha_prod.unsqueeze(-1) 
+                
+            alpha_prod = alpha_prod.to(original_samples.dtype)
+            
+            noisy_samples = (alpha_prod**0.5) * original_samples + ((1 - alpha_prod) ** 0.5) * noise
+        
+        
         return noisy_samples
 
     def __len__(self):

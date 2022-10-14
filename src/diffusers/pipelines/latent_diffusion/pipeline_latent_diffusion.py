@@ -1,9 +1,12 @@
 import inspect
 from typing import List, Optional, Tuple, Union
+import random
+
 
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint
+import numpy as np
 
 from transformers.activations import ACT2FN
 from transformers.configuration_utils import PretrainedConfig
@@ -45,20 +48,33 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
     ):
         super().__init__()
+        scheduler = scheduler.set_format("pt")
+        self.uncond_embeddings = None  # init here to cache later
         self.register_modules(vqvae=vqvae, bert=bert, tokenizer=tokenizer, unet=unet, scheduler=scheduler)
+
 
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]],
+        prompt=None,
+        text_embeddings=None,
         height: Optional[int] = 256,
         width: Optional[int] = 256,
-        num_inference_steps: Optional[int] = 50,
-        guidance_scale: Optional[float] = 1.0,
-        eta: Optional[float] = 0.0,
+        batch_size=1,
+        torch_device=None,
+        eta=0.0,
+        guidance_scale=3.0,
+        num_inference_steps=50,
+        output_type="pil",
+        start_img=None,
+        weights=None,
+        seed=None,
+        noise_strength=None,
         generator: Optional[torch.Generator] = None,
-        output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        
+        
+        
         **kwargs,
     ) -> Union[Tuple, ImagePipelineOutput]:
         r"""
@@ -92,31 +108,52 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
             generated images.
         """
+        # eta corresponds to η in paper and should be between [0, 1]
+        
+        # set seed 
+        if seed is not None:
+            torch.manual_seed(seed)
+            torch.cuda.manual_seed(seed)
+            np.random.seed(seed)
+            random.seed(seed)
 
-        if isinstance(prompt, str):
-            batch_size = 1
-        elif isinstance(prompt, list):
+        if torch_device is None:
+            torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+        if prompt is not None:
             batch_size = len(prompt)
         else:
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+            batch_size = len(text_embeddings)
 
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         # get unconditional embeddings for classifier free guidance
-        if guidance_scale != 1.0:
-            uncond_input = self.tokenizer([""] * batch_size, padding="max_length", max_length=77, return_tensors="pt")
-            uncond_embeddings = self.bert(uncond_input.input_ids.to(self.device))[0]
+        if guidance_scale != 1.0 and self.uncond_embeddings is None:
+            uncond_embeddings = self.embed_prompts([""], weights=[1.0])
+            self.uncond_embeddings = uncond_embeddings.detach()
+        else:
+            uncond_embeddings = self.uncond_embeddings
 
-        # get prompt text embeddings
-        text_input = self.tokenizer(prompt, padding="max_length", max_length=77, return_tensors="pt")
-        text_embeddings = self.bert(text_input.input_ids.to(self.device))[0]
+        # get prompt text embeddings if not given already
+        if text_embeddings is None:
+            text_embeddings = self.embed_prompts(prompt, weights=weights)
 
-        latents = torch.randn(
-            (batch_size, self.unet.in_channels, height // 8, width // 8),
-            generator=generator,
-        )
-        latents = latents.to(self.device)
+        # create starting image/noise
+        if start_img is None:
+            latents = torch.randn(
+                (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
+                generator=generator,
+            )
+            latents = latents.to(torch_device)
+        else:
+            # start img is tensor of shape (batch_size, in_channels, sample_size, sample_size)
+            # encode start img with vqvae
+            
+            # make it torch tensor first
+            latents = self.encode_image(start_img, torch_device=torch_device)
+            # add noise
+            if noise_strength is not None:
+                latents = latents * (1 - noise_strength) + torch.randn_like(latents) * noise_strength
 
         self.scheduler.set_timesteps(num_inference_steps)
 
@@ -150,20 +187,73 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             latents = self.scheduler.step(noise_pred, t, latents, **extra_kwargs).prev_sample
 
         # scale and decode the image latents with vae
+        image = self.decode_image(latents, torch_device=torch_device, output_type=output_type)
+
+        return {"sample": image}  
+    
+    def decode_image(self, latents, torch_device=None, output_type="pil"):
+        if torch_device is None:
+            torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.vqvae.to(torch_device)
         latents = 1 / 0.18215 * latents
         image = self.vqvae.decode(latents).sample
-
         image = (image / 2 + 0.5).clamp(0, 1)
-        image = image.cpu().permute(0, 2, 3, 1).numpy()
+        image = image.cpu().permute(0, 2, 3, 1)
         if output_type == "pil":
-            image = self.numpy_to_pil(image)
-
+            image = self.numpy_to_pil(image.numpy())
+        elif output_type == "numpy":
+            image = image.numpy()
+    
         if not return_dict:
-            return (image,)
+                return (image,)
 
         return ImagePipelineOutput(images=image)
+    
+    def encode_image(self, image, torch_device=None):
+        if torch_device is None:
+            torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.vqvae.to(torch_device)
+        if not torch.is_tensor(image):
+            if not isinstance(image, np.ndarray):
+                image = np.array(image)
+            image = torch.from_numpy(image)
+            if image.ndim == 3:
+                image = image.unsqueeze(0)
+        # reverse channel dimension
+        image = image.permute(0, 3, 1, 2)
+        # make it float tensor between 0 and 1
+        max_val = torch.max(image)
+        min_val = torch.min(image)
+        image = (image - min_val) / (max_val - min_val)
+        # norm img
+        image = (image - 0.5) * 2
+            
+        latents = self.vqvae.encode(image.to(torch_device))
+            
+        # encoded img is DiagonalGaussianDistribution, need to sample from it... (maybe take mean instead)
+        #latents = latents.sample()
+        latents = latents.mean
+        latents = latents * 0.18215
+        return latents
+    
+    def embed_prompts(self, prompts, weights=None, torch_device=None):
+        if torch_device is None:
+            torch_device = "cuda" if torch.cuda.is_available() else "cpu" 
+        self.bert.to(torch_device)         
+        text_embeddings = []
+        for prompt in prompts:
+            text_input = self.tokenizer(prompt, padding="max_length", max_length=77, return_tensors="pt")
+            text_embedding = self.bert(text_input.input_ids.to(torch_device))[0]
+            text_embeddings.append(text_embedding)
+        if weights is None:
+            text_embeddings = torch.mean(torch.stack(text_embeddings), 0)
+        else:
+            weights = torch.tensor(weights, device=torch_device)
+            normed_weights = weights / torch.sum(weights)
+            text_embeddings = torch.sum(torch.stack(text_embeddings) * normed_weights, 0)
+        return text_embeddings
 
-
+    
 ################################################################################
 # Code for the text transformer model
 ################################################################################
