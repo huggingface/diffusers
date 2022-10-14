@@ -141,6 +141,23 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         # whether we use the final alpha of the "non-previous" one.
         self.final_alpha_cumprod = jnp.array(1.0) if set_alpha_to_one else float(self._alphas_cumprod[0])
 
+        # standard deviation of the initial noise distribution
+        self.init_noise_sigma = 1.0
+
+    def scale_model_input(
+        self, state: DDIMSchedulerState, sample: jnp.ndarray, timestep: Optional[int] = None
+    ) -> jnp.ndarray:
+        """
+        Args:
+            state (`PNDMSchedulerState`): the `FlaxPNDMScheduler` state data class instance.
+            sample (`jnp.ndarray`): input sample
+            timestep (`int`, optional): current timestep
+
+        Returns:
+            `jnp.ndarray`: scaled input sample
+        """
+        return sample
+
     def create_state(self):
         return DDIMSchedulerState.create(
             num_train_timesteps=self.config.num_train_timesteps, alphas_cumprod=self._alphas_cumprod
