@@ -78,8 +78,8 @@ jobs:
       shell: arch -arch arm64 bash {0}
       run: |
         ${CONDA_RUN} python -m pip install --upgrade pip
-        ${CONDA_RUN} python -m pip install --pre torch==${MPS_TORCH_VERSION} --extra-index-url https://download.pytorch.org/whl/nightly/cpu
         ${CONDA_RUN} python -m pip install -e .[quality,test]
+        ${CONDA_RUN} python -m pip install --pre torch==${MPS_TORCH_VERSION} --extra-index-url https://download.pytorch.org/whl/nightly/cpu
 
     - name: Environment
       shell: arch -arch arm64 bash {0}
