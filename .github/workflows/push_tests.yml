@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
 
 env:
   HF_HOME: /mnt/cache
@@ -34,7 +37,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         python -m pip uninstall -y torch torchvision torchtext
-        python -m pip install torch --extra-index-url https://download.pytorch.org/whl/cu116
+        python -m pip install --pre torch --extra-index-url https://download.pytorch.org/whl/nightly/cu117
         python -m pip install -e .[quality,test]
 
     - name: Environment
@@ -81,7 +84,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         python -m pip uninstall -y torch torchvision torchtext
-        python -m pip install torch --extra-index-url https://download.pytorch.org/whl/cu116
+        python -m pip install --pre torch --extra-index-url https://download.pytorch.org/whl/nightly/cu117
         python -m pip install -e .[quality,test,training]
 
     - name: Environment
