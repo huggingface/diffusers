@@ -75,7 +75,6 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         sigma_max: float = 1348.0,
         sampling_eps: float = 1e-5,
         correct_steps: int = 1,
-        **kwargs,
     ):
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = sigma_max
