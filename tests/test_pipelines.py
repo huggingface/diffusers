@@ -318,14 +318,14 @@ class PipelineFastTests(unittest.TestCase):
         # Warmup pass when using mps (see #372)
         if torch_device == "mps":
             generator = torch.manual_seed(0)
-            _ = ldm([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=1, output_type="numpy")[
-                "sample"
-            ]
+            _ = ldm(
+                [prompt], generator=generator, guidance_scale=6.0, num_inference_steps=1, output_type="numpy"
+            ).images
 
         generator = torch.manual_seed(0)
-        image = ldm([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="numpy")[
-            "sample"
-        ]
+        image = ldm(
+            [prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="numpy"
+        ).images
 
         generator = torch.manual_seed(0)
         image_from_tuple = ldm(
@@ -1535,9 +1535,9 @@ class PipelineTesterMixin(unittest.TestCase):
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
-        image = ldm([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=20, output_type="numpy")[
-            "sample"
-        ]
+        image = ldm(
+            [prompt], generator=generator, guidance_scale=6.0, num_inference_steps=20, output_type="numpy"
+        ).images
 
         image_slice = image[0, -3:, -3:, -1]
 
