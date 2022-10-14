@@ -224,7 +224,7 @@ class OneFlowUNet2DConditionModel(ModelMixin, ConfigMixin):
             returning a tuple, the first element is the sample tensor.
         """
         # 0. center input if necessary
-        if self.config.center_input_sample:
+        if self.config_dict().center_input_sample:
             sample = 2 * sample - 1.0
 
         # 1. time

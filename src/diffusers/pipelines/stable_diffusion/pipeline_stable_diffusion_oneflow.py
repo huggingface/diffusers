@@ -17,6 +17,14 @@ from ...schedulers import LMSDiscreteScheduler
 from . import StableDiffusionPipelineOutput
 from .safety_checker_oneflow import OneFlowStableDiffusionSafetyChecker as StableDiffusionSafetyChecker
 
+import oneflow as flow
+class UNetGraph(flow.nn.Graph):
+    def __init__(self, unet):
+        super().__init__()
+        self.unet = unet
+
+    def build(self, latent_model_input, t, text_embeddings):
+        return self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
 
 class OneFlowStableDiffusionPipeline(DiffusionPipeline):
     r"""
@@ -254,6 +262,7 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
+        unet_graph = UNetGraph(self.unet)
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             torch._oneflow_internal.profiler.RangePush(f"denoise-{i}")
             # expand the latents if we are doing classifier free guidance
@@ -264,7 +273,9 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
                 latent_model_input = latent_model_input / ((sigma**2 + 1) ** 0.5)
 
             # predict the noise residual
-            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+            torch._oneflow_internal.profiler.RangePush(f"denoise-{i}-unet-graph")
+            noise_pred = unet_graph(latent_model_input, t, text_embeddings)
+            torch._oneflow_internal.profiler.RangePop()
 
             # perform guidance
             if do_classifier_free_guidance:

@@ -331,6 +331,9 @@ class ConfigMixin:
     def config(self) -> Dict[str, Any]:
         return self._internal_dict
 
+    def config_dict(self) -> Dict[str, Any]:
+        return self._internal_dict
+
     def to_json_string(self) -> str:
         """
         Serializes this instance to a JSON string.

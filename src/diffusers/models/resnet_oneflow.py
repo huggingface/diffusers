@@ -20,7 +20,7 @@ class Upsample2D(nn.Module):
         self.out_channels = out_channels or channels
         self.use_conv = use_conv
         self.use_conv_transpose = use_conv_transpose
-        self.name = name
+        self.name_ = name
 
         conv = None
         if use_conv_transpose:
@@ -43,7 +43,7 @@ class Upsample2D(nn.Module):
 
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if self.use_conv:
-            if self.name == "conv":
+            if self.name_ == "conv":
                 x = self.conv(x)
             else:
                 x = self.Conv2d_0(x)
