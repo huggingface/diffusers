@@ -351,7 +351,18 @@ def main():
                 images = pipeline(example["prompt"]).images
 
                 for i, image in enumerate(images):
-                    image.save(class_images_dir / f"{example['index'][i] + cur_class_images}.jpg")
+                    image_filename = f"{example['index'][i] + cur_class_images}"
+
+                    # Add and underscore at the end of the filename until there is no file with the same name
+                    while True:
+                        image_path = class_images_dir / (image_filename + ".jpg")
+
+                        if not os.path.exists(image_path):
+                            break
+
+                        image_filename = f"{image_filename}_"
+
+                    image.save(image_path)
 
             del pipeline
             if torch.cuda.is_available():
