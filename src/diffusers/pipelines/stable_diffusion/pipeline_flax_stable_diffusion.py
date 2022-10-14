@@ -155,8 +155,8 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         latents_shape = (
             batch_size,
             self.unet.in_channels,
-            self.unet.sample_size,
-            self.unet.sample_size,
+            height // 8,
+            width // 8
         )
         if latents is None:
             latents = jax.random.normal(prng_seed, shape=latents_shape, dtype=jnp.float32)
