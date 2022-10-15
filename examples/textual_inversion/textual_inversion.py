@@ -392,7 +392,7 @@ def main():
 
     # Initialise the newly added placeholder token with the embeddings of the initializer token
     token_embeds = text_encoder.get_input_embeddings().weight.data
-    original_token_embeds = text_encoder.detach().clone()
+    original_token_embeds = token_embeds.detach().clone()
     token_embeds[placeholder_token_id] = token_embeds[initializer_token_id]
 
     # Freeze vae and unet
@@ -529,9 +529,14 @@ def main():
                 # Keep the token embeddings fixed except the newly added
                 # embeddings for the concept, as we only want to optimize the concept embeddings
 
+                if accelerator.num_processes > 1:
+                    token_embeds = text_encoder.module.get_input_embeddings().weight
+                else:
+                    token_embeds = text_encoder.get_input_embeddings().weight
+
                 # Get the index for tokens that we want to freeze
                 index_fixed_tokens = torch.arange(len(tokenizer)) != placeholder_token_id
-                text_encoder.get_input_embeddings().weight.data[index_fixed_tokens, :] \
+                token_embeds.data[index_fixed_tokens, :] \
                         = original_token_embeds[index_fixed_tokens, :].to(accelerator.device)
 
             # Checks if the accelerator has performed an optimization step behind the scenes
