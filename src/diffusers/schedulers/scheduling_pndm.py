@@ -100,15 +100,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         skip_prk_steps: bool = False,
         set_alpha_to_one: bool = False,
         steps_offset: int = 0,
-        **kwargs,
     ):
-        deprecate(
-            "tensor_format",
-            "0.6.0",
-            "If you're running your code in PyTorch, you can safely remove this argument.",
-            take_from=kwargs,
-        )
-
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
         elif beta_schedule == "linear":

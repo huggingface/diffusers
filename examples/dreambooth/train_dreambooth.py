@@ -78,7 +78,7 @@ def parse_args():
         type=int,
         default=100,
         help=(
-            "Minimal class images for prior perversation loss. If not have enough images, additional images will be"
+            "Minimal class images for prior preservation loss. If not have enough images, additional images will be"
             " sampled with class_prompt."
         ),
     )
@@ -483,16 +483,24 @@ def main():
         train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn, pin_memory=True
     )
 
-    # Move text_encode and vae to gpu
-    text_encoder.to(accelerator.device)
-    vae.to(accelerator.device)
+    weight_dtype = torch.float32
+    if args.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif args.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
+
+    # Move text_encode and vae to gpu.
+    # For mixed precision training we cast the text_encoder and vae weights to half-precision
+    # as these models are only used for inference, keeping weights in full precision is not required.
+    text_encoder.to(accelerator.device, dtype=weight_dtype)
+    vae.to(accelerator.device, dtype=weight_dtype)
 
     if not args.not_cache_latents:
         latents_cache = []
         text_encoder_cache = []
         for batch in tqdm(train_dataloader, desc="Caching latents"):
             with torch.no_grad():
-                batch["pixel_values"] = batch["pixel_values"].to(accelerator.device, non_blocking=True)
+                batch["pixel_values"] = batch["pixel_values"].to(accelerator.device, non_blocking=True, dtype=weight_dtype)
                 batch["input_ids"] = batch["input_ids"].to(accelerator.device, non_blocking=True)
                 latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
                 text_encoder_cache.append(text_encoder(batch["input_ids"])[0])
@@ -558,11 +566,11 @@ def main():
                     if not args.not_cache_latents:
                         latent_dist = batch[0][0]
                     else:
-                        latent_dist = vae.encode(batch["pixel_values"]).latent_dist
+                        latent_dist = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist
                     latents = latent_dist.sample() * 0.18215
 
                 # Sample noise that we'll add to the latents
-                noise = torch.randn(latents.shape).to(latents.device)
+                noise = torch.randn_like(latents)
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
                 timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
@@ -588,15 +596,15 @@ def main():
                     noise, noise_prior = torch.chunk(noise, 2, dim=0)
 
                     # Compute instance loss
-                    loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
+                    loss = F.mse_loss(noise_pred.float(), noise.float(), reduction="none").mean([1, 2, 3]).mean()
 
                     # Compute prior loss
-                    prior_loss = F.mse_loss(noise_pred_prior, noise_prior, reduction="none").mean([1, 2, 3]).mean()
+                    prior_loss = F.mse_loss(noise_pred_prior.float(), noise_prior.float(), reduction="mean")
 
                     # Add the prior loss to the instance loss.
                     loss = loss + args.prior_loss_weight * prior_loss
                 else:
-                    loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
+                    loss = F.mse_loss(noise_pred.float(), noise.float(), reduction="mean")
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
