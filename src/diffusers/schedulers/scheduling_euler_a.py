@@ -211,7 +211,7 @@ class EulerAScheduler(SchedulerMixin, ConfigMixin):
         self,
         model_output: Union[torch.FloatTensor, np.ndarray],
         timestep: int,
-        timestep_prev: int,
+        # timestep_prev: int,
         sample:float,
         generator: Optional[torch.Generator] = None,
         # ,sigma_hat: float,
@@ -237,9 +237,14 @@ class EulerAScheduler(SchedulerMixin, ConfigMixin):
             returning a tuple, the first element is the sample tensor.
 
         """
-        latents = sample
-        sigma_down, sigma_up = self.get_ancestral_step(timestep, timestep_prev)
         
+        latents = sample
+        # ideally we could pass the index aka step to the this method
+        # which will allow as to get the current timestep and the previous timestep 
+        i = timestep # we are passing timestep as index 
+        timestep = self.timesteps[i]
+        prev_timestep = self.timesteps[i + 1]
+        sigma_down, sigma_up = self.get_ancestral_step(timestep, prev_timestep)
         # if callback is not None:
         #     callback({'x': latents, 'i': i, 'sigma': timestep, 'sigma_hat': timestep, 'denoised': model_output})
         d = self.to_d(latents, timestep, model_output)

@@ -337,9 +337,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
             if isinstance(self.scheduler, EulerAScheduler):
                 # change from self.scheduler.timesteps.shape[0] - 1 to num_inference_steps
-                if i <  self.scheduler.timesteps.shape[0] - 1: #avoid out of bound error
-                    t_prev = self.scheduler.timesteps[i+1]
-                    latents = self.scheduler.step(noise_pred, t, t_prev, latents, **extra_step_kwargs).prev_sample
+                if i <  self.scheduler.num_inference_steps: #avoid out of bound error
+                    # t_prev = self.scheduler.timesteps[i+1]
+                    latents = self.scheduler.step(noise_pred, i, latents, **extra_step_kwargs).prev_sample
             else: 
             # compute the previous noisy sample x_t -> x_t-1
                     latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
