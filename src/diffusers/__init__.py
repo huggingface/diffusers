@@ -9,7 +9,7 @@ from .utils import (
 )
 
 
-__version__ = "0.4.0.dev0"
+__version__ = "0.5.0.dev0"
 
 from .configuration_utils import ConfigMixin
 from .onnx_utils import OnnxRuntimeModel
@@ -74,6 +74,7 @@ if is_flax_available():
         FlaxKarrasVeScheduler,
         FlaxLMSDiscreteScheduler,
         FlaxPNDMScheduler,
+        FlaxSchedulerMixin,
         FlaxScoreSdeVeScheduler,
     )
 else:

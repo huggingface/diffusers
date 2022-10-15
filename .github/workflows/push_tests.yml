@@ -15,14 +15,10 @@ env:
 jobs:
   run_tests_single_gpu:
     name: Diffusers tests
-    strategy:
-      fail-fast: false
-      matrix:
-        machine_type: [ single-gpu ]
-    runs-on: [ self-hosted, docker-gpu, '${{ matrix.machine_type }}' ]
+    runs-on: [ self-hosted, docker-gpu, single-gpu ]
     container:
       image: nvcr.io/nvidia/pytorch:22.07-py3
-      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
+      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache
 
     steps:
     - name: Checkout diffusers
@@ -66,14 +62,10 @@ jobs:
 
   run_examples_single_gpu:
     name: Examples tests
-    strategy:
-      fail-fast: false
-      matrix:
-        machine_type: [ single-gpu ]
-    runs-on: [ self-hosted, docker-gpu, '${{ matrix.machine_type }}' ]
+    runs-on: [ self-hosted, docker-gpu, single-gpu ]
     container:
       image: nvcr.io/nvidia/pytorch:22.07-py3
-      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
+      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache
 
     steps:
     - name: Checkout diffusers

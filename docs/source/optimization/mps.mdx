@@ -19,7 +19,7 @@ specific language governing permissions and limitations under the License.
 - Mac computer with Apple silicon (M1/M2) hardware.
 - macOS 12.3 or later.
 - arm64 version of Python.
-- PyTorch [Preview (Nightly)](https://pytorch.org/get-started/locally/), version `1.13.0.dev20220830` or later.
+- PyTorch [Preview (Nightly)](https://pytorch.org/get-started/locally/), version `1.14.0.dev20221007` or later.
 
 ## Inference Pipeline
 
@@ -31,7 +31,7 @@ We recommend to "prime" the pipeline using an additional one-time pass through i
 # make sure you're logged in with `huggingface-cli login`
 from diffusers import StableDiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
 pipe = pipe.to("mps")
 
 prompt = "a photo of an astronaut riding a horse on mars"

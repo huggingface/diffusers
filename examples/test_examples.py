@@ -24,7 +24,7 @@ import unittest
 from typing import List
 
 from accelerate.utils import write_basic_config
-from diffusers.testing_utils import slow
+from diffusers.utils import slow
 
 
 logging.basicConfig(level=logging.DEBUG)
@@ -40,7 +40,7 @@ class SubprocessCallException(Exception):
 def run_command(command: List[str], return_stdout=False):
     """
     Runs `command` with `subprocess.check_output` and will potentially return the `stdout`. Will also properly capture
-    if an error occured while running `command`
+    if an error occurred while running `command`
     """
     try:
         output = subprocess.check_output(command, stderr=subprocess.STDOUT)
@@ -102,7 +102,6 @@ class ExamplesTestsAccelerate(unittest.TestCase):
             test_args = f"""
                 examples/textual_inversion/textual_inversion.py
                 --pretrained_model_name_or_path CompVis/stable-diffusion-v1-4
-                --use_auth_token
                 --train_data_dir docs/source/imgs
                 --learnable_property object
                 --placeholder_token <cat-toy>
