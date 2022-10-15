@@ -536,8 +536,9 @@ def main():
 
                 # Get the index for tokens that we want to freeze
                 index_fixed_tokens = torch.arange(len(tokenizer)) != placeholder_token_id
-                token_embeds.data[index_fixed_tokens, :] \
-                        = original_token_embeds[index_fixed_tokens, :].to(accelerator.device)
+                token_embeds.data[index_fixed_tokens, :] = original_token_embeds[index_fixed_tokens, :].to(
+                    accelerator.device
+                )
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
