@@ -7,6 +7,7 @@ from torch import nn
 
 try:
     import xformers.ops
+    xformers._is_functorch_available = True
     MEM_EFFICIENT_ATTN = True
 except ImportError:
     MEM_EFFICIENT_ATTN = False
