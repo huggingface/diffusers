@@ -20,9 +20,11 @@ if is_torch_available() and is_transformers_available():
     )
 
 if is_transformers_available() and is_onnx_available():
-    from .stable_diffusion import StableDiffusionOnnxPipeline
-    from .stable_diffusion import StableDiffusionImg2ImgOnnxPipeline
-    from .stable_diffusion import StableDiffusionInpaintOnnxPipeline
+    from .stable_diffusion import (
+        StableDiffusionImg2ImgOnnxPipeline,
+        StableDiffusionInpaintOnnxPipeline,
+        StableDiffusionOnnxPipeline,
+    )
 
 if is_transformers_available() and is_flax_available():
     from .stable_diffusion import FlaxStableDiffusionPipeline

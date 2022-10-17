@@ -41,6 +41,7 @@ from diffusers import (
     PNDMScheduler,
     ScoreSdeVePipeline,
     ScoreSdeVeScheduler,
+    StableDiffusionImg2ImgOnnxPipeline,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
     StableDiffusionOnnxPipeline,
@@ -2023,6 +2024,37 @@ class PipelineTesterMixin(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.3602, 0.3688, 0.3652, 0.3895, 0.3782, 0.3747, 0.3927, 0.4241, 0.4327])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    @slow
+    def test_stable_diffusion_img2img_onnx(self):
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/img2img/sketch-mountains-input.jpg"
+        )
+        init_image = init_image.resize((768, 512))
+
+        pipe = StableDiffusionImg2ImgOnnxPipeline.from_pretrained(
+            "../scripts/sd_onnx", provider="CPUExecutionProvider"
+        )
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A fantasy landscape, trending on artstation"
+
+        np.random.seed(0)
+        output = pipe(
+            prompt=prompt,
+            init_image=init_image,
+            strength=0.75,
+            guidance_scale=7.5,
+            num_inference_steps=8,
+            output_type="np",
+        )
+        images = output.images
+        image_slice = images[0, -3:, -3:, -1]
+
+        assert images.shape == (1, 512, 768, 3)
+        expected_slice = np.array([0.0956, 0.0899, 0.1057, 0.0853, 0.0938, 0.1004, 0.1158, 0.1258, 0.1158])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     @slow

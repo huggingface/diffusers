@@ -34,9 +34,9 @@ if is_transformers_available() and is_torch_available():
     from .safety_checker import StableDiffusionSafetyChecker
 
 if is_transformers_available() and is_onnx_available():
-    from .pipeline_stable_diffusion_onnx import StableDiffusionOnnxPipeline
-    from .pipeline_stable_diffusion_img2img_onnx import StableDiffusionImg2ImgOnnxPipeline
-    from .pipeline_stable_diffusion_inpaint_onnx import StableDiffusionInpaintOnnxPipeline
+    from .pipeline_onnx_stable_diffusion import StableDiffusionOnnxPipeline
+    from .pipeline_onnx_stable_diffusion_img2img import StableDiffusionImg2ImgOnnxPipeline
+    from .pipeline_onnx_stable_diffusion_inpaint import StableDiffusionInpaintOnnxPipeline
 
 if is_transformers_available() and is_flax_available():
     import flax
