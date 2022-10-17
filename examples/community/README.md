@@ -3,12 +3,15 @@
 > **For more information about community pipelines, please have a look at [this issue](https://github.com/huggingface/diffusers/issues/841).**
 
 **Community** examples consist of both inference and training examples that have been added by the community.
+Please have a look at the following table to get an overview of all community examples. Click on the **Code Example** to get a copy-and-paste ready code example that you can try out.
+If a community doesn't work as expected, please open an issue and ping the author on it.
 
-| Example   |      Description      |      Author      |    Colab  |
-|:----------|:----------------------|:-----------------|----------:|
-| CLIP Guided Stable Diffusion | Doing CLIP guidance for text to image generation with Stable Diffusion| [Suraj Patil](https://github.com/patil-suraj/) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/CLIP_Guided_Stable_diffusion_with_diffusers.ipynb) |
-| One Step U-Net (Dummy) | Example showcasing of how to use Community Pipelines (see https://github.com/huggingface/diffusers/issues/841) | [Patrick von Platen](https://github.com/patrickvonplaten/) | - |
-| Stable Diffusion Interpolation | Interpolate the latent space of Stable Diffusion between different prompts/seeds | [Nate Raw](https://github.com/nateraw/) | - |
+| Example   |      Description      |      Code Example |  Colab |    Author |
+|:----------|:----------------------|:-----------------|:-------------|----------:|
+| CLIP Guided Stable Diffusion | Doing CLIP guidance for text to image generation with Stable Diffusion| [CLIP Guided Stable Diffusion](#clip-guided-stable-diffusion) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/CLIP_Guided_Stable_diffusion_with_diffusers.ipynb) | [Suraj Patil](https://github.com/patil-suraj/) | 
+| One Step U-Net (Dummy) | Example showcasing of how to use Community Pipelines (see https://github.com/huggingface/diffusers/issues/841) | [One Step U-Net](#one-step-unet) | - | [Patrick von Platen](https://github.com/patrickvonplaten/) |
+| Stable Diffusion Interpolation | Interpolate the latent space of Stable Diffusion between different prompts/seeds | [Stable Diffusion Interpolation](#stable-diffusion-interpolation) | [Nate Raw](https://github.com/nateraw/) |
+| Stable Diffusion Mega | **One** Stable Diffusion Pipeline with all functionalities of [Text2Image](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion.py), [Image2Image](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_img2img.py) and [Inpainting](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_inpaint.py) | [Stable Diffusion Mega](#stable-diffusion-mega) | - | [Patrick von Platen](https://github.com/patrickvonplaten/) |
 
 ## Example usages
 
@@ -66,7 +69,7 @@ Generated images tend to be of higher qualtiy than natively using stable diffusi
 
 ![clip_guidance](https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/clip_guidance/merged_clip_guidance.jpg).
 
-### One Step U-Net (Dummy)
+### One Step Unet
 
 The dummy "one-step-unet" can be run as follows:
 
@@ -112,3 +115,51 @@ frame_filepaths = pipe.walk(
 The output of the `walk(...)` function returns a list of images saved under the folder as defined in `output_dir`. You can use these images to create videos of stable diffusion. 
 
 > **Please have a look at https://github.com/nateraw/stable-diffusion-videos for more in-detail information on how to create videos using stable diffusion as well as more feature-complete functionality.**
+
+### Stable Diffusion Mega
+
+The Stable Diffusion Mega Pipeline lets you use the main use cases of the stable diffusion pipeline in a single class.
+
+```python
+#!/usr/bin/env python3
+from diffusers import DiffusionPipeline
+import PIL
+import requests
+from io import BytesIO
+import torch
+
+
+def download_image(url):
+    response = requests.get(url)
+    return PIL.Image.open(BytesIO(response.content)).convert("RGB")
+
+pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", custom_pipeline="stable_diffusion_mega", dtype=torch.float16, revision="fp16")
+pipe.to("cuda")
+pipe.enable_attention_slicing()
+
+
+### Text-to-Image
+
+images = pipe.text2img("An astronaut riding a horse").images
+
+### Image-to-Image
+
+init_image = download_image("https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg")
+
+prompt = "A fantasy landscape, trending on artstation"
+
+images = pipe.img2img(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5).images
+
+### Inpainting
+
+img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+init_image = download_image(img_url).resize((512, 512))
+mask_image = download_image(mask_url).resize((512, 512))
+
+prompt = "a cat sitting on a bench"
+images = pipe.inpaint(prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75).images
+```
+
+As shown above this one pipeline can run all both "text-to-image", "image-to-image", and "inpainting" in one pipeline.
+
