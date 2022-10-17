@@ -22,7 +22,7 @@ import jax.numpy as jnp
 from jax import random
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput
+from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput, broadcast_to_shape_from_left
 
 
 @flax.struct.dataclass
@@ -193,8 +193,7 @@ class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         # equation 6 in the paper: the model_output modeled by the network is grad_x log pt(x)
         # also equation 47 shows the analog from SDE models to ancestral sampling methods
         diffusion = diffusion.flatten()
-        while len(diffusion.shape) < len(sample.shape):
-            diffusion = diffusion[:, None]
+        diffusion = broadcast_to_shape_from_left(diffusion, sample.shape)
         drift = drift - diffusion**2 * model_output
 
         #  equation 6: sample noise for the diffusion term of
@@ -252,8 +251,7 @@ class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         # compute corrected sample: model_output term and noise term
         step_size = step_size.flatten()
-        while len(step_size.shape) < len(sample.shape):
-            step_size = step_size[:, None]
+        step_size = broadcast_to_shape_from_left(step_size, sample.shape)
         prev_sample_mean = sample + step_size * model_output
         prev_sample = prev_sample_mean + ((step_size * 2) ** 0.5) * noise
 

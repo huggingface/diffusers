@@ -20,7 +20,7 @@ import jax.numpy as jnp
 from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput
+from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput, broadcast_to_shape_from_left
 
 
 @flax.struct.dataclass
@@ -199,8 +199,7 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         timesteps: jnp.ndarray,
     ) -> jnp.ndarray:
         sigma = state.sigmas[timesteps].flatten()
-        while len(sigma.shape) < len(noise.shape):
-            sigma = sigma[..., None]
+        sigma = broadcast_to_shape_from_left(sigma, noise.shape)
 
         noisy_samples = original_samples + noise * sigma
 
