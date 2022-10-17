@@ -37,6 +37,11 @@ if is_torch_available():
         PNDMScheduler,
         SchedulerMixin,
         ScoreSdeVeScheduler,
+        EulerDiscreteScheduler,
+        EulerAncestralDiscreteScheduler,
+        DPM2DiscreteScheduler,
+        DPM2AncestralDiscreteScheduler,
+        HeunDiscreteScheduler
     )
     from .training_utils import EMAModel
 else:
