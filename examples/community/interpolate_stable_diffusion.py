@@ -3,18 +3,17 @@ import time
 from pathlib import Path
 from typing import Callable, List, Optional, Union
 
-import torch
 import numpy as np
-
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+import torch
 
 from diffusers.configuration_utils import FrozenDict
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipeline_utils import DiffusionPipeline
-from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from diffusers.utils import deprecate, logging
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from diffusers.utils import deprecate, logging
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -418,19 +417,17 @@ class StableDiffusionWalkPipeline(DiffusionPipeline):
         """Takes in random seed and returns corresponding noise vector"""
         return torch.randn(
             (1, self.unet.in_channels, height // 8, width // 8),
-            generator=torch.Generator(
-                device=self.device
-            ).manual_seed(seed),
+            generator=torch.Generator(device=self.device).manual_seed(seed),
             device=self.device,
             dtype=dtype,
         )
-    
+
     def walk(
         self,
         prompts: List[str],
         seeds: List[int],
         num_interpolation_steps: Optional[int] = 6,
-        output_dir: Optional[str] = './dreams',
+        output_dir: Optional[str] = "./dreams",
         name: Optional[str] = None,
         batch_size: Optional[int] = 1,
         height: Optional[int] = 512,
@@ -478,8 +475,7 @@ class StableDiffusionWalkPipeline(DiffusionPipeline):
         """
         if not len(prompts) == len(seeds):
             raise ValueError(
-                "Number of prompts and seeds must be equal"
-                f"Got {len(prompts)} prompts and {len(seeds)} seeds"
+                f"Number of prompts and seeds must be equalGot {len(prompts)} prompts and {len(seeds)} seeds"
             )
 
         name = name or time.strftime("%Y%m%d-%H%M%S")
@@ -489,7 +485,6 @@ class StableDiffusionWalkPipeline(DiffusionPipeline):
         frame_idx = 0
         frame_filepaths = []
         for prompt_a, prompt_b, seed_a, seed_b in zip(prompts, prompts[1:], seeds, seeds[1:]):
-
             # Embed Text
             embed_a = self.embed_text(prompt_a)
             embed_b = self.embed_text(prompt_b)
@@ -507,7 +502,7 @@ class StableDiffusionWalkPipeline(DiffusionPipeline):
 
                 noise_batch = noise if noise_batch is None else torch.cat([noise_batch, noise], dim=0)
                 embeds_batch = embed if embeds_batch is None else torch.cat([embeds_batch, embed], dim=0)
-                
+
                 batch_is_ready = embeds_batch.shape[0] == batch_size or i + 1 == T.shape[0]
                 if batch_is_ready:
                     outputs = self(
@@ -521,7 +516,7 @@ class StableDiffusionWalkPipeline(DiffusionPipeline):
                     )
                     noise_batch, embeds_batch = None, None
 
-                    for image in outputs['images']:
+                    for image in outputs["images"]:
                         frame_filepath = str(save_path / f"frame_{frame_idx}.png")
                         image.save(frame_filepath)
                         frame_filepaths.append(frame_filepath)
