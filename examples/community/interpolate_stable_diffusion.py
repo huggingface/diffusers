@@ -517,7 +517,7 @@ class StableDiffusionWalkPipeline(DiffusionPipeline):
                     noise_batch, embeds_batch = None, None
 
                     for image in outputs["images"]:
-                        frame_filepath = str(save_path / f"frame_{frame_idx}.png")
+                        frame_filepath = str(save_path / f"frame_{frame_idx:06d}.png")
                         image.save(frame_filepath)
                         frame_filepaths.append(frame_filepath)
                         frame_idx += 1
