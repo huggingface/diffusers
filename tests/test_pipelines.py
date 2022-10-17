@@ -1196,7 +1196,7 @@ class PipelineFastTests(unittest.TestCase):
 
         assert images.shape == (batch_size * num_images_per_prompt, 32, 32, 3)
 
-    @unittest.skipIf(torch_device == "cpu", "This test requires a GPU")
+    @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
     def test_stable_diffusion_fp16(self):
         """Test that stable diffusion works with fp16"""
         unet = self.dummy_cond_unet
@@ -1229,7 +1229,7 @@ class PipelineFastTests(unittest.TestCase):
 
         assert image.shape == (1, 128, 128, 3)
 
-    @unittest.skipIf(torch_device == "cpu", "This test requires a GPU")
+    @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
     def test_stable_diffusion_img2img_fp16(self):
         """Test that stable diffusion img2img works with fp16"""
         unet = self.dummy_cond_unet
@@ -1270,7 +1270,7 @@ class PipelineFastTests(unittest.TestCase):
 
         assert image.shape == (1, 32, 32, 3)
 
-    @unittest.skipIf(torch_device == "cpu", "This test requires a GPU")
+    @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
     def test_stable_diffusion_inpaint_fp16(self):
         """Test that stable diffusion inpaint works with fp16"""
         unet = self.dummy_cond_unet
