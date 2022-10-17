@@ -204,6 +204,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         eta: float = 0.0,
         use_clipped_model_output: bool = False,
         generator=None,
+        noise: Optional[torch.FloatTensor] = None,
         return_dict: bool = True,
     ) -> Union[DDIMSchedulerOutput, Tuple]:
         """
@@ -218,6 +219,9 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             eta (`float`): weight of noise for added noise in diffusion step.
             use_clipped_model_output (`bool`): TODO
             generator: random number generator.
+            noise (`torch.FloatTensor`): instead of providing the random number generator, we
+                can directly provide random noise itself. This is useful for methods such as
+                CycleDiffusion (https://arxiv.org/abs/2210.05559).
             return_dict (`bool`): option for returning tuple rather than DDIMSchedulerOutput class
 
         Returns:
@@ -277,7 +281,9 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         if eta > 0:
             # randn_like does not support generator https://github.com/pytorch/pytorch/issues/27072
             device = model_output.device if torch.is_tensor(model_output) else "cpu"
-            noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator).to(device)
+            assert (noise is None) or (generator is None),  "Cannot pass both generator and noise"
+            if noise is None:
+                noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator).to(device)
             variance = self._get_variance(timestep, prev_timestep) ** (0.5) * eta * noise
 
             prev_sample = prev_sample + variance
