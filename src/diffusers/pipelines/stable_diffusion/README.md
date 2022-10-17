@@ -153,6 +153,7 @@ image = pipe(prompt=prompt,
 image.save("horse_to_elephant.png")
 
 # let's try another example
+# See more samples at the original repo: https://github.com/ChenWu98/cycle-diffusion
 url = "https://raw.githubusercontent.com/ChenWu98/cycle-diffusion/main/data/dalle2/A%20black%20colored%20car.png"
 response = requests.get(url)
 init_image = Image.open(BytesIO(response.content)).convert("RGB")
