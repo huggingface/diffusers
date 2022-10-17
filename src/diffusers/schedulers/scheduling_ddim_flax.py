@@ -21,10 +21,9 @@ from typing import Optional, Tuple, Union
 
 import flax
 import jax.numpy as jnp
-from jax import random
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> jnp.ndarray:
@@ -60,19 +59,20 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> jnp.ndarray:
 class DDIMSchedulerState:
     # setable values
     timesteps: jnp.ndarray
+    alphas_cumprod: jnp.ndarray
     num_inference_steps: Optional[int] = None
 
     @classmethod
-    def create(cls, num_train_timesteps: int):
-        return cls(timesteps=jnp.arange(0, num_train_timesteps)[::-1])
+    def create(cls, num_train_timesteps: int, alphas_cumprod: jnp.ndarray):
+        return cls(timesteps=jnp.arange(0, num_train_timesteps)[::-1], alphas_cumprod=alphas_cumprod)
 
 
 @dataclass
-class FlaxSchedulerOutput(SchedulerOutput):
+class FlaxDDIMSchedulerOutput(FlaxSchedulerOutput):
     state: DDIMSchedulerState
 
 
-class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
+class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
     """
     Denoising diffusion implicit models is a scheduler that extends the denoising procedure introduced in denoising
     diffusion probabilistic models (DDPMs) with non-Markovian guidance.
@@ -96,8 +96,18 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
         clip_sample (`bool`, default `True`):
             option to clip predicted sample between -1 and 1 for numerical stability.
         set_alpha_to_one (`bool`, default `True`):
-            if alpha for final step is 1 or the final alpha of the "non-previous" one.
+            each diffusion step uses the value of alphas product at that step and at the previous one. For the final
+            step there is no previous alpha. When this option is `True` the previous alpha product is fixed to `1`,
+            otherwise it uses the value of alpha at step 0.
+        steps_offset (`int`, default `0`):
+            an offset added to the inference steps. You can use a combination of `offset=1` and
+            `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
+            stable diffusion.
     """
+
+    @property
+    def has_state(self):
+        return True
 
     @register_to_config
     def __init__(
@@ -106,12 +116,9 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[jnp.ndarray] = None,
-        clip_sample: bool = True,
         set_alpha_to_one: bool = True,
+        steps_offset: int = 0,
     ):
-        if trained_betas is not None:
-            self.betas = jnp.asarray(trained_betas)
         if beta_schedule == "linear":
             self.betas = jnp.linspace(beta_start, beta_end, num_train_timesteps, dtype=jnp.float32)
         elif beta_schedule == "scaled_linear":
@@ -124,19 +131,41 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
         self.alphas = 1.0 - self.betas
-        self.alphas_cumprod = jnp.cumprod(self.alphas, axis=0)
+
+        # HACK for now - clean up later (PVP)
+        self._alphas_cumprod = jnp.cumprod(self.alphas, axis=0)
 
         # At every step in ddim, we are looking into the previous alphas_cumprod
         # For the final step, there is no previous alphas_cumprod because we are already at 0
         # `set_alpha_to_one` decides whether we set this parameter simply to one or
         # whether we use the final alpha of the "non-previous" one.
-        self.final_alpha_cumprod = jnp.array(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
+        self.final_alpha_cumprod = jnp.array(1.0) if set_alpha_to_one else float(self._alphas_cumprod[0])
 
-        self.state = DDIMSchedulerState.create(num_train_timesteps=num_train_timesteps)
+        # standard deviation of the initial noise distribution
+        self.init_noise_sigma = 1.0
 
-    def _get_variance(self, timestep, prev_timestep):
-        alpha_prod_t = self.alphas_cumprod[timestep]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
+    def scale_model_input(
+        self, state: DDIMSchedulerState, sample: jnp.ndarray, timestep: Optional[int] = None
+    ) -> jnp.ndarray:
+        """
+        Args:
+            state (`PNDMSchedulerState`): the `FlaxPNDMScheduler` state data class instance.
+            sample (`jnp.ndarray`): input sample
+            timestep (`int`, optional): current timestep
+
+        Returns:
+            `jnp.ndarray`: scaled input sample
+        """
+        return sample
+
+    def create_state(self):
+        return DDIMSchedulerState.create(
+            num_train_timesteps=self.config.num_train_timesteps, alphas_cumprod=self._alphas_cumprod
+        )
+
+    def _get_variance(self, timestep, prev_timestep, alphas_cumprod):
+        alpha_prod_t = alphas_cumprod[timestep]
+        alpha_prod_t_prev = jnp.where(prev_timestep >= 0, alphas_cumprod[prev_timestep], self.final_alpha_cumprod)
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
@@ -144,9 +173,7 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
-    def set_timesteps(
-        self, state: DDIMSchedulerState, num_inference_steps: int, offset: int = 0
-    ) -> DDIMSchedulerState:
+    def set_timesteps(self, state: DDIMSchedulerState, num_inference_steps: int, shape: Tuple) -> DDIMSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -155,9 +182,9 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
                 the `FlaxDDIMScheduler` state data class instance.
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
-            offset (`int`):
-                optional value to shift timestep values up by. A value of 1 is used in stable diffusion for inference.
         """
+        offset = self.config.steps_offset
+
         step_ratio = self.config.num_train_timesteps // num_inference_steps
         # creates integer timesteps by multiplying by ratio
         # casting to int to avoid issues when num_inference_step is power of 3
@@ -172,11 +199,8 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
-        key: random.KeyArray,
-        eta: float = 0.0,
-        use_clipped_model_output: bool = False,
         return_dict: bool = True,
-    ) -> Union[FlaxSchedulerOutput, Tuple]:
+    ) -> Union[FlaxDDIMSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -190,11 +214,11 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
             key (`random.KeyArray`): a PRNG key.
             eta (`float`): weight of noise for added noise in diffusion step.
             use_clipped_model_output (`bool`): TODO
-            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than FlaxDDIMSchedulerOutput class
 
         Returns:
-            [`FlaxSchedulerOutput`] or `tuple`: [`FlaxSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
-            When returning a tuple, the first element is the sample tensor.
+            [`FlaxDDIMSchedulerOutput`] or `tuple`: [`FlaxDDIMSchedulerOutput`] if `return_dict` is True, otherwise a
+            `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         if state.num_inference_steps is None:
@@ -213,48 +237,39 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
         # - pred_sample_direction -> "direction pointing to x_t"
         # - pred_prev_sample -> "x_t-1"
 
+        # TODO(Patrick) - eta is always 0.0 for now, allow to be set in step function
+        eta = 0.0
+
         # 1. get previous step value (=t-1)
         prev_timestep = timestep - self.config.num_train_timesteps // state.num_inference_steps
 
+        alphas_cumprod = state.alphas_cumprod
+
         # 2. compute alphas, betas
-        alpha_prod_t = self.alphas_cumprod[timestep]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
+        alpha_prod_t = alphas_cumprod[timestep]
+        alpha_prod_t_prev = jnp.where(prev_timestep >= 0, alphas_cumprod[prev_timestep], self.final_alpha_cumprod)
+
         beta_prod_t = 1 - alpha_prod_t
 
         # 3. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
         pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
 
-        # 4. Clip "predicted x_0"
-        if self.config.clip_sample:
-            pred_original_sample = jnp.clip(pred_original_sample, -1, 1)
-
-        # 5. compute variance: "sigma_t(η)" -> see formula (16)
+        # 4. compute variance: "sigma_t(η)" -> see formula (16)
         # σ_t = sqrt((1 − α_t−1)/(1 − α_t)) * sqrt(1 − α_t/α_t−1)
-        variance = self._get_variance(timestep, prev_timestep)
+        variance = self._get_variance(timestep, prev_timestep, alphas_cumprod)
         std_dev_t = eta * variance ** (0.5)
 
-        if use_clipped_model_output:
-            # the model_output is always re-derived from the clipped x_0 in Glide
-            model_output = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
-
-        # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+        # 5. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
         pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * model_output
 
-        # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+        # 6. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
         prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
-
-        if eta > 0:
-            key = random.split(key, num=1)
-            noise = random.normal(key=key, shape=model_output.shape)
-            variance = self._get_variance(timestep, prev_timestep) ** (0.5) * eta * noise
-
-            prev_sample = prev_sample + variance
 
         if not return_dict:
             return (prev_sample, state)
 
-        return FlaxSchedulerOutput(prev_sample=prev_sample, state=state)
+        return FlaxDDIMSchedulerOutput(prev_sample=prev_sample, state=state)
 
     def add_noise(
         self,
@@ -263,9 +278,14 @@ class FlaxDDIMScheduler(SchedulerMixin, ConfigMixin):
         timesteps: jnp.ndarray,
     ) -> jnp.ndarray:
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
-        sqrt_alpha_prod = self.match_shape(sqrt_alpha_prod, original_samples)
-        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
-        sqrt_one_minus_alpha_prod = self.match_shape(sqrt_one_minus_alpha_prod, original_samples)
+        sqrt_alpha_prod = sqrt_alpha_prod.flatten()
+        while len(sqrt_alpha_prod.shape) < len(original_samples.shape):
+            sqrt_alpha_prod = sqrt_alpha_prod[:, None]
+
+        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.0
+        sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
+        while len(sqrt_one_minus_alpha_prod.shape) < len(original_samples.shape):
+            sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod[:, None]
 
         noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
         return noisy_samples

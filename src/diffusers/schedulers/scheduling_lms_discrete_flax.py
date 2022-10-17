@@ -20,7 +20,7 @@ import jax.numpy as jnp
 from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput
 
 
 @flax.struct.dataclass
@@ -37,11 +37,11 @@ class LMSDiscreteSchedulerState:
 
 
 @dataclass
-class FlaxSchedulerOutput(SchedulerOutput):
+class FlaxLMSSchedulerOutput(FlaxSchedulerOutput):
     state: LMSDiscreteSchedulerState
 
 
-class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
+class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
     """
     Linear Multistep Scheduler for discrete beta schedules. Based on the original k-diffusion implementation by
     Katherine Crowson:
@@ -61,8 +61,6 @@ class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             `linear` or `scaled_linear`.
         trained_betas (`jnp.ndarray`, optional):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
-            options to clip the variance used when adding noise to the denoised sample. Choose from `fixed_small`,
-            `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
     """
 
     @register_to_config
@@ -76,7 +74,7 @@ class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
     ):
         if trained_betas is not None:
             self.betas = jnp.asarray(trained_betas)
-        if beta_schedule == "linear":
+        elif beta_schedule == "linear":
             self.betas = jnp.linspace(beta_start, beta_end, num_train_timesteps, dtype=jnp.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
@@ -113,7 +111,9 @@ class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         return integrated_coeff
 
-    def set_timesteps(self, state: LMSDiscreteSchedulerState, num_inference_steps: int) -> LMSDiscreteSchedulerState:
+    def set_timesteps(
+        self, state: LMSDiscreteSchedulerState, num_inference_steps: int, shape: Tuple
+    ) -> LMSDiscreteSchedulerState:
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -134,7 +134,7 @@ class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         return state.replace(
             num_inference_steps=num_inference_steps,
-            timesteps=timesteps,
+            timesteps=timesteps.astype(int),
             derivatives=jnp.array([]),
             sigmas=sigmas,
         )
@@ -147,7 +147,7 @@ class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
         order: int = 4,
         return_dict: bool = True,
-    ) -> Union[SchedulerOutput, Tuple]:
+    ) -> Union[FlaxLMSSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -159,11 +159,11 @@ class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             sample (`jnp.ndarray`):
                 current instance of sample being created by diffusion process.
             order: coefficient for multi-step inference.
-            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than FlaxLMSSchedulerOutput class
 
         Returns:
-            [`FlaxSchedulerOutput`] or `tuple`: [`FlaxSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
-            When returning a tuple, the first element is the sample tensor.
+            [`FlaxLMSSchedulerOutput`] or `tuple`: [`FlaxLMSSchedulerOutput`] if `return_dict` is True, otherwise a
+            `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         sigma = state.sigmas[timestep]
@@ -189,7 +189,7 @@ class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (prev_sample, state)
 
-        return FlaxSchedulerOutput(prev_sample=prev_sample, state=state)
+        return FlaxLMSSchedulerOutput(prev_sample=prev_sample, state=state)
 
     def add_noise(
         self,
@@ -198,8 +198,11 @@ class FlaxLMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         noise: jnp.ndarray,
         timesteps: jnp.ndarray,
     ) -> jnp.ndarray:
-        sigmas = self.match_shape(state.sigmas[timesteps], noise)
-        noisy_samples = original_samples + noise * sigmas
+        sigma = state.sigmas[timesteps].flatten()
+        while len(sigma.shape) < len(noise.shape):
+            sigma = sigma[..., None]
+
+        noisy_samples = original_samples + noise * sigma
 
         return noisy_samples
 
