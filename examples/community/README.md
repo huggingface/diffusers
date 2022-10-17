@@ -25,6 +25,11 @@ To load a custom pipeline you just need to pass the `custom_pipeline` argument t
 pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", custom_pipeline="filename_in_the_community_folder")
 ```
 
+To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
+```py
+pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", custom_pipeline="filename_in_the_community_folder")
+```
+
 ## Example usages
 
 ### CLIP Guided Stable Diffusion
