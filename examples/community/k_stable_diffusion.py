@@ -1,31 +1,44 @@
 import inspect
+import sys
 from typing import Callable, List, Optional, Union
 
 import torch
 
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
-from diffusers.configuration_utils import FrozenDict
-from diffusers import AutoencoderKL, DiffusionPipeline, DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler, UNet2DConditionModel
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.utils import deprecate, logging
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+sys.path.append("../../src")
+
+import torch.nn as nn
 
 import k_diffusion as K
-import torch.nn as nn
+from diffusers import (
+    AutoencoderKL,
+    DDIMScheduler,
+    DiffusionPipeline,
+    LMSDiscreteScheduler,
+    PNDMScheduler,
+    UNet2DConditionModel,
+)
+from diffusers.configuration_utils import FrozenDict
+from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
+from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.utils import deprecate, logging
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+
 
 class KWrapper(nn.Module):
     def __init__(self, diffusion_model, scheduler, sampling):
         super().__init__()
         self.diffusion_model = diffusion_model
-        self.scheduler = scheduler
+        self.scheduler = K.external.CompVisDenoiser(scheduler).cuda()
         self.sampling = sampling
         self.dtype = diffusion_model.dtype
 
     @torch.no_grad()
     def forward(self, latent, sigma, text_embeddings, cond_scale):
         latent = torch.cat([latent] * 2)
-        uncond, cond = self.diffusion_model(latent.to(self.dtype), sigma.to(self.dtype), encoder_hidden_states=text_embeddings.to(self.dtype)).sample.chunk(2)
+        uncond, cond = self.diffusion_model(
+            latent.to(self.dtype), sigma.to(self.dtype), encoder_hidden_states=text_embeddings.to(self.dtype)
+        ).sample.chunk(2)
         return uncond + (cond - uncond) * cond_scale
 
 
@@ -98,10 +111,6 @@ class K_StableDiffusionPipeline(DiffusionPipeline):
             self.safety_checker = None
         else:
             self.register_modules(safety_checker=safety_checker)
-            
-        k_denoise = K.external.CompVisDenoiser(scheduler).cuda()
-        k_model = KWrapper(unet, k_denoise, K.sampling.sample_dpm_2_ancestral)
-        self.k_model = k_model
 
         self.register_modules(
             vae=vae,
@@ -111,7 +120,10 @@ class K_StableDiffusionPipeline(DiffusionPipeline):
             scheduler=scheduler,
             feature_extractor=feature_extractor,
         )
-        
+
+    def SetKDiffusion(self, sampling):
+        k_model = KWrapper(self.unet, self.scheduler, sampling)
+        self.k_model = k_model
 
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
@@ -320,10 +332,9 @@ class K_StableDiffusionPipeline(DiffusionPipeline):
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
             latents = latents.to(self.device)
 
-        extra_args = {'text_embeddings': text_embeddings, 'cond_scale': guidance_scale}
+        extra_args = {"text_embeddings": text_embeddings, "cond_scale": guidance_scale}
         sigmas = self.k_model.scheduler.get_sigmas(num_inference_steps).cuda()
         latents = latents * sigmas[0]
-
 
         latents = self.k_model.sampling(self.k_model, latents, sigmas, extra_args=extra_args)
 
@@ -352,3 +363,16 @@ class K_StableDiffusionPipeline(DiffusionPipeline):
             return (image, has_nsfw_concept)
 
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+
+
+if __name__ == "__main__":
+    model_path = "CompVis/stable-diffusion-v1-4"
+    # model_path = "_LOCAL_PATH"
+
+    pipe = K_StableDiffusionPipeline.from_pretrained(model_path, torch_type=torch.float16, revision="fp16")
+    pipe = pipe.to("cuda")
+
+    sampling = K.sampling.sample_dpm_2_ancestral
+    pipe.SetKDiffusion(sampling)
+    img = pipe("A dog").images[0]
+    img.save("a_dog.png")
