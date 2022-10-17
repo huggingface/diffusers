@@ -299,14 +299,14 @@ class StableDiffusionCycleDiffusionPipeline(DiffusionPipeline):
             max_length=self.tokenizer.model_max_length,
             return_tensors="pt",
         )
-        source_text_inputs = self.tokenizer(  # Chen.
+        source_text_inputs = self.tokenizer(
             source_prompt,
             padding="max_length",
             max_length=self.tokenizer.model_max_length,
             return_tensors="pt",
         )
         text_input_ids = text_inputs.input_ids
-        source_text_input_ids = source_text_inputs.input_ids  # Chen.
+        source_text_input_ids = source_text_inputs.input_ids
 
         if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
             removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length :])
@@ -315,7 +315,7 @@ class StableDiffusionCycleDiffusionPipeline(DiffusionPipeline):
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
             text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
-        if source_text_input_ids.shape[-1] > self.tokenizer.model_max_length:  # Chen.
+        if source_text_input_ids.shape[-1] > self.tokenizer.model_max_length:
             removed_text = self.tokenizer.batch_decode(source_text_input_ids[:, self.tokenizer.model_max_length :])
             logger.warning(
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
@@ -323,11 +323,11 @@ class StableDiffusionCycleDiffusionPipeline(DiffusionPipeline):
             )
             source_text_input_ids = source_text_input_ids[:, : self.tokenizer.model_max_length]
         text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
-        source_text_embeddings = self.text_encoder(source_text_input_ids.to(self.device))[0]  # Chen.
+        source_text_embeddings = self.text_encoder(source_text_input_ids.to(self.device))[0]
 
         # duplicate text embeddings for each generation per prompt
         text_embeddings = text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
-        source_text_embeddings = source_text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)  # Chen.
+        source_text_embeddings = source_text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -413,7 +413,7 @@ class StableDiffusionCycleDiffusionPipeline(DiffusionPipeline):
 
         # add noise to latents using the timesteps
         noise = torch.randn(init_latents.shape, generator=generator, device=self.device, dtype=latents_dtype)
-        clean_latents = init_latents  # Chen.
+        clean_latents = init_latents
         init_latents = self.scheduler.add_noise(init_latents, noise, timesteps)
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -426,7 +426,7 @@ class StableDiffusionCycleDiffusionPipeline(DiffusionPipeline):
         extra_step_kwargs["eta"] = eta
 
         latents = init_latents
-        source_latents = init_latents  # Chen.
+        source_latents = init_latents
 
         t_start = max(num_inference_steps - init_timestep + offset, 0)
 
@@ -437,9 +437,9 @@ class StableDiffusionCycleDiffusionPipeline(DiffusionPipeline):
         for i, t in enumerate(self.progress_bar(timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2)
-            source_latent_model_input = torch.cat([source_latents] * 2)  # Chen.
+            source_latent_model_input = torch.cat([source_latents] * 2)
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-            source_latent_model_input = self.scheduler.scale_model_input(source_latent_model_input, t)  # Chen.
+            source_latent_model_input = self.scheduler.scale_model_input(source_latent_model_input, t)
 
             # predict the noise residual
             concat_latent_model_input = torch.stack(
@@ -462,7 +462,7 @@ class StableDiffusionCycleDiffusionPipeline(DiffusionPipeline):
             )
             concat_noise_pred = self.unet(
                 concat_latent_model_input, t, encoder_hidden_states=concat_text_embeddings
-            ).sample  # Chen.
+            ).sample
 
             # perform guidance
             (
@@ -472,21 +472,21 @@ class StableDiffusionCycleDiffusionPipeline(DiffusionPipeline):
                 noise_pred_text,
             ) = concat_noise_pred.chunk(
                 4, dim=0
-            )  # Chen.
+            )
             noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
             source_noise_pred = source_noise_pred_uncond + guidance_scale * (
                 source_noise_pred_text - source_noise_pred_uncond
-            )  # Chen.
+            )
 
             # Sample source_latents from the posterior distribution.
             prev_source_latents = posterior_sample(
                 self.scheduler, source_latents, t, clean_latents, **extra_step_kwargs
-            )  # Chen.
+            )
             # Compute noise.
             noise = compute_noise(
                 self.scheduler, prev_source_latents, source_latents, t, source_noise_pred, **extra_step_kwargs
-            )  # Chen.
-            source_latents = prev_source_latents  # Chen.
+            )
+            source_latents = prev_source_latents
 
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(noise_pred, t, latents, noise=noise, **extra_step_kwargs).prev_sample
