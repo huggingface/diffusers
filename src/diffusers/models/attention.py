@@ -207,7 +207,6 @@ class BasicTransformerBlock(nn.Module):
         self.attn2._slice_size = slice_size
 
     def forward(self, hidden_states, context=None):
-        hidden_states = hidden_states.contiguous() if hidden_states.device.type == "mps" else hidden_states
         hidden_states = self.attn1(self.norm1(hidden_states)) + hidden_states
         hidden_states = self.attn2(self.norm2(hidden_states), context=context) + hidden_states
         hidden_states = self.ff(self.norm3(hidden_states)) + hidden_states
