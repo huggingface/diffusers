@@ -13,7 +13,7 @@ env:
   OMP_NUM_THREADS: 8
   MKL_NUM_THREADS: 8
   PYTEST_TIMEOUT: 60
-  MPS_TORCH_VERSION: 1.13.0.dev20221006
+  MPS_TORCH_VERSION: 1.13.0
 
 jobs:
   run_tests_cpu:
@@ -79,7 +79,7 @@ jobs:
       run: |
         ${CONDA_RUN} python -m pip install --upgrade pip
         ${CONDA_RUN} python -m pip install -e .[quality,test]
-        ${CONDA_RUN} python -m pip install --pre torch==${MPS_TORCH_VERSION} --extra-index-url https://download.pytorch.org/whl/nightly/cpu
+        ${CONDA_RUN} python -m pip install --pre torch==${MPS_TORCH_VERSION} --extra-index-url https://download.pytorch.org/whl/test/cpu
 
     - name: Environment
       shell: arch -arch arm64 bash {0}
