@@ -7,19 +7,15 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-import jax
-import jax.numpy as jnp
-from flax import jax_utils
-from flax.training import train_state
-from flax.training.common_utils import shard
-
-import optax
-
 import torch
 import torch.utils.checkpoint
 from torch.utils.data import Dataset
 
+import jax
+import jax.numpy as jnp
+import optax
 import PIL
+import transformers
 from diffusers import (
     FlaxAutoencoderKL,
     FlaxDDPMScheduler,
@@ -28,12 +24,15 @@ from diffusers import (
     FlaxUNet2DConditionModel,
 )
 from diffusers.pipelines.stable_diffusion import FlaxStableDiffusionSafetyChecker
+from flax import jax_utils
+from flax.training import train_state
+from flax.training.common_utils import shard
 from huggingface_hub import HfFolder, Repository, whoami
 from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
-import transformers
-from transformers import CLIPFeatureExtractor, FlaxCLIPTextModel, CLIPTokenizer, set_seed
+from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
+
 
 logger = logging.getLogger(__name__)
 
