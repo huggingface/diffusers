@@ -284,7 +284,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
                 model_output.size(), dtype=model_output.dtype, layout=model_output.layout, generator=generator
             ).to(model_output.device)
             if self.variance_type == "fixed_small_log":
-                variance = (self._get_variance(t, predicted_variance=predicted_variance))
+                variance = self._get_variance(t, predicted_variance=predicted_variance)
                 variance = torch.exp(0.5 * variance)
                 variance = variance * noise
 

@@ -5,21 +5,20 @@ from typing import Tuple, Union
 import torch
 import torch.nn as nn
 
-from diffusers.models.resnet import ResidualTemporalBlock1D, Downsample1D
+from diffusers.models.resnet import Downsample1D, ResidualTemporalBlock1D
 from diffusers.models.unet_1d_blocks import get_down_block
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput
 from .embeddings import TimestepEmbedding, Timesteps
-from .resnet import rearrange_dims
 
 
 @dataclass
 class ValueFunctionOutput(BaseOutput):
     """
     Args:
-        sample (`torch.FloatTensor` of shape `(batch, horizon, obs_dimension)`):
+        sample (`torch.FloatTensor` of shape `(batch, horizon, 1)`):
             Hidden states output. Output of last layer of model.
     """
 
@@ -31,7 +30,12 @@ class ValueFunction(ModelMixin, ConfigMixin):
     def __init__(
         self,
         in_channels=14,
-        down_block_types: Tuple[str] = ("DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"),
+        down_block_types: Tuple[str] = (
+            "DownResnetBlock1D",
+            "DownResnetBlock1D",
+            "DownResnetBlock1D",
+            "DownResnetBlock1D",
+        ),
         block_out_channels: Tuple[int] = (32, 64, 128, 256),
         act_fn: str = "mish",
         norm_num_groups: int = 8,
@@ -40,8 +44,9 @@ class ValueFunction(ModelMixin, ConfigMixin):
         super().__init__()
         time_embed_dim = block_out_channels[0] * 4
         self.time_proj = Timesteps(num_channels=block_out_channels[0], flip_sin_to_cos=False, downscale_freq_shift=1)
-        self.time_mlp = TimestepEmbedding(channel=block_out_channels[0], time_embed_dim=time_embed_dim, act_fn="mish", out_dim=block_out_channels[0])
-
+        self.time_mlp = TimestepEmbedding(
+            channel=block_out_channels[0], time_embed_dim=time_embed_dim, act_fn="mish", out_dim=block_out_channels[0]
+        )
 
         self.blocks = nn.ModuleList([])
         mid_dim = block_out_channels[-1]
@@ -67,14 +72,16 @@ class ValueFunction(ModelMixin, ConfigMixin):
         self.mid_block1 = ResidualTemporalBlock1D(mid_dim, mid_dim // 2, embed_dim=block_out_channels[0])
         self.mid_down1 = Downsample1D(mid_dim // 2, use_conv=True)
         ##
-        self.mid_block2 = ResidualTemporalBlock1D(mid_dim //2, mid_dim // 4, embed_dim=block_out_channels[0])
+        self.mid_block2 = ResidualTemporalBlock1D(mid_dim // 2, mid_dim // 4, embed_dim=block_out_channels[0])
         self.mid_down2 = Downsample1D(mid_dim // 4, use_conv=True)
         ##
         fc_dim = mid_dim // 4
-        self.final_block = nn.ModuleList([
-            nn.Linear(fc_dim + block_out_channels[0], fc_dim // 2),
-            nn.Mish(),
-            nn.Linear(fc_dim // 2, 1),]
+        self.final_block = nn.ModuleList(
+            [
+                nn.Linear(fc_dim + block_out_channels[0], fc_dim // 2),
+                nn.Mish(),
+                nn.Linear(fc_dim // 2, 1),
+            ]
         )
 
     def forward(
@@ -88,10 +95,10 @@ class ValueFunction(ModelMixin, ConfigMixin):
             sample (`torch.FloatTensor`): (batch, horizon, obs_dimension + action_dimension) noisy inputs tensor
             timestep (`torch.FloatTensor` or `float` or `int): batch (batch) timesteps
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unet_2d.UNet2DOutput`] instead of a plain tuple.
+                Whether or not to return a [`~models.unet_rl.ValueFunctionOutput`] instead of a plain tuple.
 
         Returns:
-            [`~models.unet_2d.UNet2DOutput`] or `tuple`: [`~models.unet_2d.UNet2DOutput`] if `return_dict` is True,
+            [`~models.unet_rl.ValueFunctionOutput`] or `tuple`: [`~models.unet_rl.ValueFunctionOutput`] if `return_dict` is True,
             otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
         """
         sample = sample.permute(0, 2, 1)
