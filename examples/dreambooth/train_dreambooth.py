@@ -424,9 +424,7 @@ def main():
         optimizer_class = torch.optim.AdamW
 
     params_to_optimize = (
-        itertools.chain([unet.parameters(), text_encoder.parameters()])
-        if args.train_text_encoder
-        else unet.parameters()
+        itertools.chain(unet.parameters(), text_encoder.parameters()) if args.train_text_encoder else unet.parameters()
     )
     optimizer = optimizer_class(
         params_to_optimize,
@@ -583,7 +581,7 @@ def main():
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     params_to_clip = (
-                        itertools.chain([unet.parameters(), text_encoder.parameters()])
+                        itertools.chain(unet.parameters(), text_encoder.parameters())
                         if args.train_text_encoder
                         else unet.parameters()
                     )
@@ -609,7 +607,9 @@ def main():
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
         pipeline = StableDiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path, unet=accelerator.unwrap_model(unet)
+            args.pretrained_model_name_or_path,
+            unet=accelerator.unwrap_model(unet),
+            text_encoder=accelerator.unwrap_model(text_encoder),
         )
         pipeline.save_pretrained(args.output_dir)
 
