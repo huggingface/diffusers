@@ -221,7 +221,9 @@ class Downsample2DBlockTests(unittest.TestCase):
 
 
 class AttentionBlockTests(unittest.TestCase):
-    @unittest.skipIf(torch_device == "mps", "Matmul crashes on MPS, see https://github.com/pytorch/pytorch/issues/84039")
+    @unittest.skipIf(
+        torch_device == "mps", "Matmul crashes on MPS, see https://github.com/pytorch/pytorch/issues/84039"
+    )
     def test_attention_block_default(self):
         torch.manual_seed(0)
         if torch.cuda.is_available():
