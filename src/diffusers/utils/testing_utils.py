@@ -7,22 +7,27 @@ from distutils.util import strtobool
 from pathlib import Path
 from typing import Union
 
-import torch
-
 import PIL.Image
 import PIL.ImageOps
 import requests
 from packaging import version
 
-from .import_utils import is_flax_available
+from .import_utils import is_flax_available, is_torch_available
 
 
 global_rng = random.Random()
-torch_device = "cuda" if torch.cuda.is_available() else "cpu"
-is_torch_higher_equal_than_1_12 = version.parse(version.parse(torch.__version__).base_version) >= version.parse("1.12")
 
-if is_torch_higher_equal_than_1_12:
-    torch_device = "mps" if torch.backends.mps.is_available() else torch_device
+
+if is_torch_available():
+    import torch
+
+    torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+    is_torch_higher_equal_than_1_12 = version.parse(version.parse(torch.__version__).base_version) >= version.parse(
+        "1.12"
+    )
+
+    if is_torch_higher_equal_than_1_12:
+        torch_device = "mps" if torch.backends.mps.is_available() else torch_device
 
 
 def get_tests_dir(append_path=None):
