@@ -88,7 +88,7 @@ class StableDiffusionMegaPipeline(DiffusionPipeline):
 
     @property
     def components(self) -> Dict[str, Any]:
-        return {k: v for k, v in vars(self).items() if not k.startswith("_")}
+        return {k: getattr(self, k) for k in self.config.keys() if not k.startswith("_")}
 
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
