@@ -470,9 +470,7 @@ class StableDiffusionCycleDiffusionPipeline(DiffusionPipeline):
                 noise_pred_uncond,
                 source_noise_pred_text,
                 noise_pred_text,
-            ) = concat_noise_pred.chunk(
-                4, dim=0
-            )
+            ) = concat_noise_pred.chunk(4, dim=0)
             noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
             source_noise_pred = source_noise_pred_uncond + guidance_scale * (
                 source_noise_pred_text - source_noise_pred_uncond
