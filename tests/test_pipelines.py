@@ -37,11 +37,12 @@ from diffusers import (
     LDMPipeline,
     LDMTextToImagePipeline,
     LMSDiscreteScheduler,
+    OnnxStableDiffusionImg2ImgPipeline,
+    OnnxStableDiffusionInpaintPipeline,
     PNDMPipeline,
     PNDMScheduler,
     ScoreSdeVePipeline,
     ScoreSdeVeScheduler,
-    StableDiffusionImg2ImgOnnxPipeline,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
     StableDiffusionOnnxPipeline,
@@ -2034,8 +2035,8 @@ class PipelineTesterMixin(unittest.TestCase):
         )
         init_image = init_image.resize((768, 512))
 
-        pipe = StableDiffusionImg2ImgOnnxPipeline.from_pretrained(
-            "../scripts/sd_onnx", provider="CPUExecutionProvider"
+        pipe = OnnxStableDiffusionImg2ImgPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider"
         )
         pipe.set_progress_bar_config(disable=None)
 
@@ -2051,10 +2052,45 @@ class PipelineTesterMixin(unittest.TestCase):
             output_type="np",
         )
         images = output.images
-        image_slice = images[0, -3:, -3:, -1]
+        image_slice = images[0, 255:258, 383:386, -1]
 
         assert images.shape == (1, 512, 768, 3)
-        expected_slice = np.array([0.0956, 0.0899, 0.1057, 0.0853, 0.0938, 0.1004, 0.1158, 0.1258, 0.1158])
+        expected_slice = np.array([[0.4806, 0.5125, 0.5453, 0.4846, 0.4984, 0.4955, 0.4830, 0.4962, 0.4969]])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    @slow
+    def test_stable_diffusion_inpaint_onnx(self):
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/overture-creations-5sI6fQgYIuo.png"
+        )
+        mask_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
+        )
+
+        pipe = OnnxStableDiffusionInpaintPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider"
+        )
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A red cat sitting on a park bench"
+
+        np.random.seed(0)
+        output = pipe(
+            prompt=prompt,
+            init_image=init_image,
+            mask_image=mask_image,
+            strength=0.75,
+            guidance_scale=7.5,
+            num_inference_steps=8,
+            output_type="np",
+        )
+        images = output.images
+        image_slice = images[0, 255:258, 255:258, -1]
+
+        assert images.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.3524, 0.3289, 0.3464, 0.3872, 0.4129, 0.3566, 0.3709, 0.4128, 0.3734])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     @slow

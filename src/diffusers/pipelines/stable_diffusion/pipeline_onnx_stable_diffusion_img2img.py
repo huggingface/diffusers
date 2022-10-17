@@ -27,7 +27,7 @@ def preprocess(image):
     return 2.0 * image - 1.0
 
 
-class StableDiffusionImg2ImgOnnxPipeline(DiffusionPipeline):
+class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-guided image to image generation using Stable Diffusion.
 
@@ -334,7 +334,7 @@ class StableDiffusionImg2ImgOnnxPipeline(DiffusionPipeline):
 
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
-            latents = np.array(latents)
+            latents = latents.numpy()
 
             # call the callback, if provided
             if callback is not None and i % callback_steps == 0:
