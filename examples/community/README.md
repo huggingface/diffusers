@@ -133,7 +133,7 @@ def download_image(url):
     response = requests.get(url)
     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
 
-pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", custom_pipeline="stable_diffusion_mega", dtype=torch.float16, revision="fp16")
+pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", custom_pipeline="stable_diffusion_mega", torch_dtype=torch.float16, revision="fp16")
 pipe.to("cuda")
 pipe.enable_attention_slicing()
 
