@@ -440,7 +440,7 @@ class StableDiffusionWalkPipeline(DiffusionPipeline):
         Walks through a series of prompts and seeds, interpolating between them and saving the results to disk.
 
         Args:
-            prompt (`List[str]`):
+            prompts (`List[str]`):
                 List of prompts to generate images for.
             seeds (`List[int]`):
                 List of seeds corresponding to provided prompts. Must be the same length as prompts.
