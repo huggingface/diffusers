@@ -512,7 +512,7 @@ class PipelineFastTests(unittest.TestCase):
     def test_stable_diffusion_k_lms(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
-        scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
+        scheduler = LMSDiscreteScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
@@ -557,7 +557,7 @@ class PipelineFastTests(unittest.TestCase):
     def test_stable_diffusion_attention_chunk(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
-        scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
+        scheduler = LMSDiscreteScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
@@ -842,7 +842,7 @@ class PipelineFastTests(unittest.TestCase):
     def test_stable_diffusion_img2img_k_lms(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
-        scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
+        scheduler = LMSDiscreteScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
 
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
@@ -1890,7 +1890,7 @@ class PipelineTesterMixin(unittest.TestCase):
         init_image = init_image.resize((768, 512))
         expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
-        lms = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
+        lms = LMSDiscreteScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
 
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
@@ -1979,7 +1979,7 @@ class PipelineTesterMixin(unittest.TestCase):
         )
         expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
-        lms = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
+        lms = LMSDiscreteScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
 
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
