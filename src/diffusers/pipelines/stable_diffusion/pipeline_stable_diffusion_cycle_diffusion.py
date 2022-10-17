@@ -30,7 +30,6 @@ def preprocess(image):
 
 
 def posterior_sample(scheduler, latents, timestep, clean_latents, eta):
-
     # 1. get previous step value (=t-1)
     prev_timestep = timestep - scheduler.config.num_train_timesteps // scheduler.num_inference_steps
 
