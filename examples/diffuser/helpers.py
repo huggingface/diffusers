@@ -6,6 +6,7 @@ import torch
 
 import gym
 import mediapy as media
+import mujoco_py as mjc
 import tqdm
 
 
@@ -107,11 +108,11 @@ def show_sample(renderer, observations, filename="sample.mp4", savebase="videos"
 
     images = []
     for rollout in observations:
-        ## [ horizon x height x width x channels ]
+        # [ horizon x height x width x channels ]
         img = renderer._renders(rollout, partial=True)
         images.append(img)
 
-    ## [ horizon x height x (batch_size * width) x channels ]
+    # [ horizon x height x (batch_size * width) x channels ]
     images = np.concatenate(images, axis=2)
     media.write_video(savepath, images, fps=60)
     media.show_video(images, codec="h264", fps=60)
@@ -120,7 +121,6 @@ def show_sample(renderer, observations, filename="sample.mp4", savebase="videos"
 
 # Code adapted from Michael Janner
 # source: https://github.com/jannerm/diffuser/blob/main/diffuser/utils/rendering.py
-import mujoco_py as mjc
 
 
 def env_map(env_name):
@@ -173,8 +173,8 @@ class MuJoCoRenderer:
             self.env = gym.make(env)
         else:
             self.env = env
-        ## - 1 because the envs in renderer are fully-observed
-        ## @TODO : clean up
+        # - 1 because the envs in renderer are fully-observed
+        # @TODO : clean up
         self.observation_dim = np.prod(self.env.observation_space.shape) - 1
         self.action_dim = np.prod(self.env.action_space.shape)
         try:
@@ -194,7 +194,7 @@ class MuJoCoRenderer:
 
     def pad_observations(self, observations):
         qpos_dim = self.env.sim.data.qpos.size
-        ## xpos is hidden
+        # xpos is hidden
         xvel_dim = qpos_dim - 1
         xvel = observations[:, xvel_dim]
         xpos = np.cumsum(xvel) * self.env.dt

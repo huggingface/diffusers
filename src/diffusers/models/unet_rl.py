@@ -55,7 +55,6 @@ class ValueFunction(ModelMixin, ConfigMixin):
         for i, down_block_type in enumerate(down_block_types):
             input_channel = output_channel
             output_channel = block_out_channels[i]
-            is_final_block = i == len(block_out_channels) - 1
 
             down_block_type = down_block_types[i]
             down_block = get_down_block(
@@ -98,8 +97,8 @@ class ValueFunction(ModelMixin, ConfigMixin):
                 Whether or not to return a [`~models.unet_rl.ValueFunctionOutput`] instead of a plain tuple.
 
         Returns:
-            [`~models.unet_rl.ValueFunctionOutput`] or `tuple`: [`~models.unet_rl.ValueFunctionOutput`] if `return_dict` is True,
-            otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
+            [`~models.unet_rl.ValueFunctionOutput`] or `tuple`: [`~models.unet_rl.ValueFunctionOutput`] if
+            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
         """
         sample = sample.permute(0, 2, 1)
 

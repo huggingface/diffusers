@@ -1,10 +1,11 @@
 import numpy as np
 import torch
 
-import d4rl
+import d4rl  # noqa
 import gym
 import helpers
 import tqdm
+from diffusers import DDPMScheduler, UNet1DModel
 
 
 env_name = "hopper-medium-expert-v2"
@@ -48,9 +49,6 @@ def to_torch(x_in, dtype=None, device=None):
     return torch.tensor(x_in, dtype=dtype, device=device)
 
 
-from diffusers import DDPMScheduler, TemporalUNet
-
-
 # Two generators for different parts of the diffusion loop to work in colab
 generator_cpu = torch.Generator(device="cpu")
 
@@ -58,9 +56,11 @@ scheduler = DDPMScheduler(num_train_timesteps=100, beta_schedule="squaredcos_cap
 
 # 3 different pretrained models are available for this task.
 # The horizion represents the length of trajectories used in training.
-network = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor128").to(device=DEVICE)
+network = UNet1DModel.from_pretrained("fusing/ddpm-unet-rl-hopper-hor128").to(device=DEVICE)
 # network = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor256").to(device=DEVICE)
 # network = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor512").to(device=DEVICE)
+
+
 def reset_x0(x_in, cond, act_dim):
     for key, val in cond.items():
         x_in[:, key, act_dim:] = val.clone()
@@ -71,8 +71,8 @@ def reset_x0(x_in, cond, act_dim):
 clip_denoised = network.clip_denoised
 predict_epsilon = network.predict_epsilon
 
-## add a batch dimension and repeat for multiple samples
-## [ observation_dim ] --> [ n_samples x observation_dim ]
+# add a batch dimension and repeat for multiple samples
+# [ observation_dim ] --> [ n_samples x observation_dim ]
 obs = env.reset()
 total_reward = 0
 done = False
@@ -137,10 +137,10 @@ try:
         # select action at correct time
         action = plans[idx, 0, :]
         actions = de_normalize(action, data, "actions")
-        ## execute action in environment
+        # execute action in environment
         next_observation, reward, terminal, _ = env.step(action)
 
-        ## update return
+        # update return
         total_reward += reward
         print(f"Step: {t}, Reward: {reward}, Total Reward: {total_reward}")
 
