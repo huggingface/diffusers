@@ -39,14 +39,16 @@ def posterior_sample(scheduler, latents, timestep, clean_latents, eta):
 
     # 2. compute alphas, betas
     alpha_prod_t = scheduler.alphas_cumprod[timestep]
-    alpha_prod_t_prev = scheduler.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else scheduler.final_alpha_cumprod
+    alpha_prod_t_prev = (
+        scheduler.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else scheduler.final_alpha_cumprod
+    )
 
     variance = scheduler._get_variance(timestep, prev_timestep)
     std_dev_t = eta * variance ** (0.5)
 
     # direction pointing to x_t
     e_t = (latents - alpha_prod_t ** (0.5) * clean_latents) / (1 - alpha_prod_t) ** (0.5)
-    dir_xt = (1. - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * e_t
+    dir_xt = (1.0 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * e_t
     noise = std_dev_t * torch.randn(clean_latents.shape, dtype=clean_latents.dtype, device=clean_latents.device)
     prev_latents = alpha_prod_t_prev ** (0.5) * clean_latents + dir_xt + noise
 
@@ -59,7 +61,9 @@ def compute_noise(scheduler, prev_latents, latents, timestep, noise_pred, eta):
 
     # 2. compute alphas, betas
     alpha_prod_t = scheduler.alphas_cumprod[timestep]
-    alpha_prod_t_prev = scheduler.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else scheduler.final_alpha_cumprod
+    alpha_prod_t_prev = (
+        scheduler.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else scheduler.final_alpha_cumprod
+    )
 
     beta_prod_t = 1 - alpha_prod_t
 
@@ -79,10 +83,8 @@ def compute_noise(scheduler, prev_latents, latents, timestep, noise_pred, eta):
     # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
     pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * noise_pred
 
-    noise = (
-        (prev_latents - (alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction))
-        /
-        (variance ** (0.5) * eta)
+    noise = (prev_latents - (alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction)) / (
+        variance ** (0.5) * eta
     )
     return noise
 
@@ -151,7 +153,7 @@ class StableDiffusionCycleDiffusionPipeline(DiffusionPipeline):
                 " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
             )
 
-        assert isinstance(scheduler, (DDIMScheduler, )), "Only DDIMScheduler is supported for now."
+        assert isinstance(scheduler, (DDIMScheduler,)), "Only DDIMScheduler is supported for now."
 
         self.register_modules(
             vae=vae,
@@ -365,7 +367,9 @@ class StableDiffusionCycleDiffusionPipeline(DiffusionPipeline):
         source_uncond_embeddings = self.text_encoder(source_uncond_input.input_ids.to(self.device))[0]
 
         # duplicate unconditional embeddings for each generation per prompt
-        source_uncond_embeddings = source_uncond_embeddings.repeat_interleave(batch_size * num_images_per_prompt, dim=0)
+        source_uncond_embeddings = source_uncond_embeddings.repeat_interleave(
+            batch_size * num_images_per_prompt, dim=0
+        )
 
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
@@ -456,17 +460,32 @@ class StableDiffusionCycleDiffusionPipeline(DiffusionPipeline):
                 ],
                 dim=0,
             )
-            concat_noise_pred = self.unet(concat_latent_model_input, t, encoder_hidden_states=concat_text_embeddings).sample  # Chen.
+            concat_noise_pred = self.unet(
+                concat_latent_model_input, t, encoder_hidden_states=concat_text_embeddings
+            ).sample  # Chen.
 
             # perform guidance
-            source_noise_pred_uncond, noise_pred_uncond, source_noise_pred_text, noise_pred_text = concat_noise_pred.chunk(4, dim=0)  # Chen.
+            (
+                source_noise_pred_uncond,
+                noise_pred_uncond,
+                source_noise_pred_text,
+                noise_pred_text,
+            ) = concat_noise_pred.chunk(
+                4, dim=0
+            )  # Chen.
             noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-            source_noise_pred = source_noise_pred_uncond + guidance_scale * (source_noise_pred_text - source_noise_pred_uncond)  # Chen.
+            source_noise_pred = source_noise_pred_uncond + guidance_scale * (
+                source_noise_pred_text - source_noise_pred_uncond
+            )  # Chen.
 
             # Sample source_latents from the posterior distribution.
-            prev_source_latents = posterior_sample(self.scheduler, source_latents, t, clean_latents, **extra_step_kwargs)  # Chen.
+            prev_source_latents = posterior_sample(
+                self.scheduler, source_latents, t, clean_latents, **extra_step_kwargs
+            )  # Chen.
             # Compute noise.
-            noise = compute_noise(self.scheduler, prev_source_latents, source_latents, t, source_noise_pred, **extra_step_kwargs)  # Chen.
+            noise = compute_noise(
+                self.scheduler, prev_source_latents, source_latents, t, source_noise_pred, **extra_step_kwargs
+            )  # Chen.
             source_latents = prev_source_latents  # Chen.
 
             # compute the previous noisy sample x_t -> x_t-1
