@@ -133,6 +133,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         self.enable_attention_slicing(1)
 
         for cpu_offloaded_model in [self.text_encoder, self.vae, self.safety_checker]:
+            cpu_offloaded_model.to(torch.float32)
             attach_execution_device_hook(cpu_offloaded_model, "cpu")
 
     @torch.no_grad()
