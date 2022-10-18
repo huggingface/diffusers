@@ -2037,16 +2037,15 @@ class PipelineTesterMixin(unittest.TestCase):
         )
         init_image = init_image.resize((768, 512))
 
-        options = onnxruntime.SessionOptions()
-        options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         pipe = OnnxStableDiffusionImg2ImgPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider", sess_options=options
+            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider"
         )
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A fantasy landscape, trending on artstation"
 
         np.random.seed(0)
+        onnxruntime.set_seed(0)
         output = pipe(
             prompt=prompt,
             init_image=init_image,
@@ -2059,7 +2058,7 @@ class PipelineTesterMixin(unittest.TestCase):
         image_slice = images[0, 255:258, 383:386, -1]
 
         assert images.shape == (1, 512, 768, 3)
-        expected_slice = np.array([0.4806, 0.5125, 0.5453, 0.4846, 0.4984, 0.4955, 0.4830, 0.4962, 0.4969])
+        expected_slice = np.array([0.4806, 0.5125, 0.5454, 0.4846, 0.4985, 0.4955, 0.4830, 0.4962, 0.4969])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     @slow
