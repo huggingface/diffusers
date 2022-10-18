@@ -132,33 +132,25 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
         """
         # 1. time
-        timesteps = timestep
-        if not torch.is_tensor(timesteps):
-            timesteps = torch.tensor([timesteps], dtype=torch.long, device=sample.device)
-        elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
-            timesteps = timesteps[None].to(sample.device)
+        timestep_embed = self.time_proj(timestep[:, None])[..., None].repeat([1, 1, sample.shape[2]])
 
-        # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-        timesteps = timesteps * torch.ones(sample.shape[0], dtype=timesteps.dtype, device=timesteps.device)
-
-        t_emb = self.time_proj(timesteps)
-        emb = self.time_embedding(t_emb)
+        sample = torch.cat([sample, timestep_embed], dim=1)
 
         # 2. down
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
-            sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
+            sample, res_samples = downsample_block(hidden_states=sample)
 
             down_block_res_samples += res_samples
 
         # 3. mid
-        sample = self.mid_block(sample, emb)
+        sample = self.mid_block(sample)
 
         # 4. up
         for upsample_block in self.up_blocks:
-            res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
-            down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
-            sample = upsample_block(sample, res_samples, emb)
+            res_samples = down_block_res_samples[-1:]
+            down_block_res_samples = down_block_res_samples[-1:]
+            sample = upsample_block(sample, res_samples)
 
         if not return_dict:
             return (sample,)

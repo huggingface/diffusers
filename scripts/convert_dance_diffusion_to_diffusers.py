@@ -222,6 +222,11 @@ def main(args):
     output = orig_model(noise, step_list[step_index : step_index + 1])
     assert output.abs().sum() - 4550.5430 < 1e-3
 
+    diffusers_output = diffusers_model(noise, step_list[step_index : step_index + 1])
+    import ipdb; ipdb.set_trace()
+    assert diffusers_output.abs().sum() - 4550.5430 < 1e-3
+    import ipdb; ipdb.set_trace()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
