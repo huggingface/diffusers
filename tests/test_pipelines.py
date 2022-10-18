@@ -37,13 +37,13 @@ from diffusers import (
     LDMPipeline,
     LDMTextToImagePipeline,
     LMSDiscreteScheduler,
+    OnnxStableDiffusionPipeline,
     PNDMPipeline,
     PNDMScheduler,
     ScoreSdeVePipeline,
     ScoreSdeVeScheduler,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
-    StableDiffusionOnnxPipeline,
     StableDiffusionPipeline,
     UNet2DConditionModel,
     UNet2DModel,
@@ -2010,7 +2010,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     def test_stable_diffusion_onnx(self):
-        sd_pipe = StableDiffusionOnnxPipeline.from_pretrained(
+        sd_pipe = OnnxStableDiffusionPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider"
         )
 
@@ -2214,7 +2214,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
         test_callback_fn.has_been_called = False
 
-        pipe = StableDiffusionOnnxPipeline.from_pretrained(
+        pipe = OnnxStableDiffusionPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider"
         )
         pipe.set_progress_bar_config(disable=None)

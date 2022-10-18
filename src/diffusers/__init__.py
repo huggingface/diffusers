@@ -58,7 +58,7 @@ else:
     from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
 
 if is_torch_available() and is_transformers_available() and is_onnx_available():
-    from .pipelines import StableDiffusionOnnxPipeline
+    from .pipelines import OnnxStableDiffusionPipeline, StableDiffusionOnnxPipeline
 else:
     from .utils.dummy_torch_and_transformers_and_onnx_objects import *  # noqa F403
 
