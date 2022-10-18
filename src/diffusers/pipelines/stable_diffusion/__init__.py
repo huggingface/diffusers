@@ -34,7 +34,7 @@ if is_transformers_available() and is_torch_available():
     from .safety_checker import StableDiffusionSafetyChecker
 
 if is_transformers_available() and is_onnx_available():
-    from .pipeline_stable_diffusion_onnx import StableDiffusionOnnxPipeline
+    from .pipeline_onnx_stable_diffusion import OnnxStableDiffusionPipeline, StableDiffusionOnnxPipeline
 
 if is_transformers_available() and is_flax_available():
     import flax
