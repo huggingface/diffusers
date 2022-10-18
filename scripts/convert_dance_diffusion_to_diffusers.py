@@ -1,41 +1,47 @@
 #!/usr/bin/env python3
+import argparse
+import math
+import os
+from copy import deepcopy
+
+import torch
 from torch import nn
+
 from audio_diffusion.models import DiffusionAttnUnet1D
 from diffusers import UNet1DModel
-import argparse
-from copy import deepcopy
-import torch
-import os
-import math
 
 
 MODELS_MAP = {
     "gwf-440k": {
-                         'url': "https://model-server.zqevans2.workers.dev/gwf-440k.ckpt",
-                         'sample_rate': 48000,
-                         'sample_size': 65536
-                         },
+        "url": "https://model-server.zqevans2.workers.dev/gwf-440k.ckpt",
+        "sample_rate": 48000,
+        "sample_size": 65536,
+    },
     "jmann-small-190k": {
-                         'url': "https://model-server.zqevans2.workers.dev/jmann-small-190k.ckpt",
-                         'sample_rate': 48000,
-                         'sample_size': 65536
-                         },
+        "url": "https://model-server.zqevans2.workers.dev/jmann-small-190k.ckpt",
+        "sample_rate": 48000,
+        "sample_size": 65536,
+    },
     "jmann-large-580k": {
-                         'url': "https://model-server.zqevans2.workers.dev/jmann-large-580k.ckpt",
-                         'sample_rate': 48000,
-                         'sample_size': 131072
-                         },
+        "url": "https://model-server.zqevans2.workers.dev/jmann-large-580k.ckpt",
+        "sample_rate": 48000,
+        "sample_size": 131072,
+    },
     "maestro-uncond-150k": {
-                         'url': "https://model-server.zqevans2.workers.dev/maestro-uncond-150k.ckpt",
-                         'sample_rate': 16000,
-                         'sample_size': 65536
-                         },
+        "url": "https://model-server.zqevans2.workers.dev/maestro-uncond-150k.ckpt",
+        "sample_rate": 16000,
+        "sample_size": 65536,
+    },
     "unlocked-uncond-250k": {
-                         'url': "https://model-server.zqevans2.workers.dev/unlocked-uncond-250k.ckpt",
-                         'sample_rate': 16000,
-                         'sample_size': 65536
-                         },
-    "honk-140k": {'url': "https://model-server.zqevans2.workers.dev/honk-140k.ckpt", 'sample_rate': 16000, 'sample_size': 65536}
+        "url": "https://model-server.zqevans2.workers.dev/unlocked-uncond-250k.ckpt",
+        "sample_rate": 16000,
+        "sample_size": 65536,
+    },
+    "honk-140k": {
+        "url": "https://model-server.zqevans2.workers.dev/honk-140k.ckpt",
+        "sample_rate": 16000,
+        "sample_size": 65536,
+    },
 }
 
 
@@ -47,7 +53,7 @@ def alpha_sigma_to_t(alpha, sigma):
 
 def get_crash_schedule(t):
     sigma = torch.sin(t * math.pi / 2) ** 2
-    alpha = (1 - sigma ** 2) ** 0.5
+    alpha = (1 - sigma**2) ** 0.5
     return alpha_sigma_to_t(alpha, sigma)
 
 
@@ -118,7 +124,7 @@ def rename(input_string, max_depth=13):
     if string.startswith("net.3."):
         depth += 1
         string = string[6:]
-    elif string.startswith("net."): 
+    elif string.startswith("net."):
         string = string[4:]
 
     while string.startswith("main.7."):
@@ -166,13 +172,14 @@ def rename_orig_weights(state_dict):
     return new_state_dict
 
 
-
 def main(args):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model_name = args.model_path.split("/")[-1].split(".")[0]
     if not os.path.isfile(args.model_path):
-        assert model_name == args.model_path, f"Make sure to provide one of the official model names {MODELS_MAP.keys()}"
+        assert (
+            model_name == args.model_path
+        ), f"Make sure to provide one of the official model names {MODELS_MAP.keys()}"
         args.model_path = download(model_name)
 
     sample_rate = MODELS_MAP[model_name]["sample_rate"]
@@ -199,7 +206,9 @@ def main(args):
     assert all(k.endswith("kernel") for k in list(diffusers_minus_renamed)), f"Problem with {diffusers_minus_renamed}"
 
     for key, value in renamed_state_dict.items():
-        assert diffusers_state_dict[key].squeeze().shape == value.squeeze().shape, f"Shape for {key} doesn't match. Diffusers: {diffusers_state_dict[key].shape} vs. {value.shape}"
+        assert (
+            diffusers_state_dict[key].squeeze().shape == value.squeeze().shape
+        ), f"Shape for {key} doesn't match. Diffusers: {diffusers_state_dict[key].shape} vs. {value.shape}"
         diffusers_state_dict[key] = value
 
     steps = 100
@@ -210,10 +219,8 @@ def main(args):
     t = torch.linspace(1, 0, steps + 1, device=device)[:-1]
     step_list = get_crash_schedule(t)
 
-    output = orig_model(noise, step_list[step_index: step_index + 1])
+    output = orig_model(noise, step_list[step_index : step_index + 1])
     assert output.abs().sum() - 4550.5430 < 1e-3
-
-
 
 
 if __name__ == "__main__":
