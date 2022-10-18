@@ -278,7 +278,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             # need to merge the PRs for sigma to be available in DDPM
             pred_original_sample = sample * self.alphas[timestep] - model_output * self.sigmas[timestep]
             eps = model_output * self.alphas[timestep] - sample * self.sigmas[timestep]
-            raise NotImplementedError(f"v prediction not yet implemented for DDPM")
         else:
             raise ValueError(f"prediction_type given as {prediction_type} must be one of `epsilon`, `sample`, or `v`")
 
