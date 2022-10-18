@@ -173,7 +173,9 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         return variance
 
-    def set_timesteps(self, state: DDIMSchedulerState, num_inference_steps: int, shape: Tuple) -> DDIMSchedulerState:
+    def set_timesteps(
+        self, state: DDIMSchedulerState, num_inference_steps: int, shape: Tuple = ()
+    ) -> DDIMSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -211,9 +213,6 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`jnp.ndarray`):
                 current instance of sample being created by diffusion process.
-            key (`random.KeyArray`): a PRNG key.
-            eta (`float`): weight of noise for added noise in diffusion step.
-            use_clipped_model_output (`bool`): TODO
             return_dict (`bool`): option for returning tuple rather than FlaxDDIMSchedulerOutput class
 
         Returns:

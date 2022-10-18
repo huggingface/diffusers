@@ -101,6 +101,10 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
 
     """
 
+    @property
+    def has_state(self):
+        return True
+
     @register_to_config
     def __init__(
         self,
@@ -129,11 +133,12 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         self.alphas_cumprod = jnp.cumprod(self.alphas, axis=0)
         self.one = jnp.array(1.0)
 
-        self.state = DDPMSchedulerState.create(num_train_timesteps=num_train_timesteps)
+    def create_state(self):
+        return DDPMSchedulerState.create(num_train_timesteps=self.config.num_train_timesteps)
 
-        self.variance_type = variance_type
-
-    def set_timesteps(self, state: DDPMSchedulerState, num_inference_steps: int, shape: Tuple) -> DDPMSchedulerState:
+    def set_timesteps(
+        self, state: DDPMSchedulerState, num_inference_steps: int, shape: Tuple = ()
+    ) -> DDPMSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -214,7 +219,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         """
         t = timestep
 
-        if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
+        if model_output.shape[1] == sample.shape[1] * 2 and self.config.variance_type in ["learned", "learned_range"]:
             model_output, predicted_variance = jnp.split(model_output, sample.shape[1], axis=1)
         else:
             predicted_variance = None

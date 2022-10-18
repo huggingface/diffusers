@@ -80,6 +80,10 @@ class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         correct_steps (`int`): number of correction steps performed on a produced sample.
     """
 
+    @property
+    def has_state(self):
+        return True
+
     @register_to_config
     def __init__(
         self,
@@ -90,12 +94,20 @@ class FlaxScoreSdeVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         sampling_eps: float = 1e-5,
         correct_steps: int = 1,
     ):
-        state = ScoreSdeVeSchedulerState.create()
+        pass
 
-        self.state = self.set_sigmas(state, num_train_timesteps, sigma_min, sigma_max, sampling_eps)
+    def create_state(self):
+        state = ScoreSdeVeSchedulerState.create()
+        return self.set_sigmas(
+            state,
+            self.config.num_train_timesteps,
+            self.config.sigma_min,
+            self.config.sigma_max,
+            self.config.sampling_eps,
+        )
 
     def set_timesteps(
-        self, state: ScoreSdeVeSchedulerState, num_inference_steps: int, shape: Tuple, sampling_eps: float = None
+        self, state: ScoreSdeVeSchedulerState, num_inference_steps: int, shape: Tuple = (), sampling_eps: float = None
     ) -> ScoreSdeVeSchedulerState:
         """
         Sets the continuous timesteps used for the diffusion chain. Supporting function to be run before inference.
