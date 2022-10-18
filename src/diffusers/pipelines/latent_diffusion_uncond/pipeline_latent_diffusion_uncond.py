@@ -74,8 +74,9 @@ class LDMPipeline(DiffusionPipeline):
             extra_kwargs["eta"] = eta
 
         for t in self.progress_bar(self.scheduler.timesteps):
+            latent_model_input = self.scheduler.scale_model_input(latents, t)
             # predict the noise residual
-            noise_prediction = self.unet(latents, t).sample
+            noise_prediction = self.unet(latent_model_input, t).sample
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(noise_prediction, t, latents, **extra_kwargs).prev_sample
 
