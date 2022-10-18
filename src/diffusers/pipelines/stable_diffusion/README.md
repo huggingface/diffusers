@@ -115,7 +115,7 @@ import torch
 from PIL import Image
 from io import BytesIO
 
-from diffusers import StableDiffusionCycleDiffusionPipeline, DDIMScheduler
+from diffusers import CycleDiffusionPipeline, DDIMScheduler
 
 
 # load the scheduler. CycleDiffusion only supports stochastic schedulers.
@@ -125,7 +125,7 @@ scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="sca
 # load the pipeline
 # make sure you're logged in with `huggingface-cli login`
 model_id_or_path = "CompVis/stable-diffusion-v1-4"
-pipe = StableDiffusionCycleDiffusionPipeline.from_pretrained(model_id_or_path, scheduler=scheduler).to("cuda")
+pipe = CycleDiffusionPipeline.from_pretrained(model_id_or_path, scheduler=scheduler).to("cuda")
 
 # let's download an initial image
 url = "https://raw.githubusercontent.com/ChenWu98/cycle-diffusion/main/data/dalle2/An%20astronaut%20riding%20a%20horse.png"

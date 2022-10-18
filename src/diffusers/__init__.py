@@ -49,8 +49,8 @@ else:
 
 if is_torch_available() and is_transformers_available():
     from .pipelines import (
+        CycleDiffusionPipeline,
         LDMTextToImagePipeline,
-        StableDiffusionCycleDiffusionPipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
         StableDiffusionPipeline,

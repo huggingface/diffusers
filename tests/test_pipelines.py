@@ -28,10 +28,10 @@ import PIL
 import transformers
 from diffusers import (
     AutoencoderKL,
+    CycleDiffusionPipeline,
     DDIMPipeline,
     DDIMScheduler,
     DDPMPipeline,
-    StableDiffusionCycleDiffusionPipeline,
     DDPMScheduler,
     KarrasVePipeline,
     KarrasVeScheduler,
@@ -408,7 +408,7 @@ class PipelineFastTests(unittest.TestCase):
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionCycleDiffusionPipeline(
+        sd_pipe = CycleDiffusionPipeline(
             unet=unet,
             scheduler=scheduler,
             vae=vae,
