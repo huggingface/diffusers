@@ -160,6 +160,39 @@ accelerate launch train_dreambooth.py \
   --mixed_precision=fp16
 ```
 
+### Fine-tune text encoder with the UNet.
+
+The script also allows to fine-tune the `text_encoder` along with the `unet`. It's been observed experimentally that fine-tuning `text_encoder` gives much better results especially on faces. 
+Pass the `--train_text_encoder` argument to the script to enable training `text_encoder`.
+
+___Note: Training text encoder requires more memory, with this option the training won't fit on 16GB GPU. It needs at least 24GB VRAM.___
+
+```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export INSTANCE_DIR="path-to-instance-images"
+export CLASS_DIR="path-to-class-images"
+export OUTPUT_DIR="path-to-save-model"
+
+accelerate launch train_dreambooth.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --train_text_encoder \
+  --instance_data_dir=$INSTANCE_DIR \
+  --class_data_dir=$CLASS_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --with_prior_preservation --prior_loss_weight=1.0 \
+  --instance_prompt="a photo of sks dog" \
+  --class_prompt="a photo of dog" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --use_8bit_adam
+  --gradient_checkpointing \
+  --learning_rate=2e-6 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --num_class_images=200 \
+  --max_train_steps=800
+```
+
 ## Inference
 
 Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline`. Make sure to include the `identifier`(e.g. sks in above example) in your prompt.
