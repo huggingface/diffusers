@@ -193,7 +193,7 @@ class AttnDownBlock1D(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states, temb=None):
         hidden_states = self.down(hidden_states)
 
         for resnet, attn in zip(self.resnets, self.attentions):
@@ -215,7 +215,7 @@ class DownBlock1D(nn.Module):
 
         self.resnets = nn.ModuleList(resnets)
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states, temb=None):
         hidden_states = self.down(hidden_states)
 
         for resnet in self.resnets:
@@ -235,7 +235,8 @@ class DownBlock1DNoSkip(nn.Module):
 
         self.resnets = nn.ModuleList(resnets)
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states, temb=None):
+        hidden_states = torch.cat([hidden_states, temb], dim=1)
         for resnet in self.resnets:
             hidden_states = resnet(hidden_states)
 

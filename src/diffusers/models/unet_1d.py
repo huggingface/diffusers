@@ -7,7 +7,7 @@ import torch.nn as nn
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput
-from .embeddings import GaussianFourierProjection
+from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 from .unet_1d_blocks import UNetMidBlock1D, get_down_block, get_up_block
 
 
@@ -61,6 +61,10 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         sample_size: Optional[int] = None,
         in_channels: int = 2,
         out_channels: int = 2,
+        time_embedding_type: str = "fourier",
+        freq_shift: int = 0,
+        flip_sin_to_cos: bool = True,
+        use_timestep_embedding: bool = False,
         down_block_types: Tuple[str] = ["DownBlock1DNoSkip"] + 7 * ["DownBlock1D"] + 5 * ["AttnDownBlock1D"],
         up_block_types: Tuple[str] = 5 * ["AttnUpBlock1D"] + 7 * ["UpBlock1D"] + ["UpBlock1DNoSkip"],
         block_out_channels: Tuple[int] = [128, 128, 256, 256] + [512] * 9,
@@ -70,9 +74,18 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         self.sample_size = sample_size
 
         # time
-        self.time_proj = GaussianFourierProjection(
-            embedding_size=8, set_W_to_weight=False, log=False, flip_sin_to_cos=True
-        )
+        if time_embedding_type == "fourier":
+            self.time_proj = GaussianFourierProjection(
+                embedding_size=8, set_W_to_weight=False, log=False, flip_sin_to_cos=flip_sin_to_cos
+            )
+            timestep_input_dim = 2 * block_out_channels[0]
+        elif time_embedding_type == "positional":
+            self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos, freq_shift)
+            timestep_input_dim = block_out_channels[0]
+
+        if use_timestep_embedding:
+            time_embed_dim = block_out_channels[0] * 4
+            self.time_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
 
         self.down_blocks = nn.ModuleList([])
         self.mid_block = None
@@ -136,12 +149,10 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         timestep_embed = self.time_proj(timestep)[..., None]
         timestep_embed = timestep_embed.repeat([1, 1, sample.shape[2]])
 
-        sample = torch.cat([sample, timestep_embed], dim=1)
-
         # 2. down
         down_block_res_samples = ()
         for downsample_block in self.down_blocks:
-            sample, res_samples = downsample_block(hidden_states=sample)
+            sample, res_samples = downsample_block(hidden_states=sample, temb=timestep_embed)
             down_block_res_samples += res_samples
 
         # 3. mid
