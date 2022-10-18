@@ -21,7 +21,7 @@ import torch
 from torch.onnx import export
 
 import onnx
-from diffusers import StableDiffusionOnnxPipeline, StableDiffusionPipeline
+from diffusers import OnnxStableDiffusionPipeline, StableDiffusionPipeline
 from diffusers.onnx_utils import OnnxRuntimeModel
 from packaging import version
 
@@ -130,13 +130,19 @@ def convert_models(model_path: str, output_path: str, opset: int):
 
     # VAE ENCODER
     vae_encoder = pipeline.vae
-    # need to get the raw tensor output (sample) from the encoder
-    vae_encoder.forward = lambda sample, return_dict: vae_encoder.encode(sample, return_dict)[0].sample()
+    # avoid non-deterministic sampling while tracing and just return the mean
+    def encode(self, sample):
+        h = self.encoder(sample)
+        moments = self.quant_conv(h)
+        mean, _ = torch.chunk(moments, 2, dim=1)
+        return mean
+
+    vae_encoder.forward = encode.__get__(vae_encoder, type(vae_encoder))
     onnx_export(
         vae_encoder,
-        model_args=(torch.randn(1, 3, 512, 512), False),
+        model_args=(torch.randn(1, 3, 512, 512)),
         output_path=output_path / "vae_encoder" / "model.onnx",
-        ordered_input_names=["sample", "return_dict"],
+        ordered_input_names=["sample"],
         output_names=["latent_sample"],
         dynamic_axes={
             "sample": {0: "batch", 1: "channels", 2: "height", 3: "width"},
@@ -178,7 +184,7 @@ def convert_models(model_path: str, output_path: str, opset: int):
     )
     del pipeline.safety_checker
 
-    onnx_pipeline = StableDiffusionOnnxPipeline(
+    onnx_pipeline = OnnxStableDiffusionPipeline(
         vae_encoder=OnnxRuntimeModel.from_pretrained(output_path / "vae_encoder"),
         vae_decoder=OnnxRuntimeModel.from_pretrained(output_path / "vae_decoder"),
         text_encoder=OnnxRuntimeModel.from_pretrained(output_path / "text_encoder"),
@@ -194,7 +200,7 @@ def convert_models(model_path: str, output_path: str, opset: int):
 
     del pipeline
     del onnx_pipeline
-    _ = StableDiffusionOnnxPipeline.from_pretrained(output_path, provider="CPUExecutionProvider")
+    _ = OnnxStableDiffusionPipeline.from_pretrained(output_path, provider="CPUExecutionProvider")
     print("ONNX pipeline is loadable")
 
 
