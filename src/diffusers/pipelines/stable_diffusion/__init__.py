@@ -35,6 +35,8 @@ if is_transformers_available() and is_torch_available():
 
 if is_transformers_available() and is_onnx_available():
     from .pipeline_onnx_stable_diffusion import OnnxStableDiffusionPipeline, StableDiffusionOnnxPipeline
+    from .pipeline_onnx_stable_diffusion_img2img import OnnxStableDiffusionImg2ImgPipeline
+    from .pipeline_onnx_stable_diffusion_inpaint import OnnxStableDiffusionInpaintPipeline
 
 if is_transformers_available() and is_flax_available():
     import flax

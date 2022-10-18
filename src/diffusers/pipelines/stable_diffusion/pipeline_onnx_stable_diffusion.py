@@ -26,6 +26,7 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
 
     def __init__(
         self,
+        vae_encoder: OnnxRuntimeModel,
         vae_decoder: OnnxRuntimeModel,
         text_encoder: OnnxRuntimeModel,
         tokenizer: CLIPTokenizer,
@@ -36,6 +37,7 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
     ):
         super().__init__()
         self.register_modules(
+            vae_encoder=vae_encoder,
             vae_decoder=vae_decoder,
             text_encoder=text_encoder,
             tokenizer=tokenizer,

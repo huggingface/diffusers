@@ -37,6 +37,8 @@ from diffusers import (
     LDMPipeline,
     LDMTextToImagePipeline,
     LMSDiscreteScheduler,
+    OnnxStableDiffusionImg2ImgPipeline,
+    OnnxStableDiffusionInpaintPipeline,
     OnnxStableDiffusionPipeline,
     PNDMPipeline,
     PNDMScheduler,
@@ -2023,6 +2025,72 @@ class PipelineTesterMixin(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.3602, 0.3688, 0.3652, 0.3895, 0.3782, 0.3747, 0.3927, 0.4241, 0.4327])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    @slow
+    def test_stable_diffusion_img2img_onnx(self):
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/img2img/sketch-mountains-input.jpg"
+        )
+        init_image = init_image.resize((768, 512))
+
+        pipe = OnnxStableDiffusionImg2ImgPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider"
+        )
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A fantasy landscape, trending on artstation"
+
+        np.random.seed(0)
+        output = pipe(
+            prompt=prompt,
+            init_image=init_image,
+            strength=0.75,
+            guidance_scale=7.5,
+            num_inference_steps=8,
+            output_type="np",
+        )
+        images = output.images
+        image_slice = images[0, 255:258, 383:386, -1]
+
+        assert images.shape == (1, 512, 768, 3)
+        expected_slice = np.array([[0.4806, 0.5125, 0.5453, 0.4846, 0.4984, 0.4955, 0.4830, 0.4962, 0.4969]])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    @slow
+    def test_stable_diffusion_inpaint_onnx(self):
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/overture-creations-5sI6fQgYIuo.png"
+        )
+        mask_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
+        )
+
+        pipe = OnnxStableDiffusionInpaintPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider"
+        )
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A red cat sitting on a park bench"
+
+        np.random.seed(0)
+        output = pipe(
+            prompt=prompt,
+            init_image=init_image,
+            mask_image=mask_image,
+            strength=0.75,
+            guidance_scale=7.5,
+            num_inference_steps=8,
+            output_type="np",
+        )
+        images = output.images
+        image_slice = images[0, 255:258, 255:258, -1]
+
+        assert images.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.3524, 0.3289, 0.3464, 0.3872, 0.4129, 0.3566, 0.3709, 0.4128, 0.3734])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     @slow
