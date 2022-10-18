@@ -297,8 +297,6 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
             latents = torch.from_numpy(latents)
         image = self.vae.decode(latents).sample
 
-        # TODO(oneflow): clamp will crash if not f32
-        image = image.to(dtype=torch.float32)
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
 
