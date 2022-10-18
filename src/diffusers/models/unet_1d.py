@@ -7,8 +7,8 @@ import torch.nn as nn
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput
-from .embeddings import GaussianFourierProjection, TimestepEmbedding
-from .unet_blocks_1d import UNetMidBlock1D, get_down_block, get_up_block
+from .embeddings import GaussianFourierProjection
+from .unet_1d_blocks import UNetMidBlock1D, get_down_block, get_up_block
 
 
 @dataclass
@@ -61,20 +61,17 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         sample_size: Optional[int] = None,
         in_channels: int = 2,
         out_channels: int = 2,
-        down_block_types: Tuple[str] = ["DownBlock1DNoSkip"] + 7 * ["DownBlock1D"] + 6 * ["AttnDownBlock1D"],
-        up_block_types: Tuple[str] = 6 * ["UpDownBlock1D"] + 7 * ["UpBlock1D"] + ["UpBlock1DNoSkip"],
-        block_out_channels: Tuple[int] = [128, 128, 256, 256] + [512] * 10,
+        down_block_types: Tuple[str] = ["DownBlock1DNoSkip"] + 7 * ["DownBlock1D"] + 5 * ["AttnDownBlock1D"],
+        up_block_types: Tuple[str] = 5 * ["AttnUpBlock1D"] + 7 * ["UpBlock1D"] + ["UpBlock1DNoSkip"],
+        block_out_channels: Tuple[int] = [128, 128, 256, 256] + [512] * 9,
     ):
         super().__init__()
 
         self.sample_size = sample_size
-        time_embed_dim = block_out_channels[0] * 4
 
         # time
-        self.time_proj = GaussianFourierProjection(embedding_size=block_out_channels[0])
-        timestep_input_dim = 2 * block_out_channels[0]
-
-        self.time_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
+        self.time_proj = GaussianFourierProjection(embedding_size=8)
+        del self.time_proj.W
 
         self.down_blocks = nn.ModuleList([])
         self.mid_block = None
@@ -84,12 +81,15 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         output_channel = in_channels
         for i, down_block_type in enumerate(down_block_types):
             input_channel = output_channel
-            output_channel = block_out_channels[i] if i < len(down_block_types) - 1 else out_channels
+            output_channel = block_out_channels[i]
+
+            if i == 0:
+                input_channel += 16
 
             down_block = get_down_block(
                 down_block_type,
-                c=input_channel,
-                c_prev=output_channel,
+                c_prev=input_channel,
+                c=output_channel,
             )
             self.down_blocks.append(down_block)
 
@@ -104,12 +104,12 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
             prev_output_channel = output_channel
-            output_channel = reversed_block_out_channels[i]
+            output_channel = reversed_block_out_channels[i + 1] if i < len(up_block_types) - 1 else out_channels
 
             up_block = get_up_block(
                 up_block_type,
-                c_prev=prev_output_channel,
-                c=output_channel,
+                c=prev_output_channel,
+                c_prev=output_channel,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel

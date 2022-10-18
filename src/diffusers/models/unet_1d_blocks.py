@@ -101,17 +101,17 @@ class SkipBlock(nn.Module):
 # Noise level (and other) conditioning
 class ResConvBlock(nn.Module):
     def __init__(self, c_in, c_mid, c_out, is_last=False):
-        self.skip = nn.Identity if c_in == c_out else nn.Conv1d(c_in, c_out, 1, bias=False)
-        self.main = nn.Sequential(
-            [
-                nn.Conv1d(c_in, c_mid, 5, padding=2),
-                nn.GroupNorm(1, c_mid),
-                nn.GELU(),
-                nn.Conv1d(c_mid, c_out, 5, padding=2),
-                nn.GroupNorm(1, c_out) if not is_last else nn.Identity(),
-                nn.GELU() if not is_last else nn.Identity(),
-            ]
-        )
+        super().__init__()
+        self.skip = nn.Identity() if c_in == c_out else nn.Conv1d(c_in, c_out, 1, bias=False)
+        layers = [
+            nn.Conv1d(c_in, c_mid, 5, padding=2),
+            nn.GroupNorm(1, c_mid),
+            nn.GELU(),
+            nn.Conv1d(c_mid, c_out, 5, padding=2),
+            nn.GroupNorm(1, c_out) if not is_last else nn.Identity(),
+            nn.GELU() if not is_last else nn.Identity(),
+        ]
+        self.main = nn.Sequential(*layers)
 
     def forward(self, input):
         return self.main(input) + self.skip(input)
@@ -303,7 +303,7 @@ class UpBlock1DNoSkip(nn.Module):
         resnets = [
             ResConvBlock(2 * c, c, c),
             ResConvBlock(c, c, c),
-            ResConvBlock(c, c, c_prev),
+            ResConvBlock(c, c, c_prev, is_last=True),
         ]
 
         self.resnets = nn.ModuleList(resnets)

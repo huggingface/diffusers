@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from torch import nn
 from audio_diffusion.models import DiffusionAttnUnet1D
+from diffusers import UNet1DModel
 import argparse
 from copy import deepcopy
 import torch
@@ -67,6 +68,105 @@ def download(model_name):
     pass
 
 
+DOWN_NUM_TO_LAYER = {
+    "1": "resnets.0",
+    "2": "attentions.0",
+    "3": "resnets.1",
+    "4": "attentions.1",
+    "5": "resnets.2",
+    "6": "attentions.2",
+}
+UP_NUM_TO_LAYER = {
+    "8": "resnets.0",
+    "9": "attentions.0",
+    "10": "resnets.1",
+    "11": "attentions.1",
+    "12": "resnets.2",
+    "13": "attentions.2",
+}
+MID_NUM_TO_LAYER = {
+    "1": "resnets.0",
+    "2": "attentions.0",
+    "3": "resnets.1",
+    "4": "attentions.1",
+    "5": "resnets.2",
+    "6": "attentions.2",
+    "8": "resnets.3",
+    "9": "attentions.3",
+    "10": "resnets.4",
+    "11": "attentions.4",
+    "12": "resnets.5",
+    "13": "attentions.5",
+}
+DEPTH_0_TO_LAYER = {
+    "0": "resnets.0",
+    "1": "resnets.1",
+    "2": "resnets.2",
+    "4": "resnets.0",
+    "5": "resnets.1",
+    "6": "resnets.2",
+}
+
+
+def rename(input_string, max_depth=13):
+    string = input_string
+
+    if string.split(".")[0] == "timestep_embed":
+        return string.replace("timestep_embed", "time_proj")
+
+    depth = 0
+    if string.startswith("net.3."):
+        depth += 1
+        string = string[6:]
+    elif string.startswith("net."): 
+        string = string[4:]
+
+    while string.startswith("main.7."):
+        depth += 1
+        string = string[7:]
+
+    if string.startswith("main."):
+        string = string[5:]
+
+    # mid block
+    if string[:2].isdigit():
+        layer_num = string[:2]
+        string_left = string[2:]
+    else:
+        layer_num = string[0]
+        string_left = string[1:]
+
+    if depth == max_depth:
+        new_layer = MID_NUM_TO_LAYER[layer_num]
+        prefix = "mid_block"
+    elif depth > 0 and int(layer_num) < 7:
+        new_layer = DOWN_NUM_TO_LAYER[layer_num]
+        prefix = f"down_blocks.{depth}"
+    elif depth > 0 and int(layer_num) > 7:
+        new_layer = UP_NUM_TO_LAYER[layer_num]
+        prefix = f"up_blocks.{max_depth - depth - 1}"
+    elif depth == 0:
+        new_layer = DEPTH_0_TO_LAYER[layer_num]
+        prefix = f"up_blocks.{max_depth - 1}" if int(layer_num) > 3 else "down_blocks.0"
+
+    new_string = prefix + "." + new_layer + string_left
+    return new_string
+
+
+def rename_orig_weights(state_dict):
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        if k.endswith("kernel"):
+            # up- and downsample layers, don't have trainable weights
+            continue
+
+        new_k = rename(k)
+        new_state_dict[new_k] = v
+
+    return new_state_dict
+
+
+
 def main(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -83,9 +183,24 @@ def main(args):
     config.sample_rate = sample_rate
     config.latent_dim = 0
 
-    diffusion_model = DiffusionUncond(config)
-    diffusion_model.load_state_dict(torch.load(args.model_path, map_location=device)["state_dict"])
-    model = diffusion_model.eval()
+    diffusers_model = UNet1DModel()
+    diffusers_state_dict = diffusers_model.state_dict()
+
+    orig_model = DiffusionUncond(config)
+    orig_model.load_state_dict(torch.load(args.model_path, map_location=device)["state_dict"])
+    orig_model = orig_model.diffusion_ema.eval()
+    orig_model_state_dict = orig_model.state_dict()
+    renamed_state_dict = rename_orig_weights(orig_model_state_dict)
+
+    renamed_minus_diffusers = set(renamed_state_dict.keys()) - set(diffusers_state_dict.keys())
+    diffusers_minus_renamed = set(diffusers_state_dict.keys()) - set(renamed_state_dict.keys())
+
+    assert len(renamed_minus_diffusers) == 0, f"Problem with {renamed_minus_diffusers}"
+    assert all(k.endswith("kernel") for k in list(diffusers_minus_renamed)), f"Problem with {diffusers_minus_renamed}"
+
+    for key, value in renamed_state_dict.items():
+        assert diffusers_state_dict[key].squeeze().shape == value.squeeze().shape, f"Shape for {key} doesn't match. Diffusers: {diffusers_state_dict[key].shape} vs. {value.shape}"
+        diffusers_state_dict[key] = value
 
     steps = 100
     step_index = 2
@@ -95,10 +210,8 @@ def main(args):
     t = torch.linspace(1, 0, steps + 1, device=device)[:-1]
     step_list = get_crash_schedule(t)
 
-    output = model.diffusion_ema(noise, step_list[step_index: step_index + 1])
+    output = orig_model(noise, step_list[step_index: step_index + 1])
     assert output.abs().sum() - 4550.5430 < 1e-3
-
-    import ipdb; ipdb.set_trace()
 
 
 
