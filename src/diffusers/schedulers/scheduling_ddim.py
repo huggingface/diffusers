@@ -283,7 +283,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             device = model_output.device if torch.is_tensor(model_output) else "cpu"
             assert (noise is None) or (generator is None), "Cannot pass both generator and noise"
             if variance_noise is None:
-                noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator).to(device)
+                variance_noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator).to(device)
             variance = self._get_variance(timestep, prev_timestep) ** (0.5) * eta * noise
 
             prev_sample = prev_sample + variance
