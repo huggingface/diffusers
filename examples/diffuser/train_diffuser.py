@@ -4,11 +4,11 @@ import warnings
 import numpy as np
 import torch
 
+import d4rl  # noqa
+import gym
 import mediapy as media
 import mujoco_py as mjc
 import tqdm
-import d4rl  # noqa
-import gym
 from diffusers import DDPMScheduler, UNet1DModel
 
 

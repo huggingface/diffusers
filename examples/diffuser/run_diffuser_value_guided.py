@@ -3,8 +3,8 @@ import torch
 
 import d4rl  # noqa
 import gym
-import train_diffuser
 import tqdm
+import train_diffuser
 from diffusers import DDPMScheduler, UNet1DModel, ValueFunction
 
 
