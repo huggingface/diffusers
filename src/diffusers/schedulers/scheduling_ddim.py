@@ -145,6 +145,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
+        self.sigmas = 1 - self.alphas**2
 
         # At every step in ddim, we are looking into the previous alphas_cumprod
         # For the final step, there is no previous alphas_cumprod because we are already at 0
@@ -209,6 +210,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: int,
         sample: torch.FloatTensor,
+        prediction_type: str = "epsilon",
         eta: float = 0.0,
         use_clipped_model_output: bool = False,
         generator=None,
@@ -223,6 +225,10 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
+            prediction_type (`str`):
+                prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
+                process), `sample` (directly predicting the noisy sample), or `v` (see section 2.4
+                https://imagen.research.google/video/paper.pdf)
             eta (`float`): weight of noise for added noise in diffusion step.
             use_clipped_model_output (`bool`): TODO
             generator: random number generator.
@@ -243,14 +249,14 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # Ideally, read DDIM paper in-detail understanding
 
         # Notation (<variable name> -> <name in paper>
-        # - pred_noise_t -> e_theta(x_t, t)
-        # - pred_original_sample -> f_theta(x_t, t) or x_0
+        # - pred_noise_t -> e_theta(x_t, timestep)
+        # - pred_original_sample -> f_theta(x_t, timestep) or x_0
         # - std_dev_t -> sigma_t
         # - eta -> η
         # - pred_sample_direction -> "direction pointing to x_t"
         # - pred_prev_sample -> "x_t-1"
 
-        # 1. get previous step value (=t-1)
+        # 1. get previous step value (=timestep-1)
         prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
 
         # 2. compute alphas, betas
@@ -261,7 +267,20 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         # 3. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+        if prediction_type == "epsilon":
+            pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+            eps = torch.tensor(1)
+        elif prediction_type == "sample":
+            pred_original_sample = model_output
+            eps = torch.tensor(1)
+        elif prediction_type == "v":
+            # v_t = alpha_t * epsilon - sigma_t * x
+            # need to merge the PRs for sigma to be available in DDPM
+            pred_original_sample = sample * self.alphas[timestep] - model_output * self.sigmas[timestep]
+            eps = model_output * self.alphas[timestep] - sample * self.sigmas[timestep]
+            raise NotImplementedError(f"v prediction not yet implemented for DDPM")
+        else:
+            raise ValueError(f"prediction_type given as {prediction_type} must be one of `epsilon`, `sample`, or `v`")
 
         # 4. Clip "predicted x_0"
         if self.config.clip_sample:
@@ -280,7 +299,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * model_output
 
         # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
+        prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + eps * pred_sample_direction
 
         if eta > 0:
             # randn_like does not support generator https://github.com/pytorch/pytorch/issues/27072
