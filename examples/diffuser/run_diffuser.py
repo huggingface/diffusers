@@ -3,7 +3,7 @@ import torch
 
 import d4rl  # noqa
 import gym
-import helpers
+import train_diffuser
 import tqdm
 from diffusers import DDPMScheduler, UNet1DModel
 
@@ -25,30 +25,6 @@ action_dim = env.action_space.shape[0]
 num_inference_steps = 100  # number of difusion steps
 
 
-def normalize(x_in, data, key):
-    upper = np.max(data[key], axis=0)
-    lower = np.min(data[key], axis=0)
-    x_out = 2 * (x_in - lower) / (upper - lower) - 1
-    return x_out
-
-
-def de_normalize(x_in, data, key):
-    upper = np.max(data[key], axis=0)
-    lower = np.min(data[key], axis=0)
-    x_out = lower + (upper - lower) * (1 + x_in) / 2
-    return x_out
-
-
-def to_torch(x_in, dtype=None, device=None):
-    dtype = dtype or DTYPE
-    device = device or DEVICE
-    if type(x_in) is dict:
-        return {k: to_torch(v, dtype, device) for k, v in x_in.items()}
-    elif torch.is_tensor(x_in):
-        return x_in.to(device).type(dtype)
-    return torch.tensor(x_in, dtype=dtype, device=device)
-
-
 # Two generators for different parts of the diffusion loop to work in colab
 generator_cpu = torch.Generator(device="cpu")
 
@@ -59,12 +35,6 @@ scheduler = DDPMScheduler(num_train_timesteps=100, beta_schedule="squaredcos_cap
 network = UNet1DModel.from_pretrained("fusing/ddpm-unet-rl-hopper-hor128").to(device=DEVICE)
 # network = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor256").to(device=DEVICE)
 # network = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor512").to(device=DEVICE)
-
-
-def reset_x0(x_in, cond, act_dim):
-    for key, val in cond.items():
-        x_in[:, key, act_dim:] = val.clone()
-    return x_in
 
 
 # network specific constants for inference
@@ -84,9 +54,9 @@ try:
         obs_raw = obs
 
         # normalize observations for forward passes
-        obs = normalize(obs, data, "observations")
+        obs = train_diffuser.normalize(obs, data, "observations")
         obs = obs[None].repeat(n_samples, axis=0)
-        conditions = {0: to_torch(obs, device=DEVICE)}
+        conditions = {0: train_diffuser.to_torch(obs, device=DEVICE)}
 
         # constants for inference
         batch_size = len(conditions[0])
@@ -98,10 +68,10 @@ try:
         # this model is conditioned from an initial state, so you will see this function
         #  multiple times to change the initial state of generated data to the state
         #  generated via env.reset() above or env.step() below
-        x = reset_x0(x1, conditions, action_dim)
+        x = train_diffuser.reset_x0(x1, conditions, action_dim)
 
         # convert a np observation to torch for model forward pass
-        x = to_torch(x)
+        x = train_diffuser.to_torch(x)
 
         eta = 1.0  # noise factor for sampling reconstructed state
 
@@ -129,14 +99,14 @@ try:
                 )  # MJ had as log var, exponentiated
 
             # 4. apply conditions to the trajectory
-            obs_reconstruct_postcond = reset_x0(obs_reconstruct, conditions, action_dim)
-            x = to_torch(obs_reconstruct_postcond)
-        plans = helpers.to_np(x[:, :, :action_dim])
+            obs_reconstruct_postcond = train_diffuser.reset_x0(obs_reconstruct, conditions, action_dim)
+            x = train_diffuser.to_torch(obs_reconstruct_postcond)
+        plans = train_diffuser.helpers.to_np(x[:, :, :action_dim])
         # select random plan
         idx = np.random.randint(plans.shape[0])
         # select action at correct time
         action = plans[idx, 0, :]
-        actions = de_normalize(action, data, "actions")
+        actions = train_diffuser.de_normalize(action, data, "actions")
         # execute action in environment
         next_observation, reward, terminal, _ = env.step(action)
 
@@ -151,5 +121,5 @@ except KeyboardInterrupt:
     pass
 
 print(f"Total reward: {total_reward}")
-render = helpers.MuJoCoRenderer(env)
-helpers.show_sample(render, np.expand_dims(np.stack(rollout), axis=0))
+render = train_diffuser.MuJoCoRenderer(env)
+train_diffuser.show_sample(render, np.expand_dims(np.stack(rollout), axis=0))

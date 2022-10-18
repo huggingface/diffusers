@@ -3,10 +3,9 @@ import torch
 
 import d4rl  # noqa
 import gym
-import helpers
+import train_diffuser
 import tqdm
 from diffusers import DDPMScheduler, UNet1DModel, ValueFunction
-from helpers import MuJoCoRenderer, show_sample
 
 
 config = dict(
@@ -26,7 +25,7 @@ def _run():
     env_name = "hopper-medium-v2"
     env = gym.make(env_name)
     data = env.get_dataset()  # dataset is only used for normalization in this colab
-    render = MuJoCoRenderer(env)
+    render = train_diffuser.MuJoCoRenderer(env)
 
     # Cuda settings for colab
     # torch.cuda.get_device_name(0)
@@ -70,10 +69,10 @@ def _run():
         for t in tqdm.tqdm(range(T)):
             # 1. Call the policy
             # normalize observations for forward passes
-            obs = helpers.normalize(obs, data, "observations")
+            obs = train_diffuser.normalize(obs, data, "observations")
 
             obs = obs[None].repeat(config["n_samples"], axis=0)
-            conditions = {0: helpers.to_torch(obs, device=DEVICE)}
+            conditions = {0: train_diffuser.to_torch(obs, device=DEVICE)}
 
             # 2. Call the diffusion model
             # constants for inference
@@ -86,11 +85,11 @@ def _run():
             # this model is conditioned from an initial state, so you will see this function
             #  multiple times to change the initial state of generated data to the state
             #  generated via env.reset() above or env.step() below
-            x = helpers.reset_x0(x1, conditions, action_dim)
+            x = train_diffuser.reset_x0(x1, conditions, action_dim)
 
             # convert a np observation to torch for model forward pass
-            x = helpers.to_torch(x, device=DEVICE)
-            x, y = helpers.run_diffusion(x, scheduler, generator, network, unet, conditions, action_dim, config)
+            x = train_diffuser.to_torch(x, device=DEVICE)
+            x, y = train_diffuser.run_diffusion(x, scheduler, generator, network, unet, conditions, action_dim, config)
             if y is not None:
                 sorted_idx = y.argsort(0, descending=True).squeeze()
                 y_maxes.append(y[sorted_idx[0]].detach().cpu().numpy())
@@ -100,11 +99,11 @@ def _run():
             actions = sorted_values[:, :, :action_dim]
             if t % 10 == 0:
                 trajectory = sorted_values[:, :, action_dim:][0].unsqueeze(0).detach().cpu().numpy()
-                trajectory = helpers.de_normalize(trajectory, data, "observations")
+                trajectory = train_diffuser.de_normalize(trajectory, data, "observations")
                 trajectories.append(trajectory)
 
             actions = actions.detach().cpu().numpy()
-            denorm_actions = helpers.de_normalize(actions, data, key="actions")
+            denorm_actions = train_diffuser.de_normalize(actions, data, key="actions")
             # denorm_actions = denorm_actions[np.random.randint(config['n_samples']), 0]
             denorm_actions = denorm_actions[0, 0]
 
@@ -127,7 +126,7 @@ def _run():
 
     print(f"Total reward: {total_reward}")
 
-    show_sample(render, np.expand_dims(np.stack(rollout), axis=0))
+    train_diffuser.show_sample(render, np.expand_dims(np.stack(rollout), axis=0))
 
 
 def run():
