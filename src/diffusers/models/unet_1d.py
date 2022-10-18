@@ -70,8 +70,9 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         self.sample_size = sample_size
 
         # time
-        self.time_proj = GaussianFourierProjection(embedding_size=8)
-        del self.time_proj.W
+        self.time_proj = GaussianFourierProjection(
+            embedding_size=8, set_W_to_weight=False, log=False, flip_sin_to_cos=True
+        )
 
         self.down_blocks = nn.ModuleList([])
         self.mid_block = None
@@ -132,24 +133,24 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
         """
         # 1. time
-        timestep_embed = self.time_proj(timestep[:, None])[..., None].repeat([1, 1, sample.shape[2]])
+        timestep_embed = self.time_proj(timestep)[..., None]
+        timestep_embed = timestep_embed.repeat([1, 1, sample.shape[2]])
 
         sample = torch.cat([sample, timestep_embed], dim=1)
 
         # 2. down
-        down_block_res_samples = (sample,)
+        down_block_res_samples = ()
         for downsample_block in self.down_blocks:
             sample, res_samples = downsample_block(hidden_states=sample)
-
             down_block_res_samples += res_samples
 
         # 3. mid
         sample = self.mid_block(sample)
 
         # 4. up
-        for upsample_block in self.up_blocks:
+        for i, upsample_block in enumerate(self.up_blocks):
             res_samples = down_block_res_samples[-1:]
-            down_block_res_samples = down_block_res_samples[-1:]
+            down_block_res_samples = down_block_res_samples[:-1]
             sample = upsample_block(sample, res_samples)
 
         if not return_dict:

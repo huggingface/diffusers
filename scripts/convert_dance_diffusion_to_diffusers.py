@@ -209,7 +209,12 @@ def main(args):
         assert (
             diffusers_state_dict[key].squeeze().shape == value.squeeze().shape
         ), f"Shape for {key} doesn't match. Diffusers: {diffusers_state_dict[key].shape} vs. {value.shape}"
+        if key == "time_proj.weight":
+            value = value.squeeze()
+
         diffusers_state_dict[key] = value
+
+    diffusers_model.load_state_dict(diffusers_state_dict)
 
     steps = 100
     step_index = 2
@@ -223,9 +228,8 @@ def main(args):
     assert output.abs().sum() - 4550.5430 < 1e-3
 
     diffusers_output = diffusers_model(noise, step_list[step_index : step_index + 1])
-    import ipdb; ipdb.set_trace()
-    assert diffusers_output.abs().sum() - 4550.5430 < 1e-3
-    import ipdb; ipdb.set_trace()
+    diff = diffusers_output.sample.abs().sum() - 4550.5430
+    assert diff < 1e-2, f"{diff} is too much :-/"
 
 
 if __name__ == "__main__":

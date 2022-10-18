@@ -239,7 +239,7 @@ class DownBlock1DNoSkip(nn.Module):
         for resnet in self.resnets:
             hidden_states = resnet(hidden_states)
 
-        return hidden_states, (None,)
+        return hidden_states, (hidden_states,)
 
 
 class AttnUpBlock1D(nn.Module):
@@ -309,6 +309,9 @@ class UpBlock1DNoSkip(nn.Module):
         self.resnets = nn.ModuleList(resnets)
 
     def forward(self, hidden_states, res_hidden_states_tuple):
+        res_hidden_states = res_hidden_states_tuple[-1]
+        hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
+
         for resnet in self.resnets:
             hidden_states = resnet(hidden_states)
 
