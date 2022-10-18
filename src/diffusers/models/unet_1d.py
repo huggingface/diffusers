@@ -125,7 +125,10 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         num_groups_out = norm_num_groups if norm_num_groups is not None else min(block_out_channels[0] // 4, 32)
         self.final_conv1d_1 = nn.Conv1d(block_out_channels[0], block_out_channels[0], 5, padding=2)
         self.final_conv1d_gn = nn.GroupNorm(num_groups_out, block_out_channels[0])
-        self.final_conv1d_act = nn.Mish()
+        if act_fn == "silu":
+            self.final_conv1d_act = nn.SiLU()
+        if act_fn == "mish":
+            self.final_conv1d_act = nn.Mish()
         self.final_conv1d_2 = nn.Conv1d(block_out_channels[0], out_channels, 1)
 
     def forward(
