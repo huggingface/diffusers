@@ -31,6 +31,7 @@ from diffusers import (
     DDIMPipeline,
     DDIMScheduler,
     DDPMPipeline,
+    StableDiffusionCycleDiffusionPipeline,
     DDPMScheduler,
     KarrasVePipeline,
     KarrasVeScheduler,
@@ -397,6 +398,53 @@ class PipelineFastTests(unittest.TestCase):
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_stable_diffusion_cycle(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        unet = self.dummy_cond_unet
+        scheduler = DDIMScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        # make sure here that pndm scheduler skips prk
+        sd_pipe = StableDiffusionCycleDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=self.dummy_safety_checker,
+            feature_extractor=self.dummy_extractor,
+        )
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        source_prompt = "An astronaut riding a horse"
+        prompt = "An astronaut riding an elephant"
+        init_image = self.dummy_image.to(device)
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        output = sd_pipe(
+            prompt=prompt,
+            source_prompt=source_prompt,
+            generator=generator,
+            num_inference_steps=2,
+            init_image=init_image,
+            eta=0.1,
+            strength=0.8,
+            guidance_scale=3,
+            source_guidance_scale=1,
+            output_type="np",
+        )
+        images = output.images
+
+        image_slice = images[0, -3:, -3:, -1]
+
+        assert images.shape == (1, 32, 32, 3)
+        expected_slice = np.array([0.5112, 0.4692, 0.4715, 0.5206, 0.4894, 0.5114, 0.5096, 0.4932, 0.4755])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_ddim_factor_8(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -1875,6 +1923,53 @@ class PipelineTesterMixin(unittest.TestCase):
         assert image.shape == (512, 768, 3)
         # img2img is flaky across GPUs even in fp32, so using MAE here
         assert np.abs(expected_image - image).mean() < 1e-2
+
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    def test_stable_diffusion_cycle_diffusion_pipeline(self):
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/cycle-diffusion/black_colored_car.png"
+        )
+        expected_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/img2img/fantasy_landscape.png"
+        )
+        init_image = init_image.resize((512, 512))
+        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
+
+        model_id = "CompVis/stable-diffusion-v1-4"
+        scheduler = DDIMScheduler.from_config(model_id, subfolder="scheduler")
+
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
+            model_id,
+            scheduler=scheduler,
+            safety_checker=None
+        )
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        source_prompt = "A black colored car"
+        prompt = "A red colored car"
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        output = pipe(
+             prompt=prompt,
+             source_prompt=source_prompt,
+             generator=generator,
+             init_image=init_image,
+             num_inference_steps=100,
+             eta=0.1,
+             strength=0.8,
+             guidance_scale=3,
+             source_guidance_scale=1,
+        )
+        image = output.images[0]
+
+
+        # image.save(...) doesn't yet produce super good results - not sure why
+
 
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
