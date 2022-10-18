@@ -220,7 +220,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             use_clipped_model_output (`bool`): TODO
             generator: random number generator.
             variance_noise (`torch.FloatTensor`): instead of generating noise for the variance using `generator`, we
-                can directly provide random noise itself. This is useful for methods such as CycleDiffusion
+                can directly provide the noise for the variance itself. This is useful for methods such as CycleDiffusion.
                 (https://arxiv.org/abs/2210.05559).
             return_dict (`bool`): option for returning tuple rather than DDIMSchedulerOutput class
 
