@@ -1,6 +1,6 @@
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export OUTPUT_DIR="../../../models/imagic"
-export INPUT_IMAGE="../../../data/imgs/Official_portrait_of_Barack_Obama.jpg"
+export INPUT_IMAGE="imgs/Official_portrait_of_Barack_Obama.jpg"
 
 accelerate launch train_imagic.py \
   --pretrained_model_name_or_path=$MODEL_NAME \

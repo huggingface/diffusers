@@ -70,6 +70,9 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution"
+    )
+    parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
     )
     parser.add_argument(
@@ -269,7 +272,7 @@ def main():
     image_transforms = transforms.Compose(
         [
             transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(args.resolution),
+            transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
         ]
@@ -301,6 +304,7 @@ def main():
     target_embeddings = target_embeddings.float()
     optimized_embeddings = target_embeddings.clone()
 
+    # Optimize the text embeddings first.
     optimized_embeddings.requires_grad_(True)
     optimizer = optimizer_class(
         [optimized_embeddings],  # only optimize embeddings
@@ -316,11 +320,6 @@ def main():
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
         accelerator.init_trackers("imagic", config=vars(args))
-
-    # Optimize the text embeddings first.
-
-    progress_bar = tqdm(range(args.emb_train_steps), disable=not accelerator.is_local_main_process)
-    progress_bar.set_description("Optimizing embedding")
 
     def train_loop(pbar, optimizer, params):
         loss_avg = AverageMeter()
@@ -353,6 +352,9 @@ def main():
                 accelerator.log(logs, step=step)
 
         accelerator.wait_for_everyone()
+    
+    progress_bar = tqdm(range(args.emb_train_steps), disable=not accelerator.is_local_main_process)
+    progress_bar.set_description("Optimizing embedding")
     
     train_loop(progress_bar, optimizer, optimized_embeddings)
 
