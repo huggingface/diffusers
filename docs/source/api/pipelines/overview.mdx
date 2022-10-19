@@ -151,16 +151,18 @@ You can generate your own latents to reproduce results, or tweak your prompt on 
 The `StableDiffusionInpaintPipeline` lets you edit specific parts of an image by providing a mask and text prompt.
 
 ```python
-from io import BytesIOimport PIL
+import PIL
 import requests
 import torch
 from io import BytesIO
 
 from diffusers import StableDiffusionInpaintPipeline
 
+
 def download_image(url):
     response = requests.get(url)
     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
+
 
 img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
 mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
