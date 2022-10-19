@@ -184,10 +184,9 @@ def main(args):
 
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
                 # save the model
+                pipeline.save_pretrained(args.output_dir)
                 if args.push_to_hub:
                     repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=False)
-                else:
-                    pipeline.save_pretrained(args.output_dir)
         accelerator.wait_for_everyone()
 
     accelerator.end_training()
