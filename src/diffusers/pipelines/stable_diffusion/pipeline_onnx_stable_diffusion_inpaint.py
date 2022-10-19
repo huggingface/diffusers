@@ -309,7 +309,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
 
         mask = np.concatenate([mask] * 2) if do_classifier_free_guidance else mask
         masked_image_latents = (
-            torch.cat([masked_image_latents] * 2) if do_classifier_free_guidance else masked_image_latents
+            np.concatenate([masked_image_latents] * 2) if do_classifier_free_guidance else masked_image_latents
         )
 
         num_channels_mask = mask.shape[1]
