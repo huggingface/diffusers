@@ -310,11 +310,11 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
 
         # get the initial random noise unless the user supplied it
-
+        num_channels_latents = self.unet.config.out_channels
         # Unlike in other pipelines, latents need to be generated in the target device
         # for 1-to-1 results reproducibility with the CompVis implementation.
         # However this currently doesn't work in `mps`.
-        latents_shape = (batch_size * num_images_per_prompt, 4, height // 8, width // 8)
+        latents_shape = (batch_size * num_images_per_prompt, num_channels_latents, height // 8, width // 8)
         latents_dtype = text_embeddings.dtype
         if latents is None:
             if self.device.type == "mps":
@@ -331,15 +331,27 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
         # prepare mask and masked_image
         mask, masked_image = prepare_mask_and_masked_image(image, mask_image)
-        mask = mask.to(device=latents.device, dtype=latents.dtype)
-        masked_image = masked_image.to(device=latents.device, dtype=latents.dtype)
+        mask = mask.to(device=self.device, dtype=text_embeddings.dtype)
+        masked_image = masked_image.to(device=self.device, dtype=text_embeddings.dtype)
 
-        mask = torch.nn.functional.interpolate(mask, size=latents_shape[-2:])
+        mask = torch.nn.functional.interpolate(mask, size=(height // 8, width // 8))
         masked_image = self.vae.encode(masked_image).latent_dist.sample(generator=generator)
         masked_image = 0.18215 * masked_image
 
         mask = torch.cat([mask] * 2) if do_classifier_free_guidance else mask
         masked_image = torch.cat([masked_image] * 2) if do_classifier_free_guidance else masked_image
+
+        num_channels_mask = mask.shape[1]
+        num_channels_masked_image = masked_image.shape[1]
+
+        if num_channels_latents + num_channels_mask + num_channels_masked_image != self.unet.config.in_channels:
+            raise ValueError(
+                "Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
+                " {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
+                " `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
+                " = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
+                " `pipeline.unet` or your `mask_image` or `image` input."
+            )
 
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
