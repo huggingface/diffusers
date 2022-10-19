@@ -336,20 +336,20 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         mask = torch.nn.functional.interpolate(mask, size=(height // 8, width // 8))
 
         # encode the mask image into latents space so we can concatenate it to the latents
-        masked_image_latnets = self.vae.encode(masked_image).latent_dist.sample(generator=generator)
-        masked_image_latnets = 0.18215 * masked_image_latnets
+        masked_image_latents = self.vae.encode(masked_image).latent_dist.sample(generator=generator)
+        masked_image_latents = 0.18215 * masked_image_latents
 
-        # duplicate mask and masked_image_latnets for each generation per prompt, using mps friendly method
+        # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
         mask = mask.repeat(num_images_per_prompt, 1, 1, 1)
-        masked_image_latnets = masked_image_latnets.repeat(num_images_per_prompt, 1, 1, 1)
+        masked_image_latents = masked_image_latents.repeat(num_images_per_prompt, 1, 1, 1)
 
         mask = torch.cat([mask] * 2) if do_classifier_free_guidance else mask
-        masked_image_latnets = (
-            torch.cat([masked_image_latnets] * 2) if do_classifier_free_guidance else masked_image_latnets
+        masked_image_latents = (
+            torch.cat([masked_image_latents] * 2) if do_classifier_free_guidance else masked_image_latents
         )
 
         num_channels_mask = mask.shape[1]
-        num_channels_masked_image = masked_image_latnets.shape[1]
+        num_channels_masked_image = masked_image_latents.shape[1]
 
         if num_channels_latents + num_channels_mask + num_channels_masked_image != self.unet.config.in_channels:
             raise ValueError(
@@ -383,8 +383,8 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
-            # concat latents, mask, masked_image_latnets in the channel dimension
-            latent_model_input = torch.cat([latent_model_input, mask, masked_image_latnets], dim=1)
+            # concat latents, mask, masked_image_latents in the channel dimension
+            latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
 
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
