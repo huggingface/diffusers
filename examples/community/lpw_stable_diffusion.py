@@ -1,10 +1,9 @@
 import inspect
 import re
-from typing import Callable, List, Optional, Union
 import PIL
 import numpy as np
 import torch
-
+from typing import Callable, List, Optional, Union
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.configuration_utils import FrozenDict
