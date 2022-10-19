@@ -15,18 +15,16 @@ specific language governing permissions and limitations under the License.
 The [`StableDiffusionInpaintPipeline`] lets you edit specific parts of an image by providing a mask and text prompt. It uses a version of Stable Diffusion specifically trained for in-painting tasks.
 
 ```python
+import PIL
+import requests
+import torch
 from io import BytesIO
 
-import requests
-import PIL
-
 from diffusers import StableDiffusionInpaintPipeline
-
 
 def download_image(url):
     response = requests.get(url)
     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
-
 
 img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
 mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
@@ -42,7 +40,7 @@ pipe = StableDiffusionInpaintPipeline.from_pretrained(
 pipe = pipe.to("cuda")
 
 prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
-image = pipe(prompt=prompt, image=image, mask_image).images[0]
+image = pipe(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
 ```
 
 You can also run this example on colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/in_painting_with_stable_diffusion_using_diffusers.ipynb)
