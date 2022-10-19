@@ -10,7 +10,7 @@ from diffusers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionImg2ImgPipeline,
-    StableDiffusionInpaintPipeline,
+    StableDiffusionInpaintPipelineLegacy,
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
@@ -136,7 +136,7 @@ class StableDiffusionMegaPipeline(DiffusionPipeline):
         callback_steps: Optional[int] = 1,
     ):
         # For more information on how this function works, please see: https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion#diffusers.StableDiffusionImg2ImgPipeline
-        return StableDiffusionInpaintPipeline(**self.components)(
+        return StableDiffusionInpaintPipelineLegacy(**self.components)(
             prompt=prompt,
             init_image=init_image,
             mask_image=mask_image,
