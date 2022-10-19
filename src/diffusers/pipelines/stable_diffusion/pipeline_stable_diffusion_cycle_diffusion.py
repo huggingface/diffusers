@@ -486,7 +486,9 @@ class CycleDiffusionPipeline(DiffusionPipeline):
             source_latents = prev_source_latents
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, variance_noise=noise, **extra_step_kwargs).prev_sample
+            latents = self.scheduler.step(
+                noise_pred, t, latents, variance_noise=noise, **extra_step_kwargs
+            ).prev_sample
 
             # call the callback, if provided
             if callback is not None and i % callback_steps == 0:
