@@ -585,7 +585,6 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
             "beta_start": 0.0001,
             "beta_end": 0.02,
             "beta_schedule": "linear",
-            "skip_prk_steps": True,
         }
 
         config.update(**kwargs)
@@ -602,31 +601,80 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
             scheduler_config = self.get_scheduler_config(**config)
             scheduler = scheduler_class(**scheduler_config)
             state = scheduler.create_state()
-            state = scheduler.set_timesteps(state, num_inference_steps)
+            state = scheduler.set_timesteps(state, num_inference_steps, shape=sample.shape)
             # copy over dummy past residuals
             state = state.replace(ets=dummy_past_residuals[:])
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler, new_state = scheduler_class.from_config(tmpdirname)
-                new_state = new_scheduler.set_timesteps(new_state, num_inference_steps)
+                new_state = new_scheduler.set_timesteps(new_state, num_inference_steps, shape=sample.shape)
                 # copy over dummy past residuals
                 new_state = new_state.replace(ets=dummy_past_residuals[:])
 
-            output = scheduler.step_prk(state, residual, time_step, sample, **kwargs)
-            new_output = new_scheduler.step_prk(new_state, residual, time_step, sample, **kwargs)
+            (prev_sample, state) = scheduler.step_prk(state, residual, time_step, sample, **kwargs)
+            (new_prev_sample, new_state) = new_scheduler.step_prk(new_state, residual, time_step, sample, **kwargs)
 
-            assert (
-                jnp.sum(jnp.abs(output.prev_sample - new_output.prev_sample)) < 1e-5
-            ), "Scheduler outputs are not identical"
+            assert jnp.sum(jnp.abs(prev_sample - new_prev_sample)) < 1e-5, "Scheduler outputs are not identical"
 
-            output = scheduler.step_plms(output.state, residual, time_step, sample, **kwargs).prev_sample
-            new_output = new_scheduler.step_plms(new_output.state, residual, time_step, sample, **kwargs).prev_sample
+            output, _ = scheduler.step_plms(state, residual, time_step, sample, **kwargs)
+            new_output, _ = new_scheduler.step_plms(new_state, residual, time_step, sample, **kwargs)
 
             assert jnp.sum(jnp.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
     def test_from_pretrained_save_pretrained(self):
         pass
+
+    def test_scheduler_outputs_equivalence(self):
+        def set_nan_tensor_to_zero(t):
+            return t.at[t != t].set(0)
+
+        def recursive_check(tuple_object, dict_object):
+            if isinstance(tuple_object, (List, Tuple)):
+                for tuple_iterable_value, dict_iterable_value in zip(tuple_object, dict_object.values()):
+                    recursive_check(tuple_iterable_value, dict_iterable_value)
+            elif isinstance(tuple_object, Dict):
+                for tuple_iterable_value, dict_iterable_value in zip(tuple_object.values(), dict_object.values()):
+                    recursive_check(tuple_iterable_value, dict_iterable_value)
+            elif tuple_object is None:
+                return
+            else:
+                self.assertTrue(
+                    jnp.allclose(set_nan_tensor_to_zero(tuple_object), set_nan_tensor_to_zero(dict_object), atol=1e-5),
+                    msg=(
+                        "Tuple and dict output are not equal. Difference:"
+                        f" {jnp.max(jnp.abs(tuple_object - dict_object))}. Tuple has `nan`:"
+                        f" {jnp.isnan(tuple_object).any()} and `inf`: {jnp.isinf(tuple_object)}. Dict has"
+                        f" `nan`: {jnp.isnan(dict_object).any()} and `inf`: {jnp.isinf(dict_object)}."
+                    ),
+                )
+
+        kwargs = dict(self.forward_default_kwargs)
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
+
+        for scheduler_class in self.scheduler_classes:
+            scheduler_config = self.get_scheduler_config()
+            scheduler = scheduler_class(**scheduler_config)
+            state = scheduler.create_state()
+
+            sample, _ = self.dummy_sample
+            residual = 0.1 * sample
+
+            if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
+                state = scheduler.set_timesteps(state, num_inference_steps, shape=sample.shape)
+            elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
+                kwargs["num_inference_steps"] = num_inference_steps
+
+            outputs_dict = scheduler.step(state, residual, 0, sample, **kwargs)
+
+            if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
+                state = scheduler.set_timesteps(state, num_inference_steps, shape=sample.shape)
+            elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
+                kwargs["num_inference_steps"] = num_inference_steps
+
+            outputs_tuple = scheduler.step(state, residual, 0, sample, return_dict=False, **kwargs)
+
+            recursive_check(outputs_tuple[0], outputs_dict.prev_sample)
 
     def check_over_forward(self, time_step=0, **forward_kwargs):
         kwargs = dict(self.forward_default_kwargs)
@@ -639,7 +687,7 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
             state = scheduler.create_state()
-            state = scheduler.set_timesteps(state, num_inference_steps)
+            state = scheduler.set_timesteps(state, num_inference_steps, shape=sample.shape)
 
             # copy over dummy past residuals (must be after setting timesteps)
             scheduler.ets = dummy_past_residuals[:]
@@ -648,18 +696,18 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
                 scheduler.save_config(tmpdirname)
                 new_scheduler, new_state = scheduler_class.from_config(tmpdirname)
                 # copy over dummy past residuals
-                new_state = new_scheduler.set_timesteps(new_state, num_inference_steps)
+                new_state = new_scheduler.set_timesteps(new_state, num_inference_steps, shape=sample.shape)
 
                 # copy over dummy past residual (must be after setting timesteps)
                 new_state.replace(ets=dummy_past_residuals[:])
 
-            output = scheduler.step_prk(state, residual, time_step, sample, **kwargs).prev_sample
-            new_output = new_scheduler.step_prk(new_state, residual, time_step, sample, **kwargs).prev_sample
+            output, state = scheduler.step_prk(state, residual, time_step, sample, **kwargs)
+            new_output, new_state = new_scheduler.step_prk(new_state, residual, time_step, sample, **kwargs)
 
             assert jnp.sum(jnp.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-            output = scheduler.step_plms(state, residual, time_step, sample, **kwargs).prev_sample
-            new_output = new_scheduler.step_plms(new_state, residual, time_step, sample, **kwargs).prev_sample
+            output, _ = scheduler.step_plms(state, residual, time_step, sample, **kwargs)
+            new_output, _ = new_scheduler.step_plms(new_state, residual, time_step, sample, **kwargs)
 
             assert jnp.sum(jnp.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
@@ -672,19 +720,15 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
         num_inference_steps = 10
         model = self.dummy_model()
         sample = self.dummy_sample_deter
-        state = scheduler.set_timesteps(state, num_inference_steps)
+        state = scheduler.set_timesteps(state, num_inference_steps, shape=sample.shape)
 
         for i, t in enumerate(state.prk_timesteps):
             residual = model(sample, t)
-            output = scheduler.step_prk(state, residual, t, sample)
-            sample = output.prev_sample
-            state = output.state
+            sample, state = scheduler.step_prk(state, residual, t, sample)
 
         for i, t in enumerate(state.plms_timesteps):
             residual = model(sample, t)
-            output = scheduler.step_plms(state, residual, t, sample)
-            sample = output.prev_sample
-            state = output.state
+            sample, state = scheduler.step_plms(state, residual, t, sample)
 
         return sample
 
@@ -702,7 +746,7 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
             residual = 0.1 * sample
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
-                state = scheduler.set_timesteps(state, num_inference_steps)
+                state = scheduler.set_timesteps(state, num_inference_steps, shape=sample.shape)
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
@@ -710,14 +754,14 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
             dummy_past_residuals = jnp.array([residual + 0.2, residual + 0.15, residual + 0.1, residual + 0.05])
             state = state.replace(ets=dummy_past_residuals[:])
 
-            output_0 = scheduler.step_prk(state, residual, 0, sample, **kwargs).prev_sample
-            output_1 = scheduler.step_prk(state, residual, 1, sample, **kwargs).prev_sample
+            output_0, state = scheduler.step_prk(state, residual, 0, sample, **kwargs)
+            output_1, state = scheduler.step_prk(state, residual, 1, sample, **kwargs)
 
             self.assertEqual(output_0.shape, sample.shape)
             self.assertEqual(output_0.shape, output_1.shape)
 
-            output_0 = scheduler.step_plms(state, residual, 0, sample, **kwargs).prev_sample
-            output_1 = scheduler.step_plms(state, residual, 1, sample, **kwargs).prev_sample
+            output_0, state = scheduler.step_plms(state, residual, 0, sample, **kwargs)
+            output_1, state = scheduler.step_plms(state, residual, 1, sample, **kwargs)
 
             self.assertEqual(output_0.shape, sample.shape)
             self.assertEqual(output_0.shape, output_1.shape)
@@ -768,13 +812,11 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
             scheduler = scheduler_class(**scheduler_config)
             state = scheduler.create_state()
 
-            state = scheduler.set_timesteps(state, num_inference_steps)
+            state = scheduler.set_timesteps(state, num_inference_steps, shape=sample.shape)
 
             # before power of 3 fix, would error on first step, so we only need to do two
             for i, t in enumerate(state.prk_timesteps[:2]):
-                output = scheduler.step_prk(state, residual, t, sample)
-                sample = output.prev_sample
-                state = output.state
+                sample, state = scheduler.step_prk(state, residual, t, sample)
 
     def test_inference_plms_no_past_residuals(self):
         with self.assertRaises(ValueError):
@@ -799,8 +841,8 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
         result_sum = jnp.sum(jnp.abs(sample))
         result_mean = jnp.mean(jnp.abs(sample))
 
-        assert abs(result_sum - 230.0399) < 1e-2
-        assert abs(result_mean - 0.2995) < 1e-3
+        assert abs(result_sum - 186.9466) < 1e-2
+        assert abs(result_mean - 0.24342) < 1e-3
 
     def test_full_loop_with_no_set_alpha_to_one(self):
         # We specify different beta, so that the first alpha is 0.99

@@ -159,9 +159,7 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
     def create_state(self):
         return PNDMSchedulerState.create(num_train_timesteps=self.config.num_train_timesteps)
 
-    def set_timesteps(
-        self, state: PNDMSchedulerState, num_inference_steps: int, shape: Tuple = ()
-    ) -> PNDMSchedulerState:
+    def set_timesteps(self, state: PNDMSchedulerState, num_inference_steps: int, shape: Tuple) -> PNDMSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -170,6 +168,8 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
                 the `FlaxPNDMScheduler` state data class instance.
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
+            shape (`Tuple`):
+                the shape of the samples to be generated.
         """
         offset = self.config.steps_offset
 
