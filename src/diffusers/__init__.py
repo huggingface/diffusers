@@ -52,6 +52,7 @@ if is_torch_available() and is_transformers_available():
         LDMTextToImagePipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
+        StableDiffusionInpaintPipelineLegacy,
         StableDiffusionPipeline,
     )
 else:
