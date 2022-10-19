@@ -1,21 +1,21 @@
 import inspect
-from typing import Callable, List, Optional, Union, Dict
-
 import os
-import re
 import random
-import torch
+import re
+from dataclasses import dataclass
+from typing import Callable, Dict, List, Optional, Union
 
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+import torch
 
 from diffusers.configuration_utils import FrozenDict
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipeline_utils import DiffusionPipeline
-from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from diffusers.utils import deprecate, logging
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-from dataclasses import dataclass
+from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from diffusers.utils import deprecate, logging
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -26,9 +26,11 @@ def get_filename(path: str):
     # this doesn't work on Windows
     return os.path.basename(path).split(".txt")[0]
 
+
 def read_wildcard_values(path: str):
     with open(path, encoding="utf8") as f:
         return f.read().splitlines()
+
 
 def grab_wildcard_values(wildcard_option_dict: Dict[str, List[str]] = {}, wildcard_files: List[str] = []):
     for wildcard_file in wildcard_files:
@@ -39,7 +41,10 @@ def grab_wildcard_values(wildcard_option_dict: Dict[str, List[str]] = {}, wildca
         wildcard_option_dict[filename].extend(read_values)
     return wildcard_option_dict
 
-def replace_prompt_with_wildcards(prompt: str, wildcard_option_dict: Dict[str, List[str]] = {}, wildcard_files: List[str] = []):
+
+def replace_prompt_with_wildcards(
+    prompt: str, wildcard_option_dict: Dict[str, List[str]] = {}, wildcard_files: List[str] = []
+):
     new_prompt = prompt
 
     # get wildcard options
@@ -226,10 +231,10 @@ class WildcardStableDiffusionPipeline(DiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
 
-                
         if isinstance(prompt, str):
             prompt = [
-                replace_prompt_with_wildcards(prompt, wildcard_option_dict, wildcard_files) for i in range(num_prompt_samples)
+                replace_prompt_with_wildcards(prompt, wildcard_option_dict, wildcard_files)
+                for i in range(num_prompt_samples)
             ]
             batch_size = len(prompt)
         elif isinstance(prompt, list):
@@ -405,6 +410,7 @@ class WildcardStableDiffusionPipeline(DiffusionPipeline):
             return (image, has_nsfw_concept)
 
         return WildcardStableDiffusionOutput(images=image, nsfw_content_detected=has_nsfw_concept, prompts=prompt)
+
 
 # if __name__ == "__main__":
 #     pipe = WildcardStableDiffusionPipeline.from_pretrained(
