@@ -164,6 +164,16 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
+            image (`torch.FloatTensor` or `PIL.Image.Image`):
+                `Image`, or tensor representing an image batch which will be inpainted, *i.e.* parts of the image will
+                be masked out with `mask_image` and repainted according to `prompt`.
+            mask_image (`torch.FloatTensor` or `PIL.Image.Image`):
+                `Image`, or tensor representing an image batch, to mask `init_image`. White pixels in the mask will be
+                replaced by noise and therefore repainted, while black pixels will be preserved. If `mask_image` is a
+                PIL image, it will be converted to a single channel (luminance) before use. If it's a tensor, it should
+                contain one color channel (L) instead of 3, so the expected shape would be `(B, H, W, 1)`. `Image`, or
+                tensor representing an image batch which will be inpainted, *i.e.* parts of the image will be masked
+                out with `mask_image` and repainted according to `prompt`.
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 512):
