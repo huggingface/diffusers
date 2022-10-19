@@ -99,7 +99,12 @@ def convert_models(model_path: str, output_path: str, opset: int):
     unet_path = output_path / "unet" / "model.onnx"
     onnx_export(
         pipeline.unet,
-        model_args=(torch.randn(2, 4, 64, 64), torch.LongTensor([0, 1]), torch.randn(2, 77, 768), False),
+        model_args=(
+            torch.randn(2, pipeline.unet.in_channels, 64, 64),
+            torch.LongTensor([0, 1]),
+            torch.randn(2, 77, 768),
+            False,
+        ),
         output_path=unet_path,
         ordered_input_names=["sample", "timestep", "encoder_hidden_states", "return_dict"],
         output_names=["out_sample"],  # has to be different from "sample" for correct tracing

@@ -2271,7 +2271,7 @@ class PipelineTesterMixin(unittest.TestCase):
         )
 
         pipe = OnnxStableDiffusionInpaintPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider"
+            "runwayml/stable-diffusion-inpainting", revision="onnx", provider="CPUExecutionProvider"
         )
         pipe.set_progress_bar_config(disable=None)
 
@@ -2280,9 +2280,8 @@ class PipelineTesterMixin(unittest.TestCase):
         np.random.seed(0)
         output = pipe(
             prompt=prompt,
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
-            strength=0.75,
             guidance_scale=7.5,
             num_inference_steps=8,
             output_type="np",
@@ -2291,7 +2290,7 @@ class PipelineTesterMixin(unittest.TestCase):
         image_slice = images[0, 255:258, 255:258, -1]
 
         assert images.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.3524, 0.3289, 0.3464, 0.3872, 0.4129, 0.3566, 0.3709, 0.4128, 0.3734])
+        expected_slice = np.array([0.2951, 0.2955, 0.2922, 0.2036, 0.1977, 0.2279, 0.1716, 0.1641, 0.1799])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     @slow
