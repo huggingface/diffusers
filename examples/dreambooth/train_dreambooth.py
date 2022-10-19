@@ -523,11 +523,16 @@ def main():
                 batch["pixel_values"] = batch["pixel_values"].to(accelerator.device, non_blocking=True, dtype=weight_dtype)
                 batch["input_ids"] = batch["input_ids"].to(accelerator.device, non_blocking=True)
                 latents_cache.append(vae.encode(batch["pixel_values"]).latent_dist)
-                text_encoder_cache.append(text_encoder(batch["input_ids"])[0])
+                if args.train_text_encoder:
+                    text_encoder_cache.append(batch["input_ids"])
+                else:
+                    text_encoder_cache.append(text_encoder(batch["input_ids"])[0])
         train_dataset = LatentsDataset(latents_cache, text_encoder_cache)
         train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=1, collate_fn=lambda x: x, shuffle=True)
 
-        del vae, text_encoder
+        del vae
+        if not args.train_text_encoder:
+            del text_encoder
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
@@ -608,7 +613,10 @@ def main():
                 # Get the text embedding for conditioning
                 with torch.no_grad():
                     if not args.not_cache_latents:
-                        encoder_hidden_states = batch[0][1]
+                        if args.train_text_encoder:
+                            encoder_hidden_states = text_encoder(batch[0][1])[0]
+                        else:
+                            encoder_hidden_states = batch[0][1]
                     else:
                         encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
