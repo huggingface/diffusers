@@ -26,17 +26,34 @@ import torch
 import diffusers
 import PIL
 from huggingface_hub import snapshot_download
+from packaging import version
 from PIL import Image
 from tqdm.auto import tqdm
 
+from . import __version__
 from .configuration_utils import ConfigMixin
 from .dynamic_modules_utils import get_class_from_dynamic_module
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from .utils import CONFIG_NAME, DIFFUSERS_CACHE, ONNX_WEIGHTS_NAME, WEIGHTS_NAME, BaseOutput, logging
+from .utils import (
+    CONFIG_NAME,
+    DIFFUSERS_CACHE,
+    ONNX_WEIGHTS_NAME,
+    WEIGHTS_NAME,
+    BaseOutput,
+    deprecate,
+    is_transformers_available,
+    logging,
+)
+
+
+if is_transformers_available():
+    import transformers
+    from transformers import PreTrainedModel
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
 CUSTOM_PIPELINE_FILE_NAME = "pipeline.py"
+DUMMY_MODULES_FOLDER = "diffusers.utils"
 
 
 logger = logging.get_logger(__name__)
@@ -99,23 +116,26 @@ class DiffusionPipeline(ConfigMixin):
 
         for name, module in kwargs.items():
             # retrieve library
-            library = module.__module__.split(".")[0]
+            if module is None:
+                register_dict = {name: (None, None)}
+            else:
+                library = module.__module__.split(".")[0]
 
-            # check if the module is a pipeline module
-            pipeline_dir = module.__module__.split(".")[-2]
-            path = module.__module__.split(".")
-            is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
+                # check if the module is a pipeline module
+                pipeline_dir = module.__module__.split(".")[-2]
+                path = module.__module__.split(".")
+                is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
 
-            # if library is not in LOADABLE_CLASSES, then it is a custom module.
-            # Or if it's a pipeline module, then the module is inside the pipeline
-            # folder so we set the library to module name.
-            if library not in LOADABLE_CLASSES or is_pipeline_module:
-                library = pipeline_dir
+                # if library is not in LOADABLE_CLASSES, then it is a custom module.
+                # Or if it's a pipeline module, then the module is inside the pipeline
+                # folder so we set the library to module name.
+                if library not in LOADABLE_CLASSES or is_pipeline_module:
+                    library = pipeline_dir
 
-            # retrieve class_name
-            class_name = module.__class__.__name__
+                # retrieve class_name
+                class_name = module.__class__.__name__
 
-            register_dict = {name: (library, class_name)}
+                register_dict = {name: (library, class_name)}
 
             # save model index config
             self.register_to_config(**register_dict)
@@ -338,6 +358,7 @@ class DiffusionPipeline(ConfigMixin):
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         provider = kwargs.pop("provider", None)
         sess_options = kwargs.pop("sess_options", None)
+        device_map = kwargs.pop("device_map", None)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -359,6 +380,11 @@ class DiffusionPipeline(ConfigMixin):
             if custom_pipeline is not None:
                 allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
 
+            requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
+            user_agent = {"diffusers": __version__, "pipeline_class": requested_pipeline_class}
+            if custom_pipeline is not None:
+                user_agent["custom_pipeline"] = custom_pipeline
+
             # download all allow_patterns
             cached_folder = snapshot_download(
                 pretrained_model_name_or_path,
@@ -369,6 +395,7 @@ class DiffusionPipeline(ConfigMixin):
                 use_auth_token=use_auth_token,
                 revision=revision,
                 allow_patterns=allow_patterns,
+                user_agent=user_agent,
             )
         else:
             cached_folder = pretrained_model_name_or_path
@@ -386,6 +413,25 @@ class DiffusionPipeline(ConfigMixin):
         else:
             diffusers_module = importlib.import_module(cls.__module__.split(".")[0])
             pipeline_class = getattr(diffusers_module, config_dict["_class_name"])
+
+        # To be removed in 1.0.0
+        if pipeline_class.__name__ == "StableDiffusionInpaintPipeline" and version.parse(
+            version.parse(config_dict["_diffusers_version"]).base_version
+        ) <= version.parse("0.5.1"):
+            from diffusers import StableDiffusionInpaintPipeline, StableDiffusionInpaintPipelineLegacy
+
+            pipeline_class = StableDiffusionInpaintPipelineLegacy
+
+            deprecation_message = (
+                "You are using a legacy checkpoint for inpainting with Stable Diffusion, therefore we are loading the"
+                f" {StableDiffusionInpaintPipelineLegacy} class instead of {StableDiffusionInpaintPipeline}. For"
+                " better inpainting results, we strongly suggest using Stable Diffusion's official inpainting"
+                " checkpoint: https://huggingface.co/runwayml/stable-diffusion-inpainting instead or adapting your"
+                f" checkpoint {pretrained_model_name_or_path} to the format of"
+                " https://huggingface.co/runwayml/stable-diffusion-inpainting. Note that we do not actively maintain"
+                " the {StableDiffusionInpaintPipelineLegacy} class and will likely remove it in version 1.0.0."
+            )
+            deprecate("StableDiffusionInpaintPipelineLegacy", "1.0.0", deprecation_message, standard_warn=False)
 
         # some modules can be passed directly to the init
         # in this case they are already instantiated in `kwargs`
@@ -408,6 +454,7 @@ class DiffusionPipeline(ConfigMixin):
 
             is_pipeline_module = hasattr(pipelines, library_name)
             loaded_sub_model = None
+            sub_model_should_be_defined = True
 
             # if the model is in a pipeline module, then we load it from the pipeline
             if name in passed_class_obj:
@@ -428,6 +475,12 @@ class DiffusionPipeline(ConfigMixin):
                             f"{passed_class_obj[name]} is of type: {type(passed_class_obj[name])}, but should be"
                             f" {expected_class_obj}"
                         )
+                elif passed_class_obj[name] is None:
+                    logger.warn(
+                        f"You have passed `None` for {name} to disable its functionality in {pipeline_class}. Note"
+                        f" that this might lead to problems when using {pipeline_class} and is not recommended."
+                    )
+                    sub_model_should_be_defined = False
                 else:
                     logger.warn(
                         f"You have passed a non-standard module {passed_class_obj[name]}. We cannot verify whether it"
@@ -448,20 +501,41 @@ class DiffusionPipeline(ConfigMixin):
                 importable_classes = LOADABLE_CLASSES[library_name]
                 class_candidates = {c: getattr(library, c) for c in importable_classes.keys()}
 
-            if loaded_sub_model is None:
+            if loaded_sub_model is None and sub_model_should_be_defined:
                 load_method_name = None
                 for class_name, class_candidate in class_candidates.items():
                     if issubclass(class_obj, class_candidate):
                         load_method_name = importable_classes[class_name][1]
 
-                load_method = getattr(class_obj, load_method_name)
+                if load_method_name is None:
+                    none_module = class_obj.__module__
+                    if none_module.startswith(DUMMY_MODULES_FOLDER) and "dummy" in none_module:
+                        # call class_obj for nice error message of missing requirements
+                        class_obj()
 
+                    raise ValueError(
+                        f"The component {class_obj} of {pipeline_class} cannot be loaded as it does not seem to have"
+                        f" any of the loading methods defined in {ALL_IMPORTABLE_CLASSES}."
+                    )
+
+                load_method = getattr(class_obj, load_method_name)
                 loading_kwargs = {}
+
                 if issubclass(class_obj, torch.nn.Module):
                     loading_kwargs["torch_dtype"] = torch_dtype
                 if issubclass(class_obj, diffusers.OnnxRuntimeModel):
                     loading_kwargs["provider"] = provider
                     loading_kwargs["sess_options"] = sess_options
+
+                is_diffusers_model = issubclass(class_obj, diffusers.ModelMixin)
+                is_transformers_model = (
+                    is_transformers_available()
+                    and issubclass(class_obj, PreTrainedModel)
+                    and version.parse(version.parse(transformers.__version__).base_version) >= version.parse("4.20.0")
+                )
+
+                if is_diffusers_model or is_transformers_model:
+                    loading_kwargs["device_map"] = device_map
 
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):

@@ -5,6 +5,7 @@ import numpy as np
 import torch
 
 import PIL
+from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
@@ -16,10 +17,10 @@ from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
 
-logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+logger = logging.get_logger(__name__)
 
 
-def preprocess(image):
+def preprocess_image(image):
     w, h = image.size
     w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
     image = image.resize((w, h), resample=PIL.Image.LANCZOS)
@@ -29,9 +30,22 @@ def preprocess(image):
     return 2.0 * image - 1.0
 
 
-class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
+def preprocess_mask(mask):
+    mask = mask.convert("L")
+    w, h = mask.size
+    w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+    mask = mask.resize((w // 8, h // 8), resample=PIL.Image.NEAREST)
+    mask = np.array(mask).astype(np.float32) / 255.0
+    mask = np.tile(mask, (4, 1, 1))
+    mask = mask[None].transpose(0, 1, 2, 3)  # what does this step do?
+    mask = 1 - mask  # repaint white, keep black
+    mask = torch.from_numpy(mask)
+    return mask
+
+
+class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
     r"""
-    Pipeline for text-guided image to image generation using Stable Diffusion.
+    Pipeline for text-guided image inpainting using Stable Diffusion. *This is an experimental feature*.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -68,7 +82,6 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
-
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
@@ -135,6 +148,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]],
         init_image: Union[torch.FloatTensor, PIL.Image.Image],
+        mask_image: Union[torch.FloatTensor, PIL.Image.Image],
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
@@ -156,16 +170,20 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 The prompt or prompts to guide the image generation.
             init_image (`torch.FloatTensor` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
-                process.
+                process. This is the image whose masked region will be inpainted.
+            mask_image (`torch.FloatTensor` or `PIL.Image.Image`):
+                `Image`, or tensor representing an image batch, to mask `init_image`. White pixels in the mask will be
+                replaced by noise and therefore repainted, while black pixels will be preserved. If `mask_image` is a
+                PIL image, it will be converted to a single channel (luminance) before use. If it's a tensor, it should
+                contain one color channel (L) instead of 3, so the expected shape would be `(B, H, W, 1)`.
             strength (`float`, *optional*, defaults to 0.8):
-                Conceptually, indicates how much to transform the reference `init_image`. Must be between 0 and 1.
-                `init_image` will be used as a starting point, adding more noise to it the larger the `strength`. The
-                number of denoising steps depends on the amount of noise initially added. When `strength` is 1, added
-                noise will be maximum and the denoising process will run for the full number of iterations specified in
-                `num_inference_steps`. A value of 1, therefore, essentially ignores `init_image`.
+                Conceptually, indicates how much to inpaint the masked area. Must be between 0 and 1. When `strength`
+                is 1, the denoising process will be run on the masked area for the full number of iterations specified
+                in `num_inference_steps`. `init_image` will be used as a reference for the masked area, adding more
+                noise to that region the larger the `strength`. If `strength` is 0, no inpainting will occur.
             num_inference_steps (`int`, *optional*, defaults to 50):
-                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
-                expense of slower inference. This parameter will be modulated by `strength`.
+                The reference number of denoising steps. More denoising steps usually lead to a higher quality image at
+                the expense of slower inference. This parameter will be modulated by `strength`, as explained above.
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -224,9 +242,6 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
 
-        if isinstance(init_image, PIL.Image.Image):
-            init_image = preprocess(init_image)
-
         # get prompt text embeddings
         text_inputs = self.tokenizer(
             prompt,
@@ -265,7 +280,11 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             elif isinstance(negative_prompt, str):
                 uncond_tokens = [negative_prompt]
             elif batch_size != len(negative_prompt):
-                raise ValueError("The length of `negative_prompt` should be equal to batch_size.")
+                raise ValueError(
+                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+                    " the batch size of `prompt`."
+                )
             else:
                 uncond_tokens = negative_prompt
 
@@ -287,6 +306,10 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
 
+        # preprocess image
+        if not isinstance(init_image, torch.FloatTensor):
+            init_image = preprocess_image(init_image)
+
         # encode the init image into latents and scale the latents
         latents_dtype = text_embeddings.dtype
         init_image = init_image.to(device=self.device, dtype=latents_dtype)
@@ -294,25 +317,19 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         init_latents = init_latent_dist.sample(generator=generator)
         init_latents = 0.18215 * init_latents
 
-        if isinstance(prompt, str):
-            prompt = [prompt]
-        if len(prompt) > init_latents.shape[0] and len(prompt) % init_latents.shape[0] == 0:
-            # expand init_latents for batch_size
-            deprecation_message = (
-                f"You have passed {len(prompt)} text prompts (`prompt`), but only {init_latents.shape[0]} initial"
-                " images (`init_image`). Initial images are now duplicating to match the number of text prompts. Note"
-                " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
-                " your script to pass as many init images as text prompts to suppress this warning."
-            )
-            deprecate("len(prompt) != len(init_image)", "1.0.0", deprecation_message, standard_warn=False)
-            additional_image_per_prompt = len(prompt) // init_latents.shape[0]
-            init_latents = torch.cat([init_latents] * additional_image_per_prompt * num_images_per_prompt, dim=0)
-        elif len(prompt) > init_latents.shape[0] and len(prompt) % init_latents.shape[0] != 0:
-            raise ValueError(
-                f"Cannot duplicate `init_image` of batch size {init_latents.shape[0]} to {len(prompt)} text prompts."
-            )
-        else:
-            init_latents = torch.cat([init_latents] * num_images_per_prompt, dim=0)
+        # Expand init_latents for batch_size and num_images_per_prompt
+        init_latents = torch.cat([init_latents] * batch_size * num_images_per_prompt, dim=0)
+        init_latents_orig = init_latents
+
+        # preprocess mask
+        if not isinstance(mask_image, torch.FloatTensor):
+            mask_image = preprocess_mask(mask_image)
+        mask_image = mask_image.to(device=self.device, dtype=latents_dtype)
+        mask = torch.cat([mask_image] * batch_size * num_images_per_prompt)
+
+        # check sizes
+        if not mask.shape == init_latents.shape:
+            raise ValueError("The mask and init_image should be the same size!")
 
         # get the original timestep using init_timestep
         offset = self.scheduler.config.get("steps_offset", 0)
@@ -343,7 +360,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         # It's more optimized to move all timesteps to correct device beforehand
         timesteps = self.scheduler.timesteps[t_start:].to(self.device)
 
-        for i, t in enumerate(self.progress_bar(timesteps)):
+        for i, t in tqdm(enumerate(timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
@@ -358,6 +375,10 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+            # masking
+            init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, torch.tensor([t]))
+
+            latents = (init_latents_proper * mask) + (latents * (1 - mask))
 
             # call the callback, if provided
             if callback is not None and i % callback_steps == 0:
@@ -373,9 +394,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(
                 self.device
             )
-            image, has_nsfw_concept = self.safety_checker(
-                images=image, clip_input=safety_checker_input.pixel_values.to(text_embeddings.dtype)
-            )
+            image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
         else:
             has_nsfw_concept = None
 
