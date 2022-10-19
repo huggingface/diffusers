@@ -13,8 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import tempfile
-from typing import Dict, List, Tuple
 import unittest
+from typing import Dict, List, Tuple
 
 from diffusers.utils import is_flax_available
 from diffusers.utils.testing_utils import require_flax
