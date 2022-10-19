@@ -93,6 +93,7 @@ def convert_models(model_path: str, output_path: str, opset: int):
         },
         opset=opset,
     )
+    del pipeline.text_encoder
 
     # UNET
     unet_path = output_path / "unet" / "model.onnx"
@@ -125,6 +126,7 @@ def convert_models(model_path: str, output_path: str, opset: int):
         location="weights.pb",
         convert_attribute=False,
     )
+    del pipeline.unet
 
     # VAE ENCODER
     vae_encoder = pipeline.vae
@@ -157,6 +159,7 @@ def convert_models(model_path: str, output_path: str, opset: int):
         },
         opset=opset,
     )
+    del pipeline.vae
 
     # SAFETY CHECKER
     safety_checker = pipeline.safety_checker
@@ -173,8 +176,10 @@ def convert_models(model_path: str, output_path: str, opset: int):
         },
         opset=opset,
     )
+    del pipeline.safety_checker
 
     onnx_pipeline = StableDiffusionOnnxPipeline(
+        vae_encoder=OnnxRuntimeModel.from_pretrained(output_path / "vae_encoder"),
         vae_decoder=OnnxRuntimeModel.from_pretrained(output_path / "vae_decoder"),
         text_encoder=OnnxRuntimeModel.from_pretrained(output_path / "text_encoder"),
         tokenizer=pipeline.tokenizer,
@@ -187,6 +192,8 @@ def convert_models(model_path: str, output_path: str, opset: int):
     onnx_pipeline.save_pretrained(output_path)
     print("ONNX pipeline saved to", output_path)
 
+    del pipeline
+    del onnx_pipeline
     _ = StableDiffusionOnnxPipeline.from_pretrained(output_path, provider="CPUExecutionProvider")
     print("ONNX pipeline is loadable")
 

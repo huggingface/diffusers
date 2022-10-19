@@ -1,4 +1,5 @@
 import argparse
+import itertools
 import math
 import os
 from pathlib import Path
@@ -101,6 +102,7 @@ def parse_args():
     parser.add_argument(
         "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution"
     )
+    parser.add_argument("--train_text_encoder", action="store_true", help="Whether to train the text encoder")
     parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
     )
@@ -349,6 +351,15 @@ def main():
         logging_dir=logging_dir,
     )
 
+    # Currently, it's not possible to do gradient accumulation when training two models with accelerate.accumulate
+    # This will be enabled soon in accelerate. For now, we don't allow gradient accumulation when training two models.
+    # TODO (patil-suraj): Remove this check when gradient accumulation with two models is enabled in accelerate.
+    if args.train_text_encoder and args.gradient_accumulation_steps > 1 and accelerator.num_processes > 1:
+        raise ValueError(
+            "Gradient accumulation is not supported when training the text encoder in distributed training. "
+            "Please set gradient_accumulation_steps to 1. This feature will be supported in the future."
+        )
+
     if args.seed is not None:
         set_seed(args.seed)
 
@@ -415,8 +426,14 @@ def main():
     vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", use_auth_token=True)
     unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet", use_auth_token=True)
 
+    vae.requires_grad_(False)
+    if not args.train_text_encoder:
+        text_encoder.requires_grad_(False)
+
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
+        if args.train_text_encoder:
+            text_encoder.gradient_checkpointing_enable()
 
     if args.scale_lr:
         args.learning_rate = (
@@ -436,8 +453,11 @@ def main():
     else:
         optimizer_class = torch.optim.AdamW
 
+    params_to_optimize = (
+        itertools.chain(unet.parameters(), text_encoder.parameters()) if args.train_text_encoder else unet.parameters()
+    )
     optimizer = optimizer_class(
-        unet.parameters(),  # only optimize unet
+        params_to_optimize,
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -525,9 +545,14 @@ def main():
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
 
-    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, train_dataloader, lr_scheduler
-    )
+    if args.train_text_encoder:
+        unet, text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            unet, text_encoder, optimizer, train_dataloader, lr_scheduler
+        )
+    else:
+        unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            unet, optimizer, train_dataloader, lr_scheduler
+        )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -608,7 +633,12 @@ def main():
 
                 accelerator.backward(loss)
                 # if accelerator.sync_gradients:
-                #     accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
+                #     params_to_clip = (
+                #         itertools.chain(unet.parameters(), text_encoder.parameters())
+                #         if args.train_text_encoder
+                #         else unet.parameters()
+                #     )
+                #     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
@@ -632,6 +662,7 @@ def main():
         pipeline = StableDiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             unet=accelerator.unwrap_model(unet),
+            text_encoder=accelerator.unwrap_model(text_encoder),
             use_auth_token=True
         )
         pipeline.save_pretrained(args.output_dir)

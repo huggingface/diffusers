@@ -1,4 +1,4 @@
-name: Run non-slow tests
+name: Run fast tests
 
 on:
   pull_request:
@@ -10,14 +10,14 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  HF_HOME: /mnt/cache
   OMP_NUM_THREADS: 8
   MKL_NUM_THREADS: 8
   PYTEST_TIMEOUT: 60
+  MPS_TORCH_VERSION: 1.13.0
 
 jobs:
   run_tests_cpu:
-    name: Diffusers tests
+    name: CPU tests on Ubuntu
     runs-on: [ self-hosted, docker-gpu ]
     container:
       image: python:3.7
@@ -39,7 +39,7 @@ jobs:
       run: |
         python utils/print_env.py
 
-    - name: Run all non-slow selected tests on CPU
+    - name: Run all fast tests on CPU
       run: |
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_cpu tests/
 
@@ -51,5 +51,53 @@ jobs:
       if: ${{ always() }}
       uses: actions/upload-artifact@v2
       with:
-        name: pr_torch_test_reports
+        name: pr_torch_cpu_test_reports
+        path: reports
+
+  run_tests_apple_m1:
+    name: MPS tests on Apple M1
+    runs-on: [ self-hosted, apple-m1 ]
+
+    steps:
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
+
+    - name: Clean checkout
+      shell: arch -arch arm64 bash {0}
+      run: |
+        git clean -fxd
+
+    - name: Setup miniconda
+      uses: ./.github/actions/setup-miniconda
+      with:
+        python-version: 3.9
+
+    - name: Install dependencies
+      shell: arch -arch arm64 bash {0}
+      run: |
+        ${CONDA_RUN} python -m pip install --upgrade pip
+        ${CONDA_RUN} python -m pip install -e .[quality,test]
+        ${CONDA_RUN} python -m pip install --pre torch==${MPS_TORCH_VERSION} --extra-index-url https://download.pytorch.org/whl/test/cpu
+
+    - name: Environment
+      shell: arch -arch arm64 bash {0}
+      run: |
+        ${CONDA_RUN} python utils/print_env.py
+
+    - name: Run all fast tests on MPS
+      shell: arch -arch arm64 bash {0}
+      run: |
+        ${CONDA_RUN} python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_mps tests/
+
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: cat reports/tests_torch_mps_failures_short.txt
+
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: pr_torch_mps_test_reports
         path: reports
