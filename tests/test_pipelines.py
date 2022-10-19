@@ -1939,9 +1939,14 @@ class PipelineTesterMixin(unittest.TestCase):
         expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        scheduler = DDIMScheduler.from_config(model_id, subfolder="scheduler")
+        scheduler = DDIMScheduler(beta_start=0.00085,
+                                  beta_end=0.012,
+                                  beta_schedule="scaled_linear",
+                                  num_train_timesteps=1000,
+                                  clip_sample=False,
+                                  set_alpha_to_one=False)
 
-        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
+        pipe = CycleDiffusionPipeline.from_pretrained(
             model_id,
             scheduler=scheduler,
             safety_checker=None
@@ -1951,7 +1956,7 @@ class PipelineTesterMixin(unittest.TestCase):
         pipe.enable_attention_slicing()
 
         source_prompt = "A black colored car"
-        prompt = "A red colored car"
+        prompt = "A blue colored car"
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
         output = pipe(
@@ -1961,8 +1966,8 @@ class PipelineTesterMixin(unittest.TestCase):
              init_image=init_image,
              num_inference_steps=100,
              eta=0.1,
-             strength=0.8,
-             guidance_scale=3,
+             strength=0.85,
+             guidance_scale=2,
              source_guidance_scale=1,
         )
         image = output.images[0]
