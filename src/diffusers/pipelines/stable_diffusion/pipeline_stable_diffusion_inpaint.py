@@ -164,28 +164,18 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
-            image (`torch.FloatTensor` or `PIL.Image.Image`):
+            image (`PIL.Image.Image`):
                 `Image`, or tensor representing an image batch which will be inpainted, *i.e.* parts of the image will
                 be masked out with `mask_image` and repainted according to `prompt`.
-            mask_image (`torch.FloatTensor` or `PIL.Image.Image`):
-                `Image`, or tensor representing an image batch, to mask `init_image`. White pixels in the mask will be
-                replaced by noise and therefore repainted, while black pixels will be preserved. If `mask_image` is a
-                PIL image, it will be converted to a single channel (luminance) before use. If it's a tensor, it should
-                contain one color channel (L) instead of 3, so the expected shape would be `(B, H, W, 1)`. `Image`, or
-                tensor representing an image batch which will be inpainted, *i.e.* parts of the image will be masked
-                out with `mask_image` and repainted according to `prompt`.
+            mask_image (`PIL.Image.Image`):
+                `Image`, or tensor representing an image batch, to mask `image`. White pixels in the mask will be
+                repainted, while black pixels will be preserved. If `mask_image` is a PIL image, it will be converted
+                to a single channel (luminance) before use. If it's a tensor, it should contain one color channel (L)
+                instead of 3, so the expected shape would be `(B, H, W, 1)`.
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 512):
                 The width in pixels of the generated image.
-            init_image (`torch.FloatTensor` or `PIL.Image.Image`):
-                `Image`, or tensor representing an image batch, that will be used as the starting point for the
-                process. This is the image whose masked region will be inpainted.
-            mask_image (`torch.FloatTensor` or `PIL.Image.Image`):
-                `Image`, or tensor representing an image batch, to mask `init_image`. White pixels in the mask will be
-                replaced by noise and therefore repainted, while black pixels will be preserved. If `mask_image` is a
-                PIL image, it will be converted to a single channel (luminance) before use. If it's a tensor, it should
-                contain one color channel (L) instead of 3, so the expected shape would be `(B, H, W, 1)`.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -318,10 +308,10 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
 
         # get the initial random noise unless the user supplied it
-        num_channels_latents = self.unet.config.out_channels
         # Unlike in other pipelines, latents need to be generated in the target device
         # for 1-to-1 results reproducibility with the CompVis implementation.
         # However this currently doesn't work in `mps`.
+        num_channels_latents = self.vae.config.latent_channels
         latents_shape = (batch_size * num_images_per_prompt, num_channels_latents, height // 8, width // 8)
         latents_dtype = text_embeddings.dtype
         if latents is None:
@@ -342,15 +332,24 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         mask = mask.to(device=self.device, dtype=text_embeddings.dtype)
         masked_image = masked_image.to(device=self.device, dtype=text_embeddings.dtype)
 
+        # resize the mask to latents shape as we concatenate the mask to the latents
         mask = torch.nn.functional.interpolate(mask, size=(height // 8, width // 8))
-        masked_image = self.vae.encode(masked_image).latent_dist.sample(generator=generator)
-        masked_image = 0.18215 * masked_image
+
+        # encode the mask image into latents space so we can concatenate it to the latents
+        masked_image_latnets = self.vae.encode(masked_image).latent_dist.sample(generator=generator)
+        masked_image_latnets = 0.18215 * masked_image_latnets
+
+        # duplicate mask and masked_image_latnets for each generation per prompt, using mps friendly method
+        mask = mask.repeat(num_images_per_prompt, 1, 1, 1)
+        masked_image_latnets = masked_image_latnets.repeat(num_images_per_prompt, 1, 1, 1)
 
         mask = torch.cat([mask] * 2) if do_classifier_free_guidance else mask
-        masked_image = torch.cat([masked_image] * 2) if do_classifier_free_guidance else masked_image
+        masked_image_latnets = (
+            torch.cat([masked_image_latnets] * 2) if do_classifier_free_guidance else masked_image_latnets
+        )
 
         num_channels_mask = mask.shape[1]
-        num_channels_masked_image = masked_image.shape[1]
+        num_channels_masked_image = masked_image_latnets.shape[1]
 
         if num_channels_latents + num_channels_mask + num_channels_masked_image != self.unet.config.in_channels:
             raise ValueError(
@@ -384,8 +383,8 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
-            # concat latents, mask, masked_image in the channel dimension
-            latent_model_input = torch.cat([latent_model_input, mask, masked_image], dim=1)
+            # concat latents, mask, masked_image_latnets in the channel dimension
+            latent_model_input = torch.cat([latent_model_input, mask, masked_image_latnets], dim=1)
 
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
