@@ -402,12 +402,14 @@ class PipelineFastTests(unittest.TestCase):
     def test_stable_diffusion_cycle(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
-        scheduler = DDIMScheduler(beta_start=0.00085,
-                                  beta_end=0.012,
-                                  beta_schedule="scaled_linear",
-                                  num_train_timesteps=1000,
-                                  clip_sample=False,
-                                  set_alpha_to_one=False)
+        scheduler = DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            num_train_timesteps=1000,
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
@@ -1944,18 +1946,16 @@ class PipelineTesterMixin(unittest.TestCase):
         expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        scheduler = DDIMScheduler(beta_start=0.00085,
-                                  beta_end=0.012,
-                                  beta_schedule="scaled_linear",
-                                  num_train_timesteps=1000,
-                                  clip_sample=False,
-                                  set_alpha_to_one=False)
-
-        pipe = CycleDiffusionPipeline.from_pretrained(
-            model_id,
-            scheduler=scheduler,
-            safety_checker=None
+        scheduler = DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            num_train_timesteps=1000,
+            clip_sample=False,
+            set_alpha_to_one=False,
         )
+
+        pipe = CycleDiffusionPipeline.from_pretrained(model_id, scheduler=scheduler, safety_checker=None)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -1965,21 +1965,19 @@ class PipelineTesterMixin(unittest.TestCase):
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
         output = pipe(
-             prompt=prompt,
-             source_prompt=source_prompt,
-             generator=generator,
-             init_image=init_image,
-             num_inference_steps=100,
-             eta=0.1,
-             strength=0.85,
-             guidance_scale=2,
-             source_guidance_scale=1,
+            prompt=prompt,
+            source_prompt=source_prompt,
+            generator=generator,
+            init_image=init_image,
+            num_inference_steps=100,
+            eta=0.1,
+            strength=0.85,
+            guidance_scale=2,
+            source_guidance_scale=1,
         )
         image = output.images[0]
 
-
         # image.save(...) doesn't yet produce super good results - not sure why
-
 
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
