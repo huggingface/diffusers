@@ -2217,7 +2217,7 @@ class PipelineTesterMixin(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 2e-2
 
     @slow
-    def test_stable_diffusion_inpaint_legacy_onnx(self):
+    def test_stable_diffusion_inpaint_onnx(self):
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/in_paint/overture-creations-5sI6fQgYIuo.png"
