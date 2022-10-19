@@ -1963,11 +1963,10 @@ class PipelineTesterMixin(unittest.TestCase):
         source_prompt = "A black colored car"
         prompt = "A blue colored car"
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        torch.manual_seed(0)
         output = pipe(
             prompt=prompt,
             source_prompt=source_prompt,
-            generator=generator,
             init_image=init_image,
             num_inference_steps=100,
             eta=0.1,
