@@ -16,13 +16,13 @@ import tempfile
 import unittest
 from typing import Dict, List, Tuple
 
+from diffusers import FlaxDDIMScheduler, FlaxDDPMScheduler, FlaxPNDMScheduler
 from diffusers.utils import is_flax_available
 from diffusers.utils.testing_utils import require_flax
 
 
 if is_flax_available():
     import jax.numpy as jnp
-    from diffusers import FlaxDDIMScheduler, FlaxDDPMScheduler, FlaxPNDMScheduler
     from jax import random
 
 
