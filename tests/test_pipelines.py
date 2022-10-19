@@ -2069,8 +2069,10 @@ class PipelineTesterMixin(unittest.TestCase):
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
 
+        model_id = "../scripts/sd_inpaint_onnx"
+        pndm = PNDMScheduler.from_config(model_id, subfolder="scheduler")
         pipe = OnnxStableDiffusionInpaintPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider"
+            model_id, revision="onnx", provider="CPUExecutionProvider", scheduler=pndm
         )
         pipe.set_progress_bar_config(disable=None)
 
@@ -2079,9 +2081,8 @@ class PipelineTesterMixin(unittest.TestCase):
         np.random.seed(0)
         output = pipe(
             prompt=prompt,
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
-            strength=0.75,
             guidance_scale=7.5,
             num_inference_steps=8,
             output_type="np",
@@ -2090,7 +2091,7 @@ class PipelineTesterMixin(unittest.TestCase):
         image_slice = images[0, 255:258, 255:258, -1]
 
         assert images.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.3524, 0.3289, 0.3464, 0.3872, 0.4129, 0.3566, 0.3709, 0.4128, 0.3734])
+        expected_slice = np.array([0.2584, 0.2894, 0.3216, 0.2192, 0.2632, 0.3295, 0.1628, 0.1880, 0.2114])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     @slow
