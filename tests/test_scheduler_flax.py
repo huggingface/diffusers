@@ -13,14 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import tempfile
-import unittest
 from typing import Dict, List, Tuple
+import unittest
 
-import jax.numpy as jnp
-from diffusers import FlaxDDIMScheduler, FlaxDDPMScheduler, FlaxPNDMScheduler
-from jax import random
+from diffusers.utils import is_flax_available
+from diffusers.utils.testing_utils import require_flax
 
 
+if is_flax_available():
+    import jax.numpy as jnp
+    from diffusers import FlaxDDIMScheduler, FlaxDDPMScheduler, FlaxPNDMScheduler
+    from jax import random
+
+
+@require_flax
 class FlaxSchedulerCommonTest(unittest.TestCase):
     scheduler_classes = ()
     forward_default_kwargs = ()
@@ -220,6 +226,7 @@ class FlaxSchedulerCommonTest(unittest.TestCase):
             recursive_check(outputs_tuple[0], outputs_dict.prev_sample)
 
 
+@require_flax
 class FlaxDDPMSchedulerTest(FlaxSchedulerCommonTest):
     scheduler_classes = (FlaxDDPMScheduler,)
 
@@ -305,6 +312,7 @@ class FlaxDDPMSchedulerTest(FlaxSchedulerCommonTest):
         assert abs(result_mean - 0.332176) < 1e-3
 
 
+@require_flax
 class FlaxDDIMSchedulerTest(FlaxSchedulerCommonTest):
     scheduler_classes = (FlaxDDIMScheduler,)
     forward_default_kwargs = (("num_inference_steps", 50),)
@@ -575,6 +583,7 @@ class FlaxDDIMSchedulerTest(FlaxSchedulerCommonTest):
         assert abs(result_mean - 0.1941) < 1e-3
 
 
+@require_flax
 class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
     scheduler_classes = (FlaxPNDMScheduler,)
     forward_default_kwargs = (("num_inference_steps", 50),)
