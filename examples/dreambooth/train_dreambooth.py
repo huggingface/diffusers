@@ -4,6 +4,7 @@ import math
 import os
 from pathlib import Path
 from typing import Optional
+from contextlib import nullcontext
 from diffusers.pipelines.stable_diffusion import safety_checker
 
 import torch
@@ -512,8 +513,9 @@ def main():
     # Move text_encode and vae to gpu.
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
-    text_encoder.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
+    if not args.train_text_encoder:
+        text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     if not args.not_cache_latents:
         latents_cache = []
@@ -587,6 +589,7 @@ def main():
     progress_bar.set_description("Steps")
     global_step = 0
     loss_avg = AverageMeter()
+    text_enc_context = nullcontext() if args.train_text_encoder else torch.no_grad()
     for epoch in range(args.num_train_epochs):
         unet.train()
         for step, batch in enumerate(train_dataloader):
@@ -611,7 +614,7 @@ def main():
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # Get the text embedding for conditioning
-                with torch.no_grad():
+                with text_enc_context:
                     if not args.not_cache_latents:
                         if args.train_text_encoder:
                             encoder_hidden_states = text_encoder(batch[0][1])[0]
