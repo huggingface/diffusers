@@ -21,7 +21,7 @@ import torch
 from torch.onnx import export
 
 import onnx
-from diffusers import StableDiffusionOnnxPipeline, StableDiffusionPipeline
+from diffusers import OnnxStableDiffusionPipeline, StableDiffusionPipeline
 from diffusers.onnx_utils import OnnxRuntimeModel
 from packaging import version
 
@@ -178,7 +178,7 @@ def convert_models(model_path: str, output_path: str, opset: int):
     )
     del pipeline.safety_checker
 
-    onnx_pipeline = StableDiffusionOnnxPipeline(
+    onnx_pipeline = OnnxStableDiffusionPipeline(
         vae_encoder=OnnxRuntimeModel.from_pretrained(output_path / "vae_encoder"),
         vae_decoder=OnnxRuntimeModel.from_pretrained(output_path / "vae_decoder"),
         text_encoder=OnnxRuntimeModel.from_pretrained(output_path / "text_encoder"),
@@ -194,7 +194,7 @@ def convert_models(model_path: str, output_path: str, opset: int):
 
     del pipeline
     del onnx_pipeline
-    _ = StableDiffusionOnnxPipeline.from_pretrained(output_path, provider="CPUExecutionProvider")
+    _ = OnnxStableDiffusionPipeline.from_pretrained(output_path, provider="CPUExecutionProvider")
     print("ONNX pipeline is loadable")
 
 
