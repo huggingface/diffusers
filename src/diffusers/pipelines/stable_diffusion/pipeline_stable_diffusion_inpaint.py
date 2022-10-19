@@ -178,6 +178,14 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 512):
                 The width in pixels of the generated image.
+            init_image (`torch.FloatTensor` or `PIL.Image.Image`):
+                `Image`, or tensor representing an image batch, that will be used as the starting point for the
+                process. This is the image whose masked region will be inpainted.
+            mask_image (`torch.FloatTensor` or `PIL.Image.Image`):
+                `Image`, or tensor representing an image batch, to mask `init_image`. White pixels in the mask will be
+                replaced by noise and therefore repainted, while black pixels will be preserved. If `mask_image` is a
+                PIL image, it will be converted to a single channel (luminance) before use. If it's a tensor, it should
+                contain one color channel (L) instead of 3, so the expected shape would be `(B, H, W, 1)`.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
