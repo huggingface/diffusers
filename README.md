@@ -210,7 +210,10 @@ You can also run this example on colab [![Open In Colab](https://colab.research.
 
 ### In-painting using Stable Diffusion
 
-The `StableDiffusionInpaintPipeline` lets you edit specific parts of an image by providing a mask and text prompt.
+The `StableDiffusionInpaintPipeline` lets you edit specific parts of an image by providing a mask and a text prompt. It uses a model optimized for this particular task, whose license you need to accept before use.
+
+Please, visit the [model card](https://huggingface.co/runwayml/stable-diffusion-inpainting), read the license carefully and tick the checkbox if you agree. Note that this is an additional license, you need to accept it even if you accepted the text-to-image Stable Diffusion license in the past. You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section](https://huggingface.co/docs/hub/security-tokens) of the documentation.
+
 
 ```python
 import PIL
