@@ -424,10 +424,10 @@ class DiffusionPipeline(ConfigMixin):
 
             deprecation_message = (
                 "You are using a legacy checkpoint for inpainting with Stable Diffusion, therefore we are loading the"
-                f" {StableDiffusionInpaintPipelineLegacy} class instead of {StableDiffusionInpaintPipeline}. For better"
-                " inpainting results, we strongly suggest using Stable Diffusion's official inpainting checkpoint:"
-                " https://huggingface.co/runwayml/stable-diffusion-inpainting instead or adapting your checkpoint"
-                f" {pretrained_model_name_or_path} to the format of"
+                f" {StableDiffusionInpaintPipelineLegacy} class instead of {StableDiffusionInpaintPipeline}. For"
+                " better inpainting results, we strongly suggest using Stable Diffusion's official inpainting"
+                " checkpoint: https://huggingface.co/runwayml/stable-diffusion-inpainting instead or adapting your"
+                f" checkpoint {pretrained_model_name_or_path} to the format of"
                 " https://huggingface.co/runwayml/stable-diffusion-inpainting. Note that we do not actively maintain"
                 " the {StableDiffusionInpaintPipelineLegacy} class and will likely remove it in version 1.0.0."
             )
