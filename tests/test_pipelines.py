@@ -2283,7 +2283,7 @@ class PipelineTesterMixin(unittest.TestCase):
             image=init_image,
             mask_image=mask_image,
             guidance_scale=7.5,
-            num_inference_steps=30,
+            num_inference_steps=8,
             output_type="np",
         )
         images = output.images
