@@ -1,16 +1,17 @@
 import inspect
 import re
-import PIL
-import numpy as np
-import torch
 from typing import Callable, List, Optional, Union
-from transformers import CLIPFeatureExtractor, CLIPTokenizer
 
+import numpy as np
+import PIL
+import torch
 from diffusers.onnx_utils import OnnxRuntimeModel
 from diffusers.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from diffusers.utils import deprecate, logging
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
+from transformers import CLIPFeatureExtractor, CLIPTokenizer
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
