@@ -245,4 +245,5 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         if not return_dict:
             return (sample,)
 
-        return UNet2DOutput(sample=sample)
+        return sample
+        #return UNet2DOutput(sample=sample)
