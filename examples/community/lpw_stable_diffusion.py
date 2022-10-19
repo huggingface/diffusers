@@ -3,8 +3,9 @@ import re
 from typing import Callable, List, Optional, Union
 
 import numpy as np
-import PIL
 import torch
+
+import PIL
 from diffusers.configuration_utils import FrozenDict
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipeline_utils import DiffusionPipeline
