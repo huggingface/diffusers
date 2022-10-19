@@ -46,7 +46,7 @@ def reset_x0(x_in, cond, act_dim):
     return x_in
 
 
-def run_diffusion(x, scheduler, generator, network, unet, conditions, action_dim, config):
+def run_diffusion(x, scheduler, network, unet, conditions, action_dim, config):
     y = None
     for i in tqdm.tqdm(scheduler.timesteps):
         # create batch of timesteps to pass into model

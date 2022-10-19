@@ -36,9 +36,6 @@ def _run():
     action_dim = env.action_space.shape[0]
 
     # Two generators for different parts of the diffusion loop to work in colab
-    # generator = torch.Generator(device='cuda')
-    generator = torch.Generator(device=DEVICE)
-
     scheduler = DDPMScheduler(
         num_train_timesteps=config["num_inference_steps"],
         beta_schedule="squaredcos_cap_v2",
@@ -89,7 +86,7 @@ def _run():
 
             # convert a np observation to torch for model forward pass
             x = train_diffuser.to_torch(x, device=DEVICE)
-            x, y = train_diffuser.run_diffusion(x, scheduler, generator, network, unet, conditions, action_dim, config)
+            x, y = train_diffuser.run_diffusion(x, scheduler, network, unet, conditions, action_dim, config)
             if y is not None:
                 sorted_idx = y.argsort(0, descending=True).squeeze()
                 y_maxes.append(y[sorted_idx[0]].detach().cpu().numpy())
