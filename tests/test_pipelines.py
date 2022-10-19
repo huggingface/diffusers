@@ -2283,14 +2283,14 @@ class PipelineTesterMixin(unittest.TestCase):
             image=init_image,
             mask_image=mask_image,
             guidance_scale=7.5,
-            num_inference_steps=8,
+            num_inference_steps=30,
             output_type="np",
         )
         images = output.images
         image_slice = images[0, 255:258, 255:258, -1]
 
         assert images.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.2584, 0.2894, 0.3216, 0.2192, 0.2632, 0.3295, 0.1628, 0.1880, 0.2114])
+        expected_slice = np.array([0.2951, 0.2955, 0.2922, 0.2036, 0.1977, 0.2279, 0.1716, 0.1641, 0.1799])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     @slow
