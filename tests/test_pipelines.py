@@ -402,7 +402,12 @@ class PipelineFastTests(unittest.TestCase):
     def test_stable_diffusion_cycle(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
-        scheduler = DDIMScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
+        scheduler = DDIMScheduler(beta_start=0.00085,
+                                  beta_end=0.012,
+                                  beta_schedule="scaled_linear",
+                                  num_train_timesteps=1000,
+                                  clip_sample=False,
+                                  set_alpha_to_one=False)
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
