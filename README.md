@@ -213,11 +213,10 @@ You can also run this example on colab [![Open In Colab](https://colab.research.
 The `StableDiffusionInpaintPipeline` lets you edit specific parts of an image by providing a mask and text prompt.
 
 ```python
-from io import BytesIO
-
-import torch
-import requests
 import PIL
+import requests
+import torch
+from io import BytesIO
 
 from diffusers import StableDiffusionInpaintPipeline
 
@@ -231,21 +230,15 @@ mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data
 init_image = download_image(img_url).resize((512, 512))
 mask_image = download_image(mask_url).resize((512, 512))
 
-device = "cuda"
-model_id_or_path = "CompVis/stable-diffusion-v1-4"
 pipe = StableDiffusionInpaintPipeline.from_pretrained(
-    model_id_or_path,
-    revision="fp16", 
+    "runwayml/stable-diffusion-inpainting",
+    revision="fp16",
     torch_dtype=torch.float16,
 )
-# or download via git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
-# and pass `model_id_or_path="./stable-diffusion-v1-4"`.
-pipe = pipe.to(device)
+pipe = pipe.to("cuda")
 
-prompt = "a cat sitting on a bench"
-images = pipe(prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75).images
-
-images[0].save("cat_on_bench.png")
+prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
+image = pipe(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
 ```
 
 ### Tweak prompts reusing seeds and latents
