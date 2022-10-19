@@ -18,6 +18,10 @@ from . import StableDiffusionPipelineOutput
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+NUM_UNET_INPUT_CHANNELS = 9
+NUM_LATENT_CHANNELS = 4
+
+
 def prepare_mask_and_masked_image(image, mask, latents_shape):
     image = np.array(image.convert("RGB"))
     image = image[None].transpose(0, 3, 1, 2)
@@ -147,14 +151,14 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
-            init_image (`np.ndarray` or `PIL.Image.Image`):
-                `Image`, or tensor representing an image batch, that will be used as the starting point for the
-                process. This is the image whose masked region will be inpainted.
-            mask_image (`np.ndarray` or `PIL.Image.Image`):
-                `Image`, or tensor representing an image batch, to mask `init_image`. White pixels in the mask will be
-                replaced by noise and therefore repainted, while black pixels will be preserved. If `mask_image` is a
-                PIL image, it will be converted to a single channel (luminance) before use. If it's a tensor, it should
-                contain one color channel (L) instead of 3, so the expected shape would be `(B, H, W, 1)`.
+            image (`PIL.Image.Image`):
+                `Image`, or tensor representing an image batch which will be inpainted, *i.e.* parts of the image will
+                be masked out with `mask_image` and repainted according to `prompt`.
+            mask_image (`PIL.Image.Image`):
+                `Image`, or tensor representing an image batch, to mask `image`. White pixels in the mask will be
+                repainted, while black pixels will be preserved. If `mask_image` is a PIL image, it will be converted
+                to a single channel (luminance) before use. If it's a tensor, it should contain one color channel (L)
+                instead of 3, so the expected shape would be `(B, H, W, 1)`.
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 512):
@@ -286,7 +290,8 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
             text_embeddings = np.concatenate([uncond_embeddings, text_embeddings])
 
-        latents_shape = (batch_size * num_images_per_prompt, 4, height // 8, width // 8)
+        num_channels_latents = NUM_LATENT_CHANNELS
+        latents_shape = (batch_size * num_images_per_prompt, num_channels_latents, height // 8, width // 8)
         latents_dtype = text_embeddings.dtype
         if latents is None:
             latents = np.random.randn(*latents_shape).astype(latents_dtype)
@@ -299,11 +304,26 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
         mask = mask.astype(latents.dtype)
         masked_image = masked_image.astype(latents.dtype)
 
-        masked_image = self.vae_encoder(sample=masked_image)[0]
-        masked_image = 0.18215 * masked_image
+        masked_image_latents = self.vae_encoder(sample=masked_image)[0]
+        masked_image_latents = 0.18215 * masked_image_latents
 
         mask = np.concatenate([mask] * 2) if do_classifier_free_guidance else mask
-        masked_image = np.concatenate([masked_image] * 2) if do_classifier_free_guidance else masked_image
+        masked_image_latents = (
+            torch.cat([masked_image_latents] * 2) if do_classifier_free_guidance else masked_image_latents
+        )
+
+        num_channels_mask = mask.shape[1]
+        num_channels_masked_image = masked_image_latents.shape[1]
+
+        unet_input_channels = NUM_UNET_INPUT_CHANNELS
+        if num_channels_latents + num_channels_mask + num_channels_masked_image != unet_input_channels:
+            raise ValueError(
+                "Incorrect configuration settings! The config of `pipeline.unet` expects"
+                f" {unet_input_channels} but received `num_channels_latents`: {num_channels_latents} +"
+                f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
+                f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
+                " `pipeline.unet` or your `mask_image` or `image` input."
+            )
 
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
@@ -323,8 +343,8 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = np.concatenate([latents] * 2) if do_classifier_free_guidance else latents
-            # concat latents, mask, masked_image in the channel dimension
-            latent_model_input = np.concatenate([latent_model_input, mask, masked_image], axis=1)
+            # concat latents, mask, masked_image_latnets in the channel dimension
+            latent_model_input = np.concatenate([latent_model_input, mask, masked_image_latents], axis=1)
             latent_model_input = self.scheduler.scale_model_input(torch.from_numpy(latent_model_input), t)
             latent_model_input = latent_model_input.numpy()
 

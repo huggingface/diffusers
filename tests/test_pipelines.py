@@ -2069,10 +2069,8 @@ class PipelineTesterMixin(unittest.TestCase):
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
 
-        model_id = "../scripts/sd_inpaint_onnx"
-        pndm = PNDMScheduler.from_config(model_id, subfolder="scheduler")
         pipe = OnnxStableDiffusionInpaintPipeline.from_pretrained(
-            model_id, revision="onnx", provider="CPUExecutionProvider", scheduler=pndm
+            "runwayml/stable-diffusion-inpainting", revision="onnx", provider="CPUExecutionProvider"
         )
         pipe.set_progress_bar_config(disable=None)
 
