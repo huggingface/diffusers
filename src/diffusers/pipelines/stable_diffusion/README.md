@@ -171,7 +171,7 @@ image = pipe(prompt=prompt,
              num_inference_steps=100,
              eta=0.1,
              strength=0.85,
-             guidance_scale=2,
+             guidance_scale=3,
              source_guidance_scale=1,
              ).images[0]
 
