@@ -22,7 +22,9 @@ from transformers import (
     WhisperProcessor,
 )
 
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 class SpeechToImagePipeline(DiffusionPipeline):
     def __init__(
@@ -47,8 +49,8 @@ class SpeechToImagePipeline(DiffusionPipeline):
                 " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
                 " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
                 " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
-            )   
-                
+            )
+
         self.register_modules(
             speech_model=speech_model,
             speech_processor=speech_processor,
