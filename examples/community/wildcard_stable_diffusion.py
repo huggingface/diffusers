@@ -1,6 +1,9 @@
 import inspect
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Union, Dict
 
+import os
+import re
+import random
 import torch
 
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
@@ -16,6 +19,40 @@ from dataclasses import dataclass
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+global_re_wildcard = re.compile(r"__([^_]*)__")
+
+
+def get_filename(path: str):
+    # this doesn't work on Windows
+    return os.path.basename(path).split(".txt")[0]
+
+def read_wildcard_values(path: str):
+    with open(path, encoding="utf8") as f:
+        return f.read().splitlines()
+
+def grab_wildcard_values(wildcard_option_dict: Dict[str, List[str]] = {}, wildcard_files: List[str] = []):
+    for wildcard_file in wildcard_files:
+        filename = get_filename(wildcard_file)
+        read_values = read_wildcard_values(wildcard_file)
+        if filename not in wildcard_option_dict:
+            wildcard_option_dict[filename] = []
+        wildcard_option_dict[filename].extend(read_values)
+    return wildcard_option_dict
+
+def replace_prompt_with_wildcards(prompt: str, wildcard_option_dict: Dict[str, List[str]] = {}, wildcard_files: List[str] = []):
+    new_prompt = prompt
+
+    # get wildcard options
+    wildcard_option_dict = grab_wildcard_values(wildcard_option_dict, wildcard_files)
+
+    for m in global_re_wildcard.finditer(new_prompt):
+        wildcard_value = m.group()
+        replace_value = random.choice(wildcard_option_dict[wildcard_value.strip("__")])
+        new_prompt = new_prompt.replace(wildcard_value, replace_value, 1)
+
+    return new_prompt
+
+
 @dataclass
 class WildcardStableDiffusionOutput(StableDiffusionPipelineOutput):
     prompts: List[str]
@@ -23,7 +60,24 @@ class WildcardStableDiffusionOutput(StableDiffusionPipelineOutput):
 
 class WildcardStableDiffusionPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation using Stable Diffusion.
+    Example Usage:
+        pipe = WildcardStableDiffusionPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4",
+            revision="fp16",
+            torch_dtype=torch.float16,
+        )
+        prompt = "__animal__ sitting on a __object__ wearing a __clothing__"
+        out = pipe(
+            prompt,
+            wildcard_option_dict={
+                "clothing":["hat", "shirt", "scarf", "beret"]
+            },
+            wildcard_files=["object.txt", "animal.txt"],
+            num_prompt_samples=1
+        )
+
+
+    Pipeline for text-to-image generation with wild cards using Stable Diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -350,4 +404,21 @@ class WildcardStableDiffusionPipeline(DiffusionPipeline):
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return WildcardStableDiffusionOutput(images=image, nsfw_content_detected=has_nsfw_concept, prompts=[prompt])
+        return WildcardStableDiffusionOutput(images=image, nsfw_content_detected=has_nsfw_concept, prompts=prompt)
+
+# if __name__ == "__main__":
+#     pipe = WildcardStableDiffusionPipeline.from_pretrained(
+#         "CompVis/stable-diffusion-v1-4",
+#         revision="fp16",
+#         torch_dtype=torch.float16,
+#     )
+#     pipe = pipe.to("cuda")
+#     prompt = "__animal__ sitting on a __object__ wearing a __clothing__"
+#     out = pipe(
+#         prompt,
+#         wildcard_option_dict={"clothing":["hat", "shirt", "scarf", "beret"]},
+#         wildcard_files=["object.txt", "animal.txt"],
+#         num_prompt_samples=3
+#     )
+#     print(out.prompts)
+#     out.images[0].save("test.png")
