@@ -129,8 +129,8 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        image: Union[np.ndarray, PIL.Image.Image],
-        mask_image: Union[np.ndarray, PIL.Image.Image],
+        image: PIL.Image.Image,
+        mask_image: PIL.Image.Image,
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 50,
