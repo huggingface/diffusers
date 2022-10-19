@@ -121,11 +121,12 @@ class StableDiffusionPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]],
+        prompt: Union[str, List[str]] = "",
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
+        text_embeddings: Optional[torch.FloatTensor] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
@@ -210,23 +211,24 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
-        # get prompt text embeddings
-        text_inputs = self.tokenizer(
-            prompt,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            return_tensors="pt",
-        )
-        text_input_ids = text_inputs.input_ids
-
-        if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
-            removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length :])
-            logger.warning(
-                "The following part of your input was truncated because CLIP can only handle sequences up to"
-                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+        if text_embeddings is None:
+            # get prompt text embeddings
+            text_inputs = self.tokenizer(
+                prompt,
+                padding="max_length",
+                max_length=self.tokenizer.model_max_length,
+                return_tensors="pt",
             )
-            text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
-        text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
+            text_input_ids = text_inputs.input_ids
+
+            if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
+                removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length :])
+                logger.warning(
+                    "The following part of your input was truncated because CLIP can only handle sequences up to"
+                    f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+                )
+                text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
+            text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = text_embeddings.shape
@@ -258,7 +260,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             else:
                 uncond_tokens = negative_prompt
 
-            max_length = text_input_ids.shape[-1]
+            max_length = text_embeddings.shape[-2]
             uncond_input = self.tokenizer(
                 uncond_tokens,
                 padding="max_length",
