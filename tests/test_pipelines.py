@@ -2013,7 +2013,7 @@ class PipelineTesterMixin(unittest.TestCase):
         )
         expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
-        model_id = "fusing/sd-inpaint-temp"
+        model_id = "runwayml/stable-diffusion-inpainting"
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             model_id,
             safety_checker=self.dummy_safety_checker,
@@ -2050,11 +2050,11 @@ class PipelineTesterMixin(unittest.TestCase):
         )
         expected_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/in_paint/yellow_cat_sitting_on_a_park_bench.png"
+            "/in_paint/yellow_cat_sitting_on_a_park_bench_fp16.png"
         )
         expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
-        model_id = "fusing/sd-inpaint-temp"
+        model_id = "runwayml/stable-diffusion-inpainting"
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             model_id,
             revision="fp16",
@@ -2141,7 +2141,7 @@ class PipelineTesterMixin(unittest.TestCase):
         expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
         pndm = PNDMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True)
-        model_id = "fusing/sd-inpaint-temp"
+        model_id = "runwayml/stable-diffusion-inpainting"
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             model_id, safety_checker=self.dummy_safety_checker, scheduler=pndm
         )
