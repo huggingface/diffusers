@@ -43,7 +43,7 @@ def preprocess_mask(mask):
     return mask
 
 
-class StableDiffusionInpaintPipeline(DiffusionPipeline):
+class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
     r"""
     Pipeline for text-guided image inpainting using Stable Diffusion. *This is an experimental feature*.
 
@@ -221,8 +221,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-        # TODO(Suraj) - adapt to your use case
-
         if isinstance(prompt, str):
             batch_size = 1
         elif isinstance(prompt, list):
