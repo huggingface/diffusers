@@ -36,7 +36,7 @@ from diffusers import DiffusionPipeline
 pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 ```
 
-This however can make it difficult to build applications on top of `diffusers` as you will always have to pass the token around. A potential way to solve this issue is by downloading the weights to a local path `"./stable-diffusion-v1-4"`:
+This however can make it difficult to build applications on top of `diffusers` as you will always have to pass the token around. A potential way to solve this issue is by downloading the weights to a local path `"./stable-diffusion-v1-5"`:
 
 ```
 git lfs install
@@ -48,7 +48,7 @@ and simply passing the local path to `from_pretrained`:
 ```python
 from diffusers import StableDiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained("./stable-diffusion-v1-4")
+pipe = StableDiffusionPipeline.from_pretrained("./stable-diffusion-v1-5")
 ```
 
 ### Text-to-Image with default PLMS scheduler

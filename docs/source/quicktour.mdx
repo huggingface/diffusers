@@ -99,11 +99,11 @@ git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
 ```
 
 and then load locally saved weights into the pipeline. This way, you do not need to pass an authentication
-token. Assuming that `"./stable-diffusion-v1-4"` is the local path to the cloned stable-diffusion-v1-4 repo,
+token. Assuming that `"./stable-diffusion-v1-5"` is the local path to the cloned stable-diffusion-v1-5 repo,
 you can also load the pipeline as follows:
 
 ```python
->>> generator = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-4")
+>>> generator = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5")
 ```
 
 Running the pipeline is then identical to the code above as it's the same model architecture.
