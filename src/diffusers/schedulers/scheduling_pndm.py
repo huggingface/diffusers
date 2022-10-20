@@ -310,6 +310,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
 
         if self.counter != 1:
+            self.ets = self.ets[-3:]
             self.ets.append(model_output)
         else:
             prev_timestep = timestep
