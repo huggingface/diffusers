@@ -321,4 +321,8 @@ out = pipe(
     wildcard_files=["object.txt", "animal.txt"],
     num_prompt_samples=1
 )
+<<<<<<< HEAD
 ```
+=======
+```
+>>>>>>> 2e43a5fbbeccd987ca1187f68c2a4d34915501d0
