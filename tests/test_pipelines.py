@@ -46,15 +46,17 @@ from diffusers import (
     ScoreSdeVeScheduler,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
+    StableDiffusionInpaintPipelineLegacy,
     StableDiffusionPipeline,
     UNet2DConditionModel,
     UNet2DModel,
     VQModel,
+    logging,
 )
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, load_image, slow, torch_device
-from diffusers.utils.testing_utils import get_tests_dir
+from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir
 from packaging import version
 from PIL import Image
 from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
@@ -182,6 +184,21 @@ class PipelineFastTests(unittest.TestCase):
             layers_per_block=2,
             sample_size=32,
             in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=32,
+        )
+        return model
+
+    @property
+    def dummy_cond_unet_inpaint(self):
+        torch.manual_seed(0)
+        model = UNet2DConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=9,
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
@@ -897,7 +914,7 @@ class PipelineFastTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_stable_diffusion_inpaint(self):
+    def test_stable_diffusion_inpaint_legacy(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
         scheduler = PNDMScheduler(skip_prk_steps=True)
@@ -910,7 +927,7 @@ class PipelineFastTests(unittest.TestCase):
         mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((128, 128))
 
         # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionInpaintPipeline(
+        sd_pipe = StableDiffusionInpaintPipelineLegacy(
             unet=unet,
             scheduler=scheduler,
             vae=vae,
@@ -956,7 +973,66 @@ class PipelineFastTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_stable_diffusion_inpaint_negative_prompt(self):
+    def test_stable_diffusion_inpaint(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        unet = self.dummy_cond_unet_inpaint
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        image = self.dummy_image.cpu().permute(0, 2, 3, 1)[0]
+        init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((128, 128))
+        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((128, 128))
+
+        # make sure here that pndm scheduler skips prk
+        sd_pipe = StableDiffusionInpaintPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=None,
+        )
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A painting of a squirrel eating a burger"
+        generator = torch.Generator(device=device).manual_seed(0)
+        output = sd_pipe(
+            [prompt],
+            generator=generator,
+            guidance_scale=6.0,
+            num_inference_steps=2,
+            output_type="np",
+            image=init_image,
+            mask_image=mask_image,
+        )
+
+        image = output.images
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        image_from_tuple = sd_pipe(
+            [prompt],
+            generator=generator,
+            guidance_scale=6.0,
+            num_inference_steps=2,
+            output_type="np",
+            image=init_image,
+            mask_image=mask_image,
+            return_dict=False,
+        )[0]
+
+        image_slice = image[0, -3:, -3:, -1]
+        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 128, 128, 3)
+        expected_slice = np.array([0.5075, 0.4485, 0.4558, 0.5369, 0.5369, 0.5236, 0.5127, 0.4983, 0.4776])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_stable_diffusion_inpaint_legacy_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
         scheduler = PNDMScheduler(skip_prk_steps=True)
@@ -969,7 +1045,7 @@ class PipelineFastTests(unittest.TestCase):
         mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((128, 128))
 
         # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionInpaintPipeline(
+        sd_pipe = StableDiffusionInpaintPipelineLegacy(
             unet=unet,
             scheduler=scheduler,
             vae=vae,
@@ -1122,7 +1198,7 @@ class PipelineFastTests(unittest.TestCase):
 
         assert images.shape == (batch_size * num_images_per_prompt, 32, 32, 3)
 
-    def test_stable_diffusion_inpaint_num_images_per_prompt(self):
+    def test_stable_diffusion_inpaint_legacy_num_images_per_prompt(self):
         device = "cpu"
         unet = self.dummy_cond_unet
         scheduler = PNDMScheduler(skip_prk_steps=True)
@@ -1135,7 +1211,7 @@ class PipelineFastTests(unittest.TestCase):
         mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((128, 128))
 
         # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionInpaintPipeline(
+        sd_pipe = StableDiffusionInpaintPipelineLegacy(
             unet=unet,
             scheduler=scheduler,
             vae=vae,
@@ -1274,15 +1350,15 @@ class PipelineFastTests(unittest.TestCase):
 
     @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
     def test_stable_diffusion_inpaint_fp16(self):
-        """Test that stable diffusion inpaint works with fp16"""
-        unet = self.dummy_cond_unet
+        """Test that stable diffusion inpaint_legacy works with fp16"""
+        unet = self.dummy_cond_unet_inpaint
         scheduler = PNDMScheduler(skip_prk_steps=True)
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         image = self.dummy_image.cpu().permute(0, 2, 3, 1)[0]
-        init_image = Image.fromarray(np.uint8(image)).convert("RGB")
+        init_image = Image.fromarray(np.uint8(image)).convert("RGB").resize((128, 128))
         mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((128, 128))
 
         # put models in fp16
@@ -1297,8 +1373,8 @@ class PipelineFastTests(unittest.TestCase):
             vae=vae,
             text_encoder=bert,
             tokenizer=tokenizer,
-            safety_checker=self.dummy_safety_checker,
-            feature_extractor=self.dummy_extractor,
+            safety_checker=None,
+            feature_extractor=None,
         )
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
@@ -1310,11 +1386,64 @@ class PipelineFastTests(unittest.TestCase):
             generator=generator,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
         ).images
 
-        assert image.shape == (1, 32, 32, 3)
+        assert image.shape == (1, 128, 128, 3)
+
+    def test_components(self):
+        """Test that components property works correctly"""
+        unet = self.dummy_cond_unet
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        image = self.dummy_image.cpu().permute(0, 2, 3, 1)[0]
+        init_image = Image.fromarray(np.uint8(image)).convert("RGB")
+        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((128, 128))
+
+        # make sure here that pndm scheduler skips prk
+        inpaint = StableDiffusionInpaintPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=self.dummy_safety_checker,
+            feature_extractor=self.dummy_extractor,
+        )
+        img2img = StableDiffusionImg2ImgPipeline(**inpaint.components)
+        text2img = StableDiffusionPipeline(**inpaint.components)
+
+        prompt = "A painting of a squirrel eating a burger"
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image_inpaint = inpaint(
+            [prompt],
+            generator=generator,
+            num_inference_steps=2,
+            output_type="np",
+            init_image=init_image,
+            mask_image=mask_image,
+        ).images
+        image_img2img = img2img(
+            [prompt],
+            generator=generator,
+            num_inference_steps=2,
+            output_type="np",
+            init_image=init_image,
+        ).images
+        image_text2img = text2img(
+            [prompt],
+            generator=generator,
+            num_inference_steps=2,
+            output_type="np",
+        ).images
+
+        assert image_inpaint.shape == (1, 32, 32, 3)
+        assert image_img2img.shape == (1, 32, 32, 3)
+        assert image_text2img.shape == (1, 128, 128, 3)
 
 
 class PipelineTesterMixin(unittest.TestCase):
@@ -1344,6 +1473,15 @@ class PipelineTesterMixin(unittest.TestCase):
             # https://huggingface.co/hf-internal-testing/unet-pipeline-dummy/blob/main/big_array.npy
             # is not downloaded, but all the expected ones
             assert not os.path.isfile(os.path.join(snapshot_dir, "big_array.npy"))
+
+    def test_warning_unused_kwargs(self):
+        model_id = "hf-internal-testing/unet-pipeline-dummy"
+        logger = logging.get_logger("diffusers.pipeline_utils")
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with CaptureLogger(logger) as cap_logger:
+                DiffusionPipeline.from_pretrained(model_id, not_used=True, cache_dir=tmpdirname, force_download=True)
+
+        assert cap_logger.out == "Keyword arguments {'not_used': True} not recognized.\n"
 
     @property
     def dummy_safety_checker(self):
@@ -1934,6 +2072,90 @@ class PipelineTesterMixin(unittest.TestCase):
         )
         expected_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/yellow_cat_sitting_on_a_park_bench.png"
+        )
+        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
+
+        model_id = "runwayml/stable-diffusion-inpainting"
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(
+            model_id,
+            safety_checker=self.dummy_safety_checker,
+        )
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        output = pipe(
+            prompt=prompt,
+            image=init_image,
+            mask_image=mask_image,
+            generator=generator,
+            output_type="np",
+        )
+        image = output.images[0]
+
+        assert image.shape == (512, 512, 3)
+        assert np.abs(expected_image - image).max() < 1e-2
+
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    def test_stable_diffusion_inpaint_pipeline_fp16(self):
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/overture-creations-5sI6fQgYIuo.png"
+        )
+        mask_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
+        )
+        expected_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/yellow_cat_sitting_on_a_park_bench_fp16.png"
+        )
+        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
+
+        model_id = "runwayml/stable-diffusion-inpainting"
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(
+            model_id,
+            revision="fp16",
+            torch_dtype=torch.float16,
+            safety_checker=None,
+        )
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        output = pipe(
+            prompt=prompt,
+            image=init_image,
+            mask_image=mask_image,
+            generator=generator,
+            output_type="np",
+        )
+        image = output.images[0]
+
+        assert image.shape == (512, 512, 3)
+        assert np.abs(expected_image - image).max() < 1e-2
+
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    def test_stable_diffusion_inpaint_legacy_pipeline(self):
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/overture-creations-5sI6fQgYIuo.png"
+        )
+        mask_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
+        )
+        expected_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/in_paint/red_cat_sitting_on_a_park_bench.png"
         )
         expected_image = np.array(expected_image, dtype=np.float32) / 255.0
@@ -1966,7 +2188,49 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
-    def test_stable_diffusion_inpaint_pipeline_k_lms(self):
+    def test_stable_diffusion_inpaint_pipeline_pndm(self):
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/overture-creations-5sI6fQgYIuo.png"
+        )
+        mask_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
+        )
+        expected_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/yellow_cat_sitting_on_a_park_bench_pndm.png"
+        )
+        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
+
+        pndm = PNDMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True)
+        model_id = "runwayml/stable-diffusion-inpainting"
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(
+            model_id, safety_checker=self.dummy_safety_checker, scheduler=pndm
+        )
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        output = pipe(
+            prompt=prompt,
+            image=init_image,
+            mask_image=mask_image,
+            generator=generator,
+            output_type="np",
+        )
+        image = output.images[0]
+
+        assert image.shape == (512, 512, 3)
+        assert np.abs(expected_image - image).max() < 1e-2
+
+    @slow
+    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    def test_stable_diffusion_inpaint_legacy_pipeline_k_lms(self):
+        # TODO(Anton, Patrick) - I think we can remove this test soon
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/in_paint/overture-creations-5sI6fQgYIuo.png"
@@ -2070,7 +2334,7 @@ class PipelineTesterMixin(unittest.TestCase):
         )
 
         pipe = OnnxStableDiffusionInpaintPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider"
+            "runwayml/stable-diffusion-inpainting", revision="onnx", provider="CPUExecutionProvider"
         )
         pipe.set_progress_bar_config(disable=None)
 
@@ -2079,9 +2343,8 @@ class PipelineTesterMixin(unittest.TestCase):
         np.random.seed(0)
         output = pipe(
             prompt=prompt,
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
-            strength=0.75,
             guidance_scale=7.5,
             num_inference_steps=8,
             output_type="np",
@@ -2090,7 +2353,7 @@ class PipelineTesterMixin(unittest.TestCase):
         image_slice = images[0, 255:258, 255:258, -1]
 
         assert images.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.3524, 0.3289, 0.3464, 0.3872, 0.4129, 0.3566, 0.3709, 0.4128, 0.3734])
+        expected_slice = np.array([0.2951, 0.2955, 0.2922, 0.2036, 0.1977, 0.2279, 0.1716, 0.1641, 0.1799])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     @slow
@@ -2199,7 +2462,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
-    def test_stable_diffusion_inpaint_intermediate_state(self):
+    def test_stable_diffusion_inpaint_legacy_intermediate_state(self):
         number_of_steps = 0
 
         def test_callback_fn(step: int, timestep: int, latents: torch.FloatTensor) -> None:
