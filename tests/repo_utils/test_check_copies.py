@@ -29,35 +29,36 @@ import check_copies  # noqa: E402
 
 
 # This is the reference code that will be used in the tests.
-# If BertLMPredictionHead is changed in modeling_bert.py, this code needs to be manually updated.
-REFERENCE_CODE = """    def __init__(self, config):
-        super().__init__()
-        self.transform = BertPredictionHeadTransform(config)
-        # The output weights are the same as the input embeddings, but there is
-        # an output-only bias for each token.
-        self.decoder = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-        self.bias = nn.Parameter(torch.zeros(config.vocab_size))
-        # Need a link between the two variables so that the bias is correctly resized with `resize_token_embeddings`
-        self.decoder.bias = self.bias
-    def forward(self, hidden_states):
-        hidden_states = self.transform(hidden_states)
-        hidden_states = self.decoder(hidden_states)
-        return hidden_states
+# If DDPMSchedulerOutput is changed in scheduling_ddpm.py, this code needs to be manually updated.
+REFERENCE_CODE = """    \"""
+    Output class for the scheduler's step function output.
+
+    Args:
+        prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+            Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
+            denoising loop.
+        pred_original_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
+            The predicted denoised sample (x_{0}) based on the model output from the current timestep.
+            `pred_original_sample` can be used to preview progress or for guidance.
+    \"""
+
+    prev_sample: torch.FloatTensor
+    pred_original_sample: Optional[torch.FloatTensor] = None
 """
 
 
 class CopyCheckTester(unittest.TestCase):
     def setUp(self):
         self.diffusers_dir = tempfile.mkdtemp()
-        os.makedirs(os.path.join(self.diffusers_dir, "models/bert/"))
+        os.makedirs(os.path.join(self.diffusers_dir, "schedulers/"))
         check_copies.DIFFUSERS_PATH = self.diffusers_dir
         shutil.copy(
-            os.path.join(git_repo_path, "src/transformers/models/bert/modeling_bert.py"),
-            os.path.join(self.diffusers_dir, "models/bert/modeling_bert.py"),
+            os.path.join(git_repo_path, "src/diffusers/schedulers/scheduling_ddpm.py"),
+            os.path.join(self.diffusers_dir, "schedulers/scheduling_ddpm.py"),
         )
 
     def tearDown(self):
-        check_copies.DIFFUSERS_PATH = "src/transformers"
+        check_copies.DIFFUSERS_PATH = "src/diffusers"
         shutil.rmtree(self.diffusers_dir)
 
     def check_copy_consistency(self, comment, class_name, class_code, overwrite_result=None):
@@ -77,43 +78,43 @@ class CopyCheckTester(unittest.TestCase):
                 self.assertTrue(f.read(), expected)
 
     def test_find_code_in_diffusers(self):
-        code = check_copies.find_code_in_transformers("models.bert.modeling_bert.BertLMPredictionHead")
+        code = check_copies.find_code_in_diffusers("schedulers.scheduling_ddpm.DDPMSchedulerOutput")
         self.assertEqual(code, REFERENCE_CODE)
 
     def test_is_copy_consistent(self):
         # Base copy consistency
         self.check_copy_consistency(
-            "# Copied from transformers.models.bert.modeling_bert.BertLMPredictionHead",
-            "BertLMPredictionHead",
+            "# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput",
+            "DDPMSchedulerOutput",
             REFERENCE_CODE + "\n",
         )
 
         # With no empty line at the end
         self.check_copy_consistency(
-            "# Copied from transformers.models.bert.modeling_bert.BertLMPredictionHead",
-            "BertLMPredictionHead",
+            "# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput",
+            "DDPMSchedulerOutput",
             REFERENCE_CODE,
         )
 
         # Copy consistency with rename
         self.check_copy_consistency(
-            "# Copied from transformers.models.bert.modeling_bert.BertLMPredictionHead with Bert->TestModel",
-            "TestModelLMPredictionHead",
-            re.sub("Bert", "TestModel", REFERENCE_CODE),
+            "# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->Test",
+            "TestSchedulerOutput",
+            re.sub("DDPM", "Test", REFERENCE_CODE),
         )
 
         # Copy consistency with a really long name
-        long_class_name = "TestModelWithAReallyLongNameBecauseSomePeopleLikeThatForSomeReason"
+        long_class_name = "TestClassWithAReallyLongNameBecauseSomePeopleLikeThatForSomeReason"
         self.check_copy_consistency(
-            f"# Copied from transformers.models.bert.modeling_bert.BertLMPredictionHead with Bert->{long_class_name}",
-            f"{long_class_name}LMPredictionHead",
+            f"# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->{long_class_name}",
+            f"{long_class_name}SchedulerOutput",
             re.sub("Bert", long_class_name, REFERENCE_CODE),
         )
 
         # Copy consistency with overwrite
         self.check_copy_consistency(
-            "# Copied from transformers.models.bert.modeling_bert.BertLMPredictionHead with Bert->TestModel",
-            "TestModelLMPredictionHead",
+            "# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->Test",
+            "TestSchedulerOutput",
             REFERENCE_CODE,
-            overwrite_result=re.sub("Bert", "TestModel", REFERENCE_CODE),
+            overwrite_result=re.sub("DDPM", "Test", REFERENCE_CODE),
         )
