@@ -22,8 +22,8 @@ import numpy as np
 import torch
 
 from diffusers.modeling_utils import ModelMixin
-from diffusers.testing_utils import torch_device
 from diffusers.training_utils import EMAModel
+from diffusers.utils import torch_device
 
 
 class ModelTesterMixin:
@@ -247,6 +247,7 @@ class ModelTesterMixin:
 
         recursive_check(outputs_tuple, outputs_dict)
 
+    @unittest.skipIf(torch_device == "mps", "Gradient checkpointing skipped on MPS")
     def test_enable_disable_gradient_checkpointing(self):
         if not self.model_class._supports_gradient_checkpointing:
             return  # Skip test if model does not support gradient checkpointing

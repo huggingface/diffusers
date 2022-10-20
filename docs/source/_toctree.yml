@@ -12,6 +12,8 @@
       title: "Loading Pipelines, Models, and Schedulers"
     - local: using-diffusers/configuration
       title: "Configuring Pipelines, Models, and Schedulers"
+    - local: using-diffusers/custom_pipelines
+      title: "Loading and Creating Custom Pipelines"
     title: "Loading"
   - sections:
     - local: using-diffusers/unconditional_image_generation

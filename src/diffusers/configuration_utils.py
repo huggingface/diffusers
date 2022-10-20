@@ -58,6 +58,10 @@ class ConfigMixin:
         kwargs["_class_name"] = self.__class__.__name__
         kwargs["_diffusers_version"] = __version__
 
+        # Special case for `kwargs` used in deprecation warning added to schedulers
+        # TODO: remove this when we remove the deprecation warning, and the `kwargs` argument,
+        # or solve in a more general way.
+        kwargs.pop("kwargs", None)
         for key, value in kwargs.items():
             try:
                 setattr(self, key, value)
@@ -141,7 +145,8 @@ class ConfigMixin:
 
         <Tip>
 
-        Passing `use_auth_token=True`` is required when you want to use a private model.
+         It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
+         models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
         </Tip>
 
@@ -234,7 +239,7 @@ class ConfigMixin:
                     f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier"
                     " listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a"
                     " token having permission to this repo with `use_auth_token` or log in with `huggingface-cli"
-                    " login` and pass `use_auth_token=True`."
+                    " login`."
                 )
             except RevisionNotFoundError:
                 raise EnvironmentError(

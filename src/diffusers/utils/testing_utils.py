@@ -1,25 +1,58 @@
+import inspect
+import logging
 import os
 import random
 import re
 import unittest
 from distutils.util import strtobool
+from io import StringIO
 from pathlib import Path
 from typing import Union
-
-import torch
 
 import PIL.Image
 import PIL.ImageOps
 import requests
 from packaging import version
 
+from .import_utils import is_flax_available, is_torch_available
+
 
 global_rng = random.Random()
-torch_device = "cuda" if torch.cuda.is_available() else "cpu"
-is_torch_higher_equal_than_1_12 = version.parse(version.parse(torch.__version__).base_version) >= version.parse("1.12")
 
-if is_torch_higher_equal_than_1_12:
-    torch_device = "mps" if torch.backends.mps.is_available() else torch_device
+
+if is_torch_available():
+    import torch
+
+    torch_device = "cuda" if torch.cuda.is_available() else "cpu"
+    is_torch_higher_equal_than_1_12 = version.parse(version.parse(torch.__version__).base_version) >= version.parse(
+        "1.12"
+    )
+
+    if is_torch_higher_equal_than_1_12:
+        # Some builds of torch 1.12 don't have the mps backend registered. See #892 for more details
+        mps_backend_registered = hasattr(torch.backends, "mps")
+        torch_device = "mps" if (mps_backend_registered and torch.backends.mps.is_available()) else torch_device
+
+
+def get_tests_dir(append_path=None):
+    """
+    Args:
+        append_path: optional path to append to the tests dir path
+    Return:
+        The full path to the `tests` dir, so that the tests can be invoked from anywhere. Optionally `append_path` is
+        joined after the `tests` dir the former is provided.
+    """
+    # this function caller's __file__
+    caller__file__ = inspect.stack()[1][1]
+    tests_dir = os.path.abspath(os.path.dirname(caller__file__))
+
+    while not tests_dir.endswith("tests"):
+        tests_dir = os.path.dirname(tests_dir)
+
+    if append_path:
+        return os.path.join(tests_dir, append_path)
+    else:
+        return tests_dir
 
 
 def parse_flag_from_env(key, default=False):
@@ -65,6 +98,13 @@ def slow(test_case):
 
     """
     return unittest.skipUnless(_run_slow_tests, "test is slow")(test_case)
+
+
+def require_flax(test_case):
+    """
+    Decorator marking a test that requires JAX & Flax. These tests are skipped when one / both are not installed
+    """
+    return unittest.skipUnless(is_flax_available(), "test requires JAX & Flax")(test_case)
 
 
 def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
@@ -248,3 +288,42 @@ def pytest_terminal_summary_main(tr, id):
     tr._tw = orig_writer
     tr.reportchars = orig_reportchars
     config.option.tbstyle = orig_tbstyle
+
+
+class CaptureLogger:
+    """
+    Args:
+    Context manager to capture `logging` streams
+        logger: 'logging` logger object
+    Returns:
+        The captured output is available via `self.out`
+    Example:
+    ```python
+    >>> from diffusers import logging
+    >>> from diffusers.testing_utils import CaptureLogger
+
+    >>> msg = "Testing 1, 2, 3"
+    >>> logging.set_verbosity_info()
+    >>> logger = logging.get_logger("diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.py")
+    >>> with CaptureLogger(logger) as cl:
+    ...     logger.info(msg)
+    >>> assert cl.out, msg + "\n"
+    ```
+    """
+
+    def __init__(self, logger):
+        self.logger = logger
+        self.io = StringIO()
+        self.sh = logging.StreamHandler(self.io)
+        self.out = ""
+
+    def __enter__(self):
+        self.logger.addHandler(self.sh)
+        return self
+
+    def __exit__(self, *exc):
+        self.logger.removeHandler(self.sh)
+        self.out = self.io.getvalue()
+
+    def __repr__(self):
+        return f"captured: {self.out}\n"

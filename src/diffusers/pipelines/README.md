@@ -73,7 +73,7 @@ not be used for training. If you want to store the gradients during the forward 
 We are more than happy about any contribution to the officially supported pipelines 🤗. We aspire 
 all of our pipelines to be  **self-contained**, **easy-to-tweak**, **beginner-friendly** and for **one-purpose-only**.
 
-- **Self-contained**: A pipeline shall be as self-contained as possible. More specifically, this means that all functionality should be either directly defined in the pipeline file iteslf, should be inherited from (and only from) the [`DiffusionPipeline` class](https://github.com/huggingface/diffusers/blob/5cbed8e0d157f65d3ddc2420dfd09f2df630e978/src/diffusers/pipeline_utils.py#L56) or be directly attached to the model and scheduler components of the pipeline. 
+- **Self-contained**: A pipeline shall be as self-contained as possible. More specifically, this means that all functionality should be either directly defined in the pipeline file itself, should be inherited from (and only from) the [`DiffusionPipeline` class](https://github.com/huggingface/diffusers/blob/5cbed8e0d157f65d3ddc2420dfd09f2df630e978/src/diffusers/pipeline_utils.py#L56) or be directly attached to the model and scheduler components of the pipeline. 
 - **Easy-to-use**: Pipelines should be extremely easy to use - one should be able to load the pipeline and 
 use it for its designated task, *e.g.* text-to-image generation, in just a couple of lines of code. Most 
 logic including pre-processing, an unrolled diffusion loop, and post-processing should all happen inside the `__call__` method.
@@ -86,15 +86,13 @@ logic including pre-processing, an unrolled diffusion loop, and post-processing 
 
 ```python
 # make sure you're logged in with `huggingface-cli login`
-from torch import autocast
 from diffusers import StableDiffusionPipeline, LMSDiscreteScheduler
 
-pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
-with autocast("cuda"):
-    image = pipe(prompt).images[0]  
+image = pipe(prompt).images[0]  
     
 image.save("astronaut_rides_horse.png")
 ```
@@ -104,7 +102,6 @@ image.save("astronaut_rides_horse.png")
 The `StableDiffusionImg2ImgPipeline` lets you pass a text prompt and an initial image to condition the generation of new images.
 
 ```python
-from torch import autocast
 import requests
 from PIL import Image
 from io import BytesIO
@@ -117,7 +114,6 @@ pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     revision="fp16", 
     torch_dtype=torch.float16,
-    use_auth_token=True
 ).to(device)
 
 # let's download an initial image
@@ -129,8 +125,7 @@ init_image = init_image.resize((768, 512))
 
 prompt = "A fantasy landscape, trending on artstation"
 
-with autocast("cuda"):
-    images = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5).images
+images = pipe(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5).images
 
 images[0].save("fantasy_landscape.png")
 ```
@@ -146,11 +141,10 @@ You can generate your own latents to reproduce results, or tweak your prompt on 
 The `StableDiffusionInpaintPipeline` lets you edit specific parts of an image by providing a mask and text prompt.
 
 ```python
-from io import BytesIO
-
-from torch import autocast
-import requests
 import PIL
+import requests
+import torch
+from io import BytesIO
 
 from diffusers import StableDiffusionInpaintPipeline
 
@@ -164,19 +158,15 @@ mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data
 init_image = download_image(img_url).resize((512, 512))
 mask_image = download_image(mask_url).resize((512, 512))
 
-device = "cuda"
 pipe = StableDiffusionInpaintPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4",
-    revision="fp16", 
+    "runwayml/stable-diffusion-inpainting",
+    revision="fp16",
     torch_dtype=torch.float16,
-    use_auth_token=True
-).to(device)
+)
+pipe = pipe.to("cuda")
 
-prompt = "a cat sitting on a bench"
-with autocast("cuda"):
-    images = pipe(prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75).images
-
-images[0].save("cat_on_bench.png")
+prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
+image = pipe(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
 ```
 
 You can also run this example on colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/in_painting_with_stable_diffusion_using_diffusers.ipynb)
