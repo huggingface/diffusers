@@ -8,7 +8,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
-from .unet_1d_blocks import UNetMidBlock1D, get_down_block, get_up_block
+from .unet_1d_blocks import get_down_block, get_mid_block, get_out_block, get_up_block
 
 
 @dataclass
@@ -65,7 +65,9 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         flip_sin_to_cos: bool = True,
         use_timestep_embedding: bool = False,
         down_block_types: Tuple[str] = ["DownBlock1DNoSkip"] + 7 * ["DownBlock1D"] + 5 * ["AttnDownBlock1D"],
+        mid_block_type: str = "UNetMidBlock1D",
         up_block_types: Tuple[str] = 5 * ["AttnUpBlock1D"] + 7 * ["UpBlock1D"] + ["UpBlock1DNoSkip"],
+        out_block_type: str = "",
         block_out_channels: Tuple[int] = [128, 128, 256, 256] + [512] * 9,
     ):
         super().__init__()
@@ -89,6 +91,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         self.down_blocks = nn.ModuleList([])
         self.mid_block = None
         self.up_blocks = nn.ModuleList([])
+        self.out_block = None
 
         # down
         output_channel = in_channels
@@ -107,9 +110,11 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             self.down_blocks.append(down_block)
 
         # mid
-        self.mid_block = UNetMidBlock1D(
+        self.mid_block = get_mid_block(
+            mid_block_type=mid_block_type,
             mid_channels=block_out_channels[-1],
             in_channels=block_out_channels[-1],
+            out_channels=None,
         )
 
         # up
@@ -126,6 +131,14 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
+
+        # placeholder for RL application to be merged shortly
+        self.out_block = get_out_block(
+            out_block_type=out_block_type,
+            mid_channels=None,
+            in_channels=None,
+            out_channels=None,
+        )
 
     def forward(
         self,
@@ -162,6 +175,8 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             res_samples = down_block_res_samples[-1:]
             down_block_res_samples = down_block_res_samples[:-1]
             sample = upsample_block(sample, res_samples)
+
+        sample = self.out_block(sample)
 
         if not return_dict:
             return (sample,)

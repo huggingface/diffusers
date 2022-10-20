@@ -182,6 +182,18 @@ def get_up_block(up_block_type, in_channels, out_channels):
     raise ValueError(f"{up_block_type} does not exist.")
 
 
+def get_mid_block(mid_block_type, in_channels, mid_channels, out_channels):
+    if mid_block_type == "UNetMidBlock1D":
+        return UNetMidBlock1D(in_channels=in_channels, mid_channels=mid_channels, out_channels=out_channels)
+    raise ValueError(f"{mid_block_type} does not exist.")
+
+
+def get_out_block(out_block_type, in_channels, mid_channels, out_channels):
+    if out_block_type == "":
+        return nn.Identity(in_channels=in_channels, mid_channels=mid_channels, out_channels=out_channels)
+    raise ValueError(f"{out_block_type} does not exist.")
+
+
 class UNetMidBlock1D(nn.Module):
     def __init__(self, mid_channels, in_channels, out_channels=None):
         super().__init__()
