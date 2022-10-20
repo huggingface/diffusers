@@ -4,8 +4,9 @@ import torch
 import d4rl  # noqa
 import gym
 import tqdm
-import train_diffuser
-from diffusers import DDPMScheduler, UNet1DModel, ValueFunction
+
+# import train_diffuser
+from diffusers import DDPMScheduler, UNet1DModel, DiffusionPipeline
 
 
 config = dict(
@@ -25,7 +26,7 @@ def _run():
     env_name = "hopper-medium-v2"
     env = gym.make(env_name)
     data = env.get_dataset()  # dataset is only used for normalization in this colab
-    render = train_diffuser.MuJoCoRenderer(env)
+    # render = train_diffuser.MuJoCoRenderer(env)
 
     # Cuda settings for colab
     # torch.cuda.get_device_name(0)
@@ -47,8 +48,15 @@ def _run():
     # The horizion represents the length of trajectories used in training.
     # network = ValueFunction(training_horizon=horizon, dim=32, dim_mults=(1, 2, 4, 8), transition_dim=14, cond_dim=11)
 
-    network = ValueFunction.from_pretrained("bglick13/hopper-medium-v2-value-function-hor32").to(device=DEVICE).eval()
+    network = UNet1DModel.from_pretrained("bglick13/hopper-medium-v2-value-function-hor32").to(device=DEVICE).eval()
     unet = UNet1DModel.from_pretrained("bglick13/hopper-medium-v2-unet-hor32").to(device=DEVICE).eval()
+    pipeline = DiffusionPipeline.from_pretrained(
+        "bglick13/hopper-medium-v2-value-function-hor32",
+        value_function=network,
+        unet=unet,
+        scheduler=scheduler,
+        env=env,
+    )
     # unet = UNet1DModel.from_pretrained("fusing/ddpm-unet-rl-hopper-hor128").to(device=DEVICE)
     # network = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor512").to(device=DEVICE)
 
