@@ -121,20 +121,15 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
     def cuda_with_minimal_gpu_usage(self):
         if is_accelerate_available():
-            from accelerate.hooks import attach_execution_device_hook
+            from accelerate import cpu_offload
         else:
             raise ImportError("Please install accelerate via `pip install accelerate`")
 
         device = torch.device("cuda")
-
-        self.unet.half().to(device)
-        attach_execution_device_hook(self.unet, device)
-        self.unet.forward = torch.autocast("cuda")(self.unet.forward)
         self.enable_attention_slicing(1)
 
-        for cpu_offloaded_model in [self.text_encoder, self.vae, self.safety_checker]:
-            cpu_offloaded_model.to(torch.float32)
-            attach_execution_device_hook(cpu_offloaded_model, "cpu")
+        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
+            cpu_offload(cpu_offloaded_model, device)
 
     @torch.no_grad()
     def __call__(
@@ -310,7 +305,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
                     self.device
                 )
             else:
-                latents = torch.randn(latents_shape, generator=generator, device=self.unet.device, dtype=latents_dtype)
+                latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")

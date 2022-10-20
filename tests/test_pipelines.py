@@ -2293,5 +2293,5 @@ class PipelineTesterMixin(unittest.TestCase):
         _ = pipeline(prompt)
 
         mem_bytes = torch.cuda.max_memory_allocated()
-        # make sure that less than 2.2 GB is allocated
-        assert mem_bytes < 2.2 * 10**9
+        # make sure that less than 0.8 GB is allocated
+        assert mem_bytes < 0.8 * 10**9
