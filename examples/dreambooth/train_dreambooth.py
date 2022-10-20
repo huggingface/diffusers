@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import itertools
 import math
 import os
@@ -362,7 +363,9 @@ def main():
                 images = pipeline(example["prompt"]).images
 
                 for i, image in enumerate(images):
-                    image.save(class_images_dir / f"{example['index'][i] + cur_class_images}.jpg")
+                    hash_image = hashlib.sha1(image.tobytes()).hexdigest()
+                    image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
+                    image.save(image_filename)
 
             del pipeline
             if torch.cuda.is_available():
