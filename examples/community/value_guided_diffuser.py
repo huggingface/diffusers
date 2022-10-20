@@ -1,0 +1,88 @@
+import torch
+from diffusers import DiffusionPipeline
+import tqdm
+
+from diffusers.models.unet_1d import UNet1DModel
+from diffusers.utils.dummy_pt_objects import DDPMScheduler
+
+
+class ValueGuidedDiffuserPipeline(DiffusionPipeline):
+    def __init__(self, value_function: UNet1DModel, unet: UNet1DModel, scheduler: DDPMScheduler, env, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.value_function = value_function
+        self.unet = unet
+        self.scheduler = scheduler
+        self.env = env
+        self.data = env.get_dataset()
+        self.means = dict((key, val.mean(axis=0)) for key, val in self.data.items())
+        self.stds = dict((key, val.std(axis=0)) for key, val in self.data.items())
+        self.device = self.unet.device
+        self.state_dim = env.observation_space.shape[0]
+        self.action_dim = env.action_space.shape[0]
+
+    def normalize(self, x_in, key):
+        return (x_in - self.means[key]) / self.stds[key]
+
+    def de_normalize(self, x_in, key):
+        return x_in * self.stds[key] + self.means[key]
+
+    def to_torch(self, x_in):
+
+        if type(x_in) is dict:
+            return {k: self.to_torch(v) for k, v in x_in.items()}
+        elif torch.is_tensor(x_in):
+            return x_in.to(self.device)
+        return torch.tensor(x_in, device=self.device)
+
+    def reset_x0(self, x_in, cond, act_dim):
+        for key, val in cond.items():
+            x_in[:, key, act_dim:] = val.clone()
+        return x_in
+
+    def run_diffusion(self, x, conditions, n_guide_steps, scale):
+        batch_size = x.shape[0]
+        y = None
+        for i in tqdm.tqdm(self.scheduler.timesteps):
+            # create batch of timesteps to pass into model
+            timesteps = torch.full((batch_size,), i, device=self.device, dtype=torch.long)
+            # 3. call the sample function
+            for _ in range(n_guide_steps):
+                with torch.enable_grad():
+                    x.requires_grad_()
+                    y = self.value_function(x, timesteps).sample
+                    grad = torch.autograd.grad([y.sum()], [x])[0]
+
+                    posterior_variance = self.scheduler._get_variance(i)
+                    model_std = torch.exp(0.5 * posterior_variance)
+                    grad = model_std * grad
+                grad[timesteps < 2] = 0
+                x = x.detach()
+                x = x + scale * grad
+                x = self.reset_x0(x, conditions, self.action_dim)
+            # with torch.no_grad():
+            prev_x = self.unet(x.permute(0, 2, 1), timesteps).sample.permute(0, 2, 1)
+            x = self.scheduler.step(prev_x, i, x, predict_epsilon=False)["prev_sample"]
+
+            # 4. apply conditions to the trajectory
+            x = self.reset_x0(x, conditions, self.action_dim)
+            x = self.to_torch(x, device=self.device)
+        # y = network(x, timesteps).sample
+        return x, y
+
+    def __call__(self, obs, batch_size=64, planning_horizon=20, n_guide_steps=2, scale=0.1):
+        obs = self.normalize(obs, "observations")
+        obs = obs[None].repeat(batch_size, axis=0)
+        conditions = {0: self.to_torch(obs)}
+        shape = (batch_size, planning_horizon, self.state_dim + self.action_dim)
+        x1 = torch.randn(shape, device=self.device)
+        x = self.reset_x0(x1, conditions, self.action_dim)
+        x = self.to_torch(x)
+        x, y = self.run_diffusion(x, conditions, n_guide_steps, scale)
+        sorted_idx = y.argsort(0, descending=True).squeeze()
+        sorted_values = x[sorted_idx]
+        actions = sorted_values[:, :, : self.action_dim]
+        actions = actions.detach().cpu().numpy()
+        denorm_actions = self.de_normalize(actions, key="actions")
+        # denorm_actions = denorm_actions[np.random.randint(config['n_samples']), 0]
+        denorm_actions = denorm_actions[0, 0]
+        return denorm_actions
