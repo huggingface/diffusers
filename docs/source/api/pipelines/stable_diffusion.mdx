@@ -17,6 +17,26 @@ For more details about how Stable Diffusion works and how it differs from the ba
 | [pipeline_stable_diffusion_img2img.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_img2img.py) | *Image-to-Image Text-Guided Generation* | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/image_2_image_using_diffusers.ipynb) | [🤗 Diffuse the Rest](https://huggingface.co/spaces/huggingface/diffuse-the-rest)
 | [pipeline_stable_diffusion_inpaint.py](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_inpaint.py) | **Experimental** – *Text-Guided Image Inpainting* | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/in_painting_with_stable_diffusion_using_diffusers.ipynb) | Coming soon
 
+## Tips
+
+If you want to use all possible use cases in a single `DiffusionPipeline` you can either:
+- Make use of the [Stable Diffusion Mega Pipeline](https://github.com/huggingface/diffusers/tree/main/examples/community#stable-diffusion-mega) or 
+- Make use of the `components` functionality to instantiate all components in the most memory-efficient way:
+
+```python
+>>> from diffusers import (
+...     StableDiffusionPipeline,
+...     StableDiffusionImg2ImgPipeline,
+...     StableDiffusionInpaintPipeline,
+... )
+
+>>> img2text = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+>>> img2img = StableDiffusionImg2ImgPipeline(**img2text.components)
+>>> inpaint = StableDiffusionInpaintPipeline(**img2text.components)
+
+>>> # now you can use img2text(...), img2img(...), inpaint(...) just like the call methods of each respective pipeline
+```
+
 ## StableDiffusionPipelineOutput
 [[autodoc]] pipelines.stable_diffusion.StableDiffusionPipelineOutput
 
