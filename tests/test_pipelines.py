@@ -51,11 +51,12 @@ from diffusers import (
     UNet2DConditionModel,
     UNet2DModel,
     VQModel,
+    logging,
 )
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, load_image, slow, torch_device
-from diffusers.utils.testing_utils import get_tests_dir
+from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir
 from packaging import version
 from PIL import Image
 from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
@@ -1391,6 +1392,59 @@ class PipelineFastTests(unittest.TestCase):
 
         assert image.shape == (1, 128, 128, 3)
 
+    def test_components(self):
+        """Test that components property works correctly"""
+        unet = self.dummy_cond_unet
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        image = self.dummy_image.cpu().permute(0, 2, 3, 1)[0]
+        init_image = Image.fromarray(np.uint8(image)).convert("RGB")
+        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((128, 128))
+
+        # make sure here that pndm scheduler skips prk
+        inpaint = StableDiffusionInpaintPipelineLegacy(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=self.dummy_safety_checker,
+            feature_extractor=self.dummy_extractor,
+        ).to(torch_device)
+        img2img = StableDiffusionImg2ImgPipeline(**inpaint.components).to(torch_device)
+        text2img = StableDiffusionPipeline(**inpaint.components).to(torch_device)
+
+        prompt = "A painting of a squirrel eating a burger"
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image_inpaint = inpaint(
+            [prompt],
+            generator=generator,
+            num_inference_steps=2,
+            output_type="np",
+            init_image=init_image,
+            mask_image=mask_image,
+        ).images
+        image_img2img = img2img(
+            [prompt],
+            generator=generator,
+            num_inference_steps=2,
+            output_type="np",
+            init_image=init_image,
+        ).images
+        image_text2img = text2img(
+            [prompt],
+            generator=generator,
+            num_inference_steps=2,
+            output_type="np",
+        ).images
+
+        assert image_inpaint.shape == (1, 32, 32, 3)
+        assert image_img2img.shape == (1, 32, 32, 3)
+        assert image_text2img.shape == (1, 128, 128, 3)
+
 
 class PipelineTesterMixin(unittest.TestCase):
     def tearDown(self):
@@ -1419,6 +1473,15 @@ class PipelineTesterMixin(unittest.TestCase):
             # https://huggingface.co/hf-internal-testing/unet-pipeline-dummy/blob/main/big_array.npy
             # is not downloaded, but all the expected ones
             assert not os.path.isfile(os.path.join(snapshot_dir, "big_array.npy"))
+
+    def test_warning_unused_kwargs(self):
+        model_id = "hf-internal-testing/unet-pipeline-dummy"
+        logger = logging.get_logger("diffusers.pipeline_utils")
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with CaptureLogger(logger) as cap_logger:
+                DiffusionPipeline.from_pretrained(model_id, not_used=True, cache_dir=tmpdirname, force_download=True)
+
+        assert cap_logger.out == "Keyword arguments {'not_used': True} not recognized.\n"
 
     @property
     def dummy_safety_checker(self):
