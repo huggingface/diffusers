@@ -34,7 +34,6 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             Input sample size.
         in_channels (`int`, *optional*, defaults to 3): Number of channels in the input image.
         out_channels (`int`, *optional*, defaults to 3): Number of channels in the output.
-        center_input_sample (`bool`, *optional*, defaults to `False`): Whether to center the input sample.
         time_embedding_type (`str`, *optional*, defaults to `"positional"`): Type of time embedding to use.
         freq_shift (`int`, *optional*, defaults to 0): Frequency shift for fourier time embedding.
         flip_sin_to_cos (`bool`, *optional*, defaults to :
@@ -109,8 +108,8 @@ class UNet1DModel(ModelMixin, ConfigMixin):
 
         # mid
         self.mid_block = UNetMidBlock1D(
-            c=block_out_channels[-1],
-            c_prev=block_out_channels[-1],
+            mid_channels=block_out_channels[-1],
+            in_channels=block_out_channels[-1],
         )
 
         # up
