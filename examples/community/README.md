@@ -12,6 +12,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | One Step U-Net (Dummy) | Example showcasing of how to use Community Pipelines (see https://github.com/huggingface/diffusers/issues/841) | [One Step U-Net](#one-step-unet) | - | [Patrick von Platen](https://github.com/patrickvonplaten/) |
 | Stable Diffusion Interpolation | Interpolate the latent space of Stable Diffusion between different prompts/seeds | [Stable Diffusion Interpolation](#stable-diffusion-interpolation) | - | [Nate Raw](https://github.com/nateraw/) |
 | Stable Diffusion Mega | **One** Stable Diffusion Pipeline with all functionalities of [Text2Image](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion.py), [Image2Image](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_img2img.py) and [Inpainting](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_inpaint.py) | [Stable Diffusion Mega](#stable-diffusion-mega) | - | [Patrick von Platen](https://github.com/patrickvonplaten/) |
+| Speech to Image | Using automatic-speech-recognition to transcribe text and Stable Diffusion to generate images | [Speech to Image](#speech-to-image) | - | [Mikail Duzenli](https://github.com/MikailINTech)
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -167,4 +168,53 @@ images = pipe.inpaint(prompt=prompt, init_image=init_image, mask_image=mask_imag
 ```
 
 As shown above this one pipeline can run all both "text-to-image", "image-to-image", and "inpainting" in one pipeline.
+
+### Speech to Image
+
+The following code can generate an image from an audio sample using pre-trained OpenAI whisper-small and Stable Diffusion.
+
+```Python
+import torch
+
+import matplotlib.pyplot as plt
+from datasets import load_dataset
+from diffusers import DiffusionPipeline
+from transformers import (
+    WhisperForConditionalGeneration,
+    WhisperProcessor,
+)
+
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
+
+audio_sample = ds[3]
+
+text = audio_sample["text"].lower()
+speech_data = audio_sample["audio"]["array"]
+
+model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-small").to(device)
+processor = WhisperProcessor.from_pretrained("openai/whisper-small")
+
+diffuser_pipeline = DiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+    custom_pipeline="speech_to_image_diffusion",
+    speech_model=model,
+    speech_processor=processor,
+    revision="fp16",
+    torch_dtype=torch.float16,
+)
+
+diffuser_pipeline.enable_attention_slicing()
+diffuser_pipeline = diffuser_pipeline.to(device)
+
+output = diffuser_pipeline(speech_data)
+plt.imshow(output.images[0])
+```
+This example produces the following image:
+
+![image](https://user-images.githubusercontent.com/45072645/196901736-77d9c6fc-63ee-4072-90b0-dc8b903d63e3.png)
+
+
 
