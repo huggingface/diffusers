@@ -64,7 +64,6 @@ def main(args):
         from torch_ort import ORTModule
         model = ORTModule(model)
 
-    #noise_scheduler = DDPMScheduler(num_train_timesteps=1000, tensor_format="pt")
     noise_scheduler = DDPMScheduler(num_train_timesteps=1000)
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -145,7 +144,6 @@ def main(args):
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
-                # noise_pred = model(noisy_images, timesteps).sample
                 noise_pred = model(noisy_images, timesteps)
                 loss = F.mse_loss(noise_pred, noise)
                 accelerator.backward(loss)
