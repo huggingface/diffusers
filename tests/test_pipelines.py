@@ -127,7 +127,7 @@ class CustomPipelineTests(unittest.TestCase):
         clip_model = CLIPModel.from_pretrained(clip_model_id, torch_dtype=torch.float16)
 
         pipeline = DiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v-1-5",
+            "runwayml/stable-diffusion-v1-5",
             custom_pipeline="clip_guided_stable_diffusion",
             clip_model=clip_model,
             feature_extractor=feature_extractor,
@@ -1819,7 +1819,7 @@ class PipelineTesterMixin(unittest.TestCase):
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_memory_chunking(self):
         torch.cuda.reset_peak_memory_stats()
-        model_id = "runwayml/stable-diffusion-v-1-5"
+        model_id = "runwayml/stable-diffusion-v1-5"
         pipe = StableDiffusionPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16).to(
             torch_device
         )
@@ -1859,7 +1859,7 @@ class PipelineTesterMixin(unittest.TestCase):
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_text2img_pipeline_fp16(self):
         torch.cuda.reset_peak_memory_stats()
-        model_id = "runwayml/stable-diffusion-v-1-5"
+        model_id = "runwayml/stable-diffusion-v1-5"
         pipe = StableDiffusionPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16).to(
             torch_device
         )
@@ -1895,7 +1895,7 @@ class PipelineTesterMixin(unittest.TestCase):
         )
         expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
-        model_id = "runwayml/stable-diffusion-v-1-5"
+        model_id = "runwayml/stable-diffusion-v1-5"
         pipe = StableDiffusionPipeline.from_pretrained(
             model_id,
             safety_checker=self.dummy_safety_checker,
@@ -1927,7 +1927,7 @@ class PipelineTesterMixin(unittest.TestCase):
         init_image = init_image.resize((768, 512))
         expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
-        model_id = "runwayml/stable-diffusion-v-1-5"
+        model_id = "runwayml/stable-diffusion-v1-5"
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
             model_id,
             safety_checker=self.dummy_safety_checker,
@@ -1969,7 +1969,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
         lms = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
 
-        model_id = "runwayml/stable-diffusion-v-1-5"
+        model_id = "runwayml/stable-diffusion-v1-5"
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
             model_id,
             scheduler=lms,
@@ -2097,7 +2097,7 @@ class PipelineTesterMixin(unittest.TestCase):
         )
         expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
-        model_id = "runwayml/stable-diffusion-v-1-5"
+        model_id = "runwayml/stable-diffusion-v1-5"
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             model_id,
             safety_checker=self.dummy_safety_checker,
@@ -2184,7 +2184,7 @@ class PipelineTesterMixin(unittest.TestCase):
 
         lms = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
 
-        model_id = "runwayml/stable-diffusion-v-1-5"
+        model_id = "runwayml/stable-diffusion-v1-5"
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             model_id,
             scheduler=lms,
@@ -2214,7 +2214,7 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     def test_stable_diffusion_onnx(self):
         sd_pipe = OnnxStableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v-1-5", revision="onnx", provider="CPUExecutionProvider"
+            "runwayml/stable-diffusion-v1-5", revision="onnx", provider="CPUExecutionProvider"
         )
 
         prompt = "A painting of a squirrel eating a burger"
@@ -2236,7 +2236,7 @@ class PipelineTesterMixin(unittest.TestCase):
         )
         init_image = init_image.resize((768, 512))
         pipe = OnnxStableDiffusionImg2ImgPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v-1-5", revision="onnx", provider="CPUExecutionProvider"
+            "runwayml/stable-diffusion-v1-5", revision="onnx", provider="CPUExecutionProvider"
         )
         pipe.set_progress_bar_config(disable=None)
 
@@ -2322,7 +2322,7 @@ class PipelineTesterMixin(unittest.TestCase):
         test_callback_fn.has_been_called = False
 
         pipe = StableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v-1-5", revision="fp16", torch_dtype=torch.float16
+            "runwayml/stable-diffusion-v1-5", revision="fp16", torch_dtype=torch.float16
         )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -2374,7 +2374,7 @@ class PipelineTesterMixin(unittest.TestCase):
         init_image = init_image.resize((768, 512))
 
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v-1-5", revision="fp16", torch_dtype=torch.float16
+            "runwayml/stable-diffusion-v1-5", revision="fp16", torch_dtype=torch.float16
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -2433,7 +2433,7 @@ class PipelineTesterMixin(unittest.TestCase):
         )
 
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v-1-5", revision="fp16", torch_dtype=torch.float16
+            "runwayml/stable-diffusion-v1-5", revision="fp16", torch_dtype=torch.float16
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -2483,7 +2483,7 @@ class PipelineTesterMixin(unittest.TestCase):
         test_callback_fn.has_been_called = False
 
         pipe = OnnxStableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v-1-5", revision="onnx", provider="CPUExecutionProvider"
+            "runwayml/stable-diffusion-v1-5", revision="onnx", provider="CPUExecutionProvider"
         )
         pipe.set_progress_bar_config(disable=None)
 
@@ -2503,7 +2503,7 @@ class PipelineTesterMixin(unittest.TestCase):
         if version.parse(version.parse(accelerate.__version__).base_version) < version.parse("0.14"):
             return
 
-        model_id = "runwayml/stable-diffusion-v-1-5"
+        model_id = "runwayml/stable-diffusion-v1-5"
         _ = StableDiffusionPipeline.from_pretrained(
             model_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, device_map="auto"
         ).to(torch_device)
@@ -2517,7 +2517,7 @@ class PipelineTesterMixin(unittest.TestCase):
         if version.parse(version.parse(accelerate.__version__).base_version) < version.parse("0.14"):
             return
 
-        pipeline_id = "runwayml/stable-diffusion-v-1-5"
+        pipeline_id = "runwayml/stable-diffusion-v1-5"
 
         torch.cuda.empty_cache()
         gc.collect()
