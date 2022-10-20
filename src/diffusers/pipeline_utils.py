@@ -40,6 +40,7 @@ from .utils import (
     ONNX_WEIGHTS_NAME,
     WEIGHTS_NAME,
     BaseOutput,
+    deprecate,
     is_transformers_available,
     logging,
 )
@@ -412,6 +413,25 @@ class DiffusionPipeline(ConfigMixin):
         else:
             diffusers_module = importlib.import_module(cls.__module__.split(".")[0])
             pipeline_class = getattr(diffusers_module, config_dict["_class_name"])
+
+        # To be removed in 1.0.0
+        if pipeline_class.__name__ == "StableDiffusionInpaintPipeline" and version.parse(
+            version.parse(config_dict["_diffusers_version"]).base_version
+        ) <= version.parse("0.5.1"):
+            from diffusers import StableDiffusionInpaintPipeline, StableDiffusionInpaintPipelineLegacy
+
+            pipeline_class = StableDiffusionInpaintPipelineLegacy
+
+            deprecation_message = (
+                "You are using a legacy checkpoint for inpainting with Stable Diffusion, therefore we are loading the"
+                f" {StableDiffusionInpaintPipelineLegacy} class instead of {StableDiffusionInpaintPipeline}. For"
+                " better inpainting results, we strongly suggest using Stable Diffusion's official inpainting"
+                " checkpoint: https://huggingface.co/runwayml/stable-diffusion-inpainting instead or adapting your"
+                f" checkpoint {pretrained_model_name_or_path} to the format of"
+                " https://huggingface.co/runwayml/stable-diffusion-inpainting. Note that we do not actively maintain"
+                " the {StableDiffusionInpaintPipelineLegacy} class and will likely remove it in version 1.0.0."
+            )
+            deprecate("StableDiffusionInpaintPipelineLegacy", "1.0.0", deprecation_message, standard_warn=False)
 
         # some modules can be passed directly to the init
         # in this case they are already instantiated in `kwargs`

@@ -293,12 +293,15 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         init_timestep = int(num_inference_steps * strength) + offset
         init_timestep = min(init_timestep, num_inference_steps)
 
-        timesteps = self.scheduler.timesteps[-init_timestep]
-        timesteps = torch.tensor([timesteps] * batch_size * num_images_per_prompt, device=self.device)
+        timesteps = self.scheduler.timesteps.numpy()[-init_timestep]
+        timesteps = np.array([timesteps] * batch_size * num_images_per_prompt)
 
         # add noise to latents using the timesteps
         noise = np.random.randn(*init_latents.shape).astype(np.float32)
-        init_latents = self.scheduler.add_noise(torch.from_numpy(init_latents), torch.from_numpy(noise), timesteps)
+        init_latents = self.scheduler.add_noise(
+            torch.from_numpy(init_latents), torch.from_numpy(noise), torch.from_numpy(timesteps)
+        )
+        init_latents = init_latents.numpy()
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -312,10 +315,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         latents = init_latents
 
         t_start = max(num_inference_steps - init_timestep + offset, 0)
-
-        # Some schedulers like PNDM have timesteps as arrays
-        # It's more optimized to move all timesteps to correct device beforehand
-        timesteps = self.scheduler.timesteps[t_start:].to(self.device)
+        timesteps = self.scheduler.timesteps[t_start:].numpy()
 
         for i, t in enumerate(self.progress_bar(timesteps)):
             # expand the latents if we are doing classifier free guidance

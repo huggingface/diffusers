@@ -9,7 +9,7 @@ from .utils import (
 )
 
 
-__version__ = "0.6.0.dev0"
+__version__ = "0.6.0"
 
 from .configuration_utils import ConfigMixin
 from .onnx_utils import OnnxRuntimeModel
@@ -52,6 +52,7 @@ if is_torch_available() and is_transformers_available():
         LDMTextToImagePipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
+        StableDiffusionInpaintPipelineLegacy,
         StableDiffusionPipeline,
     )
 else:
