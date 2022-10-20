@@ -194,7 +194,7 @@ class MidResTemporalBlock1D(nn.Module):
 
 
 class OutConv1DBlock(nn.Module):
-    def __init__(self, num_groups_out, embed_dim, out_channels, act_fn):
+    def __init__(self, num_groups_out, out_channels, embed_dim, act_fn):
         super().__init__()
         self.final_conv1d_1 = nn.Conv1d(embed_dim, embed_dim, 5, padding=2)
         self.final_conv1d_gn = nn.GroupNorm(num_groups_out, embed_dim)

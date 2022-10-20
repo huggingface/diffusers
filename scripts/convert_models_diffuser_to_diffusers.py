@@ -72,6 +72,6 @@ def value_function():
 
 
 if __name__ == "__main__":
-    # unet(32)
+    unet(32)
     # unet(128)
     value_function()
