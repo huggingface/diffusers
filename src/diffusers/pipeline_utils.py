@@ -26,6 +26,7 @@ import torch
 import diffusers
 import PIL
 from huggingface_hub import snapshot_download
+from packaging import version
 from PIL import Image
 from tqdm.auto import tqdm
 
@@ -39,12 +40,14 @@ from .utils import (
     ONNX_WEIGHTS_NAME,
     WEIGHTS_NAME,
     BaseOutput,
+    deprecate,
     is_transformers_available,
     logging,
 )
 
 
 if is_transformers_available():
+    import transformers
     from transformers import PreTrainedModel
 
 
@@ -413,6 +416,25 @@ class DiffusionPipeline(ConfigMixin):
             diffusers_module = importlib.import_module(cls.__module__.split(".")[0])
             pipeline_class = getattr(diffusers_module, config_dict["_class_name"])
 
+        # To be removed in 1.0.0
+        if pipeline_class.__name__ == "StableDiffusionInpaintPipeline" and version.parse(
+            version.parse(config_dict["_diffusers_version"]).base_version
+        ) <= version.parse("0.5.1"):
+            from diffusers import StableDiffusionInpaintPipeline, StableDiffusionInpaintPipelineLegacy
+
+            pipeline_class = StableDiffusionInpaintPipelineLegacy
+
+            deprecation_message = (
+                "You are using a legacy checkpoint for inpainting with Stable Diffusion, therefore we are loading the"
+                f" {StableDiffusionInpaintPipelineLegacy} class instead of {StableDiffusionInpaintPipeline}. For"
+                " better inpainting results, we strongly suggest using Stable Diffusion's official inpainting"
+                " checkpoint: https://huggingface.co/runwayml/stable-diffusion-inpainting instead or adapting your"
+                f" checkpoint {pretrained_model_name_or_path} to the format of"
+                " https://huggingface.co/runwayml/stable-diffusion-inpainting. Note that we do not actively maintain"
+                " the {StableDiffusionInpaintPipelineLegacy} class and will likely remove it in version 1.0.0."
+            )
+            deprecate("StableDiffusionInpaintPipelineLegacy", "1.0.0", deprecation_message, standard_warn=False)
+
         # some modules can be passed directly to the init
         # in this case they are already instantiated in `kwargs`
         # extract them here
@@ -507,11 +529,14 @@ class DiffusionPipeline(ConfigMixin):
                     loading_kwargs["provider"] = provider
                     loading_kwargs["sess_options"] = sess_options
 
-                if (
-                    issubclass(class_obj, diffusers.ModelMixin)
-                    or is_transformers_available()
+                is_diffusers_model = issubclass(class_obj, diffusers.ModelMixin)
+                is_transformers_model = (
+                    is_transformers_available()
                     and issubclass(class_obj, PreTrainedModel)
-                ):
+                    and version.parse(version.parse(transformers.__version__).base_version) >= version.parse("4.20.0")
+                )
+
+                if is_diffusers_model or is_transformers_model:
                     loading_kwargs["device_map"] = device_map
 
                 # check if the module is in a subdirectory
