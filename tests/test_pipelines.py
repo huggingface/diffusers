@@ -51,11 +51,12 @@ from diffusers import (
     UNet2DConditionModel,
     UNet2DModel,
     VQModel,
+    logging,
 )
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, load_image, slow, torch_device
-from diffusers.utils.testing_utils import get_tests_dir
+from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir
 from packaging import version
 from PIL import Image
 from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
@@ -1472,6 +1473,15 @@ class PipelineTesterMixin(unittest.TestCase):
             # https://huggingface.co/hf-internal-testing/unet-pipeline-dummy/blob/main/big_array.npy
             # is not downloaded, but all the expected ones
             assert not os.path.isfile(os.path.join(snapshot_dir, "big_array.npy"))
+
+    def test_warning_unused_kwargs(self):
+        model_id = "hf-internal-testing/unet-pipeline-dummy"
+        logger = logging.get_logger("diffusers.pipeline_utils")
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with CaptureLogger(logger) as cap_logger:
+                DiffusionPipeline.from_pretrained(model_id, not_used=True, cache_dir=tmpdirname, force_download=True)
+
+        assert cap_logger.out == "Keyword arguments {'not_used': True} not recognized.\n"
 
     @property
     def dummy_safety_checker(self):
