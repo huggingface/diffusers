@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2020 The HuggingFace Inc. team.
+# Copyright 2022 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -106,9 +106,10 @@ def create_dummy_object(name, backend_name):
         return DUMMY_CLASS.format(name, backend_name)
 
 
-def create_dummy_files():
+def create_dummy_files(backend_specific_objects=None):
     """Create the content of the dummy files."""
-    backend_specific_objects = read_init()
+    if backend_specific_objects is None:
+        backend_specific_objects = read_init()
     # For special correspondence backend to module name as used in the function requires_modulename
     dummy_files = {}
 

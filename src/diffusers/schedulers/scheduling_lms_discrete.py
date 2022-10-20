@@ -26,6 +26,7 @@ from .scheduling_utils import SchedulerMixin
 
 
 @dataclass
+# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->LMSDiscrete
 class LMSDiscreteSchedulerOutput(BaseOutput):
     """
     Output class for the scheduler's step function output.
