@@ -21,7 +21,6 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import deprecate
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
@@ -142,7 +141,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         self.plms_timesteps = None
         self.timesteps = None
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None, **kwargs):
+    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -150,17 +149,13 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
-        deprecated_offset = deprecate(
-            "offset", "0.7.0", "Please pass `steps_offset` to `__init__` instead.", take_from=kwargs
-        )
-        offset = deprecated_offset or self.config.steps_offset
 
         self.num_inference_steps = num_inference_steps
         step_ratio = self.config.num_train_timesteps // self.num_inference_steps
         # creates integer timesteps by multiplying by ratio
         # casting to int to avoid issues when num_inference_step is power of 3
         self._timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()
-        self._timesteps += offset
+        self._timesteps += self.config.steps_offset
 
         if self.config.skip_prk_steps:
             # for some models like stable diffusion the prk steps can/should be skipped to
