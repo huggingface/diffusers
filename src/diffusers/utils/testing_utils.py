@@ -1,9 +1,11 @@
 import inspect
+import logging
 import os
 import random
 import re
 import unittest
 from distutils.util import strtobool
+from io import StringIO
 from pathlib import Path
 from typing import Union
 
@@ -284,3 +286,42 @@ def pytest_terminal_summary_main(tr, id):
     tr._tw = orig_writer
     tr.reportchars = orig_reportchars
     config.option.tbstyle = orig_tbstyle
+
+
+class CaptureLogger:
+    """
+    Args:
+    Context manager to capture `logging` streams
+        logger: 'logging` logger object
+    Returns:
+        The captured output is available via `self.out`
+    Example:
+    ```python
+    >>> from diffusers import logging
+    >>> from diffusers.testing_utils import CaptureLogger
+
+    >>> msg = "Testing 1, 2, 3"
+    >>> logging.set_verbosity_info()
+    >>> logger = logging.get_logger("diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.py")
+    >>> with CaptureLogger(logger) as cl:
+    ...     logger.info(msg)
+    >>> assert cl.out, msg + "\n"
+    ```
+    """
+
+    def __init__(self, logger):
+        self.logger = logger
+        self.io = StringIO()
+        self.sh = logging.StreamHandler(self.io)
+        self.out = ""
+
+    def __enter__(self):
+        self.logger.addHandler(self.sh)
+        return self
+
+    def __exit__(self, *exc):
+        self.logger.removeHandler(self.sh)
+        self.out = self.io.getvalue()
+
+    def __repr__(self):
+        return f"captured: {self.out}\n"

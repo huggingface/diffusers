@@ -350,6 +350,7 @@ class DiffusionPipeline(ConfigMixin):
         """
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         resume_download = kwargs.pop("resume_download", False)
+        force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)
         use_auth_token = kwargs.pop("use_auth_token", None)
@@ -367,6 +368,7 @@ class DiffusionPipeline(ConfigMixin):
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
                 resume_download=resume_download,
+                force_download=force_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
                 use_auth_token=use_auth_token,
@@ -439,7 +441,10 @@ class DiffusionPipeline(ConfigMixin):
         expected_modules = set(inspect.signature(pipeline_class.__init__).parameters.keys()) - set(["self"])
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
 
-        init_dict, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
+        init_dict, unused_kwargs = pipeline_class.extract_init_dict(config_dict, **kwargs)
+
+        if len(unused_kwargs) > 0:
+            logger.warning(f"Keyword arguments {unused_kwargs} not recognized.")
 
         init_kwargs = {}
 
