@@ -304,10 +304,13 @@ def main(args):
     diffusers_output = diffusers_model(noise, step_list[step_index : step_index + 1])
     diff_sum = diffusers_output.sample.abs().sum() - output.abs().sum()
     diff_max = (diffusers_output.sample.abs() - output.abs()).max()
+
     assert diff_sum < 4e-2, f"Diff sum: {diff_sum} is too much :-/"
     assert diff_max < 4e-5, f"Diff max: {diff_max} is too much :-/"
 
     print(f"Converion for {model_name} succesful!")
+
+    diffusers_model.save_pretrained(args.checkpoint_path)
 
 
 if __name__ == "__main__":
