@@ -202,7 +202,22 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
-        step_index = (self.timesteps == timestep).nonzero().item()
+        if (
+            isinstance(timestep, int)
+            or isinstance(timestep, torch.IntTensor)
+            or isinstance(timestep, torch.LongTensor)
+        ):
+            deprecate(
+                "timestep as an index",
+                "0.8.0",
+                "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
+                " `LMSDiscreteScheduler.step()` will not be supported in future versions. Make sure to pass"
+                " one of the `scheduler.timesteps` as a timestep.",
+                standard_warn=False,
+            )
+            step_index = timestep
+        else:
+            step_index = (self.timesteps == timestep).nonzero().item()
         sigma = self.sigmas[step_index]
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
@@ -244,7 +259,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if isinstance(timesteps, torch.IntTensor) or isinstance(timesteps, torch.LongTensor):
             deprecate(
                 "timesteps as indices",
-                "0.7.0",
+                "0.8.0",
                 "Passing integer indices  (e.g. from `enumerate(timesteps)`) as timesteps to"
                 " `LMSDiscreteScheduler.add_noise()` will not be supported in future versions. Make sure to"
                 " pass values from `scheduler.timesteps` as timesteps.",
