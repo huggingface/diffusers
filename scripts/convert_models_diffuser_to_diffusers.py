@@ -3,7 +3,7 @@ import os
 
 import torch
 
-from diffusers import UNet1DModel, ValueFunction
+from diffusers import UNet1DModel
 
 
 os.makedirs("hub/hopper-medium-v2/unet/hor32", exist_ok=True)
@@ -47,13 +47,16 @@ def value_function():
     config = dict(
         in_channels=14,
         down_block_types=("DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"),
+        up_block_types=(),
+        out_block_type="ValueFunction",
         block_out_channels=(32, 64, 128, 256),
         layers_per_block=1,
+        always_downsample=True
     )
 
     model = torch.load("/Users/bglickenhaus/Documents/diffuser/value_function-hopper-mediumv2-hor32.torch")
     state_dict = model
-    hf_value_function = ValueFunction(**config)
+    hf_value_function = UNet1DModel(**config)
     print(f"length of state dict: {len(state_dict.keys())}")
     print(f"length of value function dict: {len(hf_value_function.state_dict().keys())}")
 
@@ -69,6 +72,6 @@ def value_function():
 
 
 if __name__ == "__main__":
-    unet(32)
+    # unet(32)
     # unet(128)
     value_function()
