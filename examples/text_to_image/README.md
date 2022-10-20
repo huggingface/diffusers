@@ -25,7 +25,7 @@ accelerate config
 
 ### Pokemon example
 
-You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-4`, so you'll need to visit [its card](https://huggingface.co/CompVis/stable-diffusion-v1-4), read the license and tick the checkbox if you agree. 
+You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-4`, so you'll need to visit [its card](https://huggingface.co/runwayml/stable-diffusion-v-1-5), read the license and tick the checkbox if you agree. 
 
 You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section of the documentation](https://huggingface.co/docs/hub/security-tokens).
 
@@ -43,7 +43,7 @@ If you have already cloned the repo, then you won't need to go through these ste
 With `gradient_checkpointing` and `mixed_precision` it should be possible to fine tune the model on a single 24GB GPU. For higher `batch_size` and faster training it's better to use GPUs with >30GB memory.
 
 ```bash
-export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export MODEL_NAME="runwayml/stable-diffusion-v-1-5"
 export dataset_name="lambdalabs/pokemon-blip-captions"
 
 accelerate launch train_text_to_image.py \
@@ -67,7 +67,7 @@ To run on your own training files prepare the dataset according to the format re
 If you wish to use custom loading logic, you should modify the script, we have left pointers for that in the training script.
 
 ```bash
-export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export MODEL_NAME="runwayml/stable-diffusion-v-1-5"
 export TRAIN_DIR="path_to_your_dataset"
 
 accelerate launch train_text_to_image.py \
