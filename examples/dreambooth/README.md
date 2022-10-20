@@ -10,7 +10,6 @@ The `train_dreambooth.py` script shows how to implement the training procedure a
 Before running the scripts, make sure to install the library's training dependencies:
 
 ```bash
-pip install git+https://github.com/huggingface/diffusers.git
 pip install -U -r requirements.txt
 ```
 
