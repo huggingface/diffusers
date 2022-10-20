@@ -1,0 +1,34 @@
+#
+# Copyright (c) 2021 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+version: 1.0
+
+model:
+  name: diffuse
+  framework: pytorch_fx                                 # Mandatory: possible values are pytorch and pytorch_fx.
+
+device: cpu
+
+quantization:
+  approach: post_training_static_quant              # Mandatory: Quantization approach, default to dynamic quantization.
+
+tuning:
+  accuracy_criterion:
+    absolute: 20000.0                                    # Optional. default value is relative, can also be set to absolute. this example allows relative accuracy loss: 5%.
+    higher_is_better: False
+  exit_policy:
+    timeout: 18000                                       # Optional: tuning timeout (seconds). default value is 0 which means early stop. combine with max_trials field to decide when to exit.
+    max_trials: 3
+  random_seed: 9527                                  # Optional: random seed for deterministic tuning.
