@@ -13,7 +13,7 @@
     - local: using-diffusers/configuration
       title: "Configuring Pipelines, Models, and Schedulers"
     - local: using-diffusers/custom_pipeline_overview
-      title: "Loading and Creating Custom Pipelines"
+      title: "Loading and Adding Custom Pipelines"
     title: "Loading & Hub"
   - sections:
     - local: using-diffusers/unconditional_image_generation
