@@ -1,14 +1,19 @@
-from numpy import AxisError
 import torch
 from diffusers import DiffusionPipeline
 import tqdm
-
+from numpy import AxisError
 from diffusers.models.unet_1d import UNet1DModel
 from diffusers.utils.dummy_pt_objects import DDPMScheduler
 
 
 class ValueGuidedDiffuserPipeline(DiffusionPipeline):
-    def __init__(self, value_function: UNet1DModel, unet: UNet1DModel, scheduler: DDPMScheduler, env):
+    def __init__(
+        self,
+        value_function: UNet1DModel,
+        unet: UNet1DModel,
+        scheduler: DDPMScheduler,
+        env,
+    ):
         super().__init__()
         self.value_function = value_function
         self.unet = unet
@@ -16,16 +21,16 @@ class ValueGuidedDiffuserPipeline(DiffusionPipeline):
         self.env = env
         self.data = env.get_dataset()
         self.means = dict()
-        for key, val in self.data.items():
+        for key in self.data.keys():
             try:
-                self.means[key] = val.mean(axis=0)
-            except AxisError:  # Not everything in the dataset is an array
+                self.means[key] = self.data[key].mean()
+            except:
                 pass
         self.stds = dict()
-        for key, val in self.data.items():
+        for key in self.data.keys():
             try:
-                self.stds[key] = val.std(axis=0)
-            except AxisError:
+                self.stds[key] = self.data[key].std()
+            except:
                 pass
         self.state_dim = env.observation_space.shape[0]
         self.action_dim = env.action_space.shape[0]

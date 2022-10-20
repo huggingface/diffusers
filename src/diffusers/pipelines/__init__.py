@@ -8,7 +8,6 @@ if is_torch_available():
     from .pndm import PNDMPipeline
     from .score_sde_ve import ScoreSdeVePipeline
     from .stochastic_karras_ve import KarrasVePipeline
-    from .diffuser import ValueGuidedDiffuserPipeline
 else:
     from ..utils.dummy_pt_objects import *  # noqa F403
 

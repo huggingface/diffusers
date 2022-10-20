@@ -1,22 +1,37 @@
 import torch
 from diffusers import DiffusionPipeline
 import tqdm
-
+from numpy import AxisError
 from diffusers.models.unet_1d import UNet1DModel
 from diffusers.utils.dummy_pt_objects import DDPMScheduler
 
 
 class ValueGuidedDiffuserPipeline(DiffusionPipeline):
-    def __init__(self, value_function: UNet1DModel, unet: UNet1DModel, scheduler: DDPMScheduler, env, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        value_function: UNet1DModel,
+        unet: UNet1DModel,
+        scheduler: DDPMScheduler,
+        env,
+    ):
+        super().__init__()
         self.value_function = value_function
         self.unet = unet
         self.scheduler = scheduler
         self.env = env
         self.data = env.get_dataset()
-        self.means = dict((key, val.mean(axis=0)) for key, val in self.data.items())
-        self.stds = dict((key, val.std(axis=0)) for key, val in self.data.items())
-        self.device = self.unet.device
+        self.means = dict()
+        for key in self.data.keys():
+            try:
+                self.means[key] = self.data[key].mean()
+            except:
+                pass
+        self.stds = dict()
+        for key in self.data.keys():
+            try:
+                self.stds[key] = self.data[key].std()
+            except:
+                pass
         self.state_dim = env.observation_space.shape[0]
         self.action_dim = env.action_space.shape[0]
 
@@ -31,8 +46,8 @@ class ValueGuidedDiffuserPipeline(DiffusionPipeline):
         if type(x_in) is dict:
             return {k: self.to_torch(v) for k, v in x_in.items()}
         elif torch.is_tensor(x_in):
-            return x_in.to(self.device)
-        return torch.tensor(x_in, device=self.device)
+            return x_in.to(self.unet.device)
+        return torch.tensor(x_in, device=self.unet.device)
 
     def reset_x0(self, x_in, cond, act_dim):
         for key, val in cond.items():
@@ -44,7 +59,7 @@ class ValueGuidedDiffuserPipeline(DiffusionPipeline):
         y = None
         for i in tqdm.tqdm(self.scheduler.timesteps):
             # create batch of timesteps to pass into model
-            timesteps = torch.full((batch_size,), i, device=self.device, dtype=torch.long)
+            timesteps = torch.full((batch_size,), i, device=self.unet.device, dtype=torch.long)
             # 3. call the sample function
             for _ in range(n_guide_steps):
                 with torch.enable_grad():
@@ -65,7 +80,7 @@ class ValueGuidedDiffuserPipeline(DiffusionPipeline):
 
             # 4. apply conditions to the trajectory
             x = self.reset_x0(x, conditions, self.action_dim)
-            x = self.to_torch(x, device=self.device)
+            x = self.to_torch(x, device=self.unet.device)
         # y = network(x, timesteps).sample
         return x, y
 
@@ -74,7 +89,7 @@ class ValueGuidedDiffuserPipeline(DiffusionPipeline):
         obs = obs[None].repeat(batch_size, axis=0)
         conditions = {0: self.to_torch(obs)}
         shape = (batch_size, planning_horizon, self.state_dim + self.action_dim)
-        x1 = torch.randn(shape, device=self.device)
+        x1 = torch.randn(shape, device=self.unet.device)
         x = self.reset_x0(x1, conditions, self.action_dim)
         x = self.to_torch(x)
         x, y = self.run_diffusion(x, conditions, n_guide_steps, scale)

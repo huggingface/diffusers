@@ -25,7 +25,7 @@ config = dict(
 def _run():
     env_name = "hopper-medium-v2"
     env = gym.make(env_name)
-    data = env.get_dataset()  # dataset is only used for normalization in this colab
+    # data = env.get_dataset()  # dataset is only used for normalization in this colab
     # render = train_diffuser.MuJoCoRenderer(env)
 
     # Cuda settings for colab
@@ -56,6 +56,7 @@ def _run():
         unet=unet,
         scheduler=scheduler,
         env=env,
+        custom_pipeline="/Users/bglickenhaus/Documents/diffusers/examples/community",
     )
     # unet = UNet1DModel.from_pretrained("fusing/ddpm-unet-rl-hopper-hor128").to(device=DEVICE)
     # network = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor512").to(device=DEVICE)
