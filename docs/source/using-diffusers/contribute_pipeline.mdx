@@ -26,11 +26,10 @@ Also, as stated above, you'd like to be able to load weights and the scheduler c
 from diffusers import DiffusionPipeline
 import torch
 
+
 class UnetSchedulerOneForwardPipeline(DiffusionPipeline):
-
     def __init__(self, unet, scheduler):
-       super().__init__()
-
+        super().__init__()
 ```
 
 Now, we must save the `unet` and `scheduler` in a config file so that you can save your pipeline with `save_pretrained`.
@@ -40,13 +39,12 @@ Therefore, make sure you add every component that is save-able to the `register_
 from diffusers import DiffusionPipeline
 import torch
 
+
 class UnetSchedulerOneForwardPipeline(DiffusionPipeline):
-
     def __init__(self, unet, scheduler):
-       super().__init__()
+        super().__init__()
 
-       self.register_modules(unet=unet, scheduler=scheduler)
-
+        self.register_modules(unet=unet, scheduler=scheduler)
 ```
 
 Cool, the init is done! 🔥 Now, let's go into the forward pass, which we recommend defining as `__call__` . Here you're given all the creative freedom there is. For our amazing "one-step" pipeline, we simply create a random image and call the unet once and the scheduler once:
@@ -55,24 +53,23 @@ Cool, the init is done! 🔥 Now, let's go into the forward pass, which we recom
 from diffusers import DiffusionPipeline
 import torch
 
-class UnetSchedulerOneForwardPipeline(DiffusionPipeline):
 
+class UnetSchedulerOneForwardPipeline(DiffusionPipeline):
     def __init__(self, unet, scheduler):
         super().__init__()
 
         self.register_modules(unet=unet, scheduler=scheduler)
 
     def __call__(self):
-          image = torch.randn(
-              (1, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
-          )
-          timestep = 1
+        image = torch.randn(
+            (1, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
+        )
+        timestep = 1
 
-          model_output = self.unet(image, timestep).sample
-          scheduler_output = self.scheduler.step(model_output, timestep, image).prev_sample
+        model_output = self.unet(image, timestep).sample
+        scheduler_output = self.scheduler.step(model_output, timestep, image).prev_sample
 
-          return scheduler_output
-
+        return scheduler_output
 ```
 
 Cool, that's it! 🚀 You can now run this pipeline by passing a `unet` and a `scheduler` to the init:
@@ -86,7 +83,6 @@ unet = UNet2DModel()
 pipeline = UnetSchedulerOneForwardPipeline(unet=unet, scheduler=scheduler)
 
 output = pipeline()
-
 ```
 
 But what's even better is that you can load pre-existing weights into the pipeline if they match exactly your pipeline structure. This is e.g. the case for [https://huggingface.co/google/ddpm-cifar10-32](https://huggingface.co/google/ddpm-cifar10-32) so that we can do the following:
@@ -95,7 +91,6 @@ But what's even better is that you can load pre-existing weights into the pipeli
 pipeline = UnetSchedulerOneForwardPipeline.from_pretrained("google/ddpm-cifar10-32")
 
 output = pipeline()
-
 ```
 
 We want to share this amazing pipeline with the community, so we would open a PR request to add the following code under `one_step_unet.py` to [https://github.com/huggingface/diffusers/tree/main/examples/community](https://github.com/huggingface/diffusers/tree/main/examples/community) .
@@ -104,23 +99,23 @@ We want to share this amazing pipeline with the community, so we would open a PR
 from diffusers import DiffusionPipeline
 import torch
 
-class UnetSchedulerOneForwardPipeline(DiffusionPipeline):
 
+class UnetSchedulerOneForwardPipeline(DiffusionPipeline):
     def __init__(self, unet, scheduler):
         super().__init__()
 
         self.register_modules(unet=unet, scheduler=scheduler)
 
     def __call__(self):
-          image = torch.randn(
-              (1, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
-          )
-          timestep = 1
+        image = torch.randn(
+            (1, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
+        )
+        timestep = 1
 
-          model_output = self.unet(image, timestep).sample
-          scheduler_output = self.scheduler.step(model_output, timestep, image).prev_sample
+        model_output = self.unet(image, timestep).sample
+        scheduler_output = self.scheduler.step(model_output, timestep, image).prev_sample
 
-          return scheduler_output
+        return scheduler_output
 ```
 
 Our amazing pipeline got merged here: [#840](https://github.com/huggingface/diffusers/pull/840).
