@@ -59,12 +59,12 @@ def main(args):
             "UpBlock2D",
         ),
     )
+    noise_scheduler = DDPMScheduler(num_train_timesteps=1000)
 
     if args.ort:
         from torch_ort import ORTModule
         model = ORTModule(model)
 
-    noise_scheduler = DDPMScheduler(num_train_timesteps=1000)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
