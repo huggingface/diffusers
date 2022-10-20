@@ -13,6 +13,7 @@
 # limitations under the License.
 import torch
 import torch.nn.functional as F
+import math
 from torch import nn
 
 
@@ -71,41 +72,93 @@ class Upsample1d(nn.Module):
 class SelfAttention1d(nn.Module):
     def __init__(self, c_in, n_head=1, dropout_rate=0.0):
         super().__init__()
-        assert c_in % n_head == 0
-        self.norm = nn.GroupNorm(1, c_in)
-        self.n_head = n_head
-        self.qkv_proj = nn.Conv1d(c_in, c_in * 3, 1)
-        self.out_proj = nn.Conv1d(c_in, c_in, 1)
+        self.channels = c_in
+        self.group_norm = nn.GroupNorm(1, num_channels=c_in)
+        self.num_heads = n_head
+
+        self.query = nn.Linear(self.channels, self.channels)
+        self.key = nn.Linear(self.channels, self.channels)
+        self.value = nn.Linear(self.channels, self.channels)
+
+        self.proj_attn = nn.Linear(self.channels, self.channels, 1)
+
         self.dropout = nn.Dropout(dropout_rate, inplace=True)
 
-    def forward(self, input):
-        n, c, s = input.shape
-        qkv = self.qkv_proj(self.norm(input))
-        qkv = qkv.view([n, self.n_head * 3, c // self.n_head, s]).transpose(2, 3)
-        q, k, v = qkv.chunk(3, dim=1)
-        scale = k.shape[3] ** -0.25
-        att = ((q * scale) @ (k.transpose(2, 3) * scale)).softmax(3)
-        y = (att @ v).transpose(2, 3).contiguous().view([n, c, s])
-        return input + self.dropout(self.out_proj(y))
+    def transpose_for_scores(self, projection: torch.Tensor) -> torch.Tensor:
+        new_projection_shape = projection.size()[:-1] + (self.num_heads, -1)
+        # move heads to 2nd position (B, T, H * D) -> (B, T, H, D) -> (B, H, T, D)
+        new_projection = projection.view(new_projection_shape).permute(0, 2, 1, 3)
+        return new_projection
+
+    def forward(self, hidden_states):
+        residual = hidden_states
+        batch, channel_dim, seq = hidden_states.shape
+
+        hidden_states = self.group_norm(hidden_states)
+        hidden_states = hidden_states.transpose(1, 2)
+
+        query_proj = self.query(hidden_states)
+        key_proj = self.key(hidden_states)
+        value_proj = self.value(hidden_states)
+
+        query_states = self.transpose_for_scores(query_proj)
+        key_states = self.transpose_for_scores(key_proj)
+        value_states = self.transpose_for_scores(value_proj)
+
+        scale = 1 / math.sqrt(math.sqrt(key_states.shape[-1]))
+
+        attention_scores = torch.matmul(query_states * scale, key_states.transpose(-1, -2) * scale)
+        attention_probs = torch.softmax(attention_scores, dim=-1)
+
+        # compute attention output
+        hidden_states = torch.matmul(attention_probs, value_states)
+
+        hidden_states = hidden_states.permute(0, 2, 1, 3).contiguous()
+        new_hidden_states_shape = hidden_states.size()[:-2] + (self.channels,)
+        hidden_states = hidden_states.view(new_hidden_states_shape)
+
+        # compute next hidden_states
+        hidden_states = self.proj_attn(hidden_states)
+        hidden_states = hidden_states.transpose(1, 2)
+        hidden_states = self.dropout(hidden_states)
+
+        output = hidden_states + residual
+
+        return output
 
 
-# Noise level (and other) conditioning
 class ResConvBlock(nn.Module):
     def __init__(self, c_in, c_mid, c_out, is_last=False):
         super().__init__()
-        self.skip = nn.Identity() if c_in == c_out else nn.Conv1d(c_in, c_out, 1, bias=False)
-        layers = [
-            nn.Conv1d(c_in, c_mid, 5, padding=2),
-            nn.GroupNorm(1, c_mid),
-            nn.GELU(),
-            nn.Conv1d(c_mid, c_out, 5, padding=2),
-            nn.GroupNorm(1, c_out) if not is_last else nn.Identity(),
-            nn.GELU() if not is_last else nn.Identity(),
-        ]
-        self.main = nn.Sequential(*layers)
+        self.is_last = is_last
+        self.has_conv_skip = c_in != c_out
 
-    def forward(self, input):
-        return self.main(input) + self.skip(input)
+        if self.has_conv_skip:
+            self.conv_skip = nn.Conv1d(c_in, c_out, 1, bias=False)
+
+        self.conv_1 = nn.Conv1d(c_in, c_mid, 5, padding=2)
+        self.group_norm_1 = nn.GroupNorm(1, c_mid)
+        self.gelu_1 = nn.GELU()
+        self.conv_2 = nn.Conv1d(c_mid, c_out, 5, padding=2)
+
+        if not self.is_last:
+            self.group_norm_2 = nn.GroupNorm(1, c_out)
+            self.gelu_2 = nn.GELU()
+
+    def forward(self, hidden_states):
+        residual = self.conv_skip(hidden_states) if self.has_conv_skip else hidden_states
+
+        hidden_states = self.conv_1(hidden_states)
+        hidden_states = self.group_norm_1(hidden_states)
+        hidden_states = self.gelu_1(hidden_states)
+        hidden_states = self.conv_2(hidden_states)
+
+        if not self.is_last:
+            hidden_states = self.group_norm_2(hidden_states)
+            hidden_states = self.gelu_2(hidden_states)
+
+        output = hidden_states + residual
+        return output
 
 
 def get_down_block(down_block_type, c, c_prev):

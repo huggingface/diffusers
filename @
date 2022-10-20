@@ -118,37 +118,24 @@ DEPTH_0_TO_LAYER = {
 
 RES_CONV_MAP = {
     "skip": "conv_skip",
-    "main.0": "conv_1",
+    "main.0": "conv1",
     "main.1": "group_norm_1",
-    "main.3": "conv_2",
-    "main.4": "group_norm_2",
-}
-
-ATTN_MAP = {
-    "norm": "group_norm",
-    "qkv_proj": ["query", "key", "value"],
-    "out_proj": ["proj_attn"],
+    "main.4": "conv2",
+    "main.5": "group_norm_2",
 }
 
 
 def convert_resconv_naming(name):
-    if name.startswith("skip"):
+    if name.startswith("skip")
         return name.replace("skip", RES_CONV_MAP["skip"])
 
     # name has to be of format main.{digit}
     if not name.startswith("main."):
         raise ValueError(f"ResConvBlock error with {name}")
 
-    return name.replace(name[:6], RES_CONV_MAP[name[:6]])
+    return name.replace(name[:6], RES_CONV_MAP["skip"])
 
 
-def convert_attn_naming(name):
-    for key, value in ATTN_MAP.items():
-        if name.startswith(key) and not isinstance(value, list):
-            return name.replace(key, value)
-        elif name.startswith(key):
-            return [name.replace(key, v) for v in value]
-    raise ValueError(f"Attn error with {name}")
 
 
 def rename(input_string, max_depth=13):
@@ -192,21 +179,7 @@ def rename(input_string, max_depth=13):
         new_layer = DEPTH_0_TO_LAYER[layer_num]
         prefix = f"up_blocks.{max_depth - 1}" if int(layer_num) > 3 else "down_blocks.0"
 
-    if not string_left.startswith("."):
-        raise ValueError(f"Naming error with {input_string} and string_left: {string_left}.")
-
-    string_left = string_left[1:]
-
-    if "resnets" in new_layer:
-        string_left = convert_resconv_naming(string_left)
-    elif "attentions" in new_layer:
-        new_string_left = convert_attn_naming(string_left)
-        string_left = new_string_left
-
-    if not isinstance(string_left, list):
-        new_string = prefix + "." + new_layer + "." + string_left
-    else:
-        new_string = [prefix + "." + new_layer + "." + s for s in string_left]
+    new_string = prefix + "." + new_layer + string_left
     return new_string
 
 
@@ -218,33 +191,8 @@ def rename_orig_weights(state_dict):
             continue
 
         new_k = rename(k)
+        new_state_dict[new_k] = v
 
-        # check if we need to transform from Conv => Linear for attention
-        if isinstance(new_k, list):
-            new_state_dict = transform_conv_attns(new_state_dict, new_k, v)
-        else:
-            new_state_dict[new_k] = v
-
-    return new_state_dict
-
-
-def transform_conv_attns(new_state_dict, new_k, v):
-    if len(new_k) == 1:
-        if len(v.shape) == 3:
-            # weight
-            new_state_dict[new_k[0]] = v[:, :, 0]
-        else:
-            # bias
-            new_state_dict[new_k[0]] = v
-    else:
-        # qkv matrices
-        trippled_shape = v.shape[0]
-        single_shape = trippled_shape // 3
-        for i in range(3):
-            if len(v.shape) == 3:
-                new_state_dict[new_k[i]] = v[i * single_shape: (i + 1) * single_shape, :, 0]
-            else:
-                new_state_dict[new_k[i]] = v[i * single_shape: (i + 1) * single_shape]
     return new_state_dict
 
 
