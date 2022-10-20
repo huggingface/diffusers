@@ -24,82 +24,82 @@ jobs:
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
 
     steps:
-      - name: Checkout diffusers
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 2
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install torch --extra-index-url https://download.pytorch.org/whl/cpu
-          python -m pip install -e .[quality,test]
-          python -m pip install git+https://github.com/huggingface/accelerate
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install torch --extra-index-url https://download.pytorch.org/whl/cpu
+        python -m pip install -e .[quality,test]
+        python -m pip install git+https://github.com/huggingface/accelerate
 
-      - name: Environment
-        run: |
-          python utils/print_env.py
+    - name: Environment
+      run: |
+        python utils/print_env.py
 
-      - name: Run all fast tests on CPU
-        run: |
-          python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_cpu tests/
+    - name: Run all fast tests on CPU
+      run: |
+        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_cpu tests/
 
-      - name: Failure short reports
-        if: ${{ failure() }}
-        run: cat reports/tests_torch_cpu_failures_short.txt
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: cat reports/tests_torch_cpu_failures_short.txt
 
-      - name: Test suite reports artifacts
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v2
-        with:
-          name: pr_torch_cpu_test_reports
-          path: reports
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: pr_torch_cpu_test_reports
+        path: reports
 
   run_tests_apple_m1:
     name: MPS tests on Apple M1
-    runs-on: [self-hosted, apple-m1]
+    runs-on: [ self-hosted, apple-m1 ]
 
     steps:
-      - name: Checkout diffusers
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 2
+    - name: Checkout diffusers
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 2
 
-      - name: Clean checkout
-        shell: arch -arch arm64 bash {0}
-        run: |
-          git clean -fxd
+    - name: Clean checkout
+      shell: arch -arch arm64 bash {0}
+      run: |
+        git clean -fxd
 
-      - name: Setup miniconda
-        uses: ./.github/actions/setup-miniconda
-        with:
-          python-version: 3.9
+    - name: Setup miniconda
+      uses: ./.github/actions/setup-miniconda
+      with:
+        python-version: 3.9
 
-      - name: Install dependencies
-        shell: arch -arch arm64 bash {0}
-        run: |
-          ${CONDA_RUN} python -m pip install --upgrade pip
-          ${CONDA_RUN} python -m pip install -e .[quality,test]
-          ${CONDA_RUN} python -m pip install --pre torch==${MPS_TORCH_VERSION} --extra-index-url https://download.pytorch.org/whl/test/cpu
-          ${CONDA_RUN} python -m pip install git+https://github.com/huggingface/accelerate
+    - name: Install dependencies
+      shell: arch -arch arm64 bash {0}
+      run: |
+        ${CONDA_RUN} python -m pip install --upgrade pip
+        ${CONDA_RUN} python -m pip install -e .[quality,test]
+        ${CONDA_RUN} python -m pip install --pre torch==${MPS_TORCH_VERSION} --extra-index-url https://download.pytorch.org/whl/test/cpu
+        ${CONDA_RUN} python -m pip install git+https://github.com/huggingface/accelerate
 
-      - name: Environment
-        shell: arch -arch arm64 bash {0}
-        run: |
-          ${CONDA_RUN} python utils/print_env.py
+    - name: Environment
+      shell: arch -arch arm64 bash {0}
+      run: |
+        ${CONDA_RUN} python utils/print_env.py
 
-      - name: Run all fast tests on MPS
-        shell: arch -arch arm64 bash {0}
-        run: |
-          ${CONDA_RUN} python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_mps tests/
+    - name: Run all fast tests on MPS
+      shell: arch -arch arm64 bash {0}
+      run: |
+        ${CONDA_RUN} python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_mps tests/
 
-      - name: Failure short reports
-        if: ${{ failure() }}
-        run: cat reports/tests_torch_mps_failures_short.txt
+    - name: Failure short reports
+      if: ${{ failure() }}
+      run: cat reports/tests_torch_mps_failures_short.txt
 
-      - name: Test suite reports artifacts
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v2
-        with:
-          name: pr_torch_mps_test_reports
-          path: reports
+    - name: Test suite reports artifacts
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v2
+      with:
+        name: pr_torch_mps_test_reports
+        path: reports
