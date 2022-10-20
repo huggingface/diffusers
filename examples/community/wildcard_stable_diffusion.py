@@ -222,6 +222,12 @@ class WildcardStableDiffusionPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+            wildcard_option_dict (Dict[str, List[str]]):
+                dict with key as `wildcard` and values as a list of possible replacements. For example if a prompt, "A __animal__ sitting on a chair". A wildcard_option_dict can provide possible values for "animal" like this: {"animal":["dog", "cat", "fox"]}
+            wildcard_files: (List[str])
+               List of filenames of txt files for wildcard replacements. For example if a prompt, "A __animal__ sitting on a chair". A file can be provided ["animal.txt"]
+            num_prompt_samples: int
+                Number of times to sample wildcards for each prompt provided
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
@@ -410,21 +416,3 @@ class WildcardStableDiffusionPipeline(DiffusionPipeline):
             return (image, has_nsfw_concept)
 
         return WildcardStableDiffusionOutput(images=image, nsfw_content_detected=has_nsfw_concept, prompts=prompt)
-
-
-# if __name__ == "__main__":
-#     pipe = WildcardStableDiffusionPipeline.from_pretrained(
-#         "CompVis/stable-diffusion-v1-4",
-#         revision="fp16",
-#         torch_dtype=torch.float16,
-#     )
-#     pipe = pipe.to("cuda")
-#     prompt = "__animal__ sitting on a __object__ wearing a __clothing__"
-#     out = pipe(
-#         prompt,
-#         wildcard_option_dict={"clothing":["hat", "shirt", "scarf", "beret"]},
-#         wildcard_files=["object.txt", "animal.txt"],
-#         num_prompt_samples=3
-#     )
-#     print(out.prompts)
-#     out.images[0].save("test.png")
