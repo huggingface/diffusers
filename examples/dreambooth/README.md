@@ -10,7 +10,6 @@ The `train_dreambooth.py` script shows how to implement the training procedure a
 Before running the scripts, make sure to install the library's training dependencies:
 
 ```bash
-pip install git+https://github.com/huggingface/diffusers.git
 pip install -U -r requirements.txt
 ```
 
@@ -151,6 +150,7 @@ accelerate launch train_dreambooth.py \
   --class_prompt="a photo of dog" \
   --resolution=512 \
   --train_batch_size=1 \
+  --sample_batch_size=1 \
   --gradient_accumulation_steps=1 --gradient_checkpointing \
   --learning_rate=5e-6 \
   --lr_scheduler="constant" \
