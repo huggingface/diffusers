@@ -101,8 +101,8 @@ class UNet1DModel(ModelMixin, ConfigMixin):
 
             down_block = get_down_block(
                 down_block_type,
-                c_prev=input_channel,
-                c=output_channel,
+                in_channels=input_channel,
+                out_channels=output_channel,
             )
             self.down_blocks.append(down_block)
 
@@ -121,8 +121,8 @@ class UNet1DModel(ModelMixin, ConfigMixin):
 
             up_block = get_up_block(
                 up_block_type,
-                c=prev_output_channel,
-                c_prev=output_channel,
+                in_channels=prev_output_channel,
+                out_channels=output_channel,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
