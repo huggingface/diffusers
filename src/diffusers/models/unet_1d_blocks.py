@@ -89,15 +89,6 @@ class SelfAttention1d(nn.Module):
         return input + self.dropout(self.out_proj(y))
 
 
-class SkipBlock(nn.Module):
-    def __init__(self, *main):
-        super().__init__()
-        self.main = nn.Sequential(*main)
-
-    def forward(self, input):
-        return torch.cat([self.main(input), input], dim=1)
-
-
 # Noise level (and other) conditioning
 class ResConvBlock(nn.Module):
     def __init__(self, c_in, c_mid, c_out, is_last=False):

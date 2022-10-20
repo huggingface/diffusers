@@ -71,7 +71,10 @@ class DiffusionUncond(nn.Module):
 
 
 def download(model_name):
-    pass
+    url = MODELS_MAP[model_name]["url"]
+    os.system(f"wget {url} ./")
+
+    return f"./{model_name}.ckpt"
 
 
 DOWN_NUM_TO_LAYER = {
@@ -225,11 +228,13 @@ def main(args):
     step_list = get_crash_schedule(t)
 
     output = orig_model(noise, step_list[step_index : step_index + 1])
-    assert output.abs().sum() - 4550.5430 < 1e-3
-
     diffusers_output = diffusers_model(noise, step_list[step_index : step_index + 1])
-    diff = diffusers_output.sample.abs().sum() - 4550.5430
-    assert diff < 1e-2, f"{diff} is too much :-/"
+    diff_sum = diffusers_output.sample.abs().sum() - output.abs().sum()
+    diff_max = (diffusers_output.sample.abs() - output.abs()).max()
+    assert diff_sum < 4e-2, f"Diff sum: {diff_sum} is too much :-/"
+    assert diff_max < 4e-5, f"Diff max: {diff_max} is too much :-/"
+
+    print(f"Converion for {model_name} succesful!")
 
 
 if __name__ == "__main__":
