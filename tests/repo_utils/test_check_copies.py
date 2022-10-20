@@ -13,106 +13,107 @@
 # limitations under the License.
 
 import os
+import re
+import shutil
 import sys
+import tempfile
 import unittest
+
+import black
 
 
 git_repo_path = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 sys.path.append(os.path.join(git_repo_path, "utils"))
 
-import check_dummies
-from check_dummies import create_dummy_files, create_dummy_object, find_backend, read_init  # noqa: E402
+import check_copies  # noqa: E402
 
 
-# Align TRANSFORMERS_PATH in check_dummies with the current path
-check_dummies.PATH_TO_DIFFUSERS = os.path.join(git_repo_path, "src", "diffusers")
-
-DUMMY_CONSTANT = """
-{0} = None
-"""
-
-DUMMY_CLASS = """
-class {0}(metaclass=DummyObject):
-    _backends = {1}
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, {1})
-"""
-
-
-DUMMY_FUNCTION = """
-def {0}(*args, **kwargs):
-    requires_backends({0}, {1})
+# This is the reference code that will be used in the tests.
+# If BertLMPredictionHead is changed in modeling_bert.py, this code needs to be manually updated.
+REFERENCE_CODE = """    def __init__(self, config):
+        super().__init__()
+        self.transform = BertPredictionHeadTransform(config)
+        # The output weights are the same as the input embeddings, but there is
+        # an output-only bias for each token.
+        self.decoder = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        self.bias = nn.Parameter(torch.zeros(config.vocab_size))
+        # Need a link between the two variables so that the bias is correctly resized with `resize_token_embeddings`
+        self.decoder.bias = self.bias
+    def forward(self, hidden_states):
+        hidden_states = self.transform(hidden_states)
+        hidden_states = self.decoder(hidden_states)
+        return hidden_states
 """
 
 
-class CheckDummiesTester(unittest.TestCase):
-    def test_find_backend(self):
-        no_backend = find_backend('    _import_structure["models.albert"].append("AlbertTokenizerFast")')
-        self.assertIsNone(no_backend)
-
-        simple_backend = find_backend("    if not is_tokenizers_available():")
-        self.assertEqual(simple_backend, "tokenizers")
-
-        backend_with_underscore = find_backend("    if not is_tensorflow_text_available():")
-        self.assertEqual(backend_with_underscore, "tensorflow_text")
-
-        double_backend = find_backend("    if not (is_sentencepiece_available() and is_tokenizers_available()):")
-        self.assertEqual(double_backend, "sentencepiece_and_tokenizers")
-
-        double_backend_with_underscore = find_backend(
-            "    if not (is_sentencepiece_available() and is_tensorflow_text_available()):"
-        )
-        self.assertEqual(double_backend_with_underscore, "sentencepiece_and_tensorflow_text")
-
-        triple_backend = find_backend(
-            "    if not (is_sentencepiece_available() and is_tokenizers_available() and is_vision_available()):"
-        )
-        self.assertEqual(triple_backend, "sentencepiece_and_tokenizers_and_vision")
-
-    def test_read_init(self):
-        objects = read_init()
-        # We don't assert on the exact list of keys to allow for smooth grow of backend-specific objects
-        self.assertIn("torch", objects)
-        self.assertIn("tensorflow_text", objects)
-        self.assertIn("sentencepiece_and_tokenizers", objects)
-
-        # Likewise, we can't assert on the exact content of a key
-        self.assertIn("BertModel", objects["torch"])
-        self.assertIn("TFBertModel", objects["tf"])
-        self.assertIn("FlaxBertModel", objects["flax"])
-        self.assertIn("BertModel", objects["torch"])
-        self.assertIn("TFBertTokenizer", objects["tensorflow_text"])
-        self.assertIn("convert_slow_tokenizer", objects["sentencepiece_and_tokenizers"])
-
-    def test_create_dummy_object(self):
-        dummy_constant = create_dummy_object("CONSTANT", "'torch'")
-        self.assertEqual(dummy_constant, "\nCONSTANT = None\n")
-
-        dummy_function = create_dummy_object("function", "'torch'")
-        self.assertEqual(
-            dummy_function, "\ndef function(*args, **kwargs):\n    requires_backends(function, 'torch')\n"
+class CopyCheckTester(unittest.TestCase):
+    def setUp(self):
+        self.diffusers_dir = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.diffusers_dir, "models/bert/"))
+        check_copies.DIFFUSERS_PATH = self.diffusers_dir
+        shutil.copy(
+            os.path.join(git_repo_path, "src/transformers/models/bert/modeling_bert.py"),
+            os.path.join(self.diffusers_dir, "models/bert/modeling_bert.py"),
         )
 
-        expected_dummy_class = """
-class FakeClass(metaclass=DummyObject):
-    _backends = 'torch'
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, 'torch')
-"""
-        dummy_class = create_dummy_object("FakeClass", "'torch'")
-        self.assertEqual(dummy_class, expected_dummy_class)
+    def tearDown(self):
+        check_copies.DIFFUSERS_PATH = "src/transformers"
+        shutil.rmtree(self.diffusers_dir)
 
-    def test_create_dummy_files(self):
-        expected_dummy_pytorch_file = """# This file is autogenerated by the command `make fix-copies`, do not edit.
-# flake8: noqa
-from ..utils import DummyObject, requires_backends
-CONSTANT = None
-def function(*args, **kwargs):
-    requires_backends(function, ["torch"])
-class FakeClass(metaclass=DummyObject):
-    _backends = ["torch"]
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["torch"])
-"""
-        dummy_files = create_dummy_files({"torch": ["CONSTANT", "function", "FakeClass"]})
-        self.assertEqual(dummy_files["torch"], expected_dummy_pytorch_file)
+    def check_copy_consistency(self, comment, class_name, class_code, overwrite_result=None):
+        code = comment + f"\nclass {class_name}(nn.Module):\n" + class_code
+        if overwrite_result is not None:
+            expected = comment + f"\nclass {class_name}(nn.Module):\n" + overwrite_result
+        mode = black.Mode(target_versions={black.TargetVersion.PY35}, line_length=119)
+        code = black.format_str(code, mode=mode)
+        fname = os.path.join(self.diffusers_dir, "new_code.py")
+        with open(fname, "w", newline="\n") as f:
+            f.write(code)
+        if overwrite_result is None:
+            self.assertTrue(len(check_copies.is_copy_consistent(fname)) == 0)
+        else:
+            check_copies.is_copy_consistent(f.name, overwrite=True)
+            with open(fname, "r") as f:
+                self.assertTrue(f.read(), expected)
+
+    def test_find_code_in_diffusers(self):
+        code = check_copies.find_code_in_transformers("models.bert.modeling_bert.BertLMPredictionHead")
+        self.assertEqual(code, REFERENCE_CODE)
+
+    def test_is_copy_consistent(self):
+        # Base copy consistency
+        self.check_copy_consistency(
+            "# Copied from transformers.models.bert.modeling_bert.BertLMPredictionHead",
+            "BertLMPredictionHead",
+            REFERENCE_CODE + "\n",
+        )
+
+        # With no empty line at the end
+        self.check_copy_consistency(
+            "# Copied from transformers.models.bert.modeling_bert.BertLMPredictionHead",
+            "BertLMPredictionHead",
+            REFERENCE_CODE,
+        )
+
+        # Copy consistency with rename
+        self.check_copy_consistency(
+            "# Copied from transformers.models.bert.modeling_bert.BertLMPredictionHead with Bert->TestModel",
+            "TestModelLMPredictionHead",
+            re.sub("Bert", "TestModel", REFERENCE_CODE),
+        )
+
+        # Copy consistency with a really long name
+        long_class_name = "TestModelWithAReallyLongNameBecauseSomePeopleLikeThatForSomeReason"
+        self.check_copy_consistency(
+            f"# Copied from transformers.models.bert.modeling_bert.BertLMPredictionHead with Bert->{long_class_name}",
+            f"{long_class_name}LMPredictionHead",
+            re.sub("Bert", long_class_name, REFERENCE_CODE),
+        )
+
+        # Copy consistency with overwrite
+        self.check_copy_consistency(
+            "# Copied from transformers.models.bert.modeling_bert.BertLMPredictionHead with Bert->TestModel",
+            "TestModelLMPredictionHead",
+            REFERENCE_CODE,
+            overwrite_result=re.sub("Bert", "TestModel", REFERENCE_CODE),
+        )
