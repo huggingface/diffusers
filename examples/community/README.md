@@ -14,6 +14,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | Stable Diffusion Mega                  | **One** Stable Diffusion Pipeline with all functionalities of [Text2Image](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion.py), [Image2Image](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_img2img.py) and [Inpainting](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_inpaint.py) | [Stable Diffusion Mega](#stable-diffusion-mega)                   | -                                                                                                                                                                                                                  | [Patrick von Platen](https://github.com/patrickvonplaten/) |
 | Long Prompt Weighting Stable Diffusion | **One** Stable Diffusion Pipeline without tokens length limit, and support parsing weighting in prompt.                                                                                                                                                                                                                                                                                                                                                                                                  | [Long Prompt Weighting Stable Diffusion](#long-prompt-weighting-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [SkyTNT](https://github.com/SkyTNT) |
 | Speech to Image                        | Using automatic-speech-recognition to transcribe text and Stable Diffusion to generate images                                                                                                                                                                                                                                                                                                                                                                                                            | [Speech to Image](#speech-to-image)                               | -                                                                                                                                                                                                                  | [Mikail Duzenli](https://github.com/MikailINTech)
+| Wild Card Stable Diffusion | Stable Diffusion Pipeline that supports prompts that contain wildcard terms (indicated by surrounding double underscores), with values instantiated randomly from a corresponding txt file or a dictionary of possible values                                                                                                                                                                                                                                                                                                     | [Wildcard Stable Diffusion](#wildcard-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Shyam Sudhakaran](https://github.com/shyamsn97) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -264,3 +265,60 @@ plt.imshow(output.images[0])
 This example produces the following image:
 
 ![image](https://user-images.githubusercontent.com/45072645/196901736-77d9c6fc-63ee-4072-90b0-dc8b903d63e3.png)
+
+### Wildcard Stable Diffusion
+Following the great examples from https://github.com/jtkelm2/stable-diffusion-webui-1/blob/master/scripts/wildcards.py and https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/Custom-Scripts#wildcards, here's a minimal implementation that allows for users to add "wildcards", denoted by `__wildcard__` to prompts that are used as placeholders for randomly sampled values given by either a dictionary or a `.txt` file. For example:
+
+Say we have a prompt:
+
+```
+prompt = "__animal__ sitting on a __object__ wearing a __clothing__"
+```
+
+We can then define possible values to be sampled for `animal`, `object`, and `clothing`. These can either be from a `.txt` with the same name as the category.
+
+The possible values can also be defined / combined by using a dictionary like: `{"animal":["dog", "cat", mouse"]}`.
+
+The actual pipeline works just like `StableDiffusionPipeline`, except the `__call__` method takes in:
+
+`wildcard_files`: list of file paths for wild card replacement
+`wildcard_option_dict`: dict with key as `wildcard` and values as a list of possible replacements
+`num_prompt_samples`: number of prompts to sample, uniformly sampling wildcards
+
+A full example:
+
+create `animal.txt`, with contents like:
+
+```
+dog
+cat
+mouse
+```
+
+create `object.txt`, with contents like:
+
+```
+chair
+sofa
+bench
+```
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+
+pipe = DiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+    custom_pipeline="wildcard_stable_diffusion",
+    revision="fp16",
+    torch_dtype=torch.float16,
+)
+prompt = "__animal__ sitting on a __object__ wearing a __clothing__"
+out = pipe(
+    prompt,
+    wildcard_option_dict={
+        "clothing":["hat", "shirt", "scarf", "beret"]
+    },
+    wildcard_files=["object.txt", "animal.txt"],
+    num_prompt_samples=1
+)
