@@ -1,5 +1,5 @@
 import torch
-
+import numpy as np
 import tqdm
 from diffusers import DiffusionPipeline
 from diffusers.models.unet_1d import UNet1DModel
@@ -104,5 +104,10 @@ class ValueGuidedDiffuserPipeline(DiffusionPipeline):
         denorm_actions = self.de_normalize(actions, key="actions")
 
         # select the action with the highest value
-        denorm_actions = denorm_actions[0, 0]
+        if y is not None:
+            selected_index = 0
+        else:
+            # if we didn't run value guiding, select a random action
+            selected_index = np.random.randint(0, batch_size)
+        denorm_actions = denorm_actions[selected_index, 0]
         return denorm_actions

@@ -2,7 +2,6 @@ import d4rl  # noqa
 import gym
 import tqdm
 
-# import train_diffuser
 from diffusers import DDPMScheduler, DiffusionPipeline, UNet1DModel
 
 
@@ -35,10 +34,6 @@ def _run():
         variance_type="fixed_small_log",
     )
 
-    # 3 different pretrained models are available for this task.
-    # The horizion represents the length of trajectories used in training.
-    # network = ValueFunction(training_horizon=horizon, dim=32, dim_mults=(1, 2, 4, 8), transition_dim=14, cond_dim=11)
-
     network = UNet1DModel.from_pretrained("bglick13/hopper-medium-v2-value-function-hor32").to(device=DEVICE).eval()
     unet = UNet1DModel.from_pretrained("bglick13/hopper-medium-v2-unet-hor32").to(device=DEVICE).eval()
     pipeline = DiffusionPipeline.from_pretrained(
@@ -49,11 +44,7 @@ def _run():
         env=env,
         custom_pipeline="/Users/bglickenhaus/Documents/diffusers/examples/community",
     )
-    # unet = UNet1DModel.from_pretrained("fusing/ddpm-unet-rl-hopper-hor128").to(device=DEVICE)
-    # network = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor512").to(device=DEVICE)
 
-    # add a batch dimension and repeat for multiple samples
-    # [ observation_dim ] --> [ n_samples x observation_dim ]
     env.seed(0)
     obs = env.reset()
     total_reward = 0
@@ -62,8 +53,7 @@ def _run():
     rollout = [obs.copy()]
     try:
         for t in tqdm.tqdm(range(T)):
-            # 1. Call the policy
-            # normalize observations for forward passes
+            # call the policy
             denorm_actions = pipeline(obs, planning_horizon=32)
 
             # execute action in environment
