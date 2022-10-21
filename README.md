@@ -241,7 +241,7 @@ prompt_ids = pipeline.prepare_inputs(prompt)
 
 # shard inputs and rng
 params = replicate(params)
-prng_seed = jax.random.split(prng_seed, 8)
+prng_seed = jax.random.split(prng_seed, jax.device_count())
 prompt_ids = shard(prompt_ids)
 
 images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
