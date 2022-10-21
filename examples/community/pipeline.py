@@ -1,5 +1,6 @@
-import torch
 import numpy as np
+import torch
+
 import tqdm
 from diffusers import DiffusionPipeline
 from diffusers.models.unet_1d import UNet1DModel

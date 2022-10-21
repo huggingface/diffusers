@@ -527,7 +527,7 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
 
 
 class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
-    model_class = ValueFunction
+    model_class = UNet1DModel
 
     @property
     def dummy_input(self):
@@ -567,7 +567,7 @@ class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
         unet, loading_info = UNet1DModel.from_pretrained(
             "bglick13/hopper-medium-v2-unet-hor32", output_loading_info=True
         )
-        value_function, vf_loading_info = ValueFunction.from_pretrained(
+        value_function, vf_loading_info = UNet1DModel.from_pretrained(
             "bglick13/hopper-medium-v2-value-function-hor32", output_loading_info=True
         )
         self.assertIsNotNone(unet)
@@ -582,7 +582,7 @@ class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained(self):
-        value_function, vf_loading_info = ValueFunction.from_pretrained(
+        value_function, vf_loading_info = UNet1DModel.from_pretrained(
             "bglick13/hopper-medium-v2-value-function-hor32", output_loading_info=True
         )
         torch.manual_seed(0)
