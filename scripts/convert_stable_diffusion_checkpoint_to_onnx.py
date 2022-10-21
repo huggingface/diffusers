@@ -180,7 +180,7 @@ def convert_models(model_path: str, output_path: str, opset: int, half: bool = F
         output_names=["out_images", "has_nsfw_concepts"],
         dynamic_axes={
             "clip_input": {0: "batch", 1: "channels", 2: "height", 3: "width"},
-            "images": {0: "batch", 1: "width", 2: "height", 3: "channels"},
+            "images": {0: "batch", 1: "height", 2: "width", 3: "channels"},
         },
         opset=opset,
     )
