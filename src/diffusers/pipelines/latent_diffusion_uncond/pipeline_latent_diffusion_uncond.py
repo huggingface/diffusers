@@ -63,10 +63,10 @@ class LDMPipeline(DiffusionPipeline):
             generator=generator,
         )
         latents = latents.to(self.device)
-        
+
         # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma       
-        
+        latents = latents * self.scheduler.init_noise_sigma
+
         self.scheduler.set_timesteps(num_inference_steps)
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
