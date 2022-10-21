@@ -22,7 +22,7 @@ accelerate config
 
 ### Dog toy example
 
-You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-4`, so you'll need to visit [its card](https://huggingface.co/runwayml/stable-diffusion-v1-5), read the license and tick the checkbox if you agree. 
+You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-4`, so you'll need to visit [its card](https://huggingface.co/CompVis/stable-diffusion-v1-4), read the license and tick the checkbox if you agree. 
 
 You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section of the documentation](https://huggingface.co/docs/hub/security-tokens).
 
@@ -41,7 +41,7 @@ Now let's get our dataset. Download images from [here](https://drive.google.com/
 And launch the training using
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export INSTANCE_DIR="path-to-instance-images"
 export OUTPUT_DIR="path-to-save-model"
 
@@ -65,7 +65,7 @@ Prior-preservation is used to avoid overfitting and language-drift. Refer to the
 According to the paper, it's recommended to generate `num_epochs * num_samples` images for prior-preservation. 200-300 works well for most cases.
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export INSTANCE_DIR="path-to-instance-images"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
@@ -95,7 +95,7 @@ With the help of gradient checkpointing and the 8-bit optimizer from bitsandbyte
 Install `bitsandbytes` with `pip install bitsandbytes`
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export INSTANCE_DIR="path-to-instance-images"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
@@ -136,7 +136,7 @@ it requires CUDA toolchain with the same version as pytorch. 8-bit optimizer
 does not seem to be compatible with DeepSpeed at the moment.
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export INSTANCE_DIR="path-to-instance-images"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
@@ -168,7 +168,7 @@ Pass the `--train_text_encoder` argument to the script to enable training `text_
 ___Note: Training text encoder requires more memory, with this option the training won't fit on 16GB GPU. It needs at least 24GB VRAM.___
 
 ```bash
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export INSTANCE_DIR="path-to-instance-images"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"

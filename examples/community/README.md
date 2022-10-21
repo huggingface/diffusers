@@ -97,7 +97,7 @@ from diffusers import DiffusionPipeline
 import torch
 
 pipe = DiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
+    "CompVis/stable-diffusion-v1-4",
     revision='fp16',
     torch_dtype=torch.float16,
     safety_checker=None,  # Very important for videos...lots of false positives while interpolating
@@ -202,7 +202,7 @@ from diffusers import DiffusionPipeline
 import torch
 
 pipe = DiffusionPipeline.from_pretrained(
-    'runwayml/stable-diffusion-v1-5',
+    'CompVis/stable-diffusion-v1-4',
     custom_pipeline="lpw_stable_diffusion_onnx",
     revision="onnx",
     provider="CUDAExecutionProvider"
