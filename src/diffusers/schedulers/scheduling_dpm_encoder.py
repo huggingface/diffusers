@@ -90,18 +90,26 @@ class DPMEncoderScheduler(DDIMScheduler):
         # - pred_prev_sample -> "x_t-1"
 
         # 1. get previous step value (=t-1)
-        next_timestep = min(self.config.num_train_timesteps - 1,
-                            timestep + self.config.num_train_timesteps // self.num_inference_steps)
+        next_timestep = min(
+            self.config.num_train_timesteps - 1,
+            timestep + self.config.num_train_timesteps // self.num_inference_steps,
+        )
 
         # 2. compute alphas, betas
         alpha_prod_t = self.alphas_cumprod[timestep]
-        alpha_prod_t_next = self.alphas_cumprod[next_timestep] if next_timestep >= 0 else self.final_alpha_cumprod
+        alpha_prod_t_next = (
+            self.alphas_cumprod[next_timestep]
+            if next_timestep >= 0
+            else self.final_alpha_cumprod
+        )
 
         beta_prod_t = 1 - alpha_prod_t
 
         # 3. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+        pred_original_sample = (
+            sample - beta_prod_t ** (0.5) * model_output
+        ) / alpha_prod_t ** (0.5)
 
         # 4. Clip "predicted x_0"
         if self.config.clip_sample:
@@ -114,23 +122,35 @@ class DPMEncoderScheduler(DDIMScheduler):
 
         if use_clipped_model_output:
             # the model_output is always re-derived from the clipped x_0 in Glide
-            model_output = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
+            model_output = (
+                sample - alpha_prod_t ** (0.5) * pred_original_sample
+            ) / beta_prod_t ** (0.5)
 
         # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        pred_sample_direction = (1 - alpha_prod_t_next - std_dev_t**2) ** (0.5) * model_output
+        pred_sample_direction = (1 - alpha_prod_t_next - std_dev_t**2) ** (
+            0.5
+        ) * model_output
 
         # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        next_sample = alpha_prod_t_next ** (0.5) * pred_original_sample + pred_sample_direction
+        next_sample = (
+            alpha_prod_t_next ** (0.5) * pred_original_sample + pred_sample_direction
+        )
 
         if eta > 0:
             # randn_like does not support generator https://github.com/pytorch/pytorch/issues/27072
             device = model_output.device if torch.is_tensor(model_output) else "cpu"
-            noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator).to(device)
-            variance = self._get_variance(next_timestep, timestep) ** (0.5) * eta * noise
+            noise = torch.randn(
+                model_output.shape, dtype=model_output.dtype, generator=generator
+            ).to(device)
+            variance = (
+                self._get_variance(next_timestep, timestep) ** (0.5) * eta * noise
+            )
 
             next_sample = next_sample + variance
 
         if not return_dict:
             return (next_sample,)
 
-        return ReverseDDIMSchedulerOutput(next_sample=next_sample, pred_original_sample=pred_original_sample)
+        return ReverseDDIMSchedulerOutput(
+            next_sample=next_sample, pred_original_sample=pred_original_sample
+        )
