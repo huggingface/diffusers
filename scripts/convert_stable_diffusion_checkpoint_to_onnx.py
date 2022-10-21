@@ -69,8 +69,10 @@ def onnx_export(
 
 
 @torch.no_grad()
-def convert_models(model_path: str, output_path: str, opset: int):
-    pipeline = StableDiffusionPipeline.from_pretrained(model_path)
+def convert_models(model_path: str, output_path: str, opset: int, half: bool = False):
+    dtype = torch.float16 if half else torch.float32
+    device = "cuda" if half else "cpu"
+    pipeline = StableDiffusionPipeline.from_pretrained(model_path, torch_dtype=dtype).to(device)
     output_path = Path(output_path)
 
     # TEXT ENCODER
@@ -84,7 +86,7 @@ def convert_models(model_path: str, output_path: str, opset: int):
     onnx_export(
         pipeline.text_encoder,
         # casting to torch.int32 until the CLIP fix is released: https://github.com/huggingface/transformers/pull/18515/files
-        model_args=(text_input.input_ids.to(torch.int32)),
+        model_args=(text_input.input_ids.to(device=device, dtype=torch.int32)),
         output_path=output_path / "text_encoder" / "model.onnx",
         ordered_input_names=["input_ids"],
         output_names=["last_hidden_state", "pooler_output"],
@@ -100,9 +102,9 @@ def convert_models(model_path: str, output_path: str, opset: int):
     onnx_export(
         pipeline.unet,
         model_args=(
-            torch.randn(2, pipeline.unet.in_channels, 64, 64),
-            torch.LongTensor([0, 1]),
-            torch.randn(2, 77, 768),
+            torch.randn(2, pipeline.unet.in_channels, 64, 64).to(device=device, dtype=dtype),
+            torch.LongTensor([0, 1]).to(device=device),
+            torch.randn(2, 77, 768).to(device=device, dtype=dtype),
             False,
         ),
         output_path=unet_path,
@@ -139,7 +141,7 @@ def convert_models(model_path: str, output_path: str, opset: int):
     vae_encoder.forward = lambda sample, return_dict: vae_encoder.encode(sample, return_dict)[0].sample()
     onnx_export(
         vae_encoder,
-        model_args=(torch.randn(1, 3, 512, 512), False),
+        model_args=(torch.randn(1, 3, 512, 512).to(device=device, dtype=dtype), False),
         output_path=output_path / "vae_encoder" / "model.onnx",
         ordered_input_names=["sample", "return_dict"],
         output_names=["latent_sample"],
@@ -155,7 +157,7 @@ def convert_models(model_path: str, output_path: str, opset: int):
     vae_decoder.forward = vae_encoder.decode
     onnx_export(
         vae_decoder,
-        model_args=(torch.randn(1, 4, 64, 64), False),
+        model_args=(torch.randn(1, 4, 64, 64).to(device=device, dtype=dtype), False),
         output_path=output_path / "vae_decoder" / "model.onnx",
         ordered_input_names=["latent_sample", "return_dict"],
         output_names=["sample"],
@@ -171,13 +173,14 @@ def convert_models(model_path: str, output_path: str, opset: int):
     safety_checker.forward = safety_checker.forward_onnx
     onnx_export(
         pipeline.safety_checker,
-        model_args=(torch.randn(1, 3, 224, 224), torch.randn(1, 512, 512, 3)),
+        model_args=(torch.randn(1, 3, 224, 224).to(device=device, dtype=dtype),
+                    torch.randn(1, 512, 512, 3).to(device=device, dtype=dtype)),
         output_path=output_path / "safety_checker" / "model.onnx",
         ordered_input_names=["clip_input", "images"],
         output_names=["out_images", "has_nsfw_concepts"],
         dynamic_axes={
             "clip_input": {0: "batch", 1: "channels", 2: "height", 3: "width"},
-            "images": {0: "batch", 1: "channels", 2: "height", 3: "width"},
+            "images": {0: "batch", 1: "width", 2: "height", 3: "channels"},
         },
         opset=opset,
     )
@@ -221,7 +224,8 @@ if __name__ == "__main__":
         type=int,
         help="The version of the ONNX operator set to use.",
     )
+    parser.add_argument('--half', action='store_true', default=False, help='half-precision')
 
     args = parser.parse_args()
 
-    convert_models(args.model_path, args.output_path, args.opset)
+    convert_models(args.model_path, args.output_path, args.opset, args.half)
