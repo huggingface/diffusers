@@ -20,7 +20,7 @@ import unittest
 
 import torch
 
-from diffusers import UNet1DModel, UNet2DConditionModel, UNet2DModel, ValueFunction
+from diffusers import UNet1DModel, UNet2DConditionModel, UNet2DModel
 from diffusers.utils import floats_tensor, slow, torch_device
 
 from .test_modeling_common import ModelTesterMixin
@@ -520,89 +520,6 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
         expected_output_slice = torch.tensor([-0.2714, 0.1042, -0.0794, -0.2820, 0.0803, -0.0811, -0.2345, 0.0580, -0.0584])
         # fmt: on
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))
-
-    def test_forward_with_norm_groups(self):
-        # Not implemented yet for this UNet
-        pass
-
-
-class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
-    model_class = ValueFunction
-
-    @property
-    def dummy_input(self):
-        batch_size = 4
-        num_features = 14
-        seq_len = 16
-
-        noise = floats_tensor((batch_size, num_features, seq_len)).to(torch_device)
-        time_step = torch.tensor([10] * batch_size).to(torch_device)
-
-        return {"sample": noise, "timestep": time_step}
-
-    @property
-    def input_shape(self):
-        return (4, 14, 16)
-
-    @property
-    def output_shape(self):
-        return (4, 14, 1)
-
-    def test_ema_training(self):
-        pass
-
-    def test_training(self):
-        pass
-
-    def prepare_init_args_and_inputs_for_common(self):
-        init_dict = {
-            "block_out_channels": (32, 64, 128, 256),
-            "in_channels": 14,
-            "out_channels": 14,
-        }
-        inputs_dict = self.dummy_input
-        return init_dict, inputs_dict
-
-    def test_from_pretrained_hub(self):
-        unet, loading_info = UNet1DModel.from_pretrained(
-            "bglick13/hopper-medium-v2-unet-hor32", output_loading_info=True
-        )
-        value_function, vf_loading_info = ValueFunction.from_pretrained(
-            "bglick13/hopper-medium-v2-value-function-hor32", output_loading_info=True
-        )
-        self.assertIsNotNone(unet)
-        self.assertEqual(len(loading_info["missing_keys"]), 0)
-        self.assertIsNotNone(value_function)
-        self.assertEqual(len(vf_loading_info["missing_keys"]), 0)
-
-        unet.to(torch_device)
-        value_function.to(torch_device)
-        image = value_function(**self.dummy_input)
-
-        assert image is not None, "Make sure output is not None"
-
-    def test_output_pretrained(self):
-        value_function, vf_loading_info = ValueFunction.from_pretrained(
-            "bglick13/hopper-medium-v2-value-function-hor32", output_loading_info=True
-        )
-        torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
-
-        num_features = value_function.in_channels
-        seq_len = 14
-        noise = torch.randn((1, seq_len, num_features)).permute(
-            0, 2, 1
-        )  # match original, we can update values and remove
-        time_step = torch.full((num_features,), 0)
-
-        with torch.no_grad():
-            output = value_function(noise, time_step).sample
-
-        # fmt: off
-        expected_output_slice = torch.tensor([207.0272] * seq_len)
-        # fmt: on
-        self.assertTrue(torch.allclose(output, expected_output_slice, rtol=1e-3))
 
     def test_forward_with_norm_groups(self):
         # Not implemented yet for this UNet
