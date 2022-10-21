@@ -17,14 +17,12 @@ from typing import Tuple, Union
 import torch
 import torch.nn as nn
 
-from diffusers.models.resnet import ResidualTemporalBlock1D
-from diffusers.models.unet_1d_blocks import get_down_block, get_up_block
+from diffusers.models.unet_1d_blocks import get_down_block, get_mid_block, get_out_block, get_up_block
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput
 from .embeddings import TimestepEmbedding, Timesteps
-from .resnet import rearrange_dims
 
 
 @dataclass
@@ -62,10 +60,13 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         out_channels: int = 14,
         down_block_types: Tuple[str] = ("DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"),
         up_block_types: Tuple[str] = ("UpResnetBlock1D", "UpResnetBlock1D"),
+        mid_block_types: Tuple[str] = ("MidResTemporalBlock1D", "MidResTemporalBlock1D"),
+        out_block_type: str = "OutConv1DBlock",
         block_out_channels: Tuple[int] = (32, 128, 256),
         act_fn: str = "mish",
         norm_num_groups: int = 8,
         layers_per_block: int = 1,
+        always_downsample: bool = False,
     ):
         super().__init__()
 
@@ -95,14 +96,30 @@ class UNet1DModel(ModelMixin, ConfigMixin):
                 in_channels=input_channel,
                 out_channels=output_channel,
                 temb_channels=block_out_channels[0],
-                add_downsample=not is_final_block,
+                add_downsample=not is_final_block or always_downsample,
             )
             self.down_blocks.append(down_block)
 
         # mid
-        self.mid_block1 = ResidualTemporalBlock1D(mid_dim, mid_dim, embed_dim=block_out_channels[0])
-        self.mid_block2 = ResidualTemporalBlock1D(mid_dim, mid_dim, embed_dim=block_out_channels[0])
-
+        self.mid_blocks = nn.ModuleList([])
+        for i, mid_block_type in enumerate(mid_block_types):
+            if always_downsample:
+                mid_block = get_mid_block(
+                    mid_block_type,
+                    in_channels=mid_dim // (i + 1),
+                    out_channels=mid_dim // ((i + 1) * 2),
+                    embed_dim=block_out_channels[0],
+                    add_downsample=True,
+                )
+            else:
+                mid_block = get_mid_block(
+                    mid_block_type,
+                    in_channels=mid_dim,
+                    out_channels=mid_dim,
+                    embed_dim=block_out_channels[0],
+                    add_downsample=False,
+                )
+            self.mid_blocks.append(mid_block)
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
         for i, up_block_type in enumerate(up_block_types):
@@ -123,13 +140,14 @@ class UNet1DModel(ModelMixin, ConfigMixin):
 
         # out
         num_groups_out = norm_num_groups if norm_num_groups is not None else min(block_out_channels[0] // 4, 32)
-        self.final_conv1d_1 = nn.Conv1d(block_out_channels[0], block_out_channels[0], 5, padding=2)
-        self.final_conv1d_gn = nn.GroupNorm(num_groups_out, block_out_channels[0])
-        if act_fn == "silu":
-            self.final_conv1d_act = nn.SiLU()
-        if act_fn == "mish":
-            self.final_conv1d_act = nn.Mish()
-        self.final_conv1d_2 = nn.Conv1d(block_out_channels[0], out_channels, 1)
+        self.out_block = get_out_block(
+            out_block_type=out_block_type,
+            num_groups_out=num_groups_out,
+            embed_dim=block_out_channels[0],
+            out_channels=out_channels,
+            act_fn=act_fn,
+            fc_dim=mid_dim // 4,
+        )
 
     def forward(
         self,
@@ -166,20 +184,15 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             down_block_res_samples.append(res_samples[0])
 
         # 3. mid
-        sample = self.mid_block1(sample, temb)
-        sample = self.mid_block2(sample, temb)
+        for mid_block in self.mid_blocks:
+            sample = mid_block(sample, temb)
 
         # 4. up
         for up_block in self.up_blocks:
             sample = up_block(hidden_states=sample, res_hidden_states=down_block_res_samples.pop(), temb=temb)
 
         # 5. post-process
-        sample = self.final_conv1d_1(sample)
-        sample = rearrange_dims(sample)
-        sample = self.final_conv1d_gn(sample)
-        sample = rearrange_dims(sample)
-        sample = self.final_conv1d_act(sample)
-        sample = self.final_conv1d_2(sample)
+        sample = self.out_block(sample, temb)
 
         if not return_dict:
             return (sample,)
