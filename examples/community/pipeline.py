@@ -64,7 +64,7 @@ class ValueGuidedDiffuserPipeline(DiffusionPipeline):
             for _ in range(n_guide_steps):
                 with torch.enable_grad():
                     x.requires_grad_()
-                    y = self.value_function(x, timesteps).sample
+                    y = self.value_function(x.permute(0, 2, 1), timesteps).sample
                     grad = torch.autograd.grad([y.sum()], [x])[0]
 
                     posterior_variance = self.scheduler._get_variance(i)
@@ -80,11 +80,11 @@ class ValueGuidedDiffuserPipeline(DiffusionPipeline):
 
             # 4. apply conditions to the trajectory
             x = self.reset_x0(x, conditions, self.action_dim)
-            x = self.to_torch(x, device=self.unet.device)
+            x = self.to_torch(x)
         # y = network(x, timesteps).sample
         return x, y
 
-    def __call__(self, obs, batch_size=64, planning_horizon=20, n_guide_steps=2, scale=0.1):
+    def __call__(self, obs, batch_size=64, planning_horizon=32, n_guide_steps=2, scale=0.1):
         obs = self.normalize(obs, "observations")
         obs = obs[None].repeat(batch_size, axis=0)
         conditions = {0: self.to_torch(obs)}

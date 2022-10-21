@@ -6,7 +6,7 @@ import gym
 import tqdm
 
 # import train_diffuser
-from diffusers import DDPMScheduler, UNet1DModel, DiffusionPipeline
+from diffusers import DDPMScheduler, UNet1DModel, DiffusionPipeline, UNet1DModel
 
 
 config = dict(
@@ -75,43 +75,7 @@ def _run():
         for t in tqdm.tqdm(range(T)):
             # 1. Call the policy
             # normalize observations for forward passes
-            obs = train_diffuser.normalize(obs, data, "observations")
-
-            obs = obs[None].repeat(config["n_samples"], axis=0)
-            conditions = {0: train_diffuser.to_torch(obs, device=DEVICE)}
-
-            # 2. Call the diffusion model
-            # constants for inference
-            batch_size = len(conditions[0])
-            shape = (batch_size, config["horizon"], state_dim + action_dim)
-
-            # sample random initial noise vector
-            x1 = torch.randn(shape, device=DEVICE)
-
-            # this model is conditioned from an initial state, so you will see this function
-            #  multiple times to change the initial state of generated data to the state
-            #  generated via env.reset() above or env.step() below
-            x = train_diffuser.reset_x0(x1, conditions, action_dim)
-
-            # convert a np observation to torch for model forward pass
-            x = train_diffuser.to_torch(x, device=DEVICE)
-            x, y = train_diffuser.run_diffusion(x, scheduler, network, unet, conditions, action_dim, config)
-            if y is not None:
-                sorted_idx = y.argsort(0, descending=True).squeeze()
-                y_maxes.append(y[sorted_idx[0]].detach().cpu().numpy())
-                sorted_values = x[sorted_idx]
-            else:
-                sorted_values = x
-            actions = sorted_values[:, :, :action_dim]
-            if t % 10 == 0:
-                trajectory = sorted_values[:, :, action_dim:][0].unsqueeze(0).detach().cpu().numpy()
-                trajectory = train_diffuser.de_normalize(trajectory, data, "observations")
-                trajectories.append(trajectory)
-
-            actions = actions.detach().cpu().numpy()
-            denorm_actions = train_diffuser.de_normalize(actions, data, key="actions")
-            # denorm_actions = denorm_actions[np.random.randint(config['n_samples']), 0]
-            denorm_actions = denorm_actions[0, 0]
+            denorm_actions = pipeline(obs, planning_horizon=32)
 
             # execute action in environment
             next_observation, reward, terminal, _ = env.step(denorm_actions)
@@ -131,8 +95,6 @@ def _run():
         pass
 
     print(f"Total reward: {total_reward}")
-
-    train_diffuser.show_sample(render, np.expand_dims(np.stack(rollout), axis=0))
 
 
 def run():
