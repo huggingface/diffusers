@@ -135,7 +135,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
 
         assert image is not None, "Make sure output is not None"
 
-    @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
+    @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
     def test_from_pretrained_accelerate(self):
         model, _ = UNet2DModel.from_pretrained(
             "fusing/unet-ldm-dummy-update", output_loading_info=True, device_map="auto"
@@ -145,7 +145,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
 
         assert image is not None, "Make sure output is not None"
 
-    @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
+    @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
     def test_from_pretrained_accelerate_wont_change_results(self):
         model_accelerate, _ = UNet2DModel.from_pretrained(
             "fusing/unet-ldm-dummy-update", output_loading_info=True, device_map="auto"
@@ -177,7 +177,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
 
         assert torch.allclose(arr_accelerate, arr_normal_load, rtol=1e-3)
 
-    @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
+    @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
     def test_memory_footprint_gets_reduced(self):
         torch.cuda.empty_cache()
         gc.collect()
@@ -267,6 +267,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
+    @unittest.skipIf(torch_device == "mps", "Gradient checkpointing skipped on MPS")
     def test_gradient_checkpointing(self):
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
