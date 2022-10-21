@@ -1,44 +1,88 @@
 import inspect
-from typing import Callable, List, Optional, Union
+import os
+import random
+import re
+from dataclasses import dataclass
+from typing import Callable, Dict, List, Optional, Union
 
-import numpy as np
 import torch
 
-import PIL
+from diffusers.configuration_utils import FrozenDict
+from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
+from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from diffusers.utils import deprecate, logging
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
-
-from ...configuration_utils import FrozenDict
-from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from ...utils import deprecate, logging
-from . import StableDiffusionPipelineOutput
-from .safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-
-def prepare_mask_and_masked_image(image, mask):
-    image = np.array(image.convert("RGB"))
-    image = image[None].transpose(0, 3, 1, 2)
-    image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
-
-    mask = np.array(mask.convert("L"))
-    mask = mask.astype(np.float32) / 255.0
-    mask = mask[None, None]
-    mask[mask < 0.5] = 0
-    mask[mask >= 0.5] = 1
-    mask = torch.from_numpy(mask)
-
-    masked_image = image * (mask < 0.5)
-
-    return mask, masked_image
+global_re_wildcard = re.compile(r"__([^_]*)__")
 
 
-class StableDiffusionInpaintPipeline(DiffusionPipeline):
+def get_filename(path: str):
+    # this doesn't work on Windows
+    return os.path.basename(path).split(".txt")[0]
+
+
+def read_wildcard_values(path: str):
+    with open(path, encoding="utf8") as f:
+        return f.read().splitlines()
+
+
+def grab_wildcard_values(wildcard_option_dict: Dict[str, List[str]] = {}, wildcard_files: List[str] = []):
+    for wildcard_file in wildcard_files:
+        filename = get_filename(wildcard_file)
+        read_values = read_wildcard_values(wildcard_file)
+        if filename not in wildcard_option_dict:
+            wildcard_option_dict[filename] = []
+        wildcard_option_dict[filename].extend(read_values)
+    return wildcard_option_dict
+
+
+def replace_prompt_with_wildcards(
+    prompt: str, wildcard_option_dict: Dict[str, List[str]] = {}, wildcard_files: List[str] = []
+):
+    new_prompt = prompt
+
+    # get wildcard options
+    wildcard_option_dict = grab_wildcard_values(wildcard_option_dict, wildcard_files)
+
+    for m in global_re_wildcard.finditer(new_prompt):
+        wildcard_value = m.group()
+        replace_value = random.choice(wildcard_option_dict[wildcard_value.strip("__")])
+        new_prompt = new_prompt.replace(wildcard_value, replace_value, 1)
+
+    return new_prompt
+
+
+@dataclass
+class WildcardStableDiffusionOutput(StableDiffusionPipelineOutput):
+    prompts: List[str]
+
+
+class WildcardStableDiffusionPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-guided image inpainting using Stable Diffusion. *This is an experimental feature*.
+    Example Usage:
+        pipe = WildcardStableDiffusionPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4",
+            revision="fp16",
+            torch_dtype=torch.float16,
+        )
+        prompt = "__animal__ sitting on a __object__ wearing a __clothing__"
+        out = pipe(
+            prompt,
+            wildcard_option_dict={
+                "clothing":["hat", "shirt", "scarf", "beret"]
+            },
+            wildcard_files=["object.txt", "animal.txt"],
+            num_prompt_samples=1
+        )
+
+
+    Pipeline for text-to-image generation with wild cards using Stable Diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -110,39 +154,10 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
 
-    def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
-        r"""
-        Enable sliced attention computation.
-
-        When this option is enabled, the attention module will split the input tensor in slices, to compute attention
-        in several steps. This is useful to save some memory in exchange for a small speed decrease.
-
-        Args:
-            slice_size (`str` or `int`, *optional*, defaults to `"auto"`):
-                When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
-                a number is provided, uses as many slices as `attention_head_dim // slice_size`. In this case,
-                `attention_head_dim` must be a multiple of `slice_size`.
-        """
-        if slice_size == "auto":
-            # half the attention head size is usually a good trade-off between
-            # speed and memory
-            slice_size = self.unet.config.attention_head_dim // 2
-        self.unet.set_attention_slice(slice_size)
-
-    def disable_attention_slicing(self):
-        r"""
-        Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go
-        back to computing attention in one step.
-        """
-        # set slice_size = `None` to disable `attention slicing`
-        self.enable_attention_slicing(None)
-
     @torch.no_grad()
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        image: Union[torch.FloatTensor, PIL.Image.Image],
-        mask_image: Union[torch.FloatTensor, PIL.Image.Image],
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 50,
@@ -156,6 +171,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
+        wildcard_option_dict: Dict[str, List[str]] = {},
+        wildcard_files: List[str] = [],
+        num_prompt_samples: Optional[int] = 1,
         **kwargs,
     ):
         r"""
@@ -164,14 +182,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
-            image (`PIL.Image.Image`):
-                `Image`, or tensor representing an image batch which will be inpainted, *i.e.* parts of the image will
-                be masked out with `mask_image` and repainted according to `prompt`.
-            mask_image (`PIL.Image.Image`):
-                `Image`, or tensor representing an image batch, to mask `image`. White pixels in the mask will be
-                repainted, while black pixels will be preserved. If `mask_image` is a PIL image, it will be converted
-                to a single channel (luminance) before use. If it's a tensor, it should contain one color channel (L)
-                instead of 3, so the expected shape would be `(B, H, W, 1)`.
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 512):
@@ -212,6 +222,12 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+            wildcard_option_dict (Dict[str, List[str]]):
+                dict with key as `wildcard` and values as a list of possible replacements. For example if a prompt, "A __animal__ sitting on a chair". A wildcard_option_dict can provide possible values for "animal" like this: {"animal":["dog", "cat", "fox"]}
+            wildcard_files: (List[str])
+               List of filenames of txt files for wildcard replacements. For example if a prompt, "A __animal__ sitting on a chair". A file can be provided ["animal.txt"]
+            num_prompt_samples: int
+                Number of times to sample wildcards for each prompt provided
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
@@ -222,8 +238,17 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         """
 
         if isinstance(prompt, str):
-            batch_size = 1
+            prompt = [
+                replace_prompt_with_wildcards(prompt, wildcard_option_dict, wildcard_files)
+                for i in range(num_prompt_samples)
+            ]
+            batch_size = len(prompt)
         elif isinstance(prompt, list):
+            prompt_list = []
+            for p in prompt:
+                for i in range(num_prompt_samples):
+                    prompt_list.append(replace_prompt_with_wildcards(p, wildcard_option_dict, wildcard_files))
+            prompt = prompt_list
             batch_size = len(prompt)
         else:
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
@@ -308,11 +333,11 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
 
         # get the initial random noise unless the user supplied it
+
         # Unlike in other pipelines, latents need to be generated in the target device
         # for 1-to-1 results reproducibility with the CompVis implementation.
         # However this currently doesn't work in `mps`.
-        num_channels_latents = self.vae.config.latent_channels
-        latents_shape = (batch_size * num_images_per_prompt, num_channels_latents, height // 8, width // 8)
+        latents_shape = (batch_size * num_images_per_prompt, self.unet.in_channels, height // 8, width // 8)
         latents_dtype = text_embeddings.dtype
         if latents is None:
             if self.device.type == "mps":
@@ -326,39 +351,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
             latents = latents.to(self.device)
-
-        # prepare mask and masked_image
-        mask, masked_image = prepare_mask_and_masked_image(image, mask_image)
-        mask = mask.to(device=self.device, dtype=text_embeddings.dtype)
-        masked_image = masked_image.to(device=self.device, dtype=text_embeddings.dtype)
-
-        # resize the mask to latents shape as we concatenate the mask to the latents
-        mask = torch.nn.functional.interpolate(mask, size=(height // 8, width // 8))
-
-        # encode the mask image into latents space so we can concatenate it to the latents
-        masked_image_latents = self.vae.encode(masked_image).latent_dist.sample(generator=generator)
-        masked_image_latents = 0.18215 * masked_image_latents
-
-        # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
-        mask = mask.repeat(num_images_per_prompt, 1, 1, 1)
-        masked_image_latents = masked_image_latents.repeat(num_images_per_prompt, 1, 1, 1)
-
-        mask = torch.cat([mask] * 2) if do_classifier_free_guidance else mask
-        masked_image_latents = (
-            torch.cat([masked_image_latents] * 2) if do_classifier_free_guidance else masked_image_latents
-        )
-
-        num_channels_mask = mask.shape[1]
-        num_channels_masked_image = masked_image_latents.shape[1]
-
-        if num_channels_latents + num_channels_mask + num_channels_masked_image != self.unet.config.in_channels:
-            raise ValueError(
-                f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
-                f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
-                f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
-                f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
-                " `pipeline.unet` or your `mask_image` or `image` input."
-            )
 
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
@@ -382,10 +374,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         for i, t in enumerate(self.progress_bar(timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-
-            # concat latents, mask, masked_image_latents in the channel dimension
-            latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
-
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
             # predict the noise residual
@@ -427,4 +415,4 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return WildcardStableDiffusionOutput(images=image, nsfw_content_detected=has_nsfw_concept, prompts=prompt)
