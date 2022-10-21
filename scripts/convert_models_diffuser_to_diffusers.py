@@ -51,7 +51,7 @@ def value_function():
         out_block_type="ValueFunction",
         block_out_channels=(32, 64, 128, 256),
         layers_per_block=1,
-        always_downsample=True
+        always_downsample=True,
     )
 
     model = torch.load("/Users/bglickenhaus/Documents/diffuser/value_function-hopper-mediumv2-hor32.torch")

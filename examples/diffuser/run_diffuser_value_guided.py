@@ -1,12 +1,9 @@
-import numpy as np
-import torch
-
 import d4rl  # noqa
 import gym
 import tqdm
 
 # import train_diffuser
-from diffusers import DDPMScheduler, UNet1DModel, DiffusionPipeline, UNet1DModel
+from diffusers import DDPMScheduler, DiffusionPipeline, UNet1DModel
 
 
 config = dict(
@@ -31,10 +28,6 @@ def _run():
     # Cuda settings for colab
     # torch.cuda.get_device_name(0)
     DEVICE = config["device"]
-
-    # diffusion model settings
-    state_dim = env.observation_space.shape[0]
-    action_dim = env.action_space.shape[0]
 
     # Two generators for different parts of the diffusion loop to work in colab
     scheduler = DDPMScheduler(
@@ -69,8 +62,6 @@ def _run():
     total_score = 0
     T = 1000
     rollout = [obs.copy()]
-    trajectories = []
-    y_maxes = [0]
     try:
         for t in tqdm.tqdm(range(T)):
             # 1. Call the policy

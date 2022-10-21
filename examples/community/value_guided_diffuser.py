@@ -1,7 +1,7 @@
 import torch
-from diffusers import DiffusionPipeline
+
 import tqdm
-from numpy import AxisError
+from diffusers import DiffusionPipeline
 from diffusers.models.unet_1d import UNet1DModel
 from diffusers.utils.dummy_pt_objects import DDPMScheduler
 
@@ -42,7 +42,6 @@ class ValueGuidedDiffuserPipeline(DiffusionPipeline):
         return x_in * self.stds[key] + self.means[key]
 
     def to_torch(self, x_in):
-
         if type(x_in) is dict:
             return {k: self.to_torch(v) for k, v in x_in.items()}
         elif torch.is_tensor(x_in):
