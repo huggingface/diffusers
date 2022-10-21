@@ -73,14 +73,12 @@ class ValueGuidedDiffuserPipeline(DiffusionPipeline):
                 x = x.detach()
                 x = x + scale * grad
                 x = self.reset_x0(x, conditions, self.action_dim)
-            # with torch.no_grad():
             prev_x = self.unet(x.permute(0, 2, 1), timesteps).sample.permute(0, 2, 1)
             x = self.scheduler.step(prev_x, i, x, predict_epsilon=False)["prev_sample"]
 
             # 4. apply conditions to the trajectory
             x = self.reset_x0(x, conditions, self.action_dim)
             x = self.to_torch(x)
-        # y = network(x, timesteps).sample
         return x, y
 
     def __call__(self, obs, batch_size=64, planning_horizon=32, n_guide_steps=2, scale=0.1):
@@ -97,6 +95,5 @@ class ValueGuidedDiffuserPipeline(DiffusionPipeline):
         actions = sorted_values[:, :, : self.action_dim]
         actions = actions.detach().cpu().numpy()
         denorm_actions = self.de_normalize(actions, key="actions")
-        # denorm_actions = denorm_actions[np.random.randint(config['n_samples']), 0]
         denorm_actions = denorm_actions[0, 0]
         return denorm_actions

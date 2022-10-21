@@ -22,8 +22,6 @@ config = dict(
 def _run():
     env_name = "hopper-medium-v2"
     env = gym.make(env_name)
-    # data = env.get_dataset()  # dataset is only used for normalization in this colab
-    # render = train_diffuser.MuJoCoRenderer(env)
 
     # Cuda settings for colab
     # torch.cuda.get_device_name(0)

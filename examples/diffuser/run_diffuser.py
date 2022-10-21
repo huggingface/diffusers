@@ -12,8 +12,6 @@ env_name = "hopper-medium-expert-v2"
 env = gym.make(env_name)
 data = env.get_dataset()  # dataset is only used for normalization in this colab
 
-# Cuda settings for colab
-# torch.cuda.get_device_name(0)
 DEVICE = "cpu"
 DTYPE = torch.float
 
@@ -41,7 +39,6 @@ network = UNet1DModel.from_pretrained("fusing/ddpm-unet-rl-hopper-hor128").to(de
 clip_denoised = network.clip_denoised
 predict_epsilon = network.predict_epsilon
 
-# add a batch dimension and repeat for multiple samples
 # [ observation_dim ] --> [ n_samples x observation_dim ]
 obs = env.reset()
 total_reward = 0
