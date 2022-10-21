@@ -106,7 +106,21 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
 
         # Since the VAE Gaussian prior's generator is seeded on the appropriate device,
         # the expected output slices are not the same for CPU and GPU.
-        if torch_device in ("mps", "cpu"):
+        if torch_device == "mps":
+            expected_output_slice = torch.tensor(
+                [
+                    -4.0078e-01,
+                    -3.8323e-04,
+                    -1.2681e-01,
+                    -1.1462e-01,
+                    2.0095e-01,
+                    1.0893e-01,
+                    -8.8247e-02,
+                    -3.0361e-01,
+                    -9.8644e-03,
+                ]
+            )
+        elif torch_device == "cpu":
             expected_output_slice = torch.tensor(
                 [-0.1352, 0.0878, 0.0419, -0.0818, -0.1069, 0.0688, -0.1458, -0.4446, -0.0026]
             )
