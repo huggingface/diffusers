@@ -173,8 +173,10 @@ def convert_models(model_path: str, output_path: str, opset: int, half: bool = F
     safety_checker.forward = safety_checker.forward_onnx
     onnx_export(
         pipeline.safety_checker,
-        model_args=(torch.randn(1, 3, 224, 224).to(device=device, dtype=dtype),
-                    torch.randn(1, 512, 512, 3).to(device=device, dtype=dtype)),
+        model_args=(
+            torch.randn(1, 3, 224, 224).to(device=device, dtype=dtype),
+            torch.randn(1, 512, 512, 3).to(device=device, dtype=dtype),
+        ),
         output_path=output_path / "safety_checker" / "model.onnx",
         ordered_input_names=["clip_input", "images"],
         output_names=["out_images", "has_nsfw_concepts"],
@@ -224,7 +226,7 @@ if __name__ == "__main__":
         type=int,
         help="The version of the ONNX operator set to use.",
     )
-    parser.add_argument('--half', action='store_true', default=False, help='half-precision')
+    parser.add_argument("--half", action="store_true", default=False, help="half-precision")
 
     args = parser.parse_args()
 
