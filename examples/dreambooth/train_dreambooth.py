@@ -36,6 +36,13 @@ def parse_args():
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
+        "--pretrained_model_name_revision",
+        type=str,
+        default=None,
+        required=False,
+        help="Revision of pretrained model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
         "--tokenizer_name",
         type=str,
         default=None,
@@ -344,7 +351,10 @@ def main():
         if cur_class_images < args.num_class_images:
             torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
             pipeline = StableDiffusionPipeline.from_pretrained(
-                args.pretrained_model_name_or_path, torch_dtype=torch_dtype, safety_checker=None
+                args.pretrained_model_name_or_path,
+                torch_dtype=torch_dtype,
+                safety_checker=None,
+                revision=args.pretrained_model_name_revision,
             )
             pipeline.set_progress_bar_config(disable=True)
 
@@ -390,14 +400,33 @@ def main():
 
     # Load the tokenizer
     if args.tokenizer_name:
-        tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_name)
+        tokenizer = CLIPTokenizer.from_pretrained(
+            args.tokenizer_name,
+            revision=args.pretrained_model_name_revision,
+        )
     elif args.pretrained_model_name_or_path:
-        tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer")
+        tokenizer = CLIPTokenizer.from_pretrained(
+            args.pretrained_model_name_or_path,
+            subfolder="tokenizer",
+            revision=args.pretrained_model_name_revision,
+        )
 
     # Load models and create wrapper for stable diffusion
-    text_encoder = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder")
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
-    unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
+    text_encoder = CLIPTextModel.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="text_encoder",
+        revision=args.pretrained_model_name_revision,
+    )
+    vae = AutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="vae",
+        revision=args.pretrained_model_name_revision,
+    )
+    unet = UNet2DConditionModel.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="unet",
+        revision=args.pretrained_model_name_revision,
+    )
 
     vae.requires_grad_(False)
     if not args.train_text_encoder:
@@ -613,6 +642,7 @@ def main():
             args.pretrained_model_name_or_path,
             unet=accelerator.unwrap_model(unet),
             text_encoder=accelerator.unwrap_model(text_encoder),
+            revision=args.pretrained_model_name_revision,
         )
         pipeline.save_pretrained(args.output_dir)
 
