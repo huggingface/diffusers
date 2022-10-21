@@ -397,7 +397,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
                     clip_input=safety_checker_input[i : i + 1], images=image[i : i + 1]
                 )
                 images.append(image_i)
-                has_nsfw_concept.append(has_nsfw_concept_i)
+                has_nsfw_concept.append(has_nsfw_concept_i[0])
             image = np.concatenate(images)
         else:
             has_nsfw_concept = None
