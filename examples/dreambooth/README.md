@@ -190,8 +190,6 @@ accelerate launch train_dreambooth.py \
 The script also allows to fine-tune the `text_encoder` along with the `unet`. It's been observed experimentally that fine-tuning `text_encoder` gives much better results especially on faces. 
 Pass the `--train_text_encoder` argument to the script to enable training `text_encoder`.
 
-___Note: Training text encoder requires 13 GB VRAM.___
-
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export INSTANCE_DIR="path-to-instance-images"
