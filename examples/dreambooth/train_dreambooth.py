@@ -1,11 +1,11 @@
 import argparse
+import hashlib
 import itertools
 import math
 import os
 from pathlib import Path
 from typing import Optional
 from contextlib import nullcontext
-from diffusers.pipelines.stable_diffusion import safety_checker
 
 import torch
 import torch.nn.functional as F
@@ -35,6 +35,13 @@ def parse_args():
         default=None,
         required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--pretrained_vae_name_or_path",
+        type=str,
+        default=None,
+        required=True,
+        help="Path to pretrained vae or vae identifier from huggingface.co/models.",
     )
     parser.add_argument(
         "--tokenizer_name",
@@ -372,8 +379,9 @@ def main():
 
         if cur_class_images < args.num_class_images:
             torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
+            vae = AutoencoderKL.from_pretrained(args.pretrained_vae_name_or_path or args.pretrained_model_name_or_path, use_auth_token=True)
             pipeline = StableDiffusionPipeline.from_pretrained(
-                args.pretrained_model_name_or_path, torch_dtype=torch_dtype, use_auth_token=True
+                args.pretrained_model_name_or_path, vae=vae, torch_dtype=torch_dtype, safety_checker=None, use_auth_token=True
             )
             pipeline.set_progress_bar_config(disable=True)
 
@@ -393,7 +401,9 @@ def main():
                     images = pipeline(example["prompt"]).images
 
                     for i, image in enumerate(images):
-                        image.save(class_images_dir / f"{example['index'][i] + cur_class_images}.jpg")
+                        hash_image = hashlib.sha1(image.tobytes()).hexdigest()
+                        image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
+                        image.save(image_filename)
 
             del pipeline
             if torch.cuda.is_available():
@@ -671,18 +681,17 @@ def main():
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
         if args.train_text_encoder:
-            pipeline = StableDiffusionPipeline.from_pretrained(
-                args.pretrained_model_name_or_path,
-                unet=accelerator.unwrap_model(unet),
-                text_encoder=accelerator.unwrap_model(text_encoder),
-                use_auth_token=True
-            )
+            text_encoder = accelerator.unwrap_model(text_encoder)
         else:
-            pipeline = StableDiffusionPipeline.from_pretrained(
-                args.pretrained_model_name_or_path,
-                unet=accelerator.unwrap_model(unet),
-                use_auth_token=True
-            )
+            text_encoder = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder", use_auth_token=True)
+        pipeline = StableDiffusionPipeline.from_pretrained(
+            args.pretrained_model_name_or_path,
+            unet=accelerator.unwrap_model(unet),
+            text_encoder=text_encoder,
+            vae=AutoencoderKL.from_pretrained(args.pretrained_vae_name_or_path or args.pretrained_model_name_or_path, use_auth_token=True),
+            safety_checker=None,
+            use_auth_token=True
+        )
         pipeline.save_pretrained(args.output_dir)
 
         if args.push_to_hub:

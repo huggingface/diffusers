@@ -1,25 +1,88 @@
 import inspect
-from typing import Callable, List, Optional, Union
+import os
+import random
+import re
+from dataclasses import dataclass
+from typing import Callable, Dict, List, Optional, Union
 
 import torch
 
+from diffusers.configuration_utils import FrozenDict
+from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
+from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from diffusers.utils import deprecate, logging
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
-
-from ...configuration_utils import FrozenDict
-from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from ...utils import deprecate, logging
-from . import StableDiffusionPipelineOutput
-from .safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+global_re_wildcard = re.compile(r"__([^_]*)__")
 
-class StableDiffusionPipeline(DiffusionPipeline):
+
+def get_filename(path: str):
+    # this doesn't work on Windows
+    return os.path.basename(path).split(".txt")[0]
+
+
+def read_wildcard_values(path: str):
+    with open(path, encoding="utf8") as f:
+        return f.read().splitlines()
+
+
+def grab_wildcard_values(wildcard_option_dict: Dict[str, List[str]] = {}, wildcard_files: List[str] = []):
+    for wildcard_file in wildcard_files:
+        filename = get_filename(wildcard_file)
+        read_values = read_wildcard_values(wildcard_file)
+        if filename not in wildcard_option_dict:
+            wildcard_option_dict[filename] = []
+        wildcard_option_dict[filename].extend(read_values)
+    return wildcard_option_dict
+
+
+def replace_prompt_with_wildcards(
+    prompt: str, wildcard_option_dict: Dict[str, List[str]] = {}, wildcard_files: List[str] = []
+):
+    new_prompt = prompt
+
+    # get wildcard options
+    wildcard_option_dict = grab_wildcard_values(wildcard_option_dict, wildcard_files)
+
+    for m in global_re_wildcard.finditer(new_prompt):
+        wildcard_value = m.group()
+        replace_value = random.choice(wildcard_option_dict[wildcard_value.strip("__")])
+        new_prompt = new_prompt.replace(wildcard_value, replace_value, 1)
+
+    return new_prompt
+
+
+@dataclass
+class WildcardStableDiffusionOutput(StableDiffusionPipelineOutput):
+    prompts: List[str]
+
+
+class WildcardStableDiffusionPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation using Stable Diffusion.
+    Example Usage:
+        pipe = WildcardStableDiffusionPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-4",
+            revision="fp16",
+            torch_dtype=torch.float16,
+        )
+        prompt = "__animal__ sitting on a __object__ wearing a __clothing__"
+        out = pipe(
+            prompt,
+            wildcard_option_dict={
+                "clothing":["hat", "shirt", "scarf", "beret"]
+            },
+            wildcard_files=["object.txt", "animal.txt"],
+            num_prompt_samples=1
+        )
+
+
+    Pipeline for text-to-image generation with wild cards using Stable Diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -52,8 +115,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
-        safety_checker: StableDiffusionSafetyChecker = None,
-        feature_extractor: CLIPFeatureExtractor = None,
+        safety_checker: StableDiffusionSafetyChecker,
+        feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
 
@@ -87,46 +150,18 @@ class StableDiffusionPipeline(DiffusionPipeline):
             tokenizer=tokenizer,
             unet=unet,
             scheduler=scheduler,
-            safety_checker=None, #safety_checker,
+            safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
-
-    def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
-        r"""
-        Enable sliced attention computation.
-
-        When this option is enabled, the attention module will split the input tensor in slices, to compute attention
-        in several steps. This is useful to save some memory in exchange for a small speed decrease.
-
-        Args:
-            slice_size (`str` or `int`, *optional*, defaults to `"auto"`):
-                When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
-                a number is provided, uses as many slices as `attention_head_dim // slice_size`. In this case,
-                `attention_head_dim` must be a multiple of `slice_size`.
-        """
-        if slice_size == "auto":
-            # half the attention head size is usually a good trade-off between
-            # speed and memory
-            slice_size = self.unet.config.attention_head_dim // 2
-        self.unet.set_attention_slice(slice_size)
-
-    def disable_attention_slicing(self):
-        r"""
-        Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go
-        back to computing attention in one step.
-        """
-        # set slice_size = `None` to disable `attention slicing`
-        self.enable_attention_slicing(None)
 
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]] = "",
+        prompt: Union[str, List[str]],
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        text_embeddings: Optional[torch.FloatTensor] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
@@ -136,6 +171,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
+        wildcard_option_dict: Dict[str, List[str]] = {},
+        wildcard_files: List[str] = [],
+        num_prompt_samples: Optional[int] = 1,
         **kwargs,
     ):
         r"""
@@ -184,6 +222,12 @@ class StableDiffusionPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+            wildcard_option_dict (Dict[str, List[str]]):
+                dict with key as `wildcard` and values as a list of possible replacements. For example if a prompt, "A __animal__ sitting on a chair". A wildcard_option_dict can provide possible values for "animal" like this: {"animal":["dog", "cat", "fox"]}
+            wildcard_files: (List[str])
+               List of filenames of txt files for wildcard replacements. For example if a prompt, "A __animal__ sitting on a chair". A file can be provided ["animal.txt"]
+            num_prompt_samples: int
+                Number of times to sample wildcards for each prompt provided
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
@@ -194,8 +238,17 @@ class StableDiffusionPipeline(DiffusionPipeline):
         """
 
         if isinstance(prompt, str):
-            batch_size = 1
+            prompt = [
+                replace_prompt_with_wildcards(prompt, wildcard_option_dict, wildcard_files)
+                for i in range(num_prompt_samples)
+            ]
+            batch_size = len(prompt)
         elif isinstance(prompt, list):
+            prompt_list = []
+            for p in prompt:
+                for i in range(num_prompt_samples):
+                    prompt_list.append(replace_prompt_with_wildcards(p, wildcard_option_dict, wildcard_files))
+            prompt = prompt_list
             batch_size = len(prompt)
         else:
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
@@ -211,24 +264,23 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
-        if text_embeddings is None:
-            # get prompt text embeddings
-            text_inputs = self.tokenizer(
-                prompt,
-                padding="max_length",
-                max_length=self.tokenizer.model_max_length,
-                return_tensors="pt",
-            )
-            text_input_ids = text_inputs.input_ids
+        # get prompt text embeddings
+        text_inputs = self.tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=self.tokenizer.model_max_length,
+            return_tensors="pt",
+        )
+        text_input_ids = text_inputs.input_ids
 
-            if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
-                removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length :])
-                logger.warning(
-                    "The following part of your input was truncated because CLIP can only handle sequences up to"
-                    f" {self.tokenizer.model_max_length} tokens: {removed_text}"
-                )
-                text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
-            text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
+        if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
+            removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length :])
+            logger.warning(
+                "The following part of your input was truncated because CLIP can only handle sequences up to"
+                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+            )
+            text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
+        text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = text_embeddings.shape
@@ -260,7 +312,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             else:
                 uncond_tokens = negative_prompt
 
-            max_length = text_embeddings.shape[-2]
+            max_length = text_input_ids.shape[-1]
             uncond_input = self.tokenizer(
                 uncond_tokens,
                 padding="max_length",
@@ -363,4 +415,4 @@ class StableDiffusionPipeline(DiffusionPipeline):
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return WildcardStableDiffusionOutput(images=image, nsfw_content_detected=has_nsfw_concept, prompts=prompt)
