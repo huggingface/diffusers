@@ -322,3 +322,48 @@ out = pipe(
     wildcard_files=["object.txt", "animal.txt"],
     num_prompt_samples=1
 )
+
+
+### Composable Stable diffusion 
+
+import torch as th
+import numpy as np
+import torchvision.utils as tvu
+from diffusers import DiffusionPipeline
+
+has_cuda = th.cuda.is_available()
+device = th.device('cpu' if not has_cuda else 'cuda')
+
+pipe = DiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+    use_auth_token=True,
+    custom_pipeline="composable_stable_diffusion",
+).to(device)
+
+
+def dummy(images, **kwargs):
+    return images, False
+
+pipe.safety_checker = dummy
+
+images = []
+generator = th.Generator("cuda").manual_seed(0)
+
+seed = 0
+prompt = "a forest | a camel"
+weights = " 1 | 1"  # Equal weight to each prompt. Cna be negative
+
+images = []
+for i in range(4):
+    res = pipe(
+        prompt,
+        guidance_scale=7.5,
+        num_inference_steps=50,
+        weights=weights,
+        generator=generator)
+    image = res.images[0]
+    images.append(image)
+
+for i, img in enumerate(images):
+    img.save(f"./composable_diffusion/image_{i}.png")
+```
