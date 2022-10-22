@@ -20,7 +20,7 @@ import numpy as np
 import torch
 
 from diffusers import DDIMScheduler, DDPMScheduler, LMSDiscreteScheduler, PNDMScheduler, ScoreSdeVeScheduler
-
+from diffusers.utils import torch_device
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
@@ -246,6 +246,20 @@ class SchedulerCommonTest(unittest.TestCase):
             sample = self.dummy_sample
             scaled_sample = scheduler.scale_model_input(sample, 0.0)
             self.assertEqual(sample.shape, scaled_sample.shape)
+
+    def test_add_noise_device(self):
+        for scheduler_class in self.scheduler_classes:
+            scheduler_config = self.get_scheduler_config()
+            scheduler = scheduler_class(**scheduler_config)
+
+            sample = self.dummy_sample.to(torch_device)
+            scaled_sample = scheduler.scale_model_input(sample, 0.0)
+            self.assertEqual(sample.shape, scaled_sample.shape)
+
+            noise = torch.randn_like(scaled_sample).to(torch_device)
+            t = torch.tensor([10]).to(torch_device)
+            noised = scheduler.add_noise(scaled_sample, noise, t)
+            self.assertEqual(noised.shape, scaled_sample.shape)
 
 
 class DDPMSchedulerTest(SchedulerCommonTest):
