@@ -58,30 +58,51 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.012,
         beta_schedule: str = "linear",
         trained_betas: Optional[np.ndarray] = None,
-        tensor_format: str = "pt",
     ):
         if trained_betas is not None:
-            self.betas = np.asarray(trained_betas)
-        if beta_schedule == "linear":
-            self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
+            self.betas = torch.from_numpy(trained_betas)
+        elif beta_schedule == "linear":
+            self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = np.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=np.float32) ** 2
+            self.betas = (
+                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
+            )
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
         self.alphas = 1.0 - self.betas
-        self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
+        self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
 
-        self.sigmas = ((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5
+        sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
+        sigmas = np.concatenate([sigmas[::-1], [0.0]]).astype(np.float32)
+        self.sigmas = torch.from_numpy(sigmas)
+
+        self.init_noise_sigma = None
 
         # setable values
         self.num_inference_steps = None
-        self.timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
+        timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
+        self.timesteps = torch.from_numpy(timesteps)
         self.derivatives = []
+        self.is_scale_input_called = False
 
-        self.tensor_format = tensor_format
-        self.set_format(tensor_format=tensor_format)
+    def scale_model_input(
+        self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor], step_index: Union[int, torch.IntTensor]
+    ) -> torch.FloatTensor:
+        """
+        Scales the denoising model input by `(sigma**2 + 1) ** 0.5` to match the K-LMS algorithm.
+
+        Args:
+            sample (`torch.FloatTensor`): input sample
+            timestep (`float` or `torch.FloatTensor`): the current timestep in the diffusion chain
+
+        Returns:
+            `torch.FloatTensor`: scaled input sample
+        """
+        sigma = self.sigmas[step_index]
+        sample = sample / ((sigma**2 + 1) ** 0.5)
+        return sample
 
     def set_timesteps(self, num_inference_steps: int):
         """
@@ -99,16 +120,17 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         frac = np.mod(self.timesteps, 1.0)
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         sigmas = (1 - frac) * sigmas[low_idx] + frac * sigmas[high_idx]
-        self.sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
-
+        sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
+        self.sigmas = torch.from_numpy(sigmas)
+        self.timesteps = torch.from_numpy(self.timesteps)
+        self.init_noise_sigma = self.sigmas[0]
         self.derivatives = []
-
-        self.set_format(tensor_format=self.tensor_format)
 
     def step(
         self,
         model_output: Union[torch.FloatTensor, np.ndarray],
-        timestep: int,
+        timestep: Union[float, torch.FloatTensor],
+        step_index: Union[int, torch.IntTensor],
         sample: Union[torch.FloatTensor, np.ndarray],
         s_churn: float = 0.,
         s_tmin:  float = 0.,
@@ -137,7 +159,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             returning a tuple, the first element is the sample tensor.
 
         """
-        sigma = self.sigmas[timestep]
+        sigma = self.sigmas[step_index]
         gamma = min(s_churn / (len(self.sigmas) - 1), 2 ** 0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.
         eps = torch.randn_like(sample) * s_noise
         sigma_hat = sigma * (gamma + 1)
@@ -150,7 +172,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         derivative = (sample - pred_original_sample) / sigma_hat
         self.derivatives.append(derivative)
 
-        dt = self.sigmas[timestep + 1] - sigma_hat
+        dt = self.sigmas[step_index + 1] - sigma_hat
 
         prev_sample = sample + derivative * dt
 
@@ -165,11 +187,14 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         noise: Union[torch.FloatTensor, np.ndarray],
         timesteps: Union[torch.IntTensor, np.ndarray],
     ) -> Union[torch.FloatTensor, np.ndarray]:
-        if self.tensor_format == "pt":
-            timesteps = timesteps.to(self.sigmas.device)
-        sigmas = self.match_shape(self.sigmas[timesteps], noise)
-        noisy_samples = original_samples + noise * sigmas
+        # Make sure sigmas and timesteps have the same device and dtype as original_samples
+        self.sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
+        self.timesteps = self.timesteps.to(original_samples.device)
+        sigma = self.sigmas[timesteps].flatten()
+        while len(sigma.shape) < len(original_samples.shape):
+            sigma = sigma.unsqueeze(-1)
 
+        noisy_samples = original_samples + noise * sigma
         return noisy_samples
 
     def __len__(self):

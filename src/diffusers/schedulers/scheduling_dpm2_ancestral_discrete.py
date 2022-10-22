@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from typing import Optional, Tuple, Union
+from diffusers.models.unet_2d_condition import UNet2DConditionModel
 
 import numpy as np
 import torch
@@ -58,32 +59,36 @@ class DPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.012,
         beta_schedule: str = "linear",
         trained_betas: Optional[np.ndarray] = None,
-        tensor_format: str = "pt",
     ):
         if trained_betas is not None:
-            self.betas = np.asarray(trained_betas)
-        if beta_schedule == "linear":
-            self.betas = np.linspace(beta_start, beta_end, num_train_timesteps, dtype=np.float32)
+            self.betas = torch.from_numpy(trained_betas)
+        elif beta_schedule == "linear":
+            self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = np.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=np.float32) ** 2
+            self.betas = (
+                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
+            )
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
         self.alphas = 1.0 - self.betas
-        self.alphas_cumprod = np.cumprod(self.alphas, axis=0)
+        self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
 
-        self.sigmas = ((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5
+        sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
+        sigmas = np.concatenate([sigmas[::-1], [0.0]]).astype(np.float32)
+        self.sigmas = torch.from_numpy(sigmas)
+
+        self.init_noise_sigma = None
 
         # setable values
         self.num_inference_steps = None
-        self.timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
+        timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
+        self.timesteps = torch.from_numpy(timesteps)
         self.derivatives = []
+        self.is_scale_input_called = False
 
-        self.tensor_format = tensor_format
-        self.set_format(tensor_format=tensor_format)
-
-    def set_timesteps(self, num_inference_steps: int):
+    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -92,24 +97,46 @@ class DPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
         self.num_inference_steps = num_inference_steps
-        self.timesteps = np.linspace(self.config.num_train_timesteps - 1, 0, num_inference_steps, dtype=float)
+        self.timesteps = np.linspace(self.num_train_timesteps - 1, 0, num_inference_steps, dtype=float)
 
         low_idx = np.floor(self.timesteps).astype(int)
         high_idx = np.ceil(self.timesteps).astype(int)
         frac = np.mod(self.timesteps, 1.0)
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         sigmas = (1 - frac) * sigmas[low_idx] + frac * sigmas[high_idx]
-        self.sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
-
+        sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
+        self.sigmas = torch.from_numpy(sigmas)
+        self.timesteps = torch.from_numpy(self.timesteps)
+        self.init_noise_sigma = self.sigmas[0]
         self.derivatives = []
 
-        self.set_format(tensor_format=self.tensor_format)
+    def scale_model_input(
+        self, sample: torch.FloatTensor, 
+        timestep: Union[float, torch.FloatTensor], step_index: Union[int, torch.IntTensor],
+        **kwargs) -> torch.FloatTensor:
+        """
+        Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
+        current timestep.
+
+        Args:
+            sample (`torch.FloatTensor`): input sample
+            timestep (`int`, optional): current timestep
+
+        Returns:
+            `torch.FloatTensor`: scaled input sample
+        """
+        sigma = self.sigmas[step_index]
+        sample = sample / ((sigma**2 + 1) ** 0.5)
+        return sample
 
     def step(
         self,
         model_output: Union[torch.FloatTensor, np.ndarray],
-        timestep: int,
+        timestep: Union[float, torch.FloatTensor],
+        step_index: Union[int, torch.IntTensor],
         sample: Union[torch.FloatTensor, np.ndarray],
+        # unet: UNet2DConditionModel = None,
+        # encoder_hidden_states: torch.Tensor,
         s_churn: float = 0.,
         s_tmin:  float = 0.,
         s_tmax: float = float('inf'),
@@ -137,19 +164,17 @@ class DPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             returning a tuple, the first element is the sample tensor.
 
         """
-        sigma = self.sigmas[timestep]
-        
+        sigma = self.sigmas[step_index]
+
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         pred_original_sample = sample - sigma * model_output
-        sigma_from = sigma
-        sigma_to = self.sigmas[timestep + 1]
+        sigma_from = self.sigmas[step_index]
+        sigma_to = self.sigmas[step_index + 1]
         sigma_up = (sigma_to ** 2 * (sigma_from ** 2 - sigma_to ** 2) / sigma_from ** 2) ** 0.5
         sigma_down = (sigma_to ** 2 - sigma_up ** 2) ** 0.5
-
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma
         self.derivatives.append(derivative)
-
         # Midpoint method, where the midpoint is chosen according to a rho=3 Karras schedule
         sigma_mid = ((sigma ** (1 / 3) + sigma_down ** (1 / 3)) / 2) ** 3
 
@@ -162,6 +187,41 @@ class DPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sample = sample + torch.randn_like(sample) * sigma_up
 
         prev_sample = sample
+        # if sigma_to == 0:
+        #     # Euler method
+        #     dt = sigma_down - sigma
+        #     sample = sample + derivative * dt
+        # else:
+        #     # DPM-Solver-2
+        #     # Midpoint method, where the midpoint is chosen according to a rho=3 Karras schedule
+        #     #     sigma_mid = sigmas[i].log().lerp(sigma_down.log(), 0.5).exp()
+        #     sigma_mid = sigma.log().lerp(sigma_down.log(), 0.5).exp()
+        #     # sigma_mid = ((sigma ** (1 / 3) + sigma_down ** (1 / 3)) / 2) ** 3
+        #     dt_1 = sigma_mid - sigma
+        #     dt_2 = sigma_down - sigma
+        #     sample_2 = sample + derivative * dt_1
+        #     pred_original_sample_2 = sample_2 - sigma_mid * model_output
+            
+        #     derivative_2 = unet(pred_original_sample_2, sigma_mid, encoder_hidden_states=encoder_hidden_states)
+        #     sample = sample + derivative_2 * dt_2
+        #     sample = sample + torch.randn_like(sample) * sigma_up
+
+        # prev_sample = sample
+
+        # if sigma_down == 0:
+        #     # Euler method
+        #     dt = sigma_down - sigmas[i]
+        #     x = x + d * dt
+        # else:
+        #     # DPM-Solver-2
+        #     sigma_mid = sigmas[i].log().lerp(sigma_down.log(), 0.5).exp()
+        #     dt_1 = sigma_mid - sigmas[i]
+        #     dt_2 = sigma_down - sigmas[i]
+        #     x_2 = x + d * dt_1
+        #     denoised_2 = model(x_2, sigma_mid * s_in, **extra_args)
+        #     d_2 = to_d(x_2, sigma_mid, denoised_2)
+        #     x = x + d_2 * dt_2
+        #     x = x + torch.randn_like(x) * sigma_up
 
         if not return_dict:
             return (prev_sample,)
@@ -174,11 +234,14 @@ class DPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         noise: Union[torch.FloatTensor, np.ndarray],
         timesteps: Union[torch.IntTensor, np.ndarray],
     ) -> Union[torch.FloatTensor, np.ndarray]:
-        if self.tensor_format == "pt":
-            timesteps = timesteps.to(self.sigmas.device)
-        sigmas = self.match_shape(self.sigmas[timesteps], noise)
-        noisy_samples = original_samples + noise * sigmas
+        # Make sure sigmas and timesteps have the same device and dtype as original_samples
+        self.sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
+        self.timesteps = self.timesteps.to(original_samples.device)
+        sigma = self.sigmas[timesteps].flatten()
+        while len(sigma.shape) < len(original_samples.shape):
+            sigma = sigma.unsqueeze(-1)
 
+        noisy_samples = original_samples + noise * sigma
         return noisy_samples
 
     def __len__(self):

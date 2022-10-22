@@ -105,7 +105,10 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.is_scale_input_called = False
 
     def scale_model_input(
-        self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
+        self, 
+        sample: torch.FloatTensor, 
+        timestep: Union[float, torch.FloatTensor], 
+        step_index: Union[int, torch.IntTensor]
     ) -> torch.FloatTensor:
         """
         Scales the denoising model input by `(sigma**2 + 1) ** 0.5` to match the K-LMS algorithm.
@@ -172,6 +175,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self,
         model_output: torch.FloatTensor,
         timestep: Union[float, torch.FloatTensor],
+        step_index: Union[int, torch.IntTensor],
         sample: torch.FloatTensor,
         order: int = 4,
         return_dict: bool = True,

@@ -95,7 +95,9 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps: np.IntTensor = None
         self.schedule: torch.FloatTensor = None  # sigma(t_i)
 
-    def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
+    def scale_model_input(
+        self, sample: torch.FloatTensor, 
+        *args, **kwargs) -> torch.FloatTensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
