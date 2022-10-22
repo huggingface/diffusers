@@ -213,6 +213,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         self,
         model_output: torch.FloatTensor,
         timestep: int,
+        step_index:int,
         sample: torch.FloatTensor,
         predict_epsilon=True,
         generator=None,
