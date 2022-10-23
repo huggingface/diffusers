@@ -311,7 +311,6 @@ class StableDiffusionPipeline(DiffusionPipeline):
         # Unlike in other pipelines, latents need to be generated in the target device
         # for 1-to-1 results reproducibility with the CompVis implementation.
         # However this currently doesn't work in `mps`.
-        init_timestep = num_inference_steps
         offset = self.scheduler.config.get("steps_offset", 0)
         # create starting image/noise
         if noise is None:
@@ -327,45 +326,39 @@ class StableDiffusionPipeline(DiffusionPipeline):
             else:
                 # encode start img with vae
                 # make it torch tensor first
-                latents = self.encode_image(start_img, noise_strength_before_encode=noise_strength_before_encode)
+                if torch.is_tensor(start_img) and start_img.shape[-2] == noise.shape[-2]:
+                    latents = start_img.half()
+                else:
+                    latents = self.encode_image(start_img, noise_strength_before_encode=noise_strength_before_encode)
                 # add noise
                 if noise_strength is not None and noise_strength != 0:
                     # old method to add noise that ignores noise schedule:
                     latents = latents * (1 - noise_strength) + noise * noise_strength
                 elif noise_step is not None and noise_step > 0:
-                    # now we use the scheduler to add noise
                     latents = self.scheduler.add_noise(latents, noise, noise_step)
                 elif img2img_strength is not None and img2img_strength != 0:
                     # with img2img we skip the first (1-strength) * num_inference_steps steps, so we increase the total step count
                     num_inference_steps = int(np.ceil(num_inference_steps / img2img_strength))
                     # set schedule again according to updated steps
                     self.scheduler.set_timesteps(num_inference_steps)
+                    
                     # now we calculate how many skeps are skipped (t_start) and at what point the noise is initialized (init_timestep)
                     init_timestep = int(num_inference_steps * img2img_strength) + offset
                     t_start = num_inference_steps - init_timestep
                     
-                    timesteps = self.scheduler.timesteps[-init_timestep]
+                    timesteps = self.scheduler.timesteps[t_start]
                     timesteps = torch.tensor([timesteps] * batch_size * num_images_per_prompt, device=self.device)
                     # add noise to latents using the timesteps       
-                    #if isinstance(self.scheduler, LMSDiscreteScheduler) and self.use_new_add_noise:
-                    #    # new noise add method needs the enumerate time step
-                    #    start_timestep = torch.tensor([t_start] * batch_size * num_images_per_prompt,  device=self.device,
-                    #                                 dtype=text_embeddings.dtype)
-                    #else:
-                    start_timestep = timesteps
-               
-                    latents = self.scheduler.add_noise(latents, noise, start_timestep)
+                    latents = self.scheduler.add_noise(latents, noise, timesteps)
                     
                     if multiply_latent_by_sigma and isinstance(self.scheduler, LMSDiscreteScheduler):
                         # scale the initial noise by the standard deviation required by the scheduler
                         #latents = latents * self.scheduler.init_noise_sigma
-                        latents = latents * ((self.scheduler.sigmas[t_start]**2 + 1) ** 0.5)  
-                    latents = latents.half()
-        
+                        latents = latents * ((self.scheduler.sigmas[t_start]**2 + 1) ** 0.5)          
 
         # Some schedulers like PNDM have timesteps as arrays
         # It's more optimized to move all timesteps to correct device beforehand
-        timesteps_tensor = self.scheduler.timesteps.to(self.device)
+        timesteps_tensor = self.scheduler.timesteps[t_start:].to(self.device)
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -376,8 +369,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
             
-        
-        for i, t in enumerate(tqdm(timesteps_tensor, disable=not verbose)):
+            
+        for i, t in tqdm(enumerate(timesteps_tensor), disable=not verbose):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
@@ -531,7 +524,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         # move to -1 to 1 for vae
         image = (image - 0.5) * 2
         # encode image
-        latents = self.vae.encode(image.to(torch_device).half())["latent_dist"]
+        latents = self.vae.encode(image.to(torch_device).half()).latent_dist
         # encoded img is DiagonalGaussianDistribution, need to sample from it or we take the mean instead
         #latents = latents.sample()
         latents = latents.mean

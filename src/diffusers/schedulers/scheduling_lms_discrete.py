@@ -114,7 +114,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(timesteps)
         self.derivatives = []
         self.is_scale_input_called = False
-        
+                
         
     def get_current_step(self, timestep: Union[float, torch.FloatTensor]):
         if isinstance(timestep, torch.Tensor):
@@ -159,7 +159,9 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 prod *= (tau - self.sigmas[t - k]) / (self.sigmas[t - current_order] - self.sigmas[t - k])
             return prod
 
-        integrated_coeff = integrate.quad(lms_derivative, self.sigmas[t], self.sigmas[t + 1], epsrel=1e-4)[0]
+        integrated_coeff = integrate.quad(lms_derivative, self.sigmas[t], self.sigmas[t + 1],
+                                          epsrel=1e-4,
+                                         )[0]
 
         return integrated_coeff
 
@@ -266,11 +268,9 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timesteps: torch.FloatTensor,
     ) -> torch.FloatTensor:
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
-        self.sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
-        self.timesteps = self.timesteps.to(original_samples.device)
+        sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
+        schedule_timesteps = self.timesteps.to(original_samples.device)
         timesteps = timesteps.to(original_samples.device)
-
-        schedule_timesteps = self.timesteps
 
         if isinstance(timesteps, torch.IntTensor) or isinstance(timesteps, torch.LongTensor):
             deprecate(
@@ -286,10 +286,11 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
 
         if self.use_new_add_noise:
-            sigma = self.sigmas[step_indices].flatten()
+            sigma = sigmas[step_indices].flatten()
             while len(sigma.shape) < len(original_samples.shape):
                 sigma = sigma.unsqueeze(-1)
-            sigma = sigma.to(original_samples.dtype)
+            #print(sigma.dtype, sigma.device, noise.dtype, noise.device, original_samples.dtype, original_samples.device)
+            #print(sigma.shape, noise.shape, original_samples.shape)
             noisy_samples = original_samples + noise * sigma
         else:
             alpha_prod = self.alphas_cumprod[step_indices].flatten().to(original_samples.device)
