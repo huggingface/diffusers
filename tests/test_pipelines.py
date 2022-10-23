@@ -455,7 +455,13 @@ class PipelineFastTests(unittest.TestCase):
         text2img = StableDiffusionPipeline(**inpaint.components).to(torch_device)
 
         prompt = "A painting of a squirrel eating a burger"
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+
+        # Device type MPS is not supported for torch.Generator() api.
+        if torch_device == "mps":
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
+
         image_inpaint = inpaint(
             [prompt],
             generator=generator,
