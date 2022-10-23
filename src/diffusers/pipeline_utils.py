@@ -558,9 +558,9 @@ class DiffusionPipeline(ConfigMixin):
                 init_kwargs[module] = passed_class_obj[module]
         elif len(missing_modules) > 0:
             passed_modules = set(list(init_kwargs.keys()) + list(passed_class_obj.keys()))
-            raise ValueError(
-                f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
-            )
+            # raise ValueError(
+            #     f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
+            # )
 
         # 5. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)

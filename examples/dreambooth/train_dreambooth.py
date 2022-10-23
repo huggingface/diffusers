@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import itertools
 import math
+import json
 import os
 from pathlib import Path
 from typing import Optional
@@ -11,11 +12,12 @@ import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from torch.utils.data import Dataset
+torch.backends.cudnn.benchmark = True
 
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
-from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler, DDIMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from huggingface_hub import HfFolder, Repository, whoami
 from PIL import Image
@@ -74,6 +76,18 @@ def parse_args():
         type=str,
         default=None,
         help="The prompt to specify images in the same class as provided instance images.",
+    )
+    parser.add_argument(
+        "--save_sample_prompt",
+        type=str,
+        default=None,
+        help="The prompt used to generate sample outputs to save.",
+    )
+    parser.add_argument(
+        "--n_save_sample",
+        type=int,
+        default=4,
+        help="The number of samples to save.",
     )
     parser.add_argument(
         "--with_prior_preservation",
@@ -185,6 +199,7 @@ def parse_args():
         ),
     )
     parser.add_argument("--log_interval", type=int, default=10, help="Log every N steps.")
+    parser.add_argument("--save_interval", type=int, default=10_000, help="Save weights every N steps.")
     parser.add_argument(
         "--mixed_precision",
         type=str,
@@ -409,23 +424,6 @@ def main():
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-    # Handle the repository creation
-    if accelerator.is_main_process:
-        if args.push_to_hub:
-            if args.hub_model_id is None:
-                repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
-            else:
-                repo_name = args.hub_model_id
-            repo = Repository(args.output_dir, clone_from=repo_name)
-
-            with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
-                if "step_*" not in gitignore:
-                    gitignore.write("step_*\n")
-                if "epoch_*" not in gitignore:
-                    gitignore.write("epoch_*\n")
-        elif args.output_dir is not None:
-            os.makedirs(args.output_dir, exist_ok=True)
-
     # Load the tokenizer
     if args.tokenizer_name:
         tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_name)
@@ -594,6 +592,44 @@ def main():
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
+
+    def save_weights(step):
+        # Create the pipeline using using the trained modules and save it.
+        if accelerator.is_main_process:
+            if args.train_text_encoder:
+                text_enc_model = accelerator.unwrap_model(text_encoder)
+            else:
+                text_enc_model = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder", use_auth_token=True)
+            scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
+            pipeline = StableDiffusionPipeline.from_pretrained(
+                args.pretrained_model_name_or_path,
+                unet=accelerator.unwrap_model(unet),
+                text_encoder=text_enc_model,
+                vae=AutoencoderKL.from_pretrained(args.pretrained_vae_name_or_path or args.pretrained_model_name_or_path, use_auth_token=True),
+                safety_checker=None,
+                scheduler=scheduler,
+                torch_dtype=torch.float16,
+                use_auth_token=True
+            )
+            save_dir = args.output_dir.rstrip(os.sep) + f"_{step}"
+            pipeline.save_pretrained(save_dir)
+            with open(os.path.join(save_dir, "args.json"), "w") as f:
+                json.dump(args.__dict__, f, indent=2)
+
+            if args.save_sample_prompt is not None:
+                pipeline = pipeline.to(accelerator.device)
+                pipeline.set_progress_bar_config(disable=True)
+                sample_dir = os.path.join(save_dir, "samples")
+                os.makedirs(sample_dir, exist_ok=True)
+                with torch.autocast("cuda"), torch.inference_mode():
+                    for i in tqdm(range(args.n_save_sample), desc="Generating samples"):
+                        images = pipeline(args.save_sample_prompt).images
+                        images[0].save(os.path.join(sample_dir, f"{i}.png"))
+                del pipeline
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            print(f"[*] Weights saved at {save_dir}")
+
     # Only show the progress bar once on each machine.
     progress_bar = tqdm(range(args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")
@@ -670,6 +706,9 @@ def main():
                 progress_bar.set_postfix(**logs)
                 accelerator.log(logs, step=global_step)
 
+            if global_step > 0 and not global_step % args.save_interval:
+                save_weights(global_step)
+
             progress_bar.update(1)
             global_step += 1
 
@@ -678,24 +717,7 @@ def main():
 
         accelerator.wait_for_everyone()
 
-    # Create the pipeline using using the trained modules and save it.
-    if accelerator.is_main_process:
-        if args.train_text_encoder:
-            text_encoder = accelerator.unwrap_model(text_encoder)
-        else:
-            text_encoder = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder", use_auth_token=True)
-        pipeline = StableDiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path,
-            unet=accelerator.unwrap_model(unet),
-            text_encoder=text_encoder,
-            vae=AutoencoderKL.from_pretrained(args.pretrained_vae_name_or_path or args.pretrained_model_name_or_path, use_auth_token=True),
-            safety_checker=None,
-            use_auth_token=True
-        )
-        pipeline.save_pretrained(args.output_dir)
-
-        if args.push_to_hub:
-            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+    save_weights(global_step)
 
     accelerator.end_training()
 
