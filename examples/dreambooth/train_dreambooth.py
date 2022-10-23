@@ -246,6 +246,7 @@ class DreamBoothDataset(Dataset):
         class_prompt=None,
         size=512,
         center_crop=False,
+        num_class_images=None
     ):
         self.size = size
         self.center_crop = center_crop
@@ -263,7 +264,7 @@ class DreamBoothDataset(Dataset):
         if class_data_root is not None:
             self.class_data_root = Path(class_data_root)
             self.class_data_root.mkdir(parents=True, exist_ok=True)
-            self.class_images_path = [x for x in self.class_data_root.iterdir() if x.is_file()]
+            self.class_images_path = [x for x in self.class_data_root.iterdir() if x.is_file()][:num_class_images]
             self.num_class_images = len(self.class_images_path)
             self._length = max(self.num_class_images, self.num_instance_images)
             self.class_prompt = class_prompt
@@ -485,6 +486,7 @@ def main():
         tokenizer=tokenizer,
         size=args.resolution,
         center_crop=args.center_crop,
+        num_class_images=args.num_class_images,
     )
 
     def collate_fn(examples):
