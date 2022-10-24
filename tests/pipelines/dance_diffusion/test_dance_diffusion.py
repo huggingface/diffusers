@@ -19,7 +19,7 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import DanceDiffusionPipeline, UNet1DModel, IPNDMScheduler
+from diffusers import DanceDiffusionPipeline, IPNDMScheduler, UNet1DModel
 from diffusers.utils import slow, torch_device
 
 
@@ -66,7 +66,7 @@ class PipelineFastTests(unittest.TestCase):
         audio_from_tuple_slice = audio_from_tuple[0, -3:, -3:]
 
         assert audio.shape == (1, 2, self.dummy_unet.sample_size)
-        expected_slice = np.array([-0.7265,  1.0000, -0.8388,  0.1175,  0.9498, -1.0000])
+        expected_slice = np.array([-0.7265, 1.0000, -0.8388, 0.1175, 0.9498, -1.0000])
         assert np.abs(audio_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(audio_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -89,10 +89,10 @@ class PipelineIntegrationTests(unittest.TestCase):
 
         generator = torch.Generator(device=device).manual_seed(0)
         output = pipe(generator=generator, num_inference_steps=100)
-        audio = output.audio
+        audio = output.audios
 
         audio_slice = audio[0, -3:, -3:]
 
-        assert audio.shape == (1, 128, 128, 3)
-        expected_slice = np.array([0.5075, 0.4485, 0.4558, 0.5369, 0.5369, 0.5236, 0.5127, 0.4983, 0.4776])
+        assert audio.shape == (1, 2, pipe.unet.sample_size)
+        expected_slice = np.array([-0.1331, -0.1272, -0.1153, 0.0269, 0.0801, 0.0917])
         assert np.abs(audio_slice.flatten() - expected_slice).max() < 1e-2

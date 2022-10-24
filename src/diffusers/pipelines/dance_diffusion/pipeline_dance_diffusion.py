@@ -68,11 +68,7 @@ class DanceDiffusionPipeline(DiffusionPipeline):
         # Sample gaussian noise to begin loop
         sample_size = sample_size or self.unet.sample_size
 
-        audio = torch.randn(
-            (batch_size, self.unet.in_channels, sample_size),
-            generator=generator,
-        )
-        audio = audio.to(self.device)
+        audio = torch.randn((batch_size, self.unet.in_channels, sample_size), generator=generator, device=self.device)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps, device=audio.device)
