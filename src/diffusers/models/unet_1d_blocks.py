@@ -71,10 +71,10 @@ class Upsample1d(nn.Module):
 
 
 class SelfAttention1d(nn.Module):
-    def __init__(self, c_in, n_head=1, dropout_rate=0.0):
+    def __init__(self, in_channels, n_head=1, dropout_rate=0.0):
         super().__init__()
-        self.channels = c_in
-        self.group_norm = nn.GroupNorm(1, num_channels=c_in)
+        self.channels = in_channels
+        self.group_norm = nn.GroupNorm(1, num_channels=in_channels)
         self.num_heads = n_head
 
         self.query = nn.Linear(self.channels, self.channels)
@@ -129,21 +129,21 @@ class SelfAttention1d(nn.Module):
 
 
 class ResConvBlock(nn.Module):
-    def __init__(self, c_in, c_mid, c_out, is_last=False):
+    def __init__(self, in_channels, mid_channels, out_channels, is_last=False):
         super().__init__()
         self.is_last = is_last
-        self.has_conv_skip = c_in != c_out
+        self.has_conv_skip = in_channels != out_channels
 
         if self.has_conv_skip:
-            self.conv_skip = nn.Conv1d(c_in, c_out, 1, bias=False)
+            self.conv_skip = nn.Conv1d(in_channels, out_channels, 1, bias=False)
 
-        self.conv_1 = nn.Conv1d(c_in, c_mid, 5, padding=2)
-        self.group_norm_1 = nn.GroupNorm(1, c_mid)
+        self.conv_1 = nn.Conv1d(in_channels, mid_channels, 5, padding=2)
+        self.group_norm_1 = nn.GroupNorm(1, mid_channels)
         self.gelu_1 = nn.GELU()
-        self.conv_2 = nn.Conv1d(c_mid, c_out, 5, padding=2)
+        self.conv_2 = nn.Conv1d(mid_channels, out_channels, 5, padding=2)
 
         if not self.is_last:
-            self.group_norm_2 = nn.GroupNorm(1, c_out)
+            self.group_norm_2 = nn.GroupNorm(1, out_channels)
             self.gelu_2 = nn.GELU()
 
     def forward(self, hidden_states):
@@ -162,47 +162,61 @@ class ResConvBlock(nn.Module):
         return output
 
 
-def get_down_block(down_block_type, c, c_prev):
+def get_down_block(down_block_type, out_channels, in_channels):
     if down_block_type == "DownBlock1D":
-        return DownBlock1D(c, c_prev)
+        return DownBlock1D(out_channels=out_channels, in_channels=in_channels)
     elif down_block_type == "AttnDownBlock1D":
-        return AttnDownBlock1D(c, c_prev)
+        return AttnDownBlock1D(out_channels=out_channels, in_channels=in_channels)
     elif down_block_type == "DownBlock1DNoSkip":
-        return DownBlock1DNoSkip(c, c_prev)
+        return DownBlock1DNoSkip(out_channels=out_channels, in_channels=in_channels)
     raise ValueError(f"{down_block_type} does not exist.")
 
 
-def get_up_block(up_block_type, c, c_prev):
+def get_up_block(up_block_type, in_channels, out_channels):
     if up_block_type == "UpBlock1D":
-        return UpBlock1D(c, c_prev)
+        return UpBlock1D(in_channels=in_channels, out_channels=out_channels)
     elif up_block_type == "AttnUpBlock1D":
-        return AttnUpBlock1D(c, c_prev)
+        return AttnUpBlock1D(in_channels=in_channels, out_channels=out_channels)
     elif up_block_type == "UpBlock1DNoSkip":
-        return UpBlock1DNoSkip(c, c_prev)
+        return UpBlock1DNoSkip(in_channels=in_channels, out_channels=out_channels)
     raise ValueError(f"{up_block_type} does not exist.")
 
 
+def get_mid_block(mid_block_type, in_channels, mid_channels, out_channels):
+    if mid_block_type == "UNetMidBlock1D":
+        return UNetMidBlock1D(in_channels=in_channels, mid_channels=mid_channels, out_channels=out_channels)
+    raise ValueError(f"{mid_block_type} does not exist.")
+
+
+def get_out_block(out_block_type, in_channels, mid_channels, out_channels):
+    if out_block_type == "":
+        return nn.Identity(in_channels=in_channels, mid_channels=mid_channels, out_channels=out_channels)
+    raise ValueError(f"{out_block_type} does not exist.")
+
+
 class UNetMidBlock1D(nn.Module):
-    def __init__(self, c, c_prev):
+    def __init__(self, mid_channels, in_channels, out_channels=None):
         super().__init__()
+
+        out_channels = in_channels if out_channels is None else out_channels
 
         # there is always at least one resnet
         self.down = Downsample1d("cubic")
         resnets = [
-            ResConvBlock(c_prev, c, c),
-            ResConvBlock(c, c, c),
-            ResConvBlock(c, c, c),
-            ResConvBlock(c, c, c),
-            ResConvBlock(c, c, c),
-            ResConvBlock(c, c, c_prev),
+            ResConvBlock(in_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, out_channels),
         ]
         attentions = [
-            SelfAttention1d(c, c // 32),
-            SelfAttention1d(c, c // 32),
-            SelfAttention1d(c, c // 32),
-            SelfAttention1d(c, c // 32),
-            SelfAttention1d(c, c // 32),
-            SelfAttention1d(c_prev, c_prev // 32),
+            SelfAttention1d(mid_channels, mid_channels // 32),
+            SelfAttention1d(mid_channels, mid_channels // 32),
+            SelfAttention1d(mid_channels, mid_channels // 32),
+            SelfAttention1d(mid_channels, mid_channels // 32),
+            SelfAttention1d(mid_channels, mid_channels // 32),
+            SelfAttention1d(out_channels, out_channels // 32),
         ]
         self.up = Upsample1d(kernel="cubic")
 
@@ -221,18 +235,20 @@ class UNetMidBlock1D(nn.Module):
 
 
 class AttnDownBlock1D(nn.Module):
-    def __init__(self, c, c_prev):
+    def __init__(self, out_channels, in_channels, mid_channels=None):
         super().__init__()
+        mid_channels = out_channels if mid_channels is None else mid_channels
+
         self.down = Downsample1d("cubic")
         resnets = [
-            ResConvBlock(c_prev, c, c),
-            ResConvBlock(c, c, c),
-            ResConvBlock(c, c, c),
+            ResConvBlock(in_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, out_channels),
         ]
         attentions = [
-            SelfAttention1d(c, c // 32),
-            SelfAttention1d(c, c // 32),
-            SelfAttention1d(c, c // 32),
+            SelfAttention1d(mid_channels, mid_channels // 32),
+            SelfAttention1d(mid_channels, mid_channels // 32),
+            SelfAttention1d(out_channels, out_channels // 32),
         ]
 
         self.attentions = nn.ModuleList(attentions)
@@ -249,13 +265,15 @@ class AttnDownBlock1D(nn.Module):
 
 
 class DownBlock1D(nn.Module):
-    def __init__(self, c, c_prev):
+    def __init__(self, out_channels, in_channels, mid_channels=None):
         super().__init__()
+        mid_channels = out_channels if mid_channels is None else mid_channels
+
         self.down = Downsample1d("cubic")
         resnets = [
-            ResConvBlock(c_prev, c, c),
-            ResConvBlock(c, c, c),
-            ResConvBlock(c, c, c),
+            ResConvBlock(in_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, out_channels),
         ]
 
         self.resnets = nn.ModuleList(resnets)
@@ -270,12 +288,14 @@ class DownBlock1D(nn.Module):
 
 
 class DownBlock1DNoSkip(nn.Module):
-    def __init__(self, c, c_prev):
+    def __init__(self, out_channels, in_channels, mid_channels=None):
         super().__init__()
+        mid_channels = out_channels if mid_channels is None else mid_channels
+
         resnets = [
-            ResConvBlock(c_prev, c, c),
-            ResConvBlock(c, c, c),
-            ResConvBlock(c, c, c),
+            ResConvBlock(in_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, out_channels),
         ]
 
         self.resnets = nn.ModuleList(resnets)
@@ -289,17 +309,19 @@ class DownBlock1DNoSkip(nn.Module):
 
 
 class AttnUpBlock1D(nn.Module):
-    def __init__(self, c, c_prev):
+    def __init__(self, in_channels, out_channels, mid_channels=None):
         super().__init__()
+        mid_channels = out_channels if mid_channels is None else mid_channels
+
         resnets = [
-            ResConvBlock(2 * c, c, c),
-            ResConvBlock(c, c, c),
-            ResConvBlock(c, c, c_prev),
+            ResConvBlock(2 * in_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, out_channels),
         ]
         attentions = [
-            SelfAttention1d(c, c // 32),
-            SelfAttention1d(c, c // 32),
-            SelfAttention1d(c_prev, c_prev // 32),
+            SelfAttention1d(mid_channels, mid_channels // 32),
+            SelfAttention1d(mid_channels, mid_channels // 32),
+            SelfAttention1d(out_channels, out_channels // 32),
         ]
 
         self.attentions = nn.ModuleList(attentions)
@@ -320,12 +342,14 @@ class AttnUpBlock1D(nn.Module):
 
 
 class UpBlock1D(nn.Module):
-    def __init__(self, c, c_prev):
+    def __init__(self, in_channels, out_channels, mid_channels=None):
         super().__init__()
+        mid_channels = in_channels if mid_channels is None else mid_channels
+
         resnets = [
-            ResConvBlock(2 * c, c, c),
-            ResConvBlock(c, c, c),
-            ResConvBlock(c, c, c_prev),
+            ResConvBlock(2 * in_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, out_channels),
         ]
 
         self.resnets = nn.ModuleList(resnets)
@@ -344,12 +368,14 @@ class UpBlock1D(nn.Module):
 
 
 class UpBlock1DNoSkip(nn.Module):
-    def __init__(self, c, c_prev):
+    def __init__(self, in_channels, out_channels, mid_channels=None):
         super().__init__()
+        mid_channels = in_channels if mid_channels is None else mid_channels
+
         resnets = [
-            ResConvBlock(2 * c, c, c),
-            ResConvBlock(c, c, c),
-            ResConvBlock(c, c, c_prev, is_last=True),
+            ResConvBlock(2 * in_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, mid_channels),
+            ResConvBlock(mid_channels, mid_channels, out_channels, is_last=True),
         ]
 
         self.resnets = nn.ModuleList(resnets)
