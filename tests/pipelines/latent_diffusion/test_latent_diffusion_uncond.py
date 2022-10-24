@@ -18,7 +18,7 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import AutoencoderKL, DDIMScheduler, LDMPipeline, UNet2DModel
+from diffusers import DDIMScheduler, LDMPipeline, UNet2DModel, VQModel
 from diffusers.utils.testing_utils import require_torch, slow, torch_device
 from transformers import CLIPTextConfig, CLIPTextModel
 
@@ -44,15 +44,15 @@ class LDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return model
 
     @property
-    def dummy_vae(self):
+    def dummy_vq_model(self):
         torch.manual_seed(0)
-        model = AutoencoderKL(
+        model = VQModel(
             block_out_channels=[32, 64],
             in_channels=3,
             out_channels=3,
             down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
             up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
-            latent_channels=4,
+            latent_channels=3,
         )
         return model
 
