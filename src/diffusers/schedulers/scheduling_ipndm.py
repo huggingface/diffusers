@@ -75,7 +75,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
         steps = torch.cat([steps, torch.tensor([0.0])])
 
         self.betas = torch.sin(steps * math.pi / 2) ** 2
-        self.alphas = (1.0 - self.betas ** 2) ** 0.5
+        self.alphas = (1.0 - self.betas**2) ** 0.5
 
         timesteps = (torch.atan2(self.betas, self.alphas) / math.pi * 2)[:-1]
         self.timesteps = timesteps.to(device)

@@ -8,7 +8,7 @@ import torch
 from torch import nn
 
 from audio_diffusion.models import DiffusionAttnUnet1D
-from diffusers import UNet1DModel, IPNDMScheduler, DanceDiffusionPipeline
+from diffusers import DanceDiffusionPipeline, IPNDMScheduler, UNet1DModel
 from diffusion import sampling
 
 
@@ -315,23 +315,24 @@ def main(args):
     diff_sum = (generated - audio).abs().sum()
     diff_max = (generated - audio).abs().max()
 
+    if args.save:
+        pipe.save_pretrained(args.checkpoint_path)
+
     print("Diff sum", diff_sum)
     print("Diff max", diff_max)
 
-    assert diff_sum < 1e-1, f"Diff sum: {diff_sum} is too much :-/"
-    assert diff_max < 1e-4, f"Diff max: {diff_max} is too much :-/"
+    assert diff_max < 1e-3, f"Diff max: {diff_max} is too much :-/"
 
     print(f"Converion for {model_name} succesful!")
-
-    if args.save:
-        diffusers_model.save_pretrained(args.checkpoint_path)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--model_path", default=None, type=str, required=True, help="Path to the model to convert.")
-    parser.add_argument("--save", default=False, type=bool, required=False, help="Whether to save the converted model or not.")
+    parser.add_argument(
+        "--save", default=True, type=bool, required=False, help="Whether to save the converted model or not."
+    )
     parser.add_argument("--checkpoint_path", default=None, type=str, required=True, help="Path to the output model.")
     args = parser.parse_args()
 

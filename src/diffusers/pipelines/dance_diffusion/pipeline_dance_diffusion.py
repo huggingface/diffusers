@@ -18,7 +18,7 @@ from typing import Optional, Tuple, Union
 
 import torch
 
-from ...pipeline_utils import DiffusionPipeline, AudioPipelineOutput
+from ...pipeline_utils import AudioPipelineOutput, DiffusionPipeline
 
 
 class DanceDiffusionPipeline(DiffusionPipeline):
@@ -38,14 +38,20 @@ class DanceDiffusionPipeline(DiffusionPipeline):
         self.register_modules(unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
-    def __call__(self, batch_size: int = 1, num_inference_steps: int = 100, generator: Optional[torch.Generator] = None, return_dict: bool = True) -> Union[AudioPipelineOutput, Tuple]:
+    def __call__(
+        self,
+        batch_size: int = 1,
+        num_inference_steps: int = 100,
+        generator: Optional[torch.Generator] = None,
+        return_dict: bool = True,
+    ) -> Union[AudioPipelineOutput, Tuple]:
         r"""
         Args:
             batch_size (`int`, *optional*, defaults to 1):
                 The number of audio samples to generate.
             num_inference_steps (`int`, *optional*, defaults to 50):
-                The number of denoising steps. More denoising steps usually lead to a higher quality audio sample at the
-                expense of slower inference.
+                The number of denoising steps. More denoising steps usually lead to a higher quality audio sample at
+                the expense of slower inference.
             generator (`torch.Generator`, *optional*):
                 A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
                 deterministic.
@@ -74,8 +80,6 @@ class DanceDiffusionPipeline(DiffusionPipeline):
 
             # 2. compute previous image: x_t -> t_t-1
             audio = self.scheduler.step(model_output, t, audio).prev_sample
-
-            print("audio", audio.abs().sum())
 
         audio = audio.clamp(-1, 1)
 
