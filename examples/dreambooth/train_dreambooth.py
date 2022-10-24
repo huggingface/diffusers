@@ -89,6 +89,18 @@ def parse_args():
         help="The number of samples to save.",
     )
     parser.add_argument(
+        "--save_guidance_scale",
+        type=float,
+        default=7.5,
+        help="CFG for save sample.",
+    )
+    parser.add_argument(
+        "--save_infer_steps",
+        type=int,
+        default=50,
+        help="The number of inference steps for save sample.",
+    )
+    parser.add_argument(
         "--with_prior_preservation",
         default=False,
         action="store_true",
@@ -635,7 +647,7 @@ def main():
                 os.makedirs(sample_dir, exist_ok=True)
                 with torch.autocast("cuda"), torch.inference_mode():
                     for i in tqdm(range(args.n_save_sample), desc="Generating samples"):
-                        images = pipeline(args.save_sample_prompt).images
+                        images = pipeline(args.save_sample_prompt, guidance_scale=args.save_guidance_scale, num_inference_steps=args.save_infer_steps).images
                         images[0].save(os.path.join(sample_dir, f"{i}.png"))
                 del pipeline
                 if torch.cuda.is_available():
