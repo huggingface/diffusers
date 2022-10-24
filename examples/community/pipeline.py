@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 
 import tqdm
@@ -59,7 +60,6 @@ class ValueGuidedDiffuserPipeline(DiffusionPipeline):
         for i in tqdm.tqdm(self.scheduler.timesteps):
             # create batch of timesteps to pass into model
             timesteps = torch.full((batch_size,), i, device=self.unet.device, dtype=torch.long)
-            # 3. call the sample function
             for _ in range(n_guide_steps):
                 with torch.enable_grad():
                     x.requires_grad_()
@@ -76,24 +76,39 @@ class ValueGuidedDiffuserPipeline(DiffusionPipeline):
             prev_x = self.unet(x.permute(0, 2, 1), timesteps).sample.permute(0, 2, 1)
             x = self.scheduler.step(prev_x, i, x, predict_epsilon=False)["prev_sample"]
 
-            # 4. apply conditions to the trajectory
+            # apply conditions to the trajectory
             x = self.reset_x0(x, conditions, self.action_dim)
             x = self.to_torch(x)
         return x, y
 
     def __call__(self, obs, batch_size=64, planning_horizon=32, n_guide_steps=2, scale=0.1):
+        # normalize the observations and create  batch dimension
         obs = self.normalize(obs, "observations")
         obs = obs[None].repeat(batch_size, axis=0)
+
         conditions = {0: self.to_torch(obs)}
         shape = (batch_size, planning_horizon, self.state_dim + self.action_dim)
+
+        # generate initial noise and apply our conditions (to make the trajectories start at current state)
         x1 = torch.randn(shape, device=self.unet.device)
         x = self.reset_x0(x1, conditions, self.action_dim)
         x = self.to_torch(x)
+
+        # run the diffusion process
         x, y = self.run_diffusion(x, conditions, n_guide_steps, scale)
+
+        # sort output trajectories by value
         sorted_idx = y.argsort(0, descending=True).squeeze()
         sorted_values = x[sorted_idx]
         actions = sorted_values[:, :, : self.action_dim]
         actions = actions.detach().cpu().numpy()
         denorm_actions = self.de_normalize(actions, key="actions")
-        denorm_actions = denorm_actions[0, 0]
+
+        # select the action with the highest value
+        if y is not None:
+            selected_index = 0
+        else:
+            # if we didn't run value guiding, select a random action
+            selected_index = np.random.randint(0, batch_size)
+        denorm_actions = denorm_actions[selected_index, 0]
         return denorm_actions
