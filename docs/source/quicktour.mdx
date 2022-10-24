@@ -68,8 +68,7 @@ You can save the image by simply calling:
 
 More advanced models, like [Stable Diffusion](https://huggingface.co/CompVis/stable-diffusion) require you to accept a [license](https://huggingface.co/spaces/CompVis/stable-diffusion-license) before running the model.
 This is due to the improved image generation capabilities of the model and the potentially harmful content that could be produced with it.
-Long story short: Head over to your stable diffusion model of choice, *e.g.* [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4), read through the license and click-accept to get 
-access to the model. 
+Please, head over to your stable diffusion model of choice, *e.g.*  [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5), read the license carefully and tick the checkbox if you agree.
 You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section of the documentation](https://huggingface.co/docs/hub/security-tokens).
 Having "click-accepted" the license, you can save your token:
 
@@ -77,13 +76,13 @@ Having "click-accepted" the license, you can save your token:
 AUTH_TOKEN = "<please-fill-with-your-token>"
 ```
 
-You can then load [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4) 
+You can then load [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)
 just like we did before only that now you need to pass your `AUTH_TOKEN`:
 
 ```python
 >>> from diffusers import DiffusionPipeline
 
->>> generator = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=AUTH_TOKEN)
+>>> generator = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", use_auth_token=AUTH_TOKEN)
 ```
 
 If you do not pass your authentication token you will see that the diffusion system will not be correctly 
@@ -95,15 +94,15 @@ the weights locally via:
 
 ```
 git lfs install
-git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
+git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
 ```
 
 and then load locally saved weights into the pipeline. This way, you do not need to pass an authentication
-token. Assuming that `"./stable-diffusion-v1-4"` is the local path to the cloned stable-diffusion-v1-4 repo,
+token. Assuming that `"./stable-diffusion-v1-5"` is the local path to the cloned stable-diffusion-v1-5 repo,
 you can also load the pipeline as follows:
 
 ```python
->>> generator = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-4")
+>>> generator = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5")
 ```
 
 Running the pipeline is then identical to the code above as it's the same model architecture.
@@ -125,7 +124,7 @@ you could use it as follows:
 >>> scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
 
 >>> generator = StableDiffusionPipeline.from_pretrained(
-...     "CompVis/stable-diffusion-v1-4", scheduler=scheduler, use_auth_token=AUTH_TOKEN
+...     "runwayml/stable-diffusion-v1-5", scheduler=scheduler, use_auth_token=AUTH_TOKEN
 ... )
 ```
 
