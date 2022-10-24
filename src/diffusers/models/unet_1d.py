@@ -58,7 +58,8 @@ class UNet1DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        sample_size: Optional[int] = None,
+        sample_size: int = 65536,
+        sample_rate: Optional[int] = None,
         in_channels: int = 2,
         out_channels: int = 2,
         time_embedding_type: str = "fourier",
@@ -146,6 +147,9 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
         """
         # 1. time
+        if len(timestep.shape) == 0:
+            timestep = timestep[None]
+
         timestep_embed = self.time_proj(timestep)[..., None]
         timestep_embed = timestep_embed.repeat([1, 1, sample.shape[2]])
 

@@ -8,7 +8,8 @@ import torch
 from torch import nn
 
 from audio_diffusion.models import DiffusionAttnUnet1D
-from diffusers import UNet1DModel
+from diffusers import UNet1DModel, IPNDMScheduler, DanceDiffusionPipeline
+from diffusion import sampling
 
 
 MODELS_MAP = {
@@ -266,7 +267,7 @@ def main(args):
     config.sample_rate = sample_rate
     config.latent_dim = 0
 
-    diffusers_model = UNet1DModel()
+    diffusers_model = UNet1DModel(sample_size=sample_size, sample_rate=sample_rate)
     diffusers_state_dict = diffusers_model.state_dict()
 
     orig_model = DiffusionUncond(config)
@@ -293,30 +294,44 @@ def main(args):
     diffusers_model.load_state_dict(diffusers_state_dict)
 
     steps = 100
-    step_index = 2
+    seed = 33
 
-    generator = torch.manual_seed(33)
+    diffusers_scheduler = IPNDMScheduler(num_train_timesteps=steps)
+
+    generator = torch.manual_seed(seed)
     noise = torch.randn([1, 2, config.sample_size], generator=generator).to(device)
+
     t = torch.linspace(1, 0, steps + 1, device=device)[:-1]
     step_list = get_crash_schedule(t)
 
-    output = orig_model(noise, step_list[step_index : step_index + 1])
-    diffusers_output = diffusers_model(noise, step_list[step_index : step_index + 1])
-    diff_sum = diffusers_output.sample.abs().sum() - output.abs().sum()
-    diff_max = (diffusers_output.sample.abs() - output.abs()).max()
+    pipe = DanceDiffusionPipeline(unet=diffusers_model, scheduler=diffusers_scheduler)
 
-    assert diff_sum < 4e-2, f"Diff sum: {diff_sum} is too much :-/"
-    assert diff_max < 4e-5, f"Diff max: {diff_max} is too much :-/"
+    generator = torch.manual_seed(33)
+    audio = pipe(num_inference_steps=steps, generator=generator).audios
+
+    generated = sampling.iplms_sample(orig_model, noise, step_list, {})
+    generated = generated.clamp(-1, 1)
+
+    diff_sum = (generated - audio).abs().sum()
+    diff_max = (generated - audio).abs().max()
+
+    print("Diff sum", diff_sum)
+    print("Diff max", diff_max)
+
+    assert diff_sum < 4e-1, f"Diff sum: {diff_sum} is too much :-/"
+    assert diff_max < 4e-3, f"Diff max: {diff_max} is too much :-/"
 
     print(f"Converion for {model_name} succesful!")
 
-    diffusers_model.save_pretrained(args.checkpoint_path)
+    if args.save:
+        diffusers_model.save_pretrained(args.checkpoint_path)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--model_path", default=None, type=str, required=True, help="Path to the model to convert.")
+    parser.add_argument("--save", default=False, type=bool, required=False, help="Whether to save the converted model or not.")
     parser.add_argument("--checkpoint_path", default=None, type=str, required=True, help="Path to the output model.")
     args = parser.parse_args()
 
