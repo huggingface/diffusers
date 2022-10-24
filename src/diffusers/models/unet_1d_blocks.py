@@ -173,6 +173,26 @@ class UpBlock1DNoSkip(nn.Module):
     pass
 
 
+class ValueFunctionMidBlock1D(nn.Module):
+    def __init__(self, in_channels, out_channels, embed_dim):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.embed_dim = embed_dim
+
+        self.res1 = ResidualTemporalBlock1D(in_channels, in_channels // 2, embed_dim=embed_dim)
+        self.down1 = Downsample1D(out_channels // 2, use_conv=True)
+        self.res2 = ResidualTemporalBlock1D(in_channels // 2, in_channels // 4, embed_dim=embed_dim)
+        self.down2 = Downsample1D(out_channels // 4, use_conv=True)
+
+    def forward(self, x, temb=None):
+        x = self.res1(x, temb)
+        x = self.down1(x)
+        x = self.res2(x, temb)
+        x = self.down2(x)
+        return x
+
+
 class MidResTemporalBlock1D(nn.Module):
     def __init__(
         self,
@@ -307,6 +327,8 @@ def get_mid_block(mid_block_type, num_layers, in_channels, out_channels, embed_d
             embed_dim=embed_dim,
             add_downsample=add_downsample,
         )
+    elif mid_block_type == "ValueFunctionMidBlock1D":
+        return ValueFunctionMidBlock1D(in_channels=in_channels, out_channels=out_channels, embed_dim=embed_dim)
     raise ValueError(f"{mid_block_type} does not exist.")
 
 
