@@ -81,7 +81,7 @@ class DanceDiffusionPipeline(DiffusionPipeline):
             # 2. compute previous image: x_t -> t_t-1
             audio = self.scheduler.step(model_output, t, audio).prev_sample
 
-        audio = audio.clamp(-1, 1)
+        audio = audio.clamp(-1, 1).cpu().numpy()
 
         if not return_dict:
             return (audio,)
