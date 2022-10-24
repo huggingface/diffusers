@@ -31,7 +31,7 @@ We recommend to "prime" the pipeline using an additional one-time pass through i
 # make sure you're logged in with `huggingface-cli login`
 from diffusers import StableDiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 pipe = pipe.to("mps")
 
 prompt = "a photo of an astronaut riding a horse on mars"
