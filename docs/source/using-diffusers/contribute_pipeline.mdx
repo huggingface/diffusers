@@ -138,9 +138,9 @@ IMPORTANT:
 You can use whatever package you want in your community pipeline file - as long as the user has it installed, everything will work fine. Make sure you have one and only one pipeline class that inherits from `DiffusionPipeline` as this will be automatically detected.
 
 ## How do community pipelines work?
-A community pipeline is a class that has to inherit from [`DiffusionPipeline`](https://huggingface.co/docs/diffusers/api/diffusion_pipeline#diffusers.DiffusionPipeline):
-and that has been added to [`examples/community`](https://github.com/huggingface/diffusers/tree/main/examples/community).
-The community can load the pipeline code via the custom_pipeline argument from DiffusionPipeline. See docs [here](https://huggingface.co/docs/diffusers/api/diffusion_pipeline#diffusers.DiffusionPipelinehttps://huggingface.co/docs/diffusers/api/diffusion_pipeline#diffusers.DiffusionPipeline.from_pretrained.custom_pipeline):
+A community pipeline is a class that has to inherit from ['DiffusionPipeline']:
+and that has been added to `examples/community` [files](https://github.com/huggingface/diffusers/tree/main/examples/community).
+The community can load the pipeline code via the custom_pipeline argument from DiffusionPipeline. See docs [here](https://huggingface.co/docs/diffusers/api/diffusion_pipeline#diffusers.DiffusionPipeline.from_pretrained.custom_pipeline):
 
 This means:
 The model weights and configs of the pipeline should be loaded from the `pretrained_model_name_or_path` [argument](https://huggingface.co/docs/diffusers/api/diffusion_pipeline#diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path):
