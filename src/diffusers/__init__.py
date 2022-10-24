@@ -37,6 +37,7 @@ if is_torch_available():
         LDMPipeline,
         PNDMPipeline,
         ScoreSdeVePipeline,
+        VQDiffusionPipeline,
     )
     from .schedulers import (
         DDIMScheduler,
