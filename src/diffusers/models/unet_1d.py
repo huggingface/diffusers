@@ -60,7 +60,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         out_channels: int = 14,
         down_block_types: Tuple[str] = ("DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"),
         up_block_types: Tuple[str] = ("UpResnetBlock1D", "UpResnetBlock1D"),
-        mid_block_types: Tuple[str] = ("MidResTemporalBlock1D", "MidResTemporalBlock1D"),
+        mid_block_type: Tuple[str] = "MidResTemporalBlock1D",
         out_block_type: str = "OutConv1DBlock",
         block_out_channels: Tuple[int] = (32, 128, 256),
         act_fn: str = "mish",
@@ -79,7 +79,9 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         )
 
         self.down_blocks = nn.ModuleList([])
+        self.mid_block = None
         self.up_blocks = nn.ModuleList([])
+        self.out_block = None
         mid_dim = block_out_channels[-1]
 
         # down
@@ -101,25 +103,15 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             self.down_blocks.append(down_block)
 
         # mid
-        self.mid_blocks = nn.ModuleList([])
-        for i, mid_block_type in enumerate(mid_block_types):
-            if always_downsample:
-                mid_block = get_mid_block(
-                    mid_block_type,
-                    in_channels=mid_dim // (i + 1),
-                    out_channels=mid_dim // ((i + 1) * 2),
-                    embed_dim=block_out_channels[0],
-                    add_downsample=True,
-                )
-            else:
-                mid_block = get_mid_block(
-                    mid_block_type,
-                    in_channels=mid_dim,
-                    out_channels=mid_dim,
-                    embed_dim=block_out_channels[0],
-                    add_downsample=False,
-                )
-            self.mid_blocks.append(mid_block)
+        self.mid_block = get_mid_block(
+            mid_block_type,
+            in_channels=mid_dim,
+            out_channels=mid_dim,
+            embed_dim=block_out_channels[0],
+            num_layers=layers_per_block,
+            add_downsample=always_downsample,
+        )
+
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
         for i, up_block_type in enumerate(up_block_types):
@@ -184,15 +176,16 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             down_block_res_samples.append(res_samples[0])
 
         # 3. mid
-        for mid_block in self.mid_blocks:
-            sample = mid_block(sample, temb)
+        if self.mid_block:
+            sample = self.mid_block(sample, temb)
 
         # 4. up
         for up_block in self.up_blocks:
             sample = up_block(hidden_states=sample, res_hidden_states=down_block_res_samples.pop(), temb=temb)
 
         # 5. post-process
-        sample = self.out_block(sample, temb)
+        if self.out_block:
+            sample = self.out_block(sample, temb)
 
         if not return_dict:
             return (sample,)

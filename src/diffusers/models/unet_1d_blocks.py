@@ -47,7 +47,7 @@ class DownResnetBlock1D(nn.Module):
         if groups_out is None:
             groups_out = groups
 
-        # there will always be at least one resenet
+        # there will always be at least one resnet
         resnets = [ResidualTemporalBlock1D(in_channels, out_channels, embed_dim=temb_channels)]
 
         for _ in range(num_layers):
@@ -111,7 +111,7 @@ class UpResnetBlock1D(nn.Module):
         if groups_out is None:
             groups_out = groups
 
-        # there will always be at least one resenet
+        # there will always be at least one resnet
         resnets = [ResidualTemporalBlock1D(2 * in_channels, out_channels, embed_dim=temb_channels)]
 
         for _ in range(num_layers):
@@ -194,12 +194,20 @@ class ValueFunctionMidBlock1D(nn.Module):
 
 
 class MidResTemporalBlock1D(nn.Module):
-    def __init__(self, in_channels, out_channels, embed_dim, add_downsample):
+    def __init__(
+        self,
+        in_channels,
+        out_channels,
+        embed_dim,
+        num_layers: int = 1,
+        add_downsample: bool = False,
+        add_upsample: bool = False,
+        non_linearity=None,
+    ):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.add_downsample = add_downsample
-        self.resnet = ResidualTemporalBlock1D(in_channels, out_channels, embed_dim=embed_dim)
 
         # there will always be at least one resnet
         resnets = [ResidualTemporalBlock1D(in_channels, out_channels, embed_dim=embed_dim)]
@@ -225,13 +233,21 @@ class MidResTemporalBlock1D(nn.Module):
         self.downsample = None
         if add_downsample:
             self.downsample = Downsample1D(out_channels, use_conv=True)
-        else:
-            self.downsample = nn.Identity()
 
-    def forward(self, sample, temb):
-        sample = self.resnet(sample, temb)
-        sample = self.downsample(sample)
-        return sample
+        if self.upsample and self.downsample:
+            raise ValueError("Block cannot downsample and upsample")
+
+    def forward(self, hidden_states, temb):
+        hidden_states = self.resnets[0](hidden_states, temb)
+        for resnet in self.resnets[1:]:
+            hidden_states = resnet(hidden_states, temb)
+
+        if self.upsample:
+            hidden_states = self.upsample(hidden_states)
+        if self.downsample:
+            self.downsample = self.downsample(hidden_states)
+
+        return hidden_states
 
 
 class OutConv1DBlock(nn.Module):
@@ -245,14 +261,14 @@ class OutConv1DBlock(nn.Module):
             self.final_conv1d_act = nn.Mish()
         self.final_conv1d_2 = nn.Conv1d(embed_dim, out_channels, 1)
 
-    def forward(self, sample, t):
-        sample = self.final_conv1d_1(sample)
-        sample = rearrange_dims(sample)
-        sample = self.final_conv1d_gn(sample)
-        sample = rearrange_dims(sample)
-        sample = self.final_conv1d_act(sample)
-        sample = self.final_conv1d_2(sample)
-        return sample
+    def forward(self, hidden_states, temb=None):
+        hidden_states = self.final_conv1d_1(hidden_states)
+        hidden_states = rearrange_dims(hidden_states)
+        hidden_states = self.final_conv1d_gn(hidden_states)
+        hidden_states = rearrange_dims(hidden_states)
+        hidden_states = self.final_conv1d_act(hidden_states)
+        hidden_states = self.final_conv1d_2(hidden_states)
+        return hidden_states
 
 
 class OutValueFunctionBlock(nn.Module):
@@ -266,13 +282,13 @@ class OutValueFunctionBlock(nn.Module):
             ]
         )
 
-    def forward(self, sample, t):
-        sample = sample.view(sample.shape[0], -1)
-        sample = torch.cat((sample, t), dim=-1)
+    def forward(self, hidden_states, temb):
+        hidden_states = hidden_states.view(hidden_states.shape[0], -1)
+        hidden_states = torch.cat((hidden_states, temb), dim=-1)
         for layer in self.final_block:
-            sample = layer(sample)
+            hidden_states = layer(hidden_states)
 
-        return sample
+        return hidden_states
 
 
 def get_down_block(down_block_type, num_layers, in_channels, out_channels, temb_channels, add_downsample):
@@ -302,7 +318,7 @@ def get_up_block(up_block_type, num_layers, in_channels, out_channels, temb_chan
     raise ValueError(f"{up_block_type} does not exist.")
 
 
-def get_mid_block(mid_block_type, in_channels, out_channels, embed_dim, add_downsample):
+def get_mid_block(mid_block_type, num_layers, in_channels, out_channels, embed_dim, add_downsample):
     if mid_block_type == "MidResTemporalBlock1D":
         return MidResTemporalBlock1D(
             num_layers=num_layers,
