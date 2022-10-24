@@ -37,14 +37,12 @@ class PipelineFastTests(unittest.TestCase):
     def dummy_unet(self):
         torch.manual_seed(0)
         model = UNet1DModel(
-            block_out_channels=(32, 64),
-            layers_per_block=2,
-            sample_size=32,
-            in_channels=9,
-            out_channels=4,
-            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
-            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
-            cross_attention_dim=32,
+            block_out_channels=(32, 32, 64),
+            sample_size=512,
+            in_channels=2,
+            out_channels=2,
+            down_block_types=["DownBlock1DNoSkip"] + ["DownBlock1D"] + ["AttnDownBlock1D"],
+            up_block_types=["AttnUpBlock1D"] + ["UpBlock1D"] + ["UpBlock1DNoSkip"],
         )
         return model
 
@@ -57,18 +55,18 @@ class PipelineFastTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=device).manual_seed(0)
-        output = pipe(generator=generator, num_inference_steps=4, sample_size=500)
-        audio = output.audio
+        output = pipe(generator=generator, num_inference_steps=4)
+        audio = output.audios
 
         generator = torch.Generator(device=device).manual_seed(0)
-        output = pipe(generator=generator, num_inference_steps=4, sample_size=500, return_dict=False)
+        output = pipe(generator=generator, num_inference_steps=4, return_dict=False)
         audio_from_tuple = output[0]
 
         audio_slice = audio[0, -3:, -3:]
         audio_from_tuple_slice = audio_from_tuple[0, -3:, -3:]
 
-        assert audio.shape == (1, 128, 128, 3)
-        expected_slice = np.array([0.5075, 0.4485, 0.4558, 0.5369, 0.5369, 0.5236, 0.5127, 0.4983, 0.4776])
+        assert audio.shape == (1, 2, self.dummy_unet.sample_size)
+        expected_slice = np.array([-0.7265,  1.0000, -0.8388,  0.1175,  0.9498, -1.0000])
         assert np.abs(audio_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(audio_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
