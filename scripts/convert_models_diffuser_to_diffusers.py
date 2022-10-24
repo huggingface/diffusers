@@ -49,6 +49,7 @@ def value_function():
         down_block_types=("DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"),
         up_block_types=(),
         out_block_type="ValueFunction",
+        mid_block_type="ValueFunctionMidBlock1D",
         block_out_channels=(32, 64, 128, 256),
         layers_per_block=1,
         always_downsample=True,

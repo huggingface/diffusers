@@ -17,6 +17,7 @@ import gc
 import math
 import tracemalloc
 import unittest
+from regex import subf
 
 import torch
 
@@ -489,7 +490,7 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
 
     def test_from_pretrained_hub(self):
         model, loading_info = UNet1DModel.from_pretrained(
-            "fusing/ddpm-unet-rl-hopper-hor128", output_loading_info=True
+            "bglick13/hopper-medium-v2-value-function-hor32", output_loading_info=True, subfolder="unet"
         )
         self.assertIsNotNone(model)
         self.assertEqual(len(loading_info["missing_keys"]), 0)
@@ -500,7 +501,7 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained(self):
-        model = UNet1DModel.from_pretrained("fusing/ddpm-unet-rl-hopper-hor128")
+        model = UNet1DModel.from_pretrained("bglick13/hopper-medium-v2-value-function-hor32", subfolder="unet")
         torch.manual_seed(0)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(0)
@@ -517,7 +518,8 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
 
         output_slice = output[0, -3:, -3:].flatten()
         # fmt: off
-        expected_output_slice = torch.tensor([-0.2714, 0.1042, -0.0794, -0.2820, 0.0803, -0.0811, -0.2345, 0.0580, -0.0584])
+        expected_output_slice = torch.tensor([-2.137172  ,  1.1426016 ,  0.3688687 , -0.766922  ,  0.7303146 ,
+        0.11038864, -0.4760633 ,  0.13270172,  0.02591348])
         # fmt: on
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))
 
@@ -565,10 +567,10 @@ class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
 
     def test_from_pretrained_hub(self):
         unet, loading_info = UNet1DModel.from_pretrained(
-            "bglick13/hopper-medium-v2-unet-hor32", output_loading_info=True
+            "bglick13/hopper-medium-v2-value-function-hor32", output_loading_info=True, subfolder="unet"
         )
         value_function, vf_loading_info = UNet1DModel.from_pretrained(
-            "bglick13/hopper-medium-v2-value-function-hor32", output_loading_info=True
+            "bglick13/hopper-medium-v2-value-function-hor32", output_loading_info=True, subfolder="value_function"
         )
         self.assertIsNotNone(unet)
         self.assertEqual(len(loading_info["missing_keys"]), 0)
@@ -583,7 +585,7 @@ class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
 
     def test_output_pretrained(self):
         value_function, vf_loading_info = UNet1DModel.from_pretrained(
-            "bglick13/hopper-medium-v2-value-function-hor32", output_loading_info=True
+            "bglick13/hopper-medium-v2-value-function-hor32", output_loading_info=True, subfolder="value_function"
         )
         torch.manual_seed(0)
         if torch.cuda.is_available():
@@ -600,7 +602,7 @@ class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
             output = value_function(noise, time_step).sample
 
         # fmt: off
-        expected_output_slice = torch.tensor([207.0272] * seq_len)
+        expected_output_slice = torch.tensor([165.25] * seq_len)
         # fmt: on
         self.assertTrue(torch.allclose(output, expected_output_slice, rtol=1e-3))
 
