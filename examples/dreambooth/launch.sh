@@ -20,5 +20,5 @@ accelerate launch train_dreambooth.py \
   --sample_batch_size=4 \
   --max_train_steps=800 \
   --save_interval=400 \
-  --save_sample_prompt="photo of ukj person" \
+  --save_sample_prompt="photo of sks dog" \
   --concepts_list="concepts_list.json"
