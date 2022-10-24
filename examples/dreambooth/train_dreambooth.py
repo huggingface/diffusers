@@ -360,7 +360,7 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 
 def main():
     args = parse_args()
-    logging_dir = Path(args.output_dir, args.logging_dir)
+    logging_dir = Path(args.output_dir, "0", args.logging_dir)
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -623,7 +623,7 @@ def main():
                 torch_dtype=torch.float16,
                 use_auth_token=True
             )
-            save_dir = args.output_dir.rstrip(os.sep) + f"_{step}"
+            save_dir = os.path.join(args.output_dir, f"{step}")
             pipeline.save_pretrained(save_dir)
             with open(os.path.join(save_dir, "args.json"), "w") as f:
                 json.dump(args.__dict__, f, indent=2)
