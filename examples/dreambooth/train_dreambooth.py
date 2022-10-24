@@ -629,7 +629,7 @@ def main():
                 args.pretrained_model_name_or_path,
                 unet=accelerator.unwrap_model(unet),
                 text_encoder=text_enc_model,
-                vae=AutoencoderKL.from_pretrained(args.pretrained_vae_name_or_path or args.pretrained_model_name_or_path, use_auth_token=True),
+                vae=AutoencoderKL.from_pretrained(args.pretrained_vae_name_or_path or args.pretrained_model_name_or_path, subfolder=None if args.pretrained_vae_name_or_path else "vae", use_auth_token=True),
                 safety_checker=None,
                 scheduler=scheduler,
                 torch_dtype=torch.float16,
