@@ -124,6 +124,23 @@ class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
     def output_shape(self):
         return (4, 14, 1)
 
+    def test_output(self):
+        # UNetRL is a value-function is different output shape
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+            if isinstance(output, dict):
+                output = output.sample
+
+        self.assertIsNotNone(output)
+        expected_shape = torch.Size((inputs_dict["sample"].shape[0], 1))
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
     def test_ema_training(self):
         pass
 
@@ -132,26 +149,26 @@ class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "block_out_channels": (32, 64, 128, 256),
             "in_channels": 14,
-            "out_channels": 14,
+            "out_channels": 1,
+            "down_block_types": ["DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"],
+            "up_block_types": [],
+            "out_block_type": "ValueFunction",
+            "mid_block_type": "ValueFunctionMidBlock1D",
+            "block_out_channels": [32, 64, 128, 256],
+            "layers_per_block": 1,
+            "always_downsample": True,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
     def test_from_pretrained_hub(self):
-        unet, loading_info = UNet1DModel.from_pretrained(
-            "bglick13/hopper-medium-v2-value-function-hor32", output_loading_info=True, subfolder="unet"
-        )
         value_function, vf_loading_info = UNet1DModel.from_pretrained(
             "bglick13/hopper-medium-v2-value-function-hor32", output_loading_info=True, subfolder="value_function"
         )
-        self.assertIsNotNone(unet)
-        self.assertEqual(len(loading_info["missing_keys"]), 0)
         self.assertIsNotNone(value_function)
         self.assertEqual(len(vf_loading_info["missing_keys"]), 0)
 
-        unet.to(torch_device)
         value_function.to(torch_device)
         image = value_function(**self.dummy_input)
 
