@@ -350,9 +350,9 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         for _ in range(num_layers):
             attentions.append(
                 SpatialTransformer(
-                    in_channels,
                     attn_num_head_channels,
                     in_channels // attn_num_head_channels,
+                    in_channels=in_channels,
                     depth=1,
                     context_dim=cross_attention_dim,
                     num_groups=resnet_groups,
@@ -527,9 +527,9 @@ class CrossAttnDownBlock2D(nn.Module):
             )
             attentions.append(
                 SpatialTransformer(
-                    out_channels,
                     attn_num_head_channels,
                     out_channels // attn_num_head_channels,
+                    in_channels=out_channels,
                     depth=1,
                     context_dim=cross_attention_dim,
                     num_groups=resnet_groups,
@@ -1106,9 +1106,9 @@ class CrossAttnUpBlock2D(nn.Module):
             )
             attentions.append(
                 SpatialTransformer(
-                    out_channels,
                     attn_num_head_channels,
                     out_channels // attn_num_head_channels,
+                    in_channels=out_channels,
                     depth=1,
                     context_dim=cross_attention_dim,
                     num_groups=resnet_groups,
