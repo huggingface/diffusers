@@ -52,7 +52,7 @@ if is_transformers_available():
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
-CUSTOM_PIPELINE_FILE_NAME = "pipeline.py"
+CUSTOM_PIPELINE_FILE_NAME = "imagic_stable_diffusion.py"
 DUMMY_MODULES_FOLDER = "diffusers.utils"
 
 
