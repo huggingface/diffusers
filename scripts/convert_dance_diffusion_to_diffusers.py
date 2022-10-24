@@ -318,8 +318,8 @@ def main(args):
     print("Diff sum", diff_sum)
     print("Diff max", diff_max)
 
-    assert diff_sum < 4e-1, f"Diff sum: {diff_sum} is too much :-/"
-    assert diff_max < 4e-3, f"Diff max: {diff_max} is too much :-/"
+    assert diff_sum < 1e-1, f"Diff sum: {diff_sum} is too much :-/"
+    assert diff_max < 1e-4, f"Diff max: {diff_max} is too much :-/"
 
     print(f"Converion for {model_name} succesful!")
 
