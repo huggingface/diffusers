@@ -38,7 +38,7 @@ class DanceDiffusionPipeline(DiffusionPipeline):
         self.register_modules(unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
-    def __call__(self, batch_size: int = 1, num_inference_steps: int = 100, generator: Optional[torch.Generator] = None, return_dict: bool = True) -> Union[AudioPipelineOutput, Tuple]:
+    def __call__(self, batch_size: int = 1, num_inference_steps: int = 100, generator: Optional[torch.Generator] = None, sample_size: Optional[int] = None, return_dict: bool = True) -> Union[AudioPipelineOutput, Tuple]:
         r"""
         Args:
             batch_size (`int`, *optional*, defaults to 1):
@@ -59,14 +59,16 @@ class DanceDiffusionPipeline(DiffusionPipeline):
         """
 
         # Sample gaussian noise to begin loop
+        sample_size = sample_size or self.unet.sample_size
+
         audio = torch.randn(
-            (batch_size, self.unet.in_channels, self.unet.sample_size),
+            (batch_size, self.unet.in_channels, sample_size),
             generator=generator,
         )
         audio = audio.to(self.device)
 
         # set step values
-        self.scheduler.set_timesteps(num_inference_steps)
+        self.scheduler.set_timesteps(num_inference_steps, device=audio.device)
 
         for t in self.progress_bar(self.scheduler.timesteps):
             # 1. predict noise model_output
