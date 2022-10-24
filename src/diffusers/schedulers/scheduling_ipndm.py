@@ -59,7 +59,6 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
         self.pndm_order = 4
 
         # running values
-        self.counter = 0
         self.ets = []
 
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
@@ -116,7 +115,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
         ets = sample * self.betas[timestep_index] + model_output * self.alphas[timestep_index]
         self.ets.append(ets)
 
-        if len(self.ets) == 1 and self.counter == 0:
+        if len(self.ets) == 1:
             ets = self.ets[-1]
         elif len(self.ets) == 2:
             ets = (3 * self.ets[-1] - self.ets[-2]) / 2
@@ -126,7 +125,6 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
             ets = (1 / 24) * (55 * self.ets[-1] - 59 * self.ets[-2] + 37 * self.ets[-3] - 9 * self.ets[-4])
 
         prev_sample = self._get_prev_sample(sample, timestep_index, prev_timestep_index, ets)
-        self.counter += 1
 
         if not return_dict:
             return (prev_sample,)
