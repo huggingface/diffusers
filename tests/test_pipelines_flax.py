@@ -30,8 +30,8 @@ if is_flax_available():
     from jax import pmap
 
 
-@require_flax
 @slow
+@require_flax
 class FlaxPipelineTests(unittest.TestCase):
     def test_dummy_all_tpus(self):
         pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
