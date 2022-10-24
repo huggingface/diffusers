@@ -19,6 +19,10 @@ from typing import Optional, Tuple, Union
 import torch
 
 from ...pipeline_utils import AudioPipelineOutput, DiffusionPipeline
+from ...utils import logging
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class DanceDiffusionPipeline(DiffusionPipeline):
@@ -43,7 +47,7 @@ class DanceDiffusionPipeline(DiffusionPipeline):
         batch_size: int = 1,
         num_inference_steps: int = 100,
         generator: Optional[torch.Generator] = None,
-        sample_size: Optional[int] = None,
+        sample_length_in_s: Optional[float] = None,
         return_dict: bool = True,
     ) -> Union[AudioPipelineOutput, Tuple]:
         r"""
@@ -65,8 +69,27 @@ class DanceDiffusionPipeline(DiffusionPipeline):
             generated images.
         """
 
-        # Sample gaussian noise to begin loop
-        sample_size = sample_size or self.unet.sample_size
+        if sample_length_in_s is None:
+            sample_length_in_s = self.unet.sample_size / self.unet.sample_rate
+
+        sample_size = sample_length_in_s * self.unet.sample_rate
+
+        down_scale_factor = 2 ** len(self.unet.up_blocks)
+        if sample_size < 3 * down_scale_factor:
+            raise ValueError(
+                f"{sample_length_in_s} is too small. Make sure it's bigger or equal to"
+                f" {3 * down_scale_factor / self.unet.sample_rate}."
+            )
+
+        original_sample_size = int(sample_size)
+        if sample_size % down_scale_factor != 0:
+            sample_size = ((sample_length_in_s * self.unet.sample_rate) // down_scale_factor + 1) * down_scale_factor
+            raise logger.info(
+                f"{sample_length_in_s} is increased to {sample_size / self.unet.sample_rate} so that it can be handled"
+                f" by the model. It will be cut to {original_sample_size / self.unet.sample_rate} after the denoising"
+                " process."
+            )
+        sample_size = int(sample_size)
 
         audio = torch.randn((batch_size, self.unet.in_channels, sample_size), generator=generator, device=self.device)
 
@@ -81,6 +104,8 @@ class DanceDiffusionPipeline(DiffusionPipeline):
             audio = self.scheduler.step(model_output, t, audio).prev_sample
 
         audio = audio.clamp(-1, 1).cpu().numpy()
+
+        audio = audio[:, :, :original_sample_size]
 
         if not return_dict:
             return (audio,)

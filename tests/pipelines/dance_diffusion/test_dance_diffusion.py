@@ -39,6 +39,7 @@ class PipelineFastTests(unittest.TestCase):
         model = UNet1DModel(
             block_out_channels=(32, 32, 64),
             sample_size=512,
+            sample_rate=16_000,
             in_channels=2,
             out_channels=2,
             down_block_types=["DownBlock1DNoSkip"] + ["DownBlock1D"] + ["AttnDownBlock1D"],
@@ -88,7 +89,7 @@ class PipelineIntegrationTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=device).manual_seed(0)
-        output = pipe(generator=generator, num_inference_steps=100)
+        output = pipe(generator=generator, num_inference_steps=100, sample_length_in_s=4.096)
         audio = output.audios
 
         audio_slice = audio[0, -3:, -3:]
