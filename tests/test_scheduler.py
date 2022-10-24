@@ -211,8 +211,7 @@ class SchedulerCommonTest(unittest.TestCase):
         num_inference_steps = kwargs.pop("num_inference_steps", 50)
 
         timestep = 0
-
-        if self.scheduler_classes[0] == IPNDMScheduler:
+        if len(self.scheduler_classes) > 0 and self.scheduler_classes[0] == IPNDMScheduler:
             timestep = 1
 
         for scheduler_class in self.scheduler_classes:
