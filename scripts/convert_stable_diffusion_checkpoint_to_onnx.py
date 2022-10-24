@@ -21,7 +21,7 @@ import torch
 from torch.onnx import export
 
 import onnx
-from diffusers import StableDiffusionOnnxPipeline, StableDiffusionPipeline
+from diffusers import OnnxStableDiffusionPipeline, StableDiffusionPipeline
 from diffusers.onnx_utils import OnnxRuntimeModel
 from packaging import version
 
@@ -93,12 +93,18 @@ def convert_models(model_path: str, output_path: str, opset: int):
         },
         opset=opset,
     )
+    del pipeline.text_encoder
 
     # UNET
     unet_path = output_path / "unet" / "model.onnx"
     onnx_export(
         pipeline.unet,
-        model_args=(torch.randn(2, 4, 64, 64), torch.LongTensor([0, 1]), torch.randn(2, 77, 768), False),
+        model_args=(
+            torch.randn(2, pipeline.unet.in_channels, 64, 64),
+            torch.LongTensor([0, 1]),
+            torch.randn(2, 77, 768),
+            False,
+        ),
         output_path=unet_path,
         ordered_input_names=["sample", "timestep", "encoder_hidden_states", "return_dict"],
         output_names=["out_sample"],  # has to be different from "sample" for correct tracing
@@ -125,6 +131,7 @@ def convert_models(model_path: str, output_path: str, opset: int):
         location="weights.pb",
         convert_attribute=False,
     )
+    del pipeline.unet
 
     # VAE ENCODER
     vae_encoder = pipeline.vae
@@ -157,6 +164,7 @@ def convert_models(model_path: str, output_path: str, opset: int):
         },
         opset=opset,
     )
+    del pipeline.vae
 
     # SAFETY CHECKER
     safety_checker = pipeline.safety_checker
@@ -173,8 +181,10 @@ def convert_models(model_path: str, output_path: str, opset: int):
         },
         opset=opset,
     )
+    del pipeline.safety_checker
 
-    onnx_pipeline = StableDiffusionOnnxPipeline(
+    onnx_pipeline = OnnxStableDiffusionPipeline(
+        vae_encoder=OnnxRuntimeModel.from_pretrained(output_path / "vae_encoder"),
         vae_decoder=OnnxRuntimeModel.from_pretrained(output_path / "vae_decoder"),
         text_encoder=OnnxRuntimeModel.from_pretrained(output_path / "text_encoder"),
         tokenizer=pipeline.tokenizer,
@@ -187,7 +197,9 @@ def convert_models(model_path: str, output_path: str, opset: int):
     onnx_pipeline.save_pretrained(output_path)
     print("ONNX pipeline saved to", output_path)
 
-    _ = StableDiffusionOnnxPipeline.from_pretrained(output_path, provider="CPUExecutionProvider")
+    del pipeline
+    del onnx_pipeline
+    _ = OnnxStableDiffusionPipeline.from_pretrained(output_path, provider="CPUExecutionProvider")
     print("ONNX pipeline is loadable")
 
 

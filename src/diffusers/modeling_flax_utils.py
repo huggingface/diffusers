@@ -27,7 +27,7 @@ from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
-from . import is_torch_available
+from . import __version__, is_torch_available
 from .modeling_flax_pytorch_utils import convert_pytorch_state_dict_to_flax
 from .utils import (
     CONFIG_NAME,
@@ -286,10 +286,13 @@ class FlaxModelMixin:
         local_files_only = kwargs.pop("local_files_only", False)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
-        from_auto_class = kwargs.pop("_from_auto", False)
         subfolder = kwargs.pop("subfolder", None)
 
-        user_agent = {"file_type": "model", "framework": "flax", "from_auto_class": from_auto_class}
+        user_agent = {
+            "diffusers": __version__,
+            "file_type": "model",
+            "framework": "flax",
+        }
 
         # Load config if we don't provide a configuration
         config_path = config if config is not None else pretrained_model_name_or_path
@@ -477,29 +480,6 @@ class FlaxModelMixin:
                 f" {pretrained_model_name_or_path}.\nIf your task is similar to the task the model of the checkpoint"
                 f" was trained on, you can already use {model.__class__.__name__} for predictions without further"
                 " training."
-            )
-
-        # dictionary of key: dtypes for the model params
-        param_dtypes = jax.tree_map(lambda x: x.dtype, state)
-        # extract keys of parameters not in jnp.float32
-        fp16_params = [k for k in param_dtypes if param_dtypes[k] == jnp.float16]
-        bf16_params = [k for k in param_dtypes if param_dtypes[k] == jnp.bfloat16]
-
-        # raise a warning if any of the parameters are not in jnp.float32
-        if len(fp16_params) > 0:
-            logger.warning(
-                f"Some of the weights of {model.__class__.__name__} were initialized in float16 precision from "
-                f"the model checkpoint at {pretrained_model_name_or_path}:\n{fp16_params}\n"
-                "You should probably UPCAST the model weights to float32 if this was not intended. "
-                "See [`~ModelMixin.to_fp32`] for further information on how to do this."
-            )
-
-        if len(bf16_params) > 0:
-            logger.warning(
-                f"Some of the weights of {model.__class__.__name__} were initialized in bfloat16 precision from "
-                f"the model checkpoint at {pretrained_model_name_or_path}:\n{bf16_params}\n"
-                "You should probably UPCAST the model weights to float32 if this was not intended. "
-                "See [`~ModelMixin.to_fp32`] for further information on how to do this."
             )
 
         return model, unflatten_dict(state)
