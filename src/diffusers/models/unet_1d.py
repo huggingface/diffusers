@@ -174,8 +174,6 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             down_block_res_samples = down_block_res_samples[:-1]
             sample = upsample_block(sample, res_samples)
 
-        sample = self.out_block(sample)
-
         if not return_dict:
             return (sample,)
 
