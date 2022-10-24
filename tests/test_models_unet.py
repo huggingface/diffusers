@@ -518,8 +518,8 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
 
         output_slice = output[0, -3:, -3:].flatten()
         # fmt: off
-        expected_output_slice = torch.tensor([-2.137172  ,  1.1426016 ,  0.3688687 , -0.766922  ,  0.7303146 ,
-        0.11038864, -0.4760633 ,  0.13270172,  0.02591348])
+        expected_output_slice = torch.tensor([-2.137172, 1.1426016, 0.3688687, -0.766922, 0.7303146,
+        0.11038864, -0.4760633, 0.13270172, 0.02591348])
         # fmt: on
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))
 
