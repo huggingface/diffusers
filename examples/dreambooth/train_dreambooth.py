@@ -83,6 +83,12 @@ def parse_args():
         help="The prompt used to generate sample outputs to save.",
     )
     parser.add_argument(
+        "--save_sample_negative_prompt",
+        type=str,
+        default=None,
+        help="The negative prompt used to generate sample outputs to save.",
+    )
+    parser.add_argument(
         "--n_save_sample",
         type=int,
         default=4,
@@ -211,6 +217,7 @@ def parse_args():
     )
     parser.add_argument("--log_interval", type=int, default=10, help="Log every N steps.")
     parser.add_argument("--save_interval", type=int, default=10_000, help="Save weights every N steps.")
+    parser.add_argument("--save_min_steps", type=int, default=0, help="Start saving weights after N steps.")
     parser.add_argument(
         "--mixed_precision",
         type=str,
@@ -647,7 +654,7 @@ def main():
                 os.makedirs(sample_dir, exist_ok=True)
                 with torch.autocast("cuda"), torch.inference_mode():
                     for i in tqdm(range(args.n_save_sample), desc="Generating samples"):
-                        images = pipeline(args.save_sample_prompt, guidance_scale=args.save_guidance_scale, num_inference_steps=args.save_infer_steps).images
+                        images = pipeline(args.save_sample_prompt, guidance_scale=args.save_guidance_scale, num_inference_steps=args.save_infer_steps, negative_prompt=args.save_sample_negative_prompt).images
                         images[0].save(os.path.join(sample_dir, f"{i}.png"))
                 del pipeline
                 if torch.cuda.is_available():
@@ -730,7 +737,7 @@ def main():
                 progress_bar.set_postfix(**logs)
                 accelerator.log(logs, step=global_step)
 
-            if global_step > 0 and not global_step % args.save_interval:
+            if global_step > args.save_min_steps and not global_step % args.save_interval:
                 save_weights(global_step)
 
             progress_bar.update(1)
