@@ -15,7 +15,7 @@ from .unet_1d_blocks import get_down_block, get_mid_block, get_out_block, get_up
 class UNet1DOutput(BaseOutput):
     """
     Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+        sample (`torch.FloatTensor` of shape `(batch_size, sample_size, num_channels)`):
             Hidden states output. Output of last layer of model.
     """
 

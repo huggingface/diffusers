@@ -83,6 +83,16 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             new_config["steps_offset"] = 1
             scheduler._internal_dict = FrozenDict(new_config)
 
+        if safety_checker is None:
+            logger.warn(
+                f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
+                " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
+                " results in services or applications open to the public. Both the diffusers team and Hugging Face"
+                " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
+                " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
+                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
+            )
+
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -249,8 +259,8 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 uncond_tokens = [""]
             elif type(prompt) is not type(negative_prompt):
                 raise TypeError(
-                    "`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-                    " {type(prompt)}."
+                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    f" {type(prompt)}."
                 )
             elif isinstance(negative_prompt, str):
                 uncond_tokens = [negative_prompt]
@@ -284,8 +294,25 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         init_latents = init_latent_dist.sample(generator=generator)
         init_latents = 0.18215 * init_latents
 
-        # expand init_latents for batch_size
-        init_latents = torch.cat([init_latents] * batch_size * num_images_per_prompt, dim=0)
+        if isinstance(prompt, str):
+            prompt = [prompt]
+        if len(prompt) > init_latents.shape[0] and len(prompt) % init_latents.shape[0] == 0:
+            # expand init_latents for batch_size
+            deprecation_message = (
+                f"You have passed {len(prompt)} text prompts (`prompt`), but only {init_latents.shape[0]} initial"
+                " images (`init_image`). Initial images are now duplicating to match the number of text prompts. Note"
+                " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
+                " your script to pass as many init images as text prompts to suppress this warning."
+            )
+            deprecate("len(prompt) != len(init_image)", "1.0.0", deprecation_message, standard_warn=False)
+            additional_image_per_prompt = len(prompt) // init_latents.shape[0]
+            init_latents = torch.cat([init_latents] * additional_image_per_prompt * num_images_per_prompt, dim=0)
+        elif len(prompt) > init_latents.shape[0] and len(prompt) % init_latents.shape[0] != 0:
+            raise ValueError(
+                f"Cannot duplicate `init_image` of batch size {init_latents.shape[0]} to {len(prompt)} text prompts."
+            )
+        else:
+            init_latents = torch.cat([init_latents] * num_images_per_prompt, dim=0)
 
         # get the original timestep using init_timestep
         offset = self.scheduler.config.get("steps_offset", 0)
@@ -342,10 +369,15 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
 
-        safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
-        image, has_nsfw_concept = self.safety_checker(
-            images=image, clip_input=safety_checker_input.pixel_values.to(text_embeddings.dtype)
-        )
+        if self.safety_checker is not None:
+            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(
+                self.device
+            )
+            image, has_nsfw_concept = self.safety_checker(
+                images=image, clip_input=safety_checker_input.pixel_values.to(text_embeddings.dtype)
+            )
+        else:
+            has_nsfw_concept = None
 
         if output_type == "pil":
             image = self.numpy_to_pil(image)

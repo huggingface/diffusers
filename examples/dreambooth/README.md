@@ -10,7 +10,6 @@ The `train_dreambooth.py` script shows how to implement the training procedure a
 Before running the scripts, make sure to install the library's training dependencies:
 
 ```bash
-pip install git+https://github.com/huggingface/diffusers.git
 pip install -U -r requirements.txt
 ```
 
@@ -119,6 +118,80 @@ accelerate launch train_dreambooth.py \
   --max_train_steps=800
 ```
 
+### Training on a 8 GB GPU:
+
+By using [DeepSpeed](https://www.deepspeed.ai/) it's possible to offload some
+tensors from VRAM to either CPU or NVME allowing to train with less VRAM.
+
+DeepSpeed needs to be enabled with `accelerate config`. During configuration
+answer yes to "Do you want to use DeepSpeed?". With DeepSpeed stage 2, fp16
+mixed precision and offloading both parameters and optimizer state to cpu it's
+possible to train on under 8 GB VRAM with a drawback of requiring significantly
+more RAM (about 25 GB). See [documentation](https://huggingface.co/docs/accelerate/usage_guides/deepspeed) for more DeepSpeed configuration options.
+
+Changing the default Adam optimizer to DeepSpeed's special version of Adam
+`deepspeed.ops.adam.DeepSpeedCPUAdam` gives a substantial speedup but enabling
+it requires CUDA toolchain with the same version as pytorch. 8-bit optimizer
+does not seem to be compatible with DeepSpeed at the moment.
+
+```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export INSTANCE_DIR="path-to-instance-images"
+export CLASS_DIR="path-to-class-images"
+export OUTPUT_DIR="path-to-save-model"
+
+accelerate launch train_dreambooth.py \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --instance_data_dir=$INSTANCE_DIR \
+  --class_data_dir=$CLASS_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --with_prior_preservation --prior_loss_weight=1.0 \
+  --instance_prompt="a photo of sks dog" \
+  --class_prompt="a photo of dog" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --sample_batch_size=1 \
+  --gradient_accumulation_steps=1 --gradient_checkpointing \
+  --learning_rate=5e-6 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --num_class_images=200 \
+  --max_train_steps=800 \
+  --mixed_precision=fp16
+```
+
+### Fine-tune text encoder with the UNet.
+
+The script also allows to fine-tune the `text_encoder` along with the `unet`. It's been observed experimentally that fine-tuning `text_encoder` gives much better results especially on faces. 
+Pass the `--train_text_encoder` argument to the script to enable training `text_encoder`.
+
+___Note: Training text encoder requires more memory, with this option the training won't fit on 16GB GPU. It needs at least 24GB VRAM.___
+
+```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export INSTANCE_DIR="path-to-instance-images"
+export CLASS_DIR="path-to-class-images"
+export OUTPUT_DIR="path-to-save-model"
+
+accelerate launch train_dreambooth.py \
+  --pretrained_model_name_or_path=$MODEL_NAME  \
+  --train_text_encoder \
+  --instance_data_dir=$INSTANCE_DIR \
+  --class_data_dir=$CLASS_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --with_prior_preservation --prior_loss_weight=1.0 \
+  --instance_prompt="a photo of sks dog" \
+  --class_prompt="a photo of dog" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --use_8bit_adam
+  --gradient_checkpointing \
+  --learning_rate=2e-6 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --num_class_images=200 \
+  --max_train_steps=800
+```
 
 ## Inference
 
