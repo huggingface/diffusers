@@ -210,6 +210,11 @@ class SchedulerCommonTest(unittest.TestCase):
         kwargs = dict(self.forward_default_kwargs)
         num_inference_steps = kwargs.pop("num_inference_steps", 50)
 
+        timestep = 0
+
+        if self.scheduler_classes[0] == IPNDMScheduler:
+            timestep = 1
+
         for scheduler_class in self.scheduler_classes:
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
@@ -222,14 +227,14 @@ class SchedulerCommonTest(unittest.TestCase):
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
-            outputs_dict = scheduler.step(residual, 1, sample, **kwargs)
+            outputs_dict = scheduler.step(residual, timestep, sample, **kwargs)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 scheduler.set_timesteps(num_inference_steps)
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
-            outputs_tuple = scheduler.step(residual, 1, sample, return_dict=False, **kwargs)
+            outputs_tuple = scheduler.step(residual, timestep, sample, return_dict=False, **kwargs)
 
             recursive_check(outputs_tuple, outputs_dict)
 
@@ -1061,4 +1066,4 @@ class IPNDMSchedulerTest(SchedulerCommonTest):
         sample = self.full_loop()
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_mean.item() - 2540529) < 1
+        assert abs(result_mean.item() - 2540529) < 10

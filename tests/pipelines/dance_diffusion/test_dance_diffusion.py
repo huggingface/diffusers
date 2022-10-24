@@ -1,0 +1,100 @@
+# coding=utf-8
+# Copyright 2022 HuggingFace Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import gc
+import unittest
+
+import numpy as np
+import torch
+
+from diffusers import DanceDiffusionPipeline, UNet1DModel, IPNDMScheduler
+from diffusers.utils import slow, torch_device
+
+
+torch.backends.cuda.matmul.allow_tf32 = False
+
+
+class PipelineFastTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    @property
+    def dummy_unet(self):
+        torch.manual_seed(0)
+        model = UNet1DModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=9,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=32,
+        )
+        return model
+
+    def test_dance_diffusion(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        scheduler = IPNDMScheduler()
+
+        pipe = DanceDiffusionPipeline(unet=self.dummy_unet, scheduler=scheduler)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        output = pipe(generator=generator, num_inference_steps=4, sample_size=500)
+        audio = output.audio
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        output = pipe(generator=generator, num_inference_steps=4, sample_size=500, return_dict=False)
+        audio_from_tuple = output[0]
+
+        audio_slice = audio[0, -3:, -3:]
+        audio_from_tuple_slice = audio_from_tuple[0, -3:, -3:]
+
+        assert audio.shape == (1, 128, 128, 3)
+        expected_slice = np.array([0.5075, 0.4485, 0.4558, 0.5369, 0.5369, 0.5236, 0.5127, 0.4983, 0.4776])
+        assert np.abs(audio_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(audio_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+
+
+@slow
+@unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+class PipelineIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_dance_diffusion(self):
+        device = torch_device
+
+        pipe = DanceDiffusionPipeline.from_pretrained("harmonai/maestro-150k")
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        output = pipe(generator=generator, num_inference_steps=100)
+        audio = output.audio
+
+        audio_slice = audio[0, -3:, -3:]
+
+        assert audio.shape == (1, 128, 128, 3)
+        expected_slice = np.array([0.5075, 0.4485, 0.4558, 0.5369, 0.5369, 0.5236, 0.5127, 0.4983, 0.4776])
+        assert np.abs(audio_slice.flatten() - expected_slice).max() < 1e-2
