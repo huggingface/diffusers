@@ -425,6 +425,7 @@ class VQModel(ModelMixin, ConfigMixin):
         sample_size: int = 32,
         num_vq_embeddings: int = 256,
         norm_num_groups: int = 32,
+        e_dim: Optional[int] = None,
     ):
         super().__init__()
 
@@ -440,11 +441,11 @@ class VQModel(ModelMixin, ConfigMixin):
             double_z=False,
         )
 
-        self.quant_conv = torch.nn.Conv2d(latent_channels, latent_channels, 1)
-        self.quantize = VectorQuantizer(
-            num_vq_embeddings, latent_channels, beta=0.25, remap=None, sane_index_shape=False
-        )
-        self.post_quant_conv = torch.nn.Conv2d(latent_channels, latent_channels, 1)
+        e_dim = e_dim if e_dim is not None else latent_channels
+
+        self.quant_conv = torch.nn.Conv2d(latent_channels, e_dim, 1)
+        self.quantize = VectorQuantizer(num_vq_embeddings, e_dim, beta=0.25, remap=None, sane_index_shape=False)
+        self.post_quant_conv = torch.nn.Conv2d(e_dim, latent_channels, 1)
 
         # pass init params to Decoder
         self.decoder = Decoder(
