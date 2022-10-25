@@ -20,11 +20,17 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-import xformers
-import xformers.ops
+from diffusers.utils.import_utils import is_xformers_available
 
 
-_USE_MEMORY_EFFICIENT_ATTENTION = int(os.environ.get("USE_MEMORY_EFFICIENT_ATTENTION", 0)) == 1
+if is_xformers_available():
+    import xformers
+    import xformers.ops
+
+    _USE_MEMORY_EFFICIENT_ATTENTION = int(os.environ.get("USE_MEMORY_EFFICIENT_ATTENTION", 0)) == 1
+else:
+    xformers = None
+    _USE_MEMORY_EFFICIENT_ATTENTION = False
 
 
 def exists(val):

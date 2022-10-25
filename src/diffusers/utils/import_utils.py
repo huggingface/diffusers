@@ -168,6 +168,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _accelerate_available = False
 
+_xformers_available = importlib.util.find_spec("xformers") is not None
+try:
+    _xformers_version = importlib_metadata.version("xformers")
+    logger.debug(f"Successfully imported xformers version {_xformers_version}")
+except importlib_metadata.PackageNotFoundError:
+    _xformers_available = False
+
 
 def is_torch_available():
     return _torch_available
@@ -203,6 +210,10 @@ def is_onnx_available():
 
 def is_scipy_available():
     return _scipy_available
+
+
+def is_xformers_available():
+    return _xformers_available
 
 
 def is_accelerate_available():
