@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -22,7 +22,7 @@ from diffusers.models.unet_1d_blocks import get_down_block, get_mid_block, get_o
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput
-from .embeddings import TimestepEmbedding, Timesteps
+from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
 
 
 @dataclass
@@ -44,11 +44,21 @@ class UNet1DModel(ModelMixin, ConfigMixin):
     implements for all the model (such as downloading or saving, etc.)
 
     Parameters:
-        in_channels:
-        out_channels:
-        down_block_types:
-        up_block_types:
-        block_out_channels:
+        sample_size (`int`, *optionl*): Default length of sample. Should be adaptable at runtime.
+        in_channels (`int`, *optional*, defaults to 2): Number of channels in the input sample.
+        out_channels (`int`, *optional*, defaults to 2): Number of channels in the output.
+        time_embedding_type (`str`, *optional*, defaults to `"fourier"`): Type of time embedding to use.
+        freq_shift (`int`, *optional*, defaults to 0): Frequency shift for fourier time embedding.
+        flip_sin_to_cos (`bool`, *optional*, defaults to :
+            obj:`False`): Whether to flip sin to cos for fourier time embedding.
+        down_block_types (`Tuple[str]`, *optional*, defaults to :
+            obj:`("DownBlock1D", "DownBlock1DNoSkip", "AttnDownBlock1D")`): Tuple of downsample block types.
+        up_block_types (`Tuple[str]`, *optional*, defaults to :
+            obj:`("UpBlock1D", "UpBlock1DNoSkip", "AttnUpBlock1D")`): Tuple of upsample block types.
+        block_out_channels (`Tuple[int]`, *optional*, defaults to :
+            obj:`(32, 32, 64)`): Tuple of block output channels.
+        mid_block_type:
+        out_block_type:
         act_fn:
         norm_num_groups:
     """
@@ -56,8 +66,15 @@ class UNet1DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
+        sample_size: int = 65536,
+        sample_rate: Optional[int] = None,
         in_channels: int = 14,
         out_channels: int = 14,
+        extra_in_channels: int = 0,
+        time_embedding_type: str = "positional",
+        flip_sin_to_cos: bool = False,
+        use_timestep_embedding: bool = True,
+        downscale_freq_shift: float = 1.0,
         down_block_types: Tuple[str] = ("DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"),
         up_block_types: Tuple[str] = ("UpResnetBlock1D", "UpResnetBlock1D"),
         mid_block_type: Tuple[str] = "MidResTemporalBlock1D",
@@ -70,13 +87,28 @@ class UNet1DModel(ModelMixin, ConfigMixin):
     ):
         super().__init__()
 
-        time_embed_dim = block_out_channels[0] * 4
+        self.sample_size = sample_size
 
         # time
-        self.time_proj = Timesteps(num_channels=block_out_channels[0], flip_sin_to_cos=False, downscale_freq_shift=1)
-        self.time_mlp = TimestepEmbedding(
-            channel=block_out_channels[0], time_embed_dim=time_embed_dim, act_fn=act_fn, out_dim=block_out_channels[0]
-        )
+        if time_embedding_type == "fourier":
+            self.time_proj = GaussianFourierProjection(
+                embedding_size=8, set_W_to_weight=False, log=False, flip_sin_to_cos=flip_sin_to_cos
+            )
+            timestep_input_dim = 2 * block_out_channels[0]
+        elif time_embedding_type == "positional":
+            self.time_proj = Timesteps(
+                block_out_channels[0], flip_sin_to_cos=flip_sin_to_cos, downscale_freq_shift=downscale_freq_shift
+            )
+            timestep_input_dim = block_out_channels[0]
+
+        if use_timestep_embedding:
+            time_embed_dim = block_out_channels[0] * 4
+            self.time_mlp = TimestepEmbedding(
+                in_channels=timestep_input_dim,
+                time_embed_dim=time_embed_dim,
+                act_fn=act_fn,
+                out_dim=block_out_channels[0],
+            )
 
         self.down_blocks = nn.ModuleList([])
         self.mid_block = None
