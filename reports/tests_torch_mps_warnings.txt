@@ -1,0 +1,28 @@
+=========================== warnings summary (final) ===========================
+tests/test_models_unet.py::UNet2DConditionModelTests::test_gradient_checkpointing
+  /Users/stutiraizada/opt/anaconda3/lib/python3.9/site-packages/torch/amp/autocast_mode.py:198: UserWarning: User provided device_type of 'cuda', but CUDA is not available. Disabling
+    warnings.warn('User provided device_type of \'cuda\', but CUDA is not available. Disabling')
+
+tests/test_models_unet.py::NCSNppModelTests::test_determinism
+tests/test_models_unet.py::NCSNppModelTests::test_ema_training
+tests/test_models_unet.py::NCSNppModelTests::test_from_pretrained_save_pretrained
+tests/test_models_unet.py::NCSNppModelTests::test_model_from_config
+tests/test_models_unet.py::NCSNppModelTests::test_output
+tests/test_models_unet.py::NCSNppModelTests::test_output_pretrained_ve_large
+tests/test_models_unet.py::NCSNppModelTests::test_outputs_equivalence
+tests/test_models_unet.py::NCSNppModelTests::test_training
+  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/models/resnet.py:275: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+    torch.tensor(kernel, device=hidden_states.device),
+
+tests/test_models_unet.py::NCSNppModelTests::test_determinism
+tests/test_models_unet.py::NCSNppModelTests::test_ema_training
+tests/test_models_unet.py::NCSNppModelTests::test_from_pretrained_save_pretrained
+tests/test_models_unet.py::NCSNppModelTests::test_model_from_config
+tests/test_models_unet.py::NCSNppModelTests::test_output
+tests/test_models_unet.py::NCSNppModelTests::test_output_pretrained_ve_large
+tests/test_models_unet.py::NCSNppModelTests::test_outputs_equivalence
+tests/test_models_unet.py::NCSNppModelTests::test_training
+  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/models/resnet.py:201: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+    torch.tensor(kernel, device=hidden_states.device),
+
+-- Docs: https://docs.pytest.org/en/stable/warnings.html

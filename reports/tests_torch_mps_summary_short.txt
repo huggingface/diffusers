@@ -1,0 +1,50 @@
+=========================== short test summary info ============================
+PASSED tests/test_models_unet.py::UnetModelTests::test_determinism
+PASSED tests/test_models_unet.py::UnetModelTests::test_ema_training
+PASSED tests/test_models_unet.py::UnetModelTests::test_enable_disable_gradient_checkpointing
+PASSED tests/test_models_unet.py::UnetModelTests::test_forward_signature
+PASSED tests/test_models_unet.py::UnetModelTests::test_forward_with_norm_groups
+PASSED tests/test_models_unet.py::UnetModelTests::test_from_pretrained_save_pretrained
+PASSED tests/test_models_unet.py::UnetModelTests::test_model_from_config
+PASSED tests/test_models_unet.py::UnetModelTests::test_output
+PASSED tests/test_models_unet.py::UnetModelTests::test_outputs_equivalence
+PASSED tests/test_models_unet.py::UnetModelTests::test_training
+PASSED tests/test_models_unet.py::UNetLDMModelTests::test_determinism
+PASSED tests/test_models_unet.py::UNetLDMModelTests::test_ema_training
+PASSED tests/test_models_unet.py::UNetLDMModelTests::test_enable_disable_gradient_checkpointing
+PASSED tests/test_models_unet.py::UNetLDMModelTests::test_forward_signature
+PASSED tests/test_models_unet.py::UNetLDMModelTests::test_forward_with_norm_groups
+PASSED tests/test_models_unet.py::UNetLDMModelTests::test_from_pretrained_hub
+PASSED tests/test_models_unet.py::UNetLDMModelTests::test_from_pretrained_save_pretrained
+PASSED tests/test_models_unet.py::UNetLDMModelTests::test_model_from_config
+PASSED tests/test_models_unet.py::UNetLDMModelTests::test_output
+PASSED tests/test_models_unet.py::UNetLDMModelTests::test_output_pretrained
+PASSED tests/test_models_unet.py::UNetLDMModelTests::test_outputs_equivalence
+PASSED tests/test_models_unet.py::UNetLDMModelTests::test_training
+PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_determinism
+PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_ema_training
+PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_enable_disable_gradient_checkpointing
+PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_forward_signature
+PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_forward_with_norm_groups
+PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_from_pretrained_save_pretrained
+PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_gradient_checkpointing
+PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_model_from_config
+PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_output
+PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_outputs_equivalence
+PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_training
+PASSED tests/test_models_unet.py::NCSNppModelTests::test_determinism
+PASSED tests/test_models_unet.py::NCSNppModelTests::test_ema_training
+PASSED tests/test_models_unet.py::NCSNppModelTests::test_enable_disable_gradient_checkpointing
+PASSED tests/test_models_unet.py::NCSNppModelTests::test_forward_signature
+PASSED tests/test_models_unet.py::NCSNppModelTests::test_forward_with_norm_groups
+PASSED tests/test_models_unet.py::NCSNppModelTests::test_from_pretrained_save_pretrained
+PASSED tests/test_models_unet.py::NCSNppModelTests::test_model_from_config
+PASSED tests/test_models_unet.py::NCSNppModelTests::test_output
+PASSED tests/test_models_unet.py::NCSNppModelTests::test_output_pretrained_ve_large
+PASSED tests/test_models_unet.py::NCSNppModelTests::test_outputs_equivalence
+PASSED tests/test_models_unet.py::NCSNppModelTests::test_training
+SKIPPED [1] tests/test_models_unet.py:138: This test is supposed to run on GPU
+SKIPPED [1] tests/test_models_unet.py:148: This test is supposed to run on GPU
+SKIPPED [1] tests/test_models_unet.py:180: This test is supposed to run on GPU
+SKIPPED [1] tests/test_models_unet.py:384: test is slow
+SKIPPED [1] tests/test_models_unet.py:398: test is slow
