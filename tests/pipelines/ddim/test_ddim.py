@@ -52,7 +52,37 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         # Warmup pass when using mps (see #372)
         if torch_device == "mps":
-            _ = ddpm(num_inference_steps=1)
+            _ = ddpm(num_inference_steps=5)
+            _ = ddpm(num_inference_steps=5)
+
+        generator = torch.manual_seed(0)
+        image = ddpm(generator=generator, num_inference_steps=2, output_type="numpy").images
+
+        generator = torch.manual_seed(0)
+        image_from_tuple = ddpm(generator=generator, num_inference_steps=2, output_type="numpy", return_dict=False)[0]
+
+        image_slice = image[0, -3:, -3:, -1]
+        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 32, 32, 3)
+        expected_slice = np.array(
+            [1.000e00, 5.717e-01, 4.717e-01, 1.000e00, 0.000e00, 1.000e00, 3.000e-04, 0.000e00, 9.000e-04]
+        )
+        tolerance = 1e-2 if torch_device != "mps" else 3e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < tolerance
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < tolerance
+
+    def test_inference_2(self):
+        unet = self.dummy_uncond_unet
+        scheduler = DDIMScheduler()
+
+        ddpm = DDIMPipeline(unet=unet, scheduler=scheduler)
+        ddpm.to(torch_device)
+        ddpm.set_progress_bar_config(disable=None)
+
+        # Warmup pass when using mps (see #372)
+        if torch_device == "mps":
+            _ = ddpm(num_inference_steps=5)
 
         generator = torch.manual_seed(0)
         image = ddpm(generator=generator, num_inference_steps=2, output_type="numpy").images
