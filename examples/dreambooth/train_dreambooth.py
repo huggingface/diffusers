@@ -1,6 +1,7 @@
 import argparse
 import hashlib
 import itertools
+import random
 import json
 import math
 import os
@@ -277,6 +278,8 @@ class DreamBoothDataset(Dataset):
                 class_img_path = [(x, concept["class_prompt"]) for x in Path(concept["class_data_dir"]).iterdir() if x.is_file()]
                 self.class_images_path.extend(class_img_path[:num_class_images])
 
+        random.shuffle(self.instance_images_path)
+        random.shuffle(self.class_images_path)
         self.num_instance_images = len(self.instance_images_path)
         self._length = self.num_instance_images
         self.num_class_images = len(self.class_images_path)
