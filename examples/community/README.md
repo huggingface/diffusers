@@ -323,7 +323,7 @@ out = pipe(
     },
     wildcard_files=["object.txt", "animal.txt"],
     num_prompt_samples=1
-)
+)```
 
 
 ### Composable Stable diffusion 
