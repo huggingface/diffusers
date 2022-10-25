@@ -355,7 +355,7 @@ generator = th.Generator("cuda").manual_seed(0)
 
 seed = 0
 prompt = "a forest | a camel"
-weights = " 1 | 1"  # Equal weight to each prompt. Cna be negative
+weights = " 1 | 1"  # Equal weight to each prompt. Can be negative
 
 images = []
 for i in range(4):
