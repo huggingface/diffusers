@@ -1,19 +1,27 @@
-=========================== warnings summary (final) ===========================
-src/diffusers/dynamic_modules_utils.py:80
-  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/dynamic_modules_utils.py:80: DeprecationWarning: invalid escape sequence \s
-    relative_imports = re.findall("^\s*import\s+\.(\S+)\s*$", content, flags=re.MULTILINE)
+=================================================================================== warnings summary (final) ====================================================================================
+../../../Library/Python/3.8/lib/python/site-packages/transformers/image_utils.py:239
+../../../Library/Python/3.8/lib/python/site-packages/transformers/image_utils.py:239
+../../../Library/Python/3.8/lib/python/site-packages/transformers/image_utils.py:239
+../../../Library/Python/3.8/lib/python/site-packages/transformers/image_utils.py:239
+../../../Library/Python/3.8/lib/python/site-packages/transformers/image_utils.py:239
+  /Users/stutiraizada/Library/Python/3.8/lib/python/site-packages/transformers/image_utils.py:239: DeprecationWarning: BILINEAR is deprecated and will be removed in Pillow 10 (2023-07-01). Use Resampling.BILINEAR instead.
+    def resize(self, image, size, resample=PIL.Image.BILINEAR, default_to_square=True, max_size=None):
 
-src/diffusers/dynamic_modules_utils.py:82
-  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/dynamic_modules_utils.py:82: DeprecationWarning: invalid escape sequence \s
-    relative_imports += re.findall("^\s*from\s+\.(\S+)\s+import", content, flags=re.MULTILINE)
+../../../Library/Python/3.8/lib/python/site-packages/transformers/image_utils.py:396
+../../../Library/Python/3.8/lib/python/site-packages/transformers/image_utils.py:396
+../../../Library/Python/3.8/lib/python/site-packages/transformers/image_utils.py:396
+../../../Library/Python/3.8/lib/python/site-packages/transformers/image_utils.py:396
+../../../Library/Python/3.8/lib/python/site-packages/transformers/image_utils.py:396
+  /Users/stutiraizada/Library/Python/3.8/lib/python/site-packages/transformers/image_utils.py:396: DeprecationWarning: NEAREST is deprecated and will be removed in Pillow 10 (2023-07-01). Use Resampling.NEAREST or Dither.NONE instead.
+    def rotate(self, image, angle, resample=PIL.Image.NEAREST, expand=0, center=None, translate=None, fillcolor=None):
 
-src/diffusers/dynamic_modules_utils.py:124
-  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/dynamic_modules_utils.py:124: DeprecationWarning: invalid escape sequence \s
-    imports = re.findall("^\s*import\s+(\S+)\s*$", content, flags=re.MULTILINE)
-
-src/diffusers/dynamic_modules_utils.py:126
-  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/dynamic_modules_utils.py:126: DeprecationWarning: invalid escape sequence \s
-    imports += re.findall("^\s*from\s+(\S+)\s+import", content, flags=re.MULTILINE)
+../../../Library/Python/3.8/lib/python/site-packages/transformers/models/clip/feature_extraction_clip.py:67
+../../../Library/Python/3.8/lib/python/site-packages/transformers/models/clip/feature_extraction_clip.py:67
+../../../Library/Python/3.8/lib/python/site-packages/transformers/models/clip/feature_extraction_clip.py:67
+../../../Library/Python/3.8/lib/python/site-packages/transformers/models/clip/feature_extraction_clip.py:67
+../../../Library/Python/3.8/lib/python/site-packages/transformers/models/clip/feature_extraction_clip.py:67
+  /Users/stutiraizada/Library/Python/3.8/lib/python/site-packages/transformers/models/clip/feature_extraction_clip.py:67: DeprecationWarning: BICUBIC is deprecated and will be removed in Pillow 10 (2023-07-01). Use Resampling.BICUBIC instead.
+    resample=Image.BICUBIC,
 
 tests/test_scheduler.py::LMSDiscreteSchedulerTest::test_betas
 tests/test_scheduler.py::LMSDiscreteSchedulerTest::test_from_pretrained_save_pretrained
@@ -22,7 +30,7 @@ tests/test_scheduler.py::LMSDiscreteSchedulerTest::test_schedules
 tests/test_scheduler.py::LMSDiscreteSchedulerTest::test_step_shape
 tests/test_scheduler.py::LMSDiscreteSchedulerTest::test_time_indices
 tests/test_scheduler.py::LMSDiscreteSchedulerTest::test_timesteps
-  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/schedulers/scheduling_lms_discrete.py:198: UserWarning: The `scale_model_input` function should be called before `step` to ensure correct denoising. See `StableDiffusionPipeline` for a usage example.
+  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/schedulers/scheduling_lms_discrete.py:199: UserWarning: The `scale_model_input` function should be called before `step` to ensure correct denoising. See `StableDiffusionPipeline` for a usage example.
     warnings.warn(
 
 tests/test_scheduler.py: 30 warnings
@@ -30,8 +38,82 @@ tests/test_scheduler.py: 30 warnings
     warnings.warn(warning + message, DeprecationWarning)
 
 tests/test_models_unet.py::UNet2DConditionModelTests::test_gradient_checkpointing
-  /Users/stutiraizada/opt/anaconda3/lib/python3.9/site-packages/torch/amp/autocast_mode.py:198: UserWarning: User provided device_type of 'cuda', but CUDA is not available. Disabling
+  /Users/stutiraizada/Library/Python/3.8/lib/python/site-packages/torch/amp/autocast_mode.py:198: UserWarning: User provided device_type of 'cuda', but CUDA is not available. Disabling
     warnings.warn('User provided device_type of \'cuda\', but CUDA is not available. Disabling')
+
+tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py: 4 warnings
+tests/test_pipelines.py: 1 warning
+tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint.py: 1 warning
+tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py: 3 warnings
+tests/pipelines/stable_diffusion/test_stable_diffusion.py: 3 warnings
+  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/utils/deprecation_utils.py:35: DeprecationWarning: The configuration file of this scheduler: PNDMScheduler {
+    "_class_name": "PNDMScheduler",
+    "_diffusers_version": "0.7.0.dev0",
+    "beta_end": 0.02,
+    "beta_schedule": "linear",
+    "beta_start": 0.0001,
+    "num_train_timesteps": 1000,
+    "set_alpha_to_one": false,
+    "skip_prk_steps": true,
+    "steps_offset": 0,
+    "trained_betas": null
+  }
+   is outdated. `steps_offset` should be set to 1 instead of 0. Please make sure to update the config accordingly as leaving `steps_offset` might led to incorrect results in future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json` file
+    warnings.warn(warning + message, DeprecationWarning)
+
+tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py::StableDiffusionImg2ImgPipelineFastTests::test_stable_diffusion_img2img
+tests/test_pipelines.py::PipelineFastTests::test_components
+tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py::StableDiffusionImg2ImgPipelineFastTests::test_stable_diffusion_img2img_k_lms
+tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py::StableDiffusionImg2ImgPipelineFastTests::test_stable_diffusion_img2img_multiple_init_images
+tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py::StableDiffusionImg2ImgPipelineFastTests::test_stable_diffusion_img2img_negative_prompt
+tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py::StableDiffusionImg2ImgPipelineFastTests::test_stable_diffusion_img2img_num_images_per_prompt
+  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_img2img.py:87: DeprecationWarning: The 'warn' method is deprecated, use 'warning' instead
+    logger.warn(
+
+tests/test_pipelines.py::PipelineFastTests::test_components
+tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy
+tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy_negative_prompt
+tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy_num_images_per_prompt
+  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_inpaint_legacy.py:100: DeprecationWarning: The 'warn' method is deprecated, use 'warning' instead
+    logger.warn(
+
+tests/test_pipelines.py::PipelineFastTests::test_components
+tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_attention_chunk
+tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_ddim
+tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_ddim_factor_8
+tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_k_lms
+tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_negative_prompt
+tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_no_safety_checker
+tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_num_images_per_prompt
+tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_pndm
+  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion.py:75: DeprecationWarning: The 'warn' method is deprecated, use 'warning' instead
+    logger.warn(
+
+tests/test_pipelines.py::PipelineFastTests::test_components
+tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy
+tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy
+tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy_negative_prompt
+tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy_num_images_per_prompt
+tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy_num_images_per_prompt
+tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy_num_images_per_prompt
+tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy_num_images_per_prompt
+  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_inpaint_legacy.py:26: DeprecationWarning: LANCZOS is deprecated and will be removed in Pillow 10 (2023-07-01). Use Resampling.LANCZOS instead.
+    image = image.resize((w, h), resample=PIL.Image.LANCZOS)
+
+tests/test_pipelines.py::PipelineFastTests::test_components
+tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy
+tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy
+tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy_negative_prompt
+tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy_num_images_per_prompt
+tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy_num_images_per_prompt
+tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy_num_images_per_prompt
+tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy_num_images_per_prompt
+  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_inpaint_legacy.py:37: DeprecationWarning: NEAREST is deprecated and will be removed in Pillow 10 (2023-07-01). Use Resampling.NEAREST or Dither.NONE instead.
+    mask = mask.resize((w // 8, h // 8), resample=PIL.Image.NEAREST)
+
+tests/test_pipelines.py::PipelineFastTests::test_components
+  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_img2img.py:25: DeprecationWarning: LANCZOS is deprecated and will be removed in Pillow 10 (2023-07-01). Use Resampling.LANCZOS instead.
+    image = image.resize((w, h), resample=PIL.Image.LANCZOS)
 
 tests/test_models_unet.py::NCSNppModelTests::test_determinism
 tests/test_models_unet.py::NCSNppModelTests::test_ema_training
@@ -55,11 +137,11 @@ tests/test_models_unet.py::NCSNppModelTests::test_training
   /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/models/resnet.py:201: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
     torch.tensor(kernel, device=hidden_states.device),
 
-tests/test_pipelines.py::PipelineFastTests::test_stable_diffusion_ddim
-tests/test_pipelines.py::PipelineFastTests::test_stable_diffusion_ddim_factor_8
+tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_ddim
+tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_ddim_factor_8
   /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/utils/deprecation_utils.py:35: DeprecationWarning: The configuration file of this scheduler: DDIMScheduler {
     "_class_name": "DDIMScheduler",
-    "_diffusers_version": "0.6.0",
+    "_diffusers_version": "0.7.0.dev0",
     "beta_end": 0.012,
     "beta_schedule": "scaled_linear",
     "beta_start": 0.00085,
@@ -72,37 +154,17 @@ tests/test_pipelines.py::PipelineFastTests::test_stable_diffusion_ddim_factor_8
    is outdated. `steps_offset` should be set to 1 instead of 0. Please make sure to update the config accordingly as leaving `steps_offset` might led to incorrect results in future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json` file
     warnings.warn(warning + message, DeprecationWarning)
 
-tests/test_pipelines.py: 11 warnings
-  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/utils/deprecation_utils.py:35: DeprecationWarning: The configuration file of this scheduler: PNDMScheduler {
-    "_class_name": "PNDMScheduler",
-    "_diffusers_version": "0.6.0",
-    "beta_end": 0.02,
-    "beta_schedule": "linear",
-    "beta_start": 0.0001,
-    "num_train_timesteps": 1000,
-    "set_alpha_to_one": false,
-    "skip_prk_steps": true,
-    "steps_offset": 0,
-    "trained_betas": null
-  }
-   is outdated. `steps_offset` should be set to 1 instead of 0. Please make sure to update the config accordingly as leaving `steps_offset` might led to incorrect results in future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json` file
-    warnings.warn(warning + message, DeprecationWarning)
-
-tests/test_pipelines.py::PipelineFastTests::test_stable_diffusion_img2img_num_images_per_prompt
-tests/test_pipelines.py::PipelineFastTests::test_stable_diffusion_img2img_num_images_per_prompt
-  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/utils/deprecation_utils.py:35: DeprecationWarning: You have passed 2 text prompts (`prompt`), but only 1 initial images (`init_image`). Initial images are now duplicating to match the number of text prompts. Note that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update your script to pass as many init images as text prompts to suppress this warning.
-    warnings.warn(warning + message, DeprecationWarning)
-
-tests/test_pipelines.py::PipelineFastTests::test_stable_diffusion_inpaint
+tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint.py::StableDiffusionInpaintPipelineFastTests::test_stable_diffusion_inpaint
   /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_inpaint.py:94: DeprecationWarning: The 'warn' method is deprecated, use 'warning' instead
     logger.warn(
 
-tests/test_pipelines.py::PipelineFastTests::test_stable_diffusion_no_safety_checker
-  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/pipeline_utils.py:479: DeprecationWarning: The 'warn' method is deprecated, use 'warning' instead
+tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py::StableDiffusionImg2ImgPipelineFastTests::test_stable_diffusion_img2img_num_images_per_prompt
+tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py::StableDiffusionImg2ImgPipelineFastTests::test_stable_diffusion_img2img_num_images_per_prompt
+  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/utils/deprecation_utils.py:35: DeprecationWarning: You have passed 2 text prompts (`prompt`), but only 1 initial images (`init_image`). Initial images are now duplicating to match the number of text prompts. Note that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update your script to pass as many init images as text prompts to suppress this warning.
+    warnings.warn(warning + message, DeprecationWarning)
+
+tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_no_safety_checker
+  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/pipeline_utils.py:484: DeprecationWarning: The 'warn' method is deprecated, use 'warning' instead
     logger.warn(
 
-tests/test_pipelines.py::PipelineFastTests::test_stable_diffusion_no_safety_checker
-  /Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion.py:75: DeprecationWarning: The 'warn' method is deprecated, use 'warning' instead
-    logger.warn(
-
--- Docs: https://docs.pytest.org/en/stable/warnings.html
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
