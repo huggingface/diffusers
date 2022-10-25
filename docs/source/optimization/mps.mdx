@@ -19,7 +19,7 @@ specific language governing permissions and limitations under the License.
 - Mac computer with Apple silicon (M1/M2) hardware.
 - macOS 12.6 or later (13.0 or later recommended).
 - arm64 version of Python.
-- PyTorch 1.13.0 test version (pre-RC). You can install it with `pip` using:
+- PyTorch 1.13.0 RC (Release Candidate). You can install it with `pip` using:
 
 ```
 pip3 install --pre torch --extra-index-url https://download.pytorch.org/whl/test/cpu
@@ -35,7 +35,7 @@ We recommend to "prime" the pipeline using an additional one-time pass through i
 # make sure you're logged in with `huggingface-cli login`
 from diffusers import StableDiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 pipe = pipe.to("mps")
 
 # Recommended if your computer has < 64 GB of RAM
@@ -55,6 +55,10 @@ image = pipe(prompt).images[0]
 M1/M2 performance is very sensitive to memory pressure. The system will automatically swap if it needs to, but performance will degrade significantly when it does.
 
 We recommend you use _attention slicing_ to reduce memory pressure during inference and prevent swapping, particularly if your computer has lass than 64 GB of system RAM, or if you generate images at non-standard resolutions larger than 512 × 512 pixels. Attention slicing performs the costly attention operation in multiple steps instead of all at once. It usually has a performance impact of ~20% in computers without universal memory, but we have observed _better performance_ in most Apple Silicon computers, unless you have 64 GB or more.
+
+```python
+pipeline.enable_attention_slicing()
+```
 
 ## Known Issues
 

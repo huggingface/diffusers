@@ -23,7 +23,7 @@ import jax.numpy as jnp
 from jax import random
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput
+from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput, broadcast_to_shape_from_left
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> jnp.ndarray:
@@ -101,6 +101,10 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
 
     """
 
+    @property
+    def has_state(self):
+        return True
+
     @register_to_config
     def __init__(
         self,
@@ -129,11 +133,12 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         self.alphas_cumprod = jnp.cumprod(self.alphas, axis=0)
         self.one = jnp.array(1.0)
 
-        self.state = DDPMSchedulerState.create(num_train_timesteps=num_train_timesteps)
+    def create_state(self):
+        return DDPMSchedulerState.create(num_train_timesteps=self.config.num_train_timesteps)
 
-        self.variance_type = variance_type
-
-    def set_timesteps(self, state: DDPMSchedulerState, num_inference_steps: int, shape: Tuple) -> DDPMSchedulerState:
+    def set_timesteps(
+        self, state: DDPMSchedulerState, num_inference_steps: int, shape: Tuple = ()
+    ) -> DDPMSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -214,7 +219,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         """
         t = timestep
 
-        if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
+        if model_output.shape[1] == sample.shape[1] * 2 and self.config.variance_type in ["learned", "learned_range"]:
             model_output, predicted_variance = jnp.split(model_output, sample.shape[1], axis=1)
         else:
             predicted_variance = None
@@ -267,13 +272,11 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
     ) -> jnp.ndarray:
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()
-        while len(sqrt_alpha_prod.shape) < len(original_samples.shape):
-            sqrt_alpha_prod = sqrt_alpha_prod[..., None]
+        sqrt_alpha_prod = broadcast_to_shape_from_left(sqrt_alpha_prod, original_samples.shape)
 
         sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
         sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
-        while len(sqrt_one_minus_alpha_prod.shape) < len(original_samples.shape):
-            sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod[..., None]
+        sqrt_one_minus_alpha_prod = broadcast_to_shape_from_left(sqrt_one_minus_alpha_prod, original_samples.shape)
 
         noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
         return noisy_samples
