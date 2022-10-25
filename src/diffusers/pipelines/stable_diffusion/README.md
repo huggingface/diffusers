@@ -139,15 +139,16 @@ prompt = "An astronaut riding an elephant"
 
 # call the pipeline
 torch.manual_seed(0)
-image = pipe(prompt=prompt,
-             source_prompt=source_prompt,
-             init_image=init_image,
-             num_inference_steps=100,
-             eta=0.1,
-             strength=0.8,
-             guidance_scale=2,
-             source_guidance_scale=1,
-             ).images[0]
+image = pipe(
+    prompt=prompt,
+    source_prompt=source_prompt,
+    init_image=init_image,
+    num_inference_steps=100,
+    eta=0.1,
+    strength=0.8,
+    guidance_scale=2,
+    source_guidance_scale=1,
+).images[0]
 
 image.save("horse_to_elephant.png")
 
