@@ -149,7 +149,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             timestep = timestep[None]
 
         timestep_embed = self.time_proj(timestep)[..., None]
-        timestep_embed = timestep_embed.repeat([1, 1, sample.shape[2]])
+        timestep_embed = timestep_embed.repeat([1, 1, sample.shape[2]]).to(sample.dtype)
 
         # 2. down
         down_block_res_samples = ()

@@ -91,10 +91,14 @@ class DanceDiffusionPipeline(DiffusionPipeline):
             )
         sample_size = int(sample_size)
 
-        audio = torch.randn((batch_size, self.unet.in_channels, sample_size), generator=generator, device=self.device)
+        dtype = next(iter(self.unet.parameters())).dtype
+        audio = torch.randn(
+            (batch_size, self.unet.in_channels, sample_size), generator=generator, device=self.device, dtype=dtype
+        )
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps, device=audio.device)
+        self.scheduler.timesteps = self.scheduler.timesteps.to(dtype)
 
         for t in self.progress_bar(self.scheduler.timesteps):
             # 1. predict noise model_output
@@ -103,7 +107,7 @@ class DanceDiffusionPipeline(DiffusionPipeline):
             # 2. compute previous image: x_t -> t_t-1
             audio = self.scheduler.step(model_output, t, audio).prev_sample
 
-        audio = audio.clamp(-1, 1).cpu().numpy()
+        audio = audio.clamp(-1, 1).float().cpu().numpy()
 
         audio = audio[:, :, :original_sample_size]
 
