@@ -43,6 +43,19 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return model
 
     def test_inference(self):
+        # Warmup pass when using mps (see #372)
+        if torch_device == "mps":
+            unet = self.dummy_uncond_unet
+            scheduler = DDIMScheduler()
+
+            ddpm = DDIMPipeline(unet=unet, scheduler=scheduler)
+            ddpm.to(torch_device)
+            ddpm.set_progress_bar_config(disable=None)
+
+            generator = torch.manual_seed(0)
+            _ = ddpm(generator=generator, num_inference_steps=2)
+            del unet, scheduler, ddpm
+
         unet = self.dummy_uncond_unet
         scheduler = DDIMScheduler()
 
@@ -52,8 +65,7 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         # Warmup pass when using mps (see #372)
         if torch_device == "mps":
-            generator = torch.manual_seed(42)
-            _ = ddpm(generator=generator, num_inference_steps=2, output_type="numpy").images
+            _ = ddpm(num_inference_steps=1)
 
         generator = torch.manual_seed(0)
         image = ddpm(generator=generator, num_inference_steps=2, output_type="numpy").images
