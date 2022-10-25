@@ -434,7 +434,7 @@ class AttnDownBlock2D(nn.Module):
             self.downsamplers = nn.ModuleList(
                 [
                     Downsample2D(
-                        in_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                        out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
                     )
                 ]
             )
@@ -518,7 +518,7 @@ class CrossAttnDownBlock2D(nn.Module):
             self.downsamplers = nn.ModuleList(
                 [
                     Downsample2D(
-                        in_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                        out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
                     )
                 ]
             )
@@ -616,7 +616,7 @@ class DownBlock2D(nn.Module):
             self.downsamplers = nn.ModuleList(
                 [
                     Downsample2D(
-                        in_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                        out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
                     )
                 ]
             )
@@ -694,7 +694,7 @@ class DownEncoderBlock2D(nn.Module):
             self.downsamplers = nn.ModuleList(
                 [
                     Downsample2D(
-                        in_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                        out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
                     )
                 ]
             )
@@ -766,7 +766,7 @@ class AttnDownEncoderBlock2D(nn.Module):
             self.downsamplers = nn.ModuleList(
                 [
                     Downsample2D(
-                        in_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                        out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
                     )
                 ]
             )
@@ -851,7 +851,7 @@ class AttnSkipDownBlock2D(nn.Module):
                 down=True,
                 kernel="fir",
             )
-            self.downsamplers = nn.ModuleList([FirDownsample2D(in_channels, out_channels=out_channels)])
+            self.downsamplers = nn.ModuleList([FirDownsample2D(out_channels, out_channels=out_channels)])
             self.skip_conv = nn.Conv2d(3, out_channels, kernel_size=(1, 1), stride=(1, 1))
         else:
             self.resnet_down = None
@@ -931,7 +931,7 @@ class SkipDownBlock2D(nn.Module):
                 down=True,
                 kernel="fir",
             )
-            self.downsamplers = nn.ModuleList([FirDownsample2D(in_channels, out_channels=out_channels)])
+            self.downsamplers = nn.ModuleList([FirDownsample2D(out_channels, out_channels=out_channels)])
             self.skip_conv = nn.Conv2d(3, out_channels, kernel_size=(1, 1), stride=(1, 1))
         else:
             self.resnet_down = None
