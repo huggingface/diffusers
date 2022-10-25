@@ -21,25 +21,8 @@ def _run():
     env_name = "hopper-medium-v2"
     env = gym.make(env_name)
 
-    # Cuda settings for colab
-    # torch.cuda.get_device_name(0)
-    DEVICE = config["device"]
-
-    # Two generators for different parts of the diffusion loop to work in colab
-    scheduler = DDPMScheduler(
-        num_train_timesteps=config["num_inference_steps"],
-        beta_schedule="squaredcos_cap_v2",
-        clip_sample=False,
-        variance_type="fixed_small_log",
-    )
-
-    network = UNet1DModel.from_pretrained("bglick13/hopper-medium-v2-value-function-hor32").to(device=DEVICE).eval()
-    unet = UNet1DModel.from_pretrained("bglick13/hopper-medium-v2-unet-hor32").to(device=DEVICE).eval()
     pipeline = DiffusionPipeline.from_pretrained(
         "bglick13/hopper-medium-v2-value-function-hor32",
-        value_function=network,
-        unet=unet,
-        scheduler=scheduler,
         env=env,
         custom_pipeline="/Users/bglickenhaus/Documents/diffusers/examples/community",
     )
