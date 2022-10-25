@@ -36,7 +36,7 @@ def parse_args():
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
-        "--pretrained_model_name_revision",
+        "--revision",
         type=str,
         default=None,
         required=False,
@@ -354,7 +354,7 @@ def main():
                 args.pretrained_model_name_or_path,
                 torch_dtype=torch_dtype,
                 safety_checker=None,
-                revision=args.pretrained_model_name_revision,
+                revision=args.revision,
             )
             pipeline.set_progress_bar_config(disable=True)
 
@@ -402,30 +402,30 @@ def main():
     if args.tokenizer_name:
         tokenizer = CLIPTokenizer.from_pretrained(
             args.tokenizer_name,
-            revision=args.pretrained_model_name_revision,
+            revision=args.revision,
         )
     elif args.pretrained_model_name_or_path:
         tokenizer = CLIPTokenizer.from_pretrained(
             args.pretrained_model_name_or_path,
             subfolder="tokenizer",
-            revision=args.pretrained_model_name_revision,
+            revision=args.revision,
         )
 
     # Load models and create wrapper for stable diffusion
     text_encoder = CLIPTextModel.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="text_encoder",
-        revision=args.pretrained_model_name_revision,
+        revision=args.revision,
     )
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="vae",
-        revision=args.pretrained_model_name_revision,
+        revision=args.revision,
     )
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="unet",
-        revision=args.pretrained_model_name_revision,
+        revision=args.revision,
     )
 
     vae.requires_grad_(False)
@@ -642,7 +642,7 @@ def main():
             args.pretrained_model_name_or_path,
             unet=accelerator.unwrap_model(unet),
             text_encoder=accelerator.unwrap_model(text_encoder),
-            revision=args.pretrained_model_name_revision,
+            revision=args.revision,
         )
         pipeline.save_pretrained(args.output_dir)
 
