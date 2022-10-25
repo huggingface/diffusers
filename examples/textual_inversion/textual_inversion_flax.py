@@ -391,9 +391,10 @@ def main():
     placeholder_token_id = tokenizer.convert_tokens_to_ids(args.placeholder_token)
 
     # Load models and create wrapper for stable diffusion
-    text_encoder = FlaxCLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder")
-    vae, state_vae = FlaxAutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
-    unet, state_unet = FlaxUNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
+    # text_encoder = FlaxCLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder")
+    text_encoder = FlaxCLIPTextModel.from_pretrained("duongna/text_encoder_flax")
+    vae, vae_params = FlaxAutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
+    unet, unet_params = FlaxUNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
 
     # Create sampling rng
     rng = jax.random.PRNGKey(args.seed)
@@ -485,12 +486,12 @@ def main():
     train_rngs = jax.random.split(rng, jax.local_device_count())
 
     # Define gradient train step fn
-    def train_step(state, batch, train_rng):
+    def train_step(state, vae_params, unet_params, batch, train_rng):
         dropout_rng, sample_rng, new_train_rng = jax.random.split(train_rng, 3)
 
         def compute_loss(params):
             vae_outputs = vae.apply(
-                {"params": state_vae}, batch["pixel_values"], deterministic=True, method=vae.encode
+                {"params": vae_params}, batch["pixel_values"], deterministic=True, method=vae.encode
             )
             latents = vae_outputs.latent_dist.sample(sample_rng)
             # (NHWC) -> (NCHW)
@@ -511,7 +512,7 @@ def main():
                 batch["input_ids"], params=params, dropout_rng=dropout_rng, train=True
             )[0]
             unet_outputs = unet.apply(
-                {"params": state_unet}, noisy_latents, timesteps, encoder_hidden_states, train=False
+                {"params": unet_params}, noisy_latents, timesteps, encoder_hidden_states, train=False
             )
             noise_pred = unet_outputs.sample
             loss = (noise - noise_pred) ** 2
@@ -540,6 +541,8 @@ def main():
 
     # Replicate the train state on each device
     state = jax_utils.replicate(state)
+    vae_params = jax_utils.replicate(vae_params)
+    unet_params = jax_utils.replicate(unet_params)
 
     # Train!
     num_update_steps_per_epoch = math.ceil(len(train_dataloader))
@@ -568,7 +571,7 @@ def main():
         # train
         for batch in train_dataloader:
             batch = shard(batch)
-            state, train_metric, train_rngs = p_train_step(state, batch, train_rngs)
+            state, train_metric, train_rngs = p_train_step(state, vae_params, unet_params, batch, train_rngs)
             train_metrics.append(train_metric)
 
             train_step_progress_bar.update(1)
@@ -600,8 +603,8 @@ def main():
                 args.output_dir,
                 params={
                     "text_encoder": get_params_to_save(state.params),
-                    "vae": state_vae,
-                    "unet": state_unet,
+                    "vae": get_params_to_save(vae_params),
+                    "unet": get_params_to_save(unet_params),
                     "safety_checker": safety_checker.params,
                 },
             )
