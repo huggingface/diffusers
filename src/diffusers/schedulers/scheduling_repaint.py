@@ -274,7 +274,7 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
         noise = torch.randn(
             model_output.size(), dtype=model_output.dtype, layout=model_output.layout, generator=generator
         ).to(model_output.device)
-        std_dev_t = self.eta * self._get_variance(timestep, prev_timestep) ** 0.5
+        std_dev_t = self.eta * self._get_variance(timestep) ** 0.5
 
         variance = 0
         if t > 0 and self.eta > 0:
