@@ -47,7 +47,7 @@ class DanceDiffusionPipeline(DiffusionPipeline):
         batch_size: int = 1,
         num_inference_steps: int = 100,
         generator: Optional[torch.Generator] = None,
-        sample_length_in_s: Optional[float] = None,
+        audio_length_in_s: Optional[float] = None,
         return_dict: bool = True,
     ) -> Union[AudioPipelineOutput, Tuple]:
         r"""
@@ -60,6 +60,9 @@ class DanceDiffusionPipeline(DiffusionPipeline):
             generator (`torch.Generator`, *optional*):
                 A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
                 deterministic.
+            audio_length_in_s (`float`, *optional*, defaults to `self.unet.config.sample_size/self.unet.config.sample_rate`):
+                The length of the generated audio sample in seconds. Note that the output of the pipeline, *i.e.*
+                `sample_size`, will be `audio_length_in_s` * `self.unet.sample_rate`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipeline_utils.AudioPipelineOutput`] instead of a plain tuple.
 
@@ -69,23 +72,23 @@ class DanceDiffusionPipeline(DiffusionPipeline):
             generated images.
         """
 
-        if sample_length_in_s is None:
-            sample_length_in_s = self.unet.sample_size / self.unet.sample_rate
+        if audio_length_in_s is None:
+            audio_length_in_s = self.unet.config.sample_size / self.unet.config.sample_rate
 
-        sample_size = sample_length_in_s * self.unet.sample_rate
+        sample_size = audio_length_in_s * self.unet.sample_rate
 
         down_scale_factor = 2 ** len(self.unet.up_blocks)
         if sample_size < 3 * down_scale_factor:
             raise ValueError(
-                f"{sample_length_in_s} is too small. Make sure it's bigger or equal to"
+                f"{audio_length_in_s} is too small. Make sure it's bigger or equal to"
                 f" {3 * down_scale_factor / self.unet.sample_rate}."
             )
 
         original_sample_size = int(sample_size)
         if sample_size % down_scale_factor != 0:
-            sample_size = ((sample_length_in_s * self.unet.sample_rate) // down_scale_factor + 1) * down_scale_factor
+            sample_size = ((audio_length_in_s * self.unet.sample_rate) // down_scale_factor + 1) * down_scale_factor
             logger.info(
-                f"{sample_length_in_s} is increased to {sample_size / self.unet.sample_rate} so that it can be handled"
+                f"{audio_length_in_s} is increased to {sample_size / self.unet.sample_rate} so that it can be handled"
                 f" by the model. It will be cut to {original_sample_size / self.unet.sample_rate} after the denoising"
                 " process."
             )
