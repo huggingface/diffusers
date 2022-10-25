@@ -29,7 +29,7 @@ from .test_modeling_common import ModelTesterMixin
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class UnetModelTests(ModelTesterMixin, unittest.TestCase):
+class Unet2DModelTests(ModelTesterMixin, unittest.TestCase):
     model_class = UNet2DModel
 
     @property
