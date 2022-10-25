@@ -69,9 +69,14 @@ def onnx_export(
 
 
 @torch.no_grad()
-def convert_models(model_path: str, output_path: str, opset: int, half: bool = False):
-    dtype = torch.float16 if half else torch.float32
-    device = "cuda" if half else "cpu"
+def convert_models(model_path: str, output_path: str, opset: int, fp16: bool = False):
+    dtype = torch.float16 if fp16 else torch.float32
+    if fp16 and torch.cuda.is_available():
+        device = "cuda"
+    elif fp16 and not torch.cuda.is_available():
+        raise ValueError("`float16` model export is only supported on GPUs with CUDA")
+    else:
+        device = "cpu"
     pipeline = StableDiffusionPipeline.from_pretrained(model_path, torch_dtype=dtype).to(device)
     output_path = Path(output_path)
 
@@ -226,8 +231,8 @@ if __name__ == "__main__":
         type=int,
         help="The version of the ONNX operator set to use.",
     )
-    parser.add_argument("--half", action="store_true", default=False, help="half-precision")
+    parser.add_argument("--fp16", action="store_true", default=False, help="Export the models in `float16` mode")
 
     args = parser.parse_args()
 
-    convert_models(args.model_path, args.output_path, args.opset, args.half)
+    convert_models(args.model_path, args.output_path, args.opset, args.fp16)
