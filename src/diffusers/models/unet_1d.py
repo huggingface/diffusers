@@ -61,6 +61,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         sample_rate: Optional[int] = None,
         in_channels: int = 2,
         out_channels: int = 2,
+        extra_in_channels: int = 0,
         time_embedding_type: str = "fourier",
         freq_shift: int = 0,
         flip_sin_to_cos: bool = True,
@@ -100,7 +101,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             output_channel = block_out_channels[i]
 
             if i == 0:
-                input_channel += 16
+                input_channel += extra_in_channels
 
             down_block = get_down_block(
                 down_block_type,
