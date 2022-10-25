@@ -36,7 +36,7 @@
   - local: optimization/onnx
     title: "ONNX"
   - local: optimization/open_vino
-    title: "Open Vino"
+    title: "OpenVINO"
   - local: optimization/mps
     title: "MPS"
   title: "Optimization/Special Hardware"
