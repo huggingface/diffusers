@@ -18,19 +18,19 @@ from typing import Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from diffusers.models.unet_1d_blocks import get_down_block, get_mid_block, get_out_block, get_up_block
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
+from .unet_1d_blocks import get_down_block, get_mid_block, get_up_block, get_out_block
 
 
 @dataclass
 class UNet1DOutput(BaseOutput):
     """
     Args:
-        sample (`torch.FloatTensor` of shape `(batch, horizon, obs_dimension)`):
+        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, sample_size)`):
             Hidden states output. Output of last layer of model.
     """
 
@@ -38,7 +38,7 @@ class UNet1DOutput(BaseOutput):
 
 
 class UNet1DModel(ModelMixin, ConfigMixin):
-    """
+    r"""
     UNet1DModel is a 1D UNet model that takes in a noisy sample and a timestep and returns sample shaped output.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
@@ -194,13 +194,13 @@ class UNet1DModel(ModelMixin, ConfigMixin):
     ) -> Union[UNet1DOutput, Tuple]:
         r"""
         Args:
-            sample (`torch.FloatTensor`): (batch, horizon, obs_dimension + action_dimension) noisy inputs tensor
-            timestep (`torch.FloatTensor` or `float` or `int): batch (batch) timesteps
+            sample (`torch.FloatTensor`): `(batch_size, sample_size, num_channels)` noisy inputs tensor
+            timestep (`torch.FloatTensor` or `float` or `int): (batch) timesteps
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unet_2d.UNet2DOutput`] instead of a plain tuple.
+                Whether or not to return a [`~models.unet_1d.UNet1DOutput`] instead of a plain tuple.
 
         Returns:
-            [`~models.unet_2d.UNet2DOutput`] or `tuple`: [`~models.unet_2d.UNet2DOutput`] if `return_dict` is True,
+            [`~models.unet_1d.UNet1DOutput`] or `tuple`: [`~models.unet_1d.UNet1DOutput`] if `return_dict` is True,
             otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
         """
 
@@ -231,6 +231,28 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         # 5. post-process
         if self.out_block:
             sample = self.out_block(sample, temb)
+
+        # # 1. time
+        # if len(timestep.shape) == 0:
+        #     timestep = timestep[None]
+        #
+        # timestep_embed = self.time_proj(timestep)[..., None]
+        # timestep_embed = timestep_embed.repeat([1, 1, sample.shape[2]]).to(sample.dtype)
+        #
+        # # 2. down
+        # down_block_res_samples = ()
+        # for downsample_block in self.down_blocks:
+        #     sample, res_samples = downsample_block(hidden_states=sample, temb=timestep_embed)
+        #     down_block_res_samples += res_samples
+        #
+        # # 3. mid
+        # sample = self.mid_block(sample)
+        #
+        # # 4. up
+        # for i, upsample_block in enumerate(self.up_blocks):
+        #     res_samples = down_block_res_samples[-1:]
+        #     down_block_res_samples = down_block_res_samples[:-1]
+        #     sample = upsample_block(sample, res_samples)
 
         if not return_dict:
             return (sample,)

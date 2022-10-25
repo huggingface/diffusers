@@ -56,7 +56,7 @@ If you use a CUDA GPU, you can take advantage of `torch.autocast` to perform inf
 from torch import autocast
 from diffusers import StableDiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
@@ -72,7 +72,7 @@ To save more GPU memory and get even more speed, you can load and run the model 
 
 ```Python
 pipe = StableDiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4",
+    "runwayml/stable-diffusion-v1-5",
     revision="fp16",
     torch_dtype=torch.float16,
 )
@@ -97,7 +97,7 @@ import torch
 from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4",
+    "runwayml/stable-diffusion-v1-5",
     revision="fp16",
     torch_dtype=torch.float16,
 )
@@ -152,7 +152,7 @@ def generate_inputs():
 
 
 pipe = StableDiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4",
+    "runwayml/stable-diffusion-v1-5",
     revision="fp16",
     torch_dtype=torch.float16,
 ).to("cuda")
@@ -216,7 +216,7 @@ class UNet2DConditionOutput:
 
 
 pipe = StableDiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4",
+    "runwayml/stable-diffusion-v1-5",
     revision="fp16",
     torch_dtype=torch.float16,
 ).to("cuda")
