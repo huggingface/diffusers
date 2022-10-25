@@ -327,7 +327,7 @@ out = pipe(
 
 
 ### Composable Stable diffusion 
-\```python
+```python
 import torch as th
 import numpy as np
 import torchvision.utils as tvu
