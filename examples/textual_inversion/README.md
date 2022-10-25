@@ -48,7 +48,7 @@ Now let's get our dataset.Download 3-4 images from [here](https://drive.google.c
 And launch the training using
 
 ```bash
-export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export MODEL_NAME="runwayml/stable-diffusion-v1-5"
 export DATA_DIR="path-to-dir-containing-images"
 
 accelerate launch textual_inversion.py \

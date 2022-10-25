@@ -105,14 +105,14 @@ class FlaxModelMixin:
         >>> from diffusers import FlaxUNet2DConditionModel
 
         >>> # load model
-        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4")
+        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5")
         >>> # By default, the model parameters will be in fp32 precision, to cast these to bfloat16 precision
         >>> params = model.to_bf16(params)
         >>> # If you don't want to cast certain parameters (for example layer norm bias and scale)
         >>> # then pass the mask as follows
         >>> from flax import traverse_util
 
-        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4")
+        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5")
         >>> flat_params = traverse_util.flatten_dict(params)
         >>> mask = {
         ...     path: (path[-2] != ("LayerNorm", "bias") and path[-2:] != ("LayerNorm", "scale"))
@@ -141,7 +141,7 @@ class FlaxModelMixin:
         >>> from diffusers import FlaxUNet2DConditionModel
 
         >>> # Download model and configuration from huggingface.co
-        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4")
+        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5")
         >>> # By default, the model params will be in fp32, to illustrate the use of this method,
         >>> # we'll first cast to fp16 and back to fp32
         >>> params = model.to_f16(params)
@@ -171,14 +171,14 @@ class FlaxModelMixin:
         >>> from diffusers import FlaxUNet2DConditionModel
 
         >>> # load model
-        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4")
+        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5")
         >>> # By default, the model params will be in fp32, to cast these to float16
         >>> params = model.to_fp16(params)
         >>> # If you want don't want to cast certain parameters (for example layer norm bias and scale)
         >>> # then pass the mask as follows
         >>> from flax import traverse_util
 
-        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4")
+        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5")
         >>> flat_params = traverse_util.flatten_dict(params)
         >>> mask = {
         ...     path: (path[-2] != ("LayerNorm", "bias") and path[-2:] != ("LayerNorm", "scale"))
@@ -216,7 +216,7 @@ class FlaxModelMixin:
 
                     - A string, the *model id* of a pretrained model hosted inside a model repo on huggingface.co.
                       Valid model ids are namespaced under a user or organization name, like
-                      `CompVis/stable-diffusion-v1-4`.
+                      `runwayml/stable-diffusion-v1-5`.
                     - A path to a *directory* containing model weights saved using [`~ModelMixin.save_pretrained`],
                       e.g., `./my_model_directory/`.
             dtype (`jax.numpy.dtype`, *optional*, defaults to `jax.numpy.float32`):
@@ -273,7 +273,7 @@ class FlaxModelMixin:
         >>> from diffusers import FlaxUNet2DConditionModel
 
         >>> # Download model and configuration from huggingface.co and cache.
-        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4")
+        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5")
         >>> # Model was saved using *save_pretrained('./test/saved_model/')* (for example purposes, not runnable).
         >>> model, params = FlaxUNet2DConditionModel.from_pretrained("./test/saved_model/")
         ```"""
@@ -480,29 +480,6 @@ class FlaxModelMixin:
                 f" {pretrained_model_name_or_path}.\nIf your task is similar to the task the model of the checkpoint"
                 f" was trained on, you can already use {model.__class__.__name__} for predictions without further"
                 " training."
-            )
-
-        # dictionary of key: dtypes for the model params
-        param_dtypes = jax.tree_map(lambda x: x.dtype, state)
-        # extract keys of parameters not in jnp.float32
-        fp16_params = [k for k in param_dtypes if param_dtypes[k] == jnp.float16]
-        bf16_params = [k for k in param_dtypes if param_dtypes[k] == jnp.bfloat16]
-
-        # raise a warning if any of the parameters are not in jnp.float32
-        if len(fp16_params) > 0:
-            logger.warning(
-                f"Some of the weights of {model.__class__.__name__} were initialized in float16 precision from "
-                f"the model checkpoint at {pretrained_model_name_or_path}:\n{fp16_params}\n"
-                "You should probably UPCAST the model weights to float32 if this was not intended. "
-                "See [`~ModelMixin.to_fp32`] for further information on how to do this."
-            )
-
-        if len(bf16_params) > 0:
-            logger.warning(
-                f"Some of the weights of {model.__class__.__name__} were initialized in bfloat16 precision from "
-                f"the model checkpoint at {pretrained_model_name_or_path}:\n{bf16_params}\n"
-                "You should probably UPCAST the model weights to float32 if this was not intended. "
-                "See [`~ModelMixin.to_fp32`] for further information on how to do this."
             )
 
         return model, unflatten_dict(state)
