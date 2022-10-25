@@ -1,0 +1,2 @@
+=================================== FAILURES ===================================
+/Users/stutiraizada/Desktop/gaisol/diffusers/src/diffusers/configuration_utils.py:268: OSError: Can't load config for 'hf-internal-testing/unet-pipeline-dummy'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, make sure 'hf-internal-testing/unet-pipeline-dummy' is the correct path to a directory containing a model_index.json file

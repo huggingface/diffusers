@@ -1,0 +1,106 @@
+============================= FAILURES SHORT STACK =============================
+___________________ PipelineTesterMixin.test_smart_download ____________________
+
+
+cls = <class 'diffusers.pipeline_utils.DiffusionPipeline'>
+pretrained_model_name_or_path = 'hf-internal-testing/unet-pipeline-dummy'
+kwargs = {}
+cache_dir = '/var/folders/w5/_gxjdr416b3_7wxpxxqv_2xh0000gn/T/tmp10fk1l6f'
+force_download = False, resume_download = False, proxies = None
+use_auth_token = None, local_files_only = False, revision = None
+
+    @classmethod
+    def get_config_dict(
+        cls, pretrained_model_name_or_path: Union[str, os.PathLike], **kwargs
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        force_download = kwargs.pop("force_download", False)
+        resume_download = kwargs.pop("resume_download", False)
+        proxies = kwargs.pop("proxies", None)
+        use_auth_token = kwargs.pop("use_auth_token", None)
+        local_files_only = kwargs.pop("local_files_only", False)
+        revision = kwargs.pop("revision", None)
+        _ = kwargs.pop("mirror", None)
+        subfolder = kwargs.pop("subfolder", None)
+    
+        user_agent = {"file_type": "config"}
+    
+        pretrained_model_name_or_path = str(pretrained_model_name_or_path)
+    
+        if cls.config_name is None:
+            raise ValueError(
+                "`self.config_name` is not defined. Note that one should not load a config from "
+                "`ConfigMixin`. Please make sure to define `config_name` in a class inheriting from `ConfigMixin`"
+            )
+    
+        if os.path.isfile(pretrained_model_name_or_path):
+            config_file = pretrained_model_name_or_path
+        elif os.path.isdir(pretrained_model_name_or_path):
+            if os.path.isfile(os.path.join(pretrained_model_name_or_path, cls.config_name)):
+                # Load from a PyTorch checkpoint
+                config_file = os.path.join(pretrained_model_name_or_path, cls.config_name)
+            elif subfolder is not None and os.path.isfile(
+                os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name)
+            ):
+                config_file = os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name)
+            else:
+                raise EnvironmentError(
+                    f"Error no file named {cls.config_name} found in directory {pretrained_model_name_or_path}."
+                )
+        else:
+            try:
+                # Load from URL or cache if already cached
+                config_file = hf_hub_download(
+                    pretrained_model_name_or_path,
+                    filename=cls.config_name,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    proxies=proxies,
+                    resume_download=resume_download,
+                    local_files_only=local_files_only,
+                    use_auth_token=use_auth_token,
+                    user_agent=user_agent,
+                    subfolder=subfolder,
+                    revision=revision,
+                )
+    
+            except RepositoryNotFoundError:
+                raise EnvironmentError(
+                    f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier"
+                    " listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a"
+                    " token having permission to this repo with `use_auth_token` or log in with `huggingface-cli"
+                    " login`."
+                )
+            except RevisionNotFoundError:
+                raise EnvironmentError(
+                    f"{revision} is not a valid git identifier (branch name, tag name or commit id) that exists for"
+                    " this model name. Check the model page at"
+                    f" 'https://huggingface.co/{pretrained_model_name_or_path}' for available revisions."
+                )
+            except EntryNotFoundError:
+                raise EnvironmentError(
+                    f"{pretrained_model_name_or_path} does not appear to have a file named {cls.config_name}."
+                )
+            except HTTPError as err:
+                raise EnvironmentError(
+                    "There was a specific connection error when trying to load"
+                    f" {pretrained_model_name_or_path}:\n{err}"
+                )
+            except ValueError:
+                raise EnvironmentError(
+                    f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load this model, couldn't find it"
+                    f" in the cached files and it looks like {pretrained_model_name_or_path} is not the path to a"
+                    f" directory containing a {cls.config_name} file.\nCheckout your internet connection or see how to"
+                    " run the library in offline mode at"
+                    " 'https://huggingface.co/docs/diffusers/installation#offline-mode'."
+                )
+            except EnvironmentError:
+>               raise EnvironmentError(
+                    f"Can't load config for '{pretrained_model_name_or_path}'. If you were trying to load it from "
+                    "'https://huggingface.co/models', make sure you don't have a local directory with the same name. "
+                    f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
+                    f"containing a {cls.config_name} file"
+                )
+E               OSError: Can't load config for 'hf-internal-testing/unet-pipeline-dummy'. If you were trying to load it from 'https://huggingface.co/models', make sure you don't have a local directory with the same name. Otherwise, make sure 'hf-internal-testing/unet-pipeline-dummy' is the correct path to a directory containing a model_index.json file
+
+src/diffusers/configuration_utils.py:268: OSError
