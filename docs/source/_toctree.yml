@@ -92,5 +92,7 @@
       title: "Stable Diffusion"
     - local: api/pipelines/stochastic_karras_ve
       title: "Stochastic Karras VE"
+    - local: api/pipelines/dance_diffusion
+      title: "Dance Diffusion"
     title: "Pipelines"
   title: "API"
