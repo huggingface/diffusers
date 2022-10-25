@@ -93,6 +93,20 @@ class ImagePipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
 
 
+@dataclass
+class AudioPipelineOutput(BaseOutput):
+    """
+    Output class for audio pipelines.
+
+    Args:
+        audios (`np.ndarray`)
+            List of denoised samples of shape `(batch_size, num_channels, sample_rate)`. Numpy array present the
+            denoised audio samples of the diffusion pipeline.
+    """
+
+    audios: np.ndarray
+
+
 class DiffusionPipeline(ConfigMixin):
     r"""
     Base class for all models.

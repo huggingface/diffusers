@@ -20,7 +20,7 @@ import jax.numpy as jnp
 from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput
+from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput, broadcast_to_shape_from_left
 
 
 @flax.struct.dataclass
@@ -63,6 +63,10 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
     """
 
+    @property
+    def has_state(self):
+        return True
+
     @register_to_config
     def __init__(
         self,
@@ -85,8 +89,10 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = jnp.cumprod(self.alphas, axis=0)
 
+    def create_state(self):
         self.state = LMSDiscreteSchedulerState.create(
-            num_train_timesteps=num_train_timesteps, sigmas=((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5
+            num_train_timesteps=self.config.num_train_timesteps,
+            sigmas=((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5,
         )
 
     def get_lms_coefficient(self, state, order, t, current_order):
@@ -112,7 +118,7 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         return integrated_coeff
 
     def set_timesteps(
-        self, state: LMSDiscreteSchedulerState, num_inference_steps: int, shape: Tuple
+        self, state: LMSDiscreteSchedulerState, num_inference_steps: int, shape: Tuple = ()
     ) -> LMSDiscreteSchedulerState:
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -199,8 +205,7 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         timesteps: jnp.ndarray,
     ) -> jnp.ndarray:
         sigma = state.sigmas[timesteps].flatten()
-        while len(sigma.shape) < len(noise.shape):
-            sigma = sigma[..., None]
+        sigma = broadcast_to_shape_from_left(sigma, noise.shape)
 
         noisy_samples = original_samples + noise * sigma
 
