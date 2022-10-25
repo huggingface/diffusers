@@ -101,7 +101,7 @@ class ExamplesTestsAccelerate(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             test_args = f"""
                 examples/textual_inversion/textual_inversion.py
-                --pretrained_model_name_or_path CompVis/stable-diffusion-v1-4
+                --pretrained_model_name_or_path runwayml/stable-diffusion-v1-5
                 --train_data_dir docs/source/imgs
                 --learnable_property object
                 --placeholder_token <cat-toy>
