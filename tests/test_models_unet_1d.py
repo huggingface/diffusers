@@ -18,9 +18,9 @@ import unittest
 import torch
 
 from diffusers import UNet1DModel
+from diffusers.utils import floats_tensor, slow, torch_device
 
 from .test_modeling_common import ModelTesterMixin
-from diffusers.utils import floats_tensor, slow, torch_device
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -201,6 +201,7 @@ class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
     def test_forward_with_norm_groups(self):
         # Not implemented yet for this UNet
         pass
+
 
 class UnetModel1DTests(unittest.TestCase):
     @slow

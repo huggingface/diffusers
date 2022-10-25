@@ -149,6 +149,7 @@ class UpResnetBlock1D(nn.Module):
 
         return hidden_states
 
+
 class ValueFunctionMidBlock1D(nn.Module):
     def __init__(self, in_channels, out_channels, embed_dim):
         super().__init__()
@@ -265,8 +266,6 @@ class OutValueFunctionBlock(nn.Module):
             hidden_states = layer(hidden_states)
 
         return hidden_states
-
-
 
 
 _kernels = {
