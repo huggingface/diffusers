@@ -318,7 +318,7 @@ def get_up_block(up_block_type, num_layers, in_channels, out_channels, temb_chan
     raise ValueError(f"{up_block_type} does not exist.")
 
 
-def get_mid_block(mid_block_type, num_layers, in_channels, out_channels, embed_dim, add_downsample):
+def get_mid_block(mid_block_type, num_layers, in_channels, mid_channels, out_channels, embed_dim, add_downsample):
     if mid_block_type == "MidResTemporalBlock1D":
         return MidResTemporalBlock1D(
             num_layers=num_layers,
@@ -337,3 +337,5 @@ def get_out_block(*, out_block_type, num_groups_out, embed_dim, out_channels, ac
         return OutConv1DBlock(num_groups_out, out_channels, embed_dim, act_fn)
     elif out_block_type == "ValueFunction":
         return OutValueFunctionBlock(fc_dim, embed_dim)
+    else:
+        return None

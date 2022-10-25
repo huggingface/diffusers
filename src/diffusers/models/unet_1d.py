@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
@@ -114,16 +115,18 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         self.mid_block = None
         self.up_blocks = nn.ModuleList([])
         self.out_block = None
-        mid_dim = block_out_channels[-1]
 
         # down
         output_channel = in_channels
         for i, down_block_type in enumerate(down_block_types):
             input_channel = output_channel
             output_channel = block_out_channels[i]
+
+            if i == 0:
+                input_channel += extra_in_channels
+
             is_final_block = i == len(block_out_channels) - 1
 
-            down_block_type = down_block_types[i]
             down_block = get_down_block(
                 down_block_type,
                 num_layers=layers_per_block,
@@ -137,8 +140,9 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         # mid
         self.mid_block = get_mid_block(
             mid_block_type,
-            in_channels=mid_dim,
-            out_channels=mid_dim,
+            in_channels=block_out_channels[-1],
+            mid_channels=block_out_channels[-1],
+            out_channels=block_out_channels[-1],
             embed_dim=block_out_channels[0],
             num_layers=layers_per_block,
             add_downsample=always_downsample,
@@ -146,21 +150,30 @@ class UNet1DModel(ModelMixin, ConfigMixin):
 
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
+        output_channel = reversed_block_out_channels[0]
+        if out_block_type is None:
+            final_upsample_channels = out_channels
+        else:
+            final_upsample_channels = block_out_channels[0]
+
         for i, up_block_type in enumerate(up_block_types):
-            input_channel = reversed_block_out_channels[i]
-            output_channel = reversed_block_out_channels[min(i + 1, len(block_out_channels) - 1)]
+            prev_output_channel = output_channel
+            output_channel = (
+                reversed_block_out_channels[i + 1] if i < len(up_block_types) - 1 else final_upsample_channels
+            )
 
             is_final_block = i == len(block_out_channels) - 1
 
             up_block = get_up_block(
                 up_block_type,
                 num_layers=layers_per_block,
-                in_channels=input_channel,
+                in_channels=prev_output_channel,
                 out_channels=output_channel,
                 temb_channels=block_out_channels[0],
                 add_upsample=not is_final_block,
             )
             self.up_blocks.append(up_block)
+            prev_output_channel = output_channel
 
         # out
         num_groups_out = norm_num_groups if norm_num_groups is not None else min(block_out_channels[0] // 4, 32)
@@ -170,7 +183,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             embed_dim=block_out_channels[0],
             out_channels=out_channels,
             act_fn=act_fn,
-            fc_dim=mid_dim // 4,
+            fc_dim=block_out_channels[-1] // 4,
         )
 
     def forward(
