@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
+from typing import Tuple
 
 import jax.numpy as jnp
 
@@ -41,3 +42,8 @@ class FlaxSchedulerMixin:
     """
 
     config_name = SCHEDULER_CONFIG_NAME
+
+
+def broadcast_to_shape_from_left(x: jnp.ndarray, shape: Tuple[int]) -> jnp.ndarray:
+    assert len(shape) >= x.ndim
+    return jnp.broadcast_to(x.reshape(x.shape + (1,) * (len(shape) - x.ndim)), shape)
