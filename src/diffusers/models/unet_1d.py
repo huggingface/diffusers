@@ -211,48 +211,32 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)
 
-        temb = self.time_proj(timesteps)
-        temb = self.time_mlp(temb)
-        down_block_res_samples = []
+        timestep_embed = self.time_proj(timesteps)
+        if self.time_mlp:
+            timestep_embed = self.time_mlp(timestep_embed)
+        else:
+            timestep_embed = timestep_embed[..., None]
+            timestep_embed = timestep_embed.repeat([1, 1, sample.shape[2]]).to(sample.dtype)
 
         # 2. down
-        for down_block in self.down_blocks:
-            sample, res_samples = down_block(hidden_states=sample, temb=temb)
-            down_block_res_samples.append(res_samples[0])
+        down_block_res_samples = ()
+        for downsample_block in self.down_blocks:
+            sample, res_samples = downsample_block(hidden_states=sample, temb=timestep_embed)
+            down_block_res_samples += res_samples
 
         # 3. mid
         if self.mid_block:
-            sample = self.mid_block(sample, temb)
+            sample = self.mid_block(sample, timestep_embed)
 
         # 4. up
-        for up_block in self.up_blocks:
-            sample = up_block(hidden_states=sample, res_hidden_states=down_block_res_samples.pop(), temb=temb)
+        for i, upsample_block in enumerate(self.up_blocks):
+            res_samples = down_block_res_samples[-1:]
+            down_block_res_samples = down_block_res_samples[:-1]
+            sample = upsample_block(sample, res_hidden_states_tuple=res_samples, temb=timestep_embed)
 
         # 5. post-process
         if self.out_block:
-            sample = self.out_block(sample, temb)
-
-        # # 1. time
-        # if len(timestep.shape) == 0:
-        #     timestep = timestep[None]
-        #
-        # timestep_embed = self.time_proj(timestep)[..., None]
-        # timestep_embed = timestep_embed.repeat([1, 1, sample.shape[2]]).to(sample.dtype)
-        #
-        # # 2. down
-        # down_block_res_samples = ()
-        # for downsample_block in self.down_blocks:
-        #     sample, res_samples = downsample_block(hidden_states=sample, temb=timestep_embed)
-        #     down_block_res_samples += res_samples
-        #
-        # # 3. mid
-        # sample = self.mid_block(sample)
-        #
-        # # 4. up
-        # for i, upsample_block in enumerate(self.up_blocks):
-        #     res_samples = down_block_res_samples[-1:]
-        #     down_block_res_samples = down_block_res_samples[:-1]
-        #     sample = upsample_block(sample, res_samples)
+            sample = self.out_block(sample, timestep_embed)
 
         if not return_dict:
             return (sample,)

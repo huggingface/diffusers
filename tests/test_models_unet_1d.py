@@ -59,6 +59,7 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
             "block_out_channels": (32, 128, 256),
             "in_channels": 14,
             "out_channels": 14,
+            "time_embedding_type": "positional",
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict

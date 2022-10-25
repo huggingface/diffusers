@@ -132,8 +132,9 @@ class UpResnetBlock1D(nn.Module):
         if add_upsample:
             self.upsample = Upsample1D(out_channels, use_conv_transpose=True)
 
-    def forward(self, hidden_states, res_hidden_states=None, temb=None):
-        if res_hidden_states is not None:
+    def forward(self, hidden_states, res_hidden_states_tuple=None, temb=None):
+        if res_hidden_states_tuple is not None:
+            res_hidden_states = res_hidden_states_tuple[-1]
             hidden_states = torch.cat((hidden_states, res_hidden_states), dim=1)
 
         hidden_states = self.resnets[0](hidden_states, temb)
@@ -147,31 +148,6 @@ class UpResnetBlock1D(nn.Module):
             hidden_states = self.upsample(hidden_states)
 
         return hidden_states
-
-
-class DownBlock1D(nn.Module):
-    pass
-
-
-class AttnDownBlock1D(nn.Module):
-    pass
-
-
-class DownBlock1DNoSkip(nn.Module):
-    pass
-
-
-class UpBlock1D(nn.Module):
-    pass
-
-
-class AttnUpBlock1D(nn.Module):
-    pass
-
-
-class UpBlock1DNoSkip(nn.Module):
-    pass
-
 
 class ValueFunctionMidBlock1D(nn.Module):
     def __init__(self, in_channels, out_channels, embed_dim):
