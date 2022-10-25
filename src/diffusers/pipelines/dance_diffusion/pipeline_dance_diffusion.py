@@ -84,7 +84,7 @@ class DanceDiffusionPipeline(DiffusionPipeline):
         original_sample_size = int(sample_size)
         if sample_size % down_scale_factor != 0:
             sample_size = ((sample_length_in_s * self.unet.sample_rate) // down_scale_factor + 1) * down_scale_factor
-            raise logger.info(
+            logger.info(
                 f"{sample_length_in_s} is increased to {sample_size / self.unet.sample_rate} so that it can be handled"
                 f" by the model. It will be cut to {original_sample_size / self.unet.sample_rate} after the denoising"
                 " process."
