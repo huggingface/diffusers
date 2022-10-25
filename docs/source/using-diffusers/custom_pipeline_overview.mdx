@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Custom Pipelines
+# Loading and Saving Custom Pipelines
 
 Diffusers allows you to conveniently load any custom pipeline from the Hugging Face Hub as well as any [official community pipeline](https://github.com/huggingface/diffusers/tree/main/examples/community) 
 via the [`DiffusionPipeline`] class.
@@ -58,7 +58,7 @@ feature_extractor = CLIPFeatureExtractor.from_pretrained(clip_model_id)
 clip_model = CLIPModel.from_pretrained(clip_model_id)
 
 pipeline = DiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4",
+    "runwayml/stable-diffusion-v1-5",
     custom_pipeline="clip_guided_stable_diffusion",
     clip_model=clip_model,
     feature_extractor=feature_extractor,
