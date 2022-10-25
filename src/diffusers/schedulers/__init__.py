@@ -34,7 +34,7 @@ if is_flax_available():
     from .scheduling_lms_discrete_flax import FlaxLMSDiscreteScheduler
     from .scheduling_pndm_flax import FlaxPNDMScheduler
     from .scheduling_sde_ve_flax import FlaxScoreSdeVeScheduler
-    from .scheduling_utils_flax import FlaxSchedulerMixin
+    from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput, broadcast_to_shape_from_left
 else:
     from ..utils.dummy_flax_objects import *  # noqa F403
 
