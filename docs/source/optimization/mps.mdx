@@ -17,9 +17,13 @@ specific language governing permissions and limitations under the License.
 ## Requirements
 
 - Mac computer with Apple silicon (M1/M2) hardware.
-- macOS 12.3 or later.
+- macOS 12.6 or later (13.0 or later recommended).
 - arm64 version of Python.
-- PyTorch [Preview (Nightly)](https://pytorch.org/get-started/locally/), version `1.14.0.dev20221007` or later.
+- PyTorch 1.13.0 RC (Release Candidate). You can install it with `pip` using:
+
+```
+pip3 install --pre torch --extra-index-url https://download.pytorch.org/whl/test/cpu
+```
 
 ## Inference Pipeline
 
@@ -31,8 +35,11 @@ We recommend to "prime" the pipeline using an additional one-time pass through i
 # make sure you're logged in with `huggingface-cli login`
 from diffusers import StableDiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 pipe = pipe.to("mps")
+
+# Recommended if your computer has < 64 GB of RAM
+pipe.enable_attention_slicing()
 
 prompt = "a photo of an astronaut riding a horse on mars"
 
@@ -43,16 +50,17 @@ _ = pipe(prompt, num_inference_steps=1)
 image = pipe(prompt).images[0]
 ```
 
+## Performance Recommendations
+
+M1/M2 performance is very sensitive to memory pressure. The system will automatically swap if it needs to, but performance will degrade significantly when it does.
+
+We recommend you use _attention slicing_ to reduce memory pressure during inference and prevent swapping, particularly if your computer has lass than 64 GB of system RAM, or if you generate images at non-standard resolutions larger than 512 × 512 pixels. Attention slicing performs the costly attention operation in multiple steps instead of all at once. It usually has a performance impact of ~20% in computers without universal memory, but we have observed _better performance_ in most Apple Silicon computers, unless you have 64 GB or more.
+
+```python
+pipeline.enable_attention_slicing()
+```
+
 ## Known Issues
 
 - As mentioned above, we are investigating a strange [first-time inference issue](https://github.com/huggingface/diffusers/issues/372).
-- Generating multiple prompts in a batch [crashes or doesn't work reliably](https://github.com/huggingface/diffusers/issues/363). We believe this might be related to the [`mps` backend in PyTorch](https://github.com/pytorch/pytorch/issues/84039#issuecomment-1237735249), but we need to investigate in more depth. For now, we recommend to iterate instead of batching.
-
-## Performance
-
-These are the results we got on a M1 Max MacBook Pro with 64 GB of RAM, running macOS Ventura Version 13.0 Beta (22A5331f). We performed Stable Diffusion text-to-image generation of the same prompt for 50 inference steps, using a guidance scale of 7.5.
-
-| Device | Steps | Time    |
-|--------|-------|---------|
-| CPU    | 50    | 213.46s |
-| MPS    | 50    | 30.81s  |
+- Generating multiple prompts in a batch [crashes or doesn't work reliably](https://github.com/huggingface/diffusers/issues/363). We believe this is related to the [`mps` backend in PyTorch](https://github.com/pytorch/pytorch/issues/84039). For now, we recommend to iterate instead of batching.
