@@ -1,46 +1,48 @@
 from typing import Optional, Tuple, Union
 
 import torch
-from torch import nn
-from diffusers import DiffusionPipeline, DDIMScheduler, DDPMScheduler, UNet2DConditionModel
+
+from diffusers import DDIMScheduler, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
 from diffusers.pipeline_utils import ImagePipelineOutput
-
-from einops import rearrange, reduce
-
 from diffusers.schedulers.scheduling_ddim import DDIMSchedulerOutput
 from diffusers.schedulers.scheduling_ddpm import DDPMSchedulerOutput
+from einops import rearrange, reduce
+
 
 BITS = 8
 
+
 # convert to bit representations and back taken from https://github.com/lucidrains/bit-diffusion/blob/main/bit_diffusion/bit_diffusion.py
-def decimal_to_bits(x, bits = BITS):
-    """ expects image tensor ranging from 0 to 1, outputs bit tensor ranging from -1 to 1 """
+def decimal_to_bits(x, bits=BITS):
+    """expects image tensor ranging from 0 to 1, outputs bit tensor ranging from -1 to 1"""
     device = x.device
 
     x = (x * 255).int().clamp(0, 255)
 
-    mask = 2 ** torch.arange(bits - 1, -1, -1, device = device)
-    mask = rearrange(mask, 'd -> d 1 1')
-    x = rearrange(x, 'b c h w -> b c 1 h w')
+    mask = 2 ** torch.arange(bits - 1, -1, -1, device=device)
+    mask = rearrange(mask, "d -> d 1 1")
+    x = rearrange(x, "b c h w -> b c 1 h w")
 
     bits = ((x & mask) != 0).float()
-    bits = rearrange(bits, 'b c d h w -> b (c d) h w')
+    bits = rearrange(bits, "b c d h w -> b (c d) h w")
     bits = bits * 2 - 1
     return bits
 
-def bits_to_decimal(x, bits = BITS):
-    """ expects bits from -1 to 1, outputs image tensor from 0 to 1 """
+
+def bits_to_decimal(x, bits=BITS):
+    """expects bits from -1 to 1, outputs image tensor from 0 to 1"""
     device = x.device
 
     x = (x > 0).int()
-    mask = 2 ** torch.arange(bits - 1, -1, -1, device = device, dtype = torch.int32)
+    mask = 2 ** torch.arange(bits - 1, -1, -1, device=device, dtype=torch.int32)
 
-    mask = rearrange(mask, 'd -> d 1 1')
-    x = rearrange(x, 'b (c d) h w -> b c d h w', d = 8)
-    dec = reduce(x * mask, 'b c d h w -> b c h w', 'sum')
-    return (dec / 255).clamp(0., 1.)
+    mask = rearrange(mask, "d -> d 1 1")
+    x = rearrange(x, "b (c d) h w -> b c d h w", d=8)
+    dec = reduce(x * mask, "b c d h w -> b c h w", "sum")
+    return (dec / 255).clamp(0.0, 1.0)
 
-#modified scheduler step functions for clamping the predicted x_0 between -bit_scale and +bit_scale
+
+# modified scheduler step functions for clamping the predicted x_0 between -bit_scale and +bit_scale
 def ddim_bit_scheduler_step(
     self,
     model_output: torch.FloatTensor,
@@ -130,6 +132,7 @@ def ddim_bit_scheduler_step(
 
     return DDIMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
 
+
 def ddpm_bit_scheduler_step(
     self,
     model_output: torch.FloatTensor,
@@ -206,22 +209,24 @@ def ddpm_bit_scheduler_step(
     return DDPMSchedulerOutput(prev_sample=pred_prev_sample, pred_original_sample=pred_original_sample)
 
 
-
 class BitDiffusion(DiffusionPipeline):
     def __init__(
         self,
         unet: UNet2DConditionModel,
-        scheduler: Union[DDIMScheduler, DDPMScheduler], 
+        scheduler: Union[DDIMScheduler, DDPMScheduler],
         bit_scale: Optional[float] = 1.0,
     ):
         super().__init__()
-        self.bit_scale = bit_scale 
-        self.scheduler.step = ddim_bit_scheduler_step if isinstance(scheduler, DDIMScheduler) else ddpm_bit_scheduler_step 
+        self.bit_scale = bit_scale
+        self.scheduler.step = (
+            ddim_bit_scheduler_step if isinstance(scheduler, DDIMScheduler) else ddpm_bit_scheduler_step
+        )
 
         self.register_modules(unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
-    def __call__(self, 
+    def __call__(
+        self,
         height: Optional[int] = 256,
         width: Optional[int] = 256,
         num_inference_steps: Optional[int] = 50,
@@ -230,8 +235,7 @@ class BitDiffusion(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         **kwargs,
-        ) -> Union[Tuple, ImagePipelineOutput]:
-
+    ) -> Union[Tuple, ImagePipelineOutput]:
         latents = torch.randn(
             (batch_size, self.unet.in_channels, height, width),
             generator=generator,
@@ -242,7 +246,6 @@ class BitDiffusion(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps)
 
         for t in self.progress_bar(self.scheduler.timesteps):
-
             # predict the noise residual
             noise_pred = self.unet(latents, t).sample
 
