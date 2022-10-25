@@ -309,8 +309,6 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         assert np.abs(expected_image - image).max() < 1e-2
 
     def test_stable_diffusion_inpaint_pipeline_fp16(self):
-        from huggingface_hub import HfApi
-
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/in_paint/overture-creations-5sI6fQgYIuo.png"
@@ -344,18 +342,9 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             image=init_image,
             mask_image=mask_image,
             generator=generator,
-            #output_type="np",
+            output_type="np",
         )
         image = output.images[0]
-        image.save("./yellow_cat_sitting_on_a_park_bench_fp16.png")
-
-        api = HfApi()
-        api.upload_file(
-            path_or_fileobj="./yellow_cat_sitting_on_a_park_bench_fp16.png",
-            path_in_repo="yellow_cat_sitting_on_a_park_bench_fp16.png",
-            repo_id="anton-l/sd-images",
-            repo_type="dataset",
-        )
 
         assert image.shape == (512, 512, 3)
         assert np.abs(expected_image - image).max() < 1e-2
