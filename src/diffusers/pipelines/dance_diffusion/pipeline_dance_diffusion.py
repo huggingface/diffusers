@@ -34,7 +34,7 @@ class DanceDiffusionPipeline(DiffusionPipeline):
         unet ([`UNet1DModel`]): U-Net architecture to denoise the encoded image.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image. Can be one of
-            [`DanceDiffusionScheduler`], or [`DDIMScheduler`].
+            [`IPNDMScheduler`].
     """
 
     def __init__(self, unet, scheduler):
