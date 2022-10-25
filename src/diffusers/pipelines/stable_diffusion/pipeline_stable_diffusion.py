@@ -40,7 +40,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please, refer to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) for details.
+            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
@@ -287,7 +287,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         latents_dtype = text_embeddings.dtype
         if latents is None:
             if self.device.type == "mps":
-                # randn does not exist on mps
+                # randn does not work reproducibly on mps
                 latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(
                     self.device
                 )

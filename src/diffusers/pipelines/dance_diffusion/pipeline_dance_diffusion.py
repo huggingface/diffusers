@@ -31,10 +31,10 @@ class DanceDiffusionPipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Parameters:
-        unet ([`UNet2DModel`]): U-Net architecture to denoise the encoded image.
+        unet ([`UNet1DModel`]): U-Net architecture to denoise the encoded image.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image. Can be one of
-            [`DanceDiffusionScheduler`], or [`DDIMScheduler`].
+            [`IPNDMScheduler`].
     """
 
     def __init__(self, unet, scheduler):

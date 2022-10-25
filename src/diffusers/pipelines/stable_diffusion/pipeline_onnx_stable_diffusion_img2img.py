@@ -50,7 +50,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please, refer to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) for details.
+            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
@@ -121,6 +121,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: Optional[float] = 0.0,
+        generator: Optional[np.random.RandomState] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, np.ndarray], None]] = None,
@@ -159,6 +160,8 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
+            generator (`np.random.RandomState`, *optional*):
+                A np.random.RandomState to make generation deterministic.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -196,6 +199,9 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
+
+        if generator is None:
+            generator = np.random
 
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
@@ -239,7 +245,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
                     f" {type(prompt)}."
                 )
             elif isinstance(negative_prompt, str):
-                uncond_tokens = [negative_prompt]
+                uncond_tokens = [negative_prompt] * batch_size
             elif batch_size != len(negative_prompt):
                 raise ValueError("The length of `negative_prompt` should be equal to batch_size.")
             else:
@@ -257,13 +263,15 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             uncond_embeddings = self.text_encoder(input_ids=uncond_input_ids.astype(np.int32))[0]
 
             # duplicate unconditional embeddings for each generation per prompt
-            uncond_embeddings = np.repeat(uncond_embeddings, batch_size * num_images_per_prompt, axis=0)
+            uncond_embeddings = np.repeat(uncond_embeddings, num_images_per_prompt, axis=0)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             text_embeddings = np.concatenate([uncond_embeddings, text_embeddings])
 
+        latents_dtype = text_embeddings.dtype
+        init_image = init_image.astype(latents_dtype)
         # encode the init image into latents and scale the latents
         init_latents = self.vae_encoder(sample=init_image)[0]
         init_latents = 0.18215 * init_latents
@@ -297,7 +305,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         timesteps = np.array([timesteps] * batch_size * num_images_per_prompt)
 
         # add noise to latents using the timesteps
-        noise = np.random.randn(*init_latents.shape).astype(np.float32)
+        noise = generator.randn(*init_latents.shape).astype(latents_dtype)
         init_latents = self.scheduler.add_noise(
             torch.from_numpy(init_latents), torch.from_numpy(noise), torch.from_numpy(timesteps)
         )
@@ -341,14 +349,28 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 callback(i, t, latents)
 
         latents = 1 / 0.18215 * latents
-        image = self.vae_decoder(latent_sample=latents)[0]
+        # image = self.vae_decoder(latent_sample=latents)[0]
+        # it seems likes there is a strange result for using half-precision vae decoder if batchsize>1
+        image = np.concatenate(
+            [self.vae_decoder(latent_sample=latents[i : i + 1])[0] for i in range(latents.shape[0])]
+        )
 
         image = np.clip(image / 2 + 0.5, 0, 1)
         image = image.transpose((0, 2, 3, 1))
 
         if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="np")
-            image, has_nsfw_concept = self.safety_checker(clip_input=safety_checker_input.pixel_values, images=image)
+            safety_checker_input = self.feature_extractor(
+                self.numpy_to_pil(image), return_tensors="np"
+            ).pixel_values.astype(image.dtype)
+            # There will throw an error if use safety_checker batchsize>1
+            images, has_nsfw_concept = [], []
+            for i in range(image.shape[0]):
+                image_i, has_nsfw_concept_i = self.safety_checker(
+                    clip_input=safety_checker_input[i : i + 1], images=image[i : i + 1]
+                )
+                images.append(image_i)
+                has_nsfw_concept.append(has_nsfw_concept_i[0])
+            image = np.concatenate(images)
         else:
             has_nsfw_concept = None
 

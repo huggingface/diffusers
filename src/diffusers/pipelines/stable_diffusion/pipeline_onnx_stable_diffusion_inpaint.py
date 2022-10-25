@@ -23,11 +23,11 @@ NUM_LATENT_CHANNELS = 4
 
 
 def prepare_mask_and_masked_image(image, mask, latents_shape):
-    image = np.array(image.convert("RGB"))
+    image = np.array(image.convert("RGB").resize((latents_shape[1] * 8, latents_shape[0] * 8)))
     image = image[None].transpose(0, 3, 1, 2)
     image = image.astype(np.float32) / 127.5 - 1.0
 
-    image_mask = np.array(mask.convert("L"))
+    image_mask = np.array(mask.convert("L").resize((latents_shape[1] * 8, latents_shape[0] * 8)))
     masked_image = image * (image_mask < 127.5)
 
     mask = mask.resize((latents_shape[1], latents_shape[0]), PIL.Image.NEAREST)
@@ -63,7 +63,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please, refer to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) for details.
+            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
@@ -138,6 +138,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
+        generator: Optional[np.random.RandomState] = None,
         latents: Optional[np.ndarray] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -180,6 +181,8 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
             eta (`float`, *optional*, defaults to 0.0):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
+            generator (`np.random.RandomState`, *optional*):
+                A np.random.RandomState to make generation deterministic.
             latents (`np.ndarray`, *optional*):
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
@@ -222,6 +225,9 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
+        if generator is None:
+            generator = np.random
+
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
 
@@ -261,7 +267,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
                     f" {type(prompt)}."
                 )
             elif isinstance(negative_prompt, str):
-                uncond_tokens = [negative_prompt]
+                uncond_tokens = [negative_prompt] * batch_size
             elif batch_size != len(negative_prompt):
                 raise ValueError(
                     f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
@@ -283,7 +289,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
             uncond_embeddings = self.text_encoder(input_ids=uncond_input_ids.astype(np.int32))[0]
 
             # duplicate unconditional embeddings for each generation per prompt
-            uncond_embeddings = np.repeat(uncond_embeddings, batch_size * num_images_per_prompt, axis=0)
+            uncond_embeddings = np.repeat(uncond_embeddings, num_images_per_prompt, axis=0)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
@@ -294,7 +300,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
         latents_shape = (batch_size * num_images_per_prompt, num_channels_latents, height // 8, width // 8)
         latents_dtype = text_embeddings.dtype
         if latents is None:
-            latents = np.random.randn(*latents_shape).astype(latents_dtype)
+            latents = generator.randn(*latents_shape).astype(latents_dtype)
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
@@ -306,6 +312,10 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
 
         masked_image_latents = self.vae_encoder(sample=masked_image)[0]
         masked_image_latents = 0.18215 * masked_image_latents
+
+        # duplicate mask and masked_image_latents for each generation per prompt
+        mask = mask.repeat(batch_size * num_images_per_prompt, 0)
+        masked_image_latents = masked_image_latents.repeat(batch_size * num_images_per_prompt, 0)
 
         mask = np.concatenate([mask] * 2) if do_classifier_free_guidance else mask
         masked_image_latents = (
@@ -367,14 +377,28 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
                 callback(i, t, latents)
 
         latents = 1 / 0.18215 * latents
-        image = self.vae_decoder(latent_sample=latents)[0]
+        # image = self.vae_decoder(latent_sample=latents)[0]
+        # it seems likes there is a strange result for using half-precision vae decoder if batchsize>1
+        image = np.concatenate(
+            [self.vae_decoder(latent_sample=latents[i : i + 1])[0] for i in range(latents.shape[0])]
+        )
 
         image = np.clip(image / 2 + 0.5, 0, 1)
         image = image.transpose((0, 2, 3, 1))
 
         if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="np")
-            image, has_nsfw_concept = self.safety_checker(clip_input=safety_checker_input.pixel_values, images=image)
+            safety_checker_input = self.feature_extractor(
+                self.numpy_to_pil(image), return_tensors="np"
+            ).pixel_values.astype(image.dtype)
+            # There will throw an error if use safety_checker batchsize>1
+            images, has_nsfw_concept = [], []
+            for i in range(image.shape[0]):
+                image_i, has_nsfw_concept_i = self.safety_checker(
+                    clip_input=safety_checker_input[i : i + 1], images=image[i : i + 1]
+                )
+                images.append(image_i)
+                has_nsfw_concept.append(has_nsfw_concept_i[0])
+            image = np.concatenate(images)
         else:
             has_nsfw_concept = None
 

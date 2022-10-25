@@ -21,6 +21,7 @@ import torch
 
 from diffusers import DanceDiffusionPipeline, IPNDMScheduler, UNet1DModel
 from diffusers.utils import slow, torch_device
+from diffusers.utils.testing_utils import require_torch_gpu
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -38,6 +39,7 @@ class PipelineFastTests(unittest.TestCase):
         torch.manual_seed(0)
         model = UNet1DModel(
             block_out_channels=(32, 32, 64),
+            extra_in_channels=16,
             sample_size=512,
             sample_rate=16_000,
             in_channels=2,
@@ -73,7 +75,7 @@ class PipelineFastTests(unittest.TestCase):
 
 
 @slow
-@unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+@require_torch_gpu
 class PipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test

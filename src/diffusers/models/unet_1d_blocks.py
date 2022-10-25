@@ -46,12 +46,12 @@ class Downsample1d(nn.Module):
         self.pad = kernel_1d.shape[0] // 2 - 1
         self.register_buffer("kernel", kernel_1d)
 
-    def forward(self, x):
-        x = F.pad(x, (self.pad,) * 2, self.pad_mode)
-        weight = x.new_zeros([x.shape[1], x.shape[1], self.kernel.shape[0]])
-        indices = torch.arange(x.shape[1], device=x.device)
+    def forward(self, hidden_states):
+        hidden_states = F.pad(hidden_states, (self.pad,) * 2, self.pad_mode)
+        weight = hidden_states.new_zeros([hidden_states.shape[1], hidden_states.shape[1], self.kernel.shape[0]])
+        indices = torch.arange(hidden_states.shape[1], device=hidden_states.device)
         weight[indices, indices] = self.kernel.to(weight)
-        return F.conv1d(x, weight, stride=2)
+        return F.conv1d(hidden_states, weight, stride=2)
 
 
 class Upsample1d(nn.Module):
@@ -62,12 +62,12 @@ class Upsample1d(nn.Module):
         self.pad = kernel_1d.shape[0] // 2 - 1
         self.register_buffer("kernel", kernel_1d)
 
-    def forward(self, x):
-        x = F.pad(x, ((self.pad + 1) // 2,) * 2, self.pad_mode)
-        weight = x.new_zeros([x.shape[1], x.shape[1], self.kernel.shape[0]])
-        indices = torch.arange(x.shape[1], device=x.device)
+    def forward(self, hidden_states):
+        hidden_states = F.pad(hidden_states, ((self.pad + 1) // 2,) * 2, self.pad_mode)
+        weight = hidden_states.new_zeros([hidden_states.shape[1], hidden_states.shape[1], self.kernel.shape[0]])
+        indices = torch.arange(hidden_states.shape[1], device=hidden_states.device)
         weight[indices, indices] = self.kernel.to(weight)
-        return F.conv_transpose1d(x, weight, stride=2, padding=self.pad * 2 + 1)
+        return F.conv_transpose1d(hidden_states, weight, stride=2, padding=self.pad * 2 + 1)
 
 
 class SelfAttention1d(nn.Module):

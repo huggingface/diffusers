@@ -249,7 +249,7 @@ class CLIPGuidedStableDiffusion(DiffusionPipeline):
         latents_dtype = text_embeddings.dtype
         if latents is None:
             if self.device.type == "mps":
-                # randn does not exist on mps
+                # randn does not work reproducibly on mps
                 latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(
                     self.device
                 )

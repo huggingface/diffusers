@@ -323,7 +323,7 @@ def main(args):
 
     assert diff_max < 1e-3, f"Diff max: {diff_max} is too much :-/"
 
-    print(f"Converion for {model_name} succesful!")
+    print(f"Conversion for {model_name} successful!")
 
 
 if __name__ == "__main__":
