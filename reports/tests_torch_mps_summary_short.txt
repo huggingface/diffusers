@@ -1,4 +1,4 @@
-==================================================================================== short test summary info ====================================================================================
+=========================== short test summary info ============================
 PASSED tests/test_config.py::ConfigTester::test_load_not_from_mixin
 PASSED tests/test_config.py::ConfigTester::test_register_to_config
 PASSED tests/test_config.py::ConfigTester::test_save_load
@@ -14,8 +14,8 @@ PASSED tests/test_layers_utils.py::Upsample2DBlockTests::test_upsample_with_tran
 PASSED tests/test_layers_utils.py::Downsample2DBlockTests::test_downsample_default
 PASSED tests/test_layers_utils.py::Downsample2DBlockTests::test_downsample_with_conv
 PASSED tests/test_layers_utils.py::Downsample2DBlockTests::test_downsample_with_conv_out_dim
-PASSED tests/test_models_vae.py::AutoencoderKLTests::test_determinism
 PASSED tests/test_layers_utils.py::Downsample2DBlockTests::test_downsample_with_conv_pad1
+PASSED tests/test_models_vae.py::AutoencoderKLTests::test_determinism
 PASSED tests/test_models_unet.py::UnetModelTests::test_determinism
 PASSED tests/test_models_vae.py::AutoencoderKLTests::test_ema_training
 PASSED tests/test_models_vae.py::AutoencoderKLTests::test_enable_disable_gradient_checkpointing
@@ -26,30 +26,38 @@ PASSED tests/test_models_unet.py::UnetModelTests::test_enable_disable_gradient_c
 PASSED tests/test_models_unet.py::UnetModelTests::test_forward_signature
 PASSED tests/test_models_unet.py::UnetModelTests::test_forward_with_norm_groups
 PASSED tests/test_models_unet.py::UnetModelTests::test_from_pretrained_save_pretrained
-PASSED tests/test_models_vae.py::AutoencoderKLTests::test_from_pretrained_hub
 PASSED tests/test_models_unet.py::UnetModelTests::test_model_from_config
-PASSED tests/test_models_vae.py::AutoencoderKLTests::test_from_pretrained_save_pretrained
-PASSED tests/test_layers_utils.py::AttentionBlockTests::test_attention_block_default
 PASSED tests/test_models_unet.py::UnetModelTests::test_output
-PASSED tests/test_layers_utils.py::AttentionBlockTests::test_attention_block_sd
-PASSED tests/test_models_vae.py::AutoencoderKLTests::test_model_from_config
-PASSED tests/test_layers_utils.py::SpatialTransformerTests::test_spatial_transformer_context_dim
 PASSED tests/test_models_unet.py::UnetModelTests::test_outputs_equivalence
-PASSED tests/test_models_vae.py::AutoencoderKLTests::test_output
-PASSED tests/test_layers_utils.py::SpatialTransformerTests::test_spatial_transformer_default
-PASSED tests/test_layers_utils.py::SpatialTransformerTests::test_spatial_transformer_dropout
-PASSED tests/test_outputs.py::ConfigTester::test_outputs_dict_init
-PASSED tests/test_outputs.py::ConfigTester::test_outputs_single_attribute
 PASSED tests/test_models_unet.py::UnetModelTests::test_training
 PASSED tests/test_models_unet.py::UNetLDMModelTests::test_determinism
 PASSED tests/test_models_unet.py::UNetLDMModelTests::test_ema_training
 PASSED tests/test_models_unet.py::UNetLDMModelTests::test_enable_disable_gradient_checkpointing
 PASSED tests/test_models_unet.py::UNetLDMModelTests::test_forward_signature
 PASSED tests/test_models_unet.py::UNetLDMModelTests::test_forward_with_norm_groups
-PASSED tests/test_pipelines.py::test_progress_bar
+PASSED tests/test_models_vae.py::AutoencoderKLTests::test_from_pretrained_hub
+PASSED tests/test_models_vae.py::AutoencoderKLTests::test_from_pretrained_save_pretrained
+PASSED tests/test_models_vae.py::AutoencoderKLTests::test_model_from_config
+PASSED tests/test_models_vae.py::AutoencoderKLTests::test_output
+PASSED tests/test_models_unet.py::UNetLDMModelTests::test_from_pretrained_hub
+PASSED tests/test_models_unet.py::UNetLDMModelTests::test_from_pretrained_save_pretrained
+PASSED tests/test_models_unet.py::UNetLDMModelTests::test_model_from_config
+PASSED tests/test_models_unet.py::UNetLDMModelTests::test_output
 PASSED tests/test_models_vae.py::AutoencoderKLTests::test_output_pretrained
 PASSED tests/test_models_vae.py::AutoencoderKLTests::test_outputs_equivalence
 PASSED tests/test_models_vae.py::AutoencoderKLTests::test_training
+PASSED tests/test_outputs.py::ConfigTester::test_outputs_dict_init
+PASSED tests/test_outputs.py::ConfigTester::test_outputs_single_attribute
+PASSED tests/test_pipelines.py::test_progress_bar
+PASSED tests/test_models_unet.py::UNetLDMModelTests::test_output_pretrained
+PASSED tests/test_models_vae_flax.py::FlaxAutoencoderKLTests::test_forward_with_norm_groups
+PASSED tests/test_layers_utils.py::AttentionBlockTests::test_attention_block_default
+PASSED tests/test_models_unet.py::UNetLDMModelTests::test_outputs_equivalence
+PASSED tests/test_models_unet.py::UNetLDMModelTests::test_training
+PASSED tests/test_layers_utils.py::AttentionBlockTests::test_attention_block_sd
+PASSED tests/test_layers_utils.py::SpatialTransformerTests::test_spatial_transformer_context_dim
+PASSED tests/test_layers_utils.py::SpatialTransformerTests::test_spatial_transformer_default
+PASSED tests/test_layers_utils.py::SpatialTransformerTests::test_spatial_transformer_dropout
 PASSED tests/test_scheduler.py::SchedulerCommonTest::test_from_pretrained_save_pretrained
 PASSED tests/test_scheduler.py::SchedulerCommonTest::test_scheduler_outputs_equivalence
 PASSED tests/test_scheduler.py::SchedulerCommonTest::test_scheduler_public_api
@@ -98,13 +106,8 @@ PASSED tests/test_scheduler.py::PNDMSchedulerTest::test_steps_offset
 PASSED tests/test_scheduler.py::PNDMSchedulerTest::test_time_indices
 PASSED tests/test_scheduler.py::PNDMSchedulerTest::test_timesteps
 PASSED tests/test_scheduler.py::ScoreSdeVeSchedulerTest::test_full_loop_no_noise
-PASSED tests/test_models_unet.py::UNetLDMModelTests::test_from_pretrained_hub
-PASSED tests/test_models_unet.py::UNetLDMModelTests::test_from_pretrained_save_pretrained
 PASSED tests/test_scheduler.py::ScoreSdeVeSchedulerTest::test_sigmas
 PASSED tests/test_scheduler.py::ScoreSdeVeSchedulerTest::test_step_shape
-PASSED tests/test_models_unet.py::UNetLDMModelTests::test_model_from_config
-PASSED tests/test_models_vae_flax.py::FlaxAutoencoderKLTests::test_forward_with_norm_groups
-PASSED tests/test_models_unet.py::UNetLDMModelTests::test_output
 PASSED tests/test_scheduler.py::ScoreSdeVeSchedulerTest::test_time_indices
 PASSED tests/test_scheduler.py::ScoreSdeVeSchedulerTest::test_timesteps
 PASSED tests/test_scheduler.py::LMSDiscreteSchedulerTest::test_betas
@@ -123,88 +126,85 @@ PASSED tests/test_utils.py::DeprecateTester::test_deprecate_class_objs
 PASSED tests/test_utils.py::DeprecateTester::test_deprecate_function_arg
 PASSED tests/test_utils.py::DeprecateTester::test_deprecate_function_arg_tuple
 PASSED tests/test_utils.py::DeprecateTester::test_deprecate_function_args
+PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_determinism
 PASSED tests/test_utils.py::DeprecateTester::test_deprecate_function_incorrect_arg
 PASSED tests/test_utils.py::DeprecateTester::test_deprecate_incorrect_no_standard_warn
 PASSED tests/test_utils.py::DeprecateTester::test_deprecate_incorrect_version
 PASSED tests/pipelines/ddim/test_ddim.py::DDIMPipelineFastTests::test_inference
 PASSED tests/pipelines/karras_ve/test_karras_ve.py::KarrasVePipelineFastTests::test_inference
 PASSED tests/test_pipelines.py::CustomPipelineTests::test_load_custom_pipeline
-PASSED tests/test_models_unet.py::UNetLDMModelTests::test_output_pretrained
-PASSED tests/test_models_unet.py::UNetLDMModelTests::test_outputs_equivalence
-PASSED tests/test_models_unet.py::UNetLDMModelTests::test_training
-PASSED tests/pipelines/latent_diffusion/test_latent_diffusion.py::LDMTextToImagePipelineFastTests::test_inference_text2img
-PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_determinism
-PASSED tests/pipelines/latent_diffusion/test_latent_diffusion_uncond.py::LDMPipelineFastTests::test_inference_uncond
 PASSED tests/test_models_vae_flax.py::FlaxAutoencoderKLTests::test_output
+PASSED tests/pipelines/latent_diffusion/test_latent_diffusion.py::LDMTextToImagePipelineFastTests::test_inference_text2img
 PASSED tests/test_models_vq.py::VQModelTests::test_determinism
-PASSED tests/test_pipelines.py::CustomPipelineTests::test_local_custom_pipeline
-PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_ema_training
 PASSED tests/test_models_vq.py::VQModelTests::test_ema_training
 PASSED tests/test_models_vq.py::VQModelTests::test_enable_disable_gradient_checkpointing
 PASSED tests/test_models_vq.py::VQModelTests::test_forward_signature
+PASSED tests/pipelines/latent_diffusion/test_latent_diffusion_uncond.py::LDMPipelineFastTests::test_inference_uncond
+PASSED tests/test_models_vq.py::VQModelTests::test_forward_with_norm_groups
+PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_ema_training
 PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_enable_disable_gradient_checkpointing
 PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_forward_signature
-PASSED tests/test_models_vq.py::VQModelTests::test_forward_with_norm_groups
 PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_forward_with_norm_groups
-PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_from_pretrained_save_pretrained
+PASSED tests/test_pipelines.py::CustomPipelineTests::test_local_custom_pipeline
+PASSED tests/pipelines/pndm/test_pndm.py::PNDMPipelineFastTests::test_inference
+PASSED tests/pipelines/score_sde_ve/test_score_sde_ve.py::ScoreSdeVeipelineFastTests::test_inference
 PASSED tests/test_models_vq.py::VQModelTests::test_from_pretrained_hub
 PASSED tests/test_models_vq.py::VQModelTests::test_from_pretrained_save_pretrained
 PASSED tests/test_models_vq.py::VQModelTests::test_model_from_config
 PASSED tests/test_models_vq.py::VQModelTests::test_output
-PASSED tests/pipelines/pndm/test_pndm.py::PNDMPipelineFastTests::test_inference
-PASSED tests/pipelines/score_sde_ve/test_score_sde_ve.py::ScoreSdeVeipelineFastTests::test_inference
-PASSED tests/test_pipelines.py::CustomPipelineTests::test_run_custom_pipeline
+PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_from_pretrained_save_pretrained
 PASSED tests/test_models_vq.py::VQModelTests::test_output_pretrained
 PASSED tests/test_models_vq.py::VQModelTests::test_outputs_equivalence
 PASSED tests/test_models_vq.py::VQModelTests::test_training
-PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_gradient_checkpointing
-PASSED tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py::StableDiffusionImg2ImgPipelineFastTests::test_stable_diffusion_img2img
-PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_model_from_config
-PASSED tests/test_pipelines.py::PipelineFastTests::test_components
-PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_output
-PASSED tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py::StableDiffusionImg2ImgPipelineFastTests::test_stable_diffusion_img2img_k_lms
 PASSED tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_attention_chunk
-PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_outputs_equivalence
+PASSED tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py::StableDiffusionImg2ImgPipelineFastTests::test_stable_diffusion_img2img
+PASSED tests/test_pipelines.py::CustomPipelineTests::test_run_custom_pipeline
+PASSED tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py::StableDiffusionImg2ImgPipelineFastTests::test_stable_diffusion_img2img_k_lms
+PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_gradient_checkpointing
 PASSED tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py::StableDiffusionImg2ImgPipelineFastTests::test_stable_diffusion_img2img_multiple_init_images
-PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_training
 PASSED tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py::StableDiffusionImg2ImgPipelineFastTests::test_stable_diffusion_img2img_negative_prompt
-PASSED tests/test_models_unet.py::NCSNppModelTests::test_determinism
+PASSED tests/test_pipelines.py::PipelineFastTests::test_components
 PASSED tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_ddim
-PASSED tests/test_models_unet.py::NCSNppModelTests::test_ema_training
-PASSED tests/test_models_unet.py::NCSNppModelTests::test_enable_disable_gradient_checkpointing
-PASSED tests/test_models_unet.py::NCSNppModelTests::test_forward_signature
-PASSED tests/test_models_unet.py::NCSNppModelTests::test_forward_with_norm_groups
-PASSED tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint.py::StableDiffusionInpaintPipelineFastTests::test_stable_diffusion_inpaint
-PASSED tests/test_models_unet.py::NCSNppModelTests::test_from_pretrained_save_pretrained
+PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_model_from_config
 PASSED tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py::StableDiffusionImg2ImgPipelineFastTests::test_stable_diffusion_img2img_num_images_per_prompt
+PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_output
+PASSED tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy
+PASSED tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_ddim_factor_8
+PASSED tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy_negative_prompt
+PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_outputs_equivalence
+PASSED tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy_num_images_per_prompt
 PASSED tests/repo_utils/test_check_copies.py::CopyCheckTester::test_find_code_in_diffusers
 PASSED tests/repo_utils/test_check_copies.py::CopyCheckTester::test_is_copy_consistent
 PASSED tests/repo_utils/test_check_dummies.py::CheckDummiesTester::test_create_dummy_files
 PASSED tests/repo_utils/test_check_dummies.py::CheckDummiesTester::test_create_dummy_object
 PASSED tests/repo_utils/test_check_dummies.py::CheckDummiesTester::test_find_backend
 PASSED tests/repo_utils/test_check_dummies.py::CheckDummiesTester::test_read_init
+PASSED tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint.py::StableDiffusionInpaintPipelineFastTests::test_stable_diffusion_inpaint
+PASSED tests/test_models_unet.py::UNet2DConditionModelTests::test_training
+PASSED tests/test_models_unet.py::NCSNppModelTests::test_determinism
+PASSED tests/test_models_unet.py::NCSNppModelTests::test_ema_training
+PASSED tests/test_models_unet.py::NCSNppModelTests::test_enable_disable_gradient_checkpointing
+PASSED tests/test_models_unet.py::NCSNppModelTests::test_forward_signature
+PASSED tests/test_models_unet.py::NCSNppModelTests::test_forward_with_norm_groups
+PASSED tests/test_models_unet.py::NCSNppModelTests::test_from_pretrained_save_pretrained
+PASSED tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_k_lms
 PASSED tests/test_models_unet.py::NCSNppModelTests::test_model_from_config
-PASSED tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_ddim_factor_8
 PASSED tests/test_models_unet.py::NCSNppModelTests::test_output
-PASSED tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy
-PASSED tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy_negative_prompt
 PASSED tests/test_models_unet.py::NCSNppModelTests::test_output_pretrained_ve_large
 PASSED tests/test_models_unet.py::NCSNppModelTests::test_outputs_equivalence
-PASSED tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_k_lms
 PASSED tests/test_models_unet.py::NCSNppModelTests::test_training
-PASSED tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py::StableDiffusionInpaintLegacyPipelineFastTests::test_stable_diffusion_inpaint_legacy_num_images_per_prompt
 PASSED tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_negative_prompt
 PASSED tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_no_safety_checker
 PASSED tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_num_images_per_prompt
 PASSED tests/pipelines/stable_diffusion/test_stable_diffusion.py::StableDiffusionPipelineFastTests::test_stable_diffusion_pndm
 SKIPPED [1] tests/test_models_unet.py:138: This test is supposed to run on GPU
 SKIPPED [1] tests/test_models_unet.py:148: This test is supposed to run on GPU
+SKIPPED [1] tests/test_models_unet.py:180: This test is supposed to run on GPU
 SKIPPED [1] tests/test_pipelines_flax.py:36: test is slow
 SKIPPED [1] tests/test_pipelines_flax.py:70: test is slow
 SKIPPED [1] tests/test_pipelines_flax.py:100: test is slow
 SKIPPED [1] tests/test_pipelines_flax.py:158: test is slow
 SKIPPED [1] tests/test_pipelines_flax.py:130: test is slow
-SKIPPED [1] tests/test_models_unet.py:180: This test is supposed to run on GPU
 SKIPPED [1] tests/test_training.py:35: test is slow
 SKIPPED [1] tests/pipelines/ddim/test_ddim.py:97: test is slow
 SKIPPED [1] tests/pipelines/ddim/test_ddim.py:78: test is slow
@@ -231,19 +231,19 @@ SKIPPED [1] tests/test_pipelines.py:316: test is slow
 SKIPPED [1] tests/test_pipelines.py:504: test is slow
 SKIPPED [1] tests/test_pipelines.py:491: test is slow
 SKIPPED [1] tests/test_pipelines.py:337: test is slow
-SKIPPED [1] tests/test_models_unet.py:384: test is slow
-SKIPPED [1] tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint.py:218: This test requires a GPU
-SKIPPED [1] tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint.py:272: test is slow
-SKIPPED [1] tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint.py:311: test is slow
-SKIPPED [1] tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint.py:352: test is slow
 SKIPPED [1] tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py:554: test is slow
 SKIPPED [1] tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py:475: test is slow
 SKIPPED [1] tests/pipelines/stable_diffusion/test_stable_diffusion_img2img.py:513: test is slow
 SKIPPED [1] tests/pipelines/stable_diffusion/test_stable_diffusion.py:485: This test requires a GPU
-SKIPPED [1] tests/test_models_unet.py:398: test is slow
 SKIPPED [1] tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py:438: test is slow
 SKIPPED [1] tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py:352: test is slow
 SKIPPED [1] tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint_legacy.py:393: test is slow
+SKIPPED [1] tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint.py:218: This test requires a GPU
+SKIPPED [1] tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint.py:272: test is slow
+SKIPPED [1] tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint.py:311: test is slow
+SKIPPED [1] tests/pipelines/stable_diffusion/test_stable_diffusion_inpaint.py:352: test is slow
+SKIPPED [1] tests/test_models_unet.py:384: test is slow
+SKIPPED [1] tests/test_models_unet.py:398: test is slow
 SKIPPED [1] tests/pipelines/stable_diffusion/test_stable_diffusion.py:576: test is slow
 SKIPPED [1] tests/pipelines/stable_diffusion/test_stable_diffusion.py:528: test is slow
 SKIPPED [1] tests/pipelines/stable_diffusion/test_stable_diffusion.py:549: test is slow
