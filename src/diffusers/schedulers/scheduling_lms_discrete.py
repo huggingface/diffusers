@@ -121,6 +121,11 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             timestep = timestep.to(self.timesteps.device)
         step_index = (self.timesteps == timestep).nonzero().item()
         return step_index
+    
+    def get_current_sigma(self, timestep: Union[float, torch.FloatTensor]):
+        step_index = self.get_current_step(timestep)
+        sigma = self.sigmas[step_index]
+        return sigma
 
     def scale_model_input(
         self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]

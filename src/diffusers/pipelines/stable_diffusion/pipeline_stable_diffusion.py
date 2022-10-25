@@ -177,8 +177,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
         noise: Optional[torch.Tensor] = None,
         return_dict: bool = True,
         multiply_latent_by_sigma: bool = False,
-        scheduler_step_before_callbacks: bool = True,
-        use_callbacks_simple_step: bool = False,
+        scheduler_step_before_callbacks: bool = False,
+        use_callbacks_simple_step: bool = True,
         **kwargs,
     ):
         r"""
@@ -274,11 +274,6 @@ class StableDiffusionPipeline(DiffusionPipeline):
             uncond_tokens: List[str]
             if negative_prompt is None:
                 uncond_tokens = [""]
-            elif type(prompt) is not type(negative_prompt):
-                raise TypeError(
-                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-                    f" {type(prompt)}."
-                )
             elif isinstance(negative_prompt, str):
                 uncond_tokens = [negative_prompt]
             elif batch_size != len(negative_prompt):
@@ -394,8 +389,6 @@ class StableDiffusionPipeline(DiffusionPipeline):
                     
                     latents = self.vae.encode((minmax(denoised_images) - 0.5) * 2).mean * 0.18215 
                 #dynamic_thresholding_(noise_pred, dynamic_thresholding_quant * 100)  
-                
-                
             # TODO: dynamic and static thresholding could simply be applied to decoded latent (==img)
             
             if scheduler_step_before_callbacks:
@@ -406,6 +399,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
             if loss_callbacks is not None:
                 with torch.enable_grad():
                     grads = torch.zeros_like(latents)
+                    step_index = self.scheduler.get_current_step(t)
+                    sigma = self.scheduler.sigmas[step_index]
                     #denoised_images = None
                     for callback_dict in loss_callbacks:
                         if callback_dict["frequency"] is not None and i % callback_dict["frequency"] == 0:
@@ -436,8 +431,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
                             cond_grad = -torch.autograd.grad(loss * callback_dict["weight"], latents)[0] 
                             # Modify the latents based on this gradient
                             grads += cond_grad * callback_dict["lr"]
-                    step_index = self.scheduler.get_current_step(t)
-                    sigma = self.scheduler.sigmas[step_index]
+                    
                     latents = latents.detach() + grads * sigma**2
                             
             if not scheduler_step_before_callbacks:
