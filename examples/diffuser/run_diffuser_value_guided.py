@@ -1,9 +1,7 @@
 import d4rl  # noqa
 import gym
 import tqdm
-
-# import train_diffuser
-from diffusers import DDPMScheduler, DiffusionPipeline, UNet1DModel
+from diffusers import DiffusionPipeline
 
 
 config = dict(
