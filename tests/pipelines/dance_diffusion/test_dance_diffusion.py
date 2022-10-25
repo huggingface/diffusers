@@ -39,6 +39,7 @@ class PipelineFastTests(unittest.TestCase):
         torch.manual_seed(0)
         model = UNet1DModel(
             block_out_channels=(32, 32, 64),
+            extra_in_channels=16,
             sample_size=512,
             sample_rate=16_000,
             in_channels=2,

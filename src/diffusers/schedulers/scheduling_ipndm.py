@@ -23,8 +23,8 @@ from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 class IPNDMScheduler(SchedulerMixin, ConfigMixin):
     """
-    Pseudo numerical methods for diffusion models (PNDM) proposes using more advanced ODE integration techniques,
-    namely Runge-Kutta method and a linear multi-step method.
+    Improved Pseudo numerical methods for diffusion models (iPNDM) ported from @crowsonkb's amazing k-diffusion
+    [library](https://github.com/crowsonkb/v-diffusion-pytorch/blob/987f8985e38208345c1959b0ea767a625831cc9b/diffusion/sampling.py#L296)
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
@@ -35,14 +35,6 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
 
     Args:
         num_train_timesteps (`int`): number of diffusion steps used to train the model.
-        beta_schedule (`str`):
-            the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
-            `crash`.
-        steps_offset (`int`, default `0`):
-            an offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
-            stable diffusion.
-
     """
 
     @register_to_config

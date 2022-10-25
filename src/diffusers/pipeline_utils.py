@@ -100,7 +100,7 @@ class AudioPipelineOutput(BaseOutput):
 
     Args:
         audios (`np.ndarray`)
-            List of denoised samples of shape `(batch_size, sample_size, num_channels)`. Numpy array present the
+            List of denoised samples of shape `(batch_size, num_channels, sample_rate)`. Numpy array present the
             denoised audio samples of the diffusion pipeline.
     """
 
