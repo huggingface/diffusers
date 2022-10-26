@@ -586,43 +586,43 @@ def main():
         train_step_progress_bar.close()
         epochs.write(f"Epoch... ({epoch + 1}/{args.num_train_epochs} | Loss: {train_metric['loss']})")
 
-        # Create the pipeline using using the trained modules and save it.
-        if jax.process_index() == 0:
-            scheduler = FlaxPNDMScheduler(
-                beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True
-            )
-            safety_checker = FlaxStableDiffusionSafetyChecker.from_pretrained(
-                "CompVis/stable-diffusion-safety-checker", from_pt=True
-            )
-            pipeline = FlaxStableDiffusionPipeline(
-                text_encoder=text_encoder,
-                vae=vae,
-                unet=unet,
-                tokenizer=tokenizer,
-                scheduler=scheduler,
-                safety_checker=safety_checker,
-                feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
-            )
+    # Create the pipeline using using the trained modules and save it.
+    if jax.process_index() == 0:
+        scheduler = FlaxPNDMScheduler(
+            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True
+        )
+        safety_checker = FlaxStableDiffusionSafetyChecker.from_pretrained(
+            "CompVis/stable-diffusion-safety-checker", from_pt=True
+        )
+        pipeline = FlaxStableDiffusionPipeline(
+            text_encoder=text_encoder,
+            vae=vae,
+            unet=unet,
+            tokenizer=tokenizer,
+            scheduler=scheduler,
+            safety_checker=safety_checker,
+            feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
+        )
 
-            pipeline.save_pretrained(
-                args.output_dir,
-                params={
-                    "text_encoder": get_params_to_save(state.params),
-                    "vae": get_params_to_save(vae_params),
-                    "unet": get_params_to_save(unet_params),
-                    "safety_checker": safety_checker.params,
-                },
-            )
+        pipeline.save_pretrained(
+            args.output_dir,
+            params={
+                "text_encoder": get_params_to_save(state.params),
+                "vae": get_params_to_save(vae_params),
+                "unet": get_params_to_save(unet_params),
+                "safety_checker": safety_checker.params,
+            },
+        )
 
-            # Also save the newly trained embeddings
-            learned_embeds = get_params_to_save(state.params)["text_model"]["embeddings"]["token_embedding"][
-                "embedding"
-            ][placeholder_token_id]
-            learned_embeds_dict = {args.placeholder_token: learned_embeds}
-            jnp.save(os.path.join(args.output_dir, "learned_embeds.npy"), learned_embeds_dict)
+        # Also save the newly trained embeddings
+        learned_embeds = get_params_to_save(state.params)["text_model"]["embeddings"]["token_embedding"][
+            "embedding"
+        ][placeholder_token_id]
+        learned_embeds_dict = {args.placeholder_token: learned_embeds}
+        jnp.save(os.path.join(args.output_dir, "learned_embeds.npy"), learned_embeds_dict)
 
-            if args.push_to_hub:
-                repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+        if args.push_to_hub:
+            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
 
 
 if __name__ == "__main__":
