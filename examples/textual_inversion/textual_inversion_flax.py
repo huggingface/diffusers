@@ -615,9 +615,9 @@ def main():
         )
 
         # Also save the newly trained embeddings
-        learned_embeds = get_params_to_save(state.params)["text_model"]["embeddings"]["token_embedding"][
-            "embedding"
-        ][placeholder_token_id]
+        learned_embeds = get_params_to_save(state.params)["text_model"]["embeddings"]["token_embedding"]["embedding"][
+            placeholder_token_id
+        ]
         learned_embeds_dict = {args.placeholder_token: learned_embeds}
         jnp.save(os.path.join(args.output_dir, "learned_embeds.npy"), learned_embeds_dict)
 
