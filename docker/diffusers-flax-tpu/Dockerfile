@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.7.1-cudnn8-runtime-ubuntu20.04
+FROM ubuntu:20.04
 LABEL maintainer="Hugging Face"
 LABEL repository="diffusers"
 
@@ -21,10 +21,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
 RUN python3 -m pip install --no-cache-dir --upgrade pip && \
     python3 -m pip install --no-cache-dir \
-        torch \
-        torchvision \
-        torchaudio \
-        --extra-index-url https://download.pytorch.org/whl/cu116 && \
+        "flax>=0.4.1" \
+        "jax>=0.2.8,!=0.3.2,<=0.3.6" \
+        "jaxlib>=0.1.65,<=0.3.6" && \
     python3 -m pip install --no-cache-dir \
         accelerate \
         datasets \
