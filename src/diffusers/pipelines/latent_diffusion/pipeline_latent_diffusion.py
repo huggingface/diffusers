@@ -45,7 +45,6 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
     ):
         super().__init__()
-        scheduler = scheduler.set_format("pt")
         self.register_modules(vqvae=vqvae, bert=bert, tokenizer=tokenizer, unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
