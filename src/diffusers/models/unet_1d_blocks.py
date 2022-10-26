@@ -200,7 +200,9 @@ def get_up_block(up_block_type, num_layers, in_channels, out_channels):
 
 def get_mid_block(mid_block_type, num_layers, in_channels, mid_channels, out_channels):
     if mid_block_type == "UNetMidBlock1D":
-        return UNetMidBlock1D(in_channels=in_channels, mid_channels=mid_channels, out_channels=out_channels, num_layers=num_layers)
+        return UNetMidBlock1D(
+            in_channels=in_channels, mid_channels=mid_channels, out_channels=out_channels, num_layers=num_layers
+        )
     raise ValueError(f"{mid_block_type} does not exist.")
 
 

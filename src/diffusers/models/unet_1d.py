@@ -43,7 +43,8 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             obj:`("UpBlock1D", "UpBlock1DNoSkip", "AttnUpBlock1D")`): Tuple of upsample block types.
         block_out_channels (`Tuple[int]`, *optional*, defaults to :
             obj:`(32, 32, 64)`): Tuple of block output channels.
-        up_down_block_layers (`int`, defaults to 2): number of resnet, attention, or other layers in the up and down blocks.
+        up_down_block_layers (`int`, defaults to 2):
+            number of resnet, attention, or other layers in the up and down blocks.
         mid_block_layers (`int`, defaults to 5): number of resnet, attention, or other layers in the mid block.
     """
 
