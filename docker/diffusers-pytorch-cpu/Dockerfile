@@ -36,9 +36,4 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
         tensorboard \
         transformers
 
-# isolate a non-root user
-WORKDIR /workspace
-RUN useradd -ms /bin/bash ci_user
-USER ci_user
-
 CMD ["/bin/bash"]

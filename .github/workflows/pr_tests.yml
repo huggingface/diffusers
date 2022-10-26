@@ -26,7 +26,6 @@ jobs:
 
     defaults:
       run:
-        working-directory: /workspace
         shell: bash
 
     steps:
