@@ -38,8 +38,16 @@ _kernels = {
 }
 
 
-class Downsample1d(nn.Module):
-    def __init__(self, kernel="linear", pad_mode="reflect"):
+class KernelDownsample1D(nn.Module):
+    """
+    A static downsample module that is not updated by the optimizer.
+
+    Parameters:
+        kernel (`str`): `linear`, `cubic`, or `lanczos3` for different static kernels used in convolution.
+        pad_mode (`str`): defaults to `reflect`, use with torch.nn.functional.pad.
+    """
+
+    def __init__(self, kernel: str = "linear", pad_mode: str = "reflect"):
         super().__init__()
         self.pad_mode = pad_mode
         kernel_1d = torch.tensor(_kernels[kernel])
@@ -54,8 +62,16 @@ class Downsample1d(nn.Module):
         return F.conv1d(hidden_states, weight, stride=2)
 
 
-class Upsample1d(nn.Module):
-    def __init__(self, kernel="linear", pad_mode="reflect"):
+class KernelUpsample1D(nn.Module):
+    """
+    A static upsample module that is not updated by the optimizer.
+
+    Parameters:
+        kernel (`str`): `linear`, `cubic`, or `lanczos3` for different static kernels used in convolution.
+        pad_mode (`str`): defaults to `reflect`, use with torch.nn.functional.pad.
+    """
+
+    def __init__(self, kernel: str = "linear", pad_mode: str = "reflect"):
         super().__init__()
         self.pad_mode = pad_mode
         kernel_1d = torch.tensor(_kernels[kernel]) * 2
@@ -71,7 +87,7 @@ class Upsample1d(nn.Module):
 
 
 class SelfAttention1d(nn.Module):
-    def __init__(self, in_channels, n_head=1, dropout_rate=0.0):
+    def __init__(self, in_channels: int, n_head: int = 1, dropout_rate: float = 0.0):
         super().__init__()
         self.channels = in_channels
         self.group_norm = nn.GroupNorm(1, num_channels=in_channels)
@@ -129,7 +145,7 @@ class SelfAttention1d(nn.Module):
 
 
 class ResConvBlock(nn.Module):
-    def __init__(self, in_channels, mid_channels, out_channels, is_last=False):
+    def __init__(self, in_channels: int, mid_channels: int, out_channels: int, is_last: bool = False):
         super().__init__()
         self.is_last = is_last
         self.has_conv_skip = in_channels != out_channels
@@ -189,13 +205,13 @@ def get_mid_block(mid_block_type, in_channels, mid_channels, out_channels):
 
 
 class UNetMidBlock1D(nn.Module):
-    def __init__(self, mid_channels, in_channels, out_channels=None):
+    def __init__(self, mid_channels: int, in_channels: int, out_channels: int = None):
         super().__init__()
 
         out_channels = in_channels if out_channels is None else out_channels
 
         # there is always at least one resnet
-        self.down = Downsample1d("cubic")
+        self.down = KernelDownsample1D("cubic")
         resnets = [
             ResConvBlock(in_channels, mid_channels, mid_channels),
             ResConvBlock(mid_channels, mid_channels, mid_channels),
@@ -212,7 +228,7 @@ class UNetMidBlock1D(nn.Module):
             SelfAttention1d(mid_channels, mid_channels // 32),
             SelfAttention1d(out_channels, out_channels // 32),
         ]
-        self.up = Upsample1d(kernel="cubic")
+        self.up = KernelUpsample1D(kernel="cubic")
 
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
@@ -229,11 +245,11 @@ class UNetMidBlock1D(nn.Module):
 
 
 class AttnDownBlock1D(nn.Module):
-    def __init__(self, out_channels, in_channels, mid_channels=None):
+    def __init__(self, out_channels: int, in_channels: int, mid_channels: int = None):
         super().__init__()
         mid_channels = out_channels if mid_channels is None else mid_channels
 
-        self.down = Downsample1d("cubic")
+        self.down = KernelDownsample1D("cubic")
         resnets = [
             ResConvBlock(in_channels, mid_channels, mid_channels),
             ResConvBlock(mid_channels, mid_channels, mid_channels),
@@ -259,11 +275,11 @@ class AttnDownBlock1D(nn.Module):
 
 
 class DownBlock1D(nn.Module):
-    def __init__(self, out_channels, in_channels, mid_channels=None):
+    def __init__(self, out_channels: int, in_channels: int, mid_channels: int = None):
         super().__init__()
         mid_channels = out_channels if mid_channels is None else mid_channels
 
-        self.down = Downsample1d("cubic")
+        self.down = KernelDownsample1D("cubic")
         resnets = [
             ResConvBlock(in_channels, mid_channels, mid_channels),
             ResConvBlock(mid_channels, mid_channels, mid_channels),
@@ -282,7 +298,7 @@ class DownBlock1D(nn.Module):
 
 
 class DownBlock1DNoSkip(nn.Module):
-    def __init__(self, out_channels, in_channels, mid_channels=None):
+    def __init__(self, out_channels: int, in_channels: int, mid_channels: int = None):
         super().__init__()
         mid_channels = out_channels if mid_channels is None else mid_channels
 
@@ -303,7 +319,7 @@ class DownBlock1DNoSkip(nn.Module):
 
 
 class AttnUpBlock1D(nn.Module):
-    def __init__(self, in_channels, out_channels, mid_channels=None):
+    def __init__(self, in_channels: int, out_channels: int, mid_channels: int = None):
         super().__init__()
         mid_channels = out_channels if mid_channels is None else mid_channels
 
@@ -320,7 +336,7 @@ class AttnUpBlock1D(nn.Module):
 
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
-        self.up = Upsample1d(kernel="cubic")
+        self.up = KernelUpsample1D(kernel="cubic")
 
     def forward(self, hidden_states, res_hidden_states_tuple):
         res_hidden_states = res_hidden_states_tuple[-1]
@@ -336,7 +352,7 @@ class AttnUpBlock1D(nn.Module):
 
 
 class UpBlock1D(nn.Module):
-    def __init__(self, in_channels, out_channels, mid_channels=None):
+    def __init__(self, in_channels: int, out_channels: int, mid_channels: int = None):
         super().__init__()
         mid_channels = in_channels if mid_channels is None else mid_channels
 
@@ -347,7 +363,7 @@ class UpBlock1D(nn.Module):
         ]
 
         self.resnets = nn.ModuleList(resnets)
-        self.up = Upsample1d(kernel="cubic")
+        self.up = KernelUpsample1D(kernel="cubic")
 
     def forward(self, hidden_states, res_hidden_states_tuple):
         res_hidden_states = res_hidden_states_tuple[-1]
@@ -362,7 +378,7 @@ class UpBlock1D(nn.Module):
 
 
 class UpBlock1DNoSkip(nn.Module):
-    def __init__(self, in_channels, out_channels, mid_channels=None):
+    def __init__(self, in_channels: int, out_channels: int, mid_channels: int = None):
         super().__init__()
         mid_channels = in_channels if mid_channels is None else mid_channels
 
