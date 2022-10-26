@@ -33,7 +33,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         python -m pip install -e .[quality,test]
-        python -m pip install --pre torch --extra-index-url https://download.pytorch.org/whl/test/cpu
+        python -m pip install --pre torch==1.13.0 --extra-index-url https://download.pytorch.org/whl/test/cpu
 
     - name: Environment
       run: |

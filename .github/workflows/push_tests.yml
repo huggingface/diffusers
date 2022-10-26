@@ -38,7 +38,7 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip uninstall -y torch torchvision torchtext
         python -m pip install -e .[quality,test]
-        python -m pip install --pre torch --extra-index-url https://download.pytorch.org/whl/test/cu117
+        python -m pip install --pre torch==1.13.0 --extra-index-url https://download.pytorch.org/whl/test/cu117
 
     - name: Environment
       run: |
@@ -85,7 +85,7 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip uninstall -y torch torchvision torchtext
         python -m pip install -e .[quality,test,training]
-        python -m pip install --pre torch --extra-index-url https://download.pytorch.org/whl/test/cu117
+        python -m pip install --pre torch==1.13.0 --extra-index-url https://download.pytorch.org/whl/test/cu117
 
     - name: Environment
       run: |
