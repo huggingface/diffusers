@@ -35,7 +35,7 @@ jobs:
 
     name: ${{ matrix.config.name }}
 
-    runs-on: [ self-hosted, ${{ matrix.config.runner }} ]
+    runs-on: ${{ matrix.config.runner }}
 
     container:
       image: ${{ matrix.config.image }}
