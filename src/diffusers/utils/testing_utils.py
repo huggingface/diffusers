@@ -14,7 +14,7 @@ import PIL.ImageOps
 import requests
 from packaging import version
 
-from .import_utils import is_flax_available, is_torch_available
+from .import_utils import is_flax_available, is_onnx_available, is_torch_available
 
 
 global_rng = random.Random()
@@ -100,11 +100,32 @@ def slow(test_case):
     return unittest.skipUnless(_run_slow_tests, "test is slow")(test_case)
 
 
+def require_torch(test_case):
+    """
+    Decorator marking a test that requires PyTorch. These tests are skipped when PyTorch isn't installed.
+    """
+    return unittest.skipUnless(is_torch_available(), "test requires PyTorch")(test_case)
+
+
+def require_torch_gpu(test_case):
+    """Decorator marking a test that requires CUDA and PyTorch."""
+    return unittest.skipUnless(is_torch_available() and torch_device == "cuda", "test requires PyTorch+CUDA")(
+        test_case
+    )
+
+
 def require_flax(test_case):
     """
     Decorator marking a test that requires JAX & Flax. These tests are skipped when one / both are not installed
     """
     return unittest.skipUnless(is_flax_available(), "test requires JAX & Flax")(test_case)
+
+
+def require_onnxruntime(test_case):
+    """
+    Decorator marking a test that requires onnxruntime. These tests are skipped when onnxruntime isn't installed.
+    """
+    return unittest.skipUnless(is_onnx_available(), "test requires onnxruntime")(test_case)
 
 
 def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
