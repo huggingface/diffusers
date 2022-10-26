@@ -88,6 +88,7 @@ We recommend using the model in [half-precision (`fp16`)](https://pytorch.org/bl
 precision while being roughly twice as fast and requiring half the amount of GPU RAM.
 
 ```python
+import torch
 from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, revision="fp16")
