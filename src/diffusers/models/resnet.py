@@ -492,10 +492,6 @@ def upfirdn2d_native(tensor, kernel, up=1, down=1, pad=(0, 0)):
     kernel_h, kernel_w = kernel.shape
 
     out = tensor.view(-1, in_h, 1, in_w, 1, minor)
-
-    # Temporary workaround for mps specific issue: https://github.com/pytorch/pytorch/issues/84535
-    if tensor.device.type == "mps":
-        out = out.to("cpu")
     out = F.pad(out, [0, 0, 0, up_x - 1, 0, 0, 0, up_y - 1])
     out = out.view(-1, in_h * up_y, in_w * up_x, minor)
 
