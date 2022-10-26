@@ -40,16 +40,9 @@ jobs:
           username: ${{ env.REGISTRY }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v4
-        with:
-          images: ${{ env.REGISTRY }}/${{ matrix.image-name }}
-
       - name: Build and push
         uses: docker/build-push-action@v3
         with:
           context: ./docker/${{ matrix.image-name }}
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ env.REGISTRY }}/${{ matrix.image-name }}:latest
