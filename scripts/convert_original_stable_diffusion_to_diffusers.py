@@ -299,13 +299,19 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
     if sum(k.startswith("model_ema") for k in keys) > 100:
         print(f"Checkpoint {path} has both EMA and non-EMA weights.")
         if extract_ema:
-            print("In this conversion only the EMA weights are extracted. If you want to instead extract the non-EMA weights (useful to continue fine-tuning), please make sure to remove the `--extract_ema` flag.")
+            print(
+                "In this conversion only the EMA weights are extracted. If you want to instead extract the non-EMA"
+                " weights (useful to continue fine-tuning), please make sure to remove the `--extract_ema` flag."
+            )
             for key in keys:
                 if key.startswith("model.diffusion_model"):
                     flat_ema_key = "model_ema." + "".join(key.split(".")[1:])
                     unet_state_dict[key.replace(unet_key, "")] = checkpoint.pop(flat_ema_key)
         else:
-            print("In this conversion only the non-EMA weights are extracted. If you want to instead extract the EMA weights (usually better for inference), please make sure to add the `--extract_ema` flag.")
+            print(
+                "In this conversion only the non-EMA weights are extracted. If you want to instead extract the EMA"
+                " weights (usually better for inference), please make sure to add the `--extract_ema` flag."
+            )
 
     for key in keys:
         if key.startswith(unet_key):
@@ -646,7 +652,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--extract_ema",
         action="store_true",
-        help="Only relevant for checkpoints that have both EMA and non-EMA weights. Whether to extract the EMA weights or not. Defaults to `False`. Add `--extract_ema` to extract the EMA weights. EMA weights usually yield higher quality images for inference. Non-EMA weights are usually better to continue fine-tuning."
+        help=(
+            "Only relevant for checkpoints that have both EMA and non-EMA weights. Whether to extract the EMA weights"
+            " or not. Defaults to `False`. Add `--extract_ema` to extract the EMA weights. EMA weights usually yield"
+            " higher quality images for inference. Non-EMA weights are usually better to continue fine-tuning."
+        ),
     )
     parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
 
@@ -689,7 +699,9 @@ if __name__ == "__main__":
 
     # Convert the UNet2DConditionModel model.
     unet_config = create_unet_diffusers_config(original_config)
-    converted_unet_checkpoint = convert_ldm_unet_checkpoint(checkpoint, unet_config, path=args.checkpoint_path, extract_ema=args.extract_ema)
+    converted_unet_checkpoint = convert_ldm_unet_checkpoint(
+        checkpoint, unet_config, path=args.checkpoint_path, extract_ema=args.extract_ema
+    )
 
     unet = UNet2DConditionModel(**unet_config)
     unet.load_state_dict(converted_unet_checkpoint)
