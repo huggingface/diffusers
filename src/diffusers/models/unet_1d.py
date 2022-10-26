@@ -43,6 +43,8 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             obj:`("UpBlock1D", "UpBlock1DNoSkip", "AttnUpBlock1D")`): Tuple of upsample block types.
         block_out_channels (`Tuple[int]`, *optional*, defaults to :
             obj:`(32, 32, 64)`): Tuple of block output channels.
+        up_down_block_layers (`int`, defaults to 2): number of resnet, attention, or other layers in the up and down blocks.
+        mid_block_layers (`int`, defaults to 5): number of resnet, attention, or other layers in the mid block.
     """
 
     @register_to_config
@@ -61,6 +63,8 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         mid_block_type: str = "UNetMidBlock1D",
         up_block_types: Tuple[str] = ("AttnUpBlock1D", "UpBlock1D", "UpBlock1DNoSkip"),
         block_out_channels: Tuple[int] = (32, 32, 64),
+        up_down_block_layers: int = 2,
+        mid_block_layers: int = 5,
     ):
         super().__init__()
 
@@ -98,6 +102,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
                 down_block_type,
                 in_channels=input_channel,
                 out_channels=output_channel,
+                num_layers=up_down_block_layers,
             )
             self.down_blocks.append(down_block)
 
@@ -107,6 +112,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             mid_channels=block_out_channels[-1],
             in_channels=block_out_channels[-1],
             out_channels=None,
+            num_layers=mid_block_layers,
         )
 
         # up
@@ -120,6 +126,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
                 up_block_type,
                 in_channels=prev_output_channel,
                 out_channels=output_channel,
+                num_layers=up_down_block_layers,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel

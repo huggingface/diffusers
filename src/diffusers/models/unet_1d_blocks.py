@@ -178,29 +178,29 @@ class ResConvBlock(nn.Module):
         return output
 
 
-def get_down_block(down_block_type, out_channels, in_channels):
+def get_down_block(down_block_type, num_layers, out_channels, in_channels):
     if down_block_type == "DownBlock1D":
-        return DownBlock1D(out_channels=out_channels, in_channels=in_channels)
+        return DownBlock1D(out_channels=out_channels, in_channels=in_channels, num_layers=num_layers)
     elif down_block_type == "AttnDownBlock1D":
-        return AttnDownBlock1D(out_channels=out_channels, in_channels=in_channels)
+        return AttnDownBlock1D(out_channels=out_channels, in_channels=in_channels, num_layers=num_layers)
     elif down_block_type == "DownBlock1DNoSkip":
-        return DownBlock1DNoSkip(out_channels=out_channels, in_channels=in_channels)
+        return DownBlock1DNoSkip(out_channels=out_channels, in_channels=in_channels, num_layers=num_layers)
     raise ValueError(f"{down_block_type} does not exist.")
 
 
-def get_up_block(up_block_type, in_channels, out_channels):
+def get_up_block(up_block_type, num_layers, in_channels, out_channels):
     if up_block_type == "UpBlock1D":
-        return UpBlock1D(in_channels=in_channels, out_channels=out_channels)
+        return UpBlock1D(in_channels=in_channels, out_channels=out_channels, num_layers=num_layers)
     elif up_block_type == "AttnUpBlock1D":
-        return AttnUpBlock1D(in_channels=in_channels, out_channels=out_channels)
+        return AttnUpBlock1D(in_channels=in_channels, out_channels=out_channels, num_layers=num_layers)
     elif up_block_type == "UpBlock1DNoSkip":
-        return UpBlock1DNoSkip(in_channels=in_channels, out_channels=out_channels)
+        return UpBlock1DNoSkip(in_channels=in_channels, out_channels=out_channels, num_layers=num_layers)
     raise ValueError(f"{up_block_type} does not exist.")
 
 
-def get_mid_block(mid_block_type, in_channels, mid_channels, out_channels):
+def get_mid_block(mid_block_type, num_layers, in_channels, mid_channels, out_channels):
     if mid_block_type == "UNetMidBlock1D":
-        return UNetMidBlock1D(in_channels=in_channels, mid_channels=mid_channels, out_channels=out_channels)
+        return UNetMidBlock1D(in_channels=in_channels, mid_channels=mid_channels, out_channels=out_channels, num_layers=num_layers)
     raise ValueError(f"{mid_block_type} does not exist.")
 
 
@@ -283,16 +283,23 @@ class AttnDownBlock1D(nn.Module):
 
 
 class DownBlock1D(nn.Module):
-    def __init__(self, out_channels: int, in_channels: int, mid_channels: int = None):
+    def __init__(self, out_channels: int, in_channels: int, mid_channels: int = None, num_layers: int = 2):
         super().__init__()
+        if num_layers < 1:
+            raise ValueError(f"DownBlock1D requires added num_layers >= 1")
+
         mid_channels = out_channels if mid_channels is None else mid_channels
 
         self.down = KernelDownsample1D("cubic")
         resnets = [
             ResConvBlock(in_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, out_channels),
         ]
+
+        for i in range(num_layers):
+            if i < (num_layers - 1):
+                resnets.append(ResConvBlock(mid_channels, mid_channels, mid_channels))
+            else:
+                resnets.append(ResConvBlock(mid_channels, mid_channels, out_channels))
 
         self.resnets = nn.ModuleList(resnets)
 
@@ -306,15 +313,22 @@ class DownBlock1D(nn.Module):
 
 
 class DownBlock1DNoSkip(nn.Module):
-    def __init__(self, out_channels: int, in_channels: int, mid_channels: int = None):
+    def __init__(self, out_channels: int, in_channels: int, mid_channels: int = None, num_layers: int = 2):
         super().__init__()
+        if num_layers < 1:
+            raise ValueError(f"DownBlock1DNoSkip requires added num_layers >= 1")
+
         mid_channels = out_channels if mid_channels is None else mid_channels
 
         resnets = [
             ResConvBlock(in_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, out_channels),
         ]
+
+        for i in range(num_layers):
+            if i < (num_layers - 1):
+                resnets.append(ResConvBlock(mid_channels, mid_channels, mid_channels))
+            else:
+                resnets.append(ResConvBlock(mid_channels, mid_channels, out_channels))
 
         self.resnets = nn.ModuleList(resnets)
 
@@ -327,20 +341,27 @@ class DownBlock1DNoSkip(nn.Module):
 
 
 class AttnUpBlock1D(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, mid_channels: int = None):
+    def __init__(self, in_channels: int, out_channels: int, mid_channels: int = None, num_layers: int = 2):
         super().__init__()
+        if num_layers < 1:
+            raise ValueError(f"AttnUpBlock1D requires added num_layers >= 1")
+
         mid_channels = out_channels if mid_channels is None else mid_channels
 
         resnets = [
             ResConvBlock(2 * in_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, out_channels),
         ]
         attentions = [
             SelfAttention1d(mid_channels, mid_channels // 32),
-            SelfAttention1d(mid_channels, mid_channels // 32),
-            SelfAttention1d(out_channels, out_channels // 32),
         ]
+
+        for i in range(num_layers):
+            if i < (num_layers - 1):
+                resnets.append(ResConvBlock(mid_channels, mid_channels, mid_channels))
+                attentions.append(SelfAttention1d(mid_channels, mid_channels // 32))
+            else:
+                resnets.append(ResConvBlock(mid_channels, mid_channels, out_channels))
+                attentions.append(SelfAttention1d(out_channels, out_channels // 32))
 
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
@@ -360,15 +381,22 @@ class AttnUpBlock1D(nn.Module):
 
 
 class UpBlock1D(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, mid_channels: int = None):
+    def __init__(self, in_channels: int, out_channels: int, mid_channels: int = None, num_layers: int = 2):
         super().__init__()
+        if num_layers < 1:
+            raise ValueError(f"UpBlock1D requires added num_layers >= 1")
+
         mid_channels = in_channels if mid_channels is None else mid_channels
 
         resnets = [
             ResConvBlock(2 * in_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, out_channels),
         ]
+
+        for i in range(num_layers):
+            if i < (num_layers - 1):
+                resnets.append(ResConvBlock(mid_channels, mid_channels, mid_channels))
+            else:
+                resnets.append(ResConvBlock(mid_channels, mid_channels, out_channels))
 
         self.resnets = nn.ModuleList(resnets)
         self.up = KernelUpsample1D(kernel="cubic")
@@ -386,15 +414,22 @@ class UpBlock1D(nn.Module):
 
 
 class UpBlock1DNoSkip(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, mid_channels: int = None):
+    def __init__(self, in_channels: int, out_channels: int, mid_channels: int = None, num_layers: int = 2):
         super().__init__()
+        if num_layers < 1:
+            raise ValueError(f"UpBlock1D requires added num_layers >= 1")
+
         mid_channels = in_channels if mid_channels is None else mid_channels
 
         resnets = [
             ResConvBlock(2 * in_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, out_channels, is_last=True),
         ]
+
+        for i in range(num_layers):
+            if i < (num_layers - 1):
+                resnets.append(ResConvBlock(mid_channels, mid_channels, mid_channels))
+            else:
+                resnets.append(ResConvBlock(mid_channels, mid_channels, out_channels, is_last=True))
 
         self.resnets = nn.ModuleList(resnets)
 
