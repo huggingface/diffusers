@@ -205,8 +205,11 @@ def get_mid_block(mid_block_type, in_channels, mid_channels, out_channels):
 
 
 class UNetMidBlock1D(nn.Module):
-    def __init__(self, mid_channels: int, in_channels: int, out_channels: int = None):
+    def __init__(self, mid_channels: int, in_channels: int, num_layers: int = 5, out_channels: int = None):
         super().__init__()
+
+        if num_layers < 1:
+            raise ValueError(f"UNetMidBlock1D requires added num_layers >= 1")
 
         out_channels = in_channels if out_channels is None else out_channels
 
@@ -214,20 +217,17 @@ class UNetMidBlock1D(nn.Module):
         self.down = KernelDownsample1D("cubic")
         resnets = [
             ResConvBlock(in_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, out_channels),
         ]
         attentions = [
             SelfAttention1d(mid_channels, mid_channels // 32),
-            SelfAttention1d(mid_channels, mid_channels // 32),
-            SelfAttention1d(mid_channels, mid_channels // 32),
-            SelfAttention1d(mid_channels, mid_channels // 32),
-            SelfAttention1d(mid_channels, mid_channels // 32),
-            SelfAttention1d(out_channels, out_channels // 32),
         ]
+        for i in range(num_layers):
+            if i < (num_layers - 1):
+                resnets.append(ResConvBlock(mid_channels, mid_channels, mid_channels))
+                attentions.append(SelfAttention1d(mid_channels, mid_channels // 32))
+            else:
+                resnets.append(ResConvBlock(mid_channels, mid_channels, out_channels))
+                attentions.append(SelfAttention1d(out_channels, out_channels // 32))
         self.up = KernelUpsample1D(kernel="cubic")
 
         self.attentions = nn.ModuleList(attentions)
@@ -245,21 +245,29 @@ class UNetMidBlock1D(nn.Module):
 
 
 class AttnDownBlock1D(nn.Module):
-    def __init__(self, out_channels: int, in_channels: int, mid_channels: int = None):
+    def __init__(self, out_channels: int, in_channels: int, num_layers: int = 2, mid_channels: int = None):
         super().__init__()
+
+        if num_layers < 1:
+            raise ValueError(f"AttnDownBlock1D requires added num_layers >= 1")
+
         mid_channels = out_channels if mid_channels is None else mid_channels
 
         self.down = KernelDownsample1D("cubic")
         resnets = [
             ResConvBlock(in_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, mid_channels),
-            ResConvBlock(mid_channels, mid_channels, out_channels),
         ]
         attentions = [
             SelfAttention1d(mid_channels, mid_channels // 32),
-            SelfAttention1d(mid_channels, mid_channels // 32),
-            SelfAttention1d(out_channels, out_channels // 32),
         ]
+
+        for i in range(num_layers):
+            if i < (num_layers - 1):
+                resnets.append(ResConvBlock(mid_channels, mid_channels, mid_channels))
+                attentions.append(SelfAttention1d(mid_channels, mid_channels // 32))
+            else:
+                resnets.append(ResConvBlock(mid_channels, mid_channels, out_channels))
+                attentions.append(SelfAttention1d(out_channels, out_channels // 32))
 
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
