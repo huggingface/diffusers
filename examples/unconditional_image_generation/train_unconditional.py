@@ -59,6 +59,11 @@ def main(args):
             "UpBlock2D",
         ),
     )
+
+    if args.ort:
+        from torch_ort import ORTModule
+        model = ORTModule(model)
+
     noise_scheduler = DDPMScheduler(num_train_timesteps=1000, tensor_format="pt")
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -139,7 +144,7 @@ def main(args):
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
-                noise_pred = model(noisy_images, timesteps).sample
+                noise_pred = model(noisy_images, timesteps)
                 loss = F.mse_loss(noise_pred, noise)
                 accelerator.backward(loss)
 
@@ -226,6 +231,7 @@ if __name__ == "__main__":
     parser.add_argument("--hub_model_id", type=str, default=None)
     parser.add_argument("--hub_private_repo", action="store_true")
     parser.add_argument("--logging_dir", type=str, default="logs")
+    parser.add_argument("--ort", action="store_true")
     parser.add_argument(
         "--mixed_precision",
         type=str,
