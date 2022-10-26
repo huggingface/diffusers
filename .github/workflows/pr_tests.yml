@@ -10,18 +10,35 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  OMP_NUM_THREADS: 8
-  MKL_NUM_THREADS: 8
+  OMP_NUM_THREADS: 4
+  MKL_NUM_THREADS: 4
   PYTEST_TIMEOUT: 60
   MPS_TORCH_VERSION: 1.13.0
 
 jobs:
-  run_tests_cpu:
-    name: CPU tests on Ubuntu
-    runs-on: [ self-hosted, docker-gpu ]
+  run_fast_tests:
+    strategy:
+      matrix:
+        config:
+          - name: PyTorch CPU tests on Ubuntu
+            framework: pytorch
+            runner: docker-cpu
+            image: diffusers/diffusers-pytorch-cpu
+          - name: Flax TPU tests on Ubuntu
+            framework: flax
+            runner: docker-tpu
+            image: diffusers/diffusers-flax-tpu
+          - name: ONNXRuntime CPU tests on Ubuntu
+            framework: onnxruntime
+            runner: docker-cpu
+            image: diffusers/diffusers-onnxruntime-cpu
+
+    name: ${{ matrix.config.name }}
+
+    runs-on: [ self-hosted, ${{ matrix.config.runner }} ]
 
     container:
-      image: diffusers/diffusers-pytorch-cpu
+      image: ${{ matrix.config.image }}
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
 
     defaults:
@@ -44,10 +61,27 @@ jobs:
         python utils/print_env.py
 
     - name: Run fast PyTorch tests on CPU
+      if: ${{ matrix.config.framework == 'pytorch' }}
       run: |
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_torch_cpu \
+          tests/
+
+    - name: Run fast Flax tests on TPU
+      if: ${{ matrix.config.framework == 'flax' }}
+      run: |
+        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "Flax" \
+          --make-reports=tests_flax_tpu \
+          tests/
+
+    - name: Run fast ONNXRuntime tests on CPU
+      if: ${{ matrix.config.framework == 'onnxruntime' }}
+      run: |
+        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "Onnx" \
+          --make-reports=tests_onnx_cpu \
           tests/
 
     - name: Failure short reports
