@@ -27,7 +27,7 @@ jobs:
       fail-fast: false
       matrix:
         image-name:
-          - diffusers-pytorch-cpu,
+          - diffusers-pytorch-cpu
           - diffusers-pytorch-gpu
 
     steps:
