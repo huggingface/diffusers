@@ -34,6 +34,7 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install torch --extra-index-url https://download.pytorch.org/whl/cpu
         python -m pip install -e .[quality,test]
+        python -m pip install git+https://github.com/huggingface/accelerate
 
     - name: Environment
       run: |
@@ -80,6 +81,7 @@ jobs:
         ${CONDA_RUN} python -m pip install --upgrade pip
         ${CONDA_RUN} python -m pip install -e .[quality,test]
         ${CONDA_RUN} python -m pip install --pre torch==${MPS_TORCH_VERSION} --extra-index-url https://download.pytorch.org/whl/test/cpu
+        ${CONDA_RUN} python -m pip install git+https://github.com/huggingface/accelerate
 
     - name: Environment
       shell: arch -arch arm64 bash {0}
