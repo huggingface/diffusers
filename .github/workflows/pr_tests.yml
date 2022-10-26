@@ -19,9 +19,15 @@ jobs:
   run_tests_cpu:
     name: CPU tests on Ubuntu
     runs-on: [ self-hosted, docker-gpu ]
+
     container:
       image: diffusers/diffusers-pytorch-cpu
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+
+    defaults:
+      run:
+        working-directory: /workspace
+        shell: bash
 
     steps:
     - name: Checkout diffusers
