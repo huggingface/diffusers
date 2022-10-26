@@ -44,7 +44,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
     implements for all the model (such as downloading or saving, etc.)
 
     Parameters:
-        sample_size (`int`, *optionl*): Default length of sample. Should be adaptable at runtime.
+        sample_size (`int`, *optional*): Default length of sample. Should be adaptable at runtime.
         in_channels (`int`, *optional*, defaults to 2): Number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 2): Number of channels in the output.
         time_embedding_type (`str`, *optional*, defaults to `"fourier"`): Type of time embedding to use.
@@ -78,7 +78,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         down_block_types: Tuple[str] = ("DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"),
         up_block_types: Tuple[str] = ("UpResnetBlock1D", "UpResnetBlock1D"),
         mid_block_type: Tuple[str] = "MidResTemporalBlock1D",
-        out_block_type: str = "OutConv1DBlock",
+        out_block_type: str = None,
         block_out_channels: Tuple[int] = (32, 128, 256),
         act_fn: str = "mish",
         norm_num_groups: int = 8,
@@ -211,7 +211,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             timesteps = timesteps[None].to(sample.device)
 
         timestep_embed = self.time_proj(timesteps)
-        if self.time_mlp:
+        if self.config.use_timestep_embedding:
             timestep_embed = self.time_mlp(timestep_embed)
         else:
             timestep_embed = timestep_embed[..., None]

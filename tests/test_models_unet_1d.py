@@ -60,6 +60,8 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
             "in_channels": 14,
             "out_channels": 14,
             "time_embedding_type": "positional",
+            "use_timestep_embedding": True,
+            "out_block_type": "OutConv1DBlock",
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
@@ -159,6 +161,7 @@ class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
             "block_out_channels": [32, 64, 128, 256],
             "layers_per_block": 1,
             "always_downsample": True,
+            "use_timestep_embedding": True
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict

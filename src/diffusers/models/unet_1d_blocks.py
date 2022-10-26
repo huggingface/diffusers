@@ -312,7 +312,7 @@ class Upsample1d(nn.Module):
         self.pad = kernel_1d.shape[0] // 2 - 1
         self.register_buffer("kernel", kernel_1d)
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states, temb=None):
         hidden_states = F.pad(hidden_states, ((self.pad + 1) // 2,) * 2, self.pad_mode)
         weight = hidden_states.new_zeros([hidden_states.shape[1], hidden_states.shape[1], self.kernel.shape[0]])
         indices = torch.arange(hidden_states.shape[1], device=hidden_states.device)
@@ -441,7 +441,7 @@ class UNetMidBlock1D(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states, temb=None):
         hidden_states = self.down(hidden_states)
         for attn, resnet in zip(self.attentions, self.resnets):
             hidden_states = resnet(hidden_states)
@@ -546,7 +546,7 @@ class AttnUpBlock1D(nn.Module):
         self.resnets = nn.ModuleList(resnets)
         self.up = Upsample1d(kernel="cubic")
 
-    def forward(self, hidden_states, res_hidden_states_tuple):
+    def forward(self, hidden_states, res_hidden_states_tuple, temb=None):
         res_hidden_states = res_hidden_states_tuple[-1]
         hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
@@ -573,7 +573,7 @@ class UpBlock1D(nn.Module):
         self.resnets = nn.ModuleList(resnets)
         self.up = Upsample1d(kernel="cubic")
 
-    def forward(self, hidden_states, res_hidden_states_tuple):
+    def forward(self, hidden_states, res_hidden_states_tuple, temb=None):
         res_hidden_states = res_hidden_states_tuple[-1]
         hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
@@ -598,7 +598,7 @@ class UpBlock1DNoSkip(nn.Module):
 
         self.resnets = nn.ModuleList(resnets)
 
-    def forward(self, hidden_states, res_hidden_states_tuple):
+    def forward(self, hidden_states, res_hidden_states_tuple, temb=None):
         res_hidden_states = res_hidden_states_tuple[-1]
         hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
