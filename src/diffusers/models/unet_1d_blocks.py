@@ -211,7 +211,7 @@ class UNetMidBlock1D(nn.Module):
         super().__init__()
 
         if num_layers < 1:
-            raise ValueError(f"UNetMidBlock1D requires added num_layers >= 1")
+            raise ValueError("UNetMidBlock1D requires added num_layers >= 1")
 
         out_channels = in_channels if out_channels is None else out_channels
 
@@ -251,7 +251,7 @@ class AttnDownBlock1D(nn.Module):
         super().__init__()
 
         if num_layers < 1:
-            raise ValueError(f"AttnDownBlock1D requires added num_layers >= 1")
+            raise ValueError("AttnDownBlock1D requires added num_layers >= 1")
 
         mid_channels = out_channels if mid_channels is None else mid_channels
 
@@ -288,7 +288,7 @@ class DownBlock1D(nn.Module):
     def __init__(self, out_channels: int, in_channels: int, mid_channels: int = None, num_layers: int = 2):
         super().__init__()
         if num_layers < 1:
-            raise ValueError(f"DownBlock1D requires added num_layers >= 1")
+            raise ValueError("DownBlock1D requires added num_layers >= 1")
 
         mid_channels = out_channels if mid_channels is None else mid_channels
 
@@ -318,7 +318,7 @@ class DownBlock1DNoSkip(nn.Module):
     def __init__(self, out_channels: int, in_channels: int, mid_channels: int = None, num_layers: int = 2):
         super().__init__()
         if num_layers < 1:
-            raise ValueError(f"DownBlock1DNoSkip requires added num_layers >= 1")
+            raise ValueError("DownBlock1DNoSkip requires added num_layers >= 1")
 
         mid_channels = out_channels if mid_channels is None else mid_channels
 
@@ -346,7 +346,7 @@ class AttnUpBlock1D(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, mid_channels: int = None, num_layers: int = 2):
         super().__init__()
         if num_layers < 1:
-            raise ValueError(f"AttnUpBlock1D requires added num_layers >= 1")
+            raise ValueError("AttnUpBlock1D requires added num_layers >= 1")
 
         mid_channels = out_channels if mid_channels is None else mid_channels
 
@@ -386,7 +386,7 @@ class UpBlock1D(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, mid_channels: int = None, num_layers: int = 2):
         super().__init__()
         if num_layers < 1:
-            raise ValueError(f"UpBlock1D requires added num_layers >= 1")
+            raise ValueError("UpBlock1D requires added num_layers >= 1")
 
         mid_channels = in_channels if mid_channels is None else mid_channels
 
@@ -419,7 +419,7 @@ class UpBlock1DNoSkip(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, mid_channels: int = None, num_layers: int = 2):
         super().__init__()
         if num_layers < 1:
-            raise ValueError(f"UpBlock1D requires added num_layers >= 1")
+            raise ValueError("UpBlock1D requires added num_layers >= 1")
 
         mid_channels = in_channels if mid_channels is None else mid_channels
 
