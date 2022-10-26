@@ -223,6 +223,8 @@ class DiffusionPipeline(ConfigMixin):
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
+                if module.device == torch.device("meta"):
+                    return torch.device("cpu")
                 return module.device
         return torch.device("cpu")
 
@@ -584,7 +586,7 @@ class DiffusionPipeline(ConfigMixin):
     def components(self) -> Dict[str, Any]:
         r"""
 
-        The `self.compenents` property can be useful to run different pipelines with the same weights and
+        The `self.components` property can be useful to run different pipelines with the same weights and
         configurations to not have to re-allocate memory.
 
         Examples:
@@ -602,7 +604,7 @@ class DiffusionPipeline(ConfigMixin):
         ```
 
         Returns:
-            A dictionaly containing all the modules needed to initialize the pipleline.
+            A dictionaly containing all the modules needed to initialize the pipeline.
         """
         components = {k: getattr(self, k) for k in self.config.keys() if not k.startswith("_")}
         expected_modules = set(inspect.signature(self.__init__).parameters.keys()) - set(["self"])

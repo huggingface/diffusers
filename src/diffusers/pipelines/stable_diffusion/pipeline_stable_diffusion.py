@@ -3,6 +3,7 @@ from typing import Callable, List, Optional, Union
 
 import torch
 
+from diffusers.utils import is_accelerate_available
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
@@ -117,6 +118,18 @@ class StableDiffusionPipeline(DiffusionPipeline):
         """
         # set slice_size = `None` to disable `attention slicing`
         self.enable_attention_slicing(None)
+
+    def cuda_with_minimal_gpu_usage(self):
+        if is_accelerate_available():
+            from accelerate import cpu_offload
+        else:
+            raise ImportError("Please install accelerate via `pip install accelerate`")
+
+        device = torch.device("cuda")
+        self.enable_attention_slicing(1)
+
+        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
+            cpu_offload(cpu_offloaded_model, device)
 
     @torch.no_grad()
     def __call__(
