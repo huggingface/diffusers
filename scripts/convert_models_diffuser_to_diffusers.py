@@ -29,6 +29,10 @@ def unet(hor):
         block_out_channels=block_out_channels,
         up_block_types=up_block_types,
         layers_per_block=1,
+        in_channels=14,
+        out_channels=14,
+        use_timestep_embedding=True,
+        out_block_type="OutConv1DBlock",
     )
     hf_value_function = UNet1DModel(**config)
     print(f"length of state dict: {len(state_dict.keys())}")
