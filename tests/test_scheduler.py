@@ -276,6 +276,10 @@ class SchedulerCommonTest(unittest.TestCase):
             noised = scheduler.add_noise(scaled_sample, noise, t)
             self.assertEqual(noised.shape, scaled_sample.shape)
 
+            t = torch.tensor([10.], dtype=torch.float64)
+            noised = scheduler.add_noise(scaled_sample, noise, t)
+            self.assertEqual(noised.shape, scaled_sample.shape)
+
 
 class DDPMSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (DDPMScheduler,)
