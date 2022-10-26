@@ -15,7 +15,6 @@
 Generic utilities
 """
 
-import warnings
 from collections import OrderedDict
 from dataclasses import fields
 from typing import Any, Tuple
@@ -59,10 +58,17 @@ class BaseOutput(OrderedDict):
         if not len(class_fields):
             raise ValueError(f"{self.__class__.__name__} has no fields.")
 
-        for field in class_fields:
-            v = getattr(self, field.name)
-            if v is not None:
-                self[field.name] = v
+        first_field = getattr(self, class_fields[0].name)
+        other_fields_are_none = all(getattr(self, field.name) is None for field in class_fields[1:])
+
+        if other_fields_are_none and isinstance(first_field, dict):
+            for key, value in first_field.items():
+                self[key] = value
+        else:
+            for field in class_fields:
+                v = getattr(self, field.name)
+                if v is not None:
+                    self[field.name] = v
 
     def __delitem__(self, *args, **kwargs):
         raise Exception(f"You cannot use ``__delitem__`` on a {self.__class__.__name__} instance.")
@@ -79,13 +85,6 @@ class BaseOutput(OrderedDict):
     def __getitem__(self, k):
         if isinstance(k, str):
             inner_dict = {k: v for (k, v) in self.items()}
-            if self.__class__.__name__ in ["StableDiffusionPipelineOutput", "ImagePipelineOutput"] and k == "sample":
-                warnings.warn(
-                    "The keyword 'samples' is deprecated and will be removed in version 0.4.0. Please use `.images` or"
-                    " `'images'` instead.",
-                    DeprecationWarning,
-                )
-                return inner_dict["images"]
             return inner_dict[k]
         else:
             return self.to_tuple()[k]

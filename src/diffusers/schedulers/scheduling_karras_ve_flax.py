@@ -22,7 +22,7 @@ from jax import random
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils_flax import FlaxSchedulerMixin
 
 
 @flax.struct.dataclass
@@ -56,7 +56,7 @@ class FlaxKarrasVeOutput(BaseOutput):
     state: KarrasVeSchedulerState
 
 
-class FlaxKarrasVeScheduler(SchedulerMixin, ConfigMixin):
+class FlaxKarrasVeScheduler(FlaxSchedulerMixin, ConfigMixin):
     """
     Stochastic sampling from Karras et al. [1] tailored to the Variance-Expanding (VE) models [2]. Use Algorithm 2 and
     the VE column of Table 1 from [1] for reference.
@@ -87,6 +87,10 @@ class FlaxKarrasVeScheduler(SchedulerMixin, ConfigMixin):
             A reasonable range is [0.2, 80].
     """
 
+    @property
+    def has_state(self):
+        return True
+
     @register_to_config
     def __init__(
         self,
@@ -97,9 +101,14 @@ class FlaxKarrasVeScheduler(SchedulerMixin, ConfigMixin):
         s_min: float = 0.05,
         s_max: float = 50,
     ):
-        self.state = KarrasVeSchedulerState.create()
+        pass
 
-    def set_timesteps(self, state: KarrasVeSchedulerState, num_inference_steps: int) -> KarrasVeSchedulerState:
+    def create_state(self):
+        return KarrasVeSchedulerState.create()
+
+    def set_timesteps(
+        self, state: KarrasVeSchedulerState, num_inference_steps: int, shape: Tuple = ()
+    ) -> KarrasVeSchedulerState:
         """
         Sets the continuous timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -113,7 +122,7 @@ class FlaxKarrasVeScheduler(SchedulerMixin, ConfigMixin):
         timesteps = jnp.arange(0, num_inference_steps)[::-1].copy()
         schedule = [
             (
-                self.config.sigma_max
+                self.config.sigma_max**2
                 * (self.config.sigma_min**2 / self.config.sigma_max**2) ** (i / (num_inference_steps - 1))
             )
             for i in timesteps
@@ -170,7 +179,7 @@ class FlaxKarrasVeScheduler(SchedulerMixin, ConfigMixin):
             sigma_hat (`float`): TODO
             sigma_prev (`float`): TODO
             sample_hat (`torch.FloatTensor` or `np.ndarray`): TODO
-            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than FlaxKarrasVeOutput class
 
         Returns:
             [`~schedulers.scheduling_karras_ve_flax.FlaxKarrasVeOutput`] or `tuple`: Updated sample in the diffusion
@@ -209,7 +218,7 @@ class FlaxKarrasVeScheduler(SchedulerMixin, ConfigMixin):
             sample_hat (`torch.FloatTensor` or `np.ndarray`): TODO
             sample_prev (`torch.FloatTensor` or `np.ndarray`): TODO
             derivative (`torch.FloatTensor` or `np.ndarray`): TODO
-            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than FlaxKarrasVeOutput class
 
         Returns:
             prev_sample (TODO): updated sample in the diffusion chain. derivative (TODO): TODO

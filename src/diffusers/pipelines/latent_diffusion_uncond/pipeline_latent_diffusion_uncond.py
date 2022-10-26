@@ -1,5 +1,4 @@
 import inspect
-import warnings
 from typing import Optional, Tuple, Union
 
 import torch
@@ -24,7 +23,6 @@ class LDMPipeline(DiffusionPipeline):
 
     def __init__(self, vqvae: VQModel, unet: UNet2DModel, scheduler: DDIMScheduler):
         super().__init__()
-        scheduler = scheduler.set_format("pt")
         self.register_modules(vqvae=vqvae, unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
@@ -60,23 +58,14 @@ class LDMPipeline(DiffusionPipeline):
             generated images.
         """
 
-        if "torch_device" in kwargs:
-            device = kwargs.pop("torch_device")
-            warnings.warn(
-                "`torch_device` is deprecated as an input argument to `__call__` and will be removed in v0.3.0."
-                " Consider using `pipe.to(torch_device)` instead."
-            )
-
-            # Set device as before (to be removed in 0.3.0)
-            if device is None:
-                device = "cuda" if torch.cuda.is_available() else "cpu"
-            self.to(device)
-
         latents = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
             generator=generator,
         )
         latents = latents.to(self.device)
+
+        # scale the initial noise by the standard deviation required by the scheduler
+        latents = latents * self.scheduler.init_noise_sigma
 
         self.scheduler.set_timesteps(num_inference_steps)
 
@@ -88,8 +77,9 @@ class LDMPipeline(DiffusionPipeline):
             extra_kwargs["eta"] = eta
 
         for t in self.progress_bar(self.scheduler.timesteps):
+            latent_model_input = self.scheduler.scale_model_input(latents, t)
             # predict the noise residual
-            noise_prediction = self.unet(latents, t).sample
+            noise_prediction = self.unet(latent_model_input, t).sample
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(noise_prediction, t, latents, **extra_kwargs).prev_sample
 

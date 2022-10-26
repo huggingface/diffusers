@@ -1,4 +1,4 @@
-# Copyright 2022 UC Berkely Team and The HuggingFace Team. All rights reserved.
+# Copyright 2022 UC Berkeley Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import jax.numpy as jnp
 from jax import random
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput, broadcast_to_shape_from_left
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> jnp.ndarray:
@@ -67,11 +67,11 @@ class DDPMSchedulerState:
 
 
 @dataclass
-class FlaxSchedulerOutput(SchedulerOutput):
+class FlaxDDPMSchedulerOutput(FlaxSchedulerOutput):
     state: DDPMSchedulerState
 
 
-class FlaxDDPMScheduler(SchedulerMixin, ConfigMixin):
+class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
     """
     Denoising diffusion probabilistic models (DDPMs) explores the connections between denoising score matching and
     Langevin dynamics sampling.
@@ -101,6 +101,10 @@ class FlaxDDPMScheduler(SchedulerMixin, ConfigMixin):
 
     """
 
+    @property
+    def has_state(self):
+        return True
+
     @register_to_config
     def __init__(
         self,
@@ -129,11 +133,12 @@ class FlaxDDPMScheduler(SchedulerMixin, ConfigMixin):
         self.alphas_cumprod = jnp.cumprod(self.alphas, axis=0)
         self.one = jnp.array(1.0)
 
-        self.state = DDPMSchedulerState.create(num_train_timesteps=num_train_timesteps)
+    def create_state(self):
+        return DDPMSchedulerState.create(num_train_timesteps=self.config.num_train_timesteps)
 
-        self.variance_type = variance_type
-
-    def set_timesteps(self, state: DDPMSchedulerState, num_inference_steps: int) -> DDPMSchedulerState:
+    def set_timesteps(
+        self, state: DDPMSchedulerState, num_inference_steps: int, shape: Tuple = ()
+    ) -> DDPMSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -191,7 +196,7 @@ class FlaxDDPMScheduler(SchedulerMixin, ConfigMixin):
         key: random.KeyArray,
         predict_epsilon: bool = True,
         return_dict: bool = True,
-    ) -> Union[FlaxSchedulerOutput, Tuple]:
+    ) -> Union[FlaxDDPMSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
@@ -205,16 +210,16 @@ class FlaxDDPMScheduler(SchedulerMixin, ConfigMixin):
             key (`random.KeyArray`): a PRNG key.
             predict_epsilon (`bool`):
                 optional flag to use when model predicts the samples directly instead of the noise, epsilon.
-            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than FlaxDDPMSchedulerOutput class
 
         Returns:
-            [`FlaxSchedulerOutput`] or `tuple`: [`FlaxSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
-            When returning a tuple, the first element is the sample tensor.
+            [`FlaxDDPMSchedulerOutput`] or `tuple`: [`FlaxDDPMSchedulerOutput`] if `return_dict` is True, otherwise a
+            `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         t = timestep
 
-        if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
+        if model_output.shape[1] == sample.shape[1] * 2 and self.config.variance_type in ["learned", "learned_range"]:
             model_output, predicted_variance = jnp.split(model_output, sample.shape[1], axis=1)
         else:
             predicted_variance = None
@@ -257,7 +262,7 @@ class FlaxDDPMScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (pred_prev_sample, state)
 
-        return FlaxSchedulerOutput(prev_sample=pred_prev_sample, state=state)
+        return FlaxDDPMSchedulerOutput(prev_sample=pred_prev_sample, state=state)
 
     def add_noise(
         self,
@@ -267,13 +272,11 @@ class FlaxDDPMScheduler(SchedulerMixin, ConfigMixin):
     ) -> jnp.ndarray:
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()
-        while len(sqrt_alpha_prod.shape) < len(original_samples.shape):
-            sqrt_alpha_prod = sqrt_alpha_prod[..., None]
+        sqrt_alpha_prod = broadcast_to_shape_from_left(sqrt_alpha_prod, original_samples.shape)
 
         sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
         sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
-        while len(sqrt_one_minus_alpha_prod.shape) < len(original_samples.shape):
-            sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod[..., None]
+        sqrt_one_minus_alpha_prod = broadcast_to_shape_from_left(sqrt_one_minus_alpha_prod, original_samples.shape)
 
         noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
         return noisy_samples

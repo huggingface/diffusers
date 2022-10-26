@@ -1,3 +1,16 @@
+# Copyright 2022 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 from typing import Tuple, Union
 
 import flax
@@ -10,7 +23,7 @@ from ..configuration_utils import ConfigMixin, flax_register_to_config
 from ..modeling_flax_utils import FlaxModelMixin
 from ..utils import BaseOutput
 from .embeddings_flax import FlaxTimestepEmbedding, FlaxTimesteps
-from .unet_blocks_flax import (
+from .unet_2d_blocks_flax import (
     FlaxCrossAttnDownBlock2D,
     FlaxCrossAttnUpBlock2D,
     FlaxDownBlock2D,
@@ -39,10 +52,23 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     This model inherits from [`FlaxModelMixin`]. Check the superclass documentation for the generic methods the library
     implements for all the models (such as downloading or saving, etc.)
 
+    Also, this model is a Flax Linen [flax.linen.Module](https://flax.readthedocs.io/en/latest/flax.linen.html#module)
+    subclass. Use it as a regular Flax linen Module and refer to the Flax documentation for all matter related to
+    general usage and behavior.
+
+    Finally, this model supports inherent JAX features such as:
+    - [Just-In-Time (JIT) compilation](https://jax.readthedocs.io/en/latest/jax.html#just-in-time-compilation-jit)
+    - [Automatic Differentiation](https://jax.readthedocs.io/en/latest/jax.html#automatic-differentiation)
+    - [Vectorization](https://jax.readthedocs.io/en/latest/jax.html#vectorization-vmap)
+    - [Parallelization](https://jax.readthedocs.io/en/latest/jax.html#parallelization-pmap)
+
     Parameters:
-        sample_size (`int`, *optional*): The size of the input sample.
-        in_channels (`int`, *optional*, defaults to 4): The number of channels in the input sample.
-        out_channels (`int`, *optional*, defaults to 4): The number of channels in the output.
+        sample_size (`int`, *optional*):
+            The size of the input sample.
+        in_channels (`int`, *optional*, defaults to 4):
+            The number of channels in the input sample.
+        out_channels (`int`, *optional*, defaults to 4):
+            The number of channels in the output.
         down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
             The tuple of downsample blocks to use. The corresponding class names will be: "FlaxCrossAttnDownBlock2D",
             "FlaxCrossAttnDownBlock2D", "FlaxCrossAttnDownBlock2D", "FlaxDownBlock2D"
@@ -51,10 +77,14 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D", "FlaxCrossAttnUpBlock2D"
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
-        layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
-        attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
-        cross_attention_dim (`int`, *optional*, defaults to 768): The dimension of the cross attention features.
-        dropout (`float`, *optional*, defaults to 0): Dropout probability for down, up and bottleneck blocks.
+        layers_per_block (`int`, *optional*, defaults to 2):
+            The number of layers per block.
+        attention_head_dim (`int`, *optional*, defaults to 8):
+            The dimension of the attention heads.
+        cross_attention_dim (`int`, *optional*, defaults to 768):
+            The dimension of the cross attention features.
+        dropout (`float`, *optional*, defaults to 0):
+            Dropout probability for down, up and bottleneck blocks.
     """
 
     sample_size: int = 32
@@ -73,6 +103,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     cross_attention_dim: int = 1280
     dropout: float = 0.0
     dtype: jnp.dtype = jnp.float32
+    freq_shift: int = 0
 
     def init_weights(self, rng: jax.random.PRNGKey) -> FrozenDict:
         # init input tensors
@@ -100,7 +131,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         )
 
         # time
-        self.time_proj = FlaxTimesteps(block_out_channels[0])
+        self.time_proj = FlaxTimesteps(block_out_channels[0], freq_shift=self.config.freq_shift)
         self.time_embedding = FlaxTimestepEmbedding(time_embed_dim, dtype=self.dtype)
 
         # down
@@ -197,7 +228,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         return_dict: bool = True,
         train: bool = False,
     ) -> Union[FlaxUNet2DConditionOutput, Tuple]:
-        """r
+        r"""
         Args:
             sample (`jnp.ndarray`): (channel, height, width) noisy inputs tensor
             timestep (`jnp.ndarray` or `float` or `int`): timesteps

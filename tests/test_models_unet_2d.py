@@ -13,13 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import math
+import tracemalloc
 import unittest
 
 import torch
 
-from diffusers import UNet2DModel
-from diffusers.testing_utils import floats_tensor, slow, torch_device
+from diffusers import UNet2DConditionModel, UNet2DModel
+from diffusers.utils import floats_tensor, slow, torch_device
 
 from .test_modeling_common import ModelTesterMixin
 
@@ -27,7 +29,7 @@ from .test_modeling_common import ModelTesterMixin
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class UnetModelTests(ModelTesterMixin, unittest.TestCase):
+class Unet2DModelTests(ModelTesterMixin, unittest.TestCase):
     model_class = UNet2DModel
 
     @property
@@ -133,6 +135,74 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
 
         assert image is not None, "Make sure output is not None"
 
+    @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
+    def test_from_pretrained_accelerate(self):
+        model, _ = UNet2DModel.from_pretrained(
+            "fusing/unet-ldm-dummy-update", output_loading_info=True, device_map="auto"
+        )
+        model.to(torch_device)
+        image = model(**self.dummy_input).sample
+
+        assert image is not None, "Make sure output is not None"
+
+    @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
+    def test_from_pretrained_accelerate_wont_change_results(self):
+        model_accelerate, _ = UNet2DModel.from_pretrained(
+            "fusing/unet-ldm-dummy-update", output_loading_info=True, device_map="auto"
+        )
+        model_accelerate.to(torch_device)
+        model_accelerate.eval()
+
+        noise = torch.randn(
+            1,
+            model_accelerate.config.in_channels,
+            model_accelerate.config.sample_size,
+            model_accelerate.config.sample_size,
+            generator=torch.manual_seed(0),
+        )
+        noise = noise.to(torch_device)
+        time_step = torch.tensor([10] * noise.shape[0]).to(torch_device)
+
+        arr_accelerate = model_accelerate(noise, time_step)["sample"]
+
+        # two models don't need to stay in the device at the same time
+        del model_accelerate
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        model_normal_load, _ = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", output_loading_info=True)
+        model_normal_load.to(torch_device)
+        model_normal_load.eval()
+        arr_normal_load = model_normal_load(noise, time_step)["sample"]
+
+        assert torch.allclose(arr_accelerate, arr_normal_load, rtol=1e-3)
+
+    @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
+    def test_memory_footprint_gets_reduced(self):
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        tracemalloc.start()
+        model_accelerate, _ = UNet2DModel.from_pretrained(
+            "fusing/unet-ldm-dummy-update", output_loading_info=True, device_map="auto"
+        )
+        model_accelerate.to(torch_device)
+        model_accelerate.eval()
+        _, peak_accelerate = tracemalloc.get_traced_memory()
+
+        del model_accelerate
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        model_normal_load, _ = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", output_loading_info=True)
+        model_normal_load.to(torch_device)
+        model_normal_load.eval()
+        _, peak_normal = tracemalloc.get_traced_memory()
+
+        tracemalloc.stop()
+
+        assert peak_accelerate < peak_normal
+
     def test_output_pretrained(self):
         model = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update")
         model.eval()
@@ -157,6 +227,86 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         # fmt: on
 
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-3))
+
+
+class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
+    model_class = UNet2DConditionModel
+
+    @property
+    def dummy_input(self):
+        batch_size = 4
+        num_channels = 4
+        sizes = (32, 32)
+
+        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        time_step = torch.tensor([10]).to(torch_device)
+        encoder_hidden_states = floats_tensor((batch_size, 4, 32)).to(torch_device)
+
+        return {"sample": noise, "timestep": time_step, "encoder_hidden_states": encoder_hidden_states}
+
+    @property
+    def input_shape(self):
+        return (4, 32, 32)
+
+    @property
+    def output_shape(self):
+        return (4, 32, 32)
+
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = {
+            "block_out_channels": (32, 64),
+            "down_block_types": ("CrossAttnDownBlock2D", "DownBlock2D"),
+            "up_block_types": ("UpBlock2D", "CrossAttnUpBlock2D"),
+            "cross_attention_dim": 32,
+            "attention_head_dim": 8,
+            "out_channels": 4,
+            "in_channels": 4,
+            "layers_per_block": 2,
+            "sample_size": 32,
+        }
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+
+    @unittest.skipIf(torch_device == "mps", "Gradient checkpointing skipped on MPS")
+    def test_gradient_checkpointing(self):
+        # enable deterministic behavior for gradient checkpointing
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        assert not model.is_gradient_checkpointing and model.training
+
+        out = model(**inputs_dict).sample
+        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
+        # we won't calculate the loss and rather backprop on out.sum()
+        model.zero_grad()
+
+        labels = torch.randn_like(out)
+        loss = (out - labels).mean()
+        loss.backward()
+
+        # re-instantiate the model now enabling gradient checkpointing
+        model_2 = self.model_class(**init_dict)
+        # clone model
+        model_2.load_state_dict(model.state_dict())
+        model_2.to(torch_device)
+        model_2.enable_gradient_checkpointing()
+
+        assert model_2.is_gradient_checkpointing and model_2.training
+
+        out_2 = model_2(**inputs_dict).sample
+        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
+        # we won't calculate the loss and rather backprop on out.sum()
+        model_2.zero_grad()
+        loss_2 = (out_2 - labels).mean()
+        loss_2.backward()
+
+        # compare the output and parameters gradients
+        self.assertTrue((loss - loss_2).abs() < 1e-5)
+        named_params = dict(model.named_parameters())
+        named_params_2 = dict(model_2.named_parameters())
+        for name, param in named_params.items():
+            self.assertTrue(torch.allclose(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
 
 
 #    TODO(Patrick) - Re-add this test after having cleaned up LDM
