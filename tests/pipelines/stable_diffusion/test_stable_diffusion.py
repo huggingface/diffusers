@@ -760,7 +760,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
 
         pipeline = StableDiffusionPipeline.from_pretrained(pipeline_id, revision="fp16", torch_dtype=torch.float16)
         pipeline.enable_attention_slicing(1)
-        pipeline.enable_sequential_gpu_placement()
+        pipeline.enable_sequential_cpu_offload()
 
         _ = pipeline(prompt, num_inference_steps=5)
 

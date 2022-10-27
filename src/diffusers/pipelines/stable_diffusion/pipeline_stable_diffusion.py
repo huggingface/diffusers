@@ -119,7 +119,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         # set slice_size = `None` to disable `attention slicing`
         self.enable_attention_slicing(None)
 
-    def enable_sequential_gpu_placement(self):
+    def enable_sequential_cpu_offload(self):
         if is_accelerate_available():
             from accelerate import cpu_offload
         else:
