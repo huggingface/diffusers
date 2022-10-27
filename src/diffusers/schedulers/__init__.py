@@ -17,6 +17,7 @@ from ..utils import is_flax_available, is_scipy_available, is_torch_available
 
 
 if is_torch_available():
+    from .scheduling_ald import ALDScheduler
     from .scheduling_ddim import DDIMScheduler
     from .scheduling_ddpm import DDPMScheduler
     from .scheduling_ipndm import IPNDMScheduler

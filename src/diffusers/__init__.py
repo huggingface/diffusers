@@ -39,6 +39,7 @@ if is_torch_available():
         ScoreSdeVePipeline,
     )
     from .schedulers import (
+        ALDScheduler,
         DDIMScheduler,
         DDPMScheduler,
         IPNDMScheduler,
