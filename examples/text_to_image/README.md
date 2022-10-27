@@ -62,6 +62,24 @@ accelerate launch train_text_to_image.py \
   --output_dir="sd-pokemon-model" 
 ```
 
+Or use the Flax implementation if you need a speedup
+
+```bash
+export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
+export dataset_name="lambdalabs/pokemon-blip-captions"
+
+python train_text_to_image_flax.py \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --dataset_name=$dataset_name \
+  --resolution=512 --center_crop --random_flip \
+  --train_batch_size=1 \
+  --mixed_precision="fp16" \
+  --max_train_steps=15000 \
+  --learning_rate=1e-05 \
+  --max_grad_norm=1 \
+  --output_dir="sd-pokemon-model" 
+```
+
 
 To run on your own training files prepare the dataset according to the format required by `datasets`, you can find the instructions for how to do that in this [document](https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder-with-metadata).
 If you wish to use custom loading logic, you should modify the script, we have left pointers for that in the training script.
@@ -83,6 +101,24 @@ accelerate launch train_text_to_image.py \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
+  --output_dir="sd-pokemon-model"
+```
+
+Or use the Flax implementation if you need a speedup
+
+```bash
+export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
+export TRAIN_DIR="path_to_your_dataset"
+
+python train_text_to_image_flax.py \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --train_data_dir=$TRAIN_DIR \
+  --resolution=512 --center_crop --random_flip \
+  --train_batch_size=1 \
+  --mixed_precision="fp16" \
+  --max_train_steps=15000 \
+  --learning_rate=1e-05 \
+  --max_grad_norm=1 \
   --output_dir="sd-pokemon-model"
 ```
 
