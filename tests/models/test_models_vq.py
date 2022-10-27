@@ -17,7 +17,7 @@ import unittest
 
 import torch
 
-from diffusers import VQModel, AutoencoderKL
+from diffusers import AutoencoderKL, VQModel
 from diffusers.utils import floats_tensor, torch_device
 
 from .test_modeling_common import ModelTesterMixin
