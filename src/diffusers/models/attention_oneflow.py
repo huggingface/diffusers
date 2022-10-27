@@ -65,6 +65,8 @@ class AttentionBlock(nn.Module):
         key_proj = self.key(hidden_states)
         value_proj = self.value(hidden_states)
 
+        '''
+
         # transpose
         query_states = self.transpose_for_scores(query_proj)
         key_states = self.transpose_for_scores(key_proj)
@@ -82,7 +84,8 @@ class AttentionBlock(nn.Module):
         hidden_states = hidden_states.permute(0, 2, 1, 3).contiguous()
         new_hidden_states_shape = hidden_states.size()[:-2] + (self.channels,)
         hidden_states = hidden_states.view(new_hidden_states_shape)
-
+        '''
+        hidden_states = torch._C.fused_multi_head_attention_inference(query_proj, key_proj, value_proj, self.num_heads)
         # compute next hidden_states
         hidden_states = self.proj_attn(hidden_states)
         hidden_states = hidden_states.transpose(-1, -2).reshape(batch, channel, height, width)
@@ -256,6 +259,7 @@ class CrossAttention(nn.Module):
         key = self.to_k(context)
         value = self.to_v(context)
 
+        '''
         dim = query.shape[-1]
 
         query = self.reshape_heads_to_batch_dim(query)
@@ -270,6 +274,8 @@ class CrossAttention(nn.Module):
             hidden_states = self._attention(query, key, value)
         else:
             hidden_states = self._sliced_attention(query, key, value, sequence_length, dim)
+        '''
+        hidden_states = torch._C.fused_multi_head_attention_inference(query, key, value, self.heads)
 
         return self.to_out(hidden_states)
 
