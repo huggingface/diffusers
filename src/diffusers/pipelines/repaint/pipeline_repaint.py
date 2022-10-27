@@ -16,13 +16,32 @@
 
 from typing import Optional, Tuple, Union
 
+import numpy as np
 import torch
 
+import PIL
 from tqdm.auto import tqdm
 
 from ...models import UNet2DModel
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import RePaintScheduler
+
+
+def _preprocess_image(image: PIL.Image.Image):
+    image = np.array(image.convert("RGB"))
+    image = image[None].transpose(0, 3, 1, 2)
+    image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
+    return image
+
+
+def _preprocess_mask(mask: PIL.Image.Image):
+    mask = np.array(mask.convert("L"))
+    mask = mask.astype(np.float32) / 255.0
+    mask = mask[None, None]
+    mask[mask < 0.5] = 0
+    mask[mask >= 0.5] = 1
+    mask = torch.from_numpy(mask)
+    return mask
 
 
 class RePaintPipeline(DiffusionPipeline):
@@ -36,10 +55,10 @@ class RePaintPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        original_image: torch.Tensor,
-        mask: torch.Tensor,
-        num_inference_steps: int = 500,
-        eta: float = 1.0,
+        original_image: Union[torch.FloatTensor, PIL.Image.Image],
+        mask: Union[torch.FloatTensor, PIL.Image.Image],
+        num_inference_steps: int = 250,
+        eta: float = 0.0,
         jump_length: int = 10,
         jump_n_sample: int = 10,
         generator: Optional[torch.Generator] = None,
@@ -49,9 +68,9 @@ class RePaintPipeline(DiffusionPipeline):
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
         Args:
-            original_image (`torch.Tensor`):
+            original_image (`torch.FloatTensor` or `PIL.Image.Image`):
                 The original image to inpaint on.
-            mask (`torch.Tensor`):
+            mask (`torch.FloatTensor` or `PIL.Image.Image`):
                 The mask where 0.0 values define which part of the original image to inpaint (change).
             num_inference_steps (`int`, *optional*, defaults to 1000):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
@@ -80,8 +99,11 @@ class RePaintPipeline(DiffusionPipeline):
             generated images.
         """
 
-        self.unet.to(self.device)
+        if not isinstance(original_image, torch.FloatTensor):
+            original_image = _preprocess_image(original_image)
         original_image = original_image.to(self.device)
+        if not isinstance(mask, torch.FloatTensor):
+            mask = _preprocess_mask(mask)
         mask = mask.to(self.device)
 
         # sample gaussian noise to begin the loop
