@@ -2,9 +2,9 @@
     modeled after the textual_inversion.py / train_dreambooth.py and the work
     of justinpinkney here: https://github.com/justinpinkney/stable-diffusion/blob/main/notebooks/imagic.ipynb
 """
+import inspect
 import warnings
 from typing import List, Optional, Union
-import inspect
 
 import numpy as np
 import torch
@@ -18,9 +18,10 @@ from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from diffusers.utils import logging
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
-from diffusers.utils import logging
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -118,7 +119,6 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline):
         """
         # set slice_size = `None` to disable `attention slicing`
         self.enable_attention_slicing(None)
-
 
     def train(
         self,
@@ -379,13 +379,12 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline):
         """
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-        if self.text_embeddings is None: 
+        if self.text_embeddings is None:
             raise ValueError("Please run the pipe.train() before trying to generate an image.")
         if self.text_embeddings_orig is None:
             raise ValueError("Please run the pipe.train() before trying to generate an image.")
 
         text_embeddings = alpha * self.text_embeddings_orig + (1 - alpha) * self.text_embeddings
-
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
