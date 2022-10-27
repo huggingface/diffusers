@@ -91,7 +91,7 @@ class MultilingualStableDiffusion(DiffusionPipeline):
     """
     def __init__(
         self,
-        language_detection_pipeline:pipeline,
+        language_detection_pipeline: pipeline,
         translation_model: MBartForConditionalGeneration,
         translation_tokenizer: MBart50TokenizerFast,
         vae: AutoencoderKL,
@@ -175,17 +175,17 @@ class MultilingualStableDiffusion(DiffusionPipeline):
         # detect language and translate if necessary
         prompt_language = detect_language(self.language_detection_pipeline, prompt, batch_size)
         if (batch_size == 1) and (prompt_language != "en"):
-            prompt = translate_prompt(prompt = prompt, 
-                                      translation_tokenizer = self.translation_tokenizer,
-                                      translation_model = self.translation_model,
-                                      device = self.device)
+            prompt = translate_prompt(prompt=prompt,
+                                      translation_tokenizer=self.translation_tokenizer,
+                                      translation_model=self.translation_model,
+                                      device=self.device)
         if batch_size != 1:
             for index in range(batch_size):
                 if prompt_language[index] != "en":
-                    p = translate_prompt(prompt = prompt[index],
-                                         translation_tokenizer = self.translation_tokenizer,
-                                         translation_model = self.translation_model,
-                                         device = self.device)
+                    p = translate_prompt(prompt=prompt[index],
+                                         translation_tokenizer=self.translation_tokenizer,
+                                         translation_model=self.translation_model,
+                                         device=self.device)
                     prompt[index] = p
 
         # get prompt text embeddings
@@ -229,9 +229,9 @@ class MultilingualStableDiffusion(DiffusionPipeline):
                 # detect language and translate it if necessary
                 negative_prompt_language = detect_language(self.language_detection_pipeline, negative_prompt, batch_size)
                 if negative_prompt_language != "en":
-                    negative_prompt = translate_prompt(prompt = negative_prompt,
-                                                       translation_tokenizer = self.translation_tokenizer,
-                                                       translation_model = self.translation_model,
+                    negative_prompt = translate_prompt(prompt=negative_prompt,
+                                                       translation_tokenizer=self.translation_tokenizer,
+                                                       translation_model=self.translation_model,
                                                        device=self.device)
                 uncond_tokens = [negative_prompt]
             elif batch_size != len(negative_prompt):
@@ -245,7 +245,7 @@ class MultilingualStableDiffusion(DiffusionPipeline):
                 negative_prompt_languages = detect_language(self.language_detection_pipeline, negative_prompt, batch_size)
                 for index in range(batch_size):
                     if negative_prompt_languages[index] != "en":
-                        p = translate_prompt(prompt = negative_prompt[index],
+                        p = translate_prompt(prompt=negative_prompt[index],
                                              translation_tokenizer = self.translation_tokenizer,
                                              translation_model = self.translation_model,
                                              device=self.device)
