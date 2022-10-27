@@ -306,7 +306,7 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
 
         for i in range(n):
             beta = self.betas[timestep + i]
-            noise = torch.randn(sample.shape, generator=generator).to(sample.device)
+            noise = torch.randn(sample.shape, generator=generator, device=sample.device)
 
             # 10. Algorithm 1 Line 10 https://arxiv.org/pdf/2201.09865.pdf
             sample = (1 - beta) ** 0.5 * sample + beta**0.5 * noise
