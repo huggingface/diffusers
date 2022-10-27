@@ -10,7 +10,8 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from ...schedulers import DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler, \
+EulerDiscreteScheduler, EulerAncestralDiscreteScheduler
 from ...utils import deprecate, logging
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -63,7 +64,10 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+        scheduler: Union[
+            DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler, 
+            EulerDiscreteScheduler, EulerAncestralDiscreteScheduler
+        ],
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
     ):
