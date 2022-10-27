@@ -22,7 +22,7 @@ from diffusers.modeling_utils import ModelMixin
 from diffusers.utils import floats_tensor, slow, torch_device
 from parameterized import parameterized
 
-from .test_modeling_common import ModelTesterMixin
+from ..test_modeling_common import ModelTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -175,8 +175,8 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
     @parameterized.expand(
         [
             # fmt: off
-        [33, [-0.0153, -0.4044, -0.1880, -0.5161, -0.2418, -0.4072, -0.1612, -0.0633, -0.0143]],
-        [47, [-0.0153, -0.4044, -0.1880, -0.5161, -0.2418, -0.4072, -0.1612, -0.0633, -0.0143]],
+            [33, [-7.3992, -2.9123, -2.8571,  0.5112, -4.9118, -0.0620, -5.7185,  3.4767, -1.7884]],
+            [47, [-3.5498, -5.4690, -6.9103, -4.4613, -2.6730,  0.6610,  0.0283, -5.7788, -1.9802]],
             # fmt: on
         ]
     )
@@ -188,6 +188,8 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         with torch.no_grad():
             dist = model.encode(image).latent_dist
             sample = dist.sample(generator=generator)
+
+        assert sample.shape == [image.shape[0], 4] + [i // 8 for i in image.shape[2:]]
 
         output_slice = sample[0, -1, -3:, -3:].flatten().cpu()
         expected_output_slice = torch.tensor(expected_slice)
