@@ -360,13 +360,13 @@ def main():
         elif args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
+    rng = jax.random.PRNGKey(args.seed)
+
     if args.with_prior_preservation:
         class_images_dir = Path(args.class_data_dir)
         if not class_images_dir.exists():
             class_images_dir.mkdir(parents=True)
         cur_class_images = len(list(class_images_dir.iterdir()))
-
-        rng = jax.random.PRNGKey(args.seed)
 
         if cur_class_images < args.num_class_images:
             pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
@@ -495,7 +495,6 @@ def main():
     )
 
     # Initialize our training
-    rng = jax.random.PRNGKey(args.seed)
     train_rngs = jax.random.split(rng, jax.local_device_count())
 
     def train_step(unet_state, text_encoder_state, vae_params, batch, train_rng):
