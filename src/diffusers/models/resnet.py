@@ -380,6 +380,10 @@ class ResnetBlock2D(nn.Module):
         hidden_states = self.nonlinearity(hidden_states)
 
         if self.upsample is not None:
+            # upsample_nearest_nhwc fails with large batch sizes. see https://github.com/huggingface/diffusers/issues/984
+            if hidden_states.shape[0] >= 64:
+                input_tensor = input_tensor.contiguous()
+                hidden_states = hidden_states.contiguous()
             input_tensor = self.upsample(input_tensor)
             hidden_states = self.upsample(hidden_states)
         elif self.downsample is not None:
