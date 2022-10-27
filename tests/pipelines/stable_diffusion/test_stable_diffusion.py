@@ -15,6 +15,7 @@
 
 import gc
 import random
+import time
 import unittest
 
 import numpy as np
@@ -730,3 +731,39 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
             )
         assert test_callback_fn.has_been_called
         assert number_of_steps == 51
+
+    def test_stable_diffusion_accelerate_auto_device(self):
+        pipeline_id = "CompVis/stable-diffusion-v1-4"
+
+        start_time = time.time()
+        pipeline_normal_load = StableDiffusionPipeline.from_pretrained(
+            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True
+        )
+        pipeline_normal_load.to(torch_device)
+        normal_load_time = time.time() - start_time
+
+        start_time = time.time()
+        _ = StableDiffusionPipeline.from_pretrained(
+            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, device_map="auto"
+        )
+        meta_device_load_time = time.time() - start_time
+
+        assert 2 * meta_device_load_time < normal_load_time
+
+    @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
+    def test_stable_diffusion_pipeline_with_unet_on_gpu_only(self):
+        torch.cuda.empty_cache()
+        torch.cuda.reset_max_memory_allocated()
+
+        pipeline_id = "CompVis/stable-diffusion-v1-4"
+        prompt = "Andromeda galaxy in a bottle"
+
+        pipeline = StableDiffusionPipeline.from_pretrained(pipeline_id, revision="fp16", torch_dtype=torch.float16)
+        pipeline.enable_attention_slicing(1)
+        pipeline.enable_sequential_cpu_offload()
+
+        _ = pipeline(prompt, num_inference_steps=5)
+
+        mem_bytes = torch.cuda.max_memory_allocated()
+        # make sure that less than 1.5 GB is allocated
+        assert mem_bytes < 1.5 * 10**9
