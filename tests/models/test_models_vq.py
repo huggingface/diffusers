@@ -17,7 +17,7 @@ import unittest
 
 import torch
 
-from diffusers import VQModel
+from diffusers import VQModel, AutoencoderKL
 from diffusers.utils import floats_tensor, torch_device
 
 from .test_modeling_common import ModelTesterMixin
@@ -74,6 +74,30 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
 
         assert image is not None, "Make sure output is not None"
 
+    def test_output_pretrained(self):
+        model = VQModel.from_pretrained("fusing/vqgan-dummy")
+        model.to(torch_device).eval()
+
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        image = torch.randn(1, model.config.in_channels, model.config.sample_size, model.config.sample_size)
+        image = image.to(torch_device)
+        with torch.no_grad():
+            # Warmup pass when using mps (see #372)
+            if torch_device == "mps":
+                _ = model(image)
+            output = model(image).sample
+
+        output_slice = output[0, -1, -3:, -3:].flatten().cpu()
+        # fmt: off
+        expected_output_slice = torch.tensor([-0.0153, -0.4044, -0.1880, -0.5161, -0.2418, -0.4072, -0.1612, -0.0633, -0.0143])
+        # fmt: on
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+
+
+class VQModelIntegrationTests(unittest.TestCase):
     def test_output_pretrained(self):
         model = VQModel.from_pretrained("fusing/vqgan-dummy")
         model.to(torch_device).eval()
