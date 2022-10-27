@@ -100,7 +100,7 @@ def parse_args():
         default=None,
         help="The directory where the downloaded models and datasets will be stored.",
     )
-    parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
+    parser.add_argument("--seed", type=int, default=0, help="A seed for reproducible training.")
     parser.add_argument(
         "--resolution",
         type=int,
@@ -357,7 +357,7 @@ def main():
 
     total_train_batch_size = args.train_batch_size * jax.local_device_count()
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, shuffle=True, collate_fn=collate_fn, batch_size=total_train_batch_size
+        train_dataset, shuffle=True, collate_fn=collate_fn, batch_size=total_train_batch_size, drop_last=True
     )
 
     # Load models and create wrapper for stable diffusion
