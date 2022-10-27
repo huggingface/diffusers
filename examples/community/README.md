@@ -16,7 +16,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | Speech to Image                        | Using automatic-speech-recognition to transcribe text and Stable Diffusion to generate images                                                                                                                                                                                                                                                                                                                                                                                                            | [Speech to Image](#speech-to-image)                               | -                                                                                                                                                                                                                  | [Mikail Duzenli](https://github.com/MikailINTech)
 | Wild Card Stable Diffusion | Stable Diffusion Pipeline that supports prompts that contain wildcard terms (indicated by surrounding double underscores), with values instantiated randomly from a corresponding txt file or a dictionary of possible values                                                                                                                                                                                                                                                                                                     | [Wildcard Stable Diffusion](#wildcard-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Shyam Sudhakaran](https://github.com/shyamsn97) |
 | Composable Stable Diffusion| Stable Diffusion Pipeline that supports prompts that contain "&#124;" in prompts (as an AND condition) and weights (separated by "&#124;" as well) to positively / negatively weight prompts.                                                                                                                                                                                                                                                                                                     | [Composable Stable Diffusion](#composable-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
-
+| Multilingual Stable Diffusion| Stable Diffusion Pipeline that supports prompts in 50 different languages.                                                                                                                                                                                                                                                                                                     | [Multilingual Stable Diffusion](#multilingual-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Juan Carlos Piñeros](https://github.com/juancopi81) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -371,3 +371,70 @@ for i in range(4):
 for i, img in enumerate(images):
     img.save(f"./composable_diffusion/image_{i}.png")
 ```
+### Multilingual Stable Diffusion Pipeline
+		
+The following code can generate an images from texts in different languages than English using the pre-trained [mBART-50 many-to-one multilingual machine translation model](https://huggingface.co/facebook/mbart-large-50-many-to-one-mmt) and Stable Diffusion.
+
+```Python
+from PIL import Image
+
+import torch
+
+from diffusers import DiffusionPipeline
+from transformers import (
+    pipeline,
+    MBart50TokenizerFast,
+    MBartForConditionalGeneration,
+)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+device_dict = {"cuda": 0, "cpu": -1}
+
+# helper function taken from: https://huggingface.co/blog/stable_diffusion
+def image_grid(imgs, rows, cols):
+    assert len(imgs) == rows*cols
+
+    w, h = imgs[0].size
+    grid = Image.new('RGB', size=(cols*w, rows*h))
+    grid_w, grid_h = grid.size
+
+    for i, img in enumerate(imgs):
+        grid.paste(img, box=(i%cols*w, i//cols*h))
+    return grid
+
+# Add language detection pipeline
+language_detection_model_ckpt = "papluca/xlm-roberta-base-language-detection"
+language_detection_pipeline = pipeline("text-classification",
+                                       model=language_detection_model_ckpt,
+                                       device=device_dict[device])
+
+# Add model for language translation
+trans_tokenizer = MBart50TokenizerFast.from_pretrained("facebook/mbart-large-50-many-to-one-mmt")
+trans_model = MBartForConditionalGeneration.from_pretrained("facebook/mbart-large-50-many-to-one-mmt").to(device)
+
+diffuser_pipeline = DiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+    custom_pipeline="multilingual_stable_diffusion",
+    language_detection_pipeline=language_detection_pipeline,
+    translation_model=trans_model,
+    translation_tokenizer=trans_tokenizer,
+    revision="fp16",
+    torch_dtype=torch.float16,
+)
+
+diffuser_pipeline.enable_attention_slicing()
+diffuser_pipeline = diffuser_pipeline.to(device)
+
+prompt = ["a photograph of an astronaut riding a horse", 
+          "Una casa en la playa",
+          "Ein Hund, der Orange isst",
+          "Un restaurant parisien"]
+
+output = diffuser_pipeline(prompt)
+
+images = output.images
+
+grid = image_grid(images, rows=2, cols=2)
+
+```
+This example produces the following image:
+![image](/home/juancopi81/multilingual-speech-to-text.png)
