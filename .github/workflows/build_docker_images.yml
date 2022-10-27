@@ -30,6 +30,7 @@ jobs:
           - diffusers-pytorch-cpu
           - diffusers-pytorch-gpu
           - diffusers-flax-tpu
+          - diffusers-onnxruntime-cpu
 
     steps:
       - name: Checkout repository
