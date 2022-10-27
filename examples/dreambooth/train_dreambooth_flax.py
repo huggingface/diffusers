@@ -99,7 +99,7 @@ def parse_args():
         default="text-inversion-model",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
-    parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
+    parser.add_argument("--seed", type=int, default=0, help="A seed for reproducible training.")
     parser.add_argument(
         "--resolution",
         type=int,
@@ -127,17 +127,6 @@ def parse_args():
         help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
     )
     parser.add_argument(
-        "--gradient_accumulation_steps",
-        type=int,
-        default=1,
-        help="Number of updates steps to accumulate before performing a backward/update pass.",
-    )
-    parser.add_argument(
-        "--gradient_checkpointing",
-        action="store_true",
-        help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.",
-    )
-    parser.add_argument(
         "--learning_rate",
         type=float,
         default=5e-6,
@@ -157,12 +146,6 @@ def parse_args():
             'The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'
             ' "constant", "constant_with_warmup"]'
         ),
-    )
-    parser.add_argument(
-        "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
-    )
-    parser.add_argument(
-        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
     )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
@@ -458,13 +441,23 @@ def main():
 
     total_train_batch_size = args.train_batch_size * jax.local_device_count()
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=total_train_batch_size, shuffle=True, collate_fn=collate_fn
+        train_dataset, batch_size=total_train_batch_size, shuffle=True, collate_fn=collate_fn, drop_last=True
     )
 
+    weight_dtype = jnp.float32
+    if args.mixed_precision == "fp16":
+        weight_dtype = jnp.float16
+    elif args.mixed_precision == "bf16":
+        weight_dtype = jnp.bfloat16
+
     # Load models and create wrapper for stable diffusion
-    text_encoder = FlaxCLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
-    vae, vae_params = FlaxAutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
-    unet, unet_params = FlaxUNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
+    text_encoder = FlaxCLIPTextModel.from_pretrained("openai/clip-vit-large-patch14", dtype=weight_dtype)
+    vae, vae_params = FlaxAutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="vae", dtype=weight_dtype
+    )
+    unet, unet_params = FlaxUNet2DConditionModel.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="unet", dtype=weight_dtype
+    )
 
     # Optimization
     if args.scale_lr:
