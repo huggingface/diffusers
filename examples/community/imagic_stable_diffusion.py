@@ -25,17 +25,6 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-
-def freeze_params(params):
-    for param in params:
-        param.requires_grad = False
-
-
-def unfreeze_params(params):
-    for param in params:
-        param.requires_grad = True
-
-
 def preprocess(image):
     w, h = image.size
     w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
