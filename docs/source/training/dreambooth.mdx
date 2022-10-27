@@ -81,11 +81,11 @@ accelerate launch train_dreambooth.py \
   --max_train_steps=400
 ```
 
-### Training with prior-preservation loss
+### Training with a prior-preserving loss
 
-Prior-preservation is used to avoid overfitting and language-drift. Please, refer to the paper to learn more about it if you are interested. For prior-preservation, we use other images of the same class as part of the training process. The nice thing is that we can generate those images using the Stable Diffusion model itself! The training script will save the generated images to a local path we specify.
+Prior preservation is used to avoid overfitting and language-drift. Please, refer to the paper to learn more about it if you are interested. For prior preservation, we use other images of the same class as part of the training process. The nice thing is that we can generate those images using the Stable Diffusion model itself! The training script will save the generated images to a local path we specify.
 
-According to the paper, it's recommended to generate `num_epochs * num_samples` images for prior-preservation. 200-300 works well for most cases.
+According to the paper, it's recommended to generate `num_epochs * num_samples` images for prior preservation. 200-300 works well for most cases.
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
