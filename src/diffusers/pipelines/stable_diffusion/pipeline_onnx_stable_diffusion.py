@@ -8,14 +8,14 @@ from transformers import CLIPFeatureExtractor, CLIPTokenizer
 from ...onnx_utils import OnnxRuntimeModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from ...utils import logging
+from ...utils import deprecate, logging
 from . import StableDiffusionPipelineOutput
 
 
 logger = logging.get_logger(__name__)
 
 
-class StableDiffusionOnnxPipeline(DiffusionPipeline):
+class OnnxStableDiffusionPipeline(DiffusionPipeline):
     vae_decoder: OnnxRuntimeModel
     text_encoder: OnnxRuntimeModel
     tokenizer: CLIPTokenizer
@@ -26,6 +26,7 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
 
     def __init__(
         self,
+        vae_encoder: OnnxRuntimeModel,
         vae_decoder: OnnxRuntimeModel,
         text_encoder: OnnxRuntimeModel,
         tokenizer: CLIPTokenizer,
@@ -36,6 +37,7 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
     ):
         super().__init__()
         self.register_modules(
+            vae_encoder=vae_encoder,
             vae_decoder=vae_decoder,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
@@ -53,7 +55,9 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
+        num_images_per_prompt: Optional[int] = 1,
         eta: Optional[float] = 0.0,
+        generator: Optional[np.random.RandomState] = None,
         latents: Optional[np.ndarray] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -79,6 +83,9 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
+        if generator is None:
+            generator = np.random
+
         # get prompt text embeddings
         text_inputs = self.tokenizer(
             prompt,
@@ -96,6 +103,7 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
             )
             text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
         text_embeddings = self.text_encoder(input_ids=text_input_ids.astype(np.int32))[0]
+        text_embeddings = np.repeat(text_embeddings, num_images_per_prompt, axis=0)
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -108,8 +116,8 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
                 uncond_tokens = [""] * batch_size
             elif type(prompt) is not type(negative_prompt):
                 raise TypeError(
-                    "`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-                    " {type(prompt)}."
+                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    f" {type(prompt)}."
                 )
             elif isinstance(negative_prompt, str):
                 uncond_tokens = [negative_prompt] * batch_size
@@ -131,6 +139,7 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
                 return_tensors="np",
             )
             uncond_embeddings = self.text_encoder(input_ids=uncond_input.input_ids.astype(np.int32))[0]
+            uncond_embeddings = np.repeat(uncond_embeddings, num_images_per_prompt, axis=0)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
@@ -138,9 +147,10 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
             text_embeddings = np.concatenate([uncond_embeddings, text_embeddings])
 
         # get the initial random noise unless the user supplied it
-        latents_shape = (batch_size, 4, height // 8, width // 8)
+        latents_dtype = text_embeddings.dtype
+        latents_shape = (batch_size * num_images_per_prompt, 4, height // 8, width // 8)
         if latents is None:
-            latents = np.random.randn(*latents_shape).astype(np.float32)
+            latents = generator.randn(*latents_shape).astype(latents_dtype)
         elif latents.shape != latents_shape:
             raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
 
@@ -183,13 +193,30 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
                 callback(i, t, latents)
 
         latents = 1 / 0.18215 * latents
-        image = self.vae_decoder(latent_sample=latents)[0]
+        # image = self.vae_decoder(latent_sample=latents)[0]
+        # it seems likes there is a strange result for using half-precision vae decoder if batchsize>1
+        image = np.concatenate(
+            [self.vae_decoder(latent_sample=latents[i : i + 1])[0] for i in range(latents.shape[0])]
+        )
 
         image = np.clip(image / 2 + 0.5, 0, 1)
         image = image.transpose((0, 2, 3, 1))
 
-        safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="np")
-        image, has_nsfw_concept = self.safety_checker(clip_input=safety_checker_input.pixel_values, images=image)
+        if self.safety_checker is not None:
+            safety_checker_input = self.feature_extractor(
+                self.numpy_to_pil(image), return_tensors="np"
+            ).pixel_values.astype(image.dtype)
+            # There will throw an error if use safety_checker batchsize>1
+            images, has_nsfw_concept = [], []
+            for i in range(image.shape[0]):
+                image_i, has_nsfw_concept_i = self.safety_checker(
+                    clip_input=safety_checker_input[i : i + 1], images=image[i : i + 1]
+                )
+                images.append(image_i)
+                has_nsfw_concept.append(has_nsfw_concept_i[0])
+            image = np.concatenate(images)
+        else:
+            has_nsfw_concept = None
 
         if output_type == "pil":
             image = self.numpy_to_pil(image)
@@ -198,3 +225,27 @@ class StableDiffusionOnnxPipeline(DiffusionPipeline):
             return (image, has_nsfw_concept)
 
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+
+
+class StableDiffusionOnnxPipeline(OnnxStableDiffusionPipeline):
+    def __init__(
+        self,
+        vae_decoder: OnnxRuntimeModel,
+        text_encoder: OnnxRuntimeModel,
+        tokenizer: CLIPTokenizer,
+        unet: OnnxRuntimeModel,
+        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+        safety_checker: OnnxRuntimeModel,
+        feature_extractor: CLIPFeatureExtractor,
+    ):
+        deprecation_message = "Please use `OnnxStableDiffusionPipeline` instead of `StableDiffusionOnnxPipeline`."
+        deprecate("StableDiffusionOnnxPipeline", "1.0.0", deprecation_message)
+        super().__init__(
+            vae_decoder=vae_decoder,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            unet=unet,
+            scheduler=scheduler,
+            safety_checker=safety_checker,
+            feature_extractor=feature_extractor,
+        )

@@ -21,7 +21,7 @@ from typing import Optional, Tuple, Union
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput, deprecate
+from ..utils import BaseOutput
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
@@ -75,15 +75,7 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         sigma_max: float = 1348.0,
         sampling_eps: float = 1e-5,
         correct_steps: int = 1,
-        **kwargs,
     ):
-        deprecate(
-            "tensor_format",
-            "0.6.0",
-            "If you're running your code in PyTorch, you can safely remove this argument.",
-            take_from=kwargs,
-        )
-
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = sigma_max
 

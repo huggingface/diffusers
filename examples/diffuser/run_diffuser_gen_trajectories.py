@@ -1,7 +1,7 @@
 import d4rl  # noqa
 import gym
 import tqdm
-from diffusers import DDPMScheduler, DiffusionPipeline, UNet1DModel
+from diffusers import DiffusionPipeline
 
 
 config = dict(
@@ -21,21 +21,8 @@ def _run():
     env_name = "hopper-medium-v2"
     env = gym.make(env_name)
 
-    DEVICE = config["device"]
-
-    scheduler = DDPMScheduler(
-        num_train_timesteps=config["num_inference_steps"],
-        beta_schedule="squaredcos_cap_v2",
-        clip_sample=False,
-        variance_type="fixed_small_log",
-    )
-    network = UNet1DModel.from_pretrained("bglick13/hopper-medium-v2-value-function-hor32").to(device=DEVICE).eval()
-    unet = UNet1DModel.from_pretrained("bglick13/hopper-medium-v2-unet-hor32").to(device=DEVICE).eval()
     pipeline = DiffusionPipeline.from_pretrained(
         "bglick13/hopper-medium-v2-value-function-hor32",
-        value_function=network,
-        unet=unet,
-        scheduler=scheduler,
         env=env,
         custom_pipeline="/Users/bglickenhaus/Documents/diffusers/examples/community",
     )

@@ -1,9 +1,7 @@
 import d4rl  # noqa
 import gym
 import tqdm
-
-# import train_diffuser
-from diffusers import DDPMScheduler, DiffusionPipeline, UNet1DModel
+from diffusers import DiffusionPipeline
 
 
 config = dict(
@@ -23,34 +21,11 @@ def _run():
     env_name = "hopper-medium-v2"
     env = gym.make(env_name)
 
-    # Cuda settings for colab
-    # torch.cuda.get_device_name(0)
-    DEVICE = config["device"]
-
-    # Two generators for different parts of the diffusion loop to work in colab
-    scheduler = DDPMScheduler(
-        num_train_timesteps=config["num_inference_steps"],
-        beta_schedule="squaredcos_cap_v2",
-        clip_sample=False,
-        variance_type="fixed_small_log",
-    )
-
-    # 3 different pretrained models are available for this task.
-    # The horizion represents the length of trajectories used in training.
-    # network = ValueFunction(training_horizon=horizon, dim=32, dim_mults=(1, 2, 4, 8), transition_dim=14, cond_dim=11)
-
-    network = UNet1DModel.from_pretrained("bglick13/hopper-medium-v2-value-function-hor32").to(device=DEVICE).eval()
-    unet = UNet1DModel.from_pretrained("bglick13/hopper-medium-v2-unet-hor32").to(device=DEVICE).eval()
     pipeline = DiffusionPipeline.from_pretrained(
         "bglick13/hopper-medium-v2-value-function-hor32",
-        value_function=network,
-        unet=unet,
-        scheduler=scheduler,
         env=env,
         custom_pipeline="/Users/bglickenhaus/Documents/diffusers/examples/community",
     )
-    # unet = UNet1DModel.from_pretrained("fusing/ddpm-unet-rl-hopper-hor128").to(device=DEVICE)
-    # network = TemporalUNet.from_pretrained("fusing/ddpm-unet-rl-hopper-hor512").to(device=DEVICE)
 
     # add a batch dimension and repeat for multiple samples
     # [ observation_dim ] --> [ n_samples x observation_dim ]
