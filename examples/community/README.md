@@ -1,6 +1,4 @@
-# Community Examples
-
-> **For more information about community pipelines, please have a look at [this issue](https://github.com/huggingface/diffusers/issues/841).**
+# Community Examples > **For more information about community pipelines, please have a look at [this issue](https://github.com/huggingface/diffusers/issues/841).**
 
 **Community** examples consist of both inference and training examples that have been added by the community.
 Please have a look at the following table to get an overview of all community examples. Click on the **Code Example** to get a copy-and-paste ready code example that you can try out.
@@ -392,8 +390,6 @@ Allows you to edit an image using stable diffusion.
 
 
 ```python
-
-
 import torch as th
 import numpy as np
 import requests
@@ -419,6 +415,7 @@ pipe = DiffusionPipeline.from_pretrained(
 ).to(device)
 
 
+<<<<<<< HEAD
 >>>>>>> initial commit to add imagic to stable diffusion community pipelines
 def dummy(images, **kwargs):
     return images, False
@@ -490,13 +487,11 @@ image.save('./seed_resize/seed_resize_{w}_{h}_image_compare.png'.format(w=width,
 ```
 =======
 images = []
+=======
+>>>>>>> clean up example code and add line back in to pipeline_stable_diffusion for imagic pipeline
 generator = th.Generator("cuda").manual_seed(0)
-
 seed = 0
 prompt = "A photo of Barack Obama smiling with a big grin"
-
-images = []
-
 url = 'https://www.dropbox.com/s/6tlwzr73jd1r9yk/obama.png?dl=1'
 
 response = requests.get(url)
