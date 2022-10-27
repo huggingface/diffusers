@@ -373,7 +373,7 @@ for i, img in enumerate(images):
 ```
 ### Multilingual Stable Diffusion Pipeline
 		
-The following code can generate an images from texts in different languages than English using the pre-trained [mBART-50 many-to-one multilingual machine translation model](https://huggingface.co/facebook/mbart-large-50-many-to-one-mmt) and Stable Diffusion.
+The following code can generate an images from texts in different languages using the pre-trained [mBART-50 many-to-one multilingual machine translation model](https://huggingface.co/facebook/mbart-large-50-many-to-one-mmt) and Stable Diffusion.
 
 ```Python
 from PIL import Image
