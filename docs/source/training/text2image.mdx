@@ -53,7 +53,7 @@ If you have already cloned the repo, then you won't need to go through these ste
 
 ### Hardware Requirements for Fine-tuning
 
-Using `gradient_checkpointing` and `mixed_precision` it should be possible to fine tune the model on a single 24GB GPU. For higher `batch_size` and faster training it's better to use GPUs with more than 30GB of GPU memory.
+Using `gradient_checkpointing` and `mixed_precision` it should be possible to fine tune the model on a single 24GB GPU. For higher `batch_size` and faster training it's better to use GPUs with more than 30GB of GPU memory. You can also use JAX / Flax for fine-tuning on TPUs or GPUs, see [below](#flax-jax-finetuning) for details.
 
 ### Fine-tuning Example
 
@@ -116,4 +116,23 @@ pipe.to("cuda")
 
 image = pipe(prompt="yoda").images[0]
 image.save("yoda-pokemon.png")
+```
+
+### Flax / JAX fine-tuning
+
+Thanks to [@duongna211](https://github.com/duongna21) it's possible to fine-tune Stable Diffusion using Flax! This is very efficient on TPU hardware but works great on GPUs too. You can use the [Flax training script](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_flax.py) like this:
+
+```Python
+export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export dataset_name="lambdalabs/pokemon-blip-captions"
+
+python train_text_to_image_flax.py \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --dataset_name=$dataset_name \
+  --resolution=512 --center_crop --random_flip \
+  --train_batch_size=1 \
+  --max_train_steps=15000 \
+  --learning_rate=1e-05 \
+  --max_grad_norm=1 \
+  --output_dir="sd-pokemon-model" 
 ```
