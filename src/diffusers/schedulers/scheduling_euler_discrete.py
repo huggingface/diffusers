@@ -175,10 +175,10 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timestep: Union[float, torch.FloatTensor],
         sample: torch.FloatTensor,
         order: int = 4,
-        s_churn: float = 0.,
-        s_tmin:  float = 0.,
-        s_tmax: float = float('inf'),
-        s_noise:  float = 1.,
+        s_churn: float = 0.0,
+        s_tmin: float = 0.0,
+        s_tmax: float = float("inf"),
+        s_noise: float = 1.0,
         return_dict: bool = True,
     ) -> Union[EulerDiscreteSchedulerOutput, Tuple]:
         """
@@ -199,8 +199,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         Returns:
             [`~schedulers.scheduling_utils.EulerDiscreteSchedulerOutput`] or `tuple`:
-            [`~schedulers.scheduling_utils.EulerDiscreteSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
-            When returning a tuple, the first element is the sample tensor.
+            [`~schedulers.scheduling_utils.EulerDiscreteSchedulerOutput`] if `return_dict` is True, otherwise a
+            `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         if not self.is_scale_input_called:
@@ -228,11 +228,11 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             step_index = (self.timesteps == timestep).nonzero().item()
         sigma = self.sigmas[step_index]
-        gamma = min(s_churn / (len(self.sigmas) - 1), 2 ** 0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.
+        gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
         eps = torch.randn_like(sample) * s_noise
         sigma_hat = sigma * (gamma + 1)
         if gamma > 0:
-            sample = sample + eps * (sigma_hat ** 2 - sigma ** 2) ** 0.5
+            sample = sample + eps * (sigma_hat**2 - sigma**2) ** 0.5
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         pred_original_sample = sample - sigma_hat * model_output
 

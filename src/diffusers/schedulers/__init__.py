@@ -41,8 +41,8 @@ else:
 
 
 if is_scipy_available() and is_torch_available():
-    from .scheduling_lms_discrete import LMSDiscreteScheduler
     from .scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler
     from .scheduling_euler_discrete import EulerDiscreteScheduler
+    from .scheduling_lms_discrete import LMSDiscreteScheduler
 else:
     from ..utils.dummy_torch_and_scipy_objects import *  # noqa F403

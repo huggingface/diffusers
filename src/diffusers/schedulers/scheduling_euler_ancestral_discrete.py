@@ -191,8 +191,8 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         Returns:
             [`~schedulers.scheduling_utils.EulerAncestralDiscreteSchedulerOutput`] or `tuple`:
-            [`~schedulers.scheduling_utils.EulerAncestralDiscreteSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
-            When returning a tuple, the first element is the sample tensor.
+            [`~schedulers.scheduling_utils.EulerAncestralDiscreteSchedulerOutput`] if `return_dict` is True, otherwise
+            a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         if not self.is_scale_input_called:
@@ -225,8 +225,8 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         pred_original_sample = sample - sigma * model_output
         sigma_from = self.sigmas[step_index]
         sigma_to = self.sigmas[step_index + 1]
-        sigma_up = (sigma_to ** 2 * (sigma_from ** 2 - sigma_to ** 2) / sigma_from ** 2) ** 0.5
-        sigma_down = (sigma_to ** 2 - sigma_up ** 2) ** 0.5
+        sigma_up = (sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2) ** 0.5
+        sigma_down = (sigma_to**2 - sigma_up**2) ** 0.5
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma
         self.derivatives.append(derivative)
@@ -241,7 +241,9 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if not return_dict:
             return (prev_sample,)
 
-        return EulerAncestralDiscreteSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
+        return EulerAncestralDiscreteSchedulerOutput(
+            prev_sample=prev_sample, pred_original_sample=pred_original_sample
+        )
 
     def add_noise(
         self,

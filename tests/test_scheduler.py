@@ -22,10 +22,10 @@ import torch
 from diffusers import (
     DDIMScheduler,
     DDPMScheduler,
-    IPNDMScheduler,
-    LMSDiscreteScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
+    IPNDMScheduler,
+    LMSDiscreteScheduler,
     PNDMScheduler,
     ScoreSdeVeScheduler,
 )
@@ -934,6 +934,7 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
         assert abs(result_sum.item() - 1006.388) < 1e-2
         assert abs(result_mean.item() - 1.31) < 1e-3
 
+
 class EulerDiscreteSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (EulerDiscreteScheduler,)
     num_inference_steps = 10
@@ -990,6 +991,7 @@ class EulerDiscreteSchedulerTest(SchedulerCommonTest):
         assert abs(result_sum.item() - 1006.388) < 1e-2
         assert abs(result_mean.item() - 1.31) < 1e-3
 
+
 class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (EulerAncestralDiscreteScheduler,)
     num_inference_steps = 10
@@ -1045,6 +1047,7 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 1006.388) < 1e-2
         assert abs(result_mean.item() - 1.31) < 1e-3
+
 
 class IPNDMSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (IPNDMScheduler,)

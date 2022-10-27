@@ -52,9 +52,7 @@ else:
     from .utils.dummy_pt_objects import *  # noqa F403
 
 if is_torch_available() and is_scipy_available():
-    from .schedulers import LMSDiscreteScheduler
-    from .schedulers import EulerAncestralDiscreteScheduler
-    from .schedulers import EulerDiscreteScheduler
+    from .schedulers import EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler
 else:
     from .utils.dummy_torch_and_scipy_objects import *  # noqa F403
 

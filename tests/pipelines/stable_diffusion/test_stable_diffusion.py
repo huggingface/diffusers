@@ -23,9 +23,9 @@ import torch
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
-    LMSDiscreteScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
+    LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionPipeline,
     UNet2DConditionModel,
