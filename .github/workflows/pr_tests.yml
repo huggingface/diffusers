@@ -47,7 +47,7 @@ jobs:
         --shm-size "16gb" \
         --ipc host \
         -v /mnt/hf_cache:/mnt/cache/ \
-        ${{ matrix.config.runner == 'docker-tpu' && --privileged || ''}}
+        ${{ matrix.config.runner == 'docker-tpu' && '--privileged' || ''}}
 
     defaults:
       run:
