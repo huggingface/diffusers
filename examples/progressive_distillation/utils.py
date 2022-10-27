@@ -13,7 +13,7 @@ from torchvision.transforms import (
 import torch.nn.functional as F
 
 import torch
-from diffusers import UNet2DModel, DDIMScheduler
+from diffusers import UNet2DModel, DDIMScheduler, DDPMScheduler
 from accelerate import Accelerator
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
@@ -85,8 +85,8 @@ def distill(teacher, n, train_image, training_config, epochs=100, lr=3e-4, batch
     if accelerator.is_main_process:
         run = "distill"
         accelerator.init_trackers(run)
-    teacher_scheduler = DDIMScheduler(num_train_timesteps=n)
-    student_scheduler = DDIMScheduler(num_train_timesteps=n // 2)
+    teacher_scheduler = DDPMScheduler(num_train_timesteps=n, beta_schedule="squaredcos_cap_v2")
+    student_scheduler = DDPMScheduler(num_train_timesteps=n // 2, beta_schedule="squaredcos_cap_v2")
     student = get_unet(training_config)
     student.load_state_dict(teacher.state_dict())
     student = accelerator.prepare(student)
