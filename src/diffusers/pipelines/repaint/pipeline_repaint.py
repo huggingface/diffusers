@@ -86,8 +86,9 @@ class RePaintPipeline(DiffusionPipeline):
 
         # sample gaussian noise to begin the loop
         image = torch.randn(
-            (original_image.shape[0], self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
+            original_image.shape,
             generator=generator,
+            device=self.device,
         )
         image = image.to(self.device)
 
