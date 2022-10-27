@@ -7,7 +7,7 @@ Creating a training image set is [described in a different document](https://hug
 Before running the scripts, make sure to install the library's training dependencies:
 
 ```bash
-pip install diffusers[training] accelerate datasets
+pip install diffusers[training] accelerate datasets tensorboard
 ```
 
 And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:

@@ -22,7 +22,7 @@ from typing import Optional
 from huggingface_hub import HfFolder, Repository, whoami
 
 from .pipeline_utils import DiffusionPipeline
-from .utils import is_modelcards_available, logging
+from .utils import deprecate, is_modelcards_available, logging
 
 
 if is_modelcards_available():
@@ -53,6 +53,12 @@ def init_git_repo(args, at_init: bool = False):
             Whether this function is called before any training or not. If `self.args.overwrite_output_dir` is `True`
             and `at_init` is `True`, the path to the repo (which is `self.args.output_dir`) might be wiped out.
     """
+    deprecation_message = (
+        "Please use `huggingface_hub.Repository`. "
+        "See `examples/unconditional_image_generation/train_unconditional.py` for an example."
+    )
+    deprecate("init_git_repo()", "0.10.0", deprecation_message)
+
     if hasattr(args, "local_rank") and args.local_rank not in [-1, 0]:
         return
     hub_token = args.hub_token if hasattr(args, "hub_token") else None
@@ -114,6 +120,11 @@ def push_to_hub(
         The url of the commit of your model in the given repository if `blocking=False`, a tuple with the url of the
         commit and an object to track the progress of the commit if `blocking=True`
     """
+    deprecation_message = (
+        "Please use `huggingface_hub.Repository` and `Repository.push_to_hub()`. "
+        "See `examples/unconditional_image_generation/train_unconditional.py` for an example."
+    )
+    deprecate("push_to_hub()", "0.10.0", deprecation_message)
 
     if not hasattr(args, "hub_model_id") or args.hub_model_id is None:
         model_name = Path(args.output_dir).name
