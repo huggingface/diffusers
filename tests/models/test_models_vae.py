@@ -19,7 +19,7 @@ import torch
 
 from diffusers import AutoencoderKL
 from diffusers.modeling_utils import ModelMixin
-from diffusers.utils import floats_tensor, torch_device
+from diffusers.utils import floats_tensor, torch_device, slow
 
 from .test_modeling_common import ModelTesterMixin
 
@@ -130,3 +130,43 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
             )
 
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
+
+
+@slow
+class AutoencoderKLIntegrationTests(unittest.TestCase):
+    def test_stable_diffusion_encoder(self):
+        model = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae")
+        model.to(torch_device).eval()
+
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        height = width = 512
+        channels = 3
+        image = torch.randn(1, channels, height, width)
+        image = image.to(torch_device)
+
+        with torch.no_grad():
+            output = model.encode(image)
+
+        output_slice = output[0, -1, -3:, -3:].flatten().cpu()
+        # fmt: off
+        expected_output_slice = torch.tensor([-0.0153, -0.4044, -0.1880, -0.5161, -0.2418, -0.4072, -0.1612, -0.0633, -0.0143])
+        # fmt: on
+        self.assertTrue(torch.allclose(output_slice, expected_output_slice, atol=1e-3))
+
+    def test_stable_diffusion_decoder(self):
+        pass
+
+    def test_stable_diffusion(self):
+        pass
+
+    def test_stable_diffusion_fp16(self):
+        pass
+
+    def test_stable_diffusion_sample_decode(self):
+        pass
+
+    def test_stable_diffusion_sample_decode_fp16(self):
+        pass
