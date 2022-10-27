@@ -44,6 +44,7 @@ class FlaxStableDiffusionSafetyCheckerModule(nn.Module):
         special_scores = special_cos_dist - self.special_care_embeds_weights[None, :] + adjustment
         special_scores = jnp.round(special_scores, 3)
         is_special_care = jnp.any(special_scores > 0, axis=1, keepdims=True)
+        # Use a lower threshold if an image has any special care concept
         special_adjustment = is_special_care * 0.01
 
         concept_scores = cos_dist - self.concept_embeds_weights[None, :] + special_adjustment
