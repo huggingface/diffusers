@@ -177,7 +177,7 @@ class SpeechToImagePipeline(DiffusionPipeline):
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = uncond_embeddings.shape[1]
-            uncond_embeddings = uncond_embeddings.repeat(batch_size, num_images_per_prompt, 1)
+            uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
             uncond_embeddings = uncond_embeddings.view(batch_size * num_images_per_prompt, seq_len, -1)
 
             # For classifier free guidance, we need to do two forward passes.
