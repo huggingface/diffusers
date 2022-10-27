@@ -26,6 +26,12 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
 from .scheduling_utils import SchedulerMixin
 
+def E_(input, t, shape, device):
+    out = torch.gather(input.to(device), 0, t.to(device))
+    reshape = [shape[0]] + [1] * (len(shape) - 1)
+    out = out.reshape(*reshape)
+    return out
+
 
 @dataclass
 # Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->DDIM
@@ -138,6 +144,9 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
+        self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
+        self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1 - self.alphas_cumprod)
+        self.one = torch.tensor(1.0)
 
         # At every step in ddim, we are looking into the previous alphas_cumprod
         # For the final step, there is no previous alphas_cumprod because we are already at 0
@@ -308,3 +317,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
     def __len__(self):
         return self.config.num_train_timesteps
+
+    def get_alpha_sigma(self, x, t, device):
+        alpha = E_(self.sqrt_alphas_cumprod, t, x.shape, device)
+        sigma = E_(self.sqrt_one_minus_alphas_cumprod, t, x.shape, device)
+        return alpha, sigma
