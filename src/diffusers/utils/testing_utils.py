@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Union
 
 import numpy as np
+
 import PIL.Image
 import PIL.ImageOps
 import requests
@@ -137,6 +138,7 @@ def require_onnxruntime(test_case):
     """
     return unittest.skipUnless(is_onnx_available(), "test requires onnxruntime")(test_case)
 
+
 def load_numpy(arry: Union[str, np.ndarray]) -> np.ndarray:
     if isinstance(arry, str):
         if arry.startswith("http://") or arry.startswith("https://"):
@@ -157,6 +159,7 @@ def load_numpy(arry: Union[str, np.ndarray]) -> np.ndarray:
         )
 
     return arry
+
 
 def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     """
@@ -185,6 +188,7 @@ def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     image = PIL.ImageOps.exif_transpose(image)
     image = image.convert("RGB")
     return image
+
 
 def load_hf_numpy(path) -> np.ndarray:
     if not path.startswith("http://") or path.startswith("https://"):
