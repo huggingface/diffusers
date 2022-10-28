@@ -478,7 +478,6 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
     )
     @require_torch_gpu
     def test_compvis_sd_v1_4_fp16(self, seed, timestep, expected_slice):
-        pass
         model = self.get_unet_model(model_id="CompVis/stable-diffusion-v1-4", fp16=True)
         latents = self.get_latents(seed, fp16=True)
         encoder_hidden_states = self.get_encoder_hidden_states(seed, fp16=True)
@@ -504,7 +503,6 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         ]
     )
     def test_compvis_sd_v1_5(self, seed, timestep, expected_slice):
-        pass
         model = self.get_unet_model(model_id="runwayml/stable-diffusion-v1-5")
         latents = self.get_latents(seed)
         encoder_hidden_states = self.get_encoder_hidden_states(seed)
@@ -531,7 +529,6 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
     )
     @require_torch_gpu
     def test_compvis_sd_v1_5_fp16(self, seed, timestep, expected_slice):
-        pass
         model = self.get_unet_model(model_id="runwayml/stable-diffusion-v1-5", fp16=True)
         latents = self.get_latents(seed, fp16=True)
         encoder_hidden_states = self.get_encoder_hidden_states(seed, fp16=True)
@@ -557,7 +554,6 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         ]
     )
     def test_compvis_sd_inpaint(self, seed, timestep, expected_slice):
-        pass
         model = self.get_unet_model(model_id="runwayml/stable-diffusion-inpainting")
         latents = self.get_latents(seed, shape=(4, 9, 64, 64))
         encoder_hidden_states = self.get_encoder_hidden_states(seed)
@@ -584,7 +580,6 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
     )
     @require_torch_gpu
     def test_compvis_sd_inpaint_fp16(self, seed, timestep, expected_slice):
-        pass
         model = self.get_unet_model(model_id="runwayml/stable-diffusion-inpainting", fp16=True)
         latents = self.get_latents(seed, shape=(4, 9, 64, 64), fp16=True)
         encoder_hidden_states = self.get_encoder_hidden_states(seed, fp16=True)
