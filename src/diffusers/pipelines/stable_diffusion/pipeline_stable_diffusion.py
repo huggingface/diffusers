@@ -135,7 +135,6 @@ class StableDiffusionPipeline(DiffusionPipeline):
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
             cpu_offload(cpu_offloaded_model, device)
 
-        self._is_cpu_offloaded = True
 
     @torch.no_grad()
     def __call__(
