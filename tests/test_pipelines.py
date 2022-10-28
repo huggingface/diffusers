@@ -94,7 +94,7 @@ class CustomPipelineTests(unittest.TestCase):
     def test_local_custom_pipeline(self):
         local_custom_pipeline_path = get_tests_dir("fixtures/custom_pipeline")
         pipeline = DiffusionPipeline.from_pretrained(
-            "google/ddpm-cifar10-32", custom_pipeline=local_custom_pipeline_path, device_map="auto"
+            "google/ddpm-cifar10-32", custom_pipeline=local_custom_pipeline_path
         )
         images, output_str = pipeline(num_inference_steps=2, output_type="np")
 
