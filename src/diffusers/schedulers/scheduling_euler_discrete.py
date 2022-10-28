@@ -102,7 +102,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = None
         timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=float)[::-1].copy()
         self.timesteps = torch.from_numpy(timesteps)
-        self.derivatives = []
         self.is_scale_input_called = False
 
     def scale_model_input(
@@ -126,28 +125,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.is_scale_input_called = True
         return sample
 
-    def get_lms_coefficient(self, order, t, current_order):
-        """
-        Compute a linear multistep coefficient.
-
-        Args:
-            order (TODO):
-            t (TODO):
-            current_order (TODO):
-        """
-
-        def lms_derivative(tau):
-            prod = 1.0
-            for k in range(order):
-                if current_order == k:
-                    continue
-                prod *= (tau - self.sigmas[t - k]) / (self.sigmas[t - current_order] - self.sigmas[t - k])
-            return prod
-
-        integrated_coeff = integrate.quad(lms_derivative, self.sigmas[t], self.sigmas[t + 1], epsrel=1e-4)[0]
-
-        return integrated_coeff
-
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -167,14 +144,11 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
         self.timesteps = torch.from_numpy(timesteps).to(device=device)
 
-        self.derivatives = []
-
     def step(
         self,
         model_output: torch.FloatTensor,
         timestep: Union[float, torch.FloatTensor],
         sample: torch.FloatTensor,
-        order: int = 4,
         s_churn: float = 0.0,
         s_tmin: float = 0.0,
         s_tmax: float = float("inf"),
@@ -190,7 +164,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             timestep (`float`): current timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
-            order: coefficient for multi-step inference.
             s_churn (`float`)
             s_tmin  (`float`)
             s_tmax  (`float`)
@@ -228,19 +201,19 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             step_index = (self.timesteps == timestep).nonzero().item()
         sigma = self.sigmas[step_index]
+
         gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
         eps = torch.randn_like(sample) * s_noise
         sigma_hat = sigma * (gamma + 1)
+
         if gamma > 0:
             sample = sample + eps * (sigma_hat**2 - sigma**2) ** 0.5
+
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         pred_original_sample = sample - sigma_hat * model_output
 
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma_hat
-        self.derivatives.append(derivative)
-        if len(self.derivatives) > order:
-            self.derivatives.pop(0)
 
         dt = self.sigmas[step_index + 1] - sigma_hat
 

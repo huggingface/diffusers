@@ -102,7 +102,6 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = None
         timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=float)[::-1].copy()
         self.timesteps = torch.from_numpy(timesteps)
-        self.derivatives = []
         self.is_scale_input_called = False
 
     def scale_model_input(
@@ -126,28 +125,6 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.is_scale_input_called = True
         return sample
 
-    def get_lms_coefficient(self, order, t, current_order):
-        """
-        Compute a linear multistep coefficient.
-
-        Args:
-            order (TODO):
-            t (TODO):
-            current_order (TODO):
-        """
-
-        def lms_derivative(tau):
-            prod = 1.0
-            for k in range(order):
-                if current_order == k:
-                    continue
-                prod *= (tau - self.sigmas[t - k]) / (self.sigmas[t - current_order] - self.sigmas[t - k])
-            return prod
-
-        integrated_coeff = integrate.quad(lms_derivative, self.sigmas[t], self.sigmas[t + 1], epsrel=1e-4)[0]
-
-        return integrated_coeff
-
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
@@ -167,14 +144,11 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
         self.timesteps = torch.from_numpy(timesteps).to(device=device)
 
-        self.derivatives = []
-
     def step(
         self,
         model_output: torch.FloatTensor,
         timestep: Union[float, torch.FloatTensor],
         sample: torch.FloatTensor,
-        order: int = 4,
         return_dict: bool = True,
     ) -> Union[EulerAncestralDiscreteSchedulerOutput, Tuple]:
         """
@@ -186,7 +160,6 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             timestep (`float`): current timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
-            order: coefficient for multi-step inference.
             return_dict (`bool`): option for returning tuple rather than EulerAncestralDiscreteSchedulerOutput class
 
         Returns:
@@ -227,11 +200,10 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigma_to = self.sigmas[step_index + 1]
         sigma_up = (sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2) ** 0.5
         sigma_down = (sigma_to**2 - sigma_up**2) ** 0.5
+
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma
-        self.derivatives.append(derivative)
-        if len(self.derivatives) > order:
-            self.derivatives.pop(0)
+
         dt = sigma_down - sigma
 
         prev_sample = sample + derivative * dt
