@@ -28,7 +28,7 @@ from diffusers import (
     UNet2DModel,
     VQModel,
 )
-from diffusers.utils import floats_tensor, load_image, load_ndarray, slow, torch_device
+from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
@@ -278,7 +278,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
-        expected_image = load_ndarray(
+        expected_image = load_numpy(
             "https://huggingface.co/datasets/lewington/expected-images/resolve/main"
             "/yellow_cat_sitting_on_a_park_bench.npy"
         )
@@ -317,7 +317,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
-        expected_image = load_ndarray(
+        expected_image = load_numpy(
             "https://huggingface.co/datasets/lewington/expected-images/resolve/main"
             "/yellow_cat_sitting_on_a_park_bench_fp16.npy"
         )
@@ -358,7 +358,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
-        expected_image = load_ndarray(
+        expected_image = load_numpy(
             "https://huggingface.co/datasets/lewington/expected-images/resolve/main"
             "/yellow_cat_sitting_on_a_park_bench_pndm.npy"
         )

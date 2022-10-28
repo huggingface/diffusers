@@ -31,7 +31,7 @@ from diffusers import (
     VQModel,
 )
 from diffusers.utils import floats_tensor, load_image, slow, torch_device
-from diffusers.utils.testing_utils import load_ndarray, require_torch_gpu
+from diffusers.utils.testing_utils import load_numpy, require_torch_gpu
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -358,7 +358,7 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
-        expected_image = load_ndarray(
+        expected_image = load_numpy(
             "https://huggingface.co/datasets/lewington/expected-images/resolve/main"
             "/red_cat_sitting_on_a_park_bench.npy"
         )
@@ -400,7 +400,7 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
-        expected_image = load_ndarray(
+        expected_image = load_numpy(
             "https://huggingface.co/datasets/lewington/expected-images/resolve/main"
             "/red_cat_sitting_on_a_park_bench_k_lms.npy"
         )

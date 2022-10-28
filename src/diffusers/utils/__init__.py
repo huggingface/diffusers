@@ -43,8 +43,8 @@ if is_torch_available():
     from .testing_utils import (
         floats_tensor,
         load_image,
+        load_hf_numpy,
         load_numpy,
-        load_ndarray,
         parse_flag_from_env,
         require_torch_gpu,
         slow,
