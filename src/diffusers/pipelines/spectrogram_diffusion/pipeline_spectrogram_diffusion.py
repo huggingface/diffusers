@@ -616,3 +616,55 @@ class Decoder(nn.Module):
 
         spec_out = self.spec_out(y)
         return spec_out
+
+
+class ContinuousContextTransformer(nn.Module):
+    def __init__(self, config, weights):
+        super().__init__()
+
+        self.token_encoder = TokenEncoder(config=config, weights=weights)
+        self.continuous_encoder = ContinuousEncoder(config=config, weights=weights)
+        self.decoder = Decoder(config=config, weights=weights)
+
+    def encode(self, input_tokens, continuous_inputs, continuous_mask):
+        tokens_mask = input_tokens > 0
+        tokens_encoded, tokens_mask = self.token_encoder(
+            encoder_input_tokens=input_tokens,
+            encoder_inputs_mask=tokens_mask,
+        )
+
+        continuous_encoded, continuous_mask = self.continuous_encoder(
+            encoder_inputs=continuous_inputs,
+            encoder_inputs_mask=continuous_mask,
+        )
+
+        return [(tokens_encoded, tokens_mask), (continuous_encoded, continuous_mask)]
+
+    def decode(self, encodings_and_masks, input_tokens, noise_time):
+        logits = self.decoder(
+            encodings_and_masks=encodings_and_masks,
+            decoder_input_tokens=input_tokens,
+            decoder_noise_time=noise_time,
+        )
+        return logits
+
+    def forward(
+        self,
+        encoder_input_tokens,
+        encoder_continuous_inputs,
+        encoder_continuous_mask,
+        decoder_input_tokens,
+        decoder_noise_time,
+    ):
+
+        encodings_and_masks = self.encode(
+            input_tokens=encoder_input_tokens,
+            continuous_inputs=encoder_continuous_inputs,
+            continuous_mask=encoder_continuous_mask,
+        )
+
+        return self.decode(
+            encodings_and_masks=encodings_and_masks,
+            input_tokens=decoder_input_tokens,
+            noise_time=decoder_noise_time,
+        )
