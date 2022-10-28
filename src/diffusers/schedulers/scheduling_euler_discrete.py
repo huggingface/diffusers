@@ -26,7 +26,7 @@ from .scheduling_utils import SchedulerMixin
 
 
 @dataclass
-# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->LMSDiscrete
+# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->EulerDiscrete
 class EulerDiscreteSchedulerOutput(BaseOutput):
     """
     Output class for the scheduler's step function output.
@@ -109,7 +109,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
     ) -> torch.FloatTensor:
         """
-        Scales the denoising model input by `(sigma**2 + 1) ** 0.5` to match the K-LMS algorithm.
+        Scales the denoising model input by `(sigma**2 + 1) ** 0.5` to match the Euler algorithm.
 
         Args:
             sample (`torch.FloatTensor`): input sample
