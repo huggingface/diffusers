@@ -329,7 +329,8 @@ def main(args):
                 lr_scheduler.step()
                 if args.use_ema:
                     ema_model.step(model)
-                optimizer.zero_grad()
+                for param in model.parameters():
+                    param.grad = None
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:

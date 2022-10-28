@@ -279,7 +279,8 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         out = model(**inputs_dict).sample
         # run the backwards pass on the model. For backwards pass, for simplicity purpose,
         # we won't calculate the loss and rather backprop on out.sum()
-        model.zero_grad()
+        for param in model.parameters():
+            param.grad = None
 
         labels = torch.randn_like(out)
         loss = (out - labels).mean()
@@ -297,7 +298,8 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         out_2 = model_2(**inputs_dict).sample
         # run the backwards pass on the model. For backwards pass, for simplicity purpose,
         # we won't calculate the loss and rather backprop on out.sum()
-        model_2.zero_grad()
+        for param in model_2.parameters():
+            param.grad = None
         loss_2 = (out_2 - labels).mean()
         loss_2.backward()
 

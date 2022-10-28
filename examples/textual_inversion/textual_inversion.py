@@ -533,7 +533,8 @@ def main():
 
                 optimizer.step()
                 lr_scheduler.step()
-                optimizer.zero_grad()
+                for param in text_encoder.get_input_embeddings().parameters():
+                    param.grad = None
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
