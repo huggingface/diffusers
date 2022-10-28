@@ -4,10 +4,13 @@ import os
 import random
 import re
 import unittest
+import urllib.parse
 from distutils.util import strtobool
-from io import StringIO
+from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Union
+
+import numpy as np
 
 import PIL.Image
 import PIL.ImageOps
@@ -163,6 +166,19 @@ def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     image = PIL.ImageOps.exif_transpose(image)
     image = image.convert("RGB")
     return image
+
+
+def load_numpy(path) -> np.ndarray:
+    if not path.startswith("http://") or path.startswith("https://"):
+        path = os.path.join(
+            "https://huggingface.co/datasets/fusing/diffusers-testing/resolve/main", urllib.parse.quote(path)
+        )
+
+    response = requests.get(path)
+    response.raise_for_status()
+    array = np.load(BytesIO(response.content))
+
+    return array
 
 
 # --- pytest conf functions --- #
