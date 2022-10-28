@@ -46,9 +46,11 @@
   - local: training/unconditional_training
     title: "Unconditional Image Generation"
   - local: training/text_inversion
-    title: "Text Inversion"
+    title: "Textual Inversion"
+  - local: training/dreambooth
+    title: "Dreambooth"
   - local: training/text2image
-    title: "Text-to-image"
+    title: "Text-to-image fine-tuning"
   title: "Training"
 - sections:
   - local: conceptual/stable_diffusion
