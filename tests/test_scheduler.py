@@ -19,6 +19,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import torch
 
+from black import out
 from diffusers import (
     DDIMScheduler,
     DDPMScheduler,
@@ -75,6 +76,7 @@ class SchedulerCommonTest(unittest.TestCase):
         return model
 
     def check_over_configs(self, time_step=0, **config):
+        print(config)
         kwargs = dict(self.forward_default_kwargs)
 
         num_inference_steps = kwargs.pop("num_inference_steps", None)
@@ -96,7 +98,11 @@ class SchedulerCommonTest(unittest.TestCase):
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
+            # Set the seed before state as some schedulers are stochastic like EulerAncestralDiscreteScheduler, EulerDiscreteScheduler
+            torch.manual_seed(0)
             output = scheduler.step(residual, time_step, sample, **kwargs).prev_sample
+
+            torch.manual_seed(0)
             new_output = new_scheduler.step(residual, time_step, sample, **kwargs).prev_sample
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
@@ -229,6 +235,8 @@ class SchedulerCommonTest(unittest.TestCase):
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
+            # Set the seed before state as some schedulers are stochastic like EulerAncestralDiscreteScheduler, EulerDiscreteScheduler
+            torch.manual_seed(0)
             outputs_dict = scheduler.step(residual, timestep, sample, **kwargs)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
@@ -236,6 +244,8 @@ class SchedulerCommonTest(unittest.TestCase):
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
+            # Set the seed before state as some schedulers are stochastic like EulerAncestralDiscreteScheduler, EulerDiscreteScheduler
+            torch.manual_seed(0)
             outputs_tuple = scheduler.step(residual, timestep, sample, return_dict=False, **kwargs)
 
             recursive_check(outputs_tuple, outputs_dict)
@@ -987,9 +997,10 @@ class EulerDiscreteSchedulerTest(SchedulerCommonTest):
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
+        print(result_sum, result_mean)
 
-        assert abs(result_sum.item() - 1006.388) < 1e-2
-        assert abs(result_mean.item() - 1.31) < 1e-3
+        assert abs(result_sum.item() - 10.0807) < 1e-2
+        assert abs(result_mean.item() - 0.0131) < 1e-3
 
 
 class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
@@ -1025,6 +1036,7 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
             self.check_over_forward(time_step=t)
 
     def test_full_loop_no_noise(self):
+        torch.manual_seed(0)
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
         scheduler = scheduler_class(**scheduler_config)
@@ -1045,8 +1057,8 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        assert abs(result_sum.item() - 1006.388) < 1e-2
-        assert abs(result_mean.item() - 1.31) < 1e-3
+        assert abs(result_sum.item() - 144.3660) < 1e-2
+        assert abs(result_mean.item() - 0.1880) < 1e-3
 
 
 class IPNDMSchedulerTest(SchedulerCommonTest):
