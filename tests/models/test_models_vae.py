@@ -20,7 +20,7 @@ import torch
 
 from diffusers import AutoencoderKL
 from diffusers.modeling_utils import ModelMixin
-from diffusers.utils import floats_tensor, require_torch_gpu, slow, torch_device
+from diffusers.utils import floats_tensor, require_torch_gpu, slow, torch_all_close, torch_device
 from parameterized import parameterized
 
 from ..test_modeling_common import ModelTesterMixin
@@ -131,7 +131,7 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
                 [-0.2421, 0.4642, 0.2507, -0.0438, 0.0682, 0.3160, -0.2018, -0.0727, 0.2485]
             )
 
-        self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
+        self.assertTrue(torch_all_close(output_slice, expected_output_slice, rtol=1e-2))
 
 
 @slow
@@ -185,7 +185,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
         expected_output_slice = torch.tensor(expected_slice)
 
-        assert torch.allclose(output_slice, expected_output_slice, atol=1e-4)
+        assert torch_all_close(output_slice, expected_output_slice, atol=1e-4)
 
     @parameterized.expand(
         [
@@ -209,7 +209,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         output_slice = sample[-1, -2:, :2, -2:].flatten().float().cpu()
         expected_output_slice = torch.tensor(expected_slice)
 
-        assert torch.allclose(output_slice, expected_output_slice, atol=1e-4)
+        assert torch_all_close(output_slice, expected_output_slice, atol=1e-4)
 
     @parameterized.expand(
         [
@@ -231,7 +231,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
         expected_output_slice = torch.tensor(expected_slice)
 
-        assert torch.allclose(output_slice, expected_output_slice, atol=1e-4)
+        assert torch_all_close(output_slice, expected_output_slice, atol=1e-4)
 
     @parameterized.expand(
         [
@@ -254,7 +254,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         output_slice = sample[-1, -2:, :2, -2:].flatten().cpu()
         expected_output_slice = torch.tensor(expected_slice)
 
-        assert torch.allclose(output_slice, expected_output_slice, atol=1e-4)
+        assert torch_all_close(output_slice, expected_output_slice, atol=1e-4)
 
     @parameterized.expand(
         [
@@ -276,7 +276,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         output_slice = sample[-1, -2:, :2, -2:].flatten().float().cpu()
         expected_output_slice = torch.tensor(expected_slice)
 
-        assert torch.allclose(output_slice, expected_output_slice, atol=1e-4)
+        assert torch_all_close(output_slice, expected_output_slice, atol=1e-4)
 
     @parameterized.expand(
         [
@@ -300,4 +300,4 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         output_slice = sample[0, -1, -3:, -3:].flatten().cpu()
         expected_output_slice = torch.tensor(expected_slice)
 
-        assert torch.allclose(output_slice, expected_output_slice, atol=1e-4)
+        assert torch_all_close(output_slice, expected_output_slice, atol=1e-4)
