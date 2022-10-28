@@ -13,7 +13,7 @@ The summary of the model is the following:
 - Stable Diffusion has the same architecture as [Latent Diffusion](https://arxiv.org/abs/2112.10752) but uses a frozen CLIP Text Encoder instead of training the text encoder jointly with the diffusion model.
 - An in-detail explanation of the Stable Diffusion model can be found under [Stable Diffusion with 🧨 Diffusers](https://huggingface.co/blog/stable_diffusion).
 - If you don't want to rely on the Hugging Face Hub and having to pass a authentication token, you can 
-download the weights with `git lfs install; git clone https://huggingface.co/CompVis/stable-diffusion-v1-4` and instead pass the local path to the cloned folder to `from_pretrained` as shown below.
+download the weights with `git lfs install; git clone https://huggingface.co/runwayml/stable-diffusion-v1-5` and instead pass the local path to the cloned folder to `from_pretrained` as shown below.
 - Stable Diffusion can work with a variety of different samplers as is shown below.
 
 ## Available Pipelines:
@@ -28,23 +28,19 @@ download the weights with `git lfs install; git clone https://huggingface.co/Com
 
 ### Using Stable Diffusion without being logged into the Hub.
 
-If you want to download the model weights using a single Python line, you need to pass the token
-to `use_auth_token` or be logged in via `huggingface-cli login`. 
-For more information on access tokens, please refer to [this section](https://huggingface.co/docs/hub/security-tokens) of the documentation.
-
-Assuming your token is stored under YOUR_TOKEN, you can download the stable diffusion pipeline as follows:
+If you want to download the model weights using a single Python line, you need to be logged in via `huggingface-cli login`. 
 
 ```python
 from diffusers import DiffusionPipeline
 
-pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=YOUR_TOKEN)
+pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 ```
 
-This however can make it difficult to build applications on top of `diffusers` as you will always have to pass the token around. A potential way to solve this issue is by downloading the weights to a local path `"./stable-diffusion-v1-4"`:
+This however can make it difficult to build applications on top of `diffusers` as you will always have to pass the token around. A potential way to solve this issue is by downloading the weights to a local path `"./stable-diffusion-v1-5"`:
 
 ```
 git lfs install
-git clone https://huggingface.co/CompVis/stable-diffusion-v1-4
+git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
 ```
 
 and simply passing the local path to `from_pretrained`:
@@ -52,22 +48,20 @@ and simply passing the local path to `from_pretrained`:
 ```python
 from diffusers import StableDiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained("./stable-diffusion-v1-4")
+pipe = StableDiffusionPipeline.from_pretrained("./stable-diffusion-v1-5")
 ```
 
 ### Text-to-Image with default PLMS scheduler
 
 ```python
 # make sure you're logged in with `huggingface-cli login`
-from torch import autocast
 from diffusers import StableDiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
-with autocast("cuda"):
-    image = pipe(prompt).images[0]  
+image = pipe(prompt).sample[0]  
     
 image.save("astronaut_rides_horse.png")
 ```
@@ -76,20 +70,17 @@ image.save("astronaut_rides_horse.png")
 
 ```python
 # make sure you're logged in with `huggingface-cli login`
-from torch import autocast
 from diffusers import StableDiffusionPipeline, DDIMScheduler
 
 scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
 
 pipe = StableDiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4", 
+    "runwayml/stable-diffusion-v1-5", 
     scheduler=scheduler,
-    use_auth_token=True
 ).to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
-with autocast("cuda"):
-    image = pipe(prompt).images[0]  
+image = pipe(prompt).sample[0]  
     
 image.save("astronaut_rides_horse.png")
 ```
@@ -98,7 +89,6 @@ image.save("astronaut_rides_horse.png")
 
 ```python
 # make sure you're logged in with `huggingface-cli login`
-from torch import autocast
 from diffusers import StableDiffusionPipeline, LMSDiscreteScheduler
 
 lms = LMSDiscreteScheduler(
@@ -108,14 +98,12 @@ lms = LMSDiscreteScheduler(
 )
 
 pipe = StableDiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4", 
+    "runwayml/stable-diffusion-v1-5", 
     scheduler=lms,
-    use_auth_token=True
 ).to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
-with autocast("cuda"):
-    image = pipe(prompt).images[0]  
+image = pipe(prompt).sample[0]  
     
 image.save("astronaut_rides_horse.png")
 ```

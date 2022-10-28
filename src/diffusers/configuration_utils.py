@@ -13,7 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" ConfigMixinuration base class and utilities."""
+""" ConfigMixin base class and utilities."""
 import dataclasses
 import functools
 import inspect
@@ -145,7 +145,8 @@ class ConfigMixin:
 
         <Tip>
 
-        Passing `use_auth_token=True`` is required when you want to use a private model.
+         It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
+         models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
         </Tip>
 
@@ -238,7 +239,7 @@ class ConfigMixin:
                     f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier"
                     " listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a"
                     " token having permission to this repo with `use_auth_token` or log in with `huggingface-cli"
-                    " login` and pass `use_auth_token=True`."
+                    " login`."
                 )
             except RevisionNotFoundError:
                 raise EnvironmentError(

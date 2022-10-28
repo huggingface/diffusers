@@ -18,7 +18,7 @@ import importlib
 import inspect
 import os
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -26,15 +26,34 @@ import torch
 import diffusers
 import PIL
 from huggingface_hub import snapshot_download
+from packaging import version
 from PIL import Image
 from tqdm.auto import tqdm
 
+from . import __version__
 from .configuration_utils import ConfigMixin
+from .dynamic_modules_utils import get_class_from_dynamic_module
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
-from .utils import CONFIG_NAME, DIFFUSERS_CACHE, ONNX_WEIGHTS_NAME, WEIGHTS_NAME, BaseOutput, logging
+from .utils import (
+    CONFIG_NAME,
+    DIFFUSERS_CACHE,
+    ONNX_WEIGHTS_NAME,
+    WEIGHTS_NAME,
+    BaseOutput,
+    deprecate,
+    is_transformers_available,
+    logging,
+)
+
+
+if is_transformers_available():
+    import transformers
+    from transformers import PreTrainedModel
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
+CUSTOM_PIPELINE_FILE_NAME = "pipeline.py"
+DUMMY_MODULES_FOLDER = "diffusers.utils"
 
 
 logger = logging.get_logger(__name__)
@@ -74,6 +93,20 @@ class ImagePipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
 
 
+@dataclass
+class AudioPipelineOutput(BaseOutput):
+    """
+    Output class for audio pipelines.
+
+    Args:
+        audios (`np.ndarray`)
+            List of denoised samples of shape `(batch_size, num_channels, sample_rate)`. Numpy array present the
+            denoised audio samples of the diffusion pipeline.
+    """
+
+    audios: np.ndarray
+
+
 class DiffusionPipeline(ConfigMixin):
     r"""
     Base class for all models.
@@ -97,23 +130,26 @@ class DiffusionPipeline(ConfigMixin):
 
         for name, module in kwargs.items():
             # retrieve library
-            library = module.__module__.split(".")[0]
+            if module is None:
+                register_dict = {name: (None, None)}
+            else:
+                library = module.__module__.split(".")[0]
 
-            # check if the module is a pipeline module
-            pipeline_dir = module.__module__.split(".")[-2]
-            path = module.__module__.split(".")
-            is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
+                # check if the module is a pipeline module
+                pipeline_dir = module.__module__.split(".")[-2] if len(module.__module__.split(".")) > 2 else None
+                path = module.__module__.split(".")
+                is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
 
-            # if library is not in LOADABLE_CLASSES, then it is a custom module.
-            # Or if it's a pipeline module, then the module is inside the pipeline
-            # folder so we set the library to module name.
-            if library not in LOADABLE_CLASSES or is_pipeline_module:
-                library = pipeline_dir
+                # if library is not in LOADABLE_CLASSES, then it is a custom module.
+                # Or if it's a pipeline module, then the module is inside the pipeline
+                # folder so we set the library to module name.
+                if library not in LOADABLE_CLASSES or is_pipeline_module:
+                    library = pipeline_dir
 
-            # retrieve class_name
-            class_name = module.__class__.__name__
+                # retrieve class_name
+                class_name = module.__class__.__name__
 
-            register_dict = {name: (library, class_name)}
+                register_dict = {name: (library, class_name)}
 
             # save model index config
             self.register_to_config(**register_dict)
@@ -166,6 +202,14 @@ class DiffusionPipeline(ConfigMixin):
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
+                if module.dtype == torch.float16 and str(torch_device) in ["cpu", "mps"]:
+                    logger.warning(
+                        "Pipelines loaded with `torch_dtype=torch.float16` cannot run with `cpu` or `mps` device. It"
+                        " is not recommended to move them to `cpu` or `mps` as running them will fail. Please make"
+                        " sure to use a `cuda` device to run the pipeline in inference. due to the lack of support for"
+                        " `float16` operations on those devices in PyTorch. Please remove the"
+                        " `torch_dtype=torch.float16` argument, or use a `cuda` device to run inference."
+                    )
                 module.to(torch_device)
         return self
 
@@ -179,6 +223,8 @@ class DiffusionPipeline(ConfigMixin):
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
+                if module.device == torch.device("meta"):
+                    return torch.device("cpu")
                 return module.device
         return torch.device("cpu")
 
@@ -208,6 +254,52 @@ class DiffusionPipeline(ConfigMixin):
             torch_dtype (`str` or `torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model under this dtype. If `"auto"` is passed the dtype
                 will be automatically derived from the model's weights.
+            custom_pipeline (`str`, *optional*):
+
+                <Tip warning={true}>
+
+                    This is an experimental feature and is likely to change in the future.
+
+                </Tip>
+
+                Can be either:
+
+                    - A string, the *repo id* of a custom pipeline hosted inside a model repo on
+                      https://huggingface.co/. Valid repo ids have to be located under a user or organization name,
+                      like `hf-internal-testing/diffusers-dummy-pipeline`.
+
+                        <Tip>
+
+                         It is required that the model repo has a file, called `pipeline.py` that defines the custom
+                         pipeline.
+
+                        </Tip>
+
+                    - A string, the *file name* of a community pipeline hosted on GitHub under
+                      https://github.com/huggingface/diffusers/tree/main/examples/community. Valid file names have to
+                      match exactly the file name without `.py` located under the above link, *e.g.*
+                      `clip_guided_stable_diffusion`.
+
+                        <Tip>
+
+                         Community pipelines are always loaded from the current `main` branch of GitHub.
+
+                        </Tip>
+
+                    - A path to a *directory* containing a custom pipeline, e.g., `./my_pipeline_directory/`.
+
+                        <Tip>
+
+                         It is required that the directory has a file, called `pipeline.py` that defines the custom
+                         pipeline.
+
+                        </Tip>
+
+                For more information on how to load and create custom pipelines, please have a look at [Loading and
+                Creating Custom
+                Pipelines](https://huggingface.co/docs/diffusers/main/en/using-diffusers/custom_pipelines)
+
+            torch_dtype (`str` or `torch.dtype`, *optional*):
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
@@ -240,8 +332,8 @@ class DiffusionPipeline(ConfigMixin):
 
         <Tip>
 
-        Passing `use_auth_token=True`` is required when you want to use a private model, *e.g.*
-        `"CompVis/stable-diffusion-v1-4"`
+         It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
+         models](https://huggingface.co/docs/hub/models-gated#gated-models), *e.g.* `"runwayml/stable-diffusion-v1-5"`
 
         </Tip>
 
@@ -263,26 +355,27 @@ class DiffusionPipeline(ConfigMixin):
         >>> # Download pipeline that requires an authorization token
         >>> # For more information on access tokens, please refer to this section
         >>> # of the documentation](https://huggingface.co/docs/hub/security-tokens)
-        >>> pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
+        >>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 
         >>> # Download pipeline, but overwrite scheduler
         >>> from diffusers import LMSDiscreteScheduler
 
         >>> scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
-        >>> pipeline = DiffusionPipeline.from_pretrained(
-        ...     "CompVis/stable-diffusion-v1-4", scheduler=scheduler, use_auth_token=True
-        ... )
+        >>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", scheduler=scheduler)
         ```
         """
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         resume_download = kwargs.pop("resume_download", False)
+        force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
+        custom_pipeline = kwargs.pop("custom_pipeline", None)
         provider = kwargs.pop("provider", None)
         sess_options = kwargs.pop("sess_options", None)
+        device_map = kwargs.pop("device_map", None)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -291,6 +384,7 @@ class DiffusionPipeline(ConfigMixin):
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
                 resume_download=resume_download,
+                force_download=force_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
                 use_auth_token=use_auth_token,
@@ -300,6 +394,14 @@ class DiffusionPipeline(ConfigMixin):
             folder_names = [k for k in config_dict.keys() if not k.startswith("_")]
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
             allow_patterns += [WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, ONNX_WEIGHTS_NAME, cls.config_name]
+
+            if custom_pipeline is not None:
+                allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
+
+            requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
+            user_agent = {"diffusers": __version__, "pipeline_class": requested_pipeline_class}
+            if custom_pipeline is not None:
+                user_agent["custom_pipeline"] = custom_pipeline
 
             # download all allow_patterns
             cached_folder = snapshot_download(
@@ -311,6 +413,7 @@ class DiffusionPipeline(ConfigMixin):
                 use_auth_token=use_auth_token,
                 revision=revision,
                 allow_patterns=allow_patterns,
+                user_agent=user_agent,
             )
         else:
             cached_folder = pretrained_model_name_or_path
@@ -319,19 +422,45 @@ class DiffusionPipeline(ConfigMixin):
 
         # 2. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
-        if cls != DiffusionPipeline:
+        if custom_pipeline is not None:
+            pipeline_class = get_class_from_dynamic_module(
+                custom_pipeline, module_file=CUSTOM_PIPELINE_FILE_NAME, cache_dir=custom_pipeline
+            )
+        elif cls != DiffusionPipeline:
             pipeline_class = cls
         else:
             diffusers_module = importlib.import_module(cls.__module__.split(".")[0])
             pipeline_class = getattr(diffusers_module, config_dict["_class_name"])
 
+        # To be removed in 1.0.0
+        if pipeline_class.__name__ == "StableDiffusionInpaintPipeline" and version.parse(
+            version.parse(config_dict["_diffusers_version"]).base_version
+        ) <= version.parse("0.5.1"):
+            from diffusers import StableDiffusionInpaintPipeline, StableDiffusionInpaintPipelineLegacy
+
+            pipeline_class = StableDiffusionInpaintPipelineLegacy
+
+            deprecation_message = (
+                "You are using a legacy checkpoint for inpainting with Stable Diffusion, therefore we are loading the"
+                f" {StableDiffusionInpaintPipelineLegacy} class instead of {StableDiffusionInpaintPipeline}. For"
+                " better inpainting results, we strongly suggest using Stable Diffusion's official inpainting"
+                " checkpoint: https://huggingface.co/runwayml/stable-diffusion-inpainting instead or adapting your"
+                f" checkpoint {pretrained_model_name_or_path} to the format of"
+                " https://huggingface.co/runwayml/stable-diffusion-inpainting. Note that we do not actively maintain"
+                " the {StableDiffusionInpaintPipelineLegacy} class and will likely remove it in version 1.0.0."
+            )
+            deprecate("StableDiffusionInpaintPipelineLegacy", "1.0.0", deprecation_message, standard_warn=False)
+
         # some modules can be passed directly to the init
         # in this case they are already instantiated in `kwargs`
         # extract them here
-        expected_modules = set(inspect.signature(pipeline_class.__init__).parameters.keys())
+        expected_modules = set(inspect.signature(pipeline_class.__init__).parameters.keys()) - set(["self"])
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
 
-        init_dict, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
+        init_dict, unused_kwargs = pipeline_class.extract_init_dict(config_dict, **kwargs)
+
+        if len(unused_kwargs) > 0:
+            logger.warning(f"Keyword arguments {unused_kwargs} not recognized.")
 
         init_kwargs = {}
 
@@ -346,6 +475,7 @@ class DiffusionPipeline(ConfigMixin):
 
             is_pipeline_module = hasattr(pipelines, library_name)
             loaded_sub_model = None
+            sub_model_should_be_defined = True
 
             # if the model is in a pipeline module, then we load it from the pipeline
             if name in passed_class_obj:
@@ -366,6 +496,12 @@ class DiffusionPipeline(ConfigMixin):
                             f"{passed_class_obj[name]} is of type: {type(passed_class_obj[name])}, but should be"
                             f" {expected_class_obj}"
                         )
+                elif passed_class_obj[name] is None:
+                    logger.warn(
+                        f"You have passed `None` for {name} to disable its functionality in {pipeline_class}. Note"
+                        f" that this might lead to problems when using {pipeline_class} and is not recommended."
+                    )
+                    sub_model_should_be_defined = False
                 else:
                     logger.warn(
                         f"You have passed a non-standard module {passed_class_obj[name]}. We cannot verify whether it"
@@ -386,20 +522,41 @@ class DiffusionPipeline(ConfigMixin):
                 importable_classes = LOADABLE_CLASSES[library_name]
                 class_candidates = {c: getattr(library, c) for c in importable_classes.keys()}
 
-            if loaded_sub_model is None:
+            if loaded_sub_model is None and sub_model_should_be_defined:
                 load_method_name = None
                 for class_name, class_candidate in class_candidates.items():
                     if issubclass(class_obj, class_candidate):
                         load_method_name = importable_classes[class_name][1]
 
-                load_method = getattr(class_obj, load_method_name)
+                if load_method_name is None:
+                    none_module = class_obj.__module__
+                    if none_module.startswith(DUMMY_MODULES_FOLDER) and "dummy" in none_module:
+                        # call class_obj for nice error message of missing requirements
+                        class_obj()
 
+                    raise ValueError(
+                        f"The component {class_obj} of {pipeline_class} cannot be loaded as it does not seem to have"
+                        f" any of the loading methods defined in {ALL_IMPORTABLE_CLASSES}."
+                    )
+
+                load_method = getattr(class_obj, load_method_name)
                 loading_kwargs = {}
+
                 if issubclass(class_obj, torch.nn.Module):
                     loading_kwargs["torch_dtype"] = torch_dtype
                 if issubclass(class_obj, diffusers.OnnxRuntimeModel):
                     loading_kwargs["provider"] = provider
                     loading_kwargs["sess_options"] = sess_options
+
+                is_diffusers_model = issubclass(class_obj, diffusers.ModelMixin)
+                is_transformers_model = (
+                    is_transformers_available()
+                    and issubclass(class_obj, PreTrainedModel)
+                    and version.parse(version.parse(transformers.__version__).base_version) >= version.parse("4.20.0")
+                )
+
+                if is_diffusers_model or is_transformers_model:
+                    loading_kwargs["device_map"] = device_map
 
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
@@ -410,9 +567,55 @@ class DiffusionPipeline(ConfigMixin):
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
-        # 4. Instantiate the pipeline
+        # 4. Potentially add passed objects if expected
+        missing_modules = set(expected_modules) - set(init_kwargs.keys())
+        if len(missing_modules) > 0 and missing_modules <= set(passed_class_obj.keys()):
+            for module in missing_modules:
+                init_kwargs[module] = passed_class_obj[module]
+        elif len(missing_modules) > 0:
+            passed_modules = set(list(init_kwargs.keys()) + list(passed_class_obj.keys()))
+            raise ValueError(
+                f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
+            )
+
+        # 5. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
         return model
+
+    @property
+    def components(self) -> Dict[str, Any]:
+        r"""
+
+        The `self.components` property can be useful to run different pipelines with the same weights and
+        configurations to not have to re-allocate memory.
+
+        Examples:
+
+        ```py
+        >>> from diffusers import (
+        ...     StableDiffusionPipeline,
+        ...     StableDiffusionImg2ImgPipeline,
+        ...     StableDiffusionInpaintPipeline,
+        ... )
+
+        >>> img2text = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+        >>> img2img = StableDiffusionImg2ImgPipeline(**img2text.components)
+        >>> inpaint = StableDiffusionInpaintPipeline(**img2text.components)
+        ```
+
+        Returns:
+            A dictionaly containing all the modules needed to initialize the pipeline.
+        """
+        components = {k: getattr(self, k) for k in self.config.keys() if not k.startswith("_")}
+        expected_modules = set(inspect.signature(self.__init__).parameters.keys()) - set(["self"])
+
+        if set(components.keys()) != expected_modules:
+            raise ValueError(
+                f"{self} has been incorrectly initialized or {self.__class__} is incorrectly implemented. Expected"
+                f" {expected_modules} to be defined, but {components} are defined."
+            )
+
+        return components
 
     @staticmethod
     def numpy_to_pil(images):
@@ -422,7 +625,11 @@ class DiffusionPipeline(ConfigMixin):
         if images.ndim == 3:
             images = images[None, ...]
         images = (images * 255).round().astype("uint8")
-        pil_images = [Image.fromarray(image) for image in images]
+        if images.shape[-1] == 1:
+            # special case for grayscale (single channel) images
+            pil_images = [Image.fromarray(image.squeeze(), mode="L") for image in images]
+        else:
+            pil_images = [Image.fromarray(image) for image in images]
 
         return pil_images
 
