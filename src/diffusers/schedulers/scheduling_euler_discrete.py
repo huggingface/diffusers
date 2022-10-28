@@ -109,7 +109,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
     ) -> torch.FloatTensor:
         """
-        Scales the denoising model input by `(sigma**2 + 1) ** 0.5` to match the K-LMS algorithm.
+        Scales the denoising model input by `(sigma**2 + 1) ** 0.5` to match the Euler algorithm.
 
         Args:
             sample (`torch.FloatTensor`): input sample
