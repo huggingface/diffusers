@@ -1,2 +1,2 @@
 # flake8: noqa
-from .modules import TokenEncoder, ContinuousEncoder
+from .pipeline_spectrogram_diffusion import ContinuousEncoder, Decoder, TokenEncoder
