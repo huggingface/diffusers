@@ -65,7 +65,9 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
         pass
 
     def test_from_pretrained_hub(self):
-        model, loading_info = VQModel.from_pretrained("fusing/vqgan-dummy", output_loading_info=True)
+        model, loading_info = VQModel.from_pretrained(
+            "fusing/vqgan-dummy", device_map="auto", output_loading_info=True
+        )
         self.assertIsNotNone(model)
         self.assertEqual(len(loading_info["missing_keys"]), 0)
 
@@ -75,7 +77,7 @@ class VQModelTests(ModelTesterMixin, unittest.TestCase):
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained(self):
-        model = VQModel.from_pretrained("fusing/vqgan-dummy")
+        model = VQModel.from_pretrained("fusing/vqgan-dummy", device_map="auto")
         model.to(torch_device).eval()
 
         torch.manual_seed(0)
