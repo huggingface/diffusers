@@ -19,7 +19,6 @@ from typing import Dict, List, Tuple
 import numpy as np
 import torch
 
-from black import out
 from diffusers import (
     DDIMScheduler,
     DDPMScheduler,
