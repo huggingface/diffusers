@@ -104,7 +104,9 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         return init_dict, inputs_dict
 
     def test_from_pretrained_hub(self):
-        model, loading_info = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", output_loading_info=True)
+        model, loading_info = UNet2DModel.from_pretrained(
+            "fusing/unet-ldm-dummy-update", output_loading_info=True, device_map="auto"
+        )
 
         self.assertIsNotNone(model)
         self.assertEqual(len(loading_info["missing_keys"]), 0)
@@ -149,7 +151,9 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         torch.cuda.empty_cache()
         gc.collect()
 
-        model_normal_load, _ = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", output_loading_info=True)
+        model_normal_load, _ = UNet2DModel.from_pretrained(
+            "fusing/unet-ldm-dummy-update", output_loading_info=True, device_map="auto"
+        )
         model_normal_load.to(torch_device)
         model_normal_load.eval()
         arr_normal_load = model_normal_load(noise, time_step)["sample"]
@@ -183,7 +187,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         assert peak_accelerate < peak_normal
 
     def test_output_pretrained(self):
-        model = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update")
+        model = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", device_map="auto")
         model.eval()
         model.to(torch_device)
 
@@ -337,7 +341,9 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
 
     @slow
     def test_from_pretrained_hub(self):
-        model, loading_info = UNet2DModel.from_pretrained("google/ncsnpp-celebahq-256", output_loading_info=True)
+        model, loading_info = UNet2DModel.from_pretrained(
+            "google/ncsnpp-celebahq-256", output_loading_info=True, device_map="auto"
+        )
         self.assertIsNotNone(model)
         self.assertEqual(len(loading_info["missing_keys"]), 0)
 
@@ -351,7 +357,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
 
     @slow
     def test_output_pretrained_ve_mid(self):
-        model = UNet2DModel.from_pretrained("google/ncsnpp-celebahq-256")
+        model = UNet2DModel.from_pretrained("google/ncsnpp-celebahq-256", device_map="auto")
         model.to(torch_device)
 
         torch.manual_seed(0)
@@ -376,7 +382,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
     def test_output_pretrained_ve_large(self):
-        model = UNet2DModel.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy-update")
+        model = UNet2DModel.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy-update", device_map="auto")
         model.to(torch_device)
 
         torch.manual_seed(0)
