@@ -104,9 +104,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         return init_dict, inputs_dict
 
     def test_from_pretrained_hub(self):
-        model, loading_info = UNet2DModel.from_pretrained(
-            "fusing/unet-ldm-dummy-update", output_loading_info=True, device_map="auto"
-        )
+        model, loading_info = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", output_loading_info=True)
 
         self.assertIsNotNone(model)
         self.assertEqual(len(loading_info["missing_keys"]), 0)
@@ -187,7 +185,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         assert peak_accelerate < peak_normal
 
     def test_output_pretrained(self):
-        model = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", device_map="auto")
+        model = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update")
         model.eval()
         model.to(torch_device)
 
@@ -382,7 +380,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertTrue(torch.allclose(output_slice, expected_output_slice, rtol=1e-2))
 
     def test_output_pretrained_ve_large(self):
-        model = UNet2DModel.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy-update", device_map="auto")
+        model = UNet2DModel.from_pretrained("fusing/ncsnpp-ffhq-ve-dummy-update")
         model.to(torch_device)
 
         torch.manual_seed(0)

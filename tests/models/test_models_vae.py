@@ -69,9 +69,7 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
         pass
 
     def test_from_pretrained_hub(self):
-        model, loading_info = AutoencoderKL.from_pretrained(
-            "fusing/autoencoder-kl-dummy", output_loading_info=True, device_map="auto"
-        )
+        model, loading_info = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy", output_loading_info=True)
         self.assertIsNotNone(model)
         self.assertEqual(len(loading_info["missing_keys"]), 0)
 
@@ -81,7 +79,7 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
         assert image is not None, "Make sure output is not None"
 
     def test_output_pretrained(self):
-        model = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy", device_map="auto")
+        model = AutoencoderKL.from_pretrained("fusing/autoencoder-kl-dummy")
         model = model.to(torch_device)
         model.eval()
 
