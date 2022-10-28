@@ -488,6 +488,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
             model_id,
             safety_checker=None,
+            device_map="auto",
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -529,6 +530,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
             model_id,
             scheduler=lms,
             safety_checker=None,
+            device_map="auto",
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -580,7 +582,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         init_image = init_image.resize((768, 512))
 
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16
+            "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16, device_map="auto"
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
