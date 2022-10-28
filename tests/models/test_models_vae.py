@@ -209,7 +209,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         output_slice = sample[-1, -2:, :2, -2:].flatten().float().cpu()
         expected_output_slice = torch.tensor(expected_slice)
 
-        assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)
+        assert torch_all_close(output_slice, expected_output_slice, atol=1e-2)
 
     @parameterized.expand(
         [
