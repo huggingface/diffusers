@@ -40,7 +40,7 @@ from .outputs import BaseOutput
 
 
 if is_torch_available():
-    from .testing_utils import floats_tensor, load_image, parse_flag_from_env, slow, torch_device
+    from .testing_utils import floats_tensor, load_image, parse_flag_from_env, require_torch_gpu, slow, torch_device
 
 
 logger = get_logger(__name__)

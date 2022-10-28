@@ -121,7 +121,7 @@ class LDMTextToImagePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 @require_torch
 class LDMTextToImagePipelineIntegrationTests(unittest.TestCase):
     def test_inference_text2img(self):
-        ldm = LDMTextToImagePipeline.from_pretrained("CompVis/ldm-text2im-large-256")
+        ldm = LDMTextToImagePipeline.from_pretrained("CompVis/ldm-text2im-large-256", device_map="auto")
         ldm.to(torch_device)
         ldm.set_progress_bar_config(disable=None)
 
@@ -138,7 +138,7 @@ class LDMTextToImagePipelineIntegrationTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_inference_text2img_fast(self):
-        ldm = LDMTextToImagePipeline.from_pretrained("CompVis/ldm-text2im-large-256")
+        ldm = LDMTextToImagePipeline.from_pretrained("CompVis/ldm-text2im-large-256", device_map="auto")
         ldm.to(torch_device)
         ldm.set_progress_bar_config(disable=None)
 
