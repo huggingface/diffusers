@@ -155,7 +155,8 @@ def load_numpy(arry: Union[str, np.ndarray]) -> np.ndarray:
         pass
     else:
         raise ValueError(
-            "Incorrect format used for numpy ndarray. Should be an url linking to an image, a local path, or a ndarray."
+            "Incorrect format used for numpy ndarray. Should be an url linking to an image, a local path, or a"
+            " ndarray."
         )
 
     return arry
