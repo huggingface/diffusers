@@ -135,6 +135,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
             cpu_offload(cpu_offloaded_model, device)
 
+        self._is_cpu_offloaded = True
+
     @torch.no_grad()
     def __call__(
         self,
@@ -208,7 +210,6 @@ class StableDiffusionPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-
         if isinstance(prompt, str):
             batch_size = 1
         elif isinstance(prompt, list):
