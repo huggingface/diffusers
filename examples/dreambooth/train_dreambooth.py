@@ -109,6 +109,9 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution"
     )
+    parser.add_argument(
+        "--use_filename_as_label", action="store_true", help="Uses the filename as the image labels instead of the instance_prompt, useful for regularization when training for styles with wide image variance"
+    )
     parser.add_argument("--train_text_encoder", action="store_true", help="Whether to train the text encoder")
     parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
@@ -216,6 +219,10 @@ def parse_args(input_args=None):
 
     return args
 
+# turns a path into a filename without the extension
+def get_filename(path):
+    return path.stem
+
 
 class DreamBoothDataset(Dataset):
     """
@@ -232,6 +239,7 @@ class DreamBoothDataset(Dataset):
         class_prompt=None,
         size=512,
         center_crop=False,
+        use_filename_as_label=False,
     ):
         self.size = size
         self.center_crop = center_crop
@@ -244,6 +252,7 @@ class DreamBoothDataset(Dataset):
         self.instance_images_path = list(Path(instance_data_root).iterdir())
         self.num_instance_images = len(self.instance_images_path)
         self.instance_prompt = instance_prompt
+        self.use_filename_as_label = use_filename_as_label
         self._length = self.num_instance_images
 
         if class_data_root is not None:
@@ -270,12 +279,14 @@ class DreamBoothDataset(Dataset):
 
     def __getitem__(self, index):
         example = {}
-        instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
+        path = self.instance_images_path[index % self.num_instance_images]
+        prompt = get_filename(path) if self.use_filename_as_label else self.instance_prompt
+        instance_image = Image.open(path)
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
         example["instance_images"] = self.image_transforms(instance_image)
         example["instance_prompt_ids"] = self.tokenizer(
-            self.instance_prompt,
+            prompt,
             padding="do_not_pad",
             truncation=True,
             max_length=self.tokenizer.model_max_length,
@@ -481,6 +492,7 @@ def main(args):
         tokenizer=tokenizer,
         size=args.resolution,
         center_crop=args.center_crop,
+        use_filename_as_label=args.use_filename_as_label,
     )
 
     def collate_fn(examples):
