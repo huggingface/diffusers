@@ -18,8 +18,6 @@ from typing import Optional, Tuple, Union
 import numpy as np
 import torch
 
-from scipy import integrate
-
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, deprecate
 from .scheduling_utils import SchedulerMixin
