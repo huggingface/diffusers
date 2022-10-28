@@ -13,13 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import unittest
 
 import torch
 
 from diffusers import AutoencoderKL
 from diffusers.modeling_utils import ModelMixin
-from diffusers.utils import floats_tensor, slow, torch_device
+from diffusers.utils import floats_tensor, require_torch_gpu, slow, torch_device
 from parameterized import parameterized
 
 from ..test_modeling_common import ModelTesterMixin
@@ -135,6 +136,12 @@ class AutoencoderKLTests(ModelTesterMixin, unittest.TestCase):
 
 @slow
 class AutoencoderKLIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def get_sd_image(self, seed=0, shape=(4, 3, 512, 512), fp16=False):
         batch_size, channels, height, width = shape
         generator = torch.Generator(device=torch_device).manual_seed(seed)
@@ -143,12 +150,12 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
 
         return image
 
-    def get_sd_vae_model(self, fp16=False):
+    def get_sd_vae_model(self, model_id="CompVis/stable-diffusion-v1-4", fp16=False):
         revision = "fp16" if fp16 else None
         torch_dtype = torch.float16 if fp16 else torch.float32
 
         model = AutoencoderKL.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", subfolder="vae", torch_dtype=torch_dtype, revision=revision
+            model_id, subfolder="vae", torch_dtype=torch_dtype, revision=revision, device_map="auto"
         )
         model.to(torch_device).eval()
 
@@ -188,6 +195,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
+    @require_torch_gpu
     def test_stable_diffusion_fp16(self, seed, expected_slice):
         model = self.get_sd_vae_model(fp16=True)
         image = self.get_sd_image(seed, fp16=True)
@@ -233,6 +241,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
+    @require_torch_gpu
     def test_stable_diffusion_decode(self, seed, expected_slice):
         model = self.get_sd_vae_model()
         encoding = self.get_sd_image(seed, shape=(3, 4, 64, 64))
