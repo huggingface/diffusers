@@ -46,9 +46,9 @@ class EulerDiscreteSchedulerOutput(BaseOutput):
 
 class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     """
-    Linear Multistep Scheduler for discrete beta schedules. Based on the original k-diffusion implementation by
-    Katherine Crowson:
-    https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L181
+    Euler scheduler (Algorithm 2) from Karras et al. (2022) https://arxiv.org/abs/2206.00364. . Based on the original
+    k-diffusion implementation by Katherine Crowson:
+    https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L51
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
