@@ -208,7 +208,6 @@ class StableDiffusionPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-
         if isinstance(prompt, str):
             batch_size = 1
         elif isinstance(prompt, list):

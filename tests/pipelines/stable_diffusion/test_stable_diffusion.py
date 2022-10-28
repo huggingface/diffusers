@@ -740,7 +740,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
 
         start_time = time.time()
         pipeline_normal_load = StableDiffusionPipeline.from_pretrained(
-            pipeline_id, revision="fp16", torch_dtype=torch.float16, device_map="auto"
+            pipeline_id, revision="fp16", torch_dtype=torch.float16
         )
         pipeline_normal_load.to(torch_device)
         normal_load_time = time.time() - start_time
@@ -761,9 +761,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         pipeline_id = "CompVis/stable-diffusion-v1-4"
         prompt = "Andromeda galaxy in a bottle"
 
-        pipeline = StableDiffusionPipeline.from_pretrained(
-            pipeline_id, revision="fp16", torch_dtype=torch.float16, device_map="auto"
-        )
+        pipeline = StableDiffusionPipeline.from_pretrained(pipeline_id, revision="fp16", torch_dtype=torch.float16)
         pipeline.enable_attention_slicing(1)
         pipeline.enable_sequential_cpu_offload()
 
