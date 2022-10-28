@@ -18,6 +18,7 @@ deps = {
     "modelcards": "modelcards>=0.1.4",
     "numpy": "numpy",
     "onnxruntime": "onnxruntime",
+    "parameterized": "parameterized",
     "pytest": "pytest",
     "pytest-timeout": "pytest-timeout",
     "pytest-xdist": "pytest-xdist",
