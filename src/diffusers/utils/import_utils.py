@@ -90,7 +90,8 @@ else:
     logger.info("Disabling Tensorflow because USE_TORCH is set")
     _tf_available = False
 
-
+_jax_version = "N/A"
+_flax_version = "N/A"
 if USE_JAX in ENV_VARS_TRUE_AND_AUTO_VALUES:
     _flax_available = importlib.util.find_spec("jax") is not None and importlib.util.find_spec("flax") is not None
     if _flax_available:
@@ -136,6 +137,7 @@ except importlib_metadata.PackageNotFoundError:
     _modelcards_available = False
 
 
+_onnxruntime_version = "N/A"
 _onnx_available = importlib.util.find_spec("onnxruntime") is not None
 if _onnx_available:
     candidates = ("onnxruntime", "onnxruntime-gpu", "onnxruntime-directml", "onnxruntime-openvino")
