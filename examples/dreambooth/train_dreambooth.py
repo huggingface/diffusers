@@ -283,7 +283,6 @@ class DreamBoothDataset(Dataset):
                 self.class_images_path.extend(class_img_path[:num_class_images])
 
         random.shuffle(self.instance_images_path)
-        random.shuffle(self.class_images_path)
         self.num_instance_images = len(self.instance_images_path)
         self._length = self.num_instance_images
         self.num_class_images = len(self.class_images_path)
@@ -384,8 +383,7 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
         return f"{organization}/{model_id}"
 
 
-def main():
-    args = parse_args()
+def main(args):
     logging_dir = Path(args.output_dir, "0", args.logging_dir)
 
     accelerator = Accelerator(
@@ -770,7 +768,7 @@ def main():
                 progress_bar.set_postfix(**logs)
                 accelerator.log(logs, step=global_step)
 
-            if global_step > args.save_min_steps and not global_step % args.save_interval:
+            if global_step > 0 and not global_step % args.save_interval and global_step > args.save_min_steps:
                 save_weights(global_step)
 
             progress_bar.update(1)
