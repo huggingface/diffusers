@@ -298,7 +298,9 @@ def main(args):
 
     if accelerator.is_main_process:
         run = os.path.split(__file__)[-1].split(".")[0]
-        accelerator.init_trackers(project_name='RLHF-Stable-Diffusion', init_kwargs={"wandb":{'entity':'wandb_gen'}})
+        accelerator.init_trackers(
+            project_name='RLHF-Stable-Diffusion', 
+            init_kwargs={"wandb":{'entity':'wandb_gen', 'config':vars(args)}})
         # accelerator.init_trackers(run)
         
         # table_cols = ['i' for i in range(args.eval_batch_size)]
