@@ -6,6 +6,7 @@ on:
       - main
 
 env:
+  DIFFUSERS_IS_CI: yes
   HF_HOME: /mnt/cache
   OMP_NUM_THREADS: 8
   MKL_NUM_THREADS: 8
