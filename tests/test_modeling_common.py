@@ -162,7 +162,7 @@ class ModelTesterMixin:
             if isinstance(output_2, dict):
                 output_2 = output_2.sample
 
-        self.assertEqual(output_1.shape, output_2.shape)
+        self.assertNotEqual(output_1.shape, output_2.shape)
 
     @unittest.skipIf(torch_device == "mps", "Training is not supported in mps")
     def test_training(self):
