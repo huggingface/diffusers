@@ -20,7 +20,7 @@ import torch
 from diffusers import VQModel
 from diffusers.utils import floats_tensor, torch_device
 
-from .test_modeling_common import ModelTesterMixin
+from ..test_modeling_common import ModelTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False

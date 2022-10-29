@@ -55,7 +55,9 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
+        num_images_per_prompt: Optional[int] = 1,
         eta: Optional[float] = 0.0,
+        generator: Optional[np.random.RandomState] = None,
         latents: Optional[np.ndarray] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -81,6 +83,9 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
+        if generator is None:
+            generator = np.random
+
         # get prompt text embeddings
         text_inputs = self.tokenizer(
             prompt,
@@ -98,6 +103,7 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
             )
             text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
         text_embeddings = self.text_encoder(input_ids=text_input_ids.astype(np.int32))[0]
+        text_embeddings = np.repeat(text_embeddings, num_images_per_prompt, axis=0)
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -133,6 +139,7 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
                 return_tensors="np",
             )
             uncond_embeddings = self.text_encoder(input_ids=uncond_input.input_ids.astype(np.int32))[0]
+            uncond_embeddings = np.repeat(uncond_embeddings, num_images_per_prompt, axis=0)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
@@ -140,9 +147,10 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
             text_embeddings = np.concatenate([uncond_embeddings, text_embeddings])
 
         # get the initial random noise unless the user supplied it
-        latents_shape = (batch_size, 4, height // 8, width // 8)
+        latents_dtype = text_embeddings.dtype
+        latents_shape = (batch_size * num_images_per_prompt, 4, height // 8, width // 8)
         if latents is None:
-            latents = np.random.randn(*latents_shape).astype(np.float32)
+            latents = generator.randn(*latents_shape).astype(latents_dtype)
         elif latents.shape != latents_shape:
             raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
 
@@ -185,13 +193,30 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
                 callback(i, t, latents)
 
         latents = 1 / 0.18215 * latents
-        image = self.vae_decoder(latent_sample=latents)[0]
+        # image = self.vae_decoder(latent_sample=latents)[0]
+        # it seems likes there is a strange result for using half-precision vae decoder if batchsize>1
+        image = np.concatenate(
+            [self.vae_decoder(latent_sample=latents[i : i + 1])[0] for i in range(latents.shape[0])]
+        )
 
         image = np.clip(image / 2 + 0.5, 0, 1)
         image = image.transpose((0, 2, 3, 1))
 
-        safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="np")
-        image, has_nsfw_concept = self.safety_checker(clip_input=safety_checker_input.pixel_values, images=image)
+        if self.safety_checker is not None:
+            safety_checker_input = self.feature_extractor(
+                self.numpy_to_pil(image), return_tensors="np"
+            ).pixel_values.astype(image.dtype)
+            # There will throw an error if use safety_checker batchsize>1
+            images, has_nsfw_concept = [], []
+            for i in range(image.shape[0]):
+                image_i, has_nsfw_concept_i = self.safety_checker(
+                    clip_input=safety_checker_input[i : i + 1], images=image[i : i + 1]
+                )
+                images.append(image_i)
+                has_nsfw_concept.append(has_nsfw_concept_i[0])
+            image = np.concatenate(images)
+        else:
+            has_nsfw_concept = None
 
         if output_type == "pil":
             image = self.numpy_to_pil(image)

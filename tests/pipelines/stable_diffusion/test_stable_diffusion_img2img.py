@@ -30,13 +30,16 @@ from diffusers import (
     VQModel,
 )
 from diffusers.utils import floats_tensor, load_image, slow, torch_device
+from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+
+from ...test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class PipelineFastTests(unittest.TestCase):
+class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -461,8 +464,8 @@ class PipelineFastTests(unittest.TestCase):
 
 
 @slow
-@unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
-class PipelineIntegrationTests(unittest.TestCase):
+@require_torch_gpu
+class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -485,6 +488,7 @@ class PipelineIntegrationTests(unittest.TestCase):
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
             model_id,
             safety_checker=None,
+            device_map="auto",
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -526,6 +530,7 @@ class PipelineIntegrationTests(unittest.TestCase):
             model_id,
             scheduler=lms,
             safety_checker=None,
+            device_map="auto",
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -577,7 +582,7 @@ class PipelineIntegrationTests(unittest.TestCase):
         init_image = init_image.resize((768, 512))
 
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16
+            "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16, device_map="auto"
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

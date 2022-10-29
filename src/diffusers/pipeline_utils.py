@@ -93,6 +93,20 @@ class ImagePipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
 
 
+@dataclass
+class AudioPipelineOutput(BaseOutput):
+    """
+    Output class for audio pipelines.
+
+    Args:
+        audios (`np.ndarray`)
+            List of denoised samples of shape `(batch_size, num_channels, sample_rate)`. Numpy array present the
+            denoised audio samples of the diffusion pipeline.
+    """
+
+    audios: np.ndarray
+
+
 class DiffusionPipeline(ConfigMixin):
     r"""
     Base class for all models.
@@ -209,6 +223,8 @@ class DiffusionPipeline(ConfigMixin):
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
+                if module.device == torch.device("meta"):
+                    return torch.device("cpu")
                 return module.device
         return torch.device("cpu")
 
@@ -317,7 +333,7 @@ class DiffusionPipeline(ConfigMixin):
         <Tip>
 
          It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
-         models](https://huggingface.co/docs/hub/models-gated#gated-models), *e.g.* `"CompVis/stable-diffusion-v1-4"`
+         models](https://huggingface.co/docs/hub/models-gated#gated-models), *e.g.* `"runwayml/stable-diffusion-v1-5"`
 
         </Tip>
 
@@ -339,13 +355,13 @@ class DiffusionPipeline(ConfigMixin):
         >>> # Download pipeline that requires an authorization token
         >>> # For more information on access tokens, please refer to this section
         >>> # of the documentation](https://huggingface.co/docs/hub/security-tokens)
-        >>> pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+        >>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 
         >>> # Download pipeline, but overwrite scheduler
         >>> from diffusers import LMSDiscreteScheduler
 
         >>> scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
-        >>> pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler)
+        >>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", scheduler=scheduler)
         ```
         """
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
@@ -570,7 +586,7 @@ class DiffusionPipeline(ConfigMixin):
     def components(self) -> Dict[str, Any]:
         r"""
 
-        The `self.compenents` property can be useful to run different pipelines with the same weights and
+        The `self.components` property can be useful to run different pipelines with the same weights and
         configurations to not have to re-allocate memory.
 
         Examples:
@@ -588,7 +604,7 @@ class DiffusionPipeline(ConfigMixin):
         ```
 
         Returns:
-            A dictionaly containing all the modules needed to initialize the pipleline.
+            A dictionaly containing all the modules needed to initialize the pipeline.
         """
         components = {k: getattr(self, k) for k in self.config.keys() if not k.startswith("_")}
         expected_modules = set(inspect.signature(self.__init__).parameters.keys()) - set(["self"])
@@ -609,7 +625,11 @@ class DiffusionPipeline(ConfigMixin):
         if images.ndim == 3:
             images = images[None, ...]
         images = (images * 255).round().astype("uint8")
-        pil_images = [Image.fromarray(image) for image in images]
+        if images.shape[-1] == 1:
+            # special case for grayscale (single channel) images
+            pil_images = [Image.fromarray(image.squeeze(), mode="L") for image in images]
+        else:
+            pil_images = [Image.fromarray(image) for image in images]
 
         return pil_images
 

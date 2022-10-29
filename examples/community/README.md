@@ -15,10 +15,14 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | Long Prompt Weighting Stable Diffusion | **One** Stable Diffusion Pipeline without tokens length limit, and support parsing weighting in prompt.                                                                                                                                                                                                                                                                                                                                                                                                  | [Long Prompt Weighting Stable Diffusion](#long-prompt-weighting-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [SkyTNT](https://github.com/SkyTNT) |
 | Speech to Image                        | Using automatic-speech-recognition to transcribe text and Stable Diffusion to generate images                                                                                                                                                                                                                                                                                                                                                                                                            | [Speech to Image](#speech-to-image)                               | -                                                                                                                                                                                                                  | [Mikail Duzenli](https://github.com/MikailINTech)
 | Wild Card Stable Diffusion | Stable Diffusion Pipeline that supports prompts that contain wildcard terms (indicated by surrounding double underscores), with values instantiated randomly from a corresponding txt file or a dictionary of possible values                                                                                                                                                                                                                                                                                                     | [Wildcard Stable Diffusion](#wildcard-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Shyam Sudhakaran](https://github.com/shyamsn97) |
+| Composable Stable Diffusion| Stable Diffusion Pipeline that supports prompts that contain "&#124;" in prompts (as an AND condition) and weights (separated by "&#124;" as well) to positively / negatively weight prompts.                                                                                                                                                                                                                                                                                                     | [Composable Stable Diffusion](#composable-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
+| Seed Resizing Stable Diffusion| Stable Diffusion Pipeline that supports resizing an image and retaining the concepts of the 512 by 512 generation.                                                                                                                                                                                                                                                                                                     | [Seed Resizing](#seed-resizing)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
+
+
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
-pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", custom_pipeline="filename_in_the_community_folder")
+pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", custom_pipeline="filename_in_the_community_folder")
 ```
 
 ## Example usages
@@ -41,7 +45,7 @@ clip_model = CLIPModel.from_pretrained("laion/CLIP-ViT-B-32-laion2B-s34B-b79K", 
 
 
 guided_pipeline = DiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4",
+    "runwayml/stable-diffusion-v1-5",
     custom_pipeline="clip_guided_stable_diffusion",
     clip_model=clip_model,
     feature_extractor=feature_extractor,
@@ -141,7 +145,7 @@ def download_image(url):
     response = requests.get(url)
     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
 
-pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", custom_pipeline="stable_diffusion_mega", torch_dtype=torch.float16, revision="fp16")
+pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", custom_pipeline="stable_diffusion_mega", torch_dtype=torch.float16, revision="fp16")
 pipe.to("cuda")
 pipe.enable_attention_slicing()
 
@@ -322,3 +326,134 @@ out = pipe(
     wildcard_files=["object.txt", "animal.txt"],
     num_prompt_samples=1
 )
+```
+
+
+### Composable Stable diffusion 
+
+```python
+import torch as th
+import numpy as np
+import torchvision.utils as tvu
+from diffusers import DiffusionPipeline
+
+has_cuda = th.cuda.is_available()
+device = th.device('cpu' if not has_cuda else 'cuda')
+
+pipe = DiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+    use_auth_token=True,
+    custom_pipeline="composable_stable_diffusion",
+).to(device)
+
+
+def dummy(images, **kwargs):
+    return images, False
+
+pipe.safety_checker = dummy
+
+images = []
+generator = th.Generator("cuda").manual_seed(0)
+
+seed = 0
+prompt = "a forest | a camel"
+weights = " 1 | 1"  # Equal weight to each prompt. Can be negative
+
+images = []
+for i in range(4):
+    res = pipe(
+        prompt,
+        guidance_scale=7.5,
+        num_inference_steps=50,
+        weights=weights,
+        generator=generator)
+    image = res.images[0]
+    images.append(image)
+
+for i, img in enumerate(images):
+    img.save(f"./composable_diffusion/image_{i}.png")
+```
+### Seed Resizing 
+Test seed resizing. Originally generate an image in 512 by 512, then generate image with same seed at 512 by 592 using seed resizing. Finally, generate 512 by 592 using original stable diffusion pipeline.
+
+```python
+import torch as th
+import numpy as np
+from diffusers import DiffusionPipeline
+
+has_cuda = th.cuda.is_available()
+device = th.device('cpu' if not has_cuda else 'cuda')
+
+pipe = DiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+    use_auth_token=True,
+    custom_pipeline="seed_resize_stable_diffusion"
+).to(device)
+
+def dummy(images, **kwargs):
+    return images, False
+
+pipe.safety_checker = dummy
+
+
+images = []
+th.manual_seed(0)
+generator = th.Generator("cuda").manual_seed(0)
+
+seed = 0
+prompt = "A painting of a futuristic cop"
+
+width = 512
+height = 512
+
+res = pipe(
+    prompt,
+    guidance_scale=7.5,
+    num_inference_steps=50,
+    height=height,
+    width=width,
+    generator=generator)
+image = res.images[0]
+image.save('./seed_resize/seed_resize_{w}_{h}_image.png'.format(w=width, h=height))
+
+
+th.manual_seed(0)
+generator = th.Generator("cuda").manual_seed(0)
+
+pipe = DiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+    use_auth_token=True,
+    custom_pipeline="/home/mark/open_source/diffusers/examples/community/"
+).to(device)
+
+width = 512
+height = 592
+
+res = pipe(
+    prompt,
+    guidance_scale=7.5,
+    num_inference_steps=50,
+    height=height,
+    width=width,
+    generator=generator)
+image = res.images[0]
+image.save('./seed_resize/seed_resize_{w}_{h}_image.png'.format(w=width, h=height))
+
+pipe_compare = DiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+    use_auth_token=True,
+    custom_pipeline="/home/mark/open_source/diffusers/examples/community/"
+).to(device)
+
+res = pipe_compare(
+    prompt,
+    guidance_scale=7.5,
+    num_inference_steps=50,
+    height=height,
+    width=width,
+    generator=generator
+)
+
+image = res.images[0]
+image.save('./seed_resize/seed_resize_{w}_{h}_image_compare.png'.format(w=width, h=height))
+```

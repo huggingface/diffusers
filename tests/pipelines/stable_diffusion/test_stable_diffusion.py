@@ -15,6 +15,7 @@
 
 import gc
 import random
+import time
 import unittest
 
 import numpy as np
@@ -31,13 +32,16 @@ from diffusers import (
     VQModel,
 )
 from diffusers.utils import floats_tensor, load_image, slow, torch_device
+from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+
+from ...test_pipelines_common import PipelineTesterMixin
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class PipelineFastTests(unittest.TestCase):
+class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -514,8 +518,8 @@ class PipelineFastTests(unittest.TestCase):
 
 
 @slow
-@unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
-class PipelineIntegrationTests(unittest.TestCase):
+@require_torch_gpu
+class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -524,7 +528,7 @@ class PipelineIntegrationTests(unittest.TestCase):
 
     def test_stable_diffusion(self):
         # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1")
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1", device_map="auto")
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -544,7 +548,7 @@ class PipelineIntegrationTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_fast_ddim(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1")
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1", device_map="auto")
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -572,7 +576,7 @@ class PipelineIntegrationTests(unittest.TestCase):
 
     def test_lms_stable_diffusion_pipeline(self):
         model_id = "CompVis/stable-diffusion-v1-1"
-        pipe = StableDiffusionPipeline.from_pretrained(model_id).to(torch_device)
+        pipe = StableDiffusionPipeline.from_pretrained(model_id, device_map="auto").to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         scheduler = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler")
         pipe.scheduler = scheduler
@@ -591,9 +595,10 @@ class PipelineIntegrationTests(unittest.TestCase):
     def test_stable_diffusion_memory_chunking(self):
         torch.cuda.reset_peak_memory_stats()
         model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16).to(
-            torch_device
+        pipe = StableDiffusionPipeline.from_pretrained(
+            model_id, revision="fp16", torch_dtype=torch.float16, device_map="auto"
         )
+        pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "a photograph of an astronaut riding a horse"
@@ -629,9 +634,10 @@ class PipelineIntegrationTests(unittest.TestCase):
     def test_stable_diffusion_text2img_pipeline_fp16(self):
         torch.cuda.reset_peak_memory_stats()
         model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16).to(
-            torch_device
+        pipe = StableDiffusionPipeline.from_pretrained(
+            model_id, revision="fp16", device_map="auto", torch_dtype=torch.float16
         )
+        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "a photograph of an astronaut riding a horse"
@@ -666,6 +672,7 @@ class PipelineIntegrationTests(unittest.TestCase):
         pipe = StableDiffusionPipeline.from_pretrained(
             model_id,
             safety_checker=None,
+            device_map="auto",
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -707,7 +714,7 @@ class PipelineIntegrationTests(unittest.TestCase):
         test_callback_fn.has_been_called = False
 
         pipe = StableDiffusionPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16
+            "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16, device_map="auto"
         )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -727,3 +734,39 @@ class PipelineIntegrationTests(unittest.TestCase):
             )
         assert test_callback_fn.has_been_called
         assert number_of_steps == 51
+
+    def test_stable_diffusion_accelerate_auto_device(self):
+        pipeline_id = "CompVis/stable-diffusion-v1-4"
+
+        start_time = time.time()
+        pipeline_normal_load = StableDiffusionPipeline.from_pretrained(
+            pipeline_id, revision="fp16", torch_dtype=torch.float16
+        )
+        pipeline_normal_load.to(torch_device)
+        normal_load_time = time.time() - start_time
+
+        start_time = time.time()
+        _ = StableDiffusionPipeline.from_pretrained(
+            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, device_map="auto"
+        )
+        meta_device_load_time = time.time() - start_time
+
+        assert 2 * meta_device_load_time < normal_load_time
+
+    @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
+    def test_stable_diffusion_pipeline_with_unet_on_gpu_only(self):
+        torch.cuda.empty_cache()
+        torch.cuda.reset_max_memory_allocated()
+
+        pipeline_id = "CompVis/stable-diffusion-v1-4"
+        prompt = "Andromeda galaxy in a bottle"
+
+        pipeline = StableDiffusionPipeline.from_pretrained(pipeline_id, revision="fp16", torch_dtype=torch.float16)
+        pipeline.enable_attention_slicing(1)
+        pipeline.enable_sequential_cpu_offload()
+
+        _ = pipeline(prompt, num_inference_steps=5)
+
+        mem_bytes = torch.cuda.max_memory_allocated()
+        # make sure that less than 1.5 GB is allocated
+        assert mem_bytes < 1.5 * 10**9

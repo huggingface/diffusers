@@ -252,8 +252,13 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
     ) -> torch.FloatTensor:
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
         self.sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
-        self.timesteps = self.timesteps.to(original_samples.device)
-        timesteps = timesteps.to(original_samples.device)
+        if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
+            # mps does not support float64
+            self.timesteps = self.timesteps.to(original_samples.device, dtype=torch.float32)
+            timesteps = timesteps.to(original_samples.device, dtype=torch.float32)
+        else:
+            self.timesteps = self.timesteps.to(original_samples.device)
+            timesteps = timesteps.to(original_samples.device)
 
         schedule_timesteps = self.timesteps
 

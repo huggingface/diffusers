@@ -59,7 +59,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please, refer to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) for details.
+            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
@@ -340,8 +340,8 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         masked_image_latents = 0.18215 * masked_image_latents
 
         # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
-        mask = mask.repeat(num_images_per_prompt, 1, 1, 1)
-        masked_image_latents = masked_image_latents.repeat(num_images_per_prompt, 1, 1, 1)
+        mask = mask.repeat(batch_size * num_images_per_prompt, 1, 1, 1)
+        masked_image_latents = masked_image_latents.repeat(batch_size * num_images_per_prompt, 1, 1, 1)
 
         mask = torch.cat([mask] * 2) if do_classifier_free_guidance else mask
         masked_image_latents = (

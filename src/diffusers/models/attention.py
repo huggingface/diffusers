@@ -214,7 +214,6 @@ class BasicTransformerBlock(nn.Module):
         self.attn2._slice_size = slice_size
 
     def forward(self, hidden_states, context=None):
-        hidden_states = hidden_states.contiguous() if hidden_states.device.type == "mps" else hidden_states
         hidden_states = self.attn1(self.norm1(hidden_states)) + hidden_states
         hidden_states = self.attn2(self.norm2(hidden_states), context=context) + hidden_states
         hidden_states = self.ff(self.norm3(hidden_states)) + hidden_states
@@ -298,10 +297,21 @@ class CrossAttention(nn.Module):
 
     def _attention(self, query, key, value):
         # TODO: use baddbmm for better performance
-        attention_scores = torch.matmul(query, key.transpose(-1, -2)) * self.scale
+        if query.device.type == "mps":
+            # Better performance on mps (~20-25%)
+            attention_scores = torch.einsum("b i d, b j d -> b i j", query, key) * self.scale
+        else:
+            attention_scores = torch.matmul(query, key.transpose(-1, -2)) * self.scale
         attention_probs = attention_scores.softmax(dim=-1)
         # compute attention output
-        hidden_states = torch.matmul(attention_probs, value)
+
+        if query.device.type == "mps":
+            hidden_states = torch.einsum("b i j, b j d -> b i d", attention_probs, value)
+        else:
+            hidden_states = torch.matmul(attention_probs, value)
+
+        # reshape hidden_states
+        hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
         return hidden_states
 
     def _sliced_attention(self, query, key, value, sequence_length, dim):
@@ -313,11 +323,21 @@ class CrossAttention(nn.Module):
         for i in range(hidden_states.shape[0] // slice_size):
             start_idx = i * slice_size
             end_idx = (i + 1) * slice_size
-            attn_slice = (
-                torch.matmul(query[start_idx:end_idx], key[start_idx:end_idx].transpose(1, 2)) * self.scale
-            )  # TODO: use baddbmm for better performance
+            if query.device.type == "mps":
+                # Better performance on mps (~20-25%)
+                attn_slice = (
+                    torch.einsum("b i d, b j d -> b i j", query[start_idx:end_idx], key[start_idx:end_idx])
+                    * self.scale
+                )
+            else:
+                attn_slice = (
+                    torch.matmul(query[start_idx:end_idx], key[start_idx:end_idx].transpose(1, 2)) * self.scale
+                )  # TODO: use baddbmm for better performance
             attn_slice = attn_slice.softmax(dim=-1)
-            attn_slice = torch.matmul(attn_slice, value[start_idx:end_idx])
+            if query.device.type == "mps":
+                attn_slice = torch.einsum("b i j, b j d -> b i d", attn_slice, value[start_idx:end_idx])
+            else:
+                attn_slice = torch.matmul(attn_slice, value[start_idx:end_idx])
 
             hidden_states[start_idx:end_idx] = attn_slice
 

@@ -2,6 +2,7 @@ from ..utils import is_flax_available, is_onnx_available, is_torch_available, is
 
 
 if is_torch_available():
+    from .dance_diffusion import DanceDiffusionPipeline
     from .ddim import DDIMPipeline
     from .ddpm import DDPMPipeline
     from .latent_diffusion_uncond import LDMPipeline

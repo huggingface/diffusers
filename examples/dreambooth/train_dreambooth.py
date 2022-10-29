@@ -32,7 +32,7 @@ torch.backends.cudnn.benchmark = True
 logger = get_logger(__name__)
 
 
-def parse_args():
+def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
         "--pretrained_model_name_or_path",
@@ -239,7 +239,11 @@ def parse_args():
         help="Path to json containing multiple concepts, will overwrite parameters like instance_prompt, class_prompt, etc.",
     )
 
-    args = parser.parse_args()
+    if input_args is not None:
+        args = parser.parse_args(input_args)
+    else:
+        args = parser.parse_args()
+
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
@@ -460,14 +464,33 @@ def main():
 
     # Load the tokenizer
     if args.tokenizer_name:
-        tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_name)
+        tokenizer = CLIPTokenizer.from_pretrained(
+            args.tokenizer_name,
+            revision=args.revision,
+        )
     elif args.pretrained_model_name_or_path:
-        tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer")
+        tokenizer = CLIPTokenizer.from_pretrained(
+            args.pretrained_model_name_or_path,
+            subfolder="tokenizer",
+            revision=args.revision,
+        )
 
     # Load models and create wrapper for stable diffusion
-    text_encoder = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder")
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
-    unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
+    text_encoder = CLIPTextModel.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="text_encoder",
+        revision=args.revision,
+    )
+    vae = AutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="vae",
+        revision=args.revision,
+    )
+    unet = UNet2DConditionModel.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="unet",
+        revision=args.revision,
+    )
 
     vae.requires_grad_(False)
     if not args.train_text_encoder:
@@ -677,6 +700,8 @@ def main():
     text_enc_context = nullcontext() if args.train_text_encoder else torch.no_grad()
     for epoch in range(args.num_train_epochs):
         unet.train()
+        if args.train_text_encoder:
+            text_encoder.train()
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Convert images to latent space
@@ -762,4 +787,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(args)
