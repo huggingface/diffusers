@@ -34,7 +34,11 @@ def detect_language(language_detection_pipeline: pipeline,
                                             top_k=1,
                                             truncation=True,
                                             max_length=128)
+<<<<<<< HEAD
         return preds[0]["label"]
+=======
+        return preds[0]['label']
+>>>>>>> a1bfa548b7e251212bb5097d3fe788973761d786
     else:
         detected_languages = []
         for p in prompt:
@@ -42,7 +46,11 @@ def detect_language(language_detection_pipeline: pipeline,
                                                 top_k=1,
                                                 truncation=True,
                                                 max_length=128)
+<<<<<<< HEAD
             detected_languages.append(preds[0]["label"])
+=======
+            detected_languages.append(preds[0]['label'])
+>>>>>>> a1bfa548b7e251212bb5097d3fe788973761d786
         return detected_languages
 
 def translate_prompt(prompt: str,
