@@ -298,7 +298,7 @@ def main(args):
 
     if accelerator.is_main_process:
         run = os.path.split(__file__)[-1].split(".")[0]
-        accelerator.init_trackers(project_name='rlhf-sd', init_kwargs={"wandb":{'entity':'wandb_gen'}})
+        accelerator.init_trackers(project_name='RLHF-Stable-Diffusion', init_kwargs={"wandb":{'entity':'wandb_gen'}})
         # accelerator.init_trackers(run)
         
         # table_cols = ['i' for i in range(args.eval_batch_size)]
@@ -392,6 +392,15 @@ def main(args):
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
                 # save the model
                 pipeline.save_pretrained(args.output_dir)
+                
+                # log wandb artifact
+                model_artifact = wandb.Artifact(
+                    f'{wandb.run.id}-{args.output_dir}', 
+                    type='model'
+                    )
+                model_artifact.add_dir(args.output_dir)
+                wandb.log_artifact(model_artifact, aliases=[f'step_{global_step}', f'epoch_{epoch}'])
+                
                 if args.push_to_hub:
                     repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=False)
         accelerator.wait_for_everyone()
