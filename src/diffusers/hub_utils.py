@@ -46,7 +46,7 @@ logger = logging.get_logger(__name__)
 
 MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "utils" / "model_card_template.md"
 SESSION_ID = uuid4().hex
-DISABLE_TELEMETRY = os.getenv("DISABLE_TELEMETRY", False).upper() in ENV_VARS_TRUE_VALUES
+DISABLE_TELEMETRY = os.getenv("DISABLE_TELEMETRY", "").upper() in ENV_VARS_TRUE_VALUES
 
 
 def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
