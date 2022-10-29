@@ -437,7 +437,10 @@ def main(args):
                 if pipeline is None:
                     pipeline = StableDiffusionPipeline.from_pretrained(
                         args.pretrained_model_name_or_path,
-                        vae=AutoencoderKL.from_pretrained(args.pretrained_vae_name_or_path or args.pretrained_model_name_or_path, revision=args.revision),
+                        vae=AutoencoderKL.from_pretrained(
+                            args.pretrained_vae_name_or_path or args.pretrained_model_name_or_path,
+                            revision=None if args.pretrained_vae_name_or_path else args.revision
+                        ),
                         torch_dtype=torch_dtype,
                         safety_checker=None,
                         revision=args.revision
@@ -667,7 +670,11 @@ def main(args):
                 args.pretrained_model_name_or_path,
                 unet=accelerator.unwrap_model(unet),
                 text_encoder=text_enc_model,
-                vae=AutoencoderKL.from_pretrained(args.pretrained_vae_name_or_path or args.pretrained_model_name_or_path, subfolder=None if args.pretrained_vae_name_or_path else "vae", revision=args.revision),
+                vae=AutoencoderKL.from_pretrained(
+                    args.pretrained_vae_name_or_path or args.pretrained_model_name_or_path,
+                    subfolder=None if args.pretrained_vae_name_or_path else "vae",
+                    revision=None if args.pretrained_vae_name_or_path else args.revision
+                ),
                 safety_checker=None,
                 scheduler=scheduler,
                 torch_dtype=torch.float16,
