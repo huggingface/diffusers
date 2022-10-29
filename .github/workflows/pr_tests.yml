@@ -55,6 +55,12 @@ jobs:
         name: pr_torch_cpu_test_reports
         path: reports
 
+    - name: Annotate with JUnit
+      uses: mikepenz/action-junit-report@v3
+      if: ${{ always() }}
+      with:
+        report_paths: '**/reports/*.junit.xml'
+
   run_tests_apple_m1:
     name: MPS tests on Apple M1
     runs-on: [ self-hosted, apple-m1 ]
