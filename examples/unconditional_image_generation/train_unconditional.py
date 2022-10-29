@@ -25,6 +25,7 @@ from torchvision.transforms import (
 )
 from tqdm.auto import tqdm
 
+import wandb
 
 logger = get_logger(__name__)
 
@@ -197,7 +198,8 @@ def main(args):
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
-        log_with="tensorboard",
+        log_with="wandb",
+        # log_with="tensorboard",
         logging_dir=logging_dir,
     )
 
@@ -296,7 +298,14 @@ def main(args):
 
     if accelerator.is_main_process:
         run = os.path.split(__file__)[-1].split(".")[0]
-        accelerator.init_trackers(run)
+        accelerator.init_trackers(project_name='rlhf-sd', init_kwargs={"wandb":{'entity':'wandb_gen'}})
+        # accelerator.init_trackers(run)
+        
+        # table_cols = ['i' for i in range(args.eval_batch_size)]
+        n_tbl_imgs = 6
+        table_cols = ['epoch', 'step'] + [f'sample_{i}' for i in range(n_tbl_imgs)]
+        # table_cols = ['sample']
+        # wandb_table = wandb.Table(columns=table_cols)
 
     global_step = 0
     for epoch in range(args.num_epochs):
@@ -341,6 +350,8 @@ def main(args):
                 logs["ema_decay"] = ema_model.decay
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
+        
+        accelerator.log({'epoch':epoch}, step=global_step)
         progress_bar.close()
 
         accelerator.wait_for_everyone()
@@ -357,11 +368,26 @@ def main(args):
                 # run pipeline in inference (sample random noise and denoise)
                 images = pipeline(generator=generator, batch_size=args.eval_batch_size, output_type="numpy").images
 
-                # denormalize the images and save to tensorboard
+                # denormalize the images and save to wandb
                 images_processed = (images * 255).round().astype("uint8")
-                accelerator.trackers[0].writer.add_images(
-                    "test_samples", images_processed.transpose(0, 3, 1, 2), epoch
-                )
+                # accelerator.trackers[0].log({"samples": wandb_images})
+                # wandb_images = [wandb.Image(i) for i in images_processed.transpose(0, 3, 1, 2)]
+                wandb_images = [[wandb.Image(i)] for i in images_processed]
+
+                print(epoch, step, global_step)
+                wandb_table = wandb.Table(columns=table_cols)
+                wandb_table.add_data(epoch, global_step, wandb_images[0], wandb_images[1], wandb_images[2], wandb_images[3], wandb_images[4],wandb_images[5])
+                
+                wandb.log({f'my_samples_{global_step}': wandb_table, 
+                    'img0':wandb_images[0],
+                    'img1':wandb_images[1],
+                    'img2':wandb_images[2],
+                    'img3':wandb_images[3],
+                    })
+
+                # accelerator.trackers[0].writer.add_images(
+                #     "test_samples", images_processed.transpose(0, 3, 1, 2), epoch
+                # )
 
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
                 # save the model
