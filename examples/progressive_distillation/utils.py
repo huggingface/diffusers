@@ -35,7 +35,7 @@ class DiffusionTrainingArgs:
     ema_inv_gamma: float = 1.0
     ema_power: float = 3 / 4
     ema_max_decay: float = 0.9999
-    batch_size: int = 16
+    batch_size: int = 64
     num_epochs: int = 500
 
 def get_train_transforms(training_config):
