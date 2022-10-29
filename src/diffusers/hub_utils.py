@@ -24,7 +24,6 @@ from uuid import uuid4
 from huggingface_hub import HfFolder, Repository, whoami
 
 from . import __version__
-from .pipeline_utils import DiffusionPipeline
 from .utils import ENV_VARS_TRUE_VALUES, deprecate, logging
 from .utils.import_utils import (
     _flax_version,
@@ -140,7 +139,7 @@ def init_git_repo(args, at_init: bool = False):
 
 def push_to_hub(
     args,
-    pipeline: DiffusionPipeline,
+    pipeline,
     repo: Repository,
     commit_message: Optional[str] = "End of training",
     blocking: bool = True,
