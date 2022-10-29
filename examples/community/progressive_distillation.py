@@ -62,6 +62,7 @@ class DistillationPipeline(DiffusionPipeline):
         ema_power=3 / 4,
         ema_max_decay=0.9999,
         use_ema=True,
+        permute_samples=(0, 1, 2),
         **kwargs,
     ):
         # Initialize our accelerator for training
@@ -126,11 +127,10 @@ class DistillationPipeline(DiffusionPipeline):
 
         # Train the student
         for epoch in range(epochs):
-            dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
             progress_bar = tqdm(total=len(train_data) // batch_size, disable=not accelerator.is_local_main_process)
             progress_bar.set_description(f"Epoch {epoch}")
-            with accelerator.accumulate(student):
-                for batch in dataloader:
+            for batch in train_dataloader:
+                with accelerator.accumulate(student):
                     noise = torch.randn(batch.shape).to(accelerator.device)
                     bsz = batch.shape[0]
                     # Sample a random timestep for each image
@@ -146,7 +146,9 @@ class DistillationPipeline(DiffusionPipeline):
                         z_t = alpha_t * batch + sigma_t * noise
 
                         # Take the first diffusion step with the teacher
-                        noise_pred_t = teacher(z_t, timesteps + 1).sample
+                        noise_pred_t = teacher(z_t.permute(*permute_samples), timesteps + 1).sample.permute(
+                            *permute_samples
+                        )
                         x_teacher_z_t = (alpha_t * z_t - sigma_t * noise_pred_t).clip(-1, 1)
 
                         # Add noise to the image based on noise scheduler a t=timesteps-1, to prepare for the next diffusion step
@@ -157,7 +159,11 @@ class DistillationPipeline(DiffusionPipeline):
                             z_t - alpha_t * x_teacher_z_t
                         )
                         # Take the second diffusion step with the teacher
-                        noise_pred_t_prime = teacher(z_t_prime.float(), timesteps).sample
+                        noise_pred_t_prime = teacher(z_t_prime.permute(*permute_samples), timesteps).sample.permute(
+                            *permute_samples
+                        )
+                        if permute_samples:
+                            noise_pred_t_prime = noise_pred_t_prime.permute(0, 2, 1)
                         rec_t_prime = (alpha_t_prime * z_t_prime - sigma_t_prime * noise_pred_t_prime).clip(-1, 1)
 
                         # V prediction per Appendix D
@@ -167,29 +173,29 @@ class DistillationPipeline(DiffusionPipeline):
                         x_teacher_z_t_prime = (z_t - alpha_t_prime2 * rec_t_prime) / sigma_t_prime2
                         z_t_prime_2 = alpha_t_prime2 * x_teacher_z_t_prime - sigma_t_prime2 * rec_t_prime
 
-                    noise_pred = student(z_t, timesteps).sample
+                    noise_pred = student(z_t.permute(*permute_samples), timesteps).sample.permute(*permute_samples)
                     w = torch.pow(1 + alpha_t_prime2 / sigma_t_prime2, gamma)
                     loss = F.mse_loss(noise_pred * w, z_t_prime_2 * w)
                     accelerator.backward(loss)
 
-                    if accelerator.sync_gradients:
-                        accelerator.clip_grad_norm_(student.parameters(), 1.0)
-                    optimizer.step()
-                    lr_scheduler.step()
-                    if use_ema:
-                        ema_model.step(student)
-                    optimizer.zero_grad()
+                if accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(student.parameters(), 1.0)
+                optimizer.step()
+                lr_scheduler.step()
+                if use_ema:
+                    ema_model.step(student)
+                optimizer.zero_grad()
 
-            # Checks if the accelerator has performed an optimization step behind the scenes
-            if accelerator.sync_gradients:
-                progress_bar.update(1)
-                global_step += 1
+                # Checks if the accelerator has performed an optimization step behind the scenes
+                if accelerator.sync_gradients:
+                    progress_bar.update(1)
+                    global_step += 1
 
-            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
-            if use_ema:
-                logs["ema_decay"] = ema_model.decay
-            progress_bar.set_postfix(**logs)
-            accelerator.log(logs, step=global_step)
+                logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
+                if use_ema:
+                    logs["ema_decay"] = ema_model.decay
+                progress_bar.set_postfix(**logs)
+                accelerator.log(logs, step=global_step)
             progress_bar.close()
 
             accelerator.wait_for_everyone()
