@@ -16,9 +16,7 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer, pip
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def detect_language(pipe: pipeline,
-                    prompt: Union[str, List[str]],
-                    batch_size: int) -> Union[str, List[str]]:
+def detect_language(pipe, prompt: Union[str, List[str]], batch_size):
     """helper function to detect language(s) of prompt"""
 
     if batch_size == 1:
