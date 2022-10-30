@@ -445,6 +445,7 @@ class PipelineSlowTests(unittest.TestCase):
         assert isinstance(images, list)
         assert isinstance(images[0], PIL.Image.Image)
 
+    # Make sure the test passes for different values of random seed
     @parameterized.expand([(0,), (4,)])
     def test_ddpm_ddim_equality(self, seed):
         model_id = "google/ddpm-cifar10-32"
@@ -469,12 +470,13 @@ class PipelineSlowTests(unittest.TestCase):
             num_inference_steps=1000,
             eta=1.0,
             output_type="numpy",
-            use_clipped_model_output=True,
+            use_clipped_model_output=True,  # Need to make DDIM match DDPM
         ).images
 
         # the values aren't exactly equal, but the images look the same visually
         assert np.abs(ddpm_image - ddim_image).max() < 1e-1
 
+    # Make sure the test passes for different values of random seed
     @parameterized.expand([(0,), (4,)])
     def test_ddpm_ddim_equality_batched(self, seed):
         model_id = "google/ddpm-cifar10-32"
@@ -501,7 +503,7 @@ class PipelineSlowTests(unittest.TestCase):
             num_inference_steps=1000,
             eta=1.0,
             output_type="numpy",
-            use_clipped_model_output=True,
+            use_clipped_model_output=True,  # Need to make DDIM match DDPM
         ).images
 
         # the values aren't exactly equal, but the images look the same visually
