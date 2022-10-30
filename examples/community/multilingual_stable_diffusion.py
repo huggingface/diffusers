@@ -16,24 +16,18 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer, pip
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def detect_language(language_detection_pipeline: pipeline,
+def detect_language(pipe: pipeline,
                     prompt: Union[str, List[str]],
                     batch_size: int) -> Union[str, List[str]]:
     """helper function to detect language(s) of prompt"""
 
     if batch_size == 1:
-        preds = language_detection_pipeline(prompt,
-                                            top_k=1,
-                                            truncation=True,
-                                            max_length=128)
+        preds = pipe(prompt, top_k=1, truncation=True, max_length=128)
         return preds[0]["label"]
     else:
         detected_languages = []
         for p in prompt:
-            preds = language_detection_pipeline(p,
-                                                top_k=1,
-                                                truncation=True,
-                                                max_length=128)
+            preds = pipe(p, top_k=1, truncation=True, max_length=128)
             detected_languages.append(preds[0]["label"])
 
         return detected_languages
