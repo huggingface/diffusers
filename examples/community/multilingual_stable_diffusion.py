@@ -254,18 +254,10 @@ class MultilingualStableDiffusion(DiffusionPipeline):
             )
 
         # detect language and translate if necessary
-        prompt_language = detect_language(
-            self.detection_pipeline,
-            prompt,
-            batch_size
-        )
+        prompt_language = detect_language(self.detection_pipeline, prompt, batch_size)
         if batch_size == 1 and prompt_language != "en":
-            prompt = translate_prompt(
-                prompt,
-                self.translation_tokenizer,
-                self.translation_model,
-                self.device
-            )
+            prompt = translate_prompt(prompt, self.translation_tokenizer, self.translation_model, self.device)
+
         if batch_size != 1:
             for index in range(batch_size):
                 if prompt_language[index] != "en":
