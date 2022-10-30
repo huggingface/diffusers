@@ -258,18 +258,6 @@ class MultilingualStableDiffusion(DiffusionPipeline):
         if batch_size == 1 and prompt_language != "en":
             prompt = translate_prompt(prompt, self.translation_tokenizer, self.translation_model, self.device)
 
-        if batch_size != 1:
-            for index in range(batch_size):
-                if prompt_language[index] != "en":
-                    p = translate_prompt(
-                        prompt[index],
-                        self.translation_tokenizer,
-                        self.translation_model,
-                        self.device
-                    )
-                    if isinstance(prompt, list):
-                        prompt[index] = p
-
         # get prompt text embeddings
         text_inputs = self.tokenizer(
             prompt,
