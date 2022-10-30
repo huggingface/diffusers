@@ -10,14 +10,9 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from diffusers.utils import deprecate, logging
-from transformers import (
-    CLIPFeatureExtractor, 
-    CLIPTextModel, 
-    CLIPTokenizer,
-    pipeline,
-    MBart50TokenizerFast,
-    MBartForConditionalGeneration
-)
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import pipeline
+from transformers import MBart50TokenizerFast, MBartForConditionalGeneration
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -123,6 +118,9 @@ class MultilingualStableDiffusion(DiffusionPipeline):
             )
 
         self.register_modules(
+            language_detection_pipeline=language_detection_pipeline,
+            translation_model=translation_model,
+            translation_tokenizer=translation_tokenizer,
             vae=vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
