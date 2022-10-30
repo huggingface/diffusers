@@ -10,10 +10,31 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from diffusers.utils import deprecate, logging
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer, pipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def detect_language(language_detection_pipeline: pipeline,
+                    prompt: Union[str, List[str]],
+                    batch_size: int) -> Union[str, List[str]]:
+    """Helper function to detect language(s) of prompt."""
+    if batch_size == 1:
+        preds = language_detection_pipeline(prompt,
+                                            top_k=1,
+                                            truncation=True,
+                                            max_length=128)
+        return preds[0]["label"]
+    else:
+        detected_languages = []
+        for p in prompt:
+            preds = language_detection_pipeline(p,
+                                                top_k=1,
+                                                truncation=True,
+                                                max_length=128)
+            detected_languages.append(preds[0]["label"])
+        return detected_languages
 
 
 class MultilingualStableDiffusion(DiffusionPipeline):
