@@ -19,7 +19,8 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 def detect_language(language_detection_pipeline: pipeline,
                     prompt: Union[str, List[str]],
                     batch_size: int) -> Union[str, List[str]]:
-    """Helper function to detect language(s) of prompt."""
+    """helper function to detect language(s) of prompt"""
+
     if batch_size == 1:
         preds = language_detection_pipeline(prompt,
                                             top_k=1,
@@ -34,6 +35,7 @@ def detect_language(language_detection_pipeline: pipeline,
                                                 truncation=True,
                                                 max_length=128)
             detected_languages.append(preds[0]["label"])
+
         return detected_languages
 
 
