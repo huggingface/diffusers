@@ -186,7 +186,7 @@ class MultilingualStableDiffusion(DiffusionPipeline):
 
         Args:
             prompt (`str` or `List[str]`):
-                The prompt or prompts to guide the image generation.
+                The prompt or prompts to guide the image generation. Can be in different languages.
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 512):
@@ -252,6 +252,22 @@ class MultilingualStableDiffusion(DiffusionPipeline):
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
+
+        # detect language and translate if necessary
+        prompt_language = detect_language(self.detection_pipeline, prompt, batch_size)
+        if (batch_size == 1) and (prompt_language != "en"):
+            prompt = translate_prompt(prompt=prompt,
+                                      translation_tokenizer=self.translation_tokenizer,
+                                      translation_model=self.translation_model,
+                                      device=self.device)
+        if batch_size != 1:
+            for index in range(batch_size):
+                if prompt_language[index] != "en":
+                    p = translate_prompt(prompt=prompt[index],
+                                         translation_tokenizer=self.translation_tokenizer,
+                                         translation_model=self.translation_model,
+                                         device=self.device)
+                    prompt[index] = p
 
         # get prompt text embeddings
         text_inputs = self.tokenizer(
