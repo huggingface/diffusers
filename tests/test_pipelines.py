@@ -20,8 +20,9 @@ import tempfile
 import unittest
 
 import numpy as np
-import PIL
 import torch
+
+import PIL
 from diffusers import (
     AutoencoderKL,
     DDIMPipeline,
