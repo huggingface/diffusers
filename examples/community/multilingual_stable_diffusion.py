@@ -324,13 +324,10 @@ class MultilingualStableDiffusion(DiffusionPipeline):
                     negative_prompt_languages = detect_language(self.detection_pipeline, negative_prompt, batch_size)
                     for index in range(batch_size):
                         if negative_prompt_languages[index] != "en":
-                                p = translate_prompt(
-                                    negative_prompt[index],
-                                    self.translation_tokenizer,
-                                    self.translation_model,
-                                    self.device
-                                )
-                                negative_prompt[index] = p
+                            p = translate_prompt(
+                                negative_prompt[index], self.translation_tokenizer, self.translation_model, self.device
+                            )
+                            negative_prompt[index] = p
                 uncond_tokens = negative_prompt
 
             max_length = text_input_ids.shape[-1]
