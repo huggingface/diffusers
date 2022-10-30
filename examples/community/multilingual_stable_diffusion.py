@@ -23,7 +23,7 @@ from transformers import (
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def detect_language(pipe, prompt: Union[str, List[str]], batch_size):
+def detect_language(pipe, prompt, batch_size):
     """helper function to detect language(s) of prompt"""
 
     if batch_size == 1:
@@ -252,6 +252,31 @@ class MultilingualStableDiffusion(DiffusionPipeline):
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
+
+        # detect language and translate if necessary
+        prompt_language = detect_language(
+            self.detection_pipeline,
+            prompt,
+            batch_size
+        )
+        if batch_size == 1 and prompt_language != "en":
+            prompt = translate_prompt(
+                prompt,
+                self.translation_tokenizer,
+                self.translation_model,
+                self.device
+            )
+        if batch_size != 1:
+            for index in range(batch_size):
+                if prompt_language[index] != "en":
+                    p = translate_prompt(
+                        prompt[index],
+                        self.translation_tokenizer,
+                        self.translation_model,
+                        self.device
+                    )
+                    if isinstance(prompt, list):
+                        prompt[index] = p
 
         # get prompt text embeddings
         text_inputs = self.tokenizer(
