@@ -10,9 +10,14 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from diffusers.utils import deprecate, logging
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
-from transformers import pipeline
-from transformers import MBart50TokenizerFast, MBartForConditionalGeneration
+from transformers import (
+    CLIPFeatureExtractor,
+    CLIPTextModel,
+    CLIPTokenizer,
+    MBart50TokenizerFast,
+    MBartForConditionalGeneration,
+    pipeline,
+)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
