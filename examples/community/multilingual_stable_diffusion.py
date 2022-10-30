@@ -10,7 +10,14 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from diffusers.utils import deprecate, logging
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import (
+    CLIPFeatureExtractor, 
+    CLIPTextModel, 
+    CLIPTokenizer,
+    pipeline,
+    MBart50TokenizerFast,
+    MBartForConditionalGeneration
+)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -43,12 +50,19 @@ def translate_prompt(prompt, translation_tokenizer, translation_model, device):
 
 class MultilingualStableDiffusion(DiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation using Stable Diffusion.
+    Pipeline for text-to-image generation using Stable Diffusion in different languages.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
+        language_detection_pipeline ([`pipeline`]):
+            Transformers pipeline to detect prompt's language.
+        translation_model ([`MBartForConditionalGeneration`]):
+            Model to translate prompt to English, if necessary. Please refer to the 
+            [model card](https://huggingface.co/docs/transformers/model_doc/mbart) for details.
+        translation_tokenizer ([`MBart50TokenizerFast`]):
+            Tokenizer of the translation model.
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
         text_encoder ([`CLIPTextModel`]):
@@ -71,6 +85,9 @@ class MultilingualStableDiffusion(DiffusionPipeline):
 
     def __init__(
         self,
+        language_detection_pipeline: pipeline,
+        translation_model: MBartForConditionalGeneration,
+        translation_tokenizer: MBart50TokenizerFast,
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
