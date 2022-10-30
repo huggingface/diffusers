@@ -470,7 +470,7 @@ class PipelineSlowTests(unittest.TestCase):
             num_inference_steps=1000,
             eta=1.0,
             output_type="numpy",
-            use_clipped_model_output=True,  # Need to make DDIM match DDPM
+            use_clipped_model_output=True,  # Need this to make DDIM match DDPM
         ).images
 
         # the values aren't exactly equal, but the images look the same visually
@@ -503,7 +503,7 @@ class PipelineSlowTests(unittest.TestCase):
             num_inference_steps=1000,
             eta=1.0,
             output_type="numpy",
-            use_clipped_model_output=True,  # Need to make DDIM match DDPM
+            use_clipped_model_output=True,  # Need this to make DDIM match DDPM
         ).images
 
         # the values aren't exactly equal, but the images look the same visually
