@@ -56,10 +56,10 @@ class MultilingualStableDiffusion(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
-        language_detection_pipeline ([`pipeline`]):
+        detection_pipeline ([`pipeline`]):
             Transformers pipeline to detect prompt's language.
         translation_model ([`MBartForConditionalGeneration`]):
-            Model to translate prompt to English, if necessary. Please refer to the 
+            Model to translate prompt to English, if necessary. Please refer to the
             [model card](https://huggingface.co/docs/transformers/model_doc/mbart) for details.
         translation_tokenizer ([`MBart50TokenizerFast`]):
             Tokenizer of the translation model.
@@ -85,7 +85,7 @@ class MultilingualStableDiffusion(DiffusionPipeline):
 
     def __init__(
         self,
-        language_detection_pipeline: pipeline,
+        detection_pipeline: pipeline,
         translation_model: MBartForConditionalGeneration,
         translation_tokenizer: MBart50TokenizerFast,
         vae: AutoencoderKL,
@@ -123,7 +123,7 @@ class MultilingualStableDiffusion(DiffusionPipeline):
             )
 
         self.register_modules(
-            language_detection_pipeline=language_detection_pipeline,
+            detection_pipeline=detection_pipeline,
             translation_model=translation_model,
             translation_tokenizer=translation_tokenizer,
             vae=vae,
