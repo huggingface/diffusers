@@ -164,5 +164,3 @@ tags
 
 # DS_Store (MacOS)
 .DS_Store
-# RL pipelines may produce mp4 outputs
-*.mp4
