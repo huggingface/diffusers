@@ -345,6 +345,7 @@ def parse_args(input_args=None):
             " https://pytorch.org/docs/stable/generated/torch.optim.Optimizer.zero_grad.html"
         ),
     )
+    parser.add_argument("--save_model_every_n_steps", type=int)
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -508,6 +509,33 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
         return f"{username}/{model_id}"
     else:
         return f"{organization}/{model_id}"
+
+
+def save_model(accelerator, unet, text_encoder, args, step=None):
+    unet = accelerator.unwrap_model(unet)
+    text_encoder = accelerator.unwrap_model(text_encoder)
+
+    if step == None:
+        folder = args.output_dir
+    else:
+        folder = args.output_dir + "-Step-" + str(step)
+
+    print("Saving Model Checkpoint...")
+    print("Directory: " + folder)
+
+    # Create the pipeline using using the trained modules and save it.
+    if accelerator.is_main_process:
+        pipeline = StableDiffusionPipeline.from_pretrained(
+            args.pretrained_model_name_or_path,
+            use_auth_token=access_token,
+            unet=unet,
+            text_encoder=text_encoder,
+            revision=args.revision,
+        )
+        pipeline.save_pretrained(folder)
+
+        if args.push_to_hub:
+            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
 
 
 def main(args):
@@ -944,19 +972,12 @@ def main(args):
             if global_step >= args.max_train_steps:
                 break
 
-    # Create the pipeline using using the trained modules and save it.
-    accelerator.wait_for_everyone()
-    if accelerator.is_main_process:
-        pipeline = DiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path,
-            unet=accelerator.unwrap_model(unet),
-            text_encoder=accelerator.unwrap_model(text_encoder),
-            revision=args.revision,
-        )
-        pipeline.save_pretrained(args.output_dir)
+            if args.save_model_every_n_steps != None and (global_step % args.save_model_every_n_steps) == 0:
+                save_model(accelerator, unet, text_encoder, args, global_step)
 
-        if args.push_to_hub:
-            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+        accelerator.wait_for_everyone()
+
+    save_model(accelerator, unet, text_encoder, args, step=None)
 
     accelerator.end_training()
 
