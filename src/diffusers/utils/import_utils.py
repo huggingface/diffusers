@@ -19,6 +19,8 @@ import os
 import sys
 from collections import OrderedDict
 
+import torch
+
 from packaging import version
 
 from . import logging
@@ -171,6 +173,8 @@ except importlib_metadata.PackageNotFoundError:
 _xformers_available = importlib.util.find_spec("xformers") is not None
 try:
     _xformers_version = importlib_metadata.version("xformers")
+    if torch.__version__ < version.Version("1.12"):
+        raise ValueError("PyTorch should be >= 1.12")
     logger.debug(f"Successfully imported xformers version {_xformers_version}")
 except importlib_metadata.PackageNotFoundError:
     _xformers_available = False
