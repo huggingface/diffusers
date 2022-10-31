@@ -78,7 +78,6 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: int,
         sample: torch.FloatTensor,
-        generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
         """
@@ -90,7 +89,6 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
-            generator (`torch.Generator`, `optional`): Random number generator.
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:

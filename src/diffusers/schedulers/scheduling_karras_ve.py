@@ -157,7 +157,6 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
         sigma_hat: float,
         sigma_prev: float,
         sample_hat: torch.FloatTensor,
-        generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
     ) -> Union[KarrasVeOutput, Tuple]:
         """
@@ -169,7 +168,6 @@ class KarrasVeScheduler(SchedulerMixin, ConfigMixin):
             sigma_hat (`float`): TODO
             sigma_prev (`float`): TODO
             sample_hat (`torch.FloatTensor`): TODO
-            generator (`torch.Generator`, optional): Random number generator.
             return_dict (`bool`): option for returning tuple rather than KarrasVeOutput class
 
             KarrasVeOutput: updated sample in the diffusion chain and derivative (TODO double check).
