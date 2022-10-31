@@ -27,11 +27,11 @@ jobs:
             runner: docker-cpu
             image: diffusers/diffusers-pytorch-cpu
             report: torch_cpu
-          - name: Fast Flax TPU tests on Ubuntu
+          - name: Fast Flax CPU tests on Ubuntu
             framework: flax
-            runner: docker-tpu
-            image: diffusers/diffusers-flax-tpu
-            report: flax_tpu
+            runner: docker-cpu
+            image: diffusers/diffusers-flax-cpu
+            report: flax_cpu
           - name: Fast ONNXRuntime CPU tests on Ubuntu
             framework: onnxruntime
             runner: docker-cpu
@@ -76,7 +76,7 @@ jobs:
     - name: Run fast Flax TPU tests
       if: ${{ matrix.config.framework == 'flax' }}
       run: |
-        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Flax" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
