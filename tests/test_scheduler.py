@@ -81,6 +81,9 @@ class SchedulerCommonTest(unittest.TestCase):
         num_inference_steps = kwargs.pop("num_inference_steps", None)
 
         for scheduler_class in self.scheduler_classes:
+            if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
+                time_step = float(time_step)
+
             sample = self.dummy_sample
             residual = 0.1 * sample
 
@@ -98,11 +101,11 @@ class SchedulerCommonTest(unittest.TestCase):
                 kwargs["num_inference_steps"] = num_inference_steps
 
             # Set the seed before state as some schedulers are stochastic like EulerAncestralDiscreteScheduler, EulerDiscreteScheduler
-            torch.manual_seed(0)
-            output = scheduler.step(residual, time_step, sample, **kwargs).prev_sample
+            generator = torch.Generator().manual_seed(0)
+            output = scheduler.step(residual, time_step, sample, generator=generator, **kwargs).prev_sample
 
-            torch.manual_seed(0)
-            new_output = new_scheduler.step(residual, time_step, sample, **kwargs).prev_sample
+            generator = torch.Generator().manual_seed(0)
+            new_output = new_scheduler.step(residual, time_step, sample, generator=generator, **kwargs).prev_sample
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
@@ -113,6 +116,9 @@ class SchedulerCommonTest(unittest.TestCase):
         num_inference_steps = kwargs.pop("num_inference_steps", None)
 
         for scheduler_class in self.scheduler_classes:
+            if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
+                time_step = float(time_step)
+
             sample = self.dummy_sample
             residual = 0.1 * sample
 
@@ -129,10 +135,11 @@ class SchedulerCommonTest(unittest.TestCase):
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
-            torch.manual_seed(0)
-            output = scheduler.step(residual, time_step, sample, **kwargs).prev_sample
-            torch.manual_seed(0)
-            new_output = new_scheduler.step(residual, time_step, sample, **kwargs).prev_sample
+            generator = torch.Generator().manual_seed(0)
+            output = scheduler.step(residual, time_step, sample, generator=generator, **kwargs).prev_sample
+
+            generator = torch.Generator().manual_seed(0)
+            new_output = new_scheduler.step(residual, time_step, sample, generator=generator, **kwargs).prev_sample
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
@@ -148,6 +155,10 @@ class SchedulerCommonTest(unittest.TestCase):
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
+            timestep = 1
+            if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
+                timestep = float(timestep)
+
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
                 new_scheduler = scheduler_class.from_config(tmpdirname)
@@ -158,10 +169,11 @@ class SchedulerCommonTest(unittest.TestCase):
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
-            torch.manual_seed(0)
-            output = scheduler.step(residual, 1, sample, **kwargs).prev_sample
-            torch.manual_seed(0)
-            new_output = new_scheduler.step(residual, 1, sample, **kwargs).prev_sample
+            generator = torch.Generator().manual_seed(0)
+            output = scheduler.step(residual, timestep, sample, generator=generator, **kwargs).prev_sample
+
+            generator = torch.Generator().manual_seed(0)
+            new_output = new_scheduler.step(residual, timestep, sample, generator=generator, **kwargs).prev_sample
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
@@ -170,7 +182,14 @@ class SchedulerCommonTest(unittest.TestCase):
 
         num_inference_steps = kwargs.pop("num_inference_steps", None)
 
+        timestep_0 = 0
+        timestep_1 = 1
+
         for scheduler_class in self.scheduler_classes:
+            if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
+                timestep_0 = float(timestep_0)
+                timestep_1 = float(timestep_1)
+
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
@@ -182,8 +201,8 @@ class SchedulerCommonTest(unittest.TestCase):
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
-            output_0 = scheduler.step(residual, 0, sample, **kwargs).prev_sample
-            output_1 = scheduler.step(residual, 1, sample, **kwargs).prev_sample
+            output_0 = scheduler.step(residual, timestep_0, sample, **kwargs).prev_sample
+            output_1 = scheduler.step(residual, timestep_1, sample, **kwargs).prev_sample
 
             self.assertEqual(output_0.shape, sample.shape)
             self.assertEqual(output_0.shape, output_1.shape)
@@ -223,6 +242,9 @@ class SchedulerCommonTest(unittest.TestCase):
             timestep = 1
 
         for scheduler_class in self.scheduler_classes:
+            if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
+                timestep = float(timestep)
+
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
@@ -235,8 +257,8 @@ class SchedulerCommonTest(unittest.TestCase):
                 kwargs["num_inference_steps"] = num_inference_steps
 
             # Set the seed before state as some schedulers are stochastic like EulerAncestralDiscreteScheduler, EulerDiscreteScheduler
-            torch.manual_seed(0)
-            outputs_dict = scheduler.step(residual, timestep, sample, **kwargs)
+            generator = torch.Generator().manual_seed(0)
+            outputs_dict = scheduler.step(residual, timestep, sample, generator=generator, **kwargs)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 scheduler.set_timesteps(num_inference_steps)
@@ -244,8 +266,10 @@ class SchedulerCommonTest(unittest.TestCase):
                 kwargs["num_inference_steps"] = num_inference_steps
 
             # Set the seed before state as some schedulers are stochastic like EulerAncestralDiscreteScheduler, EulerDiscreteScheduler
-            torch.manual_seed(0)
-            outputs_tuple = scheduler.step(residual, timestep, sample, return_dict=False, **kwargs)
+            generator = torch.Generator().manual_seed(0)
+            outputs_tuple = scheduler.step(
+                residual, timestep, sample, generator=generator, return_dict=False, **kwargs
+            )
 
             recursive_check(outputs_tuple, outputs_dict)
 
@@ -972,16 +996,14 @@ class EulerDiscreteSchedulerTest(SchedulerCommonTest):
         for schedule in ["linear", "scaled_linear"]:
             self.check_over_configs(beta_schedule=schedule)
 
-    def test_time_indices(self):
-        for t in [0, 500, 800]:
-            self.check_over_forward(time_step=t)
-
     def test_full_loop_no_noise(self):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
         scheduler = scheduler_class(**scheduler_config)
 
         scheduler.set_timesteps(self.num_inference_steps)
+
+        generator = torch.Generator().manual_seed(0)
 
         model = self.dummy_model()
         sample = self.dummy_sample_deter * scheduler.init_noise_sigma
@@ -991,7 +1013,7 @@ class EulerDiscreteSchedulerTest(SchedulerCommonTest):
 
             model_output = model(sample, t)
 
-            output = scheduler.step(model_output, t, sample)
+            output = scheduler.step(model_output, t, sample, generator=generator)
             sample = output.prev_sample
 
         result_sum = torch.sum(torch.abs(sample))
@@ -1030,17 +1052,14 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
         for schedule in ["linear", "scaled_linear"]:
             self.check_over_configs(beta_schedule=schedule)
 
-    def test_time_indices(self):
-        for t in [0, 500, 800]:
-            self.check_over_forward(time_step=t)
-
     def test_full_loop_no_noise(self):
-        torch.manual_seed(0)
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
         scheduler = scheduler_class(**scheduler_config)
 
         scheduler.set_timesteps(self.num_inference_steps)
+
+        generator = torch.Generator().manual_seed(0)
 
         model = self.dummy_model()
         sample = self.dummy_sample_deter * scheduler.init_noise_sigma
@@ -1050,14 +1069,14 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
 
             model_output = model(sample, t)
 
-            output = scheduler.step(model_output, t, sample)
+            output = scheduler.step(model_output, t, sample, generator=generator)
             sample = output.prev_sample
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
-
-        assert abs(result_sum.item() - 144.3660) < 1e-2
-        assert abs(result_mean.item() - 0.1880) < 1e-3
+        print(result_sum, result_mean)
+        assert abs(result_sum.item() - 152.3192) < 1e-2
+        assert abs(result_mean.item() - 0.1983) < 1e-3
 
 
 class IPNDMSchedulerTest(SchedulerCommonTest):
