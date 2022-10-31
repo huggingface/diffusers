@@ -75,7 +75,6 @@ class SchedulerCommonTest(unittest.TestCase):
         return model
 
     def check_over_configs(self, time_step=0, **config):
-        print(config)
         kwargs = dict(self.forward_default_kwargs)
 
         num_inference_steps = kwargs.pop("num_inference_steps", None)
@@ -100,7 +99,7 @@ class SchedulerCommonTest(unittest.TestCase):
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
-            # Set the seed before state as some schedulers are stochastic like EulerAncestralDiscreteScheduler, EulerDiscreteScheduler
+            # Set the seed before step() as some schedulers are stochastic like EulerAncestralDiscreteScheduler, EulerDiscreteScheduler
             generator = torch.Generator().manual_seed(0)
             output = scheduler.step(residual, time_step, sample, generator=generator, **kwargs).prev_sample
 
