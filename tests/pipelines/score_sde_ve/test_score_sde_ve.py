@@ -72,7 +72,7 @@ class ScoreSdeVeipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 class ScoreSdeVePipelineIntegrationTests(unittest.TestCase):
     def test_inference(self):
         model_id = "google/ncsnpp-church-256"
-        model = UNet2DModel.from_pretrained(model_id)
+        model = UNet2DModel.from_pretrained(model_id, device_map="auto")
 
         scheduler = ScoreSdeVeScheduler.from_config(model_id)
 

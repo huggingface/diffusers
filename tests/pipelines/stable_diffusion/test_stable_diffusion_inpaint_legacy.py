@@ -368,6 +368,7 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             model_id,
             safety_checker=None,
+            device_map="auto",
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -406,13 +407,13 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
         )
         expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
-        lms = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
-
         model_id = "CompVis/stable-diffusion-v1-4"
+        lms = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler")
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             model_id,
             scheduler=lms,
             safety_checker=None,
+            device_map="auto",
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -469,7 +470,7 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
         )
 
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16
+            "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16, device_map="auto"
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

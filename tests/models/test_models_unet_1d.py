@@ -28,7 +28,7 @@ class UnetModel1DTests(unittest.TestCase):
     @slow
     def test_unet_1d_maestro(self):
         model_id = "harmonai/maestro-150k"
-        model = UNet1DModel.from_pretrained(model_id, subfolder="unet")
+        model = UNet1DModel.from_pretrained(model_id, subfolder="unet", device_map="auto")
         model.to(torch_device)
 
         sample_size = 65536

@@ -4,27 +4,35 @@ import math
 import os
 import random
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 import torch.utils.checkpoint
 
-from accelerate import Accelerator
-from accelerate.logging import get_logger
-from accelerate.utils import set_seed
+import jax
+import jax.numpy as jnp
+import optax
+import transformers
 from datasets import load_dataset
-from diffusers import AutoencoderKL, DDPMScheduler, PNDMScheduler, StableDiffusionPipeline, UNet2DConditionModel
-from diffusers.optimization import get_scheduler
-from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
+from diffusers import (
+    FlaxAutoencoderKL,
+    FlaxDDPMScheduler,
+    FlaxPNDMScheduler,
+    FlaxStableDiffusionPipeline,
+    FlaxUNet2DConditionModel,
+)
+from diffusers.pipelines.stable_diffusion import FlaxStableDiffusionSafetyChecker
+from flax import jax_utils
+from flax.training import train_state
+from flax.training.common_utils import shard
 from huggingface_hub import HfFolder, Repository, whoami
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
 
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def parse_args():
@@ -92,7 +100,7 @@ def parse_args():
         default=None,
         help="The directory where the downloaded models and datasets will be stored.",
     )
-    parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
+    parser.add_argument("--seed", type=int, default=0, help="A seed for reproducible training.")
     parser.add_argument(
         "--resolution",
         type=int,
@@ -123,17 +131,6 @@ def parse_args():
         help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
     )
     parser.add_argument(
-        "--gradient_accumulation_steps",
-        type=int,
-        default=1,
-        help="Number of updates steps to accumulate before performing a backward/update pass.",
-    )
-    parser.add_argument(
-        "--gradient_checkpointing",
-        action="store_true",
-        help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.",
-    )
-    parser.add_argument(
         "--learning_rate",
         type=float,
         default=1e-4,
@@ -154,13 +151,6 @@ def parse_args():
             ' "constant", "constant_with_warmup"]'
         ),
     )
-    parser.add_argument(
-        "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
-    )
-    parser.add_argument(
-        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
-    )
-    parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
@@ -184,6 +174,16 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--report_to",
+        type=str,
+        default="tensorboard",
+        help=(
+            'The integration to report the results and logs to. Supported platforms are `"tensorboard"`,'
+            ' `"wandb"` and `"comet_ml"`. Use `"all"` (default) to report to all integrations.'
+            "Only applicable when `--with_tracking` is passed."
+        ),
+    )
+    parser.add_argument(
         "--mixed_precision",
         type=str,
         default="no",
@@ -192,16 +192,6 @@ def parse_args():
             "Whether to use mixed precision. Choose"
             "between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >= 1.10."
             "and an Nvidia Ampere GPU."
-        ),
-    )
-    parser.add_argument(
-        "--report_to",
-        type=str,
-        default="tensorboard",
-        help=(
-            'The integration to report the results and logs to. Supported platforms are `"tensorboard"`,'
-            ' `"wandb"` and `"comet_ml"`. Use `"all"` (default) to report to all integrations.'
-            "Only applicable when `--with_tracking` is passed."
         ),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
@@ -233,92 +223,30 @@ dataset_name_mapping = {
 }
 
 
-# Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14
-class EMAModel:
-    """
-    Exponential Moving Average of models weights
-    """
-
-    def __init__(self, parameters: Iterable[torch.nn.Parameter], decay=0.9999):
-        parameters = list(parameters)
-        self.shadow_params = [p.clone().detach() for p in parameters]
-
-        self.decay = decay
-        self.optimization_step = 0
-
-    def get_decay(self, optimization_step):
-        """
-        Compute the decay factor for the exponential moving average.
-        """
-        value = (1 + optimization_step) / (10 + optimization_step)
-        return 1 - min(self.decay, value)
-
-    @torch.no_grad()
-    def step(self, parameters):
-        parameters = list(parameters)
-
-        self.optimization_step += 1
-        self.decay = self.get_decay(self.optimization_step)
-
-        for s_param, param in zip(self.shadow_params, parameters):
-            if param.requires_grad:
-                tmp = self.decay * (s_param - param)
-                s_param.sub_(tmp)
-            else:
-                s_param.copy_(param)
-
-        torch.cuda.empty_cache()
-
-    def copy_to(self, parameters: Iterable[torch.nn.Parameter]) -> None:
-        """
-        Copy current averaged parameters into given collection of parameters.
-
-        Args:
-            parameters: Iterable of `torch.nn.Parameter`; the parameters to be
-                updated with the stored moving averages. If `None`, the
-                parameters with which this `ExponentialMovingAverage` was
-                initialized will be used.
-        """
-        parameters = list(parameters)
-        for s_param, param in zip(self.shadow_params, parameters):
-            param.data.copy_(s_param.data)
-
-    def to(self, device=None, dtype=None) -> None:
-        r"""Move internal buffers of the ExponentialMovingAverage to `device`.
-
-        Args:
-            device: like `device` argument to `torch.Tensor.to`
-        """
-        # .to() on the tensors handles None correctly
-        self.shadow_params = [
-            p.to(device=device, dtype=dtype) if p.is_floating_point() else p.to(device=device)
-            for p in self.shadow_params
-        ]
+def get_params_to_save(params):
+    return jax.device_get(jax.tree_util.tree_map(lambda x: x[0], params))
 
 
 def main():
     args = parse_args()
-    logging_dir = os.path.join(args.output_dir, args.logging_dir)
-
-    accelerator = Accelerator(
-        gradient_accumulation_steps=args.gradient_accumulation_steps,
-        mixed_precision=args.mixed_precision,
-        log_with=args.report_to,
-        logging_dir=logging_dir,
-    )
 
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO,
     )
+    # Setup logging, we only want one process per machine to log things on the screen.
+    logger.setLevel(logging.INFO if jax.process_index() == 0 else logging.ERROR)
+    if jax.process_index() == 0:
+        transformers.utils.logging.set_verbosity_info()
+    else:
+        transformers.utils.logging.set_verbosity_error()
 
-    # If passed along, set the training seed now.
     if args.seed is not None:
         set_seed(args.seed)
 
     # Handle the repository creation
-    if accelerator.is_main_process:
+    if jax.process_index() == 0:
         if args.push_to_hub:
             if args.hub_model_id is None:
                 repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
@@ -333,46 +261,6 @@ def main():
                     gitignore.write("epoch_*\n")
         elif args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
-
-    # Load models and create wrapper for stable diffusion
-    tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer")
-    text_encoder = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder")
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
-    unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
-
-    # Freeze vae and text_encoder
-    vae.requires_grad_(False)
-    text_encoder.requires_grad_(False)
-
-    if args.gradient_checkpointing:
-        unet.enable_gradient_checkpointing()
-
-    if args.scale_lr:
-        args.learning_rate = (
-            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
-        )
-
-    # Initialize the optimizer
-    if args.use_8bit_adam:
-        try:
-            import bitsandbytes as bnb
-        except ImportError:
-            raise ImportError(
-                "Please install bitsandbytes to use 8-bit Adam. You can do so by running `pip install bitsandbytes`"
-            )
-
-        optimizer_cls = bnb.optim.AdamW8bit
-    else:
-        optimizer_cls = torch.optim.AdamW
-
-    optimizer = optimizer_cls(
-        unet.parameters(),
-        lr=args.learning_rate,
-        betas=(args.adam_beta1, args.adam_beta2),
-        weight_decay=args.adam_weight_decay,
-        eps=args.adam_epsilon,
-    )
-    noise_scheduler = DDPMScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
 
     # Get the datasets: you can either provide your own training and evaluation files (see below)
     # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
@@ -456,7 +344,7 @@ def main():
 
         return examples
 
-    with accelerator.main_process_first():
+    if jax.process_index() == 0:
         if args.max_train_samples is not None:
             dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
         # Set the training transforms
@@ -466,155 +354,204 @@ def main():
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
         input_ids = [example["input_ids"] for example in examples]
-        padded_tokens = tokenizer.pad({"input_ids": input_ids}, padding=True, return_tensors="pt")
-        return {
+
+        padded_tokens = tokenizer.pad(
+            {"input_ids": input_ids}, padding="max_length", max_length=tokenizer.model_max_length, return_tensors="pt"
+        )
+        batch = {
             "pixel_values": pixel_values,
             "input_ids": padded_tokens.input_ids,
-            "attention_mask": padded_tokens.attention_mask,
         }
+        batch = {k: v.numpy() for k, v in batch.items()}
 
+        return batch
+
+    total_train_batch_size = args.train_batch_size * jax.local_device_count()
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, shuffle=True, collate_fn=collate_fn, batch_size=args.train_batch_size
+        train_dataset, shuffle=True, collate_fn=collate_fn, batch_size=total_train_batch_size, drop_last=True
     )
 
-    # Scheduler and math around the number of training steps.
-    overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
-    if args.max_train_steps is None:
-        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
-        overrode_max_train_steps = True
-
-    lr_scheduler = get_scheduler(
-        args.lr_scheduler,
-        optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
-        num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
-    )
-
-    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, train_dataloader, lr_scheduler
-    )
-
-    weight_dtype = torch.float32
+    weight_dtype = jnp.float32
     if args.mixed_precision == "fp16":
-        weight_dtype = torch.float16
+        weight_dtype = jnp.float16
     elif args.mixed_precision == "bf16":
-        weight_dtype = torch.bfloat16
+        weight_dtype = jnp.bfloat16
 
-    # Move text_encode and vae to gpu.
-    # For mixed precision training we cast the text_encoder and vae weights to half-precision
-    # as these models are only used for inference, keeping weights in full precision is not required.
-    text_encoder.to(accelerator.device, dtype=weight_dtype)
-    vae.to(accelerator.device, dtype=weight_dtype)
+    # Load models and create wrapper for stable diffusion
+    tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer")
+    text_encoder = FlaxCLIPTextModel.from_pretrained("openai/clip-vit-large-patch14", dtype=weight_dtype)
+    vae, vae_params = FlaxAutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="vae", dtype=weight_dtype
+    )
+    unet, unet_params = FlaxUNet2DConditionModel.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="unet", dtype=weight_dtype
+    )
 
-    # Create EMA for the unet.
-    if args.use_ema:
-        ema_unet = EMAModel(unet.parameters())
+    # Optimization
+    if args.scale_lr:
+        args.learning_rate = args.learning_rate * total_train_batch_size
 
-    # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
-    if overrode_max_train_steps:
-        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
-    # Afterwards we recalculate our number of training epochs
-    args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
+    constant_scheduler = optax.constant_schedule(args.learning_rate)
 
-    # We need to initialize the trackers we use, and also store our configuration.
-    # The trackers initializes automatically on the main process.
-    if accelerator.is_main_process:
-        accelerator.init_trackers("text2image-fine-tune", config=vars(args))
+    adamw = optax.adamw(
+        learning_rate=constant_scheduler,
+        b1=args.adam_beta1,
+        b2=args.adam_beta2,
+        eps=args.adam_epsilon,
+        weight_decay=args.adam_weight_decay,
+    )
+
+    optimizer = optax.chain(
+        optax.clip_by_global_norm(args.max_grad_norm),
+        adamw,
+    )
+
+    state = train_state.TrainState.create(apply_fn=unet.__call__, params=unet_params, tx=optimizer)
+
+    noise_scheduler = FlaxDDPMScheduler(
+        beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000
+    )
+
+    # Initialize our training
+    rng = jax.random.PRNGKey(args.seed)
+    train_rngs = jax.random.split(rng, jax.local_device_count())
+
+    def train_step(state, text_encoder_params, vae_params, batch, train_rng):
+        dropout_rng, sample_rng, new_train_rng = jax.random.split(train_rng, 3)
+
+        def compute_loss(params):
+            # Convert images to latent space
+            vae_outputs = vae.apply(
+                {"params": vae_params}, batch["pixel_values"], deterministic=True, method=vae.encode
+            )
+            latents = vae_outputs.latent_dist.sample(sample_rng)
+            # (NHWC) -> (NCHW)
+            latents = jnp.transpose(latents, (0, 3, 1, 2))
+            latents = latents * 0.18215
+
+            # Sample noise that we'll add to the latents
+            noise_rng, timestep_rng = jax.random.split(sample_rng)
+            noise = jax.random.normal(noise_rng, latents.shape)
+            # Sample a random timestep for each image
+            bsz = latents.shape[0]
+            timesteps = jax.random.randint(
+                timestep_rng,
+                (bsz,),
+                0,
+                noise_scheduler.config.num_train_timesteps,
+            )
+
+            # Add noise to the latents according to the noise magnitude at each timestep
+            # (this is the forward diffusion process)
+            noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+
+            # Get the text embedding for conditioning
+            encoder_hidden_states = text_encoder(
+                batch["input_ids"],
+                params=text_encoder_params,
+                train=False,
+            )[0]
+
+            # Predict the noise residual and compute loss
+            unet_outputs = unet.apply({"params": params}, noisy_latents, timesteps, encoder_hidden_states, train=True)
+            noise_pred = unet_outputs.sample
+            loss = (noise - noise_pred) ** 2
+            loss = loss.mean()
+
+            return loss
+
+        grad_fn = jax.value_and_grad(compute_loss)
+        loss, grad = grad_fn(state.params)
+        grad = jax.lax.pmean(grad, "batch")
+
+        new_state = state.apply_gradients(grads=grad)
+
+        metrics = {"loss": loss}
+        metrics = jax.lax.pmean(metrics, axis_name="batch")
+
+        return new_state, metrics, new_train_rng
+
+    # Create parallel version of the train step
+    p_train_step = jax.pmap(train_step, "batch", donate_argnums=(0,))
+
+    # Replicate the train state on each device
+    state = jax_utils.replicate(state)
+    text_encoder_params = jax_utils.replicate(text_encoder.params)
+    vae_params = jax_utils.replicate(vae_params)
 
     # Train!
-    total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader))
+
+    # Scheduler and math around the number of training steps.
+    if args.max_train_steps is None:
+        args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
+
+    args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
-    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
-    logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
+    logger.info(f"  Total train batch size (w. parallel & distributed) = {total_train_batch_size}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
 
-    # Only show the progress bar once on each machine.
-    progress_bar = tqdm(range(args.max_train_steps), disable=not accelerator.is_local_main_process)
-    progress_bar.set_description("Steps")
     global_step = 0
 
-    for epoch in range(args.num_train_epochs):
-        unet.train()
-        train_loss = 0.0
-        for step, batch in enumerate(train_dataloader):
-            with accelerator.accumulate(unet):
-                # Convert images to latent space
-                latents = vae.encode(batch["pixel_values"].to(weight_dtype)).latent_dist.sample()
-                latents = latents * 0.18215
+    epochs = tqdm(range(args.num_train_epochs), desc="Epoch ... ", position=0)
+    for epoch in epochs:
+        # ======================== Training ================================
 
-                # Sample noise that we'll add to the latents
-                noise = torch.randn_like(latents)
-                bsz = latents.shape[0]
-                # Sample a random timestep for each image
-                timesteps = torch.randint(0, noise_scheduler.num_train_timesteps, (bsz,), device=latents.device)
-                timesteps = timesteps.long()
+        train_metrics = []
 
-                # Add noise to the latents according to the noise magnitude at each timestep
-                # (this is the forward diffusion process)
-                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+        steps_per_epoch = len(train_dataset) // total_train_batch_size
+        train_step_progress_bar = tqdm(total=steps_per_epoch, desc="Training...", position=1, leave=False)
+        # train
+        for batch in train_dataloader:
+            batch = shard(batch)
+            state, train_metric, train_rngs = p_train_step(state, text_encoder_params, vae_params, batch, train_rngs)
+            train_metrics.append(train_metric)
 
-                # Get the text embedding for conditioning
-                encoder_hidden_states = text_encoder(batch["input_ids"])[0]
+            train_step_progress_bar.update(1)
 
-                # Predict the noise residual and compute loss
-                noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
-                loss = F.mse_loss(noise_pred.float(), noise.float(), reduction="mean")
-
-                # Gather the losses across all processes for logging (if we use distributed training).
-                avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
-                train_loss += avg_loss.item() / args.gradient_accumulation_steps
-
-                # Backpropagate
-                accelerator.backward(loss)
-                if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
-                optimizer.step()
-                lr_scheduler.step()
-                optimizer.zero_grad()
-
-            # Checks if the accelerator has performed an optimization step behind the scenes
-            if accelerator.sync_gradients:
-                if args.use_ema:
-                    ema_unet.step(unet.parameters())
-                progress_bar.update(1)
-                global_step += 1
-                accelerator.log({"train_loss": train_loss}, step=global_step)
-                train_loss = 0.0
-
-            logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
-            progress_bar.set_postfix(**logs)
-
+            global_step += 1
             if global_step >= args.max_train_steps:
                 break
 
-    # Create the pipeline using the trained modules and save it.
-    accelerator.wait_for_everyone()
-    if accelerator.is_main_process:
-        unet = accelerator.unwrap_model(unet)
-        if args.use_ema:
-            ema_unet.copy_to(unet.parameters())
+        train_metric = jax_utils.unreplicate(train_metric)
 
-        pipeline = StableDiffusionPipeline(
+        train_step_progress_bar.close()
+        epochs.write(f"Epoch... ({epoch + 1}/{args.num_train_epochs} | Loss: {train_metric['loss']})")
+
+    # Create the pipeline using using the trained modules and save it.
+    if jax.process_index() == 0:
+        scheduler = FlaxPNDMScheduler(
+            beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", skip_prk_steps=True
+        )
+        safety_checker = FlaxStableDiffusionSafetyChecker.from_pretrained(
+            "CompVis/stable-diffusion-safety-checker", from_pt=True
+        )
+        pipeline = FlaxStableDiffusionPipeline(
             text_encoder=text_encoder,
             vae=vae,
             unet=unet,
             tokenizer=tokenizer,
-            scheduler=PNDMScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler"),
-            safety_checker=StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker"),
+            scheduler=scheduler,
+            safety_checker=safety_checker,
             feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
         )
-        pipeline.save_pretrained(args.output_dir)
+
+        pipeline.save_pretrained(
+            args.output_dir,
+            params={
+                "text_encoder": get_params_to_save(text_encoder_params),
+                "vae": get_params_to_save(vae_params),
+                "unet": get_params_to_save(state.params),
+                "safety_checker": safety_checker.params,
+            },
+        )
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
-
-    accelerator.end_training()
 
 
 if __name__ == "__main__":
