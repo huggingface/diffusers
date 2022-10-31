@@ -323,7 +323,7 @@ class ConfigMixin:
 
         # remove attributes from orig class that cannot be expected
         orig_cls_name = config_dict.pop("_class_name", cls.__name__)
-        if orig_cls_name != cls.__name__:
+        if orig_cls_name != cls.__name__ and hasattr(diffusers_library, orig_cls_name):
             orig_cls = getattr(diffusers_library, orig_cls_name)
             unexpected_keys_from_orig = cls._get_init_keys(orig_cls) - expected_keys
             config_dict = {k: v for k, v in config_dict.items() if k not in unexpected_keys_from_orig}

@@ -640,12 +640,13 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_fast_ddim(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1", device_map="auto")
+        scheduler = DDIMScheduler.from_config("CompVis/stable-diffusion-v1-1", subfolder="scheduler")
+
+        sd_pipe = StableDiffusionPipeline.from_pretrained(
+            "CompVis/stable-diffusion-v1-1", scheduler=scheduler, device_map="auto"
+        )
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
-
-        scheduler = DDIMScheduler.from_config("CompVis/stable-diffusion-v1-1", subfolder="scheduler")
-        sd_pipe.scheduler = scheduler
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.Generator(device=torch_device).manual_seed(0)
