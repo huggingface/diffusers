@@ -1,30 +1,16 @@
-import tqdm
-from diffusers import DiffusionPipeline
-import torch
-from torch.utils.data import Dataset, DataLoader
-from PIL import Image
-from diffusers.pipelines.ddpm import DDPMPipeline
-from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
-from diffusers.optimization import get_scheduler
-from diffusers.training_utils import EMAModel
-import math
-import requests
-from torchvision.transforms import (
-    CenterCrop,
-    Compose,
-    InterpolationMode,
-    Normalize,
-    RandomHorizontalFlip,
-    Resize,
-    ToTensor,
-    ToPILImage,
-)
-from accelerate import Accelerator
-from tqdm import tqdm
-import torch.nn.functional as F
 import copy
-from dataclasses import dataclass
+
 import numpy as np
+import torch
+import torch.nn.functional as F
+from torch.utils.data import DataLoader
+
+import tqdm
+from accelerate import Accelerator
+from diffusers import DiffusionPipeline
+from diffusers.optimization import get_scheduler
+from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
+from diffusers.training_utils import EMAModel
 
 
 class DistillationPipeline(DiffusionPipeline):
@@ -40,9 +26,7 @@ class DistillationPipeline(DiffusionPipeline):
         lr=3e-4,
         batch_size=64,
         gamma=0,
-        generator=None,
         gradient_accumulation_steps=1,
-        device="cuda",
         mixed_precision="fp16",
         adam_beta1=0.95,
         adam_beta2=0.999,
@@ -53,7 +37,6 @@ class DistillationPipeline(DiffusionPipeline):
         ema_max_decay=0.9999,
         use_ema=True,
         permute_samples=(0, 1, 2),
-        **kwargs,
     ):
         # Initialize our accelerator for training
         accelerator = Accelerator(
@@ -117,7 +100,9 @@ class DistillationPipeline(DiffusionPipeline):
 
         # Train the student
         for epoch in range(epochs):
-            progress_bar = tqdm(total=len(train_data) // batch_size, disable=not accelerator.is_local_main_process)
+            progress_bar = tqdm.tqdm(
+                total=len(train_data) // batch_size, disable=not accelerator.is_local_main_process
+            )
             progress_bar.set_description(f"Epoch {epoch}")
             for batch in train_dataloader:
                 with accelerator.accumulate(student):

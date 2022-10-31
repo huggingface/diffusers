@@ -26,6 +26,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
 from .scheduling_utils import SchedulerMixin
 
+
 def E_(input, t, shape, device):
     out = torch.gather(input.to(device), 0, t.to(device))
     reshape = [shape[0]] + [1] * (len(shape) - 1)

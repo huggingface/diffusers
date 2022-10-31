@@ -7,9 +7,9 @@ if is_torch_available():
     from .ddpm import DDPMPipeline
     from .latent_diffusion_uncond import LDMPipeline
     from .pndm import PNDMPipeline
+    from .progressive_distillation import DistillationPipeline
     from .score_sde_ve import ScoreSdeVePipeline
     from .stochastic_karras_ve import KarrasVePipeline
-    from .progressive_distillation import DistillationPipeline
 else:
     from ..utils.dummy_pt_objects import *  # noqa F403
 

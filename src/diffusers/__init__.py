@@ -33,11 +33,11 @@ if is_torch_available():
         DanceDiffusionPipeline,
         DDIMPipeline,
         DDPMPipeline,
+        DistillationPipeline,
         KarrasVePipeline,
         LDMPipeline,
         PNDMPipeline,
         ScoreSdeVePipeline,
-        DistillationPipeline
     )
     from .schedulers import (
         DDIMScheduler,
