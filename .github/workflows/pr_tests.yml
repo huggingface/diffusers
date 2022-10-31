@@ -10,6 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  DIFFUSERS_IS_CI: yes
   OMP_NUM_THREADS: 8
   MKL_NUM_THREADS: 8
   PYTEST_TIMEOUT: 60

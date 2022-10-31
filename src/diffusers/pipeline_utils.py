@@ -30,9 +30,9 @@ from packaging import version
 from PIL import Image
 from tqdm.auto import tqdm
 
-from . import __version__
 from .configuration_utils import ConfigMixin
 from .dynamic_modules_utils import get_class_from_dynamic_module
+from .hub_utils import http_user_agent
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from .utils import (
     CONFIG_NAME,
@@ -398,10 +398,14 @@ class DiffusionPipeline(ConfigMixin):
             if custom_pipeline is not None:
                 allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
 
-            requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
-            user_agent = {"diffusers": __version__, "pipeline_class": requested_pipeline_class}
+            if cls != DiffusionPipeline:
+                requested_pipeline_class = cls.__name__
+            else:
+                requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
+            user_agent = {"pipeline_class": requested_pipeline_class}
             if custom_pipeline is not None:
                 user_agent["custom_pipeline"] = custom_pipeline
+            user_agent = http_user_agent(user_agent)
 
             # download all allow_patterns
             cached_folder = snapshot_download(

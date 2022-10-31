@@ -16,13 +16,25 @@
 
 import os
 import shutil
+import sys
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional, Union
+from uuid import uuid4
 
 from huggingface_hub import HfFolder, Repository, whoami
 
-from .pipeline_utils import DiffusionPipeline
-from .utils import deprecate, is_modelcards_available, logging
+from . import __version__
+from .utils import ENV_VARS_TRUE_VALUES, deprecate, logging
+from .utils.import_utils import (
+    _flax_version,
+    _jax_version,
+    _onnxruntime_version,
+    _torch_version,
+    is_flax_available,
+    is_modelcards_available,
+    is_onnx_available,
+    is_torch_available,
+)
 
 
 if is_modelcards_available():
@@ -33,6 +45,32 @@ logger = logging.get_logger(__name__)
 
 
 MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "utils" / "model_card_template.md"
+SESSION_ID = uuid4().hex
+DISABLE_TELEMETRY = os.getenv("DISABLE_TELEMETRY", "").upper() in ENV_VARS_TRUE_VALUES
+
+
+def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
+    """
+    Formats a user-agent string with basic info about a request.
+    """
+    ua = f"diffusers/{__version__}; python/{sys.version.split()[0]}; session_id/{SESSION_ID}"
+    if DISABLE_TELEMETRY:
+        return ua + "; telemetry/off"
+    if is_torch_available():
+        ua += f"; torch/{_torch_version}"
+    if is_flax_available():
+        ua += f"; jax/{_jax_version}"
+        ua += f"; flax/{_flax_version}"
+    if is_onnx_available():
+        ua += f"; onnxruntime/{_onnxruntime_version}"
+    # CI will set this value to True
+    if os.environ.get("DIFFUSERS_IS_CI", "").upper() in ENV_VARS_TRUE_VALUES:
+        ua += "; is_ci/true"
+    if isinstance(user_agent, dict):
+        ua += "; " + "; ".join(f"{k}/{v}" for k, v in user_agent.items())
+    elif isinstance(user_agent, str):
+        ua += "; " + user_agent
+    return ua
 
 
 def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
@@ -101,7 +139,7 @@ def init_git_repo(args, at_init: bool = False):
 
 def push_to_hub(
     args,
-    pipeline: DiffusionPipeline,
+    pipeline,
     repo: Repository,
     commit_message: Optional[str] = "End of training",
     blocking: bool = True,
