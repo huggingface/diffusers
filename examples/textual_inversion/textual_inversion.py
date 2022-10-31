@@ -552,7 +552,7 @@ def main():
             vae=vae,
             unet=unet,
             tokenizer=tokenizer,
-            scheduler=PNDMScheduler.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="scheduler"),
+            scheduler=PNDMScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler"),
             safety_checker=StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker"),
             feature_extractor=CLIPFeatureExtractor.from_pretrained("openai/clip-vit-base-patch32"),
         )

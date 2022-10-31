@@ -49,8 +49,8 @@ class ConfigMixin:
           [`~ConfigMixin.save_config`] (should be overridden by parent class).
         - **ignore_for_config** (`List[str]`) -- A list of attributes that should not be saved in the config (should be
           overridden by parent class).
-        - **_compatible_classes** (`List[str]`) -- A list of classes that are compatible with parent classes, so that
-          `from_pretrained` can be used from class that is different to class that was used to save the config (should
+        - **_compatible_classes** (`List[str]`) -- A list of classes that are compatible with the parent class, so that
+          `from_config` can be used from a class different than the one used to save the config (should
           be overridden by parent class).
     """
     config_name = None
@@ -312,7 +312,7 @@ class ConfigMixin:
 
         # remove attributes from compatible classes that orig cannot expect
         compatible_classes = [getattr(diffusers_library, c, None) for c in cls._compatible_classes]
-        # filder out None potentially undefined dummy classes
+        # filter out None potentially undefined dummy classes
         compatible_classes = [c for c in compatible_classes if c is not None]
         expected_keys_comp_cls = set()
         for c in compatible_classes:

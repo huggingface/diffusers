@@ -94,7 +94,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             deprecation_message = (
                 f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."
                 " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
-                " config accordingly as not setting `clip_sample` in the config might led to incorrect results in"
+                " config accordingly as not setting `clip_sample` in the config might lead to incorrect results in"
                 " future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very"
                 " nice if you could open a Pull request for the `scheduler/scheduler_config.json` file"
             )
