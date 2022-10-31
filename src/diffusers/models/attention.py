@@ -362,13 +362,16 @@ class FeedForward(nn.Module):
         dim_out = dim_out if dim_out is not None else dim
         self.net = nn.ModuleList([])
 
+        # project in
         self.net.append(GEGLU(dim, inner_dim))
+        # project dropout
         self.net.append(nn.Dropout(dropout))
+        # project out
         self.net.append(nn.Linear(inner_dim, dim_out))
 
     def forward(self, hidden_states):
         for module in self.net:
-            hidden_states = self.net(hidden_states)
+            hidden_states = module(hidden_states)
         return hidden_states
 
 
