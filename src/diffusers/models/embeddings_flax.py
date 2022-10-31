@@ -40,10 +40,10 @@ def get_sinusoidal_embeddings(
     num_timescales = float(embedding_dim // 2)
     log_timescale_increment = math.log(max_timescale / min_timescale) / (num_timescales - freq_shift)
     inv_timescales = min_timescale * jnp.exp(jnp.arange(num_timescales, dtype=jnp.float32) * -log_timescale_increment)
-    scaled_time = jnp.expand_dims(timesteps, 1) * jnp.expand_dims(inv_timescales, 0)
+    emb = jnp.expand_dims(timesteps, 1) * jnp.expand_dims(inv_timescales, 0)
 
     # scale embeddings
-    scaled_time = scale * scaled_time
+    scaled_time = scale * emb
 
     if flip_sin_to_cos:
         signal = jnp.concatenate([jnp.cos(scaled_time), jnp.sin(scaled_time)], axis=1)
