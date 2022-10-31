@@ -29,6 +29,7 @@ from PIL import Image
 from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
+from .hub_utils import http_user_agent
 from .modeling_flax_utils import FLAX_WEIGHTS_NAME, FlaxModelMixin
 from .schedulers.scheduling_utils_flax import SCHEDULER_CONFIG_NAME, FlaxSchedulerMixin
 from .utils import CONFIG_NAME, DIFFUSERS_CACHE, BaseOutput, is_transformers_available, logging
@@ -301,6 +302,13 @@ class FlaxDiffusionPipeline(ConfigMixin):
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
             allow_patterns += [FLAX_WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, cls.config_name]
 
+            if cls != FlaxDiffusionPipeline:
+                requested_pipeline_class = cls.__name__
+            else:
+                requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
+            user_agent = {"pipeline_class": requested_pipeline_class}
+            user_agent = http_user_agent(user_agent)
+
             # download all allow_patterns
             cached_folder = snapshot_download(
                 pretrained_model_name_or_path,
@@ -311,6 +319,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
                 use_auth_token=use_auth_token,
                 revision=revision,
                 allow_patterns=allow_patterns,
+                user_agent=user_agent,
             )
         else:
             cached_folder = pretrained_model_name_or_path

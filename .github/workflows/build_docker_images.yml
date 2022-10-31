@@ -16,7 +16,7 @@ env:
   REGISTRY: diffusers
 
 jobs:
-  build-ubuntu-images:
+  build-docker-images:
     runs-on: ubuntu-latest
 
     permissions:
@@ -28,9 +28,10 @@ jobs:
       matrix:
         image-name:
           - diffusers-pytorch-cpu
-          - diffusers-pytorch-gpu
+          - diffusers-pytorch-cuda
           - diffusers-flax-tpu
           - diffusers-onnxruntime-cpu
+          - diffusers-onnxruntime-cuda
 
     steps:
       - name: Checkout repository
