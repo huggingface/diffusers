@@ -154,6 +154,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         s_tmin: float = 0.0,
         s_tmax: float = float("inf"),
         s_noise: float = 1.0,
+        generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
     ) -> Union[EulerDiscreteSchedulerOutput, Tuple]:
         """
@@ -169,6 +170,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             s_tmin  (`float`)
             s_tmax  (`float`)
             s_noise (`float`)
+            generator (`torch.Generator`, optional): Random number generator.
             return_dict (`bool`): option for returning tuple rather than EulerDiscreteSchedulerOutput class
 
         Returns:
@@ -202,7 +204,10 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigma = self.sigmas[step_index]
 
         gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
-        eps = torch.randn_like(sample) * s_noise
+
+        device = model_output.device if torch.is_tensor(model_output) else "cpu"
+        noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator).to(device)
+        eps = noise * s_noise
         sigma_hat = sigma * (gamma + 1)
 
         if gamma > 0:

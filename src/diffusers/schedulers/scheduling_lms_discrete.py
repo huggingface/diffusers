@@ -175,6 +175,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timestep: Union[float, torch.FloatTensor],
         sample: torch.FloatTensor,
         order: int = 4,
+        generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
     ) -> Union[LMSDiscreteSchedulerOutput, Tuple]:
         """
@@ -187,6 +188,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
             order: coefficient for multi-step inference.
+            generator (`torch.Generator`, optional): Random number generator.
             return_dict (`bool`): option for returning tuple rather than LMSDiscreteSchedulerOutput class
 
         Returns:

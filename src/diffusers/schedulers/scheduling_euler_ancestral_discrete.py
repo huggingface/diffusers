@@ -149,6 +149,7 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: Union[float, torch.FloatTensor],
         sample: torch.FloatTensor,
+        generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
     ) -> Union[EulerAncestralDiscreteSchedulerOutput, Tuple]:
         """
@@ -160,6 +161,7 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             timestep (`float`): current timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
+            generator (`torch.Generator`, optional): Random number generator.
             return_dict (`bool`): option for returning tuple rather than EulerAncestralDiscreteSchedulerOutput class
 
         Returns:
@@ -206,7 +208,9 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         prev_sample = sample + derivative * dt
 
-        prev_sample = prev_sample + torch.randn_like(prev_sample) * sigma_up
+        device = model_output.device if torch.is_tensor(model_output) else "cpu"
+        noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator).to(device)
+        prev_sample = prev_sample + noise * sigma_up
 
         if not return_dict:
             return (prev_sample,)
