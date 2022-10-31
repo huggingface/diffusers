@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import warnings
+
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
@@ -177,6 +177,18 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
+
+        if (
+            isinstance(timestep, int)
+            or isinstance(timestep, torch.IntTensor)
+            or isinstance(timestep, torch.LongTensor)
+        ):
+            raise ValueError(
+                "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
+                " `EulerDiscreteScheduler.step()` is not supported. Make sure to pass"
+                " one of the `scheduler.timesteps` as a timestep.",
+            )
+
         if not self.is_scale_input_called:
             logger.warn(
                 "The `scale_model_input` function should be called before `step` to ensure correct denoising. "
@@ -185,22 +197,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
-        if (
-            isinstance(timestep, int)
-            or isinstance(timestep, torch.IntTensor)
-            or isinstance(timestep, torch.LongTensor)
-        ):
-            deprecate(
-                "timestep as an index",
-                "0.8.0",
-                "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
-                " `EulerDiscreteScheduler.step()` will not be supported in future versions. Make sure to pass"
-                " one of the `scheduler.timesteps` as a timestep.",
-                standard_warn=False,
-            )
-            step_index = timestep
-        else:
-            step_index = (self.timesteps == timestep).nonzero().item()
+
+        step_index = (self.timesteps == timestep).nonzero().item()
         sigma = self.sigmas[step_index]
 
         gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
