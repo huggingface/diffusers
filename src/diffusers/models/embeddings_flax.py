@@ -21,7 +21,7 @@ def get_sinusoidal_embeddings(
     timesteps: jnp.ndarray,
     embedding_dim: int,
     freq_shift: float = 1,
-    min_timescale: float = 1.0,
+    min_timescale: float = 1,
     max_timescale: float = 1.0e4,
     flip_sin_to_cos: bool = False,
     scale: float = 1.0,
@@ -35,13 +35,11 @@ def get_sinusoidal_embeddings(
     Returns:
       a Tensor of timing signals [1, length, num_channels]
     """
-    assert timesteps.ndim == 1
-    assert embedding_dim % 2 == 0
+    assert timesteps.ndim == 1, "Timesteps should be a 1d-array"
+    assert embedding_dim % 2 == 0, f"Embedding dimension {embedding_dim} should be even"
     num_timescales = float(embedding_dim // 2)
     log_timescale_increment = math.log(max_timescale / min_timescale) / (num_timescales - freq_shift)
-    inv_timescales = min_timescale * jnp.exp(
-        jnp.arange(num_timescales - freq_shift, dtype=jnp.float32) * -log_timescale_increment
-    )
+    inv_timescales = min_timescale * jnp.exp(jnp.arange(num_timescales, dtype=jnp.float32) * -log_timescale_increment)
     scaled_time = jnp.expand_dims(timesteps, 1) * jnp.expand_dims(inv_timescales, 0)
 
     # scale embeddings
