@@ -118,7 +118,7 @@ jobs:
 
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
 
     steps:
     - name: Checkout diffusers
