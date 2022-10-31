@@ -42,6 +42,8 @@ jobs:
         python utils/print_env.py
 
     - name: Run all fast tests on CPU
+      env:
+        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_cpu tests/
 
@@ -91,6 +93,8 @@ jobs:
 
     - name: Run all fast tests on MPS
       shell: arch -arch arm64 bash {0}
+      env:
+        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
         ${CONDA_RUN} python -m pytest -n 1 -s -v --make-reports=tests_torch_mps tests/
 

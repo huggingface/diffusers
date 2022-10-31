@@ -16,6 +16,7 @@
 """ ConfigMixin base class and utilities."""
 import dataclasses
 import functools
+import importlib
 import inspect
 import json
 import os
@@ -48,9 +49,13 @@ class ConfigMixin:
           [`~ConfigMixin.save_config`] (should be overridden by parent class).
         - **ignore_for_config** (`List[str]`) -- A list of attributes that should not be saved in the config (should be
           overridden by parent class).
+        - **_compatible_classes** (`List[str]`) -- A list of classes that are compatible with the parent class, so that
+          `from_config` can be used from a class different than the one used to save the config (should be overridden
+          by parent class).
     """
     config_name = None
     ignore_for_config = []
+    _compatible_classes = []
 
     def register_to_config(self, **kwargs):
         if self.config_name is None:
@@ -280,9 +285,14 @@ class ConfigMixin:
 
         return config_dict
 
+    @staticmethod
+    def _get_init_keys(cls):
+        return set(dict(inspect.signature(cls.__init__).parameters).keys())
+
     @classmethod
     def extract_init_dict(cls, config_dict, **kwargs):
-        expected_keys = set(dict(inspect.signature(cls.__init__).parameters).keys())
+        # 1. Retrieve expected config attributes from __init__ signature
+        expected_keys = cls._get_init_keys(cls)
         expected_keys.remove("self")
         # remove general kwargs if present in dict
         if "kwargs" in expected_keys:
@@ -292,9 +302,36 @@ class ConfigMixin:
             for arg in cls._flax_internal_args:
                 expected_keys.remove(arg)
 
+        # 2. Remove attributes that cannot be expected from expected config attributes
         # remove keys to be ignored
         if len(cls.ignore_for_config) > 0:
             expected_keys = expected_keys - set(cls.ignore_for_config)
+
+        # load diffusers library to import compatible and original scheduler
+        diffusers_library = importlib.import_module(__name__.split(".")[0])
+
+        # remove attributes from compatible classes that orig cannot expect
+        compatible_classes = [getattr(diffusers_library, c, None) for c in cls._compatible_classes]
+        # filter out None potentially undefined dummy classes
+        compatible_classes = [c for c in compatible_classes if c is not None]
+        expected_keys_comp_cls = set()
+        for c in compatible_classes:
+            expected_keys_c = cls._get_init_keys(c)
+            expected_keys_comp_cls = expected_keys_comp_cls.union(expected_keys_c)
+        expected_keys_comp_cls = expected_keys_comp_cls - cls._get_init_keys(cls)
+        config_dict = {k: v for k, v in config_dict.items() if k not in expected_keys_comp_cls}
+
+        # remove attributes from orig class that cannot be expected
+        orig_cls_name = config_dict.pop("_class_name", cls.__name__)
+        if orig_cls_name != cls.__name__:
+            orig_cls = getattr(diffusers_library, orig_cls_name)
+            unexpected_keys_from_orig = cls._get_init_keys(orig_cls) - expected_keys
+            config_dict = {k: v for k, v in config_dict.items() if k not in unexpected_keys_from_orig}
+
+        # remove private attributes
+        config_dict = {k: v for k, v in config_dict.items() if not k.startswith("_")}
+
+        # 3. Create keyword arguments that will be passed to __init__ from expected keyword arguments
         init_dict = {}
         for key in expected_keys:
             if key in kwargs:
@@ -304,8 +341,7 @@ class ConfigMixin:
                 # use value from config dict
                 init_dict[key] = config_dict.pop(key)
 
-        config_dict = {k: v for k, v in config_dict.items() if not k.startswith("_")}
-
+        # 4. Give nice warning if unexpected values have been passed
         if len(config_dict) > 0:
             logger.warning(
                 f"The config attributes {config_dict} were passed to {cls.__name__}, "
@@ -313,13 +349,15 @@ class ConfigMixin:
                 f"{cls.config_name} configuration file."
             )
 
-        unused_kwargs = {**config_dict, **kwargs}
-
+        # 5. Give nice info if config attributes are initiliazed to default because they have not been passed
         passed_keys = set(init_dict.keys())
         if len(expected_keys - passed_keys) > 0:
             logger.info(
                 f"{expected_keys - passed_keys} was not found in config. Values will be initialized to default values."
             )
+
+        # 6. Define unused keyword arguments
+        unused_kwargs = {**config_dict, **kwargs}
 
         return init_dict, unused_kwargs
 

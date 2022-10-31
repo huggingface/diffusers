@@ -121,7 +121,7 @@ you could use it as follows:
 ```python
 >>> from diffusers import LMSDiscreteScheduler
 
->>> scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
+>>> scheduler = LMSDiscreteScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
 
 >>> generator = StableDiffusionPipeline.from_pretrained(
 ...     "runwayml/stable-diffusion-v1-5", scheduler=scheduler, use_auth_token=AUTH_TOKEN

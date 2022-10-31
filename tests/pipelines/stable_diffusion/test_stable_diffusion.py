@@ -644,13 +644,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        scheduler = DDIMScheduler(
-            beta_start=0.00085,
-            beta_end=0.012,
-            beta_schedule="scaled_linear",
-            clip_sample=False,
-            set_alpha_to_one=False,
-        )
+        scheduler = DDIMScheduler.from_config("CompVis/stable-diffusion-v1-1", subfolder="scheduler")
         sd_pipe.scheduler = scheduler
 
         prompt = "A painting of a squirrel eating a burger"
