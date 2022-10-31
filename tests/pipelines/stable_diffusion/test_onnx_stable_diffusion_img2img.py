@@ -40,12 +40,19 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
             "/img2img/sketch-mountains-input.jpg"
         )
         init_image = init_image.resize((768, 512))
+        provider = (
+            "CUDAExecutionProvider",
+            {
+                "gpu_mem_limit": "17179869184",  # 16GB.
+                "arena_extend_strategy": "kSameAsRequested",
+            },
+        )
         options = ort.SessionOptions()
-        options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        options.enable_mem_pattern = False
         pipe = OnnxStableDiffusionImg2ImgPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4",
             revision="onnx",
-            provider="CUDAExecutionProvider",
+            provider=provider,
             sess_options=options,
         )
         pipe.set_progress_bar_config(disable=None)

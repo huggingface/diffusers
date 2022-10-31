@@ -33,10 +33,22 @@ class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.Tes
 @require_torch_gpu
 class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
     def test_inference(self):
+        import onnxruntime as ort
+
+        provider = (
+            "CUDAExecutionProvider",
+            {
+                "gpu_mem_limit": "17179869184",  # 16GB.
+                "arena_extend_strategy": "kSameAsRequested",
+            },
+        )
+        options = ort.SessionOptions()
+        options.enable_mem_pattern = False
         sd_pipe = OnnxStableDiffusionPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4",
             revision="onnx",
-            provider="CUDAExecutionProvider",
+            provider=provider,
+            sess_options=options,
         )
 
         prompt = "A painting of a squirrel eating a burger"
