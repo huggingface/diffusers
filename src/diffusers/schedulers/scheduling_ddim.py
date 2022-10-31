@@ -109,6 +109,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
     """
 
+    _compatible_classes = ["PNDMScheduler", "DDPMScheduler", "LMSDiscreteScheduler"]
+
     @register_to_config
     def __init__(
         self,

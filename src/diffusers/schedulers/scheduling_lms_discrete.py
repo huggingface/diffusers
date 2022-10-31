@@ -67,6 +67,8 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     """
 
+    _compatible_classes = ["DDIMScheduler", "DDPMScheduler", "PNDMScheduler"]
+
     @register_to_config
     def __init__(
         self,

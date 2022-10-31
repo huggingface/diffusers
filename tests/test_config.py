@@ -19,7 +19,7 @@ import tempfile
 import unittest
 
 import diffusers
-from diffusers import DDIMScheduler, logging
+from diffusers import DDIMScheduler, PNDMScheduler, logging
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.utils.testing_utils import CaptureLogger
 
@@ -39,7 +39,7 @@ class SampleObject(ConfigMixin):
         pass
 
 
-class SampleObject_2(ConfigMixin):
+class SampleObject2(ConfigMixin):
     config_name = "config.json"
 
     @register_to_config
@@ -128,8 +128,9 @@ class ConfigTester(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdirname:
             obj.save_config(tmpdirname)
             with CaptureLogger(logger) as cap_logger_1:
-                new_obj_1 = SampleObject_2.from_config(tmpdirname)
+                new_obj_1 = SampleObject2.from_config(tmpdirname)
 
+            # now save a config parameter that is not expected
             with open(os.path.join(tmpdirname, SampleObject.config_name), "r") as f:
                 data = json.load(f)
                 data["unexpected"] = True
@@ -141,11 +142,11 @@ class ConfigTester(unittest.TestCase):
                 new_obj_2 = SampleObject.from_config(tmpdirname)
 
             with CaptureLogger(logger) as cap_logger_3:
-                new_obj_3 = SampleObject_2.from_config(tmpdirname)
+                new_obj_3 = SampleObject2.from_config(tmpdirname)
 
-        assert new_obj_1.__class__ == SampleObject_2
+        assert new_obj_1.__class__ == SampleObject2
         assert new_obj_2.__class__ == SampleObject
-        assert new_obj_3.__class__ == SampleObject_2
+        assert new_obj_3.__class__ == SampleObject2
 
         assert cap_logger_1.out == ""
         assert (
@@ -153,7 +154,41 @@ class ConfigTester(unittest.TestCase):
             == "The config attributes {'unexpected': True} were passed to SampleObject, but are not expected and will"
             " be ignored. Please verify your config.json configuration file.\n"
         )
-        assert cap_logger_2.out.replace("SampleObject", "SampleObject_2") == cap_logger_3.out
+        assert cap_logger_2.out.replace("SampleObject", "SampleObject2") == cap_logger_3.out
+
+    def test_save_load_compatible_schedulers(self):
+        SampleObject2._compatible_classes = ["SampleObject"]
+        SampleObject._compatible_classes = ["SampleObject2"]
+
+        obj = SampleObject()
+
+        # mock add obj class to `diffusers`
+        setattr(diffusers, "SampleObject", SampleObject)
+        setattr(diffusers, "SampleObject2", SampleObject2)
+        logger = logging.get_logger("diffusers.configuration_utils")
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            obj.save_config(tmpdirname)
+
+            # now save a config parameter that is expected by another class, but not origin class
+            with open(os.path.join(tmpdirname, SampleObject.config_name), "r") as f:
+                data = json.load(f)
+                data["f"] = [0, 0]
+                data["unexpected"] = True
+
+            with open(os.path.join(tmpdirname, SampleObject.config_name), "w") as f:
+                json.dump(data, f)
+
+            with CaptureLogger(logger) as cap_logger:
+                new_obj = SampleObject.from_config(tmpdirname)
+
+        assert new_obj.__class__ == SampleObject
+
+        assert (
+            cap_logger.out
+            == "The config attributes {'unexpected': True} were passed to SampleObject, but are not expected and will"
+            " be ignored. Please verify your config.json configuration file.\n"
+        )
 
     def test_load_ddim_from_pndm(self):
         logger = logging.get_logger("diffusers.configuration_utils")
@@ -162,4 +197,15 @@ class ConfigTester(unittest.TestCase):
             ddim = DDIMScheduler.from_config("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
 
         assert ddim.__class__ == DDIMScheduler
+        # no warning should be thrown
+        assert cap_logger.out == ""
+
+    def test_load_pndm(self):
+        logger = logging.get_logger("diffusers.configuration_utils")
+
+        with CaptureLogger(logger) as cap_logger:
+            pndm = PNDMScheduler.from_config("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
+
+        assert pndm.__class__ == PNDMScheduler
+        # no warning should be thrown
         assert cap_logger.out == ""
