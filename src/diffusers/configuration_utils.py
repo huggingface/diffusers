@@ -16,6 +16,7 @@
 """ ConfigMixin base class and utilities."""
 import dataclasses
 import functools
+import importlib
 import inspect
 import json
 import os
@@ -304,6 +305,17 @@ class ConfigMixin:
                 # use value from config dict
                 init_dict[key] = config_dict.pop(key)
 
+        # remove attributes from other class that cannot be expected
+        orig_cls_name = config_dict.pop("_class_name", cls.__name__)
+        if orig_cls_name != cls.__name__:
+            diffusers_library = importlib.import_module(__name__.split(".")[0])
+            orig_cls = getattr(diffusers_library, orig_cls_name)
+            unexpected_keys_from_orig = (
+                set(dict(inspect.signature(orig_cls.__init__).parameters).keys()) - expected_keys
+            )
+            config_dict = {k: v for k, v in config_dict.items() if k not in unexpected_keys_from_orig}
+
+        # remove private attributes
         config_dict = {k: v for k, v in config_dict.items() if not k.startswith("_")}
 
         if len(config_dict) > 0:
