@@ -4,6 +4,9 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "0 0 * * *" # every day at midnight
+  pull_request:
+    branches:
+      - main
 
 concurrency:
   group: docker-image-builds
