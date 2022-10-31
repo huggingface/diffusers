@@ -33,16 +33,6 @@ else:
     _USE_MEMORY_EFFICIENT_ATTENTION = False
 
 
-def exists(val):
-    return val is not None
-
-
-def default(val, d):
-    if exists(val):
-        return val
-    return d() if isfunction(d) else d
-
-
 class AttentionBlock(nn.Module):
     """
     An attention block that allows spatial positions to attend to each other. Originally ported from here, but adapted
@@ -242,7 +232,7 @@ class MemoryEfficientCrossAttention(nn.Module):
     def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.0):
         super().__init__()
         inner_dim = dim_head * heads
-        context_dim = default(context_dim, query_dim)
+        context_dim = query_dim if context_dim is None else context_dim
 
         self.heads = heads
         self.dim_head = dim_head
@@ -256,7 +246,7 @@ class MemoryEfficientCrossAttention(nn.Module):
 
     def forward(self, x, context=None, mask=None):
         q = self.to_q(x)
-        context = default(context, x)
+        context = x if context is None else context
         k = self.to_k(context)
         v = self.to_v(context)
 
@@ -274,7 +264,7 @@ class MemoryEfficientCrossAttention(nn.Module):
         out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=None, op=self.attention_op)
 
         # TODO: Use this directly in the attention operation, as a bias
-        if exists(mask):
+        if mask is not None:
             raise NotImplementedError
         out = (
             out.unsqueeze(0)
