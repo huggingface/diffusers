@@ -22,6 +22,7 @@ We present some techniques and ideas to optimize 🤗 Diffusers _inference_ for 
 | fp16             | 3.61s   | x2.63   |
 | channels last    | 3.30s   | x2.88   |
 | traced UNet      | 3.21s   | x2.96   |
+| memory efficient attention  | 2.63s  | x3.61   |
 
 <em>
   obtained on NVIDIA TITAN RTX by generating a single image of size 512x512 from
@@ -301,6 +302,7 @@ Here are the speedups we obtain on a few Nvidia GPUs:
 | NVIDIA 3060 RTX  	| 4.6it/s             	| 7.8it/s                         	|
 | NVIDIA A10G      	| 8.88it/s            	| 15.6it/s                        	|
 | NVIDIA RTX A6000 	| 11.7it/s            	| 21.09it/s                       	|
+| NVIDIA TITAN RTX  | 12.51it/s         	| 18.22it/s                       	|
 | A100-SXM4-40GB    	| 18.6it/s            	| 29.it/s                        	|
 | A100-SXM-80GB    	| 18.7it/s            	| 29.5it/s                        	|
 
@@ -323,6 +325,6 @@ pipe.enable_xformers_memory_efficient_attention()
 with torch.inference_mode(), torch.autocast("cuda", dtype=torch.float16):
     sample = pipe("a small cat")
 
-# You can disable it via 
-pipe.disable_xformers_memory_efficient_attention()
+# optional: You can disable it via 
+# pipe.disable_xformers_memory_efficient_attention()
 ```
