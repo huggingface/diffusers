@@ -94,6 +94,7 @@ _deps = [
     "modelcards>=0.1.4",
     "numpy",
     "onnxruntime",
+    "parameterized",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
@@ -181,6 +182,7 @@ extras["test"] = deps_list(
     "accelerate",
     "datasets",
     "onnxruntime",
+    "parameterized",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
@@ -211,7 +213,7 @@ install_requires = [
 
 setup(
     name="diffusers",
-    version="0.6.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.7.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

@@ -19,6 +19,7 @@ from ..utils import is_flax_available, is_scipy_available, is_torch_available
 if is_torch_available():
     from .scheduling_ddim import DDIMScheduler
     from .scheduling_ddpm import DDPMScheduler
+    from .scheduling_ipndm import IPNDMScheduler
     from .scheduling_karras_ve import KarrasVeScheduler
     from .scheduling_pndm import PNDMScheduler
     from .scheduling_sde_ve import ScoreSdeVeScheduler
@@ -34,7 +35,7 @@ if is_flax_available():
     from .scheduling_lms_discrete_flax import FlaxLMSDiscreteScheduler
     from .scheduling_pndm_flax import FlaxPNDMScheduler
     from .scheduling_sde_ve_flax import FlaxScoreSdeVeScheduler
-    from .scheduling_utils_flax import FlaxSchedulerMixin
+    from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput, broadcast_to_shape_from_left
 else:
     from ..utils.dummy_flax_objects import *  # noqa F403
 

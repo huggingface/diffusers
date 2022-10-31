@@ -14,17 +14,20 @@ specific language governing permissions and limitations under the License.
 
 We present some techniques and ideas to optimize 🤗 Diffusers _inference_ for memory or speed.
 
-
 |                  | Latency | Speedup |
-|------------------|---------|---------|
+| ---------------- | ------- | ------- |
 | original         | 9.50s   | x1      |
 | cuDNN auto-tuner | 9.37s   | x1.01   |
-| autocast (fp16)  | 5.47s   | x1.91   |
-| fp16             | 3.61s   | x2.91   |
-| channels last    | 3.30s   | x2.87   |
+| autocast (fp16)  | 5.47s   | x1.74   |
+| fp16             | 3.61s   | x2.63   |
+| channels last    | 3.30s   | x2.88   |
 | traced UNet      | 3.21s   | x2.96   |
 
-<em>obtained on NVIDIA TITAN RTX by generating a single image of size 512x512 from the prompt "a photo of an astronaut riding a horse on mars" with 50 DDIM steps.</em>
+<em>
+  obtained on NVIDIA TITAN RTX by generating a single image of size 512x512 from
+  the prompt "a photo of an astronaut riding a horse on mars" with 50 DDIM
+  steps.
+</em>
 
 ## Enable cuDNN auto-tuner
 
@@ -56,12 +59,12 @@ If you use a CUDA GPU, you can take advantage of `torch.autocast` to perform inf
 from torch import autocast
 from diffusers import StableDiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
 with autocast("cuda"):
-    image = pipe(prompt).images[0]  
+    image = pipe(prompt).images[0]
 ```
 
 Despite the precision loss, in our experience the final image results look the same as the `float32` versions. Feel free to experiment and report back!
@@ -72,14 +75,14 @@ To save more GPU memory and get even more speed, you can load and run the model 
 
 ```Python
 pipe = StableDiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4",
+    "runwayml/stable-diffusion-v1-5",
     revision="fp16",
     torch_dtype=torch.float16,
 )
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
-image = pipe(prompt).images[0]  
+image = pipe(prompt).images[0]
 ```
 
 ## Sliced attention for additional memory savings
@@ -87,7 +90,10 @@ image = pipe(prompt).images[0]
 For even additional memory savings, you can use a sliced version of attention that performs the computation in steps instead of all at once.
 
 <Tip>
-Attention slicing is useful even if a batch size of just 1 is used - as long as the model uses more than one attention head. If there is more than one attention head the *QK^T* attention matrix can be computed sequentially for each head which can save a significant amount of memory.
+  Attention slicing is useful even if a batch size of just 1 is used - as long
+  as the model uses more than one attention head. If there is more than one
+  attention head the *QK^T* attention matrix can be computed sequentially for
+  each head which can save a significant amount of memory.
 </Tip>
 
 To perform the attention computation sequentially over each head, you only need to invoke [`~StableDiffusionPipeline.enable_attention_slicing`] in your pipeline before inference, like here:
@@ -97,7 +103,7 @@ import torch
 from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4",
+    "runwayml/stable-diffusion-v1-5",
     revision="fp16",
     torch_dtype=torch.float16,
 )
@@ -105,10 +111,54 @@ pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
 pipe.enable_attention_slicing()
-image = pipe(prompt).images[0]  
+image = pipe(prompt).images[0]
 ```
 
 There's a small performance penalty of about 10% slower inference times, but this method allows you to use Stable Diffusion in as little as 3.2 GB of VRAM!
+
+## Offloading to CPU with accelerate for memory savings
+
+For additional memory savings, you can offload the weights to CPU and load them to GPU when performing the forward pass.
+
+To perform CPU offloading, all you have to do is invoke [`~StableDiffusionPipeline.enable_sequential_cpu_offload`]:
+
+```Python
+import torch
+from diffusers import StableDiffusionPipeline
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    revision="fp16",
+    torch_dtype=torch.float16,
+)
+pipe = pipe.to("cuda")
+
+prompt = "a photo of an astronaut riding a horse on mars"
+pipe.enable_sequential_cpu_offload()
+image = pipe(prompt).images[0]
+```
+
+And you can get the memory consumption to < 2GB.
+
+If is also possible to chain it with attention slicing for minimal memory consumption, running it in as little as < 800mb of GPU vRAM:
+
+```Python
+import torch
+from diffusers import StableDiffusionPipeline
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    revision="fp16",
+    torch_dtype=torch.float16,
+)
+pipe = pipe.to("cuda")
+
+prompt = "a photo of an astronaut riding a horse on mars"
+pipe.enable_sequential_cpu_offload()
+pipe.enable_attention_slicing(1)
+
+image = pipe(prompt).images[0]
+```
 
 ## Using Channels Last memory format
 
@@ -152,7 +202,7 @@ def generate_inputs():
 
 
 pipe = StableDiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4",
+    "runwayml/stable-diffusion-v1-5",
     revision="fp16",
     torch_dtype=torch.float16,
 ).to("cuda")
@@ -216,7 +266,7 @@ class UNet2DConditionOutput:
 
 
 pipe = StableDiffusionPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4",
+    "runwayml/stable-diffusion-v1-5",
     revision="fp16",
     torch_dtype=torch.float16,
 ).to("cuda")

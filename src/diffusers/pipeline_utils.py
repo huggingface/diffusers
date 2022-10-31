@@ -18,7 +18,7 @@ import importlib
 import inspect
 import os
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -40,6 +40,7 @@ from .utils import (
     ONNX_WEIGHTS_NAME,
     WEIGHTS_NAME,
     BaseOutput,
+    deprecate,
     is_transformers_available,
     logging,
 )
@@ -92,6 +93,20 @@ class ImagePipelineOutput(BaseOutput):
     images: Union[List[PIL.Image.Image], np.ndarray]
 
 
+@dataclass
+class AudioPipelineOutput(BaseOutput):
+    """
+    Output class for audio pipelines.
+
+    Args:
+        audios (`np.ndarray`)
+            List of denoised samples of shape `(batch_size, num_channels, sample_rate)`. Numpy array present the
+            denoised audio samples of the diffusion pipeline.
+    """
+
+    audios: np.ndarray
+
+
 class DiffusionPipeline(ConfigMixin):
     r"""
     Base class for all models.
@@ -121,7 +136,7 @@ class DiffusionPipeline(ConfigMixin):
                 library = module.__module__.split(".")[0]
 
                 # check if the module is a pipeline module
-                pipeline_dir = module.__module__.split(".")[-2]
+                pipeline_dir = module.__module__.split(".")[-2] if len(module.__module__.split(".")) > 2 else None
                 path = module.__module__.split(".")
                 is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
 
@@ -208,6 +223,8 @@ class DiffusionPipeline(ConfigMixin):
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
+                if module.device == torch.device("meta"):
+                    return torch.device("cpu")
                 return module.device
         return torch.device("cpu")
 
@@ -316,7 +333,7 @@ class DiffusionPipeline(ConfigMixin):
         <Tip>
 
          It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
-         models](https://huggingface.co/docs/hub/models-gated#gated-models), *e.g.* `"CompVis/stable-diffusion-v1-4"`
+         models](https://huggingface.co/docs/hub/models-gated#gated-models), *e.g.* `"runwayml/stable-diffusion-v1-5"`
 
         </Tip>
 
@@ -338,17 +355,18 @@ class DiffusionPipeline(ConfigMixin):
         >>> # Download pipeline that requires an authorization token
         >>> # For more information on access tokens, please refer to this section
         >>> # of the documentation](https://huggingface.co/docs/hub/security-tokens)
-        >>> pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+        >>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 
         >>> # Download pipeline, but overwrite scheduler
         >>> from diffusers import LMSDiscreteScheduler
 
-        >>> scheduler = LMSDiscreteScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
-        >>> pipeline = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler)
+        >>> scheduler = LMSDiscreteScheduler.from_config("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
+        >>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", scheduler=scheduler)
         ```
         """
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         resume_download = kwargs.pop("resume_download", False)
+        force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)
         use_auth_token = kwargs.pop("use_auth_token", None)
@@ -366,6 +384,7 @@ class DiffusionPipeline(ConfigMixin):
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
                 resume_download=resume_download,
+                force_download=force_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
                 use_auth_token=use_auth_token,
@@ -413,13 +432,35 @@ class DiffusionPipeline(ConfigMixin):
             diffusers_module = importlib.import_module(cls.__module__.split(".")[0])
             pipeline_class = getattr(diffusers_module, config_dict["_class_name"])
 
+        # To be removed in 1.0.0
+        if pipeline_class.__name__ == "StableDiffusionInpaintPipeline" and version.parse(
+            version.parse(config_dict["_diffusers_version"]).base_version
+        ) <= version.parse("0.5.1"):
+            from diffusers import StableDiffusionInpaintPipeline, StableDiffusionInpaintPipelineLegacy
+
+            pipeline_class = StableDiffusionInpaintPipelineLegacy
+
+            deprecation_message = (
+                "You are using a legacy checkpoint for inpainting with Stable Diffusion, therefore we are loading the"
+                f" {StableDiffusionInpaintPipelineLegacy} class instead of {StableDiffusionInpaintPipeline}. For"
+                " better inpainting results, we strongly suggest using Stable Diffusion's official inpainting"
+                " checkpoint: https://huggingface.co/runwayml/stable-diffusion-inpainting instead or adapting your"
+                f" checkpoint {pretrained_model_name_or_path} to the format of"
+                " https://huggingface.co/runwayml/stable-diffusion-inpainting. Note that we do not actively maintain"
+                " the {StableDiffusionInpaintPipelineLegacy} class and will likely remove it in version 1.0.0."
+            )
+            deprecate("StableDiffusionInpaintPipelineLegacy", "1.0.0", deprecation_message, standard_warn=False)
+
         # some modules can be passed directly to the init
         # in this case they are already instantiated in `kwargs`
         # extract them here
         expected_modules = set(inspect.signature(pipeline_class.__init__).parameters.keys()) - set(["self"])
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
 
-        init_dict, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
+        init_dict, unused_kwargs = pipeline_class.extract_init_dict(config_dict, **kwargs)
+
+        if len(unused_kwargs) > 0:
+            logger.warning(f"Keyword arguments {unused_kwargs} not recognized.")
 
         init_kwargs = {}
 
@@ -541,6 +582,41 @@ class DiffusionPipeline(ConfigMixin):
         model = pipeline_class(**init_kwargs)
         return model
 
+    @property
+    def components(self) -> Dict[str, Any]:
+        r"""
+
+        The `self.components` property can be useful to run different pipelines with the same weights and
+        configurations to not have to re-allocate memory.
+
+        Examples:
+
+        ```py
+        >>> from diffusers import (
+        ...     StableDiffusionPipeline,
+        ...     StableDiffusionImg2ImgPipeline,
+        ...     StableDiffusionInpaintPipeline,
+        ... )
+
+        >>> img2text = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> img2img = StableDiffusionImg2ImgPipeline(**img2text.components)
+        >>> inpaint = StableDiffusionInpaintPipeline(**img2text.components)
+        ```
+
+        Returns:
+            A dictionaly containing all the modules needed to initialize the pipeline.
+        """
+        components = {k: getattr(self, k) for k in self.config.keys() if not k.startswith("_")}
+        expected_modules = set(inspect.signature(self.__init__).parameters.keys()) - set(["self"])
+
+        if set(components.keys()) != expected_modules:
+            raise ValueError(
+                f"{self} has been incorrectly initialized or {self.__class__} is incorrectly implemented. Expected"
+                f" {expected_modules} to be defined, but {components} are defined."
+            )
+
+        return components
+
     @staticmethod
     def numpy_to_pil(images):
         """
@@ -549,7 +625,11 @@ class DiffusionPipeline(ConfigMixin):
         if images.ndim == 3:
             images = images[None, ...]
         images = (images * 255).round().astype("uint8")
-        pil_images = [Image.fromarray(image) for image in images]
+        if images.shape[-1] == 1:
+            # special case for grayscale (single channel) images
+            pil_images = [Image.fromarray(image.squeeze(), mode="L") for image in images]
+        else:
+            pil_images = [Image.fromarray(image) for image in images]
 
         return pil_images
 
