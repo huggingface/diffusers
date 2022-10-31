@@ -60,7 +60,6 @@ def main(args):
         ),
     )
     noise_scheduler = DDPMScheduler(num_train_timesteps=1000)
-
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
