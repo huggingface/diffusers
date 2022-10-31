@@ -21,17 +21,17 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - name: PyTorch CPU tests on Ubuntu
+          - name: Fast PyTorch CPU tests on Ubuntu
             framework: pytorch
             runner: docker-cpu
             image: diffusers/diffusers-pytorch-cpu
             report: torch_cpu
-          - name: Flax TPU tests on Ubuntu
+          - name: Fast Flax TPU tests on Ubuntu
             framework: flax
             runner: docker-tpu
             image: diffusers/diffusers-flax-tpu
             report: flax_tpu
-          - name: ONNXRuntime CPU tests on Ubuntu
+          - name: Fast ONNXRuntime CPU tests on Ubuntu
             framework: onnxruntime
             runner: docker-cpu
             image: diffusers/diffusers-onnxruntime-cpu
@@ -64,7 +64,7 @@ jobs:
       run: |
         python utils/print_env.py
 
-    - name: Run fast PyTorch tests on CPU
+    - name: Run fast PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch' }}
       run: |
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
@@ -72,7 +72,7 @@ jobs:
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
 
-    - name: Run fast Flax tests on TPU
+    - name: Run fast Flax TPU tests
       if: ${{ matrix.config.framework == 'flax' }}
       run: |
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
@@ -80,7 +80,7 @@ jobs:
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
 
-    - name: Run fast ONNXRuntime tests on CPU
+    - name: Run fast ONNXRuntime CPU tests
       if: ${{ matrix.config.framework == 'onnxruntime' }}
       run: |
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \

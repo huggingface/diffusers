@@ -18,7 +18,7 @@ import unittest
 import numpy as np
 
 from diffusers import OnnxStableDiffusionPipeline
-from diffusers.utils.testing_utils import require_onnxruntime, slow
+from diffusers.utils.testing_utils import require_onnxruntime, require_torch_gpu, slow
 
 from ...test_pipelines_onnx_common import OnnxPipelineTesterMixin
 
@@ -30,10 +30,13 @@ class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.Tes
 
 @slow
 @require_onnxruntime
+@require_torch_gpu
 class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
     def test_inference(self):
         sd_pipe = OnnxStableDiffusionPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider"
+            "CompVis/stable-diffusion-v1-4",
+            revision="onnx",
+            provider=["CUDAExecutionProvider", "CPUExecutionProvider"],
         )
 
         prompt = "A painting of a squirrel eating a burger"

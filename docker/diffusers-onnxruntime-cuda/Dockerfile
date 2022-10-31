@@ -23,7 +23,7 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
     python3 -m pip install --no-cache-dir \
         torch \
         "onnxruntime-gpu>=1.13.1" \
-        --extra-index-url https://download.pytorch.org/whl/cu116 && \
+        --extra-index-url https://download.pytorch.org/whl/cu117 && \
     python3 -m pip install --no-cache-dir \
         accelerate \
         datasets \

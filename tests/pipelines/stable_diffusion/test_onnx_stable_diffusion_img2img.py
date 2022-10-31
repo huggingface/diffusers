@@ -18,7 +18,7 @@ import unittest
 import numpy as np
 
 from diffusers import OnnxStableDiffusionImg2ImgPipeline
-from diffusers.utils.testing_utils import load_image, require_onnxruntime, slow
+from diffusers.utils.testing_utils import load_image, require_onnxruntime, require_torch_gpu, slow
 
 from ...test_pipelines_onnx_common import OnnxPipelineTesterMixin
 
@@ -30,6 +30,7 @@ class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.Tes
 
 @slow
 @require_onnxruntime
+@require_torch_gpu
 class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
     def test_inference(self):
         init_image = load_image(
@@ -38,7 +39,9 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
         )
         init_image = init_image.resize((768, 512))
         pipe = OnnxStableDiffusionImg2ImgPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider"
+            "CompVis/stable-diffusion-v1-4",
+            revision="onnx",
+            provider=["CUDAExecutionProvider", "CPUExecutionProvider"],
         )
         pipe.set_progress_bar_config(disable=None)
 
