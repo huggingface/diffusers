@@ -41,7 +41,7 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
         pipe = OnnxStableDiffusionImg2ImgPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4",
             revision="onnx",
-            provider=["CUDAExecutionProvider", "CPUExecutionProvider"],
+            provider="CUDAExecutionProvider",
         )
         pipe.set_progress_bar_config(disable=None)
 

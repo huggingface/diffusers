@@ -44,7 +44,7 @@ jobs:
 
     container:
       image: ${{ matrix.config.image }}
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ ${{ matrix.config.runner == 'docker-tpu' && '--privileged' || ''}}
+      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
 
     defaults:
       run:

@@ -36,7 +36,7 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
         sd_pipe = OnnxStableDiffusionPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4",
             revision="onnx",
-            provider=["CUDAExecutionProvider", "CPUExecutionProvider"],
+            provider="CUDAExecutionProvider",
         )
 
         prompt = "A painting of a squirrel eating a burger"

@@ -45,7 +45,7 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
         pipe = OnnxStableDiffusionInpaintPipeline.from_pretrained(
             "runwayml/stable-diffusion-inpainting",
             revision="onnx",
-            provider=["CUDAExecutionProvider", "CPUExecutionProvider"],
+            provider="CUDAExecutionProvider",
         )
         pipe.set_progress_bar_config(disable=None)
 

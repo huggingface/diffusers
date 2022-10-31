@@ -41,7 +41,7 @@ jobs:
 
     container:
       image: ${{ matrix.config.image }}
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ ${{ matrix.config.runner == 'docker-tpu' && '--privileged' || ''}}
+      options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ ${{ matrix.config.runner == 'docker-tpu' && '--privileged' || ''}}
 
     defaults:
       run:
@@ -67,24 +67,30 @@ jobs:
       run: |
         python utils/print_env.py
 
-    - name: Run fast PyTorch CUDA tests
+    - name: Run slow PyTorch CUDA tests
       if: ${{ matrix.config.framework == 'pytorch' }}
+      env:
+        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
 
-    - name: Run fast Flax TPU tests
+    - name: Run slow Flax TPU tests
       if: ${{ matrix.config.framework == 'flax' }}
+      env:
+        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
         python -m pytest -n 0 \
           -s -v -k "Flax" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/
 
-    - name: Run fast ONNXRuntime CUDA tests
+    - name: Run slow ONNXRuntime CUDA tests
       if: ${{ matrix.config.framework == 'onnxruntime' }}
+      env:
+        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Onnx" \
