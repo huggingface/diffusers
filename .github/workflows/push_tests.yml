@@ -20,17 +20,14 @@ jobs:
       matrix:
         config:
           - name: Slow PyTorch CUDA tests on Ubuntu
-            framework: pytorch
             runner: docker-gpu
             image: diffusers/diffusers-pytorch-cuda
             report: torch_cuda
           - name: Slow Flax TPU tests on Ubuntu
-            framework: flax
             runner: docker-tpu
             image: diffusers/diffusers-flax-tpu
             report: flax_tpu
           - name: Slow ONNXRuntime CUDA tests on Ubuntu
-            framework: onnxruntime
             runner: docker-gpu
             image: diffusers/diffusers-onnxruntime-cuda
             report: onnx_cuda
@@ -67,34 +64,12 @@ jobs:
       run: |
         python utils/print_env.py
 
-    - name: Run slow PyTorch CUDA tests
-      if: ${{ matrix.config.framework == 'pytorch' }}
-      env:
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      run: |
-        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx" \
-          --make-reports=tests_${{ matrix.config.report }} \
-          tests/
-
-    - name: Run slow Flax TPU tests
-      if: ${{ matrix.config.framework == 'flax' }}
+    - name: Run slow tests
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
         python -m pytest -n 0 \
-          -s -v -k "Flax" \
-          --make-reports=tests_${{ matrix.config.report }} \
-          tests/
-
-    - name: Run slow ONNXRuntime CUDA tests
-      if: ${{ matrix.config.framework == 'onnxruntime' }}
-      env:
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      run: |
-        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "Onnx" \
-          --make-reports=tests_${{ matrix.config.report }} \
+          -s -v --make-reports=tests_${{ matrix.config.report }} \
           tests/
 
     - name: Failure short reports

@@ -2,6 +2,8 @@ FROM nvidia/cuda:11.6.2-cudnn8-devel-ubuntu20.04
 LABEL maintainer="Hugging Face"
 LABEL repository="diffusers"
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 RUN apt update && \
     apt install -y bash \
                    build-essential \
@@ -22,6 +24,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN python3 -m pip install --no-cache-dir --upgrade pip && \
     python3 -m pip install --no-cache-dir \
         torch \
+        torchvision \
+        torchaudio \
         "onnxruntime-gpu>=1.13.1" \
         --extra-index-url https://download.pytorch.org/whl/cu117 && \
     python3 -m pip install --no-cache-dir \

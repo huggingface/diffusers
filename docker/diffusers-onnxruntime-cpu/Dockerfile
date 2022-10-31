@@ -2,6 +2,8 @@ FROM ubuntu:20.04
 LABEL maintainer="Hugging Face"
 LABEL repository="diffusers"
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 RUN apt update && \
     apt install -y bash \
                    build-essential \
@@ -22,6 +24,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN python3 -m pip install --no-cache-dir --upgrade pip && \
     python3 -m pip install --no-cache-dir \
         torch \
+        torchvision \
+        torchaudio \
         onnxruntime \
         --extra-index-url https://download.pytorch.org/whl/cpu && \
     python3 -m pip install --no-cache-dir \

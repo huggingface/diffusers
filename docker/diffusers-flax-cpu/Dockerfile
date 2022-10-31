@@ -2,6 +2,8 @@ FROM ubuntu:20.04
 LABEL maintainer="Hugging Face"
 LABEL repository="diffusers"
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 RUN apt update && \
     apt install -y bash \
                    build-essential \

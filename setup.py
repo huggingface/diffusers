@@ -93,7 +93,6 @@ _deps = [
     "jaxlib>=0.1.65",
     "modelcards>=0.1.4",
     "numpy",
-    "onnxruntime",
     "parameterized",
     "pytest",
     "pytest-timeout",
@@ -181,7 +180,6 @@ extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "modelca
 extras["test"] = deps_list(
     "accelerate",
     "datasets",
-    "onnxruntime",
     "parameterized",
     "pytest",
     "pytest-timeout",

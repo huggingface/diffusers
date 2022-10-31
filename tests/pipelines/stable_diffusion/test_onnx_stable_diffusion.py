@@ -75,7 +75,7 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
         test_callback_fn.has_been_called = False
 
         pipe = OnnxStableDiffusionPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider"
+            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CUDAExecutionProvider"
         )
         pipe.set_progress_bar_config(disable=None)
 

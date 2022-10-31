@@ -23,17 +23,14 @@ jobs:
       matrix:
         config:
           - name: Fast PyTorch CPU tests on Ubuntu
-            framework: pytorch
             runner: docker-cpu
             image: diffusers/diffusers-pytorch-cpu
             report: torch_cpu
           - name: Fast Flax CPU tests on Ubuntu
-            framework: flax
             runner: docker-cpu
             image: diffusers/diffusers-flax-cpu
             report: flax_cpu
           - name: Fast ONNXRuntime CPU tests on Ubuntu
-            framework: onnxruntime
             runner: docker-cpu
             image: diffusers/diffusers-onnxruntime-cpu
             report: onnx_cpu
@@ -65,28 +62,10 @@ jobs:
       run: |
         python utils/print_env.py
 
-    - name: Run fast PyTorch CPU tests
-      if: ${{ matrix.config.framework == 'pytorch' }}
+    - name: Run fast tests
       run: |
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx" \
-          --make-reports=tests_${{ matrix.config.report }} \
-          tests/
-
-    - name: Run fast Flax TPU tests
-      if: ${{ matrix.config.framework == 'flax' }}
-      run: |
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "Flax" \
-          --make-reports=tests_${{ matrix.config.report }} \
-          tests/
-
-    - name: Run fast ONNXRuntime CPU tests
-      if: ${{ matrix.config.framework == 'onnxruntime' }}
-      run: |
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "Onnx" \
-          --make-reports=tests_${{ matrix.config.report }} \
+          -s -v  --make-reports=tests_${{ matrix.config.report }} \
           tests/
 
     - name: Failure short reports

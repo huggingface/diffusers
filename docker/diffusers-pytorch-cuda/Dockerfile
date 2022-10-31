@@ -2,6 +2,8 @@ FROM nvidia/cuda:11.7.1-cudnn8-runtime-ubuntu20.04
 LABEL maintainer="Hugging Face"
 LABEL repository="diffusers"
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 RUN apt update && \
     apt install -y bash \
                    build-essential \
