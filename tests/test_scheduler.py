@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import inspect
 import tempfile
 import unittest
 from typing import Dict, List, Tuple
@@ -101,11 +102,11 @@ class SchedulerCommonTest(unittest.TestCase):
                 kwargs["num_inference_steps"] = num_inference_steps
 
             # Set the seed before step() as some schedulers are stochastic like EulerAncestralDiscreteScheduler, EulerDiscreteScheduler
-            if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler):
+            if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
                 kwargs["generator"] = torch.Generator().manual_seed(0)
             output = scheduler.step(residual, time_step, sample, **kwargs).prev_sample
 
-            if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler):
+            if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
                 kwargs["generator"] = torch.Generator().manual_seed(0)
             new_output = new_scheduler.step(residual, time_step, sample, **kwargs).prev_sample
 
@@ -137,11 +138,11 @@ class SchedulerCommonTest(unittest.TestCase):
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
-            if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler):
+            if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
                 kwargs["generator"] = torch.Generator().manual_seed(0)
             output = scheduler.step(residual, time_step, sample, **kwargs).prev_sample
 
-            if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler):
+            if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
                 kwargs["generator"] = torch.Generator().manual_seed(0)
             new_output = new_scheduler.step(residual, time_step, sample, **kwargs).prev_sample
 
@@ -173,11 +174,11 @@ class SchedulerCommonTest(unittest.TestCase):
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
-            if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler):
+            if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
                 kwargs["generator"] = torch.Generator().manual_seed(0)
             output = scheduler.step(residual, timestep, sample, **kwargs).prev_sample
 
-            if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler):
+            if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
                 kwargs["generator"] = torch.Generator().manual_seed(0)
             new_output = new_scheduler.step(residual, timestep, sample, **kwargs).prev_sample
 
@@ -263,7 +264,7 @@ class SchedulerCommonTest(unittest.TestCase):
                 kwargs["num_inference_steps"] = num_inference_steps
 
             # Set the seed before state as some schedulers are stochastic like EulerAncestralDiscreteScheduler, EulerDiscreteScheduler
-            if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler):
+            if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
                 kwargs["generator"] = torch.Generator().manual_seed(0)
             outputs_dict = scheduler.step(residual, timestep, sample, **kwargs)
 
@@ -273,7 +274,7 @@ class SchedulerCommonTest(unittest.TestCase):
                 kwargs["num_inference_steps"] = num_inference_steps
 
             # Set the seed before state as some schedulers are stochastic like EulerAncestralDiscreteScheduler, EulerDiscreteScheduler
-            if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler):
+            if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
                 kwargs["generator"] = torch.Generator().manual_seed(0)
             outputs_tuple = scheduler.step(residual, timestep, sample, return_dict=False, **kwargs)
 
