@@ -23,14 +23,17 @@ jobs:
       matrix:
         config:
           - name: Fast PyTorch CPU tests on Ubuntu
+            framework: pytorch
             runner: docker-cpu
             image: diffusers/diffusers-pytorch-cpu
             report: torch_cpu
           - name: Fast Flax CPU tests on Ubuntu
+            framework: flax
             runner: docker-cpu
             image: diffusers/diffusers-flax-cpu
             report: flax_cpu
           - name: Fast ONNXRuntime CPU tests on Ubuntu
+            framework: onnxruntime
             runner: docker-cpu
             image: diffusers/diffusers-onnxruntime-cpu
             report: onnx_cpu
@@ -62,12 +65,28 @@ jobs:
       run: |
         python utils/print_env.py
 
-    - name: Run fast tests
-      env:
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+    - name: Run fast PyTorch CPU tests
+      if: ${{ matrix.config.framework == 'pytorch' }}
       run: |
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
-          -s -v  --make-reports=tests_${{ matrix.config.report }} \
+          -s -v -k "not Flax and not Onnx" \
+          --make-reports=tests_${{ matrix.config.report }} \
+          tests/
+
+    - name: Run fast Flax TPU tests
+      if: ${{ matrix.config.framework == 'flax' }}
+      run: |
+        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "Flax" \
+          --make-reports=tests_${{ matrix.config.report }} \
+          tests/
+
+    - name: Run fast ONNXRuntime CPU tests
+      if: ${{ matrix.config.framework == 'onnxruntime' }}
+      run: |
+        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "Onnx" \
+          --make-reports=tests_${{ matrix.config.report }} \
           tests/
 
     - name: Failure short reports
@@ -82,7 +101,7 @@ jobs:
         path: reports
 
   run_fast_tests_apple_m1:
-    name: PyTorch MPS tests on MacOS
+    name: Fast PyTorch MPS tests on MacOS
     runs-on: [ self-hosted, apple-m1 ]
 
     steps:
