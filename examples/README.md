@@ -16,7 +16,7 @@ limitations under the License.
 # 🧨 Diffusers Examples
 
 Diffusers examples are a collection of scripts to demonstrate how to effectively use the `diffusers` library
-for a variety of use cases.
+for a variety of use cases involving training or fine-tuning.
 
 **Note**: If you are looking for **official** examples on how to use `diffusers` for inference, 
 please have a look at [src/diffusers/pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines)
@@ -38,7 +38,11 @@ Training examples show how to pretrain or fine-tune diffusion models for a varie
 
 | Task | 🤗 Accelerate | 🤗 Datasets | Colab
 |---|---|:---:|:---:|
-| [**Unconditional Image Generation**](https://github.com/huggingface/diffusers/blob/main/examples/unconditional_image_generation/train_unconditional.py) | ✅ | ✅ | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb)
+| [**Unconditional Image Generation**](./unconditional_training) | ✅ | ✅ | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb)
+| [**Text-to-Image fine-tuning**](./text2image) | ✅ | ✅ | 
+| [**Textual Inversion**](./text_inversion) | ✅ | - | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_textual_inversion_training.ipynb)
+| [**Dreambooth**](./dreambooth) | ✅ | - | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_dreambooth_training.ipynb)
+
 
 ## Community
 
