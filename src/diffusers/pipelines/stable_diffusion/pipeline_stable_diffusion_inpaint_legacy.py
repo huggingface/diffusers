@@ -352,6 +352,11 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
+        # check if the scheduler accepts generator
+        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        if accepts_generator:
+            extra_step_kwargs["generator"] = generator
+
         latents = init_latents
 
         t_start = max(num_inference_steps - init_timestep + offset, 0)
@@ -374,7 +379,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, generator=generator, **extra_step_kwargs).prev_sample
+            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
             # masking
             init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, torch.tensor([t]))
 
