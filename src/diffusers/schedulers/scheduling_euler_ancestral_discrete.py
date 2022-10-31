@@ -67,6 +67,14 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     """
 
+    _compatible_classes = [
+        "DDIMScheduler",
+        "DDPMScheduler",
+        "LMSDiscreteScheduler",
+        "PNDMScheduler",
+        "EulerDiscreteScheduler",
+    ]
+
     @register_to_config
     def __init__(
         self,

@@ -19,7 +19,7 @@ import tempfile
 import unittest
 
 import diffusers
-from diffusers import DDIMScheduler, PNDMScheduler, logging
+from diffusers import DDIMScheduler, EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, PNDMScheduler, logging
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.utils.testing_utils import CaptureLogger
 
@@ -49,6 +49,22 @@ class SampleObject2(ConfigMixin):
         b=5,
         c=(2, 5),
         d="for diffusion",
+        f=[1, 3],
+    ):
+        pass
+
+
+class SampleObject3(ConfigMixin):
+    config_name = "config.json"
+
+    @register_to_config
+    def __init__(
+        self,
+        a=2,
+        b=5,
+        c=(2, 5),
+        d="for diffusion",
+        e=[1, 3],
         f=[1, 3],
     ):
         pass
@@ -190,6 +206,40 @@ class ConfigTester(unittest.TestCase):
             " be ignored. Please verify your config.json configuration file.\n"
         )
 
+    def test_save_load_from_different_config_comp_schedulers(self):
+        SampleObject3._compatible_classes = ["SampleObject", "SampleObject2"]
+        SampleObject2._compatible_classes = ["SampleObject", "SampleObject3"]
+        SampleObject._compatible_classes = ["SampleObject2", "SampleObject3"]
+
+        obj = SampleObject()
+
+        # mock add obj class to `diffusers`
+        setattr(diffusers, "SampleObject", SampleObject)
+        setattr(diffusers, "SampleObject2", SampleObject2)
+        setattr(diffusers, "SampleObject3", SampleObject3)
+        logger = logging.get_logger("diffusers.configuration_utils")
+        logger.setLevel(diffusers.logging.INFO)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            obj.save_config(tmpdirname)
+
+            with CaptureLogger(logger) as cap_logger_1:
+                new_obj_1 = SampleObject.from_config(tmpdirname)
+
+            with CaptureLogger(logger) as cap_logger_2:
+                new_obj_2 = SampleObject2.from_config(tmpdirname)
+
+            with CaptureLogger(logger) as cap_logger_3:
+                new_obj_3 = SampleObject3.from_config(tmpdirname)
+
+        assert new_obj_1.__class__ == SampleObject
+        assert new_obj_2.__class__ == SampleObject2
+        assert new_obj_3.__class__ == SampleObject3
+
+        assert cap_logger_1.out == ""
+        assert cap_logger_2.out == "{'f'} was not found in config. Values will be initialized to default values.\n"
+        assert cap_logger_3.out == "{'f'} was not found in config. Values will be initialized to default values.\n"
+
     def test_load_ddim_from_pndm(self):
         logger = logging.get_logger("diffusers.configuration_utils")
 
@@ -197,6 +247,28 @@ class ConfigTester(unittest.TestCase):
             ddim = DDIMScheduler.from_config("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
 
         assert ddim.__class__ == DDIMScheduler
+        # no warning should be thrown
+        assert cap_logger.out == ""
+
+    def test_load_ddim_from_euler(self):
+        logger = logging.get_logger("diffusers.configuration_utils")
+
+        with CaptureLogger(logger) as cap_logger:
+            euler = EulerDiscreteScheduler.from_config("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
+
+        assert euler.__class__ == EulerDiscreteScheduler
+        # no warning should be thrown
+        assert cap_logger.out == ""
+
+    def test_load_ddim_from_euler_ancestral(self):
+        logger = logging.get_logger("diffusers.configuration_utils")
+
+        with CaptureLogger(logger) as cap_logger:
+            euler = EulerAncestralDiscreteScheduler.from_config(
+                "runwayml/stable-diffusion-v1-5", subfolder="scheduler"
+            )
+
+        assert euler.__class__ == EulerAncestralDiscreteScheduler
         # no warning should be thrown
         assert cap_logger.out == ""
 

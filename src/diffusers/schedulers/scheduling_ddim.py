@@ -109,7 +109,13 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
     """
 
-    _compatible_classes = ["PNDMScheduler", "DDPMScheduler", "LMSDiscreteScheduler"]
+    _compatible_classes = [
+        "PNDMScheduler",
+        "DDPMScheduler",
+        "LMSDiscreteScheduler",
+        "EulerDiscreteScheduler",
+        "EulerAncestralDiscreteScheduler",
+    ]
 
     @register_to_config
     def __init__(

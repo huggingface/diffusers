@@ -50,8 +50,8 @@ class ConfigMixin:
         - **ignore_for_config** (`List[str]`) -- A list of attributes that should not be saved in the config (should be
           overridden by parent class).
         - **_compatible_classes** (`List[str]`) -- A list of classes that are compatible with the parent class, so that
-          `from_config` can be used from a class different than the one used to save the config (should
-          be overridden by parent class).
+          `from_config` can be used from a class different than the one used to save the config (should be overridden
+          by parent class).
     """
     config_name = None
     ignore_for_config = []
