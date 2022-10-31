@@ -54,7 +54,7 @@ def main():
             and last_comment is not None
             and last_comment.user.login != "github-actions[bot]"
         ):
-            # Opens the issue if someone other than Stelebot commented.
+            # Opens the issue if someone other than Stalebot commented.
             issue.edit(state="open")
             issue.remove_from_labels("stale")
         elif (
