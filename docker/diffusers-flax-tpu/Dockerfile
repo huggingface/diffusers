@@ -14,23 +14,20 @@ RUN apt update && \
                    python3.8-venv && \
     rm -rf /var/lib/apt/lists
 
-# TPU-specific steps
-RUN curl -L https://storage.googleapis.com/cloud-tpu-tpuvm-artifacts/libtpu/1.4.0/libtpu.so -o /lib/libtpu.so
-ENV TPU_NAME=local
-ENV TF_CPP_MIN_LOG_LEVEL=0
-
 # make sure to use venv
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
+# follow the instructions here: https://cloud.google.com/tpu/docs/run-in-container#train_a_jax_model_in_a_docker_container
 RUN python3 -m pip install --no-cache-dir --upgrade pip && \
     python3 -m pip install --no-cache-dir \
-        "jax[tpu]>=0.2.16,!=0.3.2,<=0.3.6" \
+        "jax[tpu]>=0.2.16,!=0.3.2" \
         -f https://storage.googleapis.com/jax-releases/libtpu_releases.html && \
-    python3 -m pip install --no-cache-dir \
+    python3 -m pip install --upgrade --no-cache-dir \
+        clu \
         "flax>=0.4.1" \
-        "jaxlib>=0.1.65,<=0.3.6" && \
+        "jaxlib>=0.1.65" && \
     python3 -m pip install --no-cache-dir \
         accelerate \
         datasets \
