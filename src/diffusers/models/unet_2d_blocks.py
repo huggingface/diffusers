@@ -1053,7 +1053,6 @@ class CrossAttnUpBlock2D(nn.Module):
         cross_attention_dim=1280,
         attention_type="default",
         output_scale_factor=1.0,
-        downsample_padding=1,
         add_upsample=True,
     ):
         super().__init__()

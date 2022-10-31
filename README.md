@@ -142,11 +142,7 @@ it before the pipeline and pass it to `from_pretrained`.
 ```python
 from diffusers import LMSDiscreteScheduler
 
-lms = LMSDiscreteScheduler(
-    beta_start=0.00085, 
-    beta_end=0.012, 
-    beta_schedule="scaled_linear"
-)
+lms = LMSDiscreteScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5", 
