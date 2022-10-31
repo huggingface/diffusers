@@ -310,8 +310,6 @@ class CrossAttention(nn.Module):
         else:
             hidden_states = torch.matmul(attention_probs, value)
 
-        # reshape hidden_states
-        hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
         return hidden_states
 
     def _sliced_attention(self, query, key, value, sequence_length, dim):
