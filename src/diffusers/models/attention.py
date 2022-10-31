@@ -13,7 +13,6 @@
 # limitations under the License.
 import math
 import os
-from inspect import isfunction
 from typing import Any, Optional
 
 import torch
@@ -245,32 +244,32 @@ class MemoryEfficientCrossAttention(nn.Module):
         self.attention_op: Optional[Any] = None
 
     def forward(self, x, context=None, mask=None):
-        q = self.to_q(x)
+        queries = self.to_q(x)
         context = x if context is None else context
-        k = self.to_k(context)
-        v = self.to_v(context)
+        keys = self.to_k(context)
+        values = self.to_v(context)
 
-        b, _, _ = q.shape
-        q, k, v = map(
-            lambda t: t.unsqueeze(3)
-            .reshape(b, t.shape[1], self.heads, self.dim_head)
+        batch_size, _, _ = queries.shape
+        queries, keys, values = map(
+            lambda tensor: tensor.unsqueeze(3)
+            .reshape(batch_size, tensor.shape[1], self.heads, self.dim_head)
             .permute(0, 2, 1, 3)
-            .reshape(b * self.heads, t.shape[1], self.dim_head)
+            .reshape(batch_size * self.heads, tensor.shape[1], self.dim_head)
             .contiguous(),
-            (q, k, v),
+            (queries, keys, values),
         )
 
         # actually compute the attention, what we cannot get enough of
-        out = xformers.ops.memory_efficient_attention(q, k, v, attn_bias=None, op=self.attention_op)
+        out = xformers.ops.memory_efficient_attention(queries, keys, values, attn_bias=None, op=self.attention_op)
 
         # TODO: Use this directly in the attention operation, as a bias
         if mask is not None:
             raise NotImplementedError
         out = (
             out.unsqueeze(0)
-            .reshape(b, self.heads, out.shape[1], self.dim_head)
+            .reshape(batch_size, self.heads, out.shape[1], self.dim_head)
             .permute(0, 2, 1, 3)
-            .reshape(b, out.shape[1], self.heads * self.dim_head)
+            .reshape(batch_size, out.shape[1], self.heads * self.dim_head)
         )
         return self.to_out(out)
 
