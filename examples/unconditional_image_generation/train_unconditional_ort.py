@@ -22,6 +22,7 @@ from torchvision.transforms import (
     ToTensor,
 )
 from tqdm.auto import tqdm
+from onnxruntime.training.ortmodule import ORTModule
 
 
 logger = get_logger(__name__)
@@ -59,6 +60,7 @@ def main(args):
             "UpBlock2D",
         ),
     )
+    model = ORTModule(model)
     noise_scheduler = DDPMScheduler(num_train_timesteps=1000)
 
     optimizer = torch.optim.AdamW(
@@ -236,6 +238,7 @@ if __name__ == "__main__":
             "and an Nvidia Ampere GPU."
         ),
     )
+    parser.add_argument("--ort", action="store_true")
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
