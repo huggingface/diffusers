@@ -4,10 +4,13 @@ import os
 import random
 import re
 import unittest
+import urllib.parse
 from distutils.util import strtobool
-from io import StringIO
+from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Union
+
+import numpy as np
 
 import PIL.Image
 import PIL.ImageOps
@@ -32,6 +35,14 @@ if is_torch_available():
         # Some builds of torch 1.12 don't have the mps backend registered. See #892 for more details
         mps_backend_registered = hasattr(torch.backends, "mps")
         torch_device = "mps" if (mps_backend_registered and torch.backends.mps.is_available()) else torch_device
+
+
+def torch_all_close(a, b, *args, **kwargs):
+    if not is_torch_available():
+        raise ValueError("PyTorch needs to be installed to use this function.")
+    if not torch.allclose(a, b, *args, **kwargs):
+        assert False, f"Max diff is absolute {(a - b).abs().max()}. Diff tensor is {(a - b).abs()}."
+    return True
 
 
 def get_tests_dir(append_path=None):
@@ -155,6 +166,19 @@ def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     image = PIL.ImageOps.exif_transpose(image)
     image = image.convert("RGB")
     return image
+
+
+def load_numpy(path) -> np.ndarray:
+    if not path.startswith("http://") or path.startswith("https://"):
+        path = os.path.join(
+            "https://huggingface.co/datasets/fusing/diffusers-testing/resolve/main", urllib.parse.quote(path)
+        )
+
+    response = requests.get(path)
+    response.raise_for_status()
+    array = np.load(BytesIO(response.content))
+
+    return array
 
 
 # --- pytest conf functions --- #

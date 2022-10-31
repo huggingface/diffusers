@@ -38,7 +38,7 @@ class DDPMPipelineIntegrationTests(unittest.TestCase):
     def test_inference_cifar10(self):
         model_id = "google/ddpm-cifar10-32"
 
-        unet = UNet2DModel.from_pretrained(model_id)
+        unet = UNet2DModel.from_pretrained(model_id, device_map="auto")
         scheduler = DDPMScheduler.from_config(model_id)
 
         ddpm = DDPMPipeline(unet=unet, scheduler=scheduler)
