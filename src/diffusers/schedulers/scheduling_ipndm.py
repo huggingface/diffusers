@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import math
-from typing import Optional, Tuple, Union
+from typing import Tuple, Union
 
 import torch
 
