@@ -70,7 +70,7 @@ class KarrasVePipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 class KarrasVePipelineIntegrationTests(unittest.TestCase):
     def test_inference(self):
         model_id = "google/ncsnpp-celebahq-256"
-        model = UNet2DModel.from_pretrained(model_id)
+        model = UNet2DModel.from_pretrained(model_id, device_map="auto")
         scheduler = KarrasVeScheduler()
 
         pipe = KarrasVePipeline(unet=model, scheduler=scheduler)

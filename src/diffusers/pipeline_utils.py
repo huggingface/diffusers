@@ -30,9 +30,9 @@ from packaging import version
 from PIL import Image
 from tqdm.auto import tqdm
 
-from . import __version__
 from .configuration_utils import ConfigMixin
 from .dynamic_modules_utils import get_class_from_dynamic_module
+from .hub_utils import http_user_agent
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from .utils import (
     CONFIG_NAME,
@@ -223,6 +223,8 @@ class DiffusionPipeline(ConfigMixin):
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
+                if module.device == torch.device("meta"):
+                    return torch.device("cpu")
                 return module.device
         return torch.device("cpu")
 
@@ -396,10 +398,14 @@ class DiffusionPipeline(ConfigMixin):
             if custom_pipeline is not None:
                 allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
 
-            requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
-            user_agent = {"diffusers": __version__, "pipeline_class": requested_pipeline_class}
+            if cls != DiffusionPipeline:
+                requested_pipeline_class = cls.__name__
+            else:
+                requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
+            user_agent = {"pipeline_class": requested_pipeline_class}
             if custom_pipeline is not None:
                 user_agent["custom_pipeline"] = custom_pipeline
+            user_agent = http_user_agent(user_agent)
 
             # download all allow_patterns
             cached_folder = snapshot_download(
@@ -584,7 +590,7 @@ class DiffusionPipeline(ConfigMixin):
     def components(self) -> Dict[str, Any]:
         r"""
 
-        The `self.compenents` property can be useful to run different pipelines with the same weights and
+        The `self.components` property can be useful to run different pipelines with the same weights and
         configurations to not have to re-allocate memory.
 
         Examples:
@@ -602,7 +608,7 @@ class DiffusionPipeline(ConfigMixin):
         ```
 
         Returns:
-            A dictionaly containing all the modules needed to initialize the pipleline.
+            A dictionaly containing all the modules needed to initialize the pipeline.
         """
         components = {k: getattr(self, k) for k in self.config.keys() if not k.startswith("_")}
         expected_modules = set(inspect.signature(self.__init__).parameters.keys()) - set(["self"])
@@ -623,7 +629,11 @@ class DiffusionPipeline(ConfigMixin):
         if images.ndim == 3:
             images = images[None, ...]
         images = (images * 255).round().astype("uint8")
-        pil_images = [Image.fromarray(image) for image in images]
+        if images.shape[-1] == 1:
+            # special case for grayscale (single channel) images
+            pil_images = [Image.fromarray(image.squeeze(), mode="L") for image in images]
+        else:
+            pil_images = [Image.fromarray(image) for image in images]
 
         return pil_images
 

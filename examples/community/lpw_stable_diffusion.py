@@ -40,7 +40,7 @@ re_attention = re.compile(
 
 def parse_prompt_attention(text):
     """
-    Parses a string with attention tokens and returns a list of pairs: text and its assoicated weight.
+    Parses a string with attention tokens and returns a list of pairs: text and its associated weight.
     Accepted tokens are:
       (abc) - increases attention to abc by a multiplier of 1.1
       (abc:3.12) - increases attention to abc by a multiplier of 3.12
@@ -237,9 +237,9 @@ def get_weighted_text_embeddings(
     r"""
     Prompts can be assigned with local weights using brackets. For example,
     prompt 'A (very beautiful) masterpiece' highlights the words 'very beautiful',
-    and the embedding tokens corresponding to the words get multipled by a constant, 1.1.
+    and the embedding tokens corresponding to the words get multiplied by a constant, 1.1.
 
-    Also, to regularize of the embedding, the weighted embedding would be scaled to preserve the origional mean.
+    Also, to regularize of the embedding, the weighted embedding would be scaled to preserve the original mean.
 
     Args:
         pipe (`DiffusionPipeline`):
