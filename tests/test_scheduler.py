@@ -79,6 +79,7 @@ class SchedulerCommonTest(unittest.TestCase):
 
         num_inference_steps = kwargs.pop("num_inference_steps", None)
 
+        # TODO(Suraj) - delete the following two lines once DDPM, DDIM, and PNDM have timesteps casted to float by default
         for scheduler_class in self.scheduler_classes:
             if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
                 time_step = float(time_step)
