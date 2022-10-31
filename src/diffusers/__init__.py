@@ -41,6 +41,8 @@ if is_torch_available():
     from .schedulers import (
         DDIMScheduler,
         DDPMScheduler,
+        EulerAncestralDiscreteScheduler,
+        EulerDiscreteScheduler,
         IPNDMScheduler,
         KarrasVeScheduler,
         PNDMScheduler,
@@ -52,7 +54,7 @@ else:
     from .utils.dummy_pt_objects import *  # noqa F403
 
 if is_torch_available() and is_scipy_available():
-    from .schedulers import EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler
+    from .schedulers import LMSDiscreteScheduler
 else:
     from .utils.dummy_torch_and_scipy_objects import *  # noqa F403
 
