@@ -1,24 +1,24 @@
+"""
+    modified based on diffusion library from Huggingface: https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion.py
+"""
 import inspect
 from typing import Callable, List, Optional, Union
 
 import torch
 
-from diffusers.utils import is_accelerate_available
+from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
+from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from diffusers.utils import logging
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
-
-from ...configuration_utils import FrozenDict
-from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from ...utils import deprecate, logging
-from . import StableDiffusionPipelineOutput
-from .safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class StableDiffusionPipeline(DiffusionPipeline):
+class SeedResizeStableDiffusionPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
 
@@ -41,7 +41,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
+            Please, refer to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) for details.
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
@@ -57,31 +57,6 @@ class StableDiffusionPipeline(DiffusionPipeline):
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
-
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
-            deprecation_message = (
-                f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
-                f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
-                "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
-                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
-                " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
-                " file"
-            )
-            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(scheduler.config)
-            new_config["steps_offset"] = 1
-            scheduler._internal_dict = FrozenDict(new_config)
-
-        if safety_checker is None:
-            logger.warn(
-                f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
-                " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
-                " results in services or applications open to the public. Both the diffusers team and Hugging Face"
-                " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
-                " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
-                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
-            )
-
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -119,22 +94,6 @@ class StableDiffusionPipeline(DiffusionPipeline):
         # set slice_size = `None` to disable `attention slicing`
         self.enable_attention_slicing(None)
 
-    def enable_sequential_cpu_offload(self):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
-        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
-        """
-        if is_accelerate_available():
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        device = torch.device("cuda")
-
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
-            cpu_offload(cpu_offloaded_model, device)
-
     @torch.no_grad()
     def __call__(
         self,
@@ -152,6 +111,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
+        text_embeddings: Optional[torch.FloatTensor] = None,
         **kwargs,
     ):
         r"""
@@ -208,6 +168,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
+
         if isinstance(prompt, str):
             batch_size = 1
         elif isinstance(prompt, list):
@@ -242,7 +203,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
             text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
-        text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
+
+        if text_embeddings is None:
+            text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = text_embeddings.shape
@@ -300,19 +263,42 @@ class StableDiffusionPipeline(DiffusionPipeline):
         # for 1-to-1 results reproducibility with the CompVis implementation.
         # However this currently doesn't work in `mps`.
         latents_shape = (batch_size * num_images_per_prompt, self.unet.in_channels, height // 8, width // 8)
+        latents_shape_reference = (batch_size * num_images_per_prompt, self.unet.in_channels, 64, 64)
         latents_dtype = text_embeddings.dtype
         if latents is None:
             if self.device.type == "mps":
-                # randn does not work reproducibly on mps
+                # randn does not exist on mps
+                latents_reference = torch.randn(
+                    latents_shape_reference, generator=generator, device="cpu", dtype=latents_dtype
+                ).to(self.device)
                 latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(
                     self.device
                 )
             else:
+                latents_reference = torch.randn(
+                    latents_shape_reference, generator=generator, device=self.device, dtype=latents_dtype
+                )
                 latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
         else:
-            if latents.shape != latents_shape:
+            if latents_reference.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
+            latents_reference = latents_reference.to(self.device)
             latents = latents.to(self.device)
+
+        # This is the key part of the pipeline where we
+        # try to ensure that the generated images w/ the same seed
+        # but different sizes actually result in similar images
+        dx = (latents_shape[3] - latents_shape_reference[3]) // 2
+        dy = (latents_shape[2] - latents_shape_reference[2]) // 2
+        w = latents_shape_reference[3] if dx >= 0 else latents_shape_reference[3] + 2 * dx
+        h = latents_shape_reference[2] if dy >= 0 else latents_shape_reference[2] + 2 * dy
+        tx = 0 if dx < 0 else dx
+        ty = 0 if dy < 0 else dy
+        dx = max(-dx, 0)
+        dy = max(-dy, 0)
+        # import pdb
+        # pdb.set_trace()
+        latents[:, :, ty : ty + h, tx : tx + w] = latents_reference[:, :, dy : dy + h, dx : dx + w]
 
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
