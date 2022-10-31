@@ -61,6 +61,7 @@ def main():
                 "[contributing guidelines](https://github.com/huggingface/diffusers/blob/main/CONTRIBUTING.md) "
                 "are likely to be ignored."
             )
+            issue.edit(labels=["stale"])
 
 
 if __name__ == "__main__":
