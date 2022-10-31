@@ -28,12 +28,13 @@ def get_sinusoidal_embeddings(
 ) -> jnp.ndarray:
     """Returns the positional encoding (same as Tensor2Tensor).
     Args:
-      timesteps: An array of shape [batch_size].
-      embedding_dim: The number of output channels.
-      min_timescale: The smallest time unit (should probably be 0.0).
-      max_timescale: The largest time unit.
+        timesteps: a 1-D Tensor of N indices, one per batch element.
+        These may be fractional.
+        embedding_dim: The number of output channels.
+        min_timescale: The smallest time unit (should probably be 0.0).
+        max_timescale: The largest time unit.
     Returns:
-      a Tensor of timing signals [1, length, num_channels]
+        a Tensor of timing signals [N, num_channels]
     """
     assert timesteps.ndim == 1, "Timesteps should be a 1d-array"
     assert embedding_dim % 2 == 0, f"Embedding dimension {embedding_dim} should be even"
