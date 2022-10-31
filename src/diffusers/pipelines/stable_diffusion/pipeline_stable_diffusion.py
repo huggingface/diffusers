@@ -133,7 +133,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
         device = torch.device("cuda")
 
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
-            cpu_offload(cpu_offloaded_model, device)
+            if cpu_offloaded_model is not None:
+                cpu_offload(cpu_offloaded_model, device)
 
     @torch.no_grad()
     def __call__(
