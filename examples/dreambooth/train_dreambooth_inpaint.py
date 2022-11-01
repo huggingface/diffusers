@@ -14,7 +14,12 @@ from torch.utils.data import Dataset
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
-from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers import (
+    AutoencoderKL,
+    DDPMScheduler,
+    StableDiffusionPipeline,
+    UNet2DConditionModel,
+)
 from diffusers.optimization import get_scheduler
 from huggingface_hub import HfFolder, Repository, whoami
 from PIL import Image, ImageDraw
@@ -25,6 +30,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 import numpy as np
 
 logger = get_logger(__name__)
+
 
 def prepare_mask_and_masked_image(image, mask):
     image = np.array(image.convert("RGB"))
@@ -42,17 +48,35 @@ def prepare_mask_and_masked_image(image, mask):
 
     return mask, masked_image
 
-#generate random masks
-def random_mask(im_shape, ratio=1):
+
+# generate random masks
+def random_mask(im_shape, ratio=1, mask_full_image=False):
     mask = Image.new("L", im_shape, 0)
     draw = ImageDraw.Draw(mask)
-    size=(random.randint(0, int(im_shape[0]*ratio)), random.randint(0, int(im_shape[1]*ratio)))
-    # size=(int(im_shape[0]*ratio), int(im_shape[1]*ratio)) #use this to mask the whole image always
-    limits=(im_shape[0]-size[0]//2, im_shape[1]-size[1]//2)
-    center = (random.randint(size[0]//2, limits[0]), random.randint(size[1]//2, limits[1]))
-    draw.rectangle((center[0]-size[0]//2, center[1]-size[1]//2, center[0]+size[0]//2, center[1]+size[1]//2), fill=255)
+    size = (
+        random.randint(0, int(im_shape[0] * ratio)),
+        random.randint(0, int(im_shape[1] * ratio)),
+    )
+    # use this to always mask the whole image
+    if mask_full_image:
+        size = (int(im_shape[0] * ratio), int(im_shape[1] * ratio))
+    limits = (im_shape[0] - size[0] // 2, im_shape[1] - size[1] // 2)
+    center = (
+        random.randint(size[0] // 2, limits[0]),
+        random.randint(size[1] // 2, limits[1]),
+    )
+    draw.rectangle(
+        (
+            center[0] - size[0] // 2,
+            center[1] - size[1] // 2,
+            center[0] + size[0] // 2,
+            center[1] + size[1] // 2,
+        ),
+        fill=255,
+    )
 
     return mask
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
@@ -101,7 +125,12 @@ def parse_args():
         action="store_true",
         help="Flag to add prior preservation loss.",
     )
-    parser.add_argument("--prior_loss_weight", type=float, default=1.0, help="The weight of prior preservation loss.")
+    parser.add_argument(
+        "--prior_loss_weight",
+        type=float,
+        default=1.0,
+        help="The weight of prior preservation loss.",
+    )
     parser.add_argument(
         "--num_class_images",
         type=int,
@@ -117,7 +146,9 @@ def parse_args():
         default="text-inversion-model",
         help="The output directory where the model predictions and checkpoints will be written.",
     )
-    parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
+    parser.add_argument(
+        "--seed", type=int, default=None, help="A seed for reproducible training."
+    )
     parser.add_argument(
         "--resolution",
         type=int,
@@ -128,14 +159,26 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution"
-    )
-    parser.add_argument("--train_text_encoder", action="store_true", help="Whether to train the text encoder")
-    parser.add_argument(
-        "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
+        "--center_crop",
+        action="store_true",
+        help="Whether to center crop images before resizing to resolution",
     )
     parser.add_argument(
-        "--sample_batch_size", type=int, default=4, help="Batch size (per device) for sampling images."
+        "--train_text_encoder",
+        action="store_true",
+        help="Whether to train the text encoder",
+    )
+    parser.add_argument(
+        "--train_batch_size",
+        type=int,
+        default=4,
+        help="Batch size (per device) for the training dataloader.",
+    )
+    parser.add_argument(
+        "--sample_batch_size",
+        type=int,
+        default=4,
+        help="Batch size (per device) for sampling images.",
     )
     parser.add_argument("--num_train_epochs", type=int, default=1)
     parser.add_argument(
@@ -177,18 +220,51 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
+        "--lr_warmup_steps",
+        type=int,
+        default=500,
+        help="Number of steps for the warmup in the lr scheduler.",
     )
     parser.add_argument(
-        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
+        "--use_8bit_adam",
+        action="store_true",
+        help="Whether or not to use 8-bit Adam from bitsandbytes.",
     )
-    parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
-    parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
-    parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
-    parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
-    parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
-    parser.add_argument("--hub_token", type=str, default=None, help="The token to use to push to the Model Hub.")
+    parser.add_argument(
+        "--adam_beta1",
+        type=float,
+        default=0.9,
+        help="The beta1 parameter for the Adam optimizer.",
+    )
+    parser.add_argument(
+        "--adam_beta2",
+        type=float,
+        default=0.999,
+        help="The beta2 parameter for the Adam optimizer.",
+    )
+    parser.add_argument(
+        "--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use."
+    )
+    parser.add_argument(
+        "--adam_epsilon",
+        type=float,
+        default=1e-08,
+        help="Epsilon value for the Adam optimizer",
+    )
+    parser.add_argument(
+        "--max_grad_norm", default=1.0, type=float, help="Max gradient norm."
+    )
+    parser.add_argument(
+        "--push_to_hub",
+        action="store_true",
+        help="Whether or not to push the model to the Hub.",
+    )
+    parser.add_argument(
+        "--hub_token",
+        type=str,
+        default=None,
+        help="The token to use to push to the Model Hub.",
+    )
     parser.add_argument(
         "--hub_model_id",
         type=str,
@@ -215,7 +291,12 @@ def parse_args():
             "and an Nvidia Ampere GPU."
         ),
     )
-    parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
+    parser.add_argument(
+        "--local_rank",
+        type=int,
+        default=-1,
+        help="For distributed training: local_rank",
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -275,8 +356,12 @@ class DreamBoothDataset(Dataset):
 
         self.image_transforms = transforms.Compose(
             [
-                transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size),
+                transforms.Resize(
+                    size, interpolation=transforms.InterpolationMode.BILINEAR
+                ),
+                transforms.CenterCrop(size)
+                if center_crop
+                else transforms.RandomCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
             ]
@@ -287,10 +372,11 @@ class DreamBoothDataset(Dataset):
 
     def __getitem__(self, index):
         example = {}
-        instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
+        instance_image = Image.open(
+            self.instance_images_path[index % self.num_instance_images]
+        )
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
-
 
         example["PIL_images"] = instance_image
         example["instance_images"] = self.image_transforms(instance_image)
@@ -303,7 +389,9 @@ class DreamBoothDataset(Dataset):
         ).input_ids
 
         if self.class_data_root:
-            class_image = Image.open(self.class_images_path[index % self.num_class_images])
+            class_image = Image.open(
+                self.class_images_path[index % self.num_class_images]
+            )
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
             example["class_images"] = self.image_transforms(class_image)
@@ -334,7 +422,9 @@ class PromptDataset(Dataset):
         return example
 
 
-def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
+def get_full_repo_name(
+    model_id: str, organization: Optional[str] = None, token: Optional[str] = None
+):
     if token is None:
         token = HfFolder.get_token()
     if organization is None:
@@ -358,7 +448,11 @@ def main():
     # Currently, it's not possible to do gradient accumulation when training two models with accelerate.accumulate
     # This will be enabled soon in accelerate. For now, we don't allow gradient accumulation when training two models.
     # TODO (patil-suraj): Remove this check when gradient accumulation with two models is enabled in accelerate.
-    if args.train_text_encoder and args.gradient_accumulation_steps > 1 and accelerator.num_processes > 1:
+    if (
+        args.train_text_encoder
+        and args.gradient_accumulation_steps > 1
+        and accelerator.num_processes > 1
+    ):
         raise ValueError(
             "Gradient accumulation is not supported when training the text encoder in distributed training. "
             "Please set gradient_accumulation_steps to 1. This feature will be supported in the future."
@@ -374,9 +468,13 @@ def main():
         cur_class_images = len(list(class_images_dir.iterdir()))
 
         if cur_class_images < args.num_class_images:
-            torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
+            torch_dtype = (
+                torch.float16 if accelerator.device.type == "cuda" else torch.float32
+            )
             pipeline = StableDiffusionPipeline.from_pretrained(
-                args.pretrained_model_name_or_path, torch_dtype=torch_dtype, safety_checker=None
+                args.pretrained_model_name_or_path,
+                torch_dtype=torch_dtype,
+                safety_checker=None,
             )
             pipeline.set_progress_bar_config(disable=True)
 
@@ -384,19 +482,26 @@ def main():
             logger.info(f"Number of class images to sample: {num_new_images}.")
 
             sample_dataset = PromptDataset(args.class_prompt, num_new_images)
-            sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=args.sample_batch_size, num_workers=1)
+            sample_dataloader = torch.utils.data.DataLoader(
+                sample_dataset, batch_size=args.sample_batch_size, num_workers=1
+            )
 
             sample_dataloader = accelerator.prepare(sample_dataloader)
             pipeline.to(accelerator.device)
 
             for example in tqdm(
-                sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
+                sample_dataloader,
+                desc="Generating class images",
+                disable=not accelerator.is_local_main_process,
             ):
                 images = pipeline(example["prompt"]).images
 
                 for i, image in enumerate(images):
                     hash_image = hashlib.sha1(image.tobytes()).hexdigest()
-                    image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
+                    image_filename = (
+                        class_images_dir
+                        / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
+                    )
                     image.save(image_filename)
 
             del pipeline
@@ -407,7 +512,9 @@ def main():
     if accelerator.is_main_process:
         if args.push_to_hub:
             if args.hub_model_id is None:
-                repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
+                repo_name = get_full_repo_name(
+                    Path(args.output_dir).name, token=args.hub_token
+                )
             else:
                 repo_name = args.hub_model_id
             repo = Repository(args.output_dir, clone_from=repo_name)
@@ -424,12 +531,20 @@ def main():
     if args.tokenizer_name:
         tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_name)
     elif args.pretrained_model_name_or_path:
-        tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer")
+        tokenizer = CLIPTokenizer.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="tokenizer"
+        )
 
     # Load models and create wrapper for stable diffusion
-    text_encoder = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder")
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
-    unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
+    text_encoder = CLIPTextModel.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="text_encoder"
+    )
+    vae = AutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="vae"
+    )
+    unet = UNet2DConditionModel.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="unet"
+    )
 
     vae.requires_grad_(False)
     if not args.train_text_encoder:
@@ -442,7 +557,10 @@ def main():
 
     if args.scale_lr:
         args.learning_rate = (
-            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+            args.learning_rate
+            * args.gradient_accumulation_steps
+            * args.train_batch_size
+            * accelerator.num_processes
         )
 
     # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
@@ -459,7 +577,9 @@ def main():
         optimizer_class = torch.optim.AdamW
 
     params_to_optimize = (
-        itertools.chain(unet.parameters(), text_encoder.parameters()) if args.train_text_encoder else unet.parameters()
+        itertools.chain(unet.parameters(), text_encoder.parameters())
+        if args.train_text_encoder
+        else unet.parameters()
     )
     optimizer = optimizer_class(
         params_to_optimize,
@@ -470,7 +590,10 @@ def main():
     )
 
     noise_scheduler = DDPMScheduler(
-        beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000
+        beta_start=0.00085,
+        beta_end=0.012,
+        beta_schedule="scaled_linear",
+        num_train_timesteps=1000,
     )
 
     train_dataset = DreamBoothDataset(
@@ -486,23 +609,27 @@ def main():
     def collate_fn(examples):
         image_transforms = transforms.Compose(
             [
-                transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-                transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
+                transforms.Resize(
+                    args.resolution, interpolation=transforms.InterpolationMode.BILINEAR
+                ),
+                transforms.CenterCrop(args.resolution)
+                if args.center_crop
+                else transforms.RandomCrop(args.resolution),
             ]
         )
         input_ids = [example["instance_prompt_ids"] for example in examples]
         pixel_values = [example["instance_images"] for example in examples]
 
-        masks=[]
-        masked_images=[]
+        masks = []
+        masked_images = []
         for example in examples:
             pil_image = example["PIL_images"]
-            #generate a random mask
+            # generate a random mask
             mask = random_mask(pil_image.size)
-            #apply transforms
-            mask=image_transforms(mask)
-            pil_image=image_transforms(pil_image)
-            #prepare mask and masked image
+            # apply transforms
+            mask = image_transforms(mask)
+            pil_image = image_transforms(pil_image)
+            # prepare mask and masked image
             mask, masked_image = prepare_mask_and_masked_image(pil_image, mask)
 
             masks.append(mask)
@@ -517,24 +644,31 @@ def main():
         pixel_values = torch.stack(pixel_values)
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
-        input_ids = tokenizer.pad({"input_ids": input_ids}, padding=True, return_tensors="pt").input_ids
-        masks=torch.stack(masks)
-        masked_images=torch.stack(masked_images)
+        input_ids = tokenizer.pad(
+            {"input_ids": input_ids}, padding=True, return_tensors="pt"
+        ).input_ids
+        masks = torch.stack(masks)
+        masked_images = torch.stack(masked_images)
         batch = {
             "input_ids": input_ids,
             "pixel_values": pixel_values,
             "masks": masks,
-            "masked_images": masked_images
+            "masked_images": masked_images,
         }
         return batch
 
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn
+        train_dataset,
+        batch_size=args.train_batch_size,
+        shuffle=True,
+        collate_fn=collate_fn,
     )
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(
+        len(train_dataloader) / args.gradient_accumulation_steps
+    )
     if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
@@ -547,7 +681,13 @@ def main():
     )
 
     if args.train_text_encoder:
-        unet, text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        (
+            unet,
+            text_encoder,
+            optimizer,
+            train_dataloader,
+            lr_scheduler,
+        ) = accelerator.prepare(
             unet, text_encoder, optimizer, train_dataloader, lr_scheduler
         )
     else:
@@ -569,7 +709,9 @@ def main():
         text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(
+        len(train_dataloader) / args.gradient_accumulation_steps
+    )
     if overrode_max_train_steps:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
@@ -581,18 +723,26 @@ def main():
         accelerator.init_trackers("dreambooth", config=vars(args))
 
     # Train!
-    total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
+    total_batch_size = (
+        args.train_batch_size
+        * accelerator.num_processes
+        * args.gradient_accumulation_steps
+    )
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
     logger.info(f"  Num batches each epoch = {len(train_dataloader)}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
-    logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
+    logger.info(
+        f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}"
+    )
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
     # Only show the progress bar once on each machine.
-    progress_bar = tqdm(range(args.max_train_steps), disable=not accelerator.is_local_main_process)
+    progress_bar = tqdm(
+        range(args.max_train_steps), disable=not accelerator.is_local_main_process
+    )
     progress_bar.set_description("Steps")
     global_step = 0
 
@@ -601,40 +751,60 @@ def main():
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Convert images to latent space
-                
-                latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
+
+                latents = vae.encode(
+                    batch["pixel_values"].to(dtype=weight_dtype)
+                ).latent_dist.sample()
                 latents = latents * 0.18215
 
                 # Convert masked images to latent space
-                masked_latents = vae.encode(batch["masked_images"].reshape(batch["pixel_values"].shape).to(dtype=weight_dtype)).latent_dist.sample()
+                masked_latents = vae.encode(
+                    batch["masked_images"]
+                    .reshape(batch["pixel_values"].shape)
+                    .to(dtype=weight_dtype)
+                ).latent_dist.sample()
                 masked_latents = masked_latents * 0.18215
 
                 masks = batch["masks"]
                 # resize the mask to latents shape as we concatenate the mask to the latents
-                mask = torch.stack([torch.nn.functional.interpolate(mask, size=(args.resolution // 8, args.resolution // 8)) for mask in masks])
-                mask = mask.reshape(-1, 1, args.resolution//8, args.resolution//8)
-                
+                mask = torch.stack(
+                    [
+                        torch.nn.functional.interpolate(
+                            mask, size=(args.resolution // 8, args.resolution // 8)
+                        )
+                        for mask in masks
+                    ]
+                )
+                mask = mask.reshape(-1, 1, args.resolution // 8, args.resolution // 8)
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
-                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+                timesteps = torch.randint(
+                    0,
+                    noise_scheduler.config.num_train_timesteps,
+                    (bsz,),
+                    device=latents.device,
+                )
                 timesteps = timesteps.long()
 
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                #concatenate the noised latents with the mask and the masked latents
-                latent_model_input = torch.cat([noisy_latents, mask, masked_latents], dim=1)
-
+                # concatenate the noised latents with the mask and the masked latents
+                latent_model_input = torch.cat(
+                    [noisy_latents, mask, masked_latents], dim=1
+                )
 
                 # Get the text embedding for conditioning
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
                 # Predict the noise residual
-                noise_pred = unet(latent_model_input, timesteps, encoder_hidden_states).sample
+                noise_pred = unet(
+                    latent_model_input, timesteps, encoder_hidden_states
+                ).sample
 
                 if args.with_prior_preservation:
                     # Chunk the noise and noise_pred into two parts and compute the loss on each part separately.
@@ -642,15 +812,23 @@ def main():
                     noise, noise_prior = torch.chunk(noise, 2, dim=0)
 
                     # Compute instance loss
-                    loss = F.mse_loss(noise_pred.float(), noise.float(), reduction="none").mean([1, 2, 3]).mean()
+                    loss = (
+                        F.mse_loss(noise_pred.float(), noise.float(), reduction="none")
+                        .mean([1, 2, 3])
+                        .mean()
+                    )
 
                     # Compute prior loss
-                    prior_loss = F.mse_loss(noise_pred_prior.float(), noise_prior.float(), reduction="mean")
+                    prior_loss = F.mse_loss(
+                        noise_pred_prior.float(), noise_prior.float(), reduction="mean"
+                    )
 
                     # Add the prior loss to the instance loss.
                     loss = loss + args.prior_loss_weight * prior_loss
                 else:
-                    loss = F.mse_loss(noise_pred.float(), noise.float(), reduction="mean")
+                    loss = F.mse_loss(
+                        noise_pred.float(), noise.float(), reduction="mean"
+                    )
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
@@ -688,7 +866,9 @@ def main():
         pipeline.save_pretrained(args.output_dir)
 
         if args.push_to_hub:
-            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+            repo.push_to_hub(
+                commit_message="End of training", blocking=False, auto_lfs_prune=True
+            )
 
     accelerator.end_training()
 
