@@ -58,7 +58,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         tokenizer: CLIPTokenizer,
         unet: FlaxUNet2DConditionModel,
         scheduler: Union[FlaxDDIMScheduler, FlaxPNDMScheduler, FlaxLMSDiscreteScheduler],
-        safety_checker: FlaxStableDiffusionSafetyChecker,
+        safety_checker: None, #FlaxStableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
         dtype: jnp.dtype = jnp.float32,
     ):
