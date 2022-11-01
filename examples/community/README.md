@@ -1,6 +1,7 @@
 # Community Examples
 
 > **For more information about community pipelines, please have a look at [this issue](https://github.com/huggingface/diffusers/issues/841).**
+
 **Community** examples consist of both inference and training examples that have been added by the community.
 Please have a look at the following table to get an overview of all community examples. Click on the **Code Example** to get a copy-and-paste ready code example that you can try out.
 If a community doesn't work as expected, please open an issue and ping the author on it.
@@ -15,12 +16,9 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | Speech to Image                        | Using automatic-speech-recognition to transcribe text and Stable Diffusion to generate images                                                                                                                                                                                                                                                                                                                                                                                                            | [Speech to Image](#speech-to-image)                               | -                                                                                                                                                                                                                  | [Mikail Duzenli](https://github.com/MikailINTech)
 | Wild Card Stable Diffusion | Stable Diffusion Pipeline that supports prompts that contain wildcard terms (indicated by surrounding double underscores), with values instantiated randomly from a corresponding txt file or a dictionary of possible values                                                                                                                                                                                                                                                                                                     | [Wildcard Stable Diffusion](#wildcard-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Shyam Sudhakaran](https://github.com/shyamsn97) |
 | Composable Stable Diffusion| Stable Diffusion Pipeline that supports prompts that contain "&#124;" in prompts (as an AND condition) and weights (separated by "&#124;" as well) to positively / negatively weight prompts.                                                                                                                                                                                                                                                                                                     | [Composable Stable Diffusion](#composable-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
-<<<<<<< HEAD
 | Seed Resizing Stable Diffusion| Stable Diffusion Pipeline that supports resizing an image and retaining the concepts of the 512 by 512 generation.                                                                                                                                                                                                                                                                                                     | [Seed Resizing](#seed-resizing)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
 
-=======
 | Imagic Stable Diffusion | Stable Diffusion Pipeline that enables writing a text prompt to edit an existing image| [Imagic Stable Diffusion](#imagic-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
->>>>>>> initial commit to add imagic to stable diffusion community pipelines
 
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
@@ -376,7 +374,49 @@ for i in range(4):
 for i, img in enumerate(images):
     img.save(f"./composable_diffusion/image_{i}.png")
 ```
-<<<<<<< HEAD
+
+### Imagic Stable Diffusion
+Allows you to edit an image using stable diffusion. 
+
+```python
+import requests
+from PIL import Image
+from io import BytesIO
+import torch
+from diffusers import DiffusionPipeline, DDIMScheduler
+has_cuda = torch.cuda.is_available()
+device = torch.device('cpu' if not has_cuda else 'cuda')
+pipe = DiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+        safety_checker=None,
+    use_auth_token=True,
+    custom_pipeline="imagic_stable_diffusion",
+    scheduler = DDIMScheduler.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
+).to(device)
+generator = th.Generator("cuda").manual_seed(0)
+seed = 0
+prompt = "A photo of Barack Obama smiling with a big grin"
+url = 'https://www.dropbox.com/s/6tlwzr73jd1r9yk/obama.png?dl=1'
+response = requests.get(url)
+init_image = Image.open(BytesIO(response.content)).convert("RGB")
+init_image = init_image.resize((512, 512))
+res = pipe.train(
+    prompt,
+    init_image,
+    guidance_scale=7.5,
+    num_inference_steps=50,
+    generator=generator)
+res = pipe(alpha=1)
+image = res.images[0]
+image.save('./imagic/imagic_image_alpha_1.png')
+res = pipe(alpha=1.5)
+image = res.images[0]
+image.save('./imagic/imagic_image_alpha_1_5.png')
+res = pipe(alpha=2)
+image = res.images[0]
+image.save('./imagic/imagic_image_alpha_2.png')
+```
+
 ### Seed Resizing 
 Test seed resizing. Originally generate an image in 512 by 512, then generate image with same seed at 512 by 592 using seed resizing. Finally, generate 512 by 592 using original stable diffusion pipeline.
 
@@ -384,21 +424,6 @@ Test seed resizing. Originally generate an image in 512 by 512, then generate im
 import torch as th
 import numpy as np
 from diffusers import DiffusionPipeline
-=======
-
-### Imagic Stable Diffusion
-Allows you to edit an image using stable diffusion. 
-
-
-```python
-import torch as th
-import numpy as np
-import requests
-from PIL import Image
-from io import BytesIO
-import torch
-from diffusers import DiffusionPipeline, DDIMScheduler
->>>>>>> initial commit to add imagic to stable diffusion community pipelines
 
 has_cuda = th.cuda.is_available()
 device = th.device('cpu' if not has_cuda else 'cuda')
@@ -406,24 +431,14 @@ device = th.device('cpu' if not has_cuda else 'cuda')
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     use_auth_token=True,
-<<<<<<< HEAD
     custom_pipeline="seed_resize_stable_diffusion"
 ).to(device)
 
-=======
-    custom_pipeline="imagic_stable_diffusion",
-    scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
-).to(device)
-
-
-<<<<<<< HEAD
->>>>>>> initial commit to add imagic to stable diffusion community pipelines
 def dummy(images, **kwargs):
     return images, False
 
 pipe.safety_checker = dummy
 
-<<<<<<< HEAD
 
 images = []
 th.manual_seed(0)
@@ -486,35 +501,3 @@ res = pipe_compare(
 image = res.images[0]
 image.save('./seed_resize/seed_resize_{w}_{h}_image_compare.png'.format(w=width, h=height))
 ```
-=======
-images = []
-=======
->>>>>>> clean up example code and add line back in to pipeline_stable_diffusion for imagic pipeline
-generator = th.Generator("cuda").manual_seed(0)
-seed = 0
-prompt = "A photo of Barack Obama smiling with a big grin"
-url = 'https://www.dropbox.com/s/6tlwzr73jd1r9yk/obama.png?dl=1'
-
-response = requests.get(url)
-init_image = Image.open(BytesIO(response.content)).convert("RGB")
-init_image = init_image.resize((512, 512))
-
-res = pipe.train(
-    prompt,
-    init_image,
-    guidance_scale=7.5,
-    num_inference_steps=50,
-    generator=generator)
-res = pipe(alpha=1)
-image = res.images[0]
-image.save('./imagic/imagic_image_alpha_1.png')
-
-res = pipe(alpha=1.5)
-image = res.images[0]
-image.save('./imagic/imagic_image_alpha_1_5.png')
-
-res = pipe(alpha=2)
-image = res.images[0]
-image.save('./imagic/imagic_image_alpha_2.png')
-```
->>>>>>> initial commit to add imagic to stable diffusion community pipelines
