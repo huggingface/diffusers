@@ -27,7 +27,7 @@ class DistillationPipeline(DiffusionPipeline):
         batch_size=64,
         gamma=0,
         gradient_accumulation_steps=1,
-        mixed_precision="fp16",
+        mixed_precision="no",
         adam_beta1=0.95,
         adam_beta2=0.999,
         adam_weight_decay=0.001,

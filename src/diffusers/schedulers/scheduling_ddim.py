@@ -27,8 +27,11 @@ from ..utils import BaseOutput
 from .scheduling_utils import SchedulerMixin
 
 
-def E_(input, t, shape, device):
-    out = torch.gather(input.to(device), 0, t.to(device))
+def expand_to_shape(input, timesteps, shape, device):
+    """
+    Helper indexes a 1D tensor `input` using a 1D index tensor `timesteps`, then reshapes the result to broadcast nicely with `shape`. Useful for parellizing operations over `shape[0]` number of diffusion steps at once.
+    """
+    out = torch.gather(input.to(device), 0, timesteps.to(device))
     reshape = [shape[0]] + [1] * (len(shape) - 1)
     out = out.reshape(*reshape)
     return out
@@ -147,7 +150,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
         self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
         self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1 - self.alphas_cumprod)
-        self.one = torch.tensor(1.0)
 
         # At every step in ddim, we are looking into the previous alphas_cumprod
         # For the final step, there is no previous alphas_cumprod because we are already at 0
@@ -319,7 +321,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
     def __len__(self):
         return self.config.num_train_timesteps
 
-    def get_alpha_sigma(self, x, t, device):
-        alpha = E_(self.sqrt_alphas_cumprod, t, x.shape, device)
-        sigma = E_(self.sqrt_one_minus_alphas_cumprod, t, x.shape, device)
+    def get_alpha_sigma(self, sample, timesteps, device):
+        alpha = expand_to_shape(self.sqrt_alphas_cumprod, timesteps, sample.shape, device)
+        sigma = expand_to_shape(self.sqrt_one_minus_alphas_cumprod, timesteps, sample.shape, device)
         return alpha, sigma

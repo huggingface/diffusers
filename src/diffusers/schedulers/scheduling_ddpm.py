@@ -26,8 +26,11 @@ from ..utils import BaseOutput
 from .scheduling_utils import SchedulerMixin
 
 
-def E_(input, t, shape, device):
-    out = torch.gather(input.to(device), 0, t.to(device))
+def expand_to_shape(input, timesteps, shape, device):
+    """
+    Helper indexes a 1D tensor `input` using a 1D index tensor `timesteps`, then reshapes the result to broadcast nicely with `shape`. Useful for parellizing operations over `shape[0]` number of diffusion steps at once.
+    """
+    out = torch.gather(input.to(device), 0, timesteps.to(device))
     reshape = [shape[0]] + [1] * (len(shape) - 1)
     out = out.reshape(*reshape)
     return out
@@ -143,7 +146,6 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
         self.sqrt_alphas_cumprod = torch.sqrt(self.alphas_cumprod)
         self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1 - self.alphas_cumprod)
-        self.one = torch.tensor(1.0)
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
@@ -185,7 +187,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
     def _get_variance(self, t, predicted_variance=None, variance_type=None):
         alpha_prod_t = self.alphas_cumprod[t]
-        alpha_prod_t_prev = self.alphas_cumprod[t - 1] if t > 0 else self.one
+        alpha_prod_t_prev = self.alphas_cumprod[t - 1] if t > 0 else torch.tensor(1.0)
 
         # For t > 0, compute predicted variance βt (see formula (6) and (7) from https://arxiv.org/pdf/2006.11239.pdf)
         # and sample from it to get previous sample
@@ -255,7 +257,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         # 1. compute alphas, betas
         alpha_prod_t = self.alphas_cumprod[t]
-        alpha_prod_t_prev = self.alphas_cumprod[t - 1] if t > 0 else self.one
+        alpha_prod_t_prev = self.alphas_cumprod[t - 1] if t > 0 else torch.tensor(1.0)
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
@@ -323,7 +325,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
     def __len__(self):
         return self.config.num_train_timesteps
 
-    def get_alpha_sigma(self, x, t, device):
-        alpha = E_(self.sqrt_alphas_cumprod, t, x.shape, device)
-        sigma = E_(self.sqrt_one_minus_alphas_cumprod, t, x.shape, device)
+    def get_alpha_sigma(self, sample, timesteps, device):
+        alpha = expand_to_shape(self.sqrt_alphas_cumprod, timesteps, sample.shape, device)
+        sigma = expand_to_shape(self.sqrt_one_minus_alphas_cumprod, timesteps, sample.shape, device)
         return alpha, sigma
