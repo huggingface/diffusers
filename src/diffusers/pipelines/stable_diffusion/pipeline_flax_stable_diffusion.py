@@ -142,7 +142,6 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         width: int = 512,
         guidance_scale: float = 7.5,
         latents: Optional[jnp.array] = None,
-        debug: bool = False,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -201,13 +200,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
-
-        if debug:
-            # run with python for loop
-            for i in range(num_inference_steps):
-                latents, scheduler_state = loop_body(i, (latents, scheduler_state))
-        else:
-            latents, _ = jax.lax.fori_loop(0, num_inference_steps, loop_body, (latents, scheduler_state))
+        latents, _ = jax.lax.fori_loop(0, num_inference_steps, loop_body, (latents, scheduler_state))
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
@@ -228,7 +221,6 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         latents: jnp.array = None,
         return_dict: bool = True,
         jit: bool = False,
-        debug: bool = False,
         **kwargs,
     ):
         r"""
@@ -276,11 +268,11 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         """
         if jit:
             images = _p_generate(
-                self, prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug
+                self, prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents
             )
         else:
             images = self._generate(
-                prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug
+                prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents
             )
 
         if self.safety_checker is not None:
@@ -308,12 +300,12 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         return FlaxStableDiffusionPipelineOutput(images=images, nsfw_content_detected=has_nsfw_concept)
 
 
-@partial(jax.pmap, in_axes=(None, 0, 0, 0, None, None, None, None, 0, None), static_broadcasted_argnums=(0, 4, 5, 6, 9))
+@partial(jax.pmap, in_axes=(None, 0, 0, 0, None, None, None, None, 0), static_broadcasted_argnums=(0, 4, 5, 6))
 def _p_generate(
-    pipe, prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug
+    pipe, prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents
 ):
     return pipe._generate(
-        prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug
+        prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents
     )
 
 
