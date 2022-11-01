@@ -166,8 +166,6 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline):
         accelerator = Accelerator(
             gradient_accumulation_steps=1,
             mixed_precision="fp16",
-            log_with="wandb",
-            logging_dir="./logging",
         )
 
         if "torch_device" in kwargs:
