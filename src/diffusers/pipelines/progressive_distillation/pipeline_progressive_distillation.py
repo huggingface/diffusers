@@ -109,6 +109,8 @@ class DistillationPipeline(DiffusionPipeline):
             progress_bar.set_description(f"Epoch {epoch}")
             for batch in train_dataloader:
                 with accelerator.accumulate(student):
+                    if isinstance(batch, dict):
+                        batch = batch["images"]
                     batch = batch.to(accelerator.device)
                     noise = torch.randn(batch.shape, generator=generator).to(accelerator.device)
                     bsz = batch.shape[0]
