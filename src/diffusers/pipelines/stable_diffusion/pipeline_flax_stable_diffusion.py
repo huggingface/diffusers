@@ -308,8 +308,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         return FlaxStableDiffusionPipelineOutput(images=images, nsfw_content_detected=has_nsfw_concept)
 
 
-# TODO: maybe use a config dict instead of so many static argnums
-@partial(jax.pmap, static_broadcasted_argnums=(0, 4, 5, 6, 7, 9))
+@partial(jax.pmap, in_axes=(None, 0, 0, 0, None, None, None, None, 0, None), static_broadcasted_argnums=(0, 4, 5, 6, 9))
 def _p_generate(
     pipe, prompt_ids, params, prng_seed, num_inference_steps, height, width, guidance_scale, latents, debug
 ):
