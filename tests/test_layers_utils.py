@@ -18,8 +18,10 @@ import unittest
 
 import numpy as np
 import torch
+from torch import nn
 
-from diffusers.models.attention import AttentionBlock, SpatialTransformer
+import pytest
+from diffusers.models.attention import GEGLU, AdaLayerNorm, ApproximateGELU, AttentionBlock, SpatialTransformer
 from diffusers.models.embeddings import get_timestep_embedding
 from diffusers.models.resnet import Downsample2D, Upsample2D
 from diffusers.utils import torch_device
@@ -323,6 +325,45 @@ class SpatialTransformerTests(unittest.TestCase):
         )
         assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
 
+    def test_spatial_transformer_timestep(self):
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        diffusion_steps = 5
+
+        sample = torch.randn(1, 64, 64, 64).to(torch_device)
+        spatial_transformer_block = SpatialTransformer(
+            in_channels=64,
+            n_heads=2,
+            d_head=32,
+            dropout=0.0,
+            context_dim=64,
+            norm_layers=["AdaLayerNorm", "AdaLayerNorm", "LayerNorm"],
+            diffusion_steps=diffusion_steps,
+        ).to(torch_device)
+        with torch.no_grad():
+            timestep_1 = torch.tensor(1, dtype=torch.long).to(torch_device)
+            timestep_2 = torch.tensor(2, dtype=torch.long).to(torch_device)
+            attention_scores_1 = spatial_transformer_block(sample, timestep=timestep_1)
+            attention_scores_2 = spatial_transformer_block(sample, timestep=timestep_2)
+
+        assert attention_scores_1.shape == (1, 64, 64, 64)
+        assert attention_scores_2.shape == (1, 64, 64, 64)
+
+        output_slice_1 = attention_scores_1[0, -1, -3:, -3:]
+        output_slice_2 = attention_scores_2[0, -1, -3:, -3:]
+
+        expected_slice_1 = torch.tensor(
+            [-0.1874, -0.9704, -1.4290, -1.3357, 1.5138, 0.3036, -0.0976, -1.1667, 0.1283], device=torch_device
+        )
+        expected_slice_2 = torch.tensor(
+            [-0.3493, -1.0924, -1.6161, -1.5016, 1.4245, 0.1367, -0.2526, -1.3109, -0.0547], device=torch_device
+        )
+
+        assert torch.allclose(output_slice_1.flatten(), expected_slice_1, atol=1e-3)
+        assert torch.allclose(output_slice_2.flatten(), expected_slice_2, atol=1e-3)
+
     def test_spatial_transformer_dropout(self):
         torch.manual_seed(0)
         if torch.cuda.is_available():
@@ -350,3 +391,141 @@ class SpatialTransformerTests(unittest.TestCase):
             [-1.2448, -0.0190, -0.9471, -1.5140, 0.7069, -1.0144, -2.1077, 0.9099, -1.0091], device=torch_device
         )
         assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
+
+    @unittest.skipIf(torch_device == "mps", "MPS does not support float64")
+    def test_spatial_transformer_discrete(self):
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
+
+        num_embed = 5
+
+        sample = torch.randint(0, num_embed, (1, 32)).to(torch_device)
+        spatial_transformer_block = (
+            SpatialTransformer(
+                n_heads=1,
+                d_head=32,
+                discrete=True,
+                num_embed=num_embed,
+                height=16,
+                width=2,
+            )
+            .to(torch_device)
+            .eval()
+        )
+
+        with torch.no_grad():
+            attention_scores = spatial_transformer_block(sample)
+
+        assert attention_scores.shape == (1, num_embed - 1, 32)
+
+        output_slice = attention_scores[0, -3:, -3:]
+
+        expected_slice = torch.tensor(
+            [-1.4105, -1.0337, -1.4915, -1.8912, -1.1228, -1.3155, -1.9766, -1.9487, -1.1841], device=torch_device
+        )
+        assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
+
+    def test_spatial_transformer_default_norm_layers(self):
+        spatial_transformer_block = SpatialTransformer(n_heads=1, d_head=32, in_channels=32)
+
+        assert spatial_transformer_block.transformer_blocks[0].norm1.__class__ == nn.LayerNorm
+        assert spatial_transformer_block.transformer_blocks[0].norm2.__class__ == nn.LayerNorm
+        assert spatial_transformer_block.transformer_blocks[0].norm3.__class__ == nn.LayerNorm
+
+    def test_spatial_transformer_ada_norm_layers(self):
+        spatial_transformer_block = SpatialTransformer(
+            n_heads=1,
+            d_head=32,
+            in_channels=32,
+            norm_layers=["AdaLayerNorm", "AdaLayerNorm", "LayerNorm"],
+            diffusion_steps=5,
+        )
+
+        assert spatial_transformer_block.transformer_blocks[0].norm1.__class__ == AdaLayerNorm
+        assert spatial_transformer_block.transformer_blocks[0].norm2.__class__ == AdaLayerNorm
+        assert spatial_transformer_block.transformer_blocks[0].norm3.__class__ == nn.LayerNorm
+
+    def test_spatial_transformer_ada_norm_layers_requires_diffusion_steps(self):
+        with pytest.raises(Exception) as e_info:
+            SpatialTransformer(
+                n_heads=1,
+                d_head=32,
+                in_channels=32,
+                norm_layers=["AdaLayerNorm", "AdaLayerNorm", "LayerNorm"],
+            )
+
+        assert e_info.value.args[0] == "When using AdaLayerNorm, you must also pass diffusion_steps."
+
+    def test_spatial_transformer_default_ff_layers(self):
+        spatial_transformer_block = SpatialTransformer(
+            n_heads=1,
+            d_head=32,
+            in_channels=32,
+        )
+
+        assert spatial_transformer_block.transformer_blocks[0].ff.net[0].__class__ == GEGLU
+        assert spatial_transformer_block.transformer_blocks[0].ff.net[1].__class__ == nn.Dropout
+        assert spatial_transformer_block.transformer_blocks[0].ff.net[2].__class__ == nn.Linear
+
+        dim = 32
+        inner_dim = 128
+
+        # First dimension change
+        assert spatial_transformer_block.transformer_blocks[0].ff.net[0].proj.in_features == dim
+        # NOTE: inner_dim * 2 because GEGLU
+        assert spatial_transformer_block.transformer_blocks[0].ff.net[0].proj.out_features == inner_dim * 2
+
+        # Second dimension change
+        assert spatial_transformer_block.transformer_blocks[0].ff.net[2].in_features == inner_dim
+        assert spatial_transformer_block.transformer_blocks[0].ff.net[2].out_features == dim
+
+    def test_spatial_transformer_vq_diffusion_ff_layers(self):
+        spatial_transformer_block = SpatialTransformer(
+            n_heads=1,
+            d_head=32,
+            in_channels=32,
+            ff_layers=["Linear", "ApproximateGELU", "Linear", "Dropout"],
+        )
+
+        dim = 32
+        inner_dim = 128
+
+        assert spatial_transformer_block.transformer_blocks[0].ff.net[0].__class__ == nn.Linear
+        assert spatial_transformer_block.transformer_blocks[0].ff.net[1].__class__ == ApproximateGELU
+        assert spatial_transformer_block.transformer_blocks[0].ff.net[2].__class__ == nn.Linear
+        assert spatial_transformer_block.transformer_blocks[0].ff.net[3].__class__ == nn.Dropout
+
+        assert spatial_transformer_block.transformer_blocks[0].ff.net[0].in_features == dim
+        assert spatial_transformer_block.transformer_blocks[0].ff.net[0].out_features == inner_dim
+
+        assert spatial_transformer_block.transformer_blocks[0].ff.net[2].in_features == inner_dim
+        assert spatial_transformer_block.transformer_blocks[0].ff.net[2].out_features == dim
+
+    def test_spatial_transformer_ff_layers_too_few_dim_changes(self):
+        with pytest.raises(Exception) as e_info:
+            SpatialTransformer(n_heads=1, d_head=32, in_channels=32, ff_layers=["Linear"])
+
+        assert (
+            e_info.value.args[0]
+            == "Too few dimension changes. FeedForward must have exactly two dimension changing layers (Linear and"
+            " GEGLU)."
+        )
+
+    def test_spatial_transformer_ff_layers_too_many_dim_changes(self):
+        for layer in ["Linear", "GEGLU"]:
+            with pytest.raises(Exception) as e_info:
+                SpatialTransformer(n_heads=1, d_head=32, in_channels=32, ff_layers=[layer] * 3)
+
+            assert (
+                e_info.value.args[0]
+                == "Too many dimension changes. FeedForward must have exactly two dimension changing layers (Linear"
+                " and GEGLU)."
+            )
+
+    def test_spatial_transformer_attention_bias(self):
+        spatial_transformer_block = SpatialTransformer(n_heads=1, d_head=32, in_channels=32, attention_bias=True)
+
+        assert spatial_transformer_block.transformer_blocks[0].attn1.to_q.bias is not None
+        assert spatial_transformer_block.transformer_blocks[0].attn1.to_k.bias is not None
+        assert spatial_transformer_block.transformer_blocks[0].attn1.to_v.bias is not None
