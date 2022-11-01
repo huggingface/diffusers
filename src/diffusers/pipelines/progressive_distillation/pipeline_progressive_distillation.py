@@ -36,7 +36,8 @@ class DistillationPipeline(DiffusionPipeline):
         ema_power=3 / 4,
         ema_max_decay=0.9999,
         use_ema=True,
-        permute_samples=(0, 1, 2),
+        permute_samples=(0, 1, 2, 3),
+        generator=None,
     ):
         # Initialize our accelerator for training
         accelerator = Accelerator(
@@ -90,6 +91,8 @@ class DistillationPipeline(DiffusionPipeline):
         ) = accelerator.prepare(
             teacher, student, optimizer, lr_scheduler, train_data, teacher_scheduler, student_scheduler
         )
+        if generator:
+            generator = accelerator.prepare(generator)
         ema_model = EMAModel(
             student,
             inv_gamma=ema_inv_gamma,
@@ -107,12 +110,16 @@ class DistillationPipeline(DiffusionPipeline):
             for batch in train_dataloader:
                 with accelerator.accumulate(student):
                     batch = batch.to(accelerator.device)
-                    noise = torch.randn(batch.shape).to(accelerator.device)
+                    noise = torch.randn(batch.shape, generator=generator).to(accelerator.device)
                     bsz = batch.shape[0]
                     # Sample a random timestep for each image
                     timesteps = (
                         torch.randint(
-                            0, student_scheduler.config.num_train_timesteps, (bsz,), device=batch.device
+                            0,
+                            student_scheduler.config.num_train_timesteps,
+                            (bsz,),
+                            device=batch.device,
+                            generator=generator,
                         ).long()
                         * 2
                     )
