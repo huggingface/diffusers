@@ -17,7 +17,7 @@ from torch.utils.data import Dataset
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
-from diffusers import AutoencoderKL, DDIMScheduler, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDIMScheduler, DDPMScheduler, StableDiffusionInpaintPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from huggingface_hub import HfFolder, Repository, whoami
 from PIL import Image
@@ -263,6 +263,28 @@ def parse_args(input_args=None):
 
     return args
 
+def get_cutout_holes(height, width, min_holes=8, max_holes=32, min_height=16, max_height=128, min_width=16, max_width=128):
+    holes = []
+    for _n in range(random.randint(min_holes, max_holes)):
+        hole_height = random.randint(min_height, max_height)
+        hole_width = random.randint(min_width, max_width)
+        y1 = random.randint(0, height - hole_height)
+        x1 = random.randint(0, width - hole_width)
+        y2 = y1 + hole_height
+        x2 = x1 + hole_width
+        holes.append((x1, y1, x2, y2))
+    return holes
+
+def generate_random_mask(image):
+    mask = torch.zeros_like(image[:1])
+    holes = get_cutout_holes(mask.shape[1], mask.shape[2])
+    for (x1, y1, x2, y2) in holes:
+        mask[:, y1:y2, x1:x2] = 1.
+    if random.uniform(0,1) < 0.25:
+        mask.fill_(1.)
+    masked_image = image * (mask < 0.5)
+    return mask, masked_image
+
 
 class DreamBoothDataset(Dataset):
     """
@@ -285,7 +307,6 @@ class DreamBoothDataset(Dataset):
         self.tokenizer = tokenizer
         self.with_prior_preservation = with_prior_preservation
         self.pad_tokens = pad_tokens
-
         self.instance_images_path = []
         self.class_images_path = []
 
@@ -321,6 +342,7 @@ class DreamBoothDataset(Dataset):
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
         example["instance_images"] = self.image_transforms(instance_image)
+        example["instance_masks"], example["instance_masked_images"] = generate_random_mask(example["instance_images"])
         example["instance_prompt_ids"] = self.tokenizer(
             instance_prompt,
             padding="max_length" if self.pad_tokens else "do_not_pad",
@@ -334,6 +356,7 @@ class DreamBoothDataset(Dataset):
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
             example["class_images"] = self.image_transforms(class_image)
+            example["class_masks"], example["class_masked_images"] = generate_random_mask(example["class_images"])
             example["class_prompt_ids"] = self.tokenizer(
                 class_prompt,
                 padding="max_length" if self.pad_tokens else "do_not_pad",
@@ -442,7 +465,7 @@ def main(args):
             if cur_class_images < args.num_class_images:
                 torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
                 if pipeline is None:
-                    pipeline = StableDiffusionPipeline.from_pretrained(
+                    pipeline = StableDiffusionInpaintPipeline.from_pretrained(
                         args.pretrained_model_name_or_path,
                         vae=AutoencoderKL.from_pretrained(
                             args.pretrained_vae_name_or_path or args.pretrained_model_name_or_path,
@@ -463,11 +486,14 @@ def main(args):
 
                 sample_dataloader = accelerator.prepare(sample_dataloader)
 
+                inp_img = Image.new("RGB", (512,512), color=(0,0,0))
+                inp_mask = Image.new("L", (512,512), color=255)
+
                 with torch.autocast("cuda"), torch.inference_mode():
                     for example in tqdm(
                         sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
                     ):
-                        images = pipeline(example["prompt"]).images
+                        images = pipeline(prompt=example["prompt"], image=inp_img, mask_image=inp_mask).images
 
                         for i, image in enumerate(images):
                             hash_image = hashlib.sha1(image.tobytes()).hexdigest()
@@ -563,26 +589,33 @@ def main(args):
     def collate_fn(examples):
         input_ids = [example["instance_prompt_ids"] for example in examples]
         pixel_values = [example["instance_images"] for example in examples]
+        mask_values = [example["instance_masks"] for example in examples]
+        masked_image_values = [example["instance_masked_images"] for example in examples]
 
         # Concat class and instance examples for prior preservation.
         # We do this to avoid doing two forward passes.
         if args.with_prior_preservation:
             input_ids += [example["class_prompt_ids"] for example in examples]
             pixel_values += [example["class_images"] for example in examples]
+            mask_values += [example["class_masks"] for example in examples]
+            masked_image_values += [example["class_masked_images"] for example in examples]
 
-        pixel_values = torch.stack(pixel_values)
-        pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
+        pixel_values = torch.stack(pixel_values).to(memory_format=torch.contiguous_format).float()
+        mask_values = torch.stack(mask_values).to(memory_format=torch.contiguous_format).float()
+        masked_image_values = torch.stack(masked_image_values).to(memory_format=torch.contiguous_format).float()
 
         input_ids = tokenizer.pad({"input_ids": input_ids}, padding=True, return_tensors="pt").input_ids
 
         batch = {
             "input_ids": input_ids,
             "pixel_values": pixel_values,
+            "mask_values": mask_values,
+            "masked_image_values": masked_image_values
         }
         return batch
 
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn, pin_memory=True
+        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn, pin_memory=True, num_workers=4
     )
 
     weight_dtype = torch.float32
@@ -674,7 +707,7 @@ def main(args):
             else:
                 text_enc_model = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision)
             scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
-            pipeline = StableDiffusionPipeline.from_pretrained(
+            pipeline = StableDiffusionInpaintPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 unet=accelerator.unwrap_model(unet),
                 text_encoder=text_enc_model,
@@ -699,10 +732,14 @@ def main(args):
                 pipeline.set_progress_bar_config(disable=True)
                 sample_dir = os.path.join(save_dir, "samples")
                 os.makedirs(sample_dir, exist_ok=True)
+                inp_img = Image.new("RGB", (512,512), color=(0,0,0))
+                inp_mask = Image.new("L", (512,512), color=255)
                 with torch.autocast("cuda"), torch.inference_mode():
                     for i in tqdm(range(args.n_save_sample), desc="Generating samples"):
                         images = pipeline(
-                            args.save_sample_prompt,
+                            prompt=args.save_sample_prompt,
+                            image=inp_img,
+                            mask_image=inp_mask,
                             negative_prompt=args.save_sample_negative_prompt,
                             guidance_scale=args.save_guidance_scale,
                             num_inference_steps=args.save_infer_steps,
@@ -732,7 +769,10 @@ def main(args):
                         latent_dist = batch[0][0]
                     else:
                         latent_dist = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist
+                        masked_latent_dist = vae.encode(batch["masked_image_values"].to(dtype=weight_dtype)).latent_dist
                     latents = latent_dist.sample() * 0.18215
+                    masked_image_latents = masked_latent_dist.sample() * 0.18215
+                    mask = F.interpolate(batch["mask_values"], scale_factor=1/8)
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
@@ -754,9 +794,12 @@ def main(args):
                             encoder_hidden_states = batch[0][1]
                     else:
                         encoder_hidden_states = text_encoder(batch["input_ids"])[0]
+                    
+                encoder_hidden_states = F.dropout(encoder_hidden_states, p=0.1)
 
+                latent_model_input = torch.cat([noisy_latents, mask, masked_image_latents], dim=1)
                 # Predict the noise residual
-                noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                noise_pred = unet(latent_model_input, timesteps, encoder_hidden_states).sample
 
                 if args.with_prior_preservation:
                     # Chunk the noise and noise_pred into two parts and compute the loss on each part separately.

@@ -1,14 +1,8 @@
 [
     {
-        "instance_prompt":      "photo of zwx dog",
-        "class_prompt":         "photo of a dog",
-        "instance_data_dir":    "../../../data/alvan",
-        "class_data_dir":       "../../../data/dog"
-    },
-    {
-        "instance_prompt":      "photo of ukj person",
-        "class_prompt":         "photo of a person",
-        "instance_data_dir":    "../../../data/shivam",
-        "class_data_dir":       "../../../data/person"
+        "instance_prompt":      "photo of woman wearing ukj colored zwx dress",
+        "class_prompt":         "photo of woman wearing dress",
+        "instance_data_dir":    "../../../data/wrap_dress",
+        "class_data_dir":       "../../../data/dress"
     }
 ]

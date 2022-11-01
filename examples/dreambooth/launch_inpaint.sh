@@ -1,7 +1,7 @@
-export MODEL_NAME="runwayml/stable-diffusion-v1-5"
-export OUTPUT_DIR="../../../models/alvan_shivam"
+export MODEL_NAME="runwayml/stable-diffusion-inpainting"
+export OUTPUT_DIR="../../../models/dress_inpainting"
 
-accelerate launch train_dreambooth.py \
+accelerate launch train_inpainting_dreambooth.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --pretrained_vae_name_or_path="stabilityai/sd-vae-ft-mse" \
   --output_dir=$OUTPUT_DIR \
@@ -18,8 +18,9 @@ accelerate launch train_dreambooth.py \
   --lr_warmup_steps=0 \
   --num_class_images=50 \
   --sample_batch_size=4 \
-  --max_train_steps=800 \
+  --max_train_steps=1200 \
   --save_interval=400 \
-  --save_sample_prompt="photo of zwx dog" \
+  --save_sample_prompt="photo of woman wearing ukj colored zwx dress" \
   --concepts_list="concepts_list.json" \
-  --pad_tokens
+  --pad_tokens \
+  --not_cache_latents
