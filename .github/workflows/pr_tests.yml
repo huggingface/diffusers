@@ -67,6 +67,8 @@ jobs:
 
     - name: Run fast PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch' }}
+      env:
+        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
@@ -75,6 +77,8 @@ jobs:
 
     - name: Run fast Flax TPU tests
       if: ${{ matrix.config.framework == 'flax' }}
+      env:
+        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Flax" \
@@ -83,6 +87,8 @@ jobs:
 
     - name: Run fast ONNXRuntime CPU tests
       if: ${{ matrix.config.framework == 'onnxruntime' }}
+      env:
+        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Onnx" \

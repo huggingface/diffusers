@@ -18,9 +18,13 @@ import unittest
 import numpy as np
 
 from diffusers import OnnxStableDiffusionImg2ImgPipeline
-from diffusers.utils.testing_utils import load_image, require_onnxruntime, require_torch_gpu, slow
+from diffusers.utils.testing_utils import is_onnx_available, load_image, require_onnxruntime, require_torch_gpu, slow
 
 from ...test_pipelines_onnx_common import OnnxPipelineTesterMixin
+
+
+if is_onnx_available():
+    import onnxruntime as ort
 
 
 class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.TestCase):
@@ -33,8 +37,6 @@ class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.Tes
 @require_torch_gpu
 class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
     def test_inference(self):
-        import onnxruntime as ort
-
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/img2img/sketch-mountains-input.jpg"
