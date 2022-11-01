@@ -44,6 +44,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v3
         with:
+          no-cache: true
           context: ./docker/${{ matrix.image-name }}
           push: true
           tags: ${{ env.REGISTRY }}/${{ matrix.image-name }}:latest
