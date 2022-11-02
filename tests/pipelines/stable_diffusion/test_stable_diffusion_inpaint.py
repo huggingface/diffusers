@@ -387,7 +387,6 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (512, 512, 3)
         assert np.abs(expected_image - image).max() < 1e-2
 
-    
     @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
