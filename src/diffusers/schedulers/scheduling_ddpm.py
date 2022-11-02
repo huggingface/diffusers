@@ -227,6 +227,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         predict_epsilon=True,
         generator=None,
         return_dict: bool = True,
+        v_prediction: bool = True,
     ) -> Union[DDPMSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
@@ -263,10 +264,25 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         # 2. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (15) from https://arxiv.org/pdf/2006.11239.pdf
-        if predict_epsilon:
+        if v_prediction:
+            # x_recon in p_mean_variance
+            pred_original_sample = (
+                sample * self.sqrt_alphas_cumprod[timestep]
+                - model_output * self.sqrt_one_minus_alphas_cumprod[timestep]
+            )
+            eps = (
+                model_output * self.sqrt_alphas_cumprod[timestep]
+                - sample * self.sqrt_one_minus_alphas_cumprod[timestep]
+            )
+        elif predict_epsilon:
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
         else:
             pred_original_sample = model_output
+
+        # pred_original_sample = (
+        #     sample * self.sqrt_alphas_cumprod[timestep] - model_output * self.sqrt_one_minus_alphas_cumprod[timestep]
+        # )
+        # eps = model_output * self.sqrt_alphas_cumprod[timestep] - sample * self.sqrt_one_minus_alphas_cumprod[timestep]
 
         # 3. Clip "predicted x_0"
         if self.config.clip_sample:
@@ -288,7 +304,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
                 model_output.size(), dtype=model_output.dtype, layout=model_output.layout, generator=generator
             ).to(model_output.device)
             if self.variance_type == "fixed_small_log":
-                variance = self._get_variance(t, predicted_variance=predicted_variance) * noise
+                if v_prediction:
+                    variance = torch.exp(0.5 * self._get_variance(t, predicted_variance)) * noise
+                else:
+                    variance = self._get_variance(t, predicted_variance=predicted_variance) * noise
             else:
                 variance = (self._get_variance(t, predicted_variance=predicted_variance) ** 0.5) * noise
 

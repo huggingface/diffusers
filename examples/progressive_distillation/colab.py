@@ -12,7 +12,7 @@ class TrainingConfig:
     lr_warmup_steps = 500
     save_image_epochs = 10
     save_model_epochs = 30
-    mixed_precision = "no"  # `no` for float32, `fp16` for automatic mixed precision
+    mixed_precision = "fp16"  # `no` for float32, `fp16` for automatic mixed precision
     output_dir = "ddpm-butterflies-128"  # the model namy locally and on the HF Hub
 
     push_to_hub = True  # whether to upload the saved model to the HF Hub
@@ -53,15 +53,38 @@ from accelerate import Accelerator
 
 teacher = UNet2DModel.from_pretrained("bglick13/ddpm-butterflies-128", subfolder="unet")
 
-accelerator = Accelerator(
-    mixed_precision=config.mixed_precision,
-    gradient_accumulation_steps=config.gradient_accumulation_steps,
-    log_with="tensorboard",
-    logging_dir=os.path.join(config.output_dir, "logs"),
-)
-teacher = accelerator.prepare(teacher)
+# accelerator = Accelerator(
+#     mixed_precision=config.mixed_precision,
+#     gradient_accumulation_steps=config.gradient_accumulation_steps,
+#     log_with="tensorboard",
+#     logging_dir=os.path.join(config.output_dir, "logs"),
+# )
+# teacher = accelerator.prepare(teacher)
 distiller = DistillationPipeline()
 n_teacher_trainsteps = 1000
 new_teacher, distilled_ema, distill_accelrator = distiller(
-    teacher, n_teacher_trainsteps, dataset, epochs=50, batch_size=config.train_batch_size, mixed_precision="no"
+    teacher,
+    n_teacher_trainsteps,
+    dataset,
+    epochs=100,
+    batch_size=1,
+    mixed_precision="fp16",
+    sample_every=1,
+    gamma=0.0,
+    lr=0.3 * 5e-5,
 )
+new_scheduler = DDPMScheduler(num_train_timesteps=500, beta_schedule="squaredcos_cap_v2")
+pipeline = DDPMPipeline(
+    unet=distill_accelrator.unwrap_model(distilled_ema.averaged_model),
+    scheduler=new_scheduler,
+)
+
+# run pipeline in inference (sample random noise and denoise)
+images = pipeline(batch_size=4, output_type="numpy", generator=torch.manual_seed(0)).images
+
+# denormalize the images and save to tensorboard
+images_processed = (images * 255).round().astype("uint8")
+from PIL import Image
+
+img = Image.fromarray(images_processed[0])
+img.save("denoised.png")
