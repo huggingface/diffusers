@@ -171,6 +171,16 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         """
         if self.discrete:
             hidden_states = self.latent_image_embedding(hidden_states)
+
+            for block in self.transformer_blocks:
+                hidden_states = block(hidden_states, context=context, timestep=timestep)
+
+            logits = self.out(self.norm_out(hidden_states))
+            # (batch, self.num_embed - 1, self.num_latent_pixels)
+            logits = logits.permute(0, 2, 1)
+
+            # log(p(x_0))
+            return_value = F.log_softmax(logits.double(), dim=1).float()
         else:
             batch, channel, height, weight = hidden_states.shape
             residual = hidden_states
@@ -179,17 +189,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             inner_dim = hidden_states.shape[1]
             hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * weight, inner_dim)
 
-        for block in self.transformer_blocks:
-            hidden_states = block(hidden_states, context=context, timestep=timestep)
+            for block in self.transformer_blocks:
+                hidden_states = block(hidden_states, context=context, timestep=timestep)
 
-        if self.discrete:
-            logits = self.out(self.norm_out(hidden_states))
-            # (batch, self.num_embed - 1, self.num_latent_pixels)
-            logits = logits.permute(0, 2, 1)
-
-            # log(p(x_0))
-            return_value = F.log_softmax(logits.double(), dim=1).float()
-        else:
             hidden_states = hidden_states.reshape(batch, height, weight, inner_dim).permute(0, 3, 1, 2)
             hidden_states = self.proj_out(hidden_states)
             return_value = hidden_states + residual
@@ -343,7 +345,9 @@ class BasicTransformerBlock(nn.Module):
             if norm_layer == "LayerNorm":
                 norm_layer_ = nn.LayerNorm(dim)
             elif norm_layer == "AdaLayerNorm":
-                assert num_embeds_ada_norm is not None, "When using AdaLayerNorm, you must also pass num_embeds_ada_norm."
+                assert (
+                    num_embeds_ada_norm is not None
+                ), "When using AdaLayerNorm, you must also pass num_embeds_ada_norm."
                 norm_layer_ = AdaLayerNorm(dim, num_embeds_ada_norm)
 
             if idx == 0:
@@ -358,16 +362,6 @@ class BasicTransformerBlock(nn.Module):
     def _set_attention_slice(self, slice_size):
         self.attn1._slice_size = slice_size
         self.attn2._slice_size = slice_size
-
-    def forward(self, hidden_states, context=None, timestep=None):
-        norm1_kwargs = {"timestep": timestep} if self.norm1.__class__ == AdaLayerNorm else {}
-        norm2_kwargs = {"timestep": timestep} if self.norm2.__class__ == AdaLayerNorm else {}
-        norm3_kwargs = {"timestep": timestep} if self.norm3.__class__ == AdaLayerNorm else {}
-
-        hidden_states = self.attn1(self.norm1(hidden_states, **norm1_kwargs)) + hidden_states
-        hidden_states = self.attn2(self.norm2(hidden_states, **norm2_kwargs), context=context) + hidden_states
-        hidden_states = self.ff(self.norm3(hidden_states, **norm3_kwargs)) + hidden_states
-        return hidden_states
 
     def _set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
         if not is_xformers_available():
@@ -395,11 +389,16 @@ class BasicTransformerBlock(nn.Module):
             self.attn1._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
             self.attn2._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
 
-    def forward(self, hidden_states, context=None):
-        hidden_states = self.attn1(self.norm1(hidden_states)) + hidden_states
-        hidden_states = self.attn2(self.norm2(hidden_states), context=context) + hidden_states
-        hidden_states = self.ff(self.norm3(hidden_states)) + hidden_states
-        
+    def forward(self, hidden_states, context=None, timestep=None):
+        norm1_kwargs = {"timestep": timestep} if self.norm1.__class__ == AdaLayerNorm else {}
+        norm2_kwargs = {"timestep": timestep} if self.norm2.__class__ == AdaLayerNorm else {}
+        norm3_kwargs = {"timestep": timestep} if self.norm3.__class__ == AdaLayerNorm else {}
+
+        hidden_states = self.attn1(self.norm1(hidden_states, **norm1_kwargs)) + hidden_states
+        hidden_states = self.attn2(self.norm2(hidden_states, **norm2_kwargs), context=context) + hidden_states
+        hidden_states = self.ff(self.norm3(hidden_states, **norm3_kwargs)) + hidden_states
+        return hidden_states
+
 
 class CrossAttention(nn.Module):
     r"""

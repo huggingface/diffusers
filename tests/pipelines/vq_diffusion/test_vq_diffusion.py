@@ -20,7 +20,7 @@ import numpy as np
 import torch
 
 from diffusers import Transformer2DModel, VQDiffusionPipeline, VQDiffusionScheduler, VQModel
-from diffusers.utils import slow, torch_device, load_image
+from diffusers.utils import load_image, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -160,7 +160,13 @@ class VQDiffusionPipelineIntegrationTests(unittest.TestCase):
         pipeline.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = pipeline("teddy bear playing in the pool", truncation_rate=0.86, num_images_per_prompt=1, generator=generator, output_type="np")
+        output = pipeline(
+            "teddy bear playing in the pool",
+            truncation_rate=0.86,
+            num_images_per_prompt=1,
+            generator=generator,
+            output_type="np",
+        )
 
         image = output.images[0]
 
