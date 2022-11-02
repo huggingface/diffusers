@@ -11,18 +11,44 @@ concurrency:
 
 env:
   DIFFUSERS_IS_CI: yes
-  OMP_NUM_THREADS: 8
-  MKL_NUM_THREADS: 8
+  OMP_NUM_THREADS: 4
+  MKL_NUM_THREADS: 4
   PYTEST_TIMEOUT: 60
   MPS_TORCH_VERSION: 1.13.0
 
 jobs:
-  run_tests_cpu:
-    name: CPU tests on Ubuntu
-    runs-on: [ self-hosted, docker-gpu ]
+  run_fast_tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: Fast PyTorch CPU tests on Ubuntu
+            framework: pytorch
+            runner: docker-cpu
+            image: diffusers/diffusers-pytorch-cpu
+            report: torch_cpu
+          - name: Fast Flax CPU tests on Ubuntu
+            framework: flax
+            runner: docker-cpu
+            image: diffusers/diffusers-flax-cpu
+            report: flax_cpu
+          - name: Fast ONNXRuntime CPU tests on Ubuntu
+            framework: onnxruntime
+            runner: docker-cpu
+            image: diffusers/diffusers-onnxruntime-cpu
+            report: onnx_cpu
+
+    name: ${{ matrix.config.name }}
+
+    runs-on: ${{ matrix.config.runner }}
+
     container:
-      image: python:3.7
+      image: ${{ matrix.config.image }}
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/
+
+    defaults:
+      run:
+        shell: bash
 
     steps:
     - name: Checkout diffusers
@@ -32,8 +58,6 @@ jobs:
 
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        python -m pip install torch --extra-index-url https://download.pytorch.org/whl/cpu
         python -m pip install -e .[quality,test]
         python -m pip install git+https://github.com/huggingface/accelerate
 
@@ -41,25 +65,49 @@ jobs:
       run: |
         python utils/print_env.py
 
-    - name: Run all fast tests on CPU
+    - name: Run fast PyTorch CPU tests
+      if: ${{ matrix.config.framework == 'pytorch' }}
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=tests_torch_cpu tests/
+        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "not Flax and not Onnx" \
+          --make-reports=tests_${{ matrix.config.report }} \
+          tests/
+
+    - name: Run fast Flax TPU tests
+      if: ${{ matrix.config.framework == 'flax' }}
+      env:
+        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      run: |
+        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "Flax" \
+          --make-reports=tests_${{ matrix.config.report }} \
+          tests/
+
+    - name: Run fast ONNXRuntime CPU tests
+      if: ${{ matrix.config.framework == 'onnxruntime' }}
+      env:
+        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      run: |
+        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+          -s -v -k "Onnx" \
+          --make-reports=tests_${{ matrix.config.report }} \
+          tests/
 
     - name: Failure short reports
       if: ${{ failure() }}
-      run: cat reports/tests_torch_cpu_failures_short.txt
+      run: cat reports/tests_${{ matrix.config.report }}_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
       uses: actions/upload-artifact@v2
       with:
-        name: pr_torch_cpu_test_reports
+        name: pr_${{ matrix.config.report }}_test_reports
         path: reports
 
-  run_tests_apple_m1:
-    name: MPS tests on Apple M1
+  run_fast_tests_apple_m1:
+    name: Fast PyTorch MPS tests on MacOS
     runs-on: [ self-hosted, apple-m1 ]
 
     steps:
@@ -91,7 +139,7 @@ jobs:
       run: |
         ${CONDA_RUN} python utils/print_env.py
 
-    - name: Run all fast tests on MPS
+    - name: Run fast PyTorch tests on M1 (MPS)
       shell: arch -arch arm64 bash {0}
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
