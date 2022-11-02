@@ -66,6 +66,7 @@ def parse_args(input_args=None):
         "--instance_prompt",
         type=str,
         default=None,
+        required=True,
         help="The prompt with identifier specifying the instance",
     )
     parser.add_argument(
