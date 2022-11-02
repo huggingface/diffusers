@@ -1,4 +1,4 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
+# Copyright 2022 ETH Zurich Computer Vision Lab and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -10,7 +10,6 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-
 # limitations under the License.
 
 
@@ -56,7 +55,7 @@ class RePaintPipeline(DiffusionPipeline):
     def __call__(
         self,
         original_image: Union[torch.FloatTensor, PIL.Image.Image],
-        mask: Union[torch.FloatTensor, PIL.Image.Image],
+        mask_image: Union[torch.FloatTensor, PIL.Image.Image],
         num_inference_steps: int = 250,
         eta: float = 0.0,
         jump_length: int = 10,
@@ -69,8 +68,8 @@ class RePaintPipeline(DiffusionPipeline):
         Args:
             original_image (`torch.FloatTensor` or `PIL.Image.Image`):
                 The original image to inpaint on.
-            mask (`torch.FloatTensor` or `PIL.Image.Image`):
-                The mask where 0.0 values define which part of the original image to inpaint (change).
+            mask_image (`torch.FloatTensor` or `PIL.Image.Image`):
+                The mask_image where 0.0 values define which part of the original image to inpaint (change).
             num_inference_steps (`int`, *optional*, defaults to 1000):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
@@ -101,9 +100,9 @@ class RePaintPipeline(DiffusionPipeline):
         if not isinstance(original_image, torch.FloatTensor):
             original_image = _preprocess_image(original_image)
         original_image = original_image.to(self.device)
-        if not isinstance(mask, torch.FloatTensor):
-            mask = _preprocess_mask(mask)
-        mask = mask.to(self.device)
+        if not isinstance(mask_image, torch.FloatTensor):
+            mask_image = _preprocess_mask(mask_image)
+        mask_image = mask_image.to(self.device)
 
         # sample gaussian noise to begin the loop
         image = torch.randn(
@@ -123,7 +122,7 @@ class RePaintPipeline(DiffusionPipeline):
                 # predict the noise residual
                 model_output = self.unet(image, t).sample
                 # compute previous image: x_t -> x_t-1
-                image = self.scheduler.step(model_output, t, image, original_image, mask, generator).prev_sample
+                image = self.scheduler.step(model_output, t, image, original_image, mask_image, generator).prev_sample
 
             else:
                 # compute the reverse: x_t-1 -> x_t
