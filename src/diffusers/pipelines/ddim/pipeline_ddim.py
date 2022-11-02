@@ -46,6 +46,8 @@ class DDIMPipeline(DiffusionPipeline):
         use_clipped_model_output: Optional[bool] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        predict_epsilon: bool = True,
+        substeps_mode="linear",  # linear or quad(ratic)
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
@@ -68,6 +70,12 @@ class DDIMPipeline(DiffusionPipeline):
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
+            predict_epsilon (`bool`, *optional*, defaults to True):
+                Whether the Unet model should be used to predict eps (as opposed to x0).
+            substeps_mode (`str`, *optional*, defaults to "linear"):
+                How the steps are selected in the DDIM sampler.
+                When "linear", the selected steps are linearly spaced.
+                When quadratic, the step size grows with decreasing t, such that for noisier x_t, the steps are larger.
 
         Returns:
             [`~pipeline_utils.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if
@@ -83,7 +91,7 @@ class DDIMPipeline(DiffusionPipeline):
         image = image.to(self.device)
 
         # set step values
-        self.scheduler.set_timesteps(num_inference_steps)
+        self.scheduler.set_timesteps(num_inference_steps, substeps_mode=substeps_mode)
 
         # Ignore use_clipped_model_output if the scheduler doesn't accept this argument
         accepts_use_clipped_model_output = "use_clipped_model_output" in set(
@@ -93,14 +101,19 @@ class DDIMPipeline(DiffusionPipeline):
         if accepts_use_clipped_model_output:
             extra_kwargs["use_clipped_model_output"] = use_clipped_model_output
 
-        for t in self.progress_bar(self.scheduler.timesteps):
+        timesteps = self.scheduler.timesteps
+        timepairs = list(zip(timesteps[:-1], timesteps[1:]))
+        for t in self.progress_bar(timepairs):
+            start_t, end_t = t
             # 1. predict noise model_output
-            model_output = self.unet(image, t).sample
+            model_output = self.unet(image, start_t).sample
 
             # 2. predict previous mean of image x_t-1 and add variance depending on eta
             # eta corresponds to η in paper and should be between [0, 1]
             # do x_t -> x_t-1
-            image = self.scheduler.step(model_output, t, image, eta, **extra_kwargs).prev_sample
+            image = self.scheduler.step(
+                model_output, t, image, eta, predict_epsilon=predict_epsilon, use_clipped_model_output=True, **extra_kwargs
+            ).prev_sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
