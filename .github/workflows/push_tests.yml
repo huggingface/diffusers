@@ -192,6 +192,7 @@ jobs:
       - name: Run slow PyTorch tests on M1 (MPS)
         shell: arch -arch arm64 bash {0}
         env:
+          HF_HOME: /System/Volumes/Data/mnt/cache
           HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         run: |
           ${CONDA_RUN} python -m pytest -n 1 -s -v --make-reports=tests_torch_mps tests/
