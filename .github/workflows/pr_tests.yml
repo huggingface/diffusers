@@ -14,7 +14,6 @@ env:
   OMP_NUM_THREADS: 4
   MKL_NUM_THREADS: 4
   PYTEST_TIMEOUT: 60
-  MPS_TORCH_VERSION: 1.13.0
 
 jobs:
   run_fast_tests:
