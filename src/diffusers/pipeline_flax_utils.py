@@ -29,6 +29,7 @@ from PIL import Image
 from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
+from .hub_utils import http_user_agent
 from .modeling_flax_utils import FLAX_WEIGHTS_NAME, FlaxModelMixin
 from .schedulers.scheduling_utils_flax import SCHEDULER_CONFIG_NAME, FlaxSchedulerMixin
 from .utils import CONFIG_NAME, DIFFUSERS_CACHE, BaseOutput, is_transformers_available, logging
@@ -271,7 +272,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
         >>> # Download pipeline, but overwrite scheduler
         >>> from diffusers import LMSDiscreteScheduler
 
-        >>> scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
+        >>> scheduler = LMSDiscreteScheduler.from_config("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
         >>> pipeline = FlaxDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", scheduler=scheduler)
         ```
         """
@@ -301,6 +302,22 @@ class FlaxDiffusionPipeline(ConfigMixin):
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
             allow_patterns += [FLAX_WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, cls.config_name]
 
+            # make sure we don't download PyTorch weights
+            ignore_patterns = "*.bin"
+
+            if cls != FlaxDiffusionPipeline:
+                requested_pipeline_class = cls.__name__
+            else:
+                requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
+                requested_pipeline_class = (
+                    requested_pipeline_class
+                    if requested_pipeline_class.startswith("Flax")
+                    else "Flax" + requested_pipeline_class
+                )
+
+            user_agent = {"pipeline_class": requested_pipeline_class}
+            user_agent = http_user_agent(user_agent)
+
             # download all allow_patterns
             cached_folder = snapshot_download(
                 pretrained_model_name_or_path,
@@ -311,6 +328,8 @@ class FlaxDiffusionPipeline(ConfigMixin):
                 use_auth_token=use_auth_token,
                 revision=revision,
                 allow_patterns=allow_patterns,
+                ignore_patterns=ignore_patterns,
+                user_agent=user_agent,
             )
         else:
             cached_folder = pretrained_model_name_or_path
@@ -328,7 +347,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
                 if config_dict["_class_name"].startswith("Flax")
                 else "Flax" + config_dict["_class_name"]
             )
-            pipeline_class = getattr(diffusers_module, config_dict["_class_name"])
+            pipeline_class = getattr(diffusers_module, class_name)
 
         # some modules can be passed directly to the init
         # in this case they are already instantiated in `kwargs`
@@ -444,7 +463,11 @@ class FlaxDiffusionPipeline(ConfigMixin):
         if images.ndim == 3:
             images = images[None, ...]
         images = (images * 255).round().astype("uint8")
-        pil_images = [Image.fromarray(image) for image in images]
+        if images.shape[-1] == 1:
+            # special case for grayscale (single channel) images
+            pil_images = [Image.fromarray(image.squeeze(), mode="L") for image in images]
+        else:
+            pil_images = [Image.fromarray(image) for image in images]
 
         return pil_images
 
