@@ -21,7 +21,7 @@ from typing import Callable, List, Optional, Tuple, Union
 import torch
 from torch import Tensor, device
 
-from diffusers.utils import is_accelerate_available
+import accelerate
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
@@ -379,11 +379,6 @@ class ModelMixin(torch.nn.Module):
             # restore default dtype
 
         if device_map == "auto":
-            if is_accelerate_available():
-                import accelerate
-            else:
-                raise ImportError("Please install accelerate via `pip install accelerate`")
-
             with accelerate.init_empty_weights():
                 model, unused_kwargs = cls.from_config(
                     config_path,

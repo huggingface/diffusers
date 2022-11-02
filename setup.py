@@ -209,6 +209,7 @@ install_requires = [
     deps["regex"],
     deps["requests"],
     deps["Pillow"],
+    deps["accelerate"]
 ]
 
 setup(
