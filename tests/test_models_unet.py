@@ -77,7 +77,7 @@ class UnetModelTests(ModelTesterMixin, unittest.TestCase):
 #        time_step = torch.tensor([10])
 #
 #        with torch.no_grad():
-#            output = model(noise, time_step).sample
+#            output = model(noise, time_step)
 #
 #        output_slice = output[0, -1, -3:, -3:].flatten()
 # fmt: off
@@ -129,7 +129,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         self.assertEqual(len(loading_info["missing_keys"]), 0)
 
         model.to(torch_device)
-        image = model(**self.dummy_input).sample
+        image = model(**self.dummy_input)
 
         assert image is not None, "Make sure output is not None"
 
@@ -149,7 +149,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         time_step = torch.tensor([10] * noise.shape[0]).to(torch_device)
 
         with torch.no_grad():
-            output = model(noise, time_step).sample
+            output = model(noise, time_step)
 
         output_slice = output[0, -1, -3:, -3:].flatten().cpu()
         # fmt: off
@@ -202,7 +202,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         model = self.model_class(**init_dict)
         model.to(torch_device)
 
-        out = model(**inputs_dict).sample
+        out = model(**inputs_dict)
         # run the backwards pass on the model. For backwards pass, for simplicity purpose,
         # we won't calculate the loss and rather backprop on out.sum()
         model.zero_grad()
@@ -216,7 +216,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
             grad_not_checkpointed[name] = param.grad.data.clone()
 
         model.enable_gradient_checkpointing()
-        out = model(**inputs_dict).sample
+        out = model(**inputs_dict)
         # run the backwards pass on the model. For backwards pass, for simplicity purpose,
         # we won't calculate the loss and rather backprop on out.sum()
         model.zero_grad()
@@ -338,7 +338,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         time_step = torch.tensor(batch_size * [1e-4]).to(torch_device)
 
         with torch.no_grad():
-            output = model(noise, time_step).sample
+            output = model(noise, time_step)
 
         output_slice = output[0, -3:, -3:, -1].flatten().cpu()
         # fmt: off
@@ -363,7 +363,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
         time_step = torch.tensor(batch_size * [1e-4]).to(torch_device)
 
         with torch.no_grad():
-            output = model(noise, time_step).sample
+            output = model(noise, time_step)
 
         output_slice = output[0, -3:, -3:, -1].flatten().cpu()
         # fmt: off
