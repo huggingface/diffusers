@@ -42,6 +42,8 @@ if is_torch_available():
     from .schedulers import (
         DDIMScheduler,
         DDPMScheduler,
+        EulerAncestralDiscreteScheduler,
+        EulerDiscreteScheduler,
         IPNDMScheduler,
         KarrasVeScheduler,
         PNDMScheduler,

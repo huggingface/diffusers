@@ -18,6 +18,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | Composable Stable Diffusion| Stable Diffusion Pipeline that supports prompts that contain "&#124;" in prompts (as an AND condition) and weights (separated by "&#124;" as well) to positively / negatively weight prompts.                                                                                                                                                                                                                                                                                                     | [Composable Stable Diffusion](#composable-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
 | Seed Resizing Stable Diffusion| Stable Diffusion Pipeline that supports resizing an image and retaining the concepts of the 512 by 512 generation.                                                                                                                                                                                                                                                                                                     | [Seed Resizing](#seed-resizing)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
 
+| Imagic Stable Diffusion | Stable Diffusion Pipeline that enables writing a text prompt to edit an existing image| [Imagic Stable Diffusion](#imagic-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
 
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
@@ -373,6 +374,49 @@ for i in range(4):
 for i, img in enumerate(images):
     img.save(f"./composable_diffusion/image_{i}.png")
 ```
+
+### Imagic Stable Diffusion
+Allows you to edit an image using stable diffusion. 
+
+```python
+import requests
+from PIL import Image
+from io import BytesIO
+import torch
+from diffusers import DiffusionPipeline, DDIMScheduler
+has_cuda = torch.cuda.is_available()
+device = torch.device('cpu' if not has_cuda else 'cuda')
+pipe = DiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+        safety_checker=None,
+    use_auth_token=True,
+    custom_pipeline="imagic_stable_diffusion",
+    scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
+).to(device)
+generator = th.Generator("cuda").manual_seed(0)
+seed = 0
+prompt = "A photo of Barack Obama smiling with a big grin"
+url = 'https://www.dropbox.com/s/6tlwzr73jd1r9yk/obama.png?dl=1'
+response = requests.get(url)
+init_image = Image.open(BytesIO(response.content)).convert("RGB")
+init_image = init_image.resize((512, 512))
+res = pipe.train(
+    prompt,
+    init_image,
+    guidance_scale=7.5,
+    num_inference_steps=50,
+    generator=generator)
+res = pipe(alpha=1)
+image = res.images[0]
+image.save('./imagic/imagic_image_alpha_1.png')
+res = pipe(alpha=1.5)
+image = res.images[0]
+image.save('./imagic/imagic_image_alpha_1_5.png')
+res = pipe(alpha=2)
+image = res.images[0]
+image.save('./imagic/imagic_image_alpha_2.png')
+```
+
 ### Seed Resizing 
 Test seed resizing. Originally generate an image in 512 by 512, then generate image with same seed at 512 by 592 using seed resizing. Finally, generate 512 by 592 using original stable diffusion pipeline.
 
