@@ -379,11 +379,15 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
         # prepare mask and masked_image
         mask, masked_image = prepare_mask_and_masked_image(image, mask_image)
-        mask = mask.to(device=self.device, dtype=text_embeddings.dtype)
-        masked_image = masked_image.to(device=self.device, dtype=text_embeddings.dtype)
 
         # resize the mask to latents shape as we concatenate the mask to the latents
+        # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
+        # and half precision
         mask = torch.nn.functional.interpolate(mask, size=(height // 8, width // 8))
+        mask = mask.to(device=self.device, dtype=text_embeddings.dtype)
+
+        masked_image = masked_image.to(device=self.device, dtype=text_embeddings.dtype)
+
 
         # encode the mask image into latents space so we can concatenate it to the latents
         masked_image_latents = self.vae.encode(masked_image).latent_dist.sample(generator=generator)
