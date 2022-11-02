@@ -15,7 +15,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from .attention import AttentionBlock, SpatialTransformer
+from .attention import AttentionBlock, Transformer2DModel
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, ResnetBlock2D, Upsample2D
 
 
@@ -349,7 +349,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
 
         for _ in range(num_layers):
             attentions.append(
-                SpatialTransformer(
+                Transformer2DModel(
                     attn_num_head_channels,
                     in_channels // attn_num_head_channels,
                     in_channels=in_channels,
@@ -526,7 +526,7 @@ class CrossAttnDownBlock2D(nn.Module):
                 )
             )
             attentions.append(
-                SpatialTransformer(
+                Transformer2DModel(
                     attn_num_head_channels,
                     out_channels // attn_num_head_channels,
                     in_channels=out_channels,
@@ -1105,7 +1105,7 @@ class CrossAttnUpBlock2D(nn.Module):
                 )
             )
             attentions.append(
-                SpatialTransformer(
+                Transformer2DModel(
                     attn_num_head_channels,
                     out_channels // attn_num_head_channels,
                     in_channels=out_channels,

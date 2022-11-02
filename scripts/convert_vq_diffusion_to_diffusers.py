@@ -40,7 +40,7 @@ import torch
 import yaml
 from accelerate import init_empty_weights, load_checkpoint_and_dispatch
 from diffusers import VQDiffusionPipeline, VQDiffusionScheduler, VQModel
-from diffusers.models.attention import SpatialTransformer
+from diffusers.models.attention import Transformer2DModel
 from transformers import CLIPTextModel, CLIPTokenizer
 from yaml.loader import FullLoader
 
@@ -507,9 +507,9 @@ def transformer_model_from_original_config(
     height = original_transformer_config["content_spatial_size"][0]
     width = original_transformer_config["content_spatial_size"][1]
     dropout = original_transformer_config["resid_pdrop"]
-    diffusion_steps = original_diffusion_config["diffusion_step"]
+    num_embeds_ada_norm = original_diffusion_config["diffusion_step"]
 
-    model = SpatialTransformer(
+    model = Transformer2DModel(
         n_heads=n_heads,
         d_head=d_head,
         depth=depth,
@@ -519,7 +519,7 @@ def transformer_model_from_original_config(
         height=height,
         width=width,
         dropout=dropout,
-        diffusion_steps=diffusion_steps,
+        num_embeds_ada_norm=num_embeds_ada_norm,
         ff_layers=["Linear", "ApproximateGELU", "Linear", "Dropout"],
         norm_layers=["AdaLayerNorm", "AdaLayerNorm", "LayerNorm"],
         attention_bias=True,

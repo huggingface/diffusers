@@ -21,7 +21,7 @@ import torch
 from torch import nn
 
 import pytest
-from diffusers.models.attention import GEGLU, AdaLayerNorm, ApproximateGELU, AttentionBlock, SpatialTransformer
+from diffusers.models.attention import GEGLU, AdaLayerNorm, ApproximateGELU, AttentionBlock, Transformer2DModel
 from diffusers.models.embeddings import get_timestep_embedding
 from diffusers.models.resnet import Downsample2D, Upsample2D
 from diffusers.utils import torch_device
@@ -275,14 +275,14 @@ class AttentionBlockTests(unittest.TestCase):
         assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
 
 
-class SpatialTransformerTests(unittest.TestCase):
+class Transformer2DModelTests(unittest.TestCase):
     def test_spatial_transformer_default(self):
         torch.manual_seed(0)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(0)
 
         sample = torch.randn(1, 32, 64, 64).to(torch_device)
-        spatial_transformer_block = SpatialTransformer(
+        spatial_transformer_block = Transformer2DModel(
             in_channels=32,
             n_heads=1,
             d_head=32,
@@ -306,7 +306,7 @@ class SpatialTransformerTests(unittest.TestCase):
             torch.cuda.manual_seed_all(0)
 
         sample = torch.randn(1, 64, 64, 64).to(torch_device)
-        spatial_transformer_block = SpatialTransformer(
+        spatial_transformer_block = Transformer2DModel(
             in_channels=64,
             n_heads=2,
             d_head=32,
@@ -330,17 +330,17 @@ class SpatialTransformerTests(unittest.TestCase):
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(0)
 
-        diffusion_steps = 5
+        num_embeds_ada_norm = 5
 
         sample = torch.randn(1, 64, 64, 64).to(torch_device)
-        spatial_transformer_block = SpatialTransformer(
+        spatial_transformer_block = Transformer2DModel(
             in_channels=64,
             n_heads=2,
             d_head=32,
             dropout=0.0,
             context_dim=64,
             norm_layers=["AdaLayerNorm", "AdaLayerNorm", "LayerNorm"],
-            diffusion_steps=diffusion_steps,
+            num_embeds_ada_norm=num_embeds_ada_norm,
         ).to(torch_device)
         with torch.no_grad():
             timestep_1 = torch.tensor(1, dtype=torch.long).to(torch_device)
@@ -371,7 +371,7 @@ class SpatialTransformerTests(unittest.TestCase):
 
         sample = torch.randn(1, 32, 64, 64).to(torch_device)
         spatial_transformer_block = (
-            SpatialTransformer(
+            Transformer2DModel(
                 in_channels=32,
                 n_heads=2,
                 d_head=16,
@@ -402,7 +402,7 @@ class SpatialTransformerTests(unittest.TestCase):
 
         sample = torch.randint(0, num_embed, (1, 32)).to(torch_device)
         spatial_transformer_block = (
-            SpatialTransformer(
+            Transformer2DModel(
                 n_heads=1,
                 d_head=32,
                 discrete=True,
@@ -427,38 +427,38 @@ class SpatialTransformerTests(unittest.TestCase):
         assert torch.allclose(output_slice.flatten(), expected_slice, atol=1e-3)
 
     def test_spatial_transformer_default_norm_layers(self):
-        spatial_transformer_block = SpatialTransformer(n_heads=1, d_head=32, in_channels=32)
+        spatial_transformer_block = Transformer2DModel(n_heads=1, d_head=32, in_channels=32)
 
         assert spatial_transformer_block.transformer_blocks[0].norm1.__class__ == nn.LayerNorm
         assert spatial_transformer_block.transformer_blocks[0].norm2.__class__ == nn.LayerNorm
         assert spatial_transformer_block.transformer_blocks[0].norm3.__class__ == nn.LayerNorm
 
     def test_spatial_transformer_ada_norm_layers(self):
-        spatial_transformer_block = SpatialTransformer(
+        spatial_transformer_block = Transformer2DModel(
             n_heads=1,
             d_head=32,
             in_channels=32,
             norm_layers=["AdaLayerNorm", "AdaLayerNorm", "LayerNorm"],
-            diffusion_steps=5,
+            num_embeds_ada_norm=5,
         )
 
         assert spatial_transformer_block.transformer_blocks[0].norm1.__class__ == AdaLayerNorm
         assert spatial_transformer_block.transformer_blocks[0].norm2.__class__ == AdaLayerNorm
         assert spatial_transformer_block.transformer_blocks[0].norm3.__class__ == nn.LayerNorm
 
-    def test_spatial_transformer_ada_norm_layers_requires_diffusion_steps(self):
+    def test_spatial_transformer_ada_norm_layers_requires_num_embeds_ada_norm(self):
         with pytest.raises(Exception) as e_info:
-            SpatialTransformer(
+            Transformer2DModel(
                 n_heads=1,
                 d_head=32,
                 in_channels=32,
                 norm_layers=["AdaLayerNorm", "AdaLayerNorm", "LayerNorm"],
             )
 
-        assert e_info.value.args[0] == "When using AdaLayerNorm, you must also pass diffusion_steps."
+        assert e_info.value.args[0] == "When using AdaLayerNorm, you must also pass num_embeds_ada_norm."
 
     def test_spatial_transformer_default_ff_layers(self):
-        spatial_transformer_block = SpatialTransformer(
+        spatial_transformer_block = Transformer2DModel(
             n_heads=1,
             d_head=32,
             in_channels=32,
@@ -481,7 +481,7 @@ class SpatialTransformerTests(unittest.TestCase):
         assert spatial_transformer_block.transformer_blocks[0].ff.net[2].out_features == dim
 
     def test_spatial_transformer_vq_diffusion_ff_layers(self):
-        spatial_transformer_block = SpatialTransformer(
+        spatial_transformer_block = Transformer2DModel(
             n_heads=1,
             d_head=32,
             in_channels=32,
@@ -504,7 +504,7 @@ class SpatialTransformerTests(unittest.TestCase):
 
     def test_spatial_transformer_ff_layers_too_few_dim_changes(self):
         with pytest.raises(Exception) as e_info:
-            SpatialTransformer(n_heads=1, d_head=32, in_channels=32, ff_layers=["Linear"])
+            Transformer2DModel(n_heads=1, d_head=32, in_channels=32, ff_layers=["Linear"])
 
         assert (
             e_info.value.args[0]
@@ -515,7 +515,7 @@ class SpatialTransformerTests(unittest.TestCase):
     def test_spatial_transformer_ff_layers_too_many_dim_changes(self):
         for layer in ["Linear", "GEGLU"]:
             with pytest.raises(Exception) as e_info:
-                SpatialTransformer(n_heads=1, d_head=32, in_channels=32, ff_layers=[layer] * 3)
+                Transformer2DModel(n_heads=1, d_head=32, in_channels=32, ff_layers=[layer] * 3)
 
             assert (
                 e_info.value.args[0]
@@ -524,7 +524,7 @@ class SpatialTransformerTests(unittest.TestCase):
             )
 
     def test_spatial_transformer_attention_bias(self):
-        spatial_transformer_block = SpatialTransformer(n_heads=1, d_head=32, in_channels=32, attention_bias=True)
+        spatial_transformer_block = Transformer2DModel(n_heads=1, d_head=32, in_channels=32, attention_bias=True)
 
         assert spatial_transformer_block.transformer_blocks[0].attn1.to_q.bias is not None
         assert spatial_transformer_block.transformer_blocks[0].attn1.to_k.bias is not None

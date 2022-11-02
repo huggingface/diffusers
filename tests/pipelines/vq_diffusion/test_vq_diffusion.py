@@ -19,12 +19,15 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import SpatialTransformer, VQDiffusionPipeline, VQDiffusionScheduler, VQModel
-from diffusers.utils import slow
+from diffusers import Transformer2DModel, VQDiffusionPipeline, VQDiffusionScheduler, VQModel
+from diffusers.utils import slow, torch_device, load_image
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from ...test_pipelines_common import PipelineTesterMixin
+
+
+torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class VQDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -39,7 +42,7 @@ class VQDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return 12
 
     @property
-    def diffusion_steps(self):
+    def num_embeds_ada_norm(self):
         return 12
 
     @property
@@ -84,7 +87,7 @@ class VQDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         height = 12
         width = 12
 
-        model = SpatialTransformer(
+        model = Transformer2DModel(
             n_heads=1,
             d_head=height * width,
             context_dim=32,
@@ -92,7 +95,7 @@ class VQDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_embed=self.num_embed,
             height=height,
             width=width,
-            diffusion_steps=self.diffusion_steps,
+            num_embeds_ada_norm=self.num_embeds_ada_norm,
             ff_layers=["Linear", "ApproximateGELU", "Linear", "Dropout"],
             norm_layers=["AdaLayerNorm", "AdaLayerNorm", "LayerNorm"],
             attention_bias=True,
@@ -145,6 +148,21 @@ class VQDiffusionPipelineIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    @unittest.skip("VQ Diffusion model not saved to hub")
     def test_vq_diffusion(self):
-        pass
+        expected_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/vq_diffusion/teddy_bear_pool.png"
+        )
+        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
+
+        pipeline = VQDiffusionPipeline.from_pretrained("microsoft/vq-diffusion-ithq")
+        pipeline = pipeline.to(torch_device)
+        pipeline.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        output = pipeline("teddy bear playing in the pool", truncation_rate=0.86, num_images_per_prompt=1, generator=generator, output_type="np")
+
+        image = output.images[0]
+
+        assert image.shape == (256, 256, 3)
+        assert np.abs(expected_image - image).max() < 1e-2

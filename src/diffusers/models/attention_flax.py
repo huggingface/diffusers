@@ -142,7 +142,7 @@ class FlaxBasicTransformerBlock(nn.Module):
         return hidden_states
 
 
-class FlaxSpatialTransformer(nn.Module):
+class FlaxTransformer2DModel(nn.Module):
     r"""
     A Spatial Transformer layer with Gated Linear Unit (GLU) activation function as described in:
     https://arxiv.org/pdf/1506.02025.pdf

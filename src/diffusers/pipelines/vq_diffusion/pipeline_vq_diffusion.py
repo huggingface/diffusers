@@ -2,7 +2,7 @@ from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 
-from diffusers import SpatialTransformer, VQModel
+from diffusers import Transformer2DModel, VQModel
 from diffusers.schedulers.scheduling_vq_diffusion import VQDiffusionScheduler
 from transformers import CLIPTextModel, CLIPTokenizer
 
@@ -31,7 +31,7 @@ class VQDiffusionPipeline(DiffusionPipeline):
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
-        transformer (`SpatialTransformer`):
+        transformer (`Transformer2DModel`):
             Conditional transformer to denoise the encoded image latents.
         scheduler ([`VQDiffusionScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
@@ -40,7 +40,7 @@ class VQDiffusionPipeline(DiffusionPipeline):
     vqvae: VQModel
     text_encoder: CLIPTextModel
     tokenizer: CLIPTokenizer
-    transformer: SpatialTransformer
+    transformer: Transformer2DModel
     scheduler: VQDiffusionScheduler
 
     def __init__(
@@ -48,7 +48,7 @@ class VQDiffusionPipeline(DiffusionPipeline):
         vqvae: VQModel,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
-        transformer: SpatialTransformer,
+        transformer: Transformer2DModel,
         scheduler: VQDiffusionScheduler,
     ):
         super().__init__()
