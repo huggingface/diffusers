@@ -18,9 +18,13 @@ import unittest
 import numpy as np
 
 from diffusers import OnnxStableDiffusionInpaintPipeline
-from diffusers.utils.testing_utils import load_image, require_onnxruntime, slow
+from diffusers.utils.testing_utils import is_onnx_available, load_image, require_onnxruntime, require_torch_gpu, slow
 
 from ...test_pipelines_onnx_common import OnnxPipelineTesterMixin
+
+
+if is_onnx_available():
+    import onnxruntime as ort
 
 
 class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.TestCase):
@@ -30,6 +34,7 @@ class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.Tes
 
 @slow
 @require_onnxruntime
+@require_torch_gpu
 class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
     def test_stable_diffusion_inpaint_onnx(self):
         init_image = load_image(
@@ -40,9 +45,20 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
-
+        provider = (
+            "CUDAExecutionProvider",
+            {
+                "gpu_mem_limit": "17179869184",  # 16GB.
+                "arena_extend_strategy": "kSameAsRequested",
+            },
+        )
+        options = ort.SessionOptions()
+        options.enable_mem_pattern = False
         pipe = OnnxStableDiffusionInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-inpainting", revision="onnx", provider="CPUExecutionProvider"
+            "runwayml/stable-diffusion-inpainting",
+            revision="onnx",
+            provider=provider,
+            sess_options=options,
         )
         pipe.set_progress_bar_config(disable=None)
 

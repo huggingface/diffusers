@@ -28,7 +28,7 @@ from diffusers import (
     UNet2DModel,
     VQModel,
 )
-from diffusers.utils import floats_tensor, load_image, slow, torch_device
+from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
@@ -278,11 +278,10 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/in_paint/yellow_cat_sitting_on_a_park_bench.png"
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/in_paint"
+            "/yellow_cat_sitting_on_a_park_bench.npy"
         )
-        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
         model_id = "runwayml/stable-diffusion-inpainting"
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
@@ -307,7 +306,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-        assert np.abs(expected_image - image).max() < 1e-2
+        assert np.abs(expected_image - image).max() < 1e-3
 
     def test_stable_diffusion_inpaint_pipeline_fp16(self):
         init_image = load_image(
@@ -318,11 +317,10 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/in_paint/yellow_cat_sitting_on_a_park_bench_fp16.png"
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/in_paint"
+            "/yellow_cat_sitting_on_a_park_bench_fp16.npy"
         )
-        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
         model_id = "runwayml/stable-diffusion-inpainting"
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
@@ -360,11 +358,10 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/in_paint/yellow_cat_sitting_on_a_park_bench_pndm.png"
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/in_paint"
+            "/yellow_cat_sitting_on_a_park_bench_pndm.npy"
         )
-        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
         model_id = "runwayml/stable-diffusion-inpainting"
         pndm = PNDMScheduler.from_config(model_id, subfolder="scheduler")
@@ -388,4 +385,4 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-        assert np.abs(expected_image - image).max() < 1e-2
+        assert np.abs(expected_image - image).max() < 1e-3

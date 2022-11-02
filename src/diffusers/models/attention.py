@@ -21,6 +21,14 @@ from torch import nn
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.modeling_utils import ModelMixin
 from diffusers.models.embeddings import ImagePositionalEmbeddings
+from diffusers.utils.import_utils import is_xformers_available
+
+
+if is_xformers_available():
+    import xformers
+    import xformers.ops
+else:
+    xformers = None
 
 
 class Transformer2DModel(ModelMixin, ConfigMixin):
@@ -187,6 +195,10 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             return_value = hidden_states + residual
 
         return return_value
+
+    def _set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
+        for block in self.transformer_blocks:
+            block._set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
 
 
 class AttentionBlock(nn.Module):
@@ -355,9 +367,39 @@ class BasicTransformerBlock(nn.Module):
         hidden_states = self.attn1(self.norm1(hidden_states, **norm1_kwargs)) + hidden_states
         hidden_states = self.attn2(self.norm2(hidden_states, **norm2_kwargs), context=context) + hidden_states
         hidden_states = self.ff(self.norm3(hidden_states, **norm3_kwargs)) + hidden_states
-
         return hidden_states
 
+    def _set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
+        if not is_xformers_available():
+            print("Here is how to install it")
+            raise ModuleNotFoundError(
+                "Refer to https://github.com/facebookresearch/xformers for more information on how to install"
+                " xformers",
+                name="xformers",
+            )
+        elif not torch.cuda.is_available():
+            raise ValueError(
+                "torch.cuda.is_available() should be True but is False. xformers' memory efficient attention is only"
+                " available for GPU "
+            )
+        else:
+            try:
+                # Make sure we can run the memory efficient attention
+                _ = xformers.ops.memory_efficient_attention(
+                    torch.randn((1, 2, 40), device="cuda"),
+                    torch.randn((1, 2, 40), device="cuda"),
+                    torch.randn((1, 2, 40), device="cuda"),
+                )
+            except Exception as e:
+                raise e
+            self.attn1._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
+            self.attn2._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
+
+    def forward(self, hidden_states, context=None):
+        hidden_states = self.attn1(self.norm1(hidden_states)) + hidden_states
+        hidden_states = self.attn2(self.norm2(hidden_states), context=context) + hidden_states
+        hidden_states = self.ff(self.norm3(hidden_states)) + hidden_states
+        
 
 class CrossAttention(nn.Module):
     r"""
@@ -393,6 +435,7 @@ class CrossAttention(nn.Module):
         # is split across the batch axis to save memory
         # You can set slice_size with `set_attention_slice`
         self._slice_size = None
+        self._use_memory_efficient_attention_xformers = False
 
         bias = False if bias is None else bias
 
@@ -435,11 +478,13 @@ class CrossAttention(nn.Module):
         # TODO(PVP) - mask is currently never used. Remember to re-implement when used
 
         # attention, what we cannot get enough of
-
-        if self._slice_size is None or query.shape[0] // self._slice_size == 1:
-            hidden_states = self._attention(query, key, value)
+        if self._use_memory_efficient_attention_xformers:
+            hidden_states = self._memory_efficient_attention_xformers(query, key, value)
         else:
-            hidden_states = self._sliced_attention(query, key, value, sequence_length, dim)
+            if self._slice_size is None or query.shape[0] // self._slice_size == 1:
+                hidden_states = self._attention(query, key, value)
+            else:
+                hidden_states = self._sliced_attention(query, key, value, sequence_length, dim)
 
         # linear proj
         hidden_states = self.to_out[0](hidden_states)
@@ -494,6 +539,11 @@ class CrossAttention(nn.Module):
             hidden_states[start_idx:end_idx] = attn_slice
 
         # reshape hidden_states
+        hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
+        return hidden_states
+
+    def _memory_efficient_attention_xformers(self, query, key, value):
+        hidden_states = xformers.ops.memory_efficient_attention(query, key, value, attn_bias=None)
         hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
         return hidden_states
 

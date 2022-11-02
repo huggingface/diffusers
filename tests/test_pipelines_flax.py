@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+import tempfile
 import unittest
 
 import numpy as np
@@ -24,10 +26,27 @@ from diffusers.utils.testing_utils import require_flax, slow
 if is_flax_available():
     import jax
     import jax.numpy as jnp
-    from diffusers import FlaxDDIMScheduler, FlaxStableDiffusionPipeline
+    from diffusers import FlaxDDIMScheduler, FlaxDiffusionPipeline, FlaxStableDiffusionPipeline
     from flax.jax_utils import replicate
     from flax.training.common_utils import shard
     from jax import pmap
+
+
+@require_flax
+class DownloadTests(unittest.TestCase):
+    def test_download_only_pytorch(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            # pipeline has Flax weights
+            _ = FlaxDiffusionPipeline.from_pretrained(
+                "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
+            )
+
+            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots"))]
+            files = [item for sublist in all_root_files for item in sublist]
+
+            # None of the downloaded files should be a PyTorch file even if we have some here:
+            # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe/blob/main/unet/diffusion_pytorch_model.bin
+            assert not any(f.endswith(".bin") for f in files)
 
 
 @slow
@@ -59,9 +78,9 @@ class FlaxPipelineTests(unittest.TestCase):
 
         images = p_sample(prompt_ids, params, prng_seed, num_inference_steps).images
 
-        assert images.shape == (8, 1, 64, 64, 3)
-        assert np.abs((np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 4.151474)) < 1e-3
-        assert np.abs((np.abs(images, dtype=np.float32).sum() - 49947.875)) < 5e-1
+        assert images.shape == (8, 1, 128, 128, 3)
+        assert np.abs(np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 3.1111548) < 1e-3
+        assert np.abs(np.abs(images, dtype=np.float32).sum() - 199746.95) < 5e-1
 
         images_pil = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 
