@@ -378,32 +378,8 @@ class ModelMixin(torch.nn.Module):
 
             # restore default dtype
 
-        if device_map == "auto":
-            with accelerate.init_empty_weights():
-                model, unused_kwargs = cls.from_config(
-                    config_path,
-                    cache_dir=cache_dir,
-                    return_unused_kwargs=True,
-                    force_download=force_download,
-                    resume_download=resume_download,
-                    proxies=proxies,
-                    local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
-                    revision=revision,
-                    subfolder=subfolder,
-                    device_map=device_map,
-                    **kwargs,
-                )
-
-            accelerate.load_checkpoint_and_dispatch(model, model_file, device_map)
-
-            loading_info = {
-                "missing_keys": [],
-                "unexpected_keys": [],
-                "mismatched_keys": [],
-                "error_msgs": [],
-            }
-        else:
+        # Instantiate model with empty weights
+        with accelerate.init_empty_weights():
             model, unused_kwargs = cls.from_config(
                 config_path,
                 cache_dir=cache_dir,
@@ -419,21 +395,16 @@ class ModelMixin(torch.nn.Module):
                 **kwargs,
             )
 
-            state_dict = load_state_dict(model_file)
-            model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
-                model,
-                state_dict,
-                model_file,
-                pretrained_model_name_or_path,
-                ignore_mismatched_sizes=ignore_mismatched_sizes,
-            )
+        # Load weights and dispatch according to the device_map
+        # by deafult the device_map is None and the weights are loaded on the CPU
+        accelerate.load_checkpoint_and_dispatch(model, model_file, device_map)
 
-            loading_info = {
-                "missing_keys": missing_keys,
-                "unexpected_keys": unexpected_keys,
-                "mismatched_keys": mismatched_keys,
-                "error_msgs": error_msgs,
-            }
+        loading_info = {
+            "missing_keys": [],
+            "unexpected_keys": [],
+            "mismatched_keys": [],
+            "error_msgs": [],
+        }
 
         if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
             raise ValueError(
