@@ -2,7 +2,14 @@ import torch
 import torch.nn as nn
 
 from diffusers.models.embeddings import get_timestep_embedding
-from transformers.models.t5.modeling_t5 import T5Block, T5Config, T5LayerCrossAttention, T5LayerFF, T5LayerNorm
+from transformers.models.t5.modeling_t5 import (
+    T5Attention,
+    T5Block,
+    T5Config,
+    T5LayerCrossAttention,
+    T5LayerFF,
+    T5LayerNorm,
+)
 
 
 class FiLMLayer(nn.Module):
@@ -54,134 +61,6 @@ class T5LayerSelfAttentionCond(nn.Module):
         hidden_states = hidden_states + self.dropout(attention_output[0])
         outputs = (hidden_states,) + attention_output[1:]  # add attentions if we output them
         return outputs
-
-
-class DecoderLayer(nn.Module):
-    def __init__(self, config, has_relative_attention_bias=False):
-        super().__init__()
-        self.layer = nn.ModuleList()
-
-        # cond self attention: layer 0
-        self.layer.append(T5LayerSelfAttentionCond(config, has_relative_attention_bias=has_relative_attention_bias))
-
-        # cross attention: layer 1
-        self.layer.append(T5LayerCrossAttention(config))
-
-        # pre_mlp_layer_norm: layer 2
-        self.layer.append(T5LayerNorm(hidden_size=config.d_model))
-
-        # FiLM layer: 3
-        self.layer.append(FiLMLayer(in_features=config.d_model * 4, out_features=config.d_model))
-
-        # MLP + dropout: last layer
-        self.layer.append(T5LayerFF(config))
-
-    def forward(
-        self,
-        hidden_states,
-        conditioning_emb=None,
-        attention_mask=None,
-        position_bias=None,
-        encoder_hidden_states=None,
-        encoder_attention_mask=None,
-        encoder_decoder_position_bias=None,
-        layer_head_mask=None,
-        cross_attn_layer_head_mask=None,
-        past_key_value=None,
-        use_cache=False,
-        output_attentions=False,
-        return_dict=True,
-    ):
-
-        if past_key_value is not None:
-            expected_num_past_key_values = 2 if encoder_hidden_states is None else 4
-
-            if len(past_key_value) != expected_num_past_key_values:
-                raise ValueError(
-                    f"There should be {expected_num_past_key_values} past states. "
-                    f"{'2 (past / key) for cross attention. ' if expected_num_past_key_values == 4 else ''}"
-                    f"Got {len(past_key_value)} past key / value states"
-                )
-
-            self_attn_past_key_value = past_key_value[:2]
-            cross_attn_past_key_value = past_key_value[2:]
-        else:
-            self_attn_past_key_value, cross_attn_past_key_value = None, None
-
-        self_attention_outputs = self.layer[0](
-            hidden_states,
-            conditioning_emb=conditioning_emb,
-            attention_mask=attention_mask,
-            position_bias=position_bias,
-            layer_head_mask=layer_head_mask,
-            past_key_value=self_attn_past_key_value,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-        )
-        hidden_states, present_key_value_state = self_attention_outputs[:2]
-        attention_outputs = self_attention_outputs[2:]  # Keep self-attention outputs and relative position weights
-
-        # clamp inf values to enable fp16 training
-        if hidden_states.dtype == torch.float16 and torch.isinf(hidden_states).any():
-            clamp_value = torch.finfo(hidden_states.dtype).max - 1000
-            hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
-
-        if encoder_hidden_states is not None:
-            # the actual query length is unknown for cross attention
-            # if using past key value states. Need to inject it here
-            if present_key_value_state is not None:
-                query_length = present_key_value_state[0].shape[2]
-            else:
-                query_length = None
-
-            cross_attention_outputs = self.layer[1](
-                hidden_states,
-                key_value_states=encoder_hidden_states,
-                attention_mask=encoder_attention_mask,
-                position_bias=encoder_decoder_position_bias,
-                layer_head_mask=cross_attn_layer_head_mask,
-                past_key_value=cross_attn_past_key_value,
-                query_length=query_length,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-            )
-            hidden_states = cross_attention_outputs[0]
-
-            # clamp inf values to enable fp16 training
-            if hidden_states.dtype == torch.float16 and torch.isinf(hidden_states).any():
-                clamp_value = torch.finfo(hidden_states.dtype).max - 1000
-                hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
-
-            # Combine self attn and cross attn key value states
-            if present_key_value_state is not None:
-                present_key_value_state = present_key_value_state + cross_attention_outputs[1]
-
-            # Keep cross-attention outputs and relative position weights
-            attention_outputs = attention_outputs + cross_attention_outputs[2:]
-
-        # Apply LayerNorm
-        hidden_states = self.layer[2](hidden_states)
-
-        # FiLM
-        if conditioning_emb is not None:
-            hidden_states = self.layer[3](hidden_states, conditioning_emb)
-
-        # Apply Feed Forward layer
-        hidden_states = self.layer[-1](hidden_states)
-
-        # clamp inf values to enable fp16 training
-        if hidden_states.dtype == torch.float16 and torch.isinf(hidden_states).any():
-            clamp_value = torch.finfo(hidden_states.dtype).max - 1000
-            hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
-
-        outputs = (hidden_states,)
-
-        if use_cache:
-            outputs = outputs + (present_key_value_state,) + attention_outputs
-        else:
-            outputs = outputs + attention_outputs
-
-        return outputs  # hidden-states, present_key_value_states, (self-attention position bias), (self-attention weights), (cross-attention position bias), (cross-attention weights)
 
 
 class DecoderLayer(nn.Module):
@@ -376,7 +255,7 @@ class TokenEncoder(nn.Module):
         x = self.dropout_pre(x)
 
         for lyr in self.encoders:
-            x = lyr(x, encoder_inputs_mask)
+            x = lyr(x, encoder_inputs_mask)[0]
 
         x = self.layer_norm(x)
 
@@ -457,7 +336,7 @@ class ContinuousEncoder(nn.Module):
         x = self.dropout_pre(x)
 
         for lyr in self.encoders:
-            x = lyr(x, encoder_inputs_mask)
+            x = lyr(x, encoder_inputs_mask)[0]
 
         x = self.layer_norm(x)
 
@@ -562,7 +441,7 @@ class Decoder(nn.Module):
         self.spec_out.weight = nn.Parameter(torch.FloatTensor(weights["spec_out_dense"]["kernel"].T))
 
         self.max_decoder_noise_time = config.max_decoder_noise_time
-        self.emb_dim = condig.d_model
+        self.emb_dim = config.d_model
 
     def encoder_decoder_mask(self, query_input, key_input, pairwise_fn=torch.mul):
         mask = pairwise_fn(query_input.unsqueeze(-1), key_input.unsqueeze(-2))
@@ -609,7 +488,7 @@ class Decoder(nn.Module):
         y = inputs
 
         for lyr in self.decoders:
-            y = lyr(y, encodings_and_encdec_masks, conditioning_emb=conditioning_emb)
+            y = lyr(y, encodings_and_encdec_masks, conditioning_emb=conditioning_emb)[0]
 
         y = self.decoder_norm(y)
         y = self.post_dropout(y)
