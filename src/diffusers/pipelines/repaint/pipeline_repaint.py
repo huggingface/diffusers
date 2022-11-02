@@ -64,7 +64,6 @@ class RePaintPipeline(DiffusionPipeline):
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
         Args:
