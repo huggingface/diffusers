@@ -401,6 +401,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             torch.cat([masked_image_latents] * 2) if do_classifier_free_guidance else masked_image_latents
         )
 
+        # aligning device to prevent device errors when concating it with the latent model input
+        masked_image_latents = masked_image_latents.to(device=self.device, dtype=text_embeddings.dtype)
+
         num_channels_mask = mask.shape[1]
         num_channels_masked_image = masked_image_latents.shape[1]
 
