@@ -388,7 +388,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
         masked_image = masked_image.to(device=self.device, dtype=text_embeddings.dtype)
 
-
         # encode the mask image into latents space so we can concatenate it to the latents
         masked_image_latents = self.vae.encode(masked_image).latent_dist.sample(generator=generator)
         masked_image_latents = 0.18215 * masked_image_latents
