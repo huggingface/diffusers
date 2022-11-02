@@ -131,7 +131,7 @@ jobs:
       run: |
         ${CONDA_RUN} python -m pip install --upgrade pip
         ${CONDA_RUN} python -m pip install -e .[quality,test]
-        ${CONDA_RUN} python -m pip install --pre torch==${MPS_TORCH_VERSION} --extra-index-url https://download.pytorch.org/whl/test/cpu
+        ${CONDA_RUN} python -m pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
         ${CONDA_RUN} python -m pip install git+https://github.com/huggingface/accelerate
 
     - name: Environment
