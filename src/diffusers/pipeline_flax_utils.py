@@ -302,10 +302,19 @@ class FlaxDiffusionPipeline(ConfigMixin):
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
             allow_patterns += [FLAX_WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, cls.config_name]
 
+            # make sure we don't download PyTorch weights
+            ignore_patterns = "*.bin"
+
             if cls != FlaxDiffusionPipeline:
                 requested_pipeline_class = cls.__name__
             else:
                 requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
+                requested_pipeline_class = (
+                    requested_pipeline_class
+                    if requested_pipeline_class.startswith("Flax")
+                    else "Flax" + requested_pipeline_class
+                )
+
             user_agent = {"pipeline_class": requested_pipeline_class}
             user_agent = http_user_agent(user_agent)
 
@@ -319,6 +328,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
                 use_auth_token=use_auth_token,
                 revision=revision,
                 allow_patterns=allow_patterns,
+                ignore_patterns=ignore_patterns,
                 user_agent=user_agent,
             )
         else:
@@ -337,7 +347,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
                 if config_dict["_class_name"].startswith("Flax")
                 else "Flax" + config_dict["_class_name"]
             )
-            pipeline_class = getattr(diffusers_module, config_dict["_class_name"])
+            pipeline_class = getattr(diffusers_module, class_name)
 
         # some modules can be passed directly to the init
         # in this case they are already instantiated in `kwargs`
