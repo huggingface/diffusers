@@ -1,0 +1,8 @@
+ftfy
+regex
+transformers==4.17.0
+timm
+fairscale
+requests
+git+https://github.com/openai/CLIP.git
+git+https://github.com/pharmapsychotic/BLIP.git
