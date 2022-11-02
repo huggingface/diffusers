@@ -109,6 +109,16 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
     """
 
+    @classmethod
+    def from_ddpm_scheduler(cls, sched):
+        ret = cls(
+            num_train_timesteps=sched.num_train_timesteps,
+            trained_betas=sched.betas,
+            clip_sample=sched.clip_sample,
+        )
+        assert torch.allclose(sched.alphas_cumprod, ret.alphas_cumprod)
+        return ret
+
     _compatible_classes = [
         "PNDMScheduler",
         "DDPMScheduler",
@@ -185,21 +195,36 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(
+        self,
+        num_inference_steps: int,
+        device: Union[str, torch.device] = None,
+        substeps_mode: str = "linear",
+    ):
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
         Args:
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
+            substeps_mode (`str`, *optional*, defaults to "linear"):
+                How the steps are selected in the DDIM sampler.
+                When "linear", the selected steps are linearly spaced.
+                When quadratic, the step size grows with decreasing t, such that for noisier x_t, the steps are larger.
+
         """
-        self.num_inference_steps = num_inference_steps
-        step_ratio = self.config.num_train_timesteps // self.num_inference_steps
-        # creates integer timesteps by multiplying by ratio
-        # casting to int to avoid issues when num_inference_step is power of 3
-        timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
-        self.timesteps = torch.from_numpy(timesteps).to(device)
-        self.timesteps += self.config.steps_offset
+        if substeps_mode.startswith("l"):
+            # using linearly spaced steps
+            self.num_inference_steps = num_inference_steps
+            step_ratio = self.config.num_train_timesteps // self.num_inference_steps
+            # creates integer timesteps by multiplying by ratio
+            # casting to int to avoid issues when num_inference_step is power of 3
+            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
+            timesteps += self.config.steps_offset
+            timesteps = np.append(timesteps, [-1])      # last target timestep is always t=0
+            self.timesteps = torch.from_numpy(timesteps).to(device)
+        else:
+            raise NotImplementedError("Substep modes other than 'linear' not implemented yet. ")
 
     def step(
         self,
@@ -211,6 +236,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         generator=None,
         variance_noise: Optional[torch.FloatTensor] = None,
         return_dict: bool = True,
+        predict_epsilon: bool = True,
     ) -> Union[DDIMSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
@@ -231,7 +257,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
                 can directly provide the noise for the variance itself. This is useful for methods such as
                 CycleDiffusion. (https://arxiv.org/abs/2210.05559)
             return_dict (`bool`): option for returning tuple rather than DDIMSchedulerOutput class
-
+            predict_epsilon (`bool`, *optional*, defaults to True):
+                Whether the Unet model should be used to predict eps (as opposed to x0).
         Returns:
             [`~schedulers.scheduling_utils.DDIMSchedulerOutput`] or `tuple`:
             [`~schedulers.scheduling_utils.DDIMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
@@ -254,8 +281,10 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # - pred_sample_direction -> "direction pointing to x_t"
         # - pred_prev_sample -> "x_t-1"
 
+        timestep, prev_timestep = timestep
+
         # 1. get previous step value (=t-1)
-        prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
+        # prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
 
         # 2. compute alphas, betas
         alpha_prod_t = self.alphas_cumprod[timestep]
@@ -265,7 +294,10 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         # 3. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+        if predict_epsilon:
+            pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+        else:
+            pred_original_sample = model_output
 
         # 4. Clip "predicted x_0"
         if self.config.clip_sample:
