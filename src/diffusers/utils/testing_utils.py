@@ -139,6 +139,29 @@ def require_onnxruntime(test_case):
     return unittest.skipUnless(is_onnx_available(), "test requires onnxruntime")(test_case)
 
 
+def load_numpy(arry: Union[str, np.ndarray]) -> np.ndarray:
+    if isinstance(arry, str):
+        if arry.startswith("http://") or arry.startswith("https://"):
+            response = requests.get(arry)
+            response.raise_for_status()
+            arry = np.load(BytesIO(response.content))
+        elif os.path.isfile(arry):
+            arry = np.load(arry)
+        else:
+            raise ValueError(
+                f"Incorrect path or url, URLs must start with `http://` or `https://`, and {arry} is not a valid path"
+            )
+    elif isinstance(arry, np.ndarray):
+        pass
+    else:
+        raise ValueError(
+            "Incorrect format used for numpy ndarray. Should be an url linking to an image, a local path, or a"
+            " ndarray."
+        )
+
+    return arry
+
+
 def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     """
     Args:
@@ -168,17 +191,13 @@ def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     return image
 
 
-def load_numpy(path) -> np.ndarray:
+def load_hf_numpy(path) -> np.ndarray:
     if not path.startswith("http://") or path.startswith("https://"):
         path = os.path.join(
             "https://huggingface.co/datasets/fusing/diffusers-testing/resolve/main", urllib.parse.quote(path)
         )
 
-    response = requests.get(path)
-    response.raise_for_status()
-    array = np.load(BytesIO(response.content))
-
-    return array
+    return load_numpy(path)
 
 
 # --- pytest conf functions --- #

@@ -220,7 +220,10 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
             eta (`float`): weight of noise for added noise in diffusion step.
-            use_clipped_model_output (`bool`): TODO
+            use_clipped_model_output (`bool`): if `True`, compute "corrected" `model_output` from the clipped
+                predicted original sample. Necessary because predicted original sample is clipped to [-1, 1] when
+                `self.config.clip_sample` is `True`. If no clipping has happened, "corrected" `model_output` would
+                coincide with the one provided as input and `use_clipped_model_output` will have not effect.
             generator: random number generator.
             return_dict (`bool`): option for returning tuple rather than DDIMSchedulerOutput class
 

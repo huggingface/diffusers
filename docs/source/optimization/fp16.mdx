@@ -22,6 +22,7 @@ We present some techniques and ideas to optimize 🤗 Diffusers _inference_ for 
 | fp16             | 3.61s   | x2.63   |
 | channels last    | 3.30s   | x2.88   |
 | traced UNet      | 3.21s   | x2.96   |
+| memory efficient attention  | 2.63s  | x3.61   |
 
 <em>
   obtained on NVIDIA TITAN RTX by generating a single image of size 512x512 from
@@ -289,4 +290,42 @@ pipe.unet = TracedUNet()
 
 with torch.inference_mode():
     image = pipe([prompt] * 1, num_inference_steps=50).images[0]
+```
+
+
+## Memory Efficient Attention
+Recent work on optimizing the bandwitdh in the attention block have generated huge speed ups and gains in GPU memory usage. The most recent being Flash Attention (from @tridao, [code](https://github.com/HazyResearch/flash-attention), [paper](https://arxiv.org/pdf/2205.14135.pdf)) .
+Here are the speedups we obtain on a few Nvidia GPUs when running the inference at 512x512 with a batch size of 1 (one prompt):
+
+| GPU              	| Base Attention FP16 	| Memory Efficient Attention FP16 	|
+|------------------	|---------------------	|---------------------------------	|
+| NVIDIA Tesla T4  	| 3.5it/s             	| 5.5it/s                         	|
+| NVIDIA 3060 RTX  	| 4.6it/s             	| 7.8it/s                         	|
+| NVIDIA A10G      	| 8.88it/s            	| 15.6it/s                        	|
+| NVIDIA RTX A6000 	| 11.7it/s            	| 21.09it/s                       	|
+| NVIDIA TITAN RTX  | 12.51it/s         	| 18.22it/s                       	|
+| A100-SXM4-40GB    	| 18.6it/s            	| 29.it/s                        	|
+| A100-SXM-80GB    	| 18.7it/s            	| 29.5it/s                        	|
+
+To leverage it just make sure you have: 
+ - PyTorch > 1.12
+ - Cuda available
+ - Installed the [xformers](https://github.com/facebookresearch/xformers) library
+```python
+from diffusers import StableDiffusionPipeline
+import torch
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    revision="fp16",
+    torch_dtype=torch.float16,
+).to("cuda")
+
+pipe.enable_xformers_memory_efficient_attention()
+
+with torch.inference_mode():
+    sample = pipe("a small cat")
+
+# optional: You can disable it via
+# pipe.disable_xformers_memory_efficient_attention()
 ```

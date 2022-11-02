@@ -31,7 +31,7 @@ from diffusers import (
     VQModel,
 )
 from diffusers.utils import floats_tensor, load_image, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import load_numpy, require_torch_gpu
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -358,11 +358,10 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/in_paint/red_cat_sitting_on_a_park_bench.png"
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/in_paint"
+            "/red_cat_sitting_on_a_park_bench.npy"
         )
-        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
@@ -389,7 +388,7 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-        assert np.abs(expected_image - image).max() < 1e-2
+        assert np.abs(expected_image - image).max() < 1e-3
 
     def test_stable_diffusion_inpaint_legacy_pipeline_k_lms(self):
         # TODO(Anton, Patrick) - I think we can remove this test soon
@@ -401,11 +400,10 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/in_paint/red_cat_sitting_on_a_park_bench_k_lms.png"
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/in_paint"
+            "/red_cat_sitting_on_a_park_bench_k_lms.npy"
         )
-        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
         model_id = "CompVis/stable-diffusion-v1-4"
         lms = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler")
@@ -434,7 +432,7 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-        assert np.abs(expected_image - image).max() < 1e-2
+        assert np.abs(expected_image - image).max() < 1e-3
 
     def test_stable_diffusion_inpaint_legacy_intermediate_state(self):
         number_of_steps = 0

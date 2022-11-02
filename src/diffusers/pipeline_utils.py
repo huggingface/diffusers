@@ -395,6 +395,9 @@ class DiffusionPipeline(ConfigMixin):
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
             allow_patterns += [WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, ONNX_WEIGHTS_NAME, cls.config_name]
 
+            # make sure we don't download flax weights
+            ignore_patterns = "*.msgpack"
+
             if custom_pipeline is not None:
                 allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
 
@@ -417,6 +420,7 @@ class DiffusionPipeline(ConfigMixin):
                 use_auth_token=use_auth_token,
                 revision=revision,
                 allow_patterns=allow_patterns,
+                ignore_patterns=ignore_patterns,
                 user_agent=user_agent,
             )
         else:
