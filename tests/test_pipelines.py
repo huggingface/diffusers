@@ -42,6 +42,7 @@ from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir
+from parameterized import parameterized
 from PIL import Image
 from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -70,6 +71,22 @@ def test_progress_bar(capsys):
     ddpm(output_type="numpy").images
     captured = capsys.readouterr()
     assert captured.err == "", "Progress bar should be disabled"
+
+
+class DownloadTests(unittest.TestCase):
+    def test_download_only_pytorch(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            # pipeline has Flax weights
+            _ = DiffusionPipeline.from_pretrained(
+                "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
+            )
+
+            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots"))]
+            files = [item for sublist in all_root_files for item in sublist]
+
+            # None of the downloaded files should be a flax file even if we have some here:
+            # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe/blob/main/unet/diffusion_flax_model.msgpack
+            assert not any(f.endswith(".msgpack") for f in files)
 
 
 class CustomPipelineTests(unittest.TestCase):
@@ -445,7 +462,9 @@ class PipelineSlowTests(unittest.TestCase):
         assert isinstance(images, list)
         assert isinstance(images[0], PIL.Image.Image)
 
-    def test_ddpm_ddim_equality(self):
+    # Make sure the test passes for different values of random seed
+    @parameterized.expand([(0,), (4,)])
+    def test_ddpm_ddim_equality(self, seed):
         model_id = "google/ddpm-cifar10-32"
 
         unet = UNet2DModel.from_pretrained(model_id, device_map="auto")
@@ -459,17 +478,24 @@ class PipelineSlowTests(unittest.TestCase):
         ddim.to(torch_device)
         ddim.set_progress_bar_config(disable=None)
 
-        generator = torch.manual_seed(0)
+        generator = torch.manual_seed(seed)
         ddpm_image = ddpm(generator=generator, output_type="numpy").images
 
-        generator = torch.manual_seed(0)
-        ddim_image = ddim(generator=generator, num_inference_steps=1000, eta=1.0, output_type="numpy").images
+        generator = torch.manual_seed(seed)
+        ddim_image = ddim(
+            generator=generator,
+            num_inference_steps=1000,
+            eta=1.0,
+            output_type="numpy",
+            use_clipped_model_output=True,  # Need this to make DDIM match DDPM
+        ).images
 
         # the values aren't exactly equal, but the images look the same visually
         assert np.abs(ddpm_image - ddim_image).max() < 1e-1
 
-    @unittest.skip("(Anton) The test is failing for large batch sizes, needs investigation")
-    def test_ddpm_ddim_equality_batched(self):
+    # Make sure the test passes for different values of random seed
+    @parameterized.expand([(0,), (4,)])
+    def test_ddpm_ddim_equality_batched(self, seed):
         model_id = "google/ddpm-cifar10-32"
 
         unet = UNet2DModel.from_pretrained(model_id, device_map="auto")
@@ -484,12 +510,17 @@ class PipelineSlowTests(unittest.TestCase):
         ddim.to(torch_device)
         ddim.set_progress_bar_config(disable=None)
 
-        generator = torch.manual_seed(0)
+        generator = torch.manual_seed(seed)
         ddpm_images = ddpm(batch_size=4, generator=generator, output_type="numpy").images
 
-        generator = torch.manual_seed(0)
+        generator = torch.manual_seed(seed)
         ddim_images = ddim(
-            batch_size=4, generator=generator, num_inference_steps=1000, eta=1.0, output_type="numpy"
+            batch_size=4,
+            generator=generator,
+            num_inference_steps=1000,
+            eta=1.0,
+            output_type="numpy",
+            use_clipped_model_output=True,  # Need this to make DDIM match DDPM
         ).images
 
         # the values aren't exactly equal, but the images look the same visually

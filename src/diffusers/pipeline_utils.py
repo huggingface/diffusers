@@ -360,7 +360,7 @@ class DiffusionPipeline(ConfigMixin):
         >>> # Download pipeline, but overwrite scheduler
         >>> from diffusers import LMSDiscreteScheduler
 
-        >>> scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
+        >>> scheduler = LMSDiscreteScheduler.from_config("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
         >>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", scheduler=scheduler)
         ```
         """
@@ -395,6 +395,9 @@ class DiffusionPipeline(ConfigMixin):
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
             allow_patterns += [WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, ONNX_WEIGHTS_NAME, cls.config_name]
 
+            # make sure we don't download flax weights
+            ignore_patterns = "*.msgpack"
+
             if custom_pipeline is not None:
                 allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
 
@@ -417,6 +420,7 @@ class DiffusionPipeline(ConfigMixin):
                 use_auth_token=use_auth_token,
                 revision=revision,
                 allow_patterns=allow_patterns,
+                ignore_patterns=ignore_patterns,
                 user_agent=user_agent,
             )
         else:
@@ -602,7 +606,7 @@ class DiffusionPipeline(ConfigMixin):
         ...     StableDiffusionInpaintPipeline,
         ... )
 
-        >>> img2text = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+        >>> img2text = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
         >>> img2img = StableDiffusionImg2ImgPipeline(**img2text.components)
         >>> inpaint = StableDiffusionInpaintPipeline(**img2text.components)
         ```
