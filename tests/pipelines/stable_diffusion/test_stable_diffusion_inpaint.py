@@ -279,7 +279,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
         expected_image = load_numpy(
-            "https://huggingface.co/datasets/lewington/expected-images/resolve/main"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/in_paint"
             "/yellow_cat_sitting_on_a_park_bench.npy"
         )
 
@@ -306,7 +306,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-        assert np.abs(expected_image - image).max() < 1e-4
+        assert np.abs(expected_image - image).max() < 1e-3
 
     def test_stable_diffusion_inpaint_pipeline_fp16(self):
         init_image = load_image(
@@ -318,7 +318,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
         expected_image = load_numpy(
-            "https://huggingface.co/datasets/lewington/expected-images/resolve/main"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/in_paint"
             "/yellow_cat_sitting_on_a_park_bench_fp16.npy"
         )
 
@@ -359,7 +359,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
         expected_image = load_numpy(
-            "https://huggingface.co/datasets/lewington/expected-images/resolve/main"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/in_paint"
             "/yellow_cat_sitting_on_a_park_bench_pndm.npy"
         )
 
@@ -385,4 +385,4 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-        assert np.abs(expected_image - image).max() < 1e-4
+        assert np.abs(expected_image - image).max() < 1e-3

@@ -359,7 +359,7 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
         expected_image = load_numpy(
-            "https://huggingface.co/datasets/lewington/expected-images/resolve/main"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/in_paint"
             "/red_cat_sitting_on_a_park_bench.npy"
         )
 
@@ -388,7 +388,7 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-        assert np.abs(expected_image - image).max() < 1e-4
+        assert np.abs(expected_image - image).max() < 1e-3
 
     def test_stable_diffusion_inpaint_legacy_pipeline_k_lms(self):
         # TODO(Anton, Patrick) - I think we can remove this test soon
@@ -401,7 +401,7 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
         expected_image = load_numpy(
-            "https://huggingface.co/datasets/lewington/expected-images/resolve/main"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/in_paint"
             "/red_cat_sitting_on_a_park_bench_k_lms.npy"
         )
 
@@ -432,7 +432,7 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-        assert np.abs(expected_image - image).max() < 1e-4
+        assert np.abs(expected_image - image).max() < 1e-3
 
     def test_stable_diffusion_inpaint_legacy_intermediate_state(self):
         number_of_steps = 0
