@@ -189,8 +189,12 @@ def parse_args():
         ),
     )
 
-    parser.add_argument("--predict_mode", type=str, default="eps",
-        help="What the model should predict. 'eps' to predict error, 'x0' to directly predict reconstruction")
+    parser.add_argument(
+        "--predict_mode",
+        type=str,
+        default="eps",
+        help="What the model should predict. 'eps' to predict error, 'x0' to directly predict reconstruction",
+    )
 
     parser.add_argument("--ddpm_num_steps", type=int, default=1000)
     parser.add_argument("--ddpm_beta_schedule", type=str, default="linear")
@@ -248,8 +252,7 @@ def main(args):
             "UpBlock2D",
         ),
     )
-    noise_scheduler = DDPMScheduler(num_train_timesteps=args.ddpm_num_steps,
-                                    beta_schedule=args.ddpm_beta_schedule)
+    noise_scheduler = DDPMScheduler(num_train_timesteps=args.ddpm_num_steps, beta_schedule=args.ddpm_beta_schedule)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
@@ -349,11 +352,15 @@ def main(args):
                 model_output = model(noisy_images, timesteps).sample
 
                 if args.predict_mode == "eps":
-                    loss = F.mse_loss(model_output, noise)      # this could have different weights!
+                    loss = F.mse_loss(model_output, noise)  # this could have different weights!
                 elif args.predict_mode == "x0":
-                    alpha_t = _extract_into_tensor(noise_scheduler.alphas_cumprod, timesteps, (clean_images.shape[0], 1, 1, 1))
+                    alpha_t = _extract_into_tensor(
+                        noise_scheduler.alphas_cumprod, timesteps, (clean_images.shape[0], 1, 1, 1)
+                    )
                     snr_weights = alpha_t / (1 - alpha_t)
-                    loss = snr_weights * F.mse_loss(model_output, clean_images, reduction="none")   # use SNR weighting from distillation paper
+                    loss = snr_weights * F.mse_loss(
+                        model_output, clean_images, reduction="none"
+                    )  # use SNR weighting from distillation paper
                     loss = loss.mean()
 
                 accelerator.backward(loss)
@@ -383,7 +390,6 @@ def main(args):
         # Generate sample images for visual inspection
         if accelerator.is_main_process:
             if epoch % args.save_images_epochs == 0 or epoch == args.num_epochs - 1:
-
                 pipeline = DDPMPipeline(
                     unet=accelerator.unwrap_model(ema_model.averaged_model if args.use_ema else model),
                     scheduler=noise_scheduler,
@@ -391,8 +397,12 @@ def main(args):
 
                 generator = torch.manual_seed(0)
                 # run pipeline in inference (sample random noise and denoise)
-                images = pipeline(generator=generator, batch_size=args.eval_batch_size, output_type="numpy",
-                    predict_epsilon=args.predict_mode == "eps",).images
+                images = pipeline(
+                    generator=generator,
+                    batch_size=args.eval_batch_size,
+                    output_type="numpy",
+                    predict_epsilon=args.predict_mode == "eps",
+                ).images
 
                 # denormalize the images and save to tensorboard
                 images_processed = (images * 255).round().astype("uint8")
