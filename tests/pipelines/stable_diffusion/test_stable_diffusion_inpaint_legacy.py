@@ -405,9 +405,8 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
             "/red_cat_sitting_on_a_park_bench_k_lms.npy"
         )
 
-        lms = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
-
         model_id = "CompVis/stable-diffusion-v1-4"
+        lms = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler")
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             model_id,
             scheduler=lms,

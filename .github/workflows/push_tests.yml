@@ -6,6 +6,7 @@ on:
       - main
 
 env:
+  DIFFUSERS_IS_CI: yes
   HF_HOME: /mnt/cache
   OMP_NUM_THREADS: 8
   MKL_NUM_THREADS: 8
@@ -34,7 +35,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         python -m pip uninstall -y torch torchvision torchtext
-        python -m pip install torch --extra-index-url https://download.pytorch.org/whl/cu116
+        python -m pip install torch --extra-index-url https://download.pytorch.org/whl/cu117
         python -m pip install -e .[quality,test]
         python -m pip install git+https://github.com/huggingface/accelerate
 
@@ -80,7 +81,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         python -m pip uninstall -y torch torchvision torchtext
-        python -m pip install torch --extra-index-url https://download.pytorch.org/whl/cu116
+        python -m pip install torch --extra-index-url https://download.pytorch.org/whl/cu117
         python -m pip install -e .[quality,test,training]
         python -m pip install git+https://github.com/huggingface/accelerate
 
