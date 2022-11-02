@@ -21,7 +21,15 @@ import unittest
 import torch
 
 from diffusers import UNet2DConditionModel, UNet2DModel
-from diffusers.utils import floats_tensor, load_numpy, logging, require_torch_gpu, slow, torch_all_close, torch_device
+from diffusers.utils import (
+    floats_tensor,
+    load_hf_numpy,
+    logging,
+    require_torch_gpu,
+    slow,
+    torch_all_close,
+    torch_device,
+)
 from parameterized import parameterized
 
 from ..test_modeling_common import ModelTesterMixin
@@ -423,7 +431,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
 
     def get_latents(self, seed=0, shape=(4, 4, 64, 64), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32
-        image = torch.from_numpy(load_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
+        image = torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
         return image
 
     def get_unet_model(self, fp16=False, model_id="CompVis/stable-diffusion-v1-4"):
@@ -439,7 +447,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
 
     def get_encoder_hidden_states(self, seed=0, shape=(4, 77, 768), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32
-        hidden_states = torch.from_numpy(load_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
+        hidden_states = torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
         return hidden_states
 
     @parameterized.expand(
