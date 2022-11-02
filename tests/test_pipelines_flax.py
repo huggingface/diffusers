@@ -59,9 +59,9 @@ class FlaxPipelineTests(unittest.TestCase):
 
         images = p_sample(prompt_ids, params, prng_seed, num_inference_steps).images
 
-        assert images.shape == (8, 1, 64, 64, 3)
-        assert np.abs((np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 4.151474)) < 1e-3
-        assert np.abs((np.abs(images, dtype=np.float32).sum() - 49947.875)) < 5e-1
+        assert images.shape == (8, 1, 128, 128, 3)
+        assert np.abs(np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 3.1111548) < 1e-3
+        assert np.abs(np.abs(images, dtype=np.float32).sum() - 199746.95) < 5e-1
 
         images_pil = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 

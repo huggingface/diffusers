@@ -42,6 +42,7 @@ from .outputs import BaseOutput
 if is_torch_available():
     from .testing_utils import (
         floats_tensor,
+        load_hf_numpy,
         load_image,
         load_numpy,
         parse_flag_from_env,

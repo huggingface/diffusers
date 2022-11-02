@@ -90,7 +90,8 @@ else:
     logger.info("Disabling Tensorflow because USE_TORCH is set")
     _tf_available = False
 
-
+_jax_version = "N/A"
+_flax_version = "N/A"
 if USE_JAX in ENV_VARS_TRUE_AND_AUTO_VALUES:
     _flax_available = importlib.util.find_spec("jax") is not None and importlib.util.find_spec("flax") is not None
     if _flax_available:
@@ -136,6 +137,7 @@ except importlib_metadata.PackageNotFoundError:
     _modelcards_available = False
 
 
+_onnxruntime_version = "N/A"
 _onnx_available = importlib.util.find_spec("onnxruntime") is not None
 if _onnx_available:
     candidates = ("onnxruntime", "onnxruntime-gpu", "onnxruntime-directml", "onnxruntime-openvino")
@@ -165,6 +167,18 @@ try:
     logger.debug(f"Successfully imported accelerate version {_accelerate_version}")
 except importlib_metadata.PackageNotFoundError:
     _accelerate_available = False
+
+_xformers_available = importlib.util.find_spec("xformers") is not None
+try:
+    _xformers_version = importlib_metadata.version("xformers")
+    if _torch_available:
+        import torch
+
+        if torch.__version__ < version.Version("1.12"):
+            raise ValueError("PyTorch should be >= 1.12")
+    logger.debug(f"Successfully imported xformers version {_xformers_version}")
+except importlib_metadata.PackageNotFoundError:
+    _xformers_available = False
 
 
 def is_torch_available():
@@ -201,6 +215,10 @@ def is_onnx_available():
 
 def is_scipy_available():
     return _scipy_available
+
+
+def is_xformers_available():
+    return _xformers_available
 
 
 def is_accelerate_available():
