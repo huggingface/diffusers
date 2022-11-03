@@ -113,7 +113,6 @@ Score SDE-VP is under construction.
 
 [[autodoc]] schedulers.scheduling_sde_vp.ScoreSdeVpScheduler
 
-
 #### Euler scheduler
 
 Euler scheduler (Algorithm 2) from the paper [Elucidating the Design Space of Diffusion-Based Generative Models](https://arxiv.org/abs/2206.00364) by Karras et al. (2022). Based on the original [k-diffusion](https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L51) implementation by Katherine Crowson.
@@ -129,6 +128,12 @@ Fast scheduler which often times generates good outputs with 20-30 steps.
 
 [[autodoc]] EulerAncestralDiscreteScheduler
 
+
+#### VQDiffusionScheduler
+
+Original paper can be found [here](https://arxiv.org/abs/2111.14822)
+
+[[autodoc]] VQDiffusionScheduler
 
 #### RePaint scheduler
 
