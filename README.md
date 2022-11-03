@@ -32,7 +32,7 @@ More precisely, 🤗 Diffusers offers:
 **With `pip`**
     
 ```bash
-pip install --upgrade diffusers["torch"]
+pip install --upgrade diffusers[torch]
 ```
 
 **With `conda`**
@@ -46,7 +46,7 @@ conda install -c conda-forge diffusers
 **With `pip`**
 
 ```bash
-pip install --upgrade diffusers["flax"]
+pip install --upgrade diffusers[flax]
 ```
 
 **Apple Silicon (M1/M2) support**
