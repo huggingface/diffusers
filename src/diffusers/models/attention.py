@@ -12,16 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
+from dataclasses import dataclass
 from typing import Optional
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from diffusers.configuration_utils import ConfigMixin, register_to_config
-from diffusers.modeling_utils import ModelMixin
-from diffusers.models.embeddings import ImagePositionalEmbeddings
-from diffusers.utils.import_utils import is_xformers_available
+from ..configuration_utils import ConfigMixin, register_to_config
+from ..modeling_utils import ModelMixin
+from ..models.embeddings import ImagePositionalEmbeddings
+from ..utils import BaseOutput
+from ..utils.import_utils import is_xformers_available
+
+
+@dataclass
+class Transformer2DModelOutput(BaseOutput):
+    """
+    Args:
+        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` or `(batch size, num_vector_embeds - 1, num_latent_pixels)` if Transformer2DModel is discrete):
+            Hidden states conditioned on `encoder_hidden_states` input. If discrete, returns probability distributions
+            for the unnoised latent pixels.
+    """
+
+    sample: torch.FloatTensor
 
 
 if is_xformers_available():
@@ -159,22 +173,24 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         for block in self.transformer_blocks:
             block._set_attention_slice(slice_size)
 
-    def forward(self, hidden_states, context=None, timestep=None):
+    def forward(self, hidden_states, encoder_hidden_states=None, timestep=None, return_dict: bool = True):
         """
         Args:
             hidden_states (:obj: When discrete, `torch.LongTensor` of shape `(batch size, num latent pixels)`.
                 When continous, `torch.FloatTensor` of shape `(batch size, channel, height, width)`): Input
                 hidden_states
-            context (:obj: `torch.LongTensor` of shape `(batch size, context dim)`, *optional*):
+            encoder_hidden_states (:obj: `torch.LongTensor` of shape `(batch size, context dim)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.
             timestep (:obj: `torch.long`, *optional*):
                 Optional timestep to be applied as an embedding in AdaLayerNorm's. Used to indicate denoising step.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
+
         Returns:
-            [`torch.FloatTensor` of shape `(batch size, num embed - 1, num latent pixels)`] if discrete or
-            [`torch.FloatTensor` of shape `(batch size, channel, height, width)`] if continuous :
-                If discrete, returns probability distributions for the unnoised latent pixels. Note that it does not
-                output a prediction for the masked class.
+            [`~models.attention.Transformer2DModelOutput`] or `tuple`: [`~models.attention.Transformer2DModelOutput`]
+            if `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample
+            tensor.
         """
         # 1. Input
         if self.is_input_continuous:
@@ -189,7 +205,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 2. Blocks
         for block in self.transformer_blocks:
-            hidden_states = block(hidden_states, context=context, timestep=timestep)
+            hidden_states = block(hidden_states, context=encoder_hidden_states, timestep=timestep)
 
         # 3. Output
         if self.is_input_continuous:
@@ -205,7 +221,10 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             # log(p(x_0))
             output = F.log_softmax(logits.double(), dim=1).float()
 
-        return output
+        if not return_dict:
+            return (output,)
+
+        return Transformer2DModelOutput(sample=output)
 
     def _set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
         for block in self.transformer_blocks:

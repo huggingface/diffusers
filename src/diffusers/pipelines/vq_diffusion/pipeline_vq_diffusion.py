@@ -182,27 +182,28 @@ class VQDiffusionPipeline(DiffusionPipeline):
 
         timesteps_tensor = self.scheduler.timesteps.to(self.device)
 
-        x_t = latents
+        sample = latents
 
         for i, t in enumerate(self.progress_bar(timesteps_tensor)):
             # predict the un-noised image
-            log_p_x_0 = self.transformer(hidden_states=x_t, context=text_embeddings, timestep=t)
+            # model_output == `log_p_x_0`
+            model_output = self.transformer(sample, encoder_hidden_states=text_embeddings, timestep=t).sample
 
-            log_p_x_0 = self.truncate(log_p_x_0, truncation_rate)
+            model_output = self.truncate(model_output, truncation_rate)
 
             # remove `log(0)`'s (`-inf`s)
-            log_p_x_0 = log_p_x_0.clamp(-70)
+            model_output = model_output.clamp(-70)
 
             # compute the previous noisy sample x_t -> x_t-1
-            x_t = self.scheduler.step(log_p_x_0, t, x_t, generator=generator).prev_sample
+            sample = self.scheduler.step(model_output, timestep=t, sample=sample, generator=generator).prev_sample
 
             # call the callback, if provided
             if callback is not None and i % callback_steps == 0:
-                callback(i, t, x_t)
+                callback(i, t, sample)
 
         embedding_channels = self.vqvae.config.vq_embed_dim
         embeddings_shape = (batch_size, self.transformer.height, self.transformer.width, embedding_channels)
-        embeddings = self.vqvae.quantize.get_codebook_entry(x_t, shape=embeddings_shape)
+        embeddings = self.vqvae.quantize.get_codebook_entry(sample, shape=embeddings_shape)
         image = self.vqvae.decode(embeddings, force_not_quantize=True).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)

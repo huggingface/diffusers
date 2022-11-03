@@ -155,8 +155,7 @@ class VQDiffusionPipelineIntegrationTests(unittest.TestCase):
         )
         expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
-        #        pipeline = VQDiffusionPipeline.from_pretrained("microsoft/vq-diffusion-ithq")
-        pipeline = VQDiffusionPipeline.from_pretrained("/home/patrick_huggingface_co/vq-diffusion-ithq")
+        pipeline = VQDiffusionPipeline.from_pretrained("microsoft/vq-diffusion-ithq")
         pipeline = pipeline.to(torch_device)
         pipeline.set_progress_bar_config(disable=None)
 

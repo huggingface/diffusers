@@ -195,9 +195,9 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        log_p_x_0: torch.FloatTensor,
-        t: torch.long,
-        x_t: torch.LongTensor,
+        model_output: torch.FloatTensor,
+        timestep: torch.long,
+        sample: torch.LongTensor,
         generator: Optional[torch.Generator] = None,
         return_dict: bool = True,
     ) -> Union[VQDiffusionSchedulerOutput, Tuple]:
@@ -227,10 +227,10 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
             [`~schedulers.scheduling_utils.VQDiffusionSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`.
             When returning a tuple, the first element is the sample tensor.
         """
-        if t == 0:
-            log_p_x_t_min_1 = log_p_x_0
+        if timestep == 0:
+            log_p_x_t_min_1 = model_output
         else:
-            log_p_x_t_min_1 = self.q_posterior(log_p_x_0, x_t, t)
+            log_p_x_t_min_1 = self.q_posterior(model_output, sample, timestep)
 
         log_p_x_t_min_1 = gumbel_noised(log_p_x_t_min_1, generator)
 
