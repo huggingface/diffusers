@@ -223,7 +223,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             # casting to int to avoid issues when num_inference_step is power of 3
             timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
             timesteps += self.config.steps_offset
-            timesteps = np.append(timesteps, [-1])      # last target timestep is always t=0
+            timesteps = np.append(timesteps, [-1])  # last target timestep is always t=0
             self.timesteps = torch.from_numpy(timesteps).to(device)
         else:
             raise NotImplementedError("Substep modes other than 'linear' not implemented yet. ")
@@ -290,7 +290,9 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         # 2. compute alphas, betas
         alpha_prod_t = self.alphas_cumprod[timestep]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if bool(prev_timestep >= 0) else self.final_alpha_cumprod
+        alpha_prod_t_prev = (
+            self.alphas_cumprod[prev_timestep] if bool(prev_timestep >= 0) else self.final_alpha_cumprod
+        )
 
         beta_prod_t = 1 - alpha_prod_t
 
