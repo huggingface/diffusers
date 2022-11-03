@@ -481,7 +481,16 @@ class Decoder(nn.Module):
 
         y = self.dropout(inputs)
         for lyr in self.decoders:
-            y = lyr(y, encodings_and_encdec_masks, conditioning_emb=conditioning_emb)[0]
+            # cross attend style: concat encodings
+            encoded = torch.cat([x[0] for x in encodings_and_encdec_masks], dim=1)
+            encoder_decoder_mask = torch.cat([x[1] for x in encodings_and_encdec_masks], dim=-1)
+
+            y = lyr(
+                y,
+                conditioning_emb=conditioning_emb,
+                encoder_hidden_states=encoded,
+                encoder_attention_mask=encoder_decoder_mask,
+            )[0]
 
         y = self.decoder_norm(y)
         y = self.post_dropout(y)
