@@ -631,7 +631,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
 
     def test_stable_diffusion(self):
         # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1", device_map="auto")
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1")
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -653,9 +653,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
     def test_stable_diffusion_fast_ddim(self):
         scheduler = DDIMScheduler.from_config("CompVis/stable-diffusion-v1-1", subfolder="scheduler")
 
-        sd_pipe = StableDiffusionPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-1", scheduler=scheduler, device_map="auto"
-        )
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1", scheduler=scheduler)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -674,7 +672,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
 
     def test_lms_stable_diffusion_pipeline(self):
         model_id = "CompVis/stable-diffusion-v1-1"
-        pipe = StableDiffusionPipeline.from_pretrained(model_id, device_map="auto").to(torch_device)
+        pipe = StableDiffusionPipeline.from_pretrained(model_id).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         scheduler = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler")
         pipe.scheduler = scheduler
@@ -693,9 +691,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
     def test_stable_diffusion_memory_chunking(self):
         torch.cuda.reset_peak_memory_stats()
         model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionPipeline.from_pretrained(
-            model_id, revision="fp16", torch_dtype=torch.float16, device_map="auto"
-        )
+        pipe = StableDiffusionPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -732,9 +728,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
     def test_stable_diffusion_text2img_pipeline_fp16(self):
         torch.cuda.reset_peak_memory_stats()
         model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionPipeline.from_pretrained(
-            model_id, revision="fp16", device_map="auto", torch_dtype=torch.float16
-        )
+        pipe = StableDiffusionPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -767,11 +761,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        pipe = StableDiffusionPipeline.from_pretrained(
-            model_id,
-            safety_checker=None,
-            device_map="auto",
-        )
+        pipe = StableDiffusionPipeline.from_pretrained(model_id, safety_checker=None)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -812,7 +802,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         test_callback_fn.has_been_called = False
 
         pipe = StableDiffusionPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16, device_map="auto"
+            "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16
         )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -833,23 +823,23 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         assert test_callback_fn.has_been_called
         assert number_of_steps == 51
 
-    def test_stable_diffusion_accelerate_auto_device(self):
+    def test_stable_diffusion_fast_load(self):
         pipeline_id = "CompVis/stable-diffusion-v1-4"
 
         start_time = time.time()
-        pipeline_normal_load = StableDiffusionPipeline.from_pretrained(
+        pipeline_fast_load = StableDiffusionPipeline.from_pretrained(
             pipeline_id, revision="fp16", torch_dtype=torch.float16
         )
-        pipeline_normal_load.to(torch_device)
-        normal_load_time = time.time() - start_time
+        pipeline_fast_load.to(torch_device)
+        fast_load_time = time.time() - start_time
 
         start_time = time.time()
         _ = StableDiffusionPipeline.from_pretrained(
-            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, device_map="auto"
+            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, fast_load=False
         )
-        meta_device_load_time = time.time() - start_time
+        normal_load_time = time.time() - start_time
 
-        assert 2 * meta_device_load_time < normal_load_time
+        assert 2 * fast_load_time < normal_load_time
 
     @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
     def test_stable_diffusion_pipeline_with_unet_on_gpu_only(self):

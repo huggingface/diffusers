@@ -86,7 +86,7 @@ class PipelineIntegrationTests(unittest.TestCase):
     def test_dance_diffusion(self):
         device = torch_device
 
-        pipe = DanceDiffusionPipeline.from_pretrained("harmonai/maestro-150k", device_map="auto")
+        pipe = DanceDiffusionPipeline.from_pretrained("harmonai/maestro-150k")
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -103,9 +103,7 @@ class PipelineIntegrationTests(unittest.TestCase):
     def test_dance_diffusion_fp16(self):
         device = torch_device
 
-        pipe = DanceDiffusionPipeline.from_pretrained(
-            "harmonai/maestro-150k", torch_dtype=torch.float16, device_map="auto"
-        )
+        pipe = DanceDiffusionPipeline.from_pretrained("harmonai/maestro-150k", torch_dtype=torch.float16)
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 

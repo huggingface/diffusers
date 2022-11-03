@@ -27,16 +27,26 @@ More precisely, 🤗 Diffusers offers:
 
 ## Installation
 
+### For PyTorch
+
 **With `pip`**
     
 ```bash
-pip install --upgrade diffusers
+pip install --upgrade diffusers[torch]
 ```
 
 **With `conda`**
 
 ```sh
 conda install -c conda-forge diffusers
+```
+
+### For Flax
+
+**With `pip`**
+
+```bash
+pip install --upgrade diffusers[flax]
 ```
 
 **Apple Silicon (M1/M2) support**
@@ -354,7 +364,7 @@ There are many ways to try running Diffusers! Here we outline code-focused tools
 If you want to run the code yourself 💻, you can try out:
 - [Text-to-Image Latent Diffusion](https://huggingface.co/CompVis/ldm-text2im-large-256)
 ```python
-# !pip install diffusers transformers
+# !pip install diffusers["torch"] transformers
 from diffusers import DiffusionPipeline
 
 device = "cuda"
@@ -373,7 +383,7 @@ image.save("squirrel.png")
 ```
 - [Unconditional Diffusion with discrete scheduler](https://huggingface.co/google/ddpm-celebahq-256)
 ```python
-# !pip install diffusers
+# !pip install diffusers["torch"]
 from diffusers import DDPMPipeline, DDIMPipeline, PNDMPipeline
 
 model_id = "google/ddpm-celebahq-256"
