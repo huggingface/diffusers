@@ -5,8 +5,8 @@ import numpy as np
 import torch
 
 import PIL
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 from torchvision.transforms.functional import to_pil_image
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
