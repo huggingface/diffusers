@@ -282,8 +282,11 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             )
         elif prediction_type == "epsilon":
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
-        else:
+
+        elif prediction_type == "sample":
             pred_original_sample = model_output
+        else:
+            raise ValueError(f"prediction_type given as {prediction_type} must be one of `epsilon`, `sample`, or `v`")
 
         # 3. Clip "predicted x_0"
         if self.config.clip_sample:
