@@ -620,9 +620,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
 
     def test_stable_diffusion(self):
         # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-1",
-        )
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1")
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -793,9 +791,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         test_callback_fn.has_been_called = False
 
         pipe = StableDiffusionPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4",
-            revision="fp16",
-            torch_dtype=torch.float16,
+            "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16
         )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

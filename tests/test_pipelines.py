@@ -315,11 +315,7 @@ class PipelineSlowTests(unittest.TestCase):
     def test_smart_download(self):
         model_id = "hf-internal-testing/unet-pipeline-dummy"
         with tempfile.TemporaryDirectory() as tmpdirname:
-            _ = DiffusionPipeline.from_pretrained(
-                model_id,
-                cache_dir=tmpdirname,
-                force_download=True,
-            )
+            _ = DiffusionPipeline.from_pretrained(model_id, cache_dir=tmpdirname, force_download=True)
             local_repo_name = "--".join(["models"] + model_id.split("/"))
             snapshot_dir = os.path.join(tmpdirname, local_repo_name, "snapshots")
             snapshot_dir = os.path.join(snapshot_dir, os.listdir(snapshot_dir)[0])
@@ -409,11 +405,7 @@ class PipelineSlowTests(unittest.TestCase):
 
         # pass unet into DiffusionPipeline
         unet = UNet2DModel.from_pretrained(model_path)
-        ddpm_from_hub_custom_model = DiffusionPipeline.from_pretrained(
-            model_path,
-            unet=unet,
-            scheduler=scheduler,
-        )
+        ddpm_from_hub_custom_model = DiffusionPipeline.from_pretrained(model_path, unet=unet, scheduler=scheduler)
         ddpm_from_hub_custom_model = ddpm_from_hub_custom_model.to(torch_device)
         ddpm_from_hub_custom_model.set_progress_bar_config(disable=None)
 

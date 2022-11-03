@@ -465,9 +465,7 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
         )
 
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4",
-            revision="fp16",
-            torch_dtype=torch.float16,
+            "CompVis/stable-diffusion-v1-4", revision="fp16", torch_dtype=torch.float16
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
