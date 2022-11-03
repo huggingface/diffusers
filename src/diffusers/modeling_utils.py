@@ -22,6 +22,7 @@ import torch
 from torch import Tensor, device
 
 import accelerate
+from accelerate.utils import set_module_tensor_to_device
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
@@ -395,9 +396,16 @@ class ModelMixin(torch.nn.Module):
                 **kwargs,
             )
 
-        # Load weights and dispatch according to the device_map
-        # by deafult the device_map is None and the weights are loaded on the CPU
-        accelerate.load_checkpoint_and_dispatch(model, model_file, device_map)
+        if device_map is None:
+            param_device = "cpu"
+            state_dict = load_state_dict(model_file)
+
+            for param_name, param in state_dict.items():
+                set_module_tensor_to_device(model, param_name, param_device, value=param)
+        else:
+            # Load weights and dispatch according to the device_map
+            # by deafult the device_map is None and the weights are loaded on the CPU
+            accelerate.load_checkpoint_and_dispatch(model, model_file, device_map)
 
         loading_info = {
             "missing_keys": [],
