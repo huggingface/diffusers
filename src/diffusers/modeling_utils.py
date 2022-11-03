@@ -284,11 +284,11 @@ class ModelMixin(torch.nn.Module):
                 To have Accelerate compute the most optimized `device_map` automatically, set `device_map="auto"`. For
                 more information about each option see [designing a device
                 map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
-            low_cpu_mem_usage (`bool`, *optional*, defaults to `True`):
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
                 Speed up model loading by not initializing the weights and only loading the pre-trained weights. This
                 also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
                 model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
-                this argument will be ignored and the model will be loaded normally.
+                setting this argument to `True` will raise an error.
 
         <Tip>
 
@@ -321,12 +321,22 @@ class ModelMixin(torch.nn.Module):
 
         # Check if we can handle device_map and dispatching the weights
         if device_map is not None and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError("Loading and dispatching requires torch >= 1.9.0")
+            raise NotImplementedError(
+                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or sets"
+                " `device_map=None`."
+            )
 
-        # Fast init is only possible if torch version is >= 1.9.0
-        _INIT_EMPTY_WEIGHTS = low_cpu_mem_usage or device_map is not None
-        if _INIT_EMPTY_WEIGHTS and not is_torch_version(">=", "1.9.0"):
-            logger.warn("Loading with `low_cpu_mem_usage` requires torch >= 1.9.0. Falling back to normal loading.")
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or sets"
+                " `low_cpu_mem_usage=False`."
+            )
+
+        if low_cpu_mem_usage is False and device_map is not None:
+            raise ValueError(
+                "You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
+                " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
+            )
 
         user_agent = {
             "diffusers": __version__,
@@ -409,7 +419,7 @@ class ModelMixin(torch.nn.Module):
 
             # restore default dtype
 
-        if _INIT_EMPTY_WEIGHTS:
+        if low_cpu_mem_usage:
             # Instantiate model with empty weights
             with accelerate.init_empty_weights():
                 model, unused_kwargs = cls.from_config(
