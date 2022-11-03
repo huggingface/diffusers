@@ -272,21 +272,6 @@ class ScoreSdeVePipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "accelerate"])
 
 
-class VQDiffusionPipeline(metaclass=DummyObject):
-    _backends = ["torch", "accelerate"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["torch", "accelerate"])
-
-    @classmethod
-    def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["torch", "accelerate"])
-
-    @classmethod
-    def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["torch", "accelerate"])
-
-
 class DDIMScheduler(metaclass=DummyObject):
     _backends = ["torch", "accelerate"]
 

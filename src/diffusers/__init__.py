@@ -46,7 +46,6 @@ if is_torch_available():
         PNDMPipeline,
         RePaintPipeline,
         ScoreSdeVePipeline,
-        VQDiffusionPipeline,
     )
     from .schedulers import (
         DDIMScheduler,
@@ -77,6 +76,7 @@ if is_torch_available() and is_transformers_available():
         StableDiffusionInpaintPipeline,
         StableDiffusionInpaintPipelineLegacy,
         StableDiffusionPipeline,
+        VQDiffusionPipeline,
     )
 else:
     from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
