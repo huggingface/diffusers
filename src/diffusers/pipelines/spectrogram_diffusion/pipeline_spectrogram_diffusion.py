@@ -212,6 +212,7 @@ class TokenEncoder(nn.Module):
 
         self.dropout_pre = nn.Dropout(p=config.dropout_rate)
 
+        config.is_decoder = False
         config.is_encoder_decoder = False
         self.encoders = nn.ModuleList()
         for lyr_num in range(config.num_layers):
@@ -280,6 +281,7 @@ class ContinuousEncoder(nn.Module):
 
         self.dropout_pre = nn.Dropout(p=config.dropout_rate)
 
+        config.is_decoder = False
         config.is_encoder_decoder = False
         self.encoders = nn.ModuleList()
         for lyr_num in range(config.num_layers):
@@ -366,9 +368,9 @@ class Decoder(nn.Module):
 
         self.dropout = nn.Dropout(p=config.dropout_rate)
 
-        self.decoders = nn.ModuleList()
         config.is_decoder = True
         config.is_encoder_decoder = False
+        self.decoders = nn.ModuleList()
         for lyr_num in range(config.num_decoder_layers):
             # FiLM conditional T5 decoder
             lyr = DecoderLayer(config)
@@ -477,9 +479,7 @@ class Decoder(nn.Module):
 
         inputs += position_encodings
 
-        inputs = self.dropout(inputs)
-        y = inputs
-
+        y = self.dropout(inputs)
         for lyr in self.decoders:
             y = lyr(y, encodings_and_encdec_masks, conditioning_emb=conditioning_emb)[0]
 
@@ -494,9 +494,9 @@ class ContinuousContextTransformer(nn.Module):
     def __init__(self, config, weights):
         super().__init__()
 
-        self.token_encoder = TokenEncoder(config=config, weights=weights)
-        self.continuous_encoder = ContinuousEncoder(config=config, weights=weights)
-        self.decoder = Decoder(config=config, weights=weights)
+        self.token_encoder = TokenEncoder(config=config, weights=weights["token_encoder"])
+        self.continuous_encoder = ContinuousEncoder(config=config, weights=weights["continuous_encoder"])
+        self.decoder = Decoder(config=config, weights=weights["decoder"])
 
     def encode(self, input_tokens, continuous_inputs, continuous_mask):
         tokens_mask = input_tokens > 0
