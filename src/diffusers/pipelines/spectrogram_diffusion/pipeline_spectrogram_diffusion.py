@@ -315,24 +315,15 @@ class ContinuousEncoder(nn.Module):
 
         self.dropout_post = nn.Dropout(p=config.dropout_rate)
 
-    def get_sequence_length(self, sequence):
-        # Return the first index where a 0 occurs.
-        length = np.argmax(sequence == 0)
-
-        # If argmax returns 0, that means that either
-        # 1) No 0s were found, and the sequence length is the full length of the array
-        # 2) There's padding immediately at the beginning, indicating that the array
-        #    is all padding and the sequence length is 0.
-        return np.where(length == 0 and sequence[0] != 0, sequence.shape[0], length).tolist()
-
     def forward(self, encoder_inputs, encoder_inputs_mask):
         x = self.input_proj(encoder_inputs)
 
         # terminal relative positional encodings
         max_positions = encoder_inputs.shape[1]
         input_positions = torch.arange(max_positions, device=encoder_inputs.device)
-        seq_lens = self.get_sequence_length(encoder_inputs_mask.cpu().numpy())
-        input_positions = torch.roll(input_positions, seq_lens, dims=0)
+
+        seq_lens = encoder_inputs_mask.sum(-1)
+        input_positions = torch.roll(input_positions.unsqueeze(0), tuple(seq_lens.tolist()), dims=0)
         x += self.position_encoding(input_positions)
 
         x = self.dropout_pre(x)
