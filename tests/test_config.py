@@ -244,28 +244,30 @@ class ConfigTester(unittest.TestCase):
         logger = logging.get_logger("diffusers.configuration_utils")
 
         with CaptureLogger(logger) as cap_logger:
-            ddim = DDIMScheduler.from_config("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
+            ddim = DDIMScheduler.from_config("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
 
         assert ddim.__class__ == DDIMScheduler
         # no warning should be thrown
         assert cap_logger.out == ""
 
-    def test_load_ddim_from_euler(self):
+    def test_load_euler_from_pndm(self):
         logger = logging.get_logger("diffusers.configuration_utils")
 
         with CaptureLogger(logger) as cap_logger:
-            euler = EulerDiscreteScheduler.from_config("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
+            euler = EulerDiscreteScheduler.from_config(
+                "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler"
+            )
 
         assert euler.__class__ == EulerDiscreteScheduler
         # no warning should be thrown
         assert cap_logger.out == ""
 
-    def test_load_ddim_from_euler_ancestral(self):
+    def test_load_euler_ancestral_from_pndm(self):
         logger = logging.get_logger("diffusers.configuration_utils")
 
         with CaptureLogger(logger) as cap_logger:
             euler = EulerAncestralDiscreteScheduler.from_config(
-                "runwayml/stable-diffusion-v1-5", subfolder="scheduler"
+                "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler"
             )
 
         assert euler.__class__ == EulerAncestralDiscreteScheduler
@@ -276,7 +278,7 @@ class ConfigTester(unittest.TestCase):
         logger = logging.get_logger("diffusers.configuration_utils")
 
         with CaptureLogger(logger) as cap_logger:
-            pndm = PNDMScheduler.from_config("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
+            pndm = PNDMScheduler.from_config("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
 
         assert pndm.__class__ == PNDMScheduler
         # no warning should be thrown

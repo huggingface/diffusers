@@ -98,5 +98,7 @@
       title: "Dance Diffusion"
     - local: api/pipelines/vq_diffusion
       title: "VQ Diffusion"
+    - local: api/pipelines/repaint
+      title: "RePaint"
     title: "Pipelines"
   title: "API"

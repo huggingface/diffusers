@@ -15,6 +15,7 @@
 
 import gc
 import random
+import tempfile
 import time
 import unittest
 
@@ -315,6 +316,16 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert isinstance(pipe.scheduler, LMSDiscreteScheduler)
         assert pipe.safety_checker is None
 
+        image = pipe("example prompt", num_inference_steps=2).images[0]
+        assert image is not None
+
+        # check that there's no error when saving a pipeline with one of the models being None
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.save_pretrained(tmpdirname)
+            pipe = StableDiffusionPipeline.from_pretrained(tmpdirname)
+
+        # sanity check that the pipeline still works
+        assert pipe.safety_checker is None
         image = pipe("example prompt", num_inference_steps=2).images[0]
         assert image is not None
 

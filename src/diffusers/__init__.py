@@ -36,6 +36,7 @@ if is_torch_available():
         KarrasVePipeline,
         LDMPipeline,
         PNDMPipeline,
+        RePaintPipeline,
         ScoreSdeVePipeline,
         VQDiffusionPipeline,
     )
@@ -47,6 +48,7 @@ if is_torch_available():
         IPNDMScheduler,
         KarrasVeScheduler,
         PNDMScheduler,
+        RePaintScheduler,
         SchedulerMixin,
         ScoreSdeVeScheduler,
         VQDiffusionScheduler,
