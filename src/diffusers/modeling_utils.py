@@ -23,6 +23,7 @@ from torch import Tensor, device
 
 import accelerate
 from accelerate.utils import set_module_tensor_to_device
+from accelerate.utils.versions import is_torch_version
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
@@ -379,8 +380,50 @@ class ModelMixin(torch.nn.Module):
 
             # restore default dtype
 
-        # Instantiate model with empty weights
-        with accelerate.init_empty_weights():
+        # Check if we can handle device_map and dispatching the weights
+        if device_map is not None and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError("Loading and dispatching requires torch >= 1.9.0")
+
+        # Fast init is only possible if torch version is >= 1.9.0
+        init_empty_weights = is_torch_version(">=", "1.9.0")
+
+        if init_empty_weights:
+            # Instantiate model with empty weights
+            with accelerate.init_empty_weights():
+                model, unused_kwargs = cls.from_config(
+                    config_path,
+                    cache_dir=cache_dir,
+                    return_unused_kwargs=True,
+                    force_download=force_download,
+                    resume_download=resume_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                    subfolder=subfolder,
+                    device_map=device_map,
+                    **kwargs,
+                )
+
+            # if device_map is Non,e load the state dict on move the params from meta device to the cpu
+            if device_map is None:
+                param_device = "cpu"
+                state_dict = load_state_dict(model_file)
+                # move the parms from meta device to cpu
+                for param_name, param in state_dict.items():
+                    set_module_tensor_to_device(model, param_name, param_device, value=param)
+            else:  # else let accelerate handle loading and dispatching.
+                # Load weights and dispatch according to the device_map
+                # by deafult the device_map is None and the weights are loaded on the CPU
+                accelerate.load_checkpoint_and_dispatch(model, model_file, device_map)
+
+            loading_info = {
+                "missing_keys": [],
+                "unexpected_keys": [],
+                "mismatched_keys": [],
+                "error_msgs": [],
+            }
+        else:
             model, unused_kwargs = cls.from_config(
                 config_path,
                 cache_dir=cache_dir,
@@ -396,24 +439,21 @@ class ModelMixin(torch.nn.Module):
                 **kwargs,
             )
 
-        # if device_map is None load the state dict on move the params from meta device to the cpu
-        if device_map is None:
-            param_device = "cpu"
             state_dict = load_state_dict(model_file)
-            # move the parms from meta device to cpu
-            for param_name, param in state_dict.items():
-                set_module_tensor_to_device(model, param_name, param_device, value=param)
-        else:  # else let accelerate handle loading and dispatching.
-            # Load weights and dispatch according to the device_map
-            # by deafult the device_map is None and the weights are loaded on the CPU
-            accelerate.load_checkpoint_and_dispatch(model, model_file, device_map)
+            model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
+                model,
+                state_dict,
+                model_file,
+                pretrained_model_name_or_path,
+                ignore_mismatched_sizes=ignore_mismatched_sizes,
+            )
 
-        loading_info = {
-            "missing_keys": [],
-            "unexpected_keys": [],
-            "mismatched_keys": [],
-            "error_msgs": [],
-        }
+            loading_info = {
+                "missing_keys": missing_keys,
+                "unexpected_keys": unexpected_keys,
+                "mismatched_keys": mismatched_keys,
+                "error_msgs": error_msgs,
+            }
 
         if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
             raise ValueError(
