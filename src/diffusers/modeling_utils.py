@@ -270,6 +270,19 @@ class ModelMixin(torch.nn.Module):
                 Mirror source to accelerate downloads in China. If you are from China and have an accessibility
                 problem, you can set this option to resolve it. Note that we do not guarantee the timeliness or safety.
                 Please refer to the mirror site for more information.
+            device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
+                A map that specifies where each submodule should go. It doesn't need to be refined to each
+                parameter/buffer name, once a given module name is inside, every submodule of it will be sent to the
+                same device.
+
+                To have Accelerate compute the most optimized `device_map` automatically, set `device_map="auto"`. For
+                more information about each option see [designing a device
+                map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
+            fast_load (`bool`, *optional*, defaults to `True`):
+                Speed up model loading by not initializing the weights and only loading the pre-trained weights. This
+                also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
+                model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
+                this argument will be ignored and the model will be loaded normally.
 
         <Tip>
 
@@ -298,6 +311,16 @@ class ModelMixin(torch.nn.Module):
         torch_dtype = kwargs.pop("torch_dtype", None)
         subfolder = kwargs.pop("subfolder", None)
         device_map = kwargs.pop("device_map", None)
+        fast_load = kwargs.pop("fast_load", True)
+
+        # Check if we can handle device_map and dispatching the weights
+        if device_map is not None and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError("Loading and dispatching requires torch >= 1.9.0")
+
+        # Fast init is only possible if torch version is >= 1.9.0
+        _INIT_EMPTY_WEIGHTS = fast_load or device_map is not None
+        if _INIT_EMPTY_WEIGHTS and not is_torch_version(">=", "1.9.0"):
+            logger.warn("Loading with `fast_load` requires torch >= 1.9.0. Falling back to normal loading.")
 
         user_agent = {
             "diffusers": __version__,
@@ -380,14 +403,7 @@ class ModelMixin(torch.nn.Module):
 
             # restore default dtype
 
-        # Check if we can handle device_map and dispatching the weights
-        if device_map is not None and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError("Loading and dispatching requires torch >= 1.9.0")
-
-        # Fast init is only possible if torch version is >= 1.9.0
-        init_empty_weights = is_torch_version(">=", "1.9.0")
-
-        if init_empty_weights:
+        if _INIT_EMPTY_WEIGHTS:
             # Instantiate model with empty weights
             with accelerate.init_empty_weights():
                 model, unused_kwargs = cls.from_config(
@@ -405,11 +421,11 @@ class ModelMixin(torch.nn.Module):
                     **kwargs,
                 )
 
-            # if device_map is None, load the state dict on move the params from meta device to the cpu
+            # if device_map is Non,e load the state dict on move the params from meta device to the cpu
             if device_map is None:
                 param_device = "cpu"
                 state_dict = load_state_dict(model_file)
-                # move the params from meta device to cpu
+                # move the parms from meta device to cpu
                 for param_name, param in state_dict.items():
                     set_module_tensor_to_device(model, param_name, param_device, value=param)
             else:  # else let accelerate handle loading and dispatching.
