@@ -21,12 +21,15 @@ import os
 os.environ["ONEFLOW_MLIR_ENABLE_ROUND_TRIP"] = "1"
 os.environ["ONEFLOW_MLIR_ENABLE_INFERENCE_OPTIMIZATION"] = "1"
 os.environ["ONEFLOW_MLIR_PREFER_NHWC"] = "1"
+os.environ["ONEFLOW_KERNEL_ENABLE_CUDNN_FUSED_CONV_BIAS"] = "1"
+os.environ["ONEFLOW_KERNEL_ENABLE_FUSED_LINEAR"] = "1"
 
 import oneflow as flow
 class UNetGraph(flow.nn.Graph):
     def __init__(self, unet):
         super().__init__()
         self.unet = unet
+        self.config.enable_cudnn_conv_heuristic_search_algo(False)
 
     def build(self, latent_model_input, t, text_embeddings):
         return self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
