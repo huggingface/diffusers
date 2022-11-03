@@ -29,7 +29,7 @@ from diffusers import (
     UNet2DModel,
     VQModel,
 )
-from diffusers.utils import floats_tensor, load_image, slow, torch_device
+from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -472,17 +472,15 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_stable_diffusion_img2img_pipeline(self):
+    def test_stable_diffusion_img2img_pipeline_default(self):
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/img2img/sketch-mountains-input.jpg"
         )
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/img2img/fantasy_landscape.png"
-        )
         init_image = init_image.resize((768, 512))
-        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/lewington/expected-images/resolve/main/fantasy_landscape.npy"
+        )
 
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
@@ -509,19 +507,17 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (512, 768, 3)
         # img2img is flaky across GPUs even in fp32, so using MAE here
-        assert np.abs(expected_image - image).mean() < 1e-2
+        assert np.abs(expected_image - image).mean() < 1e-3
 
     def test_stable_diffusion_img2img_pipeline_k_lms(self):
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/img2img/sketch-mountains-input.jpg"
         )
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/img2img/fantasy_landscape_k_lms.png"
-        )
         init_image = init_image.resize((768, 512))
-        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/lewington/expected-images/resolve/main/fantasy_landscape_k_lms.npy"
+        )
 
         model_id = "CompVis/stable-diffusion-v1-4"
         lms = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler")
@@ -550,7 +546,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (512, 768, 3)
         # img2img is flaky across GPUs even in fp32, so using MAE here
-        assert np.abs(expected_image - image).mean() < 1e-2
+        assert np.abs(expected_image - image).mean() < 1e-3
 
     def test_stable_diffusion_img2img_intermediate_state(self):
         number_of_steps = 0
