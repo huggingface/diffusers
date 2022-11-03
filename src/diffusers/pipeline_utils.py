@@ -411,7 +411,7 @@ class DiffusionPipeline(ConfigMixin):
 
         if low_cpu_mem_usage is False and device_map is not None:
             raise ValueError(
-                "You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
+                f"You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
                 " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
             )
 
