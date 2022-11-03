@@ -190,7 +190,7 @@ extras["test"] = deps_list(
     "torchvision",
     "transformers"
 )
-extras["torch"] = deps_list("torch")
+extras["torch"] = deps_list("torch", "accelerate")
 
 if os.name == "nt":  # windows
     extras["flax"] = []  # jax is not supported on windows
@@ -209,7 +209,6 @@ install_requires = [
     deps["regex"],
     deps["requests"],
     deps["Pillow"],
-    deps["accelerate"]
 ]
 
 setup(
