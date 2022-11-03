@@ -4,21 +4,6 @@
 from ..utils import DummyObject, requires_backends
 
 
-class VQDiffusionPipeline(metaclass=DummyObject):
-    _backends = ["torch", "transformers"]
-
-    def __init__(self, *args, **kwargs):
-        requires_backends(self, ["torch", "transformers"])
-
-    @classmethod
-    def from_config(cls, *args, **kwargs):
-        requires_backends(cls, ["torch", "transformers"])
-
-    @classmethod
-    def from_pretrained(cls, *args, **kwargs):
-        requires_backends(cls, ["torch", "transformers"])
-
-
 class LDMTextToImagePipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
@@ -80,6 +65,21 @@ class StableDiffusionInpaintPipelineLegacy(metaclass=DummyObject):
 
 
 class StableDiffusionPipeline(metaclass=DummyObject):
+    _backends = ["torch", "transformers"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "transformers"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "transformers"])
+
+
+class VQDiffusionPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers"]
 
     def __init__(self, *args, **kwargs):
