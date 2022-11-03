@@ -112,7 +112,7 @@ class DDIMPipeline(DiffusionPipeline):
             # eta corresponds to η in paper and should be between [0, 1]
             # do x_t -> x_t-1
             image = self.scheduler.step(
-                model_output, t, image, eta, predict_epsilon=predict_epsilon, use_clipped_model_output=True, **extra_kwargs
+                model_output, t, image, eta, predict_epsilon=predict_epsilon, **extra_kwargs
             ).prev_sample
 
         image = (image / 2 + 0.5).clamp(0, 1)

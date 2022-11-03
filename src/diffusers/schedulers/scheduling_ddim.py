@@ -118,16 +118,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         "DPMSolverMultistepScheduler",
     ]
 
-    @classmethod
-    def from_ddpm_scheduler(cls, sched):
-        ret = cls(
-            num_train_timesteps=sched.num_train_timesteps,
-            trained_betas=sched.betas,
-            clip_sample=sched.clip_sample,
-        )
-        assert torch.allclose(sched.alphas_cumprod, ret.alphas_cumprod)
-        return ret
-
     @register_to_config
     def __init__(
         self,
@@ -172,6 +162,16 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # setable values
         self.num_inference_steps = None
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy().astype(np.int64))
+
+    @classmethod
+    def from_ddpm_scheduler(cls, sched):
+        ret = cls(
+            num_train_timesteps=sched.num_train_timesteps,
+            trained_betas=sched.betas,
+            clip_sample=sched.clip_sample,
+        )
+        assert torch.allclose(sched.alphas_cumprod, ret.alphas_cumprod)
+        return ret
 
     def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
         """
@@ -290,7 +290,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         # 2. compute alphas, betas
         alpha_prod_t = self.alphas_cumprod[timestep]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
+        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if bool(prev_timestep >= 0) else self.final_alpha_cumprod
 
         beta_prod_t = 1 - alpha_prod_t
 

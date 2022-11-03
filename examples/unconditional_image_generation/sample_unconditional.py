@@ -47,6 +47,7 @@ def main(args):
                 output_type="numpy",
                 predict_epsilon=args.predict_mode == "eps",
                 num_inference_steps=args.num_steps,
+                use_clipped_model_output=True,
                 eta=args.ddim_eta,
             ).images
 
