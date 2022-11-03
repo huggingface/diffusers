@@ -104,13 +104,12 @@ class DPMSolverDiscreteScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
         trained_betas: Optional[np.ndarray] = None,
-        steps_offset: int = 0,
-        solver_order=3,
-        predict_x0=True,
-        thresholding=False,
-        sample_max_value=1.0,
-        solver_type="dpm_solver",
-        denoise_final=True,
+        solver_order: int = 3,
+        predict_x0: bool = True,
+        thresholding: bool = False,
+        sample_max_value: float = 1.0,
+        solver_type: str = "dpm_solver",
+        denoise_final: bool = True,
     ):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
@@ -150,7 +149,7 @@ class DPMSolverDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         # setable values
         self.num_inference_steps = None
-        timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=float)[::-1].copy()
+        timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=np.float32)[::-1].copy()
         self.timesteps = torch.from_numpy(timesteps)
         self.model_outputs = [None,] * self.solver_order
         self.lower_order_nums = 0
@@ -185,7 +184,7 @@ class DPMSolverDiscreteScheduler(SchedulerMixin, ConfigMixin):
             x0_pred = (sample - sigma_t * model_output) / alpha_t
             if self.thresholding:
                 # Dynamic thresholding in https://arxiv.org/abs/2205.11487
-                p = 0.995   # A hyperparameter in the paper of "Imagen" [1].
+                p = 0.995   # A hyperparameter in the paper of "Imagen" (https://arxiv.org/abs/2205.11487).
                 s = torch.quantile(torch.abs(x0_pred).reshape((x0_pred.shape[0], -1)), p, dim=1)
                 s = torch.maximum(s, self.sample_max_value * torch.ones_like(s).to(s.device))[(...,) + (None,)*(x0_pred.ndim - 1)]
                 x0_pred = torch.clamp(x0_pred, -s, s) / s
@@ -338,7 +337,6 @@ class DPMSolverDiscreteScheduler(SchedulerMixin, ConfigMixin):
         denoise_second = (step_index == len(self.timesteps) - 2) and self.denoise_final
 
         model_output = self.convert_model_output(model_output, timestep, sample) 
-        self.model_outputs.append(model_output)
         for i in range(self.solver_order - 1):
             self.model_outputs[i] = self.model_outputs[i + 1]
         self.model_outputs[-1] = model_output
