@@ -111,7 +111,7 @@ class CustomPipelineTests(unittest.TestCase):
     def test_load_pipeline_from_git(self):
         clip_model_id = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 
-        feature_extractor = CLIPFeatureExtractor.from_pretrained(clip_model_id, device_map="auto")
+        feature_extractor = CLIPFeatureExtractor.from_pretrained(clip_model_id)
         clip_model = CLIPModel.from_pretrained(clip_model_id, torch_dtype=torch.float16)
 
         pipeline = DiffusionPipeline.from_pretrained(
@@ -121,7 +121,6 @@ class CustomPipelineTests(unittest.TestCase):
             feature_extractor=feature_extractor,
             torch_dtype=torch.float16,
             revision="fp16",
-            device_map="auto",
         )
         pipeline.enable_attention_slicing()
         pipeline = pipeline.to(torch_device)
@@ -317,7 +316,9 @@ class PipelineSlowTests(unittest.TestCase):
         model_id = "hf-internal-testing/unet-pipeline-dummy"
         with tempfile.TemporaryDirectory() as tmpdirname:
             _ = DiffusionPipeline.from_pretrained(
-                model_id, cache_dir=tmpdirname, force_download=True, device_map="auto"
+                model_id,
+                cache_dir=tmpdirname,
+                force_download=True,
             )
             local_repo_name = "--".join(["models"] + model_id.split("/"))
             snapshot_dir = os.path.join(tmpdirname, local_repo_name, "snapshots")
@@ -342,7 +343,10 @@ class PipelineSlowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdirname:
             with CaptureLogger(logger) as cap_logger:
                 DiffusionPipeline.from_pretrained(
-                    model_id, not_used=True, cache_dir=tmpdirname, force_download=True, device_map="auto"
+                    model_id,
+                    not_used=True,
+                    cache_dir=tmpdirname,
+                    force_download=True,
                 )
 
         assert cap_logger.out == "Keyword arguments {'not_used': True} not recognized.\n"
@@ -366,7 +370,7 @@ class PipelineSlowTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             ddpm.save_pretrained(tmpdirname)
-            new_ddpm = DDPMPipeline.from_pretrained(tmpdirname, device_map="auto")
+            new_ddpm = DDPMPipeline.from_pretrained(tmpdirname)
             new_ddpm.to(torch_device)
 
         generator = torch.manual_seed(0)
@@ -382,11 +386,11 @@ class PipelineSlowTests(unittest.TestCase):
 
         scheduler = DDPMScheduler(num_train_timesteps=10)
 
-        ddpm = DDPMPipeline.from_pretrained(model_path, scheduler=scheduler, device_map="auto")
+        ddpm = DDPMPipeline.from_pretrained(model_path, scheduler=scheduler)
         ddpm = ddpm.to(torch_device)
         ddpm.set_progress_bar_config(disable=None)
 
-        ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path, scheduler=scheduler, device_map="auto")
+        ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path, scheduler=scheduler)
         ddpm_from_hub = ddpm_from_hub.to(torch_device)
         ddpm_from_hub.set_progress_bar_config(disable=None)
 
@@ -404,14 +408,16 @@ class PipelineSlowTests(unittest.TestCase):
         scheduler = DDPMScheduler(num_train_timesteps=10)
 
         # pass unet into DiffusionPipeline
-        unet = UNet2DModel.from_pretrained(model_path, device_map="auto")
+        unet = UNet2DModel.from_pretrained(model_path)
         ddpm_from_hub_custom_model = DiffusionPipeline.from_pretrained(
-            model_path, unet=unet, scheduler=scheduler, device_map="auto"
+            model_path,
+            unet=unet,
+            scheduler=scheduler,
         )
         ddpm_from_hub_custom_model = ddpm_from_hub_custom_model.to(torch_device)
         ddpm_from_hub_custom_model.set_progress_bar_config(disable=None)
 
-        ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path, scheduler=scheduler, device_map="auto")
+        ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path, scheduler=scheduler)
         ddpm_from_hub = ddpm_from_hub.to(torch_device)
         ddpm_from_hub_custom_model.set_progress_bar_config(disable=None)
 
@@ -426,7 +432,7 @@ class PipelineSlowTests(unittest.TestCase):
     def test_output_format(self):
         model_path = "google/ddpm-cifar10-32"
 
-        pipe = DDIMPipeline.from_pretrained(model_path, device_map="auto")
+        pipe = DDIMPipeline.from_pretrained(model_path)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -448,7 +454,7 @@ class PipelineSlowTests(unittest.TestCase):
     def test_ddpm_ddim_equality(self):
         model_id = "google/ddpm-cifar10-32"
 
-        unet = UNet2DModel.from_pretrained(model_id, device_map="auto")
+        unet = UNet2DModel.from_pretrained(model_id)
         ddpm_scheduler = DDPMScheduler()
         ddim_scheduler = DDIMScheduler()
 
@@ -472,7 +478,7 @@ class PipelineSlowTests(unittest.TestCase):
     def test_ddpm_ddim_equality_batched(self):
         model_id = "google/ddpm-cifar10-32"
 
-        unet = UNet2DModel.from_pretrained(model_id, device_map="auto")
+        unet = UNet2DModel.from_pretrained(model_id)
         ddpm_scheduler = DDPMScheduler()
         ddim_scheduler = DDIMScheduler()
 

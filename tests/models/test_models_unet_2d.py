@@ -118,7 +118,8 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
     @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
     def test_from_pretrained_accelerate(self):
         model, _ = UNet2DModel.from_pretrained(
-            "fusing/unet-ldm-dummy-update", output_loading_info=True, device_map="auto"
+            "fusing/unet-ldm-dummy-update",
+            output_loading_info=True,
         )
         model.to(torch_device)
         image = model(**self.dummy_input).sample
@@ -128,7 +129,8 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
     @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
     def test_from_pretrained_accelerate_wont_change_results(self):
         model_accelerate, _ = UNet2DModel.from_pretrained(
-            "fusing/unet-ldm-dummy-update", output_loading_info=True, device_map="auto"
+            "fusing/unet-ldm-dummy-update",
+            output_loading_info=True,
         )
         model_accelerate.to(torch_device)
         model_accelerate.eval()
@@ -151,7 +153,8 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         gc.collect()
 
         model_normal_load, _ = UNet2DModel.from_pretrained(
-            "fusing/unet-ldm-dummy-update", output_loading_info=True, device_map="auto"
+            "fusing/unet-ldm-dummy-update",
+            output_loading_info=True,
         )
         model_normal_load.to(torch_device)
         model_normal_load.eval()
@@ -166,7 +169,8 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
 
         tracemalloc.start()
         model_accelerate, _ = UNet2DModel.from_pretrained(
-            "fusing/unet-ldm-dummy-update", output_loading_info=True, device_map="auto"
+            "fusing/unet-ldm-dummy-update",
+            output_loading_info=True,
         )
         model_accelerate.to(torch_device)
         model_accelerate.eval()
@@ -341,7 +345,8 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
     @slow
     def test_from_pretrained_hub(self):
         model, loading_info = UNet2DModel.from_pretrained(
-            "google/ncsnpp-celebahq-256", output_loading_info=True, device_map="auto"
+            "google/ncsnpp-celebahq-256",
+            output_loading_info=True,
         )
         self.assertIsNotNone(model)
         self.assertEqual(len(loading_info["missing_keys"]), 0)
@@ -356,7 +361,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
 
     @slow
     def test_output_pretrained_ve_mid(self):
-        model = UNet2DModel.from_pretrained("google/ncsnpp-celebahq-256", device_map="auto")
+        model = UNet2DModel.from_pretrained("google/ncsnpp-celebahq-256")
         model.to(torch_device)
 
         torch.manual_seed(0)
@@ -431,7 +436,10 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         torch_dtype = torch.float16 if fp16 else torch.float32
 
         model = UNet2DConditionModel.from_pretrained(
-            model_id, subfolder="unet", torch_dtype=torch_dtype, revision=revision, device_map="auto"
+            model_id,
+            subfolder="unet",
+            torch_dtype=torch_dtype,
+            revision=revision,
         )
         model.to(torch_device).eval()
 

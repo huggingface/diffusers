@@ -285,11 +285,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
         model_id = "runwayml/stable-diffusion-inpainting"
-        pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            model_id,
-            safety_checker=None,
-            device_map="auto",
-        )
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(model_id, safety_checker=None)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -330,7 +326,6 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             revision="fp16",
             torch_dtype=torch.float16,
             safety_checker=None,
-            device_map="auto",
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -369,7 +364,9 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         model_id = "runwayml/stable-diffusion-inpainting"
         pndm = PNDMScheduler.from_config(model_id, subfolder="scheduler")
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            model_id, safety_checker=None, scheduler=pndm, device_map="auto"
+            model_id,
+            safety_checker=None,
+            scheduler=pndm,
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
