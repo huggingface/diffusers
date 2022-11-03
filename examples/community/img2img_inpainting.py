@@ -1,21 +1,18 @@
 import inspect
-from typing import Callable, List, Optional, Union, Tuple
+from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 
 import PIL
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
-
-
-
 from diffusers.configuration_utils import FrozenDict
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipeline_utils import DiffusionPipeline
-from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from diffusers.utils import deprecate, logging
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from diffusers.utils import deprecate, logging
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -464,4 +461,3 @@ class ImageToImageInpaintingPipeline(DiffusionPipeline):
             return (image, has_nsfw_concept)
 
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
-
