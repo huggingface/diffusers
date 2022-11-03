@@ -816,11 +816,19 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         pipeline_id = "CompVis/stable-diffusion-v1-4"
 
         start_time = time.time()
-        _ = StableDiffusionPipeline.from_pretrained(pipeline_id, revision="fp16", torch_dtype=torch.float16)
-        load_time = time.time() - start_time
+        pipeline_fast_load = StableDiffusionPipeline.from_pretrained(
+            pipeline_id, revision="fp16", torch_dtype=torch.float16
+        )
+        pipeline_fast_load.to(torch_device)
+        fast_load_time = time.time() - start_time
 
-        # Make sure that loading the pipeline takes less than 6.5 seconds
-        assert load_time < 6.5
+        start_time = time.time()
+        _ = StableDiffusionPipeline.from_pretrained(
+            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, fast_load=False
+        )
+        normal_load_time = time.time() - start_time
+
+        assert 2 * fast_load_time < normal_load_time
 
     @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
     def test_stable_diffusion_pipeline_with_unet_on_gpu_only(self):
