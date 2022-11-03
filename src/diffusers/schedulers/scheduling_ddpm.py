@@ -237,7 +237,6 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         prediction_type: Literal["epsilon", "sample", "v"] = "epsilon",
         generator=None,
         return_dict: bool = True,
-        v_prediction: bool = True,
     ) -> Union[DDPMSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
@@ -261,6 +260,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             returning a tuple, the first element is the sample tensor.
 
         """
+        if self.variance_type == "v_diffusion":
+            assert prediction_type == "v", "Need to use v prediction with v_diffusion"
         if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
             model_output, predicted_variance = torch.split(model_output, sample.shape[1], dim=1)
         else:
