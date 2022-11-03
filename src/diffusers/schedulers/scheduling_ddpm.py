@@ -16,7 +16,8 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union, Literal
+from typing import Literal, Optional, Tuple, Union
+
 import numpy as np
 import torch
 
@@ -27,7 +28,8 @@ from .scheduling_utils import SchedulerMixin
 
 def expand_to_shape(input, timesteps, shape, device):
     """
-    Helper indexes a 1D tensor `input` using a 1D index tensor `timesteps`, then reshapes the result to broadcast nicely with `shape`. Useful for parellizing operations over `shape[0]` number of diffusion steps at once.
+    Helper indexes a 1D tensor `input` using a 1D index tensor `timesteps`, then reshapes the result to broadcast
+    nicely with `shape`. Useful for parellizing operations over `shape[0]` number of diffusion steps at once.
     """
     out = torch.gather(input.to(device), 0, timesteps.to(device))
     reshape = [shape[0]] + [1] * (len(shape) - 1)
@@ -247,7 +249,9 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
             prediction_type (`Literal["epsilon", "sample", "v"]`, optional):
-                prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion process), `sample` (directly predicting the noisy sample`) or `v` (see section 2.4 https://imagen.research.google/video/paper.pdf)
+                prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
+                process), `sample` (directly predicting the noisy sample`) or `v` (see section 2.4
+                https://imagen.research.google/video/paper.pdf)
             generator: random number generator.
             return_dict (`bool`): option for returning tuple rather than DDPMSchedulerOutput class
 
@@ -276,10 +280,6 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
                 sample * self.sqrt_alphas_cumprod[timestep]
                 - model_output * self.sqrt_one_minus_alphas_cumprod[timestep]
             )
-            eps = (
-                model_output * self.sqrt_alphas_cumprod[timestep]
-                - sample * self.sqrt_one_minus_alphas_cumprod[timestep]
-            )
         elif prediction_type == "epsilon":
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
         else:
@@ -305,7 +305,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
                 model_output.size(), dtype=model_output.dtype, layout=model_output.layout, generator=generator
             ).to(model_output.device)
             if self.variance_type == "fixed_small_log":
-                variance = self._get_variance(t, predicted_variance=predicted_variance) * noise
+                variance = self._get_variance(timestep, predicted_variance=predicted_variance) * noise
             elif self.variance_type == "v_diffusion":
                 variance = torch.exp(0.5 * self._get_variance(timestep, predicted_variance)) * noise
             else:
