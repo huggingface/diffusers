@@ -301,7 +301,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             # duplicate unconditional embeddings for each generation per prompt
             seq_len = uncond_embeddings.shape[1]
             uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
-            uncond_embeddings = uncond_embeddings(batch_size * num_images_per_prompt, seq_len, -1)
+            uncond_embeddings = uncond_embeddings.view(batch_size * num_images_per_prompt, seq_len, -1)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
