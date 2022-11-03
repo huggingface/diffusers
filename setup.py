@@ -179,7 +179,6 @@ extras["quality"] = deps_list("black", "isort", "flake8", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "modelcards")
 extras["test"] = deps_list(
-    "accelerate",
     "datasets",
     "onnxruntime",
     "parameterized",
