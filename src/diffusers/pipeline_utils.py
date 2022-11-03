@@ -380,7 +380,7 @@ class DiffusionPipeline(ConfigMixin):
         provider = kwargs.pop("provider", None)
         sess_options = kwargs.pop("sess_options", None)
         device_map = kwargs.pop("device_map", None)
-        fast_load = kwargs.pop("fast_load", True)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", True)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -574,13 +574,13 @@ class DiffusionPipeline(ConfigMixin):
                 )
 
                 if is_diffusers_model:
-                    loading_kwargs["fast_load"] = fast_load
+                    loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
                 # When loading a transformers model, if the device_map is None, the weights will be initialized as opposed to diffusers.
-                # To make default loading faster we set the `low_cpu_mem_usage=fast_load` flag which is `True` by default.
+                # To make default loading faster we set the `low_cpu_mem_usage=low_cpu_mem_usage` flag which is `True` by default.
                 # This makes sure that the weights won't be initialized which significantly speeds up loading.
                 if is_transformers_model and device_map is None:
-                    loading_kwargs["low_cpu_mem_usage"] = fast_load
+                    loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
                 if is_diffusers_model or is_transformers_model:
                     loading_kwargs["device_map"] = device_map

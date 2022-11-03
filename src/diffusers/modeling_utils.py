@@ -35,6 +35,12 @@ from .utils import CONFIG_NAME, DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT
 logger = logging.get_logger(__name__)
 
 
+if is_torch_version(">=", "1.9.0"):
+    _LOW_CPU_MEM_USAGE_DEFAULT = True
+else:
+    _LOW_CPU_MEM_USAGE_DEFAULT = False
+
+
 def get_parameter_device(parameter: torch.nn.Module):
     try:
         return next(parameter.parameters()).device
@@ -278,7 +284,7 @@ class ModelMixin(torch.nn.Module):
                 To have Accelerate compute the most optimized `device_map` automatically, set `device_map="auto"`. For
                 more information about each option see [designing a device
                 map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
-            fast_load (`bool`, *optional*, defaults to `True`):
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True`):
                 Speed up model loading by not initializing the weights and only loading the pre-trained weights. This
                 also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
                 model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
@@ -311,16 +317,16 @@ class ModelMixin(torch.nn.Module):
         torch_dtype = kwargs.pop("torch_dtype", None)
         subfolder = kwargs.pop("subfolder", None)
         device_map = kwargs.pop("device_map", None)
-        fast_load = kwargs.pop("fast_load", True)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
 
         # Check if we can handle device_map and dispatching the weights
         if device_map is not None and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError("Loading and dispatching requires torch >= 1.9.0")
 
         # Fast init is only possible if torch version is >= 1.9.0
-        _INIT_EMPTY_WEIGHTS = fast_load or device_map is not None
+        _INIT_EMPTY_WEIGHTS = low_cpu_mem_usage or device_map is not None
         if _INIT_EMPTY_WEIGHTS and not is_torch_version(">=", "1.9.0"):
-            logger.warn("Loading with `fast_load` requires torch >= 1.9.0. Falling back to normal loading.")
+            logger.warn("Loading with `low_cpu_mem_usage` requires torch >= 1.9.0. Falling back to normal loading.")
 
         user_agent = {
             "diffusers": __version__,

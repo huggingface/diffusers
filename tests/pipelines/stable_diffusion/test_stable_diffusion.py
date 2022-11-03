@@ -823,23 +823,23 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         assert test_callback_fn.has_been_called
         assert number_of_steps == 51
 
-    def test_stable_diffusion_fast_load(self):
+    def test_stable_diffusion_low_cpu_mem_usage(self):
         pipeline_id = "CompVis/stable-diffusion-v1-4"
 
         start_time = time.time()
-        pipeline_fast_load = StableDiffusionPipeline.from_pretrained(
+        pipeline_low_cpu_mem_usage = StableDiffusionPipeline.from_pretrained(
             pipeline_id, revision="fp16", torch_dtype=torch.float16
         )
-        pipeline_fast_load.to(torch_device)
-        fast_load_time = time.time() - start_time
+        pipeline_low_cpu_mem_usage.to(torch_device)
+        low_cpu_mem_usage_time = time.time() - start_time
 
         start_time = time.time()
         _ = StableDiffusionPipeline.from_pretrained(
-            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, fast_load=False
+            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, low_cpu_mem_usage=False
         )
         normal_load_time = time.time() - start_time
 
-        assert 2 * fast_load_time < normal_load_time
+        assert 2 * low_cpu_mem_usage_time < normal_load_time
 
     @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
     def test_stable_diffusion_pipeline_with_unet_on_gpu_only(self):
