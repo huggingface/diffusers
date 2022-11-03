@@ -396,13 +396,14 @@ class ModelMixin(torch.nn.Module):
                 **kwargs,
             )
 
+        # if device_map is None load the state dict on move the params from meta device to the cpu
         if device_map is None:
             param_device = "cpu"
             state_dict = load_state_dict(model_file)
-
+            # move the parms from meta device to cpu
             for param_name, param in state_dict.items():
                 set_module_tensor_to_device(model, param_name, param_device, value=param)
-        else:
+        else:  # else let accelerate handle loading and dispatching.
             # Load weights and dispatch according to the device_map
             # by deafult the device_map is None and the weights are loaded on the CPU
             accelerate.load_checkpoint_and_dispatch(model, model_file, device_map)
