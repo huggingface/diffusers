@@ -6,6 +6,7 @@ import torch
 
 import PIL
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from torchvision.transforms.functional import to_pil_image
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
@@ -20,10 +21,14 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def prepare_mask_and_masked_image(image, mask):
+    if isinstance(image, torch.Tensor):
+        image = to_pil_image(image)
     image = np.array(image.convert("RGB"))
     image = image[None].transpose(0, 3, 1, 2)
     image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
 
+    if isinstance(mask, torch.Tensor):
+        mask = to_pil_image(mask)
     mask = np.array(mask.convert("L"))
     mask = mask.astype(np.float32) / 255.0
     mask = mask[None, None]
