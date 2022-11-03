@@ -125,7 +125,9 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
 
     @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
     def test_from_pretrained_accelerate_wont_change_results(self):
-        model_accelerate, _ = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", output_loading_info=True)
+        model_accelerate, _ = UNet2DModel.from_pretrained(
+            "fusing/unet-ldm-dummy-update", output_loading_info=True, device_map="auto"
+        )
         model_accelerate.to(torch_device)
         model_accelerate.eval()
 
