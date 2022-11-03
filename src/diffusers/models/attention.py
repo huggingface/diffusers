@@ -30,7 +30,7 @@ from ..utils.import_utils import is_xformers_available
 class Transformer2DModelOutput(BaseOutput):
     """
     Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` or `(batch size, num_vector_embeds - 1, num_latent_pixels)` if Transformer2DModel is discrete):
+        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` or `(batch size, num_vector_embeds - 1, num_latent_pixels)` if [`Transformer2DModel`] is discrete):
             Hidden states conditioned on `encoder_hidden_states` input. If discrete, returns probability distributions
             for the unnoised latent pixels.
     """
@@ -61,8 +61,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
     image do not contain a prediction for the masked pixel as the unnoised image cannot be masked.
 
     Parameters:
-        num_attention_heads (`int`, *optional*): The number of heads to use for multi-head attention.
-        attention_head_dim (`int`, *optional*): The number of channels in each head.
+        num_attention_heads (`int`, *optional*, defaults to 16): The number of heads to use for multi-head attention.
+        attention_head_dim (`int`, *optional*, defaults to 88): The number of channels in each head.
         in_channels (`int`, *optional*):
             Pass if the input is continuous. The number of channels in the input and output.
         num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
