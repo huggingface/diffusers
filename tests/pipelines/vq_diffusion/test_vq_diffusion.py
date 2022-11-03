@@ -56,6 +56,7 @@ class VQDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
             latent_channels=3,
             num_vq_embeddings=self.num_embed,
+            vq_embed_dim=3,
         )
         return model
 
@@ -87,19 +88,19 @@ class VQDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         height = 12
         width = 12
 
-        model = Transformer2DModel(
-            n_heads=1,
-            d_head=height * width,
-            context_dim=32,
-            discrete=True,
-            num_embed=self.num_embed,
-            height=height,
-            width=width,
-            num_embeds_ada_norm=self.num_embeds_ada_norm,
-            ff_layers=["Linear", "ApproximateGELU", "Linear", "Dropout"],
-            norm_layers=["AdaLayerNorm", "AdaLayerNorm", "LayerNorm"],
-            attention_bias=True,
-        )
+        model_kwargs = {
+            "attention_bias": True,
+            "cross_attention_dim": 32,
+            "attention_head_dim": height * width,
+            "num_attention_heads": 1,
+            "num_vector_embeds": self.num_embed,
+            "num_embeds_ada_norm": self.num_embeds_ada_norm,
+            "norm_num_groups": 32,
+            "sample_size": width,
+            "activation_fn": "geglu-approximate",
+        }
+
+        model = Transformer2DModel(**model_kwargs)
         return model
 
     def test_vq_diffusion(self):
