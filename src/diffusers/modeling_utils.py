@@ -405,11 +405,11 @@ class ModelMixin(torch.nn.Module):
                     **kwargs,
                 )
 
-            # if device_map is Non,e load the state dict on move the params from meta device to the cpu
+            # if device_map is None, load the state dict on move the params from meta device to the cpu
             if device_map is None:
                 param_device = "cpu"
                 state_dict = load_state_dict(model_file)
-                # move the parms from meta device to cpu
+                # move the params from meta device to cpu
                 for param_name, param in state_dict.items():
                     set_module_tensor_to_device(model, param_name, param_device, value=param)
             else:  # else let accelerate handle loading and dispatching.
