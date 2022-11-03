@@ -13,7 +13,7 @@ else:
     from ..utils.dummy_pt_objects import *  # noqa F403
 
 if is_torch_available() and is_transformers_available():
-    from .latent_diffusion import LDMTextToImagePipeline
+    from .latent_diffusion import LDMTextToImagePipeline, LDMSuperResolutionPipeline
     from .stable_diffusion import (
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
