@@ -64,13 +64,12 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
                 process.
             batch_size (`int`, *optional*, defaults to 1):
                 Number of images to generate.
-            height (`int`, *optional*, defaults to 256):
-                The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to 256):
-                The width in pixels of the generated image.
-            num_inference_steps (`int`, *optional*, defaults to 50):
+            num_inference_steps (`int`, *optional*, defaults to 100):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            eta (`float`, *optional*, defaults to 0.0):
+                Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
+                [`schedulers.DDIMScheduler`], will be ignored for others.
             generator (`torch.Generator`, *optional*):
                 A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
                 deterministic.
