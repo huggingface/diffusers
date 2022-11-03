@@ -50,7 +50,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--revision",
         type=str,
-        default="fp16",
+        default=None,
         required=False,
         help="Revision of pretrained model identifier from huggingface.co/models.",
     )

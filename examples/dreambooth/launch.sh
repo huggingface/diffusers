@@ -5,6 +5,7 @@ accelerate launch train_dreambooth.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --pretrained_vae_name_or_path="stabilityai/sd-vae-ft-mse" \
   --output_dir=$OUTPUT_DIR \
+  --revision="fp16" \
   --with_prior_preservation --prior_loss_weight=1.0 \
   --seed=3434554 \
   --resolution=512 \
