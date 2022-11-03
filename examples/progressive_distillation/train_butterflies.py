@@ -8,14 +8,14 @@ class TrainingConfig:
     eval_batch_size = 16  # how many images to sample during evaluation
     num_epochs = 50
     gradient_accumulation_steps = 1
-    learning_rate = 1e-4
+    learning_rate = 5e-5
     lr_warmup_steps = 500
     save_image_epochs = 10
     save_model_epochs = 30
     mixed_precision = "fp16"  # `no` for float32, `fp16` for automatic mixed precision
     output_dir = "ddpm-butterflies-128"  # the model namy locally and on the HF Hub
 
-    push_to_hub = True  # whether to upload the saved model to the HF Hub
+    push_to_hub = False  # whether to upload the saved model to the HF Hub
     hub_private_repo = False
     overwrite_output_dir = True  # overwrite the old model when re-running the notebook
     seed = 0
@@ -84,7 +84,7 @@ from diffusers import DDPMScheduler
 noise_scheduler = DDPMScheduler(
     num_train_timesteps=1000,
     beta_schedule="squaredcos_cap_v2",
-    variance_type="fixed_small_log",
+    variance_type="v_diffusion",
 )
 
 import torch

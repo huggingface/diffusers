@@ -211,7 +211,6 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         # for rl-diffuser https://arxiv.org/abs/2205.09991
         elif variance_type == "fixed_small_log":
             variance = torch.log(torch.clamp(variance, min=1e-20))
-            variance = torch.exp(0.5 * variance)
         elif variance_type == "fixed_large":
             variance = self.betas[t]
         elif variance_type == "fixed_large_log":
@@ -224,6 +223,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             max_log = self.betas[t]
             frac = (predicted_variance + 1) / 2
             variance = frac * max_log + (1 - frac) * min_log
+        elif variance_type == "v_diffusion":
+            variance = torch.log(self.betas[t] * (1 - alpha_prod_t_prev) / (1 - alpha_prod_t))
 
         return variance
 
@@ -312,10 +313,9 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
                 model_output.size(), dtype=model_output.dtype, layout=model_output.layout, generator=generator
             ).to(model_output.device)
             if self.variance_type == "fixed_small_log":
-                if v_prediction:
-                    variance = torch.exp(0.5 * self._get_variance(t, predicted_variance)) * noise
-                else:
-                    variance = self._get_variance(t, predicted_variance=predicted_variance) * noise
+                variance = self._get_variance(t, predicted_variance=predicted_variance) * noise
+            elif self.variance_type == "v_diffusion":
+                variance = torch.exp(0.5 * self._get_variance(t, predicted_variance)) * noise
             else:
                 variance = (self._get_variance(t, predicted_variance=predicted_variance) ** 0.5) * noise
 
@@ -332,6 +332,11 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         noise: torch.FloatTensor,
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
+        if self.variance_type == "v_diffusion":
+            alpha, sigma = self.get_alpha_sigma(original_samples, timesteps, original_samples.device)
+            z_t = alpha * original_samples + sigma * noise
+            return z_t
+
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
         self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
         timesteps = timesteps.to(original_samples.device)
