@@ -254,7 +254,9 @@ class ConfigTester(unittest.TestCase):
         logger = logging.get_logger("diffusers.configuration_utils")
 
         with CaptureLogger(logger) as cap_logger:
-            euler = EulerDiscreteScheduler.from_config("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
+            euler = EulerDiscreteScheduler.from_config(
+                "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler"
+            )
 
         assert euler.__class__ == EulerDiscreteScheduler
         # no warning should be thrown
