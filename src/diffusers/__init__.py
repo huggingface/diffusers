@@ -36,14 +36,18 @@ if is_torch_available():
         KarrasVePipeline,
         LDMPipeline,
         PNDMPipeline,
+        RePaintPipeline,
         ScoreSdeVePipeline,
     )
     from .schedulers import (
         DDIMScheduler,
         DDPMScheduler,
+        EulerAncestralDiscreteScheduler,
+        EulerDiscreteScheduler,
         IPNDMScheduler,
         KarrasVeScheduler,
         PNDMScheduler,
+        RePaintScheduler,
         SchedulerMixin,
         ScoreSdeVeScheduler,
     )

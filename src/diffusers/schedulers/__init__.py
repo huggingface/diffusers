@@ -19,9 +19,12 @@ from ..utils import is_flax_available, is_scipy_available, is_torch_available
 if is_torch_available():
     from .scheduling_ddim import DDIMScheduler
     from .scheduling_ddpm import DDPMScheduler
+    from .scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler
+    from .scheduling_euler_discrete import EulerDiscreteScheduler
     from .scheduling_ipndm import IPNDMScheduler
     from .scheduling_karras_ve import KarrasVeScheduler
     from .scheduling_pndm import PNDMScheduler
+    from .scheduling_repaint import RePaintScheduler
     from .scheduling_sde_ve import ScoreSdeVeScheduler
     from .scheduling_sde_vp import ScoreSdeVpScheduler
     from .scheduling_utils import SchedulerMixin

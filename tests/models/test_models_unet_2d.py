@@ -21,12 +21,21 @@ import unittest
 import torch
 
 from diffusers import UNet2DConditionModel, UNet2DModel
-from diffusers.utils import floats_tensor, require_torch_gpu, slow, torch_all_close, torch_device
+from diffusers.utils import (
+    floats_tensor,
+    load_hf_numpy,
+    logging,
+    require_torch_gpu,
+    slow,
+    torch_all_close,
+    torch_device,
+)
 from parameterized import parameterized
 
 from ..test_modeling_common import ModelTesterMixin
 
 
+logger = logging.get_logger(__name__)
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
@@ -411,6 +420,9 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
 
 @slow
 class UNet2DConditionModelIntegrationTests(unittest.TestCase):
+    def get_file_format(self, seed, shape):
+        return f"gaussian_noise_s={seed}_shape={'_'.join([str(s) for s in shape])}.npy"
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -418,11 +430,8 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def get_latents(self, seed=0, shape=(4, 4, 64, 64), fp16=False):
-        batch_size, channels, height, width = shape
-        generator = torch.Generator(device=torch_device).manual_seed(seed)
         dtype = torch.float16 if fp16 else torch.float32
-        image = torch.randn(batch_size, channels, height, width, device=torch_device, generator=generator, dtype=dtype)
-
+        image = torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
         return image
 
     def get_unet_model(self, fp16=False, model_id="CompVis/stable-diffusion-v1-4"):
@@ -437,9 +446,9 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         return model
 
     def get_encoder_hidden_states(self, seed=0, shape=(4, 77, 768), fp16=False):
-        generator = torch.Generator(device=torch_device).manual_seed(seed)
         dtype = torch.float16 if fp16 else torch.float32
-        return torch.randn(shape, device=torch_device, generator=generator, dtype=dtype)
+        hidden_states = torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
+        return hidden_states
 
     @parameterized.expand(
         [
@@ -464,7 +473,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
         expected_output_slice = torch.tensor(expected_slice)
 
-        assert torch_all_close(output_slice, expected_output_slice, atol=1e-4)
+        assert torch_all_close(output_slice, expected_output_slice, atol=1e-3)
 
     @parameterized.expand(
         [
@@ -490,7 +499,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
         expected_output_slice = torch.tensor(expected_slice)
 
-        assert torch_all_close(output_slice, expected_output_slice, atol=1e-4)
+        assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)
 
     @parameterized.expand(
         [
@@ -515,7 +524,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
         expected_output_slice = torch.tensor(expected_slice)
 
-        assert torch_all_close(output_slice, expected_output_slice, atol=1e-4)
+        assert torch_all_close(output_slice, expected_output_slice, atol=1e-3)
 
     @parameterized.expand(
         [
@@ -541,7 +550,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
         expected_output_slice = torch.tensor(expected_slice)
 
-        assert torch_all_close(output_slice, expected_output_slice, atol=1e-4)
+        assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)
 
     @parameterized.expand(
         [
@@ -566,7 +575,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
         expected_output_slice = torch.tensor(expected_slice)
 
-        assert torch_all_close(output_slice, expected_output_slice, atol=1e-4)
+        assert torch_all_close(output_slice, expected_output_slice, atol=1e-3)
 
     @parameterized.expand(
         [
@@ -592,4 +601,4 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
         expected_output_slice = torch.tensor(expected_slice)
 
-        assert torch_all_close(output_slice, expected_output_slice, atol=1e-4)
+        assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)

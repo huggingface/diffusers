@@ -7,6 +7,7 @@ if is_torch_available():
     from .ddpm import DDPMPipeline
     from .latent_diffusion_uncond import LDMPipeline
     from .pndm import PNDMPipeline
+    from .repaint import RePaintPipeline
     from .score_sde_ve import ScoreSdeVePipeline
     from .stochastic_karras_ve import KarrasVePipeline
 else:

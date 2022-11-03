@@ -72,7 +72,7 @@ image.save("astronaut_rides_horse.png")
 # make sure you're logged in with `huggingface-cli login`
 from diffusers import StableDiffusionPipeline, DDIMScheduler
 
-scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
+scheduler =  DDIMScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5", 
@@ -91,11 +91,7 @@ image.save("astronaut_rides_horse.png")
 # make sure you're logged in with `huggingface-cli login`
 from diffusers import StableDiffusionPipeline, LMSDiscreteScheduler
 
-lms = LMSDiscreteScheduler(
-    beta_start=0.00085, 
-    beta_end=0.012, 
-    beta_schedule="scaled_linear"
-)
+lms = LMSDiscreteScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5", 

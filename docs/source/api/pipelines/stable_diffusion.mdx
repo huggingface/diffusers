@@ -31,6 +31,21 @@ For more details about how Stable Diffusion works and how it differs from the ba
 
 ## Tips
 
+### How to load and use different schedulers.
+
+The stable diffusion pipeline uses [`PNDMScheduler`] scheduler by default. But `diffusers` provides many other schedulers that can be used with the stable diffusion pipeline such as [`DDIMScheduler`], [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`], [`EulerAncestralDiscreteScheduler`] etc.
+To use a different scheduler, you can pass the `scheduler` argument to `from_pretrained` method of the pipeline. For example, to use the [`EulerDiscreteScheduler`], you can do the following:
+
+```python
+from diffusers import StableDiffusionPipeline, EulerDiscreteScheduler
+
+euler_scheduler = EulerDiscreteScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
+pipeline = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=euler_scheduler)
+```
+
+
+### How to conver all use cases with multiple or single pipeline
+
 If you want to use all possible use cases in a single `DiffusionPipeline` you can either:
 - Make use of the [Stable Diffusion Mega Pipeline](https://github.com/huggingface/diffusers/tree/main/examples/community#stable-diffusion-mega) or 
 - Make use of the `components` functionality to instantiate all components in the most memory-efficient way:
