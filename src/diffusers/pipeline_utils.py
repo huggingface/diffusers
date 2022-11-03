@@ -399,13 +399,13 @@ class DiffusionPipeline(ConfigMixin):
 
         if device_map is not None and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
-                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or sets"
+                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
                 " `device_map=None`."
             )
 
         if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or sets"
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
                 " `low_cpu_mem_usage=False`."
             )
 

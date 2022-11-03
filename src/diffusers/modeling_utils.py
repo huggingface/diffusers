@@ -322,19 +322,19 @@ class ModelMixin(torch.nn.Module):
         # Check if we can handle device_map and dispatching the weights
         if device_map is not None and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
-                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or sets"
+                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
                 " `device_map=None`."
             )
 
         if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or sets"
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
                 " `low_cpu_mem_usage=False`."
             )
 
         if low_cpu_mem_usage is False and device_map is not None:
             raise ValueError(
-                f"You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
+                f"You cannot set `low_cpu_mem_usage` to `False` while using device_map={device_map} for loading and"
                 " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
             )
 
