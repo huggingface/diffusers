@@ -15,9 +15,9 @@
 
 import gc
 import random
+import tempfile
 import time
 import unittest
-import tempfile
 
 import numpy as np
 import torch
