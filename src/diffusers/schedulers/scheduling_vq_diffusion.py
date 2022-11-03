@@ -55,15 +55,15 @@ def gumbel_noised(logits: torch.FloatTensor, generator: Optional[torch.Generator
     return noised
 
 
-def alpha_schedules(num_diffusion_timesteps: int, a_cumulative_start=0.99999, a_cumulative_end=0.000009):
+def alpha_schedules(num_diffusion_timesteps: int, alpha_cum_start=0.99999, alpha_cum_end=0.000009):
     """
     Cumulative and non-cumulative alpha schedules.
 
     See section 4.1.
     """
     att = (
-        np.arange(0, num_diffusion_timesteps) / (num_diffusion_timesteps - 1) * (a_cumulative_end - a_cumulative_start)
-        + a_cumulative_start
+        np.arange(0, num_diffusion_timesteps) / (num_diffusion_timesteps - 1) * (alpha_cum_end - alpha_cum_start)
+        + alpha_cum_start
     )
     att = np.concatenate(([1], att))
     at = att[1:] / att[:-1]
@@ -71,15 +71,15 @@ def alpha_schedules(num_diffusion_timesteps: int, a_cumulative_start=0.99999, a_
     return at, att
 
 
-def gamma_schedules(num_diffusion_timesteps: int, c_cumulative_start=0.000009, c_cumulative_end=0.99999):
+def gamma_schedules(num_diffusion_timesteps: int, gamma_cum_start=0.000009, gamma_cum_end=0.99999):
     """
     Cumulative and non-cumulative gamma schedules.
 
     See section 4.1.
     """
     ctt = (
-        np.arange(0, num_diffusion_timesteps) / (num_diffusion_timesteps - 1) * (c_cumulative_end - c_cumulative_start)
-        + c_cumulative_start
+        np.arange(0, num_diffusion_timesteps) / (num_diffusion_timesteps - 1) * (gamma_cum_end - gamma_cum_start)
+        + gamma_cum_start
     )
     ctt = np.concatenate(([0], ctt))
     one_minus_ctt = 1 - ctt
@@ -104,47 +104,43 @@ class VQDiffusionScheduler(SchedulerMixin, ConfigMixin):
     For more details, see the original paper: https://arxiv.org/abs/2111.14822
 
     Args:
-        num_embed (`int`):
+        num_vec_classes (`int`):
             The number of classes of the vector embeddings of the latent pixels. Includes the class for the masked
             latent pixel.
 
         num_train_timesteps (`int`):
             Number of diffusion steps used to train the model.
 
-        a_cumulative_start (`float`):
+        alpha_cum_start (`float`):
             The starting cumulative alpha value.
 
-        a_cumulative_end (`float`):
+        alpha_cum_end (`float`):
             The ending cumulative alpha value.
 
-        c_cumulative_start (`float`):
+        gamma_cum_start (`float`):
             The starting cumulative gamma value.
 
-        c_cumulative_end (`float`):
+        gamma_cum_end (`float`):
             The ending cumulative gamma value.
     """
 
     @register_to_config
     def __init__(
         self,
-        num_embed: int,
+        num_vec_classes: int,
         num_train_timesteps: int = 100,
-        a_cumulative_start: float = 0.99999,
-        a_cumulative_end: float = 0.000009,
-        c_cumulative_start: float = 0.000009,
-        c_cumulative_end: float = 0.99999,
+        alpha_cum_start: float = 0.99999,
+        alpha_cum_end: float = 0.000009,
+        gamma_cum_start: float = 0.000009,
+        gamma_cum_end: float = 0.99999,
     ):
-        self.num_embed = num_embed
+        self.num_embed = num_vec_classes
 
         # By convention, the index for the mask class is the last class index
         self.mask_class = self.num_embed - 1
 
-        at, att = alpha_schedules(
-            num_train_timesteps, a_cumulative_start=a_cumulative_start, a_cumulative_end=a_cumulative_end
-        )
-        ct, ctt = gamma_schedules(
-            num_train_timesteps, c_cumulative_start=c_cumulative_start, c_cumulative_end=c_cumulative_end
-        )
+        at, att = alpha_schedules(num_train_timesteps, alpha_cum_start=alpha_cum_start, alpha_cum_end=alpha_cum_end)
+        ct, ctt = gamma_schedules(num_train_timesteps, gamma_cum_start=gamma_cum_start, gamma_cum_end=gamma_cum_end)
 
         num_non_mask_classes = self.num_embed - 1
         bt = (1 - at - ct) / num_non_mask_classes

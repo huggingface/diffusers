@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from typing import List, Optional
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -47,7 +47,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
     image do not contain a prediction for the masked pixel as the unnoised image cannot be masked.
 
     Parameters:
-        num_attentinon_heads (:obj:`int`): The number of heads to use for multi-head attention.
+        num_attention_heads (:obj:`int`): The number of heads to use for multi-head attention.
         attention_head_dim (:obj:`int`): The number of channels in each head.
         in_channels (:
             obj:`int`, *optional*): Pass if the input is continuous. The number of channels in the input and output.
@@ -66,8 +66,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         num_vector_embeds (:
             obj:`int`, *optional*): Pass if the input is discrete. The number of classes of the vector embeddings of
             the latent pixels. Includes the class for the masked latent pixel.
-        ff_layers (:obj:,`List[Literal["Dropout", "Linear", "ApproximateGELU", "GEGLU"]]` *optional*):
-            The layers to use in the TransformerBlocks' FeedForward block.
+        activation_fn (:obj:`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
         num_embeds_ada_norm (:obj: `int`, *optional*): Pass if at least one of the norm_layers is `AdaLayerNorm`.
             The number of diffusion steps used during training. Note that this is fixed at training time as it is used
             to learn a number of embeddings that are added to the hidden states. During inference, you can denoise for
@@ -79,7 +78,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        num_attentinon_heads: int = 16,
+        num_attention_heads: int = 16,
         attention_head_dim: int = 88,
         in_channels: Optional[int] = None,
         num_layers: int = 1,
@@ -89,13 +88,13 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         attention_bias: bool = False,
         sample_size: Optional[int] = None,
         num_vector_embeds: Optional[int] = None,
-        ff_layers: Optional[List[str]] = None,
+        activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
     ):
         super().__init__()
-        self.num_attentinon_heads = num_attentinon_heads
+        self.num_attention_heads = num_attention_heads
         self.attention_head_dim = attention_head_dim
-        inner_dim = num_attentinon_heads * attention_head_dim
+        inner_dim = num_attention_heads * attention_head_dim
 
         # 1. Transformer2DModel can process both standard continous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
         # Define whether input is continuous or discrete depending on configuration
@@ -137,11 +136,11 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             [
                 BasicTransformerBlock(
                     inner_dim,
-                    num_attentinon_heads,
+                    num_attention_heads,
                     attention_head_dim,
                     dropout=dropout,
                     cross_attention_dim=cross_attention_dim,
-                    ff_layers=ff_layers,
+                    activation_fn=activation_fn,
                     num_embeds_ada_norm=num_embeds_ada_norm,
                     attention_bias=attention_bias,
                 )
@@ -304,13 +303,11 @@ class BasicTransformerBlock(nn.Module):
 
     Parameters:
         dim (:obj:`int`): The number of channels in the input and output.
-        num_attentinon_heads (:obj:`int`): The number of heads to use for multi-head attention.
+        num_attention_heads (:obj:`int`): The number of heads to use for multi-head attention.
         attention_head_dim (:obj:`int`): The number of channels in each head.
         dropout (:obj:`float`, *optional*, defaults to 0.0): The dropout probability to use.
         cross_attention_dim (:obj:`int`, *optional*): The size of the context vector for cross attention.
-        gated_ff (:obj:`bool`, *optional*, defaults to :obj:`False`): Whether to use a gated feed-forward network.
-        ff_layers (:obj:,`List[Literal["Dropout", "Linear", "ApproximateGELU", "GEGLU"]]` *optional*):
-            The layers to use in the FeedForward block.
+        activation_fn (:obj:`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
         num_embeds_ada_norm (:
             obj: `int`, *optional*): The number of diffusion steps used during training. See `Transformer2DModel`.
         attention_bias (:
@@ -321,28 +318,27 @@ class BasicTransformerBlock(nn.Module):
     def __init__(
         self,
         dim: int,
-        num_attentinon_heads: int,
+        num_attention_heads: int,
         attention_head_dim: int,
         dropout=0.0,
         cross_attention_dim: Optional[int] = None,
-        gated_ff: bool = True,
-        ff_layers: Optional[List[str]] = None,
+        activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
         attention_bias: bool = False,
     ):
         super().__init__()
         self.attn1 = CrossAttention(
             query_dim=dim,
-            heads=num_attentinon_heads,
+            heads=num_attention_heads,
             dim_head=attention_head_dim,
             dropout=dropout,
             bias=attention_bias,
         )  # is a self-attention
-        self.ff = FeedForward(dim, dropout=dropout, glu=gated_ff, layers=ff_layers)
+        self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn)
         self.attn2 = CrossAttention(
             query_dim=dim,
             cross_attention_dim=cross_attention_dim,
-            heads=num_attentinon_heads,
+            heads=num_attention_heads,
             dim_head=attention_head_dim,
             dropout=dropout,
             bias=attention_bias,
@@ -560,14 +556,8 @@ class FeedForward(nn.Module):
         dim (:obj:`int`): The number of channels in the input.
         dim_out (:obj:`int`, *optional*): The number of channels in the output. If not given, defaults to `dim`.
         mult (:obj:`int`, *optional*, defaults to 4): The multiplier to use for the hidden dimension.
-        glu (:obj:`bool`, *optional*, defaults to :obj:`False`): Whether to use GLU activation.
         dropout (:obj:`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        layers (:obj:,`List[Literal["Dropout", "Linear", "ApproximateGELU", "GEGLU"]]` *optional*):
-            The list of layers to use. Note that the list must contain exactly two dimension changing layers (Linear
-            and GEGLU) but may contain as many non-dimension changing layers as you want (Dropout and ApproximateGELU).
-            The first dimension changing layer will project from the input dimension to the hidden dimension. The
-            second dimension changing layer will project from the hidden dimension to the output dimension. Defaults to
-            `["GEGLU", "Dropout", "Linear"]`.
+        activation_fn (:obj:`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
     """
 
     def __init__(
@@ -575,37 +565,25 @@ class FeedForward(nn.Module):
         dim: int,
         dim_out: Optional[int] = None,
         mult: int = 4,
-        glu: bool = False,
         dropout: float = 0.0,
-        layers: Optional[List[str]] = None,
+        activation_fn: str = "geglu",
     ):
         super().__init__()
         inner_dim = int(dim * mult)
         dim_out = dim_out if dim_out is not None else dim
+
+        if activation_fn == "geglu":
+            geglu = GEGLU(dim, inner_dim)
+        elif activation_fn == "geglu-approximate":
+            geglu = ApproximateGELU(dim, inner_dim)
+
         self.net = nn.ModuleList([])
-
-        layers = ["GEGLU", "Dropout", "Linear"] if layers is None else layers
-
-        dim_idx = 0
-        dims = [[dim, inner_dim], [inner_dim, dim_out]]
-
-        error_string = "FeedForward must have exactly two dimension changing layers (Linear and GEGLU)."
-
-        for layer in layers:
-            if layer == "Dropout":
-                self.net.append(nn.Dropout(dropout))
-            elif layer == "Linear":
-                assert dim_idx < 2, f"Too many dimension changes. {error_string}"
-                self.net.append(nn.Linear(*dims[dim_idx]))
-                dim_idx += 1
-            elif layer == "ApproximateGELU":
-                self.net.append(ApproximateGELU())
-            elif layer == "GEGLU":
-                assert dim_idx < 2, f"Too many dimension changes. {error_string}"
-                self.net.append(GEGLU(*dims[dim_idx]))
-                dim_idx += 1
-
-        assert dim_idx == 2, f"Too few dimension changes. {error_string}"
+        # project in
+        self.net.append(geglu)
+        # project dropout
+        self.net.append(nn.Dropout(dropout))
+        # project out
+        self.net.append(nn.Linear(inner_dim, dim_out))
 
     def forward(self, hidden_states):
         for module in self.net:
@@ -645,12 +623,12 @@ class ApproximateGELU(nn.Module):
     For more details, see section 2: https://arxiv.org/abs/1606.08415
     """
 
-    def __init__(self):
+    def __init__(self, dim_in: int, dim_out: int):
         super().__init__()
-
-    #        self.linear = nn.Linear(jk
+        self.proj = nn.Linear(dim_in, dim_out)
 
     def forward(self, x):
+        x = self.proj(x)
         return x * torch.sigmoid(1.702 * x)
 
 

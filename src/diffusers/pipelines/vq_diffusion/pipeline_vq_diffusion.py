@@ -200,7 +200,7 @@ class VQDiffusionPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, x_t)
 
-        embedding_channels = self.vqvae.quantize.e_dim
+        embedding_channels = self.vqvae.config.vq_embed_dim
         embeddings_shape = (batch_size, self.transformer.height, self.transformer.width, embedding_channels)
         embeddings = self.vqvae.quantize.get_codebook_entry(x_t, shape=embeddings_shape)
         image = self.vqvae.decode(embeddings, force_not_quantize=True).sample

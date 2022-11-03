@@ -101,7 +101,7 @@ def vqvae_model_from_original_config(original_config):
         latent_channels=latent_channels,
         num_vq_embeddings=num_vq_embeddings,
         norm_num_groups=norm_num_groups,
-        e_dim=e_dim,
+        vq_embed_dim=e_dim,
     )
 
     return model
@@ -506,25 +506,26 @@ def transformer_model_from_original_config(
 
     height = original_transformer_config["content_spatial_size"][0]
     width = original_transformer_config["content_spatial_size"][1]
+
+    assert width == height, "width has to be equal to height"
     dropout = original_transformer_config["resid_pdrop"]
     num_embeds_ada_norm = original_diffusion_config["diffusion_step"]
 
-    model = Transformer2DModel(
-        n_heads=n_heads,
-        d_head=d_head,
-        depth=depth,
-        context_dim=context_dim,
-        discrete=True,
-        num_embed=num_embed,
-        height=height,
-        width=width,
-        dropout=dropout,
-        num_embeds_ada_norm=num_embeds_ada_norm,
-        ff_layers=["Linear", "ApproximateGELU", "Linear", "Dropout"],
-        norm_layers=["AdaLayerNorm", "AdaLayerNorm", "LayerNorm"],
-        attention_bias=True,
-    )
+    model_kwargs = {
+        "attention_bias": True,
+        "cross_attention_dim": context_dim,
+        "attention_head_dim": d_head,
+        "num_layers": depth,
+        "dropout": dropout,
+        "num_attention_heads": n_heads,
+        "num_vector_embeds": num_embed,
+        "num_embeds_ada_norm": num_embeds_ada_norm,
+        "norm_num_groups": 32,
+        "sample_size": width,
+        "activation_fn": "geglu-approximate",
+    }
 
+    model = Transformer2DModel(**model_kwargs)
     return model
 
 
@@ -676,8 +677,8 @@ def transformer_attention_to_diffusers_checkpoint(checkpoint, *, diffusers_atten
 
 def transformer_feedforward_to_diffusers_checkpoint(checkpoint, *, diffusers_feedforward_prefix, feedforward_prefix):
     return {
-        f"{diffusers_feedforward_prefix}.net.0.weight": checkpoint[f"{feedforward_prefix}.0.weight"],
-        f"{diffusers_feedforward_prefix}.net.0.bias": checkpoint[f"{feedforward_prefix}.0.bias"],
+        f"{diffusers_feedforward_prefix}.net.0.proj.weight": checkpoint[f"{feedforward_prefix}.0.weight"],
+        f"{diffusers_feedforward_prefix}.net.0.proj.bias": checkpoint[f"{feedforward_prefix}.0.bias"],
         f"{diffusers_feedforward_prefix}.net.2.weight": checkpoint[f"{feedforward_prefix}.2.weight"],
         f"{diffusers_feedforward_prefix}.net.2.bias": checkpoint[f"{feedforward_prefix}.2.bias"],
     }
@@ -865,7 +866,7 @@ if __name__ == "__main__":
 
     scheduler_model = VQDiffusionScheduler(
         # the scheduler has the same number of embeddings as the transformer
-        num_embed=transformer_model.num_embed
+        num_vec_classes=transformer_model.num_vector_embeds
     )
 
     # done scheduler
