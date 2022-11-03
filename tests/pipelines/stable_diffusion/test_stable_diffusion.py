@@ -280,7 +280,6 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
         )
-        sd_pipe.save_pretrained("./dummy-stable-diffusion")
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
