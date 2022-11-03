@@ -2,7 +2,6 @@ import argparse
 import json
 import os
 
-import numpy as np
 import torch
 
 from diffusers import DDIMPipeline, DDIMScheduler, DDPMPipeline

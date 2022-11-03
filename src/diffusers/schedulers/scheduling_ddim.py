@@ -210,8 +210,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
             substeps_mode (`str`, *optional*, defaults to "linear"):
-                How the steps are selected in the DDIM sampler.
-                When "linear", the selected steps are linearly spaced.
+                How the steps are selected in the DDIM sampler. When "linear", the selected steps are linearly spaced.
                 When quadratic, the step size grows with decreasing t, such that for noisier x_t, the steps are larger.
 
         """

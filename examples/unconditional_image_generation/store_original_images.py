@@ -1,18 +1,12 @@
 import argparse
 import os
 
-import torch
-
-import PIL.Image
 from datasets import load_dataset
 from torchvision.transforms import (
     CenterCrop,
     Compose,
     InterpolationMode,
-    Normalize,
-    RandomHorizontalFlip,
     Resize,
-    ToTensor,
 )
 from tqdm import tqdm
 

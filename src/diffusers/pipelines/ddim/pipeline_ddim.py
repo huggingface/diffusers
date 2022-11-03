@@ -73,8 +73,7 @@ class DDIMPipeline(DiffusionPipeline):
             predict_epsilon (`bool`, *optional*, defaults to True):
                 Whether the Unet model should be used to predict eps (as opposed to x0).
             substeps_mode (`str`, *optional*, defaults to "linear"):
-                How the steps are selected in the DDIM sampler.
-                When "linear", the selected steps are linearly spaced.
+                How the steps are selected in the DDIM sampler. When "linear", the selected steps are linearly spaced.
                 When quadratic, the step size grows with decreasing t, such that for noisier x_t, the steps are larger.
 
         Returns:
