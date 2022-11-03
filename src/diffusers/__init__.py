@@ -18,7 +18,7 @@ from .utils import logging
 
 if is_torch_available():
     from .modeling_utils import ModelMixin
-    from .models import AutoencoderKL, UNet1DModel, UNet2DConditionModel, UNet2DModel, VQModel
+    from .models import AutoencoderKL, Transformer2DModel, UNet1DModel, UNet2DConditionModel, UNet2DModel, VQModel
     from .optimization import (
         get_constant_schedule,
         get_constant_schedule_with_warmup,
@@ -38,6 +38,7 @@ if is_torch_available():
         PNDMPipeline,
         RePaintPipeline,
         ScoreSdeVePipeline,
+        VQDiffusionPipeline,
     )
     from .schedulers import (
         DDIMScheduler,
@@ -50,6 +51,7 @@ if is_torch_available():
         RePaintScheduler,
         SchedulerMixin,
         ScoreSdeVeScheduler,
+        VQDiffusionScheduler,
     )
     from .training_utils import EMAModel
 else:

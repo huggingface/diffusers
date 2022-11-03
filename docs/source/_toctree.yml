@@ -96,6 +96,8 @@
       title: "Stochastic Karras VE"
     - local: api/pipelines/dance_diffusion
       title: "Dance Diffusion"
+    - local: api/pipelines/vq_diffusion
+      title: "VQ Diffusion"
     - local: api/pipelines/repaint
       title: "RePaint"
     title: "Pipelines"
