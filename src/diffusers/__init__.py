@@ -17,12 +17,11 @@ from .onnx_utils import OnnxRuntimeModel
 from .utils import logging
 
 
+# This will create an extra dummy file "dummy_torch_and_accelerate_objects.py"
+# TODO: (patil-suraj, anton-l) maybe import everything under is_torch_and_accelerate_available
 if is_torch_available() and not is_accelerate_available():
-    raise ImportError(
-        "Please install the `accelerate` library to use Diffusers with PyTorch. "
-        "You can do so by running `pip install diffusers[torch]`. Or if torch is already installed, "
-        "you can run `pip install accelerate`."
-    )
+    error_msg = "Please install the `accelerate` library to use Diffusers with PyTorch. You can do so by running `pip install diffusers[torch]`. Or if torch is already installed, you can run `pip install accelerate`."  # noqa: E501
+    raise ImportError(error_msg)
 
 
 if is_torch_available():
