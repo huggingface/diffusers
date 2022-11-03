@@ -164,6 +164,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
             if sub_model is None:
                 # edge case for saving a pipeline with safety_checker=None
                 continue
+
             model_cls = sub_model.__class__
 
             save_method_name = None
