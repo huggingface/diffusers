@@ -2,12 +2,7 @@ import argparse
 import os
 
 from datasets import load_dataset
-from torchvision.transforms import (
-    CenterCrop,
-    Compose,
-    InterpolationMode,
-    Resize,
-)
+from torchvision.transforms import CenterCrop, Compose, InterpolationMode, Resize
 from tqdm import tqdm
 
 
