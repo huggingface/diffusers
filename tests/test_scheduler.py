@@ -91,9 +91,9 @@ class SchedulerCommonTest(unittest.TestCase):
             scheduler = scheduler_class(**scheduler_config)
 
             if scheduler_class == VQDiffusionScheduler:
-                num_embed = scheduler_config["num_embed"]
-                sample = self.dummy_sample(num_embed)
-                model = self.dummy_model(num_embed)
+                num_vec_classes = scheduler_config["num_vec_classes"]
+                sample = self.dummy_sample(num_vec_classes)
+                model = self.dummy_model(num_vec_classes)
                 residual = model(sample, time_step)
             else:
                 sample = self.dummy_sample
@@ -134,9 +134,9 @@ class SchedulerCommonTest(unittest.TestCase):
             scheduler = scheduler_class(**scheduler_config)
 
             if scheduler_class == VQDiffusionScheduler:
-                num_embed = scheduler_config["num_embed"]
-                sample = self.dummy_sample(num_embed)
-                model = self.dummy_model(num_embed)
+                num_vec_classes = scheduler_config["num_vec_classes"]
+                sample = self.dummy_sample(num_vec_classes)
+                model = self.dummy_model(num_vec_classes)
                 residual = model(sample, time_step)
             else:
                 sample = self.dummy_sample
@@ -176,9 +176,9 @@ class SchedulerCommonTest(unittest.TestCase):
             scheduler = scheduler_class(**scheduler_config)
 
             if scheduler_class == VQDiffusionScheduler:
-                num_embed = scheduler_config["num_embed"]
-                sample = self.dummy_sample(num_embed)
-                model = self.dummy_model(num_embed)
+                num_vec_classes = scheduler_config["num_vec_classes"]
+                sample = self.dummy_sample(num_vec_classes)
+                model = self.dummy_model(num_vec_classes)
                 residual = model(sample, timestep)
             else:
                 sample = self.dummy_sample
@@ -221,9 +221,9 @@ class SchedulerCommonTest(unittest.TestCase):
             scheduler = scheduler_class(**scheduler_config)
 
             if scheduler_class == VQDiffusionScheduler:
-                num_embed = scheduler_config["num_embed"]
-                sample = self.dummy_sample(num_embed)
-                model = self.dummy_model(num_embed)
+                num_vec_classes = scheduler_config["num_vec_classes"]
+                sample = self.dummy_sample(num_vec_classes)
+                model = self.dummy_model(num_vec_classes)
                 residual = model(sample, timestep_0)
             else:
                 sample = self.dummy_sample
@@ -282,9 +282,9 @@ class SchedulerCommonTest(unittest.TestCase):
             scheduler = scheduler_class(**scheduler_config)
 
             if scheduler_class == VQDiffusionScheduler:
-                num_embed = scheduler_config["num_embed"]
-                sample = self.dummy_sample(num_embed)
-                model = self.dummy_model(num_embed)
+                num_vec_classes = scheduler_config["num_vec_classes"]
+                sample = self.dummy_sample(num_vec_classes)
+                model = self.dummy_model(num_vec_classes)
                 residual = model(sample, timestep)
             else:
                 sample = self.dummy_sample
@@ -1281,19 +1281,19 @@ class VQDiffusionSchedulerTest(SchedulerCommonTest):
 
     def get_scheduler_config(self, **kwargs):
         config = {
-            "num_embed": 4097,
+            "num_vec_classes": 4097,
             "num_train_timesteps": 100,
         }
 
         config.update(**kwargs)
         return config
 
-    def dummy_sample(self, num_embed):
+    def dummy_sample(self, num_vec_classes):
         batch_size = 4
         height = 8
         width = 8
 
-        sample = torch.randint(0, num_embed, (batch_size, height * width))
+        sample = torch.randint(0, num_vec_classes, (batch_size, height * width))
 
         return sample
 
@@ -1301,10 +1301,10 @@ class VQDiffusionSchedulerTest(SchedulerCommonTest):
     def dummy_sample_deter(self):
         assert False
 
-    def dummy_model(self, num_embed):
+    def dummy_model(self, num_vec_classes):
         def model(sample, t, *args):
             batch_size, num_latent_pixels = sample.shape
-            logits = torch.rand((batch_size, num_embed - 1, num_latent_pixels))
+            logits = torch.rand((batch_size, num_vec_classes - 1, num_latent_pixels))
             return_value = F.log_softmax(logits.double(), dim=1).float()
             return return_value
 
@@ -1314,9 +1314,9 @@ class VQDiffusionSchedulerTest(SchedulerCommonTest):
         for timesteps in [2, 5, 100, 1000]:
             self.check_over_configs(num_train_timesteps=timesteps)
 
-    def test_num_embed(self):
-        for num_embed in [5, 100, 1000, 4000]:
-            self.check_over_configs(num_embed=num_embed)
+    def test_num_vec_classes(self):
+        for num_vec_classes in [5, 100, 1000, 4000]:
+            self.check_over_configs(num_vec_classes=num_vec_classes)
 
     def test_time_indices(self):
         for t in [0, 50, 99]:
