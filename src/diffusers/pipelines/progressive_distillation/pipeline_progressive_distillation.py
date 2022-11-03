@@ -63,12 +63,12 @@ class DistillationPipeline(DiffusionPipeline):
         teacher_scheduler = DDPMScheduler(
             num_train_timesteps=n_teacher_trainsteps,
             beta_schedule="squaredcos_cap_v2",
-            variance_type="fixed_small_log",
+            variance_type="v_diffusion",
         )
         student_scheduler = DDPMScheduler(
             num_train_timesteps=n_teacher_trainsteps // 2,
             beta_schedule="squaredcos_cap_v2",
-            variance_type="fixed_small_log",
+            variance_type="v_diffusion",
         )
 
         # Initialize the student model as a direct copy of the teacher
@@ -76,14 +76,15 @@ class DistillationPipeline(DiffusionPipeline):
         student.load_state_dict(teacher.state_dict())
         student = accelerator.prepare(student)
         student.train()
+        teacher.eval()
 
         # Setup the optimizer for the student
         optimizer = torch.optim.AdamW(
             student.parameters(),
             lr=lr,
-            betas=(adam_beta1, adam_beta2),
-            weight_decay=adam_weight_decay,
-            eps=adam_epsilon,
+            # betas=(adam_beta1, adam_beta2),
+            # weight_decay=adam_weight_decay,
+            # eps=adam_epsilon,
         )
         lr_scheduler = get_scheduler(
             "linear",
@@ -115,19 +116,19 @@ class DistillationPipeline(DiffusionPipeline):
         global_step = 0
 
         # run pipeline in inference (sample random noise and denoise) on our teacher model as a baseline
-        pipeline = DDPMPipeline(
-            unet=teacher,
-            scheduler=teacher_scheduler,
-        )
+        # pipeline = DDPMPipeline(
+        #     unet=teacher,
+        #     scheduler=teacher_scheduler,
+        # )
 
-        images = pipeline(batch_size=4, output_type="numpy", generator=torch.manual_seed(0)).images
+        # images = pipeline(batch_size=4, output_type="numpy", generator=torch.manual_seed(0)).images
 
-        # denormalize the images and save to tensorboard
-        images_processed = (images * 255).round().astype("uint8")
-        for sample_number, img in enumerate(images_processed):
-            img = Image.fromarray(img)
+        # # denormalize the images and save to tensorboard
+        # images_processed = (images * 255).round().astype("uint8")
+        # for sample_number, img in enumerate(images_processed):
+        #     img = Image.fromarray(img)
 
-            img.save(os.path.join(sample_path, f"{n_teacher_trainsteps}", f"baseline_sample_{sample_number}.png"))
+        #     img.save(os.path.join(sample_path, f"{n_teacher_trainsteps}", f"baseline_sample_{sample_number}.png"))
 
         # Train the student
         for epoch in range(epochs):
@@ -187,18 +188,18 @@ class DistillationPipeline(DiffusionPipeline):
                     loss = F.mse_loss(noise_pred * w, z_t_prime_2 * w)
                     accelerator.backward(loss)
 
-                if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(student.parameters(), 1.0)
-                optimizer.step()
-                lr_scheduler.step()
-                if use_ema:
-                    ema_model.step(student)
-                optimizer.zero_grad()
+                    if accelerator.sync_gradients:
+                        accelerator.clip_grad_norm_(student.parameters(), 1.0)
+                    optimizer.step()
+                    lr_scheduler.step()
+                    if use_ema:
+                        ema_model.step(student)
+                    optimizer.zero_grad()
 
-                # Checks if the accelerator has performed an optimization step behind the scenes
-                if accelerator.sync_gradients:
-                    progress_bar.update(1)
-                    global_step += 1
+                    # Checks if the accelerator has performed an optimization step behind the scenes
+                    if accelerator.sync_gradients:
+                        progress_bar.update(1)
+                        global_step += 1
 
                 logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
                 if use_ema:
@@ -211,7 +212,7 @@ class DistillationPipeline(DiffusionPipeline):
                     new_scheduler = DDPMScheduler(
                         num_train_timesteps=n_teacher_trainsteps // 2,
                         beta_schedule="squaredcos_cap_v2",
-                        variance_type="fixed_small_log",
+                        variance_type="v_diffusion",
                     )
                     pipeline = DDPMPipeline(
                         unet=accelerator.unwrap_model(ema_model.averaged_model if use_ema else student),
