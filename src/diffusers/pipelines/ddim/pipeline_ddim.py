@@ -102,6 +102,7 @@ class DDIMPipeline(DiffusionPipeline):
             extra_kwargs["use_clipped_model_output"] = use_clipped_model_output
 
         timesteps = self.scheduler.timesteps
+        timesteps = torch.cat([timesteps, -1 * torch.ones_like(timesteps)[:1]], 0)
         timepairs = list(zip(timesteps[:-1], timesteps[1:]))
         for t in self.progress_bar(timepairs):
             start_t, end_t = t
