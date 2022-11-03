@@ -128,3 +128,13 @@ Ancestral sampling with Euler method steps. Based on the original (k-diffusion)[
 Fast scheduler which often times generates good outputs with 20-30 steps.
 
 [[autodoc]] EulerAncestralDiscreteScheduler
+
+
+#### RePaint scheduler
+
+DDPM-based inpainting scheduler for unsupervised inpainting with extreme masks. 
+Intended for use with [`RePaintPipeline`].
+Based on the paper [RePaint: Inpainting using Denoising Diffusion Probabilistic Models](https://arxiv.org/abs/2201.09865) 
+and the original implementation by Andreas Lugmayr et al.: https://github.com/andreas128/RePaint
+
+[[autodoc]] RePaintScheduler

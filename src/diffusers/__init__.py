@@ -36,6 +36,7 @@ if is_torch_available():
         KarrasVePipeline,
         LDMPipeline,
         PNDMPipeline,
+        RePaintPipeline,
         ScoreSdeVePipeline,
     )
     from .schedulers import (
@@ -46,6 +47,7 @@ if is_torch_available():
         IPNDMScheduler,
         KarrasVeScheduler,
         PNDMScheduler,
+        RePaintScheduler,
         SchedulerMixin,
         ScoreSdeVeScheduler,
     )
