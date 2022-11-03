@@ -109,15 +109,13 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
     """
 
-    @classmethod
-    def from_ddpm_scheduler(cls, sched):
-        ret = cls(
-            num_train_timesteps=sched.num_train_timesteps,
-            trained_betas=sched.betas,
-            clip_sample=sched.clip_sample,
-        )
-        assert torch.allclose(sched.alphas_cumprod, ret.alphas_cumprod)
-        return ret
+    _compatible_classes = [
+        "PNDMScheduler",
+        "DDPMScheduler",
+        "LMSDiscreteScheduler",
+        "EulerDiscreteScheduler",
+        "EulerAncestralDiscreteScheduler",
+    ]
 
     _compatible_classes = [
         "PNDMScheduler",
