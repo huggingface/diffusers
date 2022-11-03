@@ -456,7 +456,7 @@ class Decoder(nn.Module):
 
         conditioning_emb = self.conditioning_emb(conditioning_emb)
 
-        assert conditioning_emb.shape == (batch, 1, self.emb_dim * 4)
+        assert conditioning_emb.shape == (batch, self.emb_dim * 4)
 
         seq_length = decoder_input_tokens.shape[1]
 
