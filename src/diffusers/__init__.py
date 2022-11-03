@@ -60,8 +60,8 @@ else:
 
 if is_torch_available() and is_transformers_available():
     from .pipelines import (
-        LDMTextToImagePipeline,
         LDMSuperResolutionPipeline,
+        LDMTextToImagePipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
         StableDiffusionInpaintPipelineLegacy,
