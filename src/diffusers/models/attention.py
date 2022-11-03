@@ -33,7 +33,7 @@ else:
 
 class Transformer2DModel(ModelMixin, ConfigMixin):
     """
-    Transformer block for image-like data. Takes either discrete (classes of vector embeddings) or continuous (actual
+    Transformer model for image-like data. Takes either discrete (classes of vector embeddings) or continuous (actual
     embeddings) inputs.
 
     When input is continuous: First, project the input (aka embedding) and reshape to b, t, d. Then apply standard
@@ -47,29 +47,27 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
     image do not contain a prediction for the masked pixel as the unnoised image cannot be masked.
 
     Parameters:
-        n_heads (:obj:`int`): The number of heads to use for multi-head attention.
-        d_head (:obj:`int`): The number of channels in each head.
+        num_attentinon_heads (:obj:`int`): The number of heads to use for multi-head attention.
+        attention_head_dim (:obj:`int`): The number of channels in each head.
         in_channels (:
             obj:`int`, *optional*): Pass if the input is continuous. The number of channels in the input and output.
-        depth (:obj:`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
+        num_layers (:obj:`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
         dropout (:obj:`float`, *optional*, defaults to 0.1): The dropout probability to use.
-        context_dim (:obj:`int`, *optional*): The number of context dimensions to use.
+        cross_attention_dim (:obj:`int`, *optional*): The number of context dimensions to use.
         discrete (:
             obj:`bool`, *optional*, defaults to False): Set to True if the input is discrete i.e. over classes of
-            vector embeddings for each pixel. See the beginning of the docstring for a more in-depth description.
+            vector embeddings for each pixel. See the beginning of the docstring for a more in-num_layers description.
         height (:obj:`int`, *optional*): Pass if the input is discrete. The height of the latent images.
             Note that this is fixed at training time as it is used for learning a number of position embeddings. See
             `ImagePositionalEmbeddings`.
         width (:obj:`int`, *optional*): Pass if the input is discrete. The width of the latent images.
             Note that this is fixed at training time as it is used for learning a number of position embeddings. See
             `ImagePositionalEmbeddings`.
-        num_embed (:
+        num_vector_embeds (:
             obj:`int`, *optional*): Pass if the input is discrete. The number of classes of the vector embeddings of
             the latent pixels. Includes the class for the masked latent pixel.
         ff_layers (:obj:,`List[Literal["Dropout", "Linear", "ApproximateGELU", "GEGLU"]]` *optional*):
             The layers to use in the TransformerBlocks' FeedForward block.
-        norm_layers (:obj: `List[Literal["LayerNorm", "AdaLayerNorm"]]`, *optional*):
-            The norm layers to use for the TransformerBlocks.
         num_embeds_ada_norm (:obj: `int`, *optional*): Pass if at least one of the norm_layers is `AdaLayerNorm`.
             The number of diffusion steps used during training. Note that this is fixed at training time as it is used
             to learn a number of embeddings that are added to the hidden states. During inference, you can denoise for
@@ -81,72 +79,82 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        n_heads: int,
-        d_head: int,
+        num_attentinon_heads: int = 16,
+        attention_head_dim: int = 88,
         in_channels: Optional[int] = None,
-        depth: int = 1,
+        num_layers: int = 1,
         dropout: float = 0.0,
-        num_groups: int = 32,
-        context_dim: Optional[int] = None,
-        discrete: bool = False,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        num_embed: Optional[int] = None,
+        norm_num_groups: int = 32,
+        cross_attention_dim: Optional[int] = None,
+        attention_bias: bool = False,
+        sample_size: Optional[int] = None,
+        num_vector_embeds: Optional[int] = None,
         ff_layers: Optional[List[str]] = None,
-        norm_layers: Optional[List[str]] = None,
         num_embeds_ada_norm: Optional[int] = None,
-        attention_bias: Optional[bool] = None,
     ):
         super().__init__()
-        self.n_heads = n_heads
-        self.d_head = d_head
-        inner_dim = n_heads * d_head
+        self.num_attentinon_heads = num_attentinon_heads
+        self.attention_head_dim = attention_head_dim
+        inner_dim = num_attentinon_heads * attention_head_dim
 
-        self.discrete = discrete
+        # 1. Transformer2DModel can process both standard continous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
+        # Define whether input is continuous or discrete depending on configuration
+        self.is_input_continuous = in_channels is not None
+        self.is_input_vectorized = num_vector_embeds is not None
 
-        if self.discrete:
-            assert height is not None, "Transformer2DModel over discrete input must provide height"
-            assert width is not None, "Transformer2DModel over discrete input must provide width"
-            assert num_embed is not None, "Transformer2DModel over discrete input must provide num_embed"
+        if self.is_input_continuous and self.is_input_vectorized:
+            raise ValueError(
+                f"Cannot define both `in_channels`: {in_channels} and `num_vector_embeds`: {num_vector_embeds}. Make"
+                " sure that either `in_channels` or `num_vector_embeds` is None."
+            )
+        elif not self.is_input_continuous and not self.is_input_vectorized:
+            raise ValueError(
+                f"Has to define either `in_channels`: {in_channels} or `num_vector_embeds`: {num_vector_embeds}. Make"
+                " sure that either `in_channels` or `num_vector_embeds` is not None."
+            )
 
-            self.height = height
-            self.width = width
-            self.num_embed = num_embed
+        # 2. Define input layers
+        if self.is_input_continuous:
+            self.in_channels = in_channels
+
+            self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
+            self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
+        elif self.is_input_vectorized:
+            assert sample_size is not None, "Transformer2DModel over discrete input must provide sample_size"
+            assert num_vector_embeds is not None, "Transformer2DModel over discrete input must provide num_embed"
+
+            self.height = sample_size
+            self.width = sample_size
+            self.num_vector_embeds = num_vector_embeds
             self.num_latent_pixels = self.height * self.width
 
             self.latent_image_embedding = ImagePositionalEmbeddings(
-                num_embed=self.num_embed, embed_dim=inner_dim, height=self.height, width=self.width
+                num_embed=num_vector_embeds, embed_dim=inner_dim, height=self.height, width=self.width
             )
-        else:
-            assert in_channels is not None, "Transformer2DModel over continuous input must provide in_channels"
 
-            self.in_channels = in_channels
-
-            self.norm = torch.nn.GroupNorm(num_groups=num_groups, num_channels=in_channels, eps=1e-6, affine=True)
-            self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
-
+        # 3. Define transformers blocks
         self.transformer_blocks = nn.ModuleList(
             [
                 BasicTransformerBlock(
                     inner_dim,
-                    n_heads,
-                    d_head,
+                    num_attentinon_heads,
+                    attention_head_dim,
                     dropout=dropout,
-                    context_dim=context_dim,
+                    cross_attention_dim=cross_attention_dim,
                     ff_layers=ff_layers,
                     num_embeds_ada_norm=num_embeds_ada_norm,
                     attention_bias=attention_bias,
-                    norm_layers=norm_layers,
                 )
-                for d in range(depth)
+                for d in range(num_layers)
             ]
         )
 
-        if self.discrete:
-            self.norm_out = nn.LayerNorm(inner_dim)
-            self.out = nn.Linear(inner_dim, self.num_embed - 1)
-        else:
+        # 4. Define output layers
+        if self.is_input_continuous:
             self.proj_out = nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
+        elif self.is_input_vectorized:
+            self.norm_out = nn.LayerNorm(inner_dim)
+            self.out = nn.Linear(inner_dim, self.num_vector_embeds - 1)
 
     def _set_attention_slice(self, slice_size):
         for block in self.transformer_blocks:
@@ -169,34 +177,36 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 If discrete, returns probability distributions for the unnoised latent pixels. Note that it does not
                 output a prediction for the masked class.
         """
-        if self.discrete:
-            hidden_states = self.latent_image_embedding(hidden_states)
-
-            for block in self.transformer_blocks:
-                hidden_states = block(hidden_states, context=context, timestep=timestep)
-
-            logits = self.out(self.norm_out(hidden_states))
-            # (batch, self.num_embed - 1, self.num_latent_pixels)
-            logits = logits.permute(0, 2, 1)
-
-            # log(p(x_0))
-            return_value = F.log_softmax(logits.double(), dim=1).float()
-        else:
+        # 1. Input
+        if self.is_input_continuous:
             batch, channel, height, weight = hidden_states.shape
             residual = hidden_states
             hidden_states = self.norm(hidden_states)
             hidden_states = self.proj_in(hidden_states)
             inner_dim = hidden_states.shape[1]
             hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * weight, inner_dim)
+        elif self.is_input_vectorized:
+            hidden_states = self.latent_image_embedding(hidden_states)
 
-            for block in self.transformer_blocks:
-                hidden_states = block(hidden_states, context=context, timestep=timestep)
+        # 2. Blocks
+        for block in self.transformer_blocks:
+            hidden_states = block(hidden_states, context=context, timestep=timestep)
 
+        # 3. Output
+        if self.is_input_continuous:
             hidden_states = hidden_states.reshape(batch, height, weight, inner_dim).permute(0, 3, 1, 2)
             hidden_states = self.proj_out(hidden_states)
-            return_value = hidden_states + residual
+            output = hidden_states + residual
+        elif self.is_input_vectorized:
+            hidden_states = self.norm_out(hidden_states)
+            logits = self.out(hidden_states)
+            # (batch, self.num_vector_embeds - 1, self.num_latent_pixels)
+            logits = logits.permute(0, 2, 1)
 
-        return return_value
+            # log(p(x_0))
+            output = F.log_softmax(logits.double(), dim=1).float()
+
+        return output
 
     def _set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
         for block in self.transformer_blocks:
@@ -214,7 +224,7 @@ class AttentionBlock(nn.Module):
         channels (:obj:`int`): The number of channels in the input and output.
         num_head_channels (:obj:`int`, *optional*):
             The number of channels in each head. If None, then `num_heads` = 1.
-        num_groups (:obj:`int`, *optional*, defaults to 32): The number of groups to use for group norm.
+        norm_num_groups (:obj:`int`, *optional*, defaults to 32): The number of groups to use for group norm.
         rescale_output_factor (:obj:`float`, *optional*, defaults to 1.0): The factor to rescale the output by.
         eps (:obj:`float`, *optional*, defaults to 1e-5): The epsilon value to use for group norm.
     """
@@ -223,7 +233,7 @@ class AttentionBlock(nn.Module):
         self,
         channels: int,
         num_head_channels: Optional[int] = None,
-        num_groups: int = 32,
+        norm_num_groups: int = 32,
         rescale_output_factor: float = 1.0,
         eps: float = 1e-5,
     ):
@@ -232,7 +242,7 @@ class AttentionBlock(nn.Module):
 
         self.num_heads = channels // num_head_channels if num_head_channels is not None else 1
         self.num_head_size = num_head_channels
-        self.group_norm = nn.GroupNorm(num_channels=channels, num_groups=num_groups, eps=eps, affine=True)
+        self.group_norm = nn.GroupNorm(num_channels=channels, num_groups=norm_num_groups, eps=eps, affine=True)
 
         # define q,k,v as linear layers
         self.query = nn.Linear(channels, channels)
@@ -294,70 +304,59 @@ class BasicTransformerBlock(nn.Module):
 
     Parameters:
         dim (:obj:`int`): The number of channels in the input and output.
-        n_heads (:obj:`int`): The number of heads to use for multi-head attention.
-        d_head (:obj:`int`): The number of channels in each head.
+        num_attentinon_heads (:obj:`int`): The number of heads to use for multi-head attention.
+        attention_head_dim (:obj:`int`): The number of channels in each head.
         dropout (:obj:`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        context_dim (:obj:`int`, *optional*): The size of the context vector for cross attention.
+        cross_attention_dim (:obj:`int`, *optional*): The size of the context vector for cross attention.
         gated_ff (:obj:`bool`, *optional*, defaults to :obj:`False`): Whether to use a gated feed-forward network.
-        checkpoint (:obj:`bool`, *optional*, defaults to :obj:`False`): Whether to use checkpointing.
         ff_layers (:obj:,`List[Literal["Dropout", "Linear", "ApproximateGELU", "GEGLU"]]` *optional*):
             The layers to use in the FeedForward block.
-        norm_layers (:obj: `List[Literal["LayerNorm", "AdaLayerNorm"]]`, *optional*):
-            The norm layers. Must be of length 3. Defaults to `["LayerNorm", "LayerNorm", "LayerNorm"]`
         num_embeds_ada_norm (:
             obj: `int`, *optional*): The number of diffusion steps used during training. See `Transformer2DModel`.
-        attention_bias (:obj: `bool`, *optional*): Configure if the attentions should contain a bias parameter.
+        attention_bias (:
+            obj: `bool`, *optional*, defaults to :obj:`False`): Configure if the attentions should contain a bias
+            parameter.
     """
 
     def __init__(
         self,
         dim: int,
-        n_heads: int,
-        d_head: int,
+        num_attentinon_heads: int,
+        attention_head_dim: int,
         dropout=0.0,
-        context_dim: Optional[int] = None,
+        cross_attention_dim: Optional[int] = None,
         gated_ff: bool = True,
-        checkpoint: bool = True,
         ff_layers: Optional[List[str]] = None,
-        norm_layers: Optional[List[str]] = None,
         num_embeds_ada_norm: Optional[int] = None,
-        attention_bias: Optional[bool] = None,
+        attention_bias: bool = False,
     ):
         super().__init__()
         self.attn1 = CrossAttention(
-            query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout, bias=attention_bias
+            query_dim=dim,
+            heads=num_attentinon_heads,
+            dim_head=attention_head_dim,
+            dropout=dropout,
+            bias=attention_bias,
         )  # is a self-attention
         self.ff = FeedForward(dim, dropout=dropout, glu=gated_ff, layers=ff_layers)
         self.attn2 = CrossAttention(
             query_dim=dim,
-            context_dim=context_dim,
-            heads=n_heads,
-            dim_head=d_head,
+            cross_attention_dim=cross_attention_dim,
+            heads=num_attentinon_heads,
+            dim_head=attention_head_dim,
             dropout=dropout,
             bias=attention_bias,
         )  # is self-attn if context is none
 
-        norm_layers = ["LayerNorm", "LayerNorm", "LayerNorm"] if norm_layers is None else norm_layers
-
-        assert len(norm_layers) == 3, "BasicTransformerBlock only supports 3 norm_layers"
-
-        for idx, norm_layer in enumerate(norm_layers):
-            if norm_layer == "LayerNorm":
-                norm_layer_ = nn.LayerNorm(dim)
-            elif norm_layer == "AdaLayerNorm":
-                assert (
-                    num_embeds_ada_norm is not None
-                ), "When using AdaLayerNorm, you must also pass num_embeds_ada_norm."
-                norm_layer_ = AdaLayerNorm(dim, num_embeds_ada_norm)
-
-            if idx == 0:
-                self.norm1 = norm_layer_
-            elif idx == 1:
-                self.norm2 = norm_layer_
-            elif idx == 2:
-                self.norm3 = norm_layer_
-
-        self.checkpoint = checkpoint
+        # layer norms
+        self.use_ada_layer_norm = num_embeds_ada_norm is not None
+        if self.use_ada_layer_norm:
+            self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm)
+            self.norm2 = AdaLayerNorm(dim, num_embeds_ada_norm)
+        else:
+            self.norm1 = nn.LayerNorm(dim)
+            self.norm2 = nn.LayerNorm(dim)
+        self.norm3 = nn.LayerNorm(dim)
 
     def _set_attention_slice(self, slice_size):
         self.attn1._slice_size = slice_size
@@ -390,13 +389,21 @@ class BasicTransformerBlock(nn.Module):
             self.attn2._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
 
     def forward(self, hidden_states, context=None, timestep=None):
-        norm1_kwargs = {"timestep": timestep} if self.norm1.__class__ == AdaLayerNorm else {}
-        norm2_kwargs = {"timestep": timestep} if self.norm2.__class__ == AdaLayerNorm else {}
-        norm3_kwargs = {"timestep": timestep} if self.norm3.__class__ == AdaLayerNorm else {}
+        # 1. Self-Attention
+        norm_hidden_states = (
+            self.norm1(hidden_states, timestep) if self.use_ada_layer_norm else self.norm1(hidden_states)
+        )
+        hidden_states = self.attn1(norm_hidden_states) + hidden_states
 
-        hidden_states = self.attn1(self.norm1(hidden_states, **norm1_kwargs)) + hidden_states
-        hidden_states = self.attn2(self.norm2(hidden_states, **norm2_kwargs), context=context) + hidden_states
-        hidden_states = self.ff(self.norm3(hidden_states, **norm3_kwargs)) + hidden_states
+        # 2. Cross-Attention
+        norm_hidden_states = (
+            self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm1(hidden_states)
+        )
+        hidden_states = self.attn2(norm_hidden_states, context=context) + hidden_states
+
+        # 3. Feed-forward
+        hidden_states = self.ff(self.norm3(hidden_states)) + hidden_states
+
         return hidden_states
 
 
@@ -406,7 +413,7 @@ class CrossAttention(nn.Module):
 
     Parameters:
         query_dim (:obj:`int`): The number of channels in the query.
-        context_dim (:obj:`int`, *optional*):
+        cross_attention_dim (:obj:`int`, *optional*):
             The number of channels in the context. If not given, defaults to `query_dim`.
         heads (:obj:`int`,  *optional*, defaults to 8): The number of heads to use for multi-head attention.
         dim_head (:obj:`int`,  *optional*, defaults to 64): The number of channels in each head.
@@ -418,15 +425,15 @@ class CrossAttention(nn.Module):
     def __init__(
         self,
         query_dim: int,
-        context_dim: Optional[int] = None,
+        cross_attention_dim: Optional[int] = None,
         heads: int = 8,
         dim_head: int = 64,
         dropout: float = 0.0,
-        bias=None,
+        bias=False,
     ):
         super().__init__()
         inner_dim = dim_head * heads
-        context_dim = context_dim if context_dim is not None else query_dim
+        cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
 
         self.scale = dim_head**-0.5
         self.heads = heads
@@ -436,11 +443,9 @@ class CrossAttention(nn.Module):
         self._slice_size = None
         self._use_memory_efficient_attention_xformers = False
 
-        bias = False if bias is None else bias
-
         self.to_q = nn.Linear(query_dim, inner_dim, bias=bias)
-        self.to_k = nn.Linear(context_dim, inner_dim, bias=bias)
-        self.to_v = nn.Linear(context_dim, inner_dim, bias=bias)
+        self.to_k = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
+        self.to_v = nn.Linear(cross_attention_dim, inner_dim, bias=bias)
 
         self.to_out = nn.ModuleList([])
         self.to_out.append(nn.Linear(inner_dim, query_dim))
@@ -642,6 +647,8 @@ class ApproximateGELU(nn.Module):
 
     def __init__(self):
         super().__init__()
+
+    #        self.linear = nn.Linear(jk
 
     def forward(self, x):
         return x * torch.sigmoid(1.702 * x)

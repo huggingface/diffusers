@@ -165,15 +165,15 @@ class VQDiffusionPipeline(DiffusionPipeline):
 
         latents_shape = (batch_size, self.transformer.num_latent_pixels)
         if latents is None:
-            mask_class = self.transformer.num_embed - 1
+            mask_class = self.transformer.num_vector_embeds - 1
             latents = torch.full(latents_shape, mask_class).to(self.device)
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
-            if (latents < 0).any() or (latents >= self.transformer.num_embed).any():
+            if (latents < 0).any() or (latents >= self.transformer.num_vector_embeds).any():
                 raise ValueError(
                     "Unexpected latents value(s). All latents be valid embedding indices i.e. in the range 0,"
-                    f" {self.transformer.num_embed - 1} (inclusive)."
+                    f" {self.transformer.num_vector_embeds - 1} (inclusive)."
                 )
             latents = latents.to(self.device)
 

@@ -273,7 +273,7 @@ class UNetMidBlock2D(nn.Module):
                     num_head_channels=attn_num_head_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
-                    num_groups=resnet_groups,
+                    norm_num_groups=resnet_groups,
                 )
             )
             resnets.append(
@@ -353,9 +353,9 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                     attn_num_head_channels,
                     in_channels // attn_num_head_channels,
                     in_channels=in_channels,
-                    depth=1,
-                    context_dim=cross_attention_dim,
-                    num_groups=resnet_groups,
+                    num_layers=1,
+                    cross_attention_dim=cross_attention_dim,
+                    norm_num_groups=resnet_groups,
                 )
             )
             resnets.append(
@@ -451,7 +451,7 @@ class AttnDownBlock2D(nn.Module):
                     num_head_channels=attn_num_head_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
-                    num_groups=resnet_groups,
+                    norm_num_groups=resnet_groups,
                 )
             )
 
@@ -534,9 +534,9 @@ class CrossAttnDownBlock2D(nn.Module):
                     attn_num_head_channels,
                     out_channels // attn_num_head_channels,
                     in_channels=out_channels,
-                    depth=1,
-                    context_dim=cross_attention_dim,
-                    num_groups=resnet_groups,
+                    num_layers=1,
+                    cross_attention_dim=cross_attention_dim,
+                    norm_num_groups=resnet_groups,
                 )
             )
         self.attentions = nn.ModuleList(attentions)
@@ -787,7 +787,7 @@ class AttnDownEncoderBlock2D(nn.Module):
                     num_head_channels=attn_num_head_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
-                    num_groups=resnet_groups,
+                    norm_num_groups=resnet_groups,
                 )
             )
 
@@ -1038,7 +1038,7 @@ class AttnUpBlock2D(nn.Module):
                     num_head_channels=attn_num_head_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
-                    num_groups=resnet_groups,
+                    norm_num_groups=resnet_groups,
                 )
             )
 
@@ -1117,9 +1117,9 @@ class CrossAttnUpBlock2D(nn.Module):
                     attn_num_head_channels,
                     out_channels // attn_num_head_channels,
                     in_channels=out_channels,
-                    depth=1,
-                    context_dim=cross_attention_dim,
-                    num_groups=resnet_groups,
+                    num_layers=1,
+                    cross_attention_dim=cross_attention_dim,
+                    norm_num_groups=resnet_groups,
                 )
             )
         self.attentions = nn.ModuleList(attentions)
@@ -1361,7 +1361,7 @@ class AttnUpDecoderBlock2D(nn.Module):
                     num_head_channels=attn_num_head_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
-                    num_groups=resnet_groups,
+                    norm_num_groups=resnet_groups,
                 )
             )
 
