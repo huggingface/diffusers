@@ -45,7 +45,7 @@ class VQDiffusionPipeline(DiffusionPipeline):
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
-        transformer (`Transformer2DModel`):
+        transformer ([`Transformer2DModel`]):
             Conditional transformer to denoise the encoded image latents.
         scheduler ([`VQDiffusionScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
@@ -115,8 +115,7 @@ class VQDiffusionPipeline(DiffusionPipeline):
                 The output format of the generated image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a
-                plain tuple.
+                Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
                 called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.

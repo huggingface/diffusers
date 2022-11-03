@@ -61,32 +61,26 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
     image do not contain a prediction for the masked pixel as the unnoised image cannot be masked.
 
     Parameters:
-        num_attention_heads (:obj:`int`): The number of heads to use for multi-head attention.
-        attention_head_dim (:obj:`int`): The number of channels in each head.
-        in_channels (:
-            obj:`int`, *optional*): Pass if the input is continuous. The number of channels in the input and output.
-        num_layers (:obj:`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
-        dropout (:obj:`float`, *optional*, defaults to 0.1): The dropout probability to use.
-        cross_attention_dim (:obj:`int`, *optional*): The number of context dimensions to use.
-        discrete (:
-            obj:`bool`, *optional*, defaults to False): Set to True if the input is discrete i.e. over classes of
-            vector embeddings for each pixel. See the beginning of the docstring for a more in-num_layers description.
-        height (:obj:`int`, *optional*): Pass if the input is discrete. The height of the latent images.
+        num_attention_heads (`int`, *optional*): The number of heads to use for multi-head attention.
+        attention_head_dim (`int`, *optional*): The number of channels in each head.
+        in_channels (`int`, *optional*):
+            Pass if the input is continuous. The number of channels in the input and output.
+        num_layers (`int`, *optional*, defaults to 1): The number of layers of Transformer blocks to use.
+        dropout (`float`, *optional*, defaults to 0.1): The dropout probability to use.
+        cross_attention_dim (`int`, *optional*): The number of context dimensions to use.
+        sample_size (`int`, *optional*): Pass if the input is discrete. The width of the latent images.
             Note that this is fixed at training time as it is used for learning a number of position embeddings. See
             `ImagePositionalEmbeddings`.
-        width (:obj:`int`, *optional*): Pass if the input is discrete. The width of the latent images.
-            Note that this is fixed at training time as it is used for learning a number of position embeddings. See
-            `ImagePositionalEmbeddings`.
-        num_vector_embeds (:
-            obj:`int`, *optional*): Pass if the input is discrete. The number of classes of the vector embeddings of
-            the latent pixels. Includes the class for the masked latent pixel.
-        activation_fn (:obj:`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
-        num_embeds_ada_norm (:obj: `int`, *optional*): Pass if at least one of the norm_layers is `AdaLayerNorm`.
+        num_vector_embeds (`int`, *optional*):
+            Pass if the input is discrete. The number of classes of the vector embeddings of the latent pixels.
+            Includes the class for the masked latent pixel.
+        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
+        num_embeds_ada_norm ( `int`, *optional*): Pass if at least one of the norm_layers is `AdaLayerNorm`.
             The number of diffusion steps used during training. Note that this is fixed at training time as it is used
             to learn a number of embeddings that are added to the hidden states. During inference, you can denoise for
             up to but not more than steps than `num_embeds_ada_norm`.
-        attention_bias (:
-            obj: `bool`, *optional*): Configure if the TransformerBlocks' attention should contain a bias parameter.
+        attention_bias (`bool`, *optional*):
+            Configure if the TransformerBlocks' attention should contain a bias parameter.
     """
 
     @register_to_config
@@ -176,13 +170,13 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
     def forward(self, hidden_states, encoder_hidden_states=None, timestep=None, return_dict: bool = True):
         """
         Args:
-            hidden_states (:obj: When discrete, `torch.LongTensor` of shape `(batch size, num latent pixels)`.
+            hidden_states ( When discrete, `torch.LongTensor` of shape `(batch size, num latent pixels)`.
                 When continous, `torch.FloatTensor` of shape `(batch size, channel, height, width)`): Input
                 hidden_states
-            encoder_hidden_states (:obj: `torch.LongTensor` of shape `(batch size, context dim)`, *optional*):
+            encoder_hidden_states ( `torch.LongTensor` of shape `(batch size, context dim)`, *optional*):
                 Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
                 self-attention.
-            timestep (:obj: `torch.long`, *optional*):
+            timestep ( `torch.long`, *optional*):
                 Optional timestep to be applied as an embedding in AdaLayerNorm's. Used to indicate denoising step.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
@@ -239,12 +233,12 @@ class AttentionBlock(nn.Module):
     Uses three q, k, v linear layers to compute attention.
 
     Parameters:
-        channels (:obj:`int`): The number of channels in the input and output.
-        num_head_channels (:obj:`int`, *optional*):
+        channels (`int`): The number of channels in the input and output.
+        num_head_channels (`int`, *optional*):
             The number of channels in each head. If None, then `num_heads` = 1.
-        norm_num_groups (:obj:`int`, *optional*, defaults to 32): The number of groups to use for group norm.
-        rescale_output_factor (:obj:`float`, *optional*, defaults to 1.0): The factor to rescale the output by.
-        eps (:obj:`float`, *optional*, defaults to 1e-5): The epsilon value to use for group norm.
+        norm_num_groups (`int`, *optional*, defaults to 32): The number of groups to use for group norm.
+        rescale_output_factor (`float`, *optional*, defaults to 1.0): The factor to rescale the output by.
+        eps (`float`, *optional*, defaults to 1e-5): The epsilon value to use for group norm.
     """
 
     def __init__(
@@ -321,17 +315,16 @@ class BasicTransformerBlock(nn.Module):
     A basic Transformer block.
 
     Parameters:
-        dim (:obj:`int`): The number of channels in the input and output.
-        num_attention_heads (:obj:`int`): The number of heads to use for multi-head attention.
-        attention_head_dim (:obj:`int`): The number of channels in each head.
-        dropout (:obj:`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        cross_attention_dim (:obj:`int`, *optional*): The size of the context vector for cross attention.
-        activation_fn (:obj:`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
+        dim (`int`): The number of channels in the input and output.
+        num_attention_heads (`int`): The number of heads to use for multi-head attention.
+        attention_head_dim (`int`): The number of channels in each head.
+        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
+        cross_attention_dim (`int`, *optional*): The size of the context vector for cross attention.
+        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
         num_embeds_ada_norm (:
             obj: `int`, *optional*): The number of diffusion steps used during training. See `Transformer2DModel`.
         attention_bias (:
-            obj: `bool`, *optional*, defaults to :obj:`False`): Configure if the attentions should contain a bias
-            parameter.
+            obj: `bool`, *optional*, defaults to `False`): Configure if the attentions should contain a bias parameter.
     """
 
     def __init__(
@@ -427,13 +420,13 @@ class CrossAttention(nn.Module):
     A cross attention layer.
 
     Parameters:
-        query_dim (:obj:`int`): The number of channels in the query.
-        cross_attention_dim (:obj:`int`, *optional*):
+        query_dim (`int`): The number of channels in the query.
+        cross_attention_dim (`int`, *optional*):
             The number of channels in the context. If not given, defaults to `query_dim`.
-        heads (:obj:`int`,  *optional*, defaults to 8): The number of heads to use for multi-head attention.
-        dim_head (:obj:`int`,  *optional*, defaults to 64): The number of channels in each head.
-        dropout (:obj:`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        bias (:obj:`bool`, *optional*, defaults to False):
+        heads (`int`,  *optional*, defaults to 8): The number of heads to use for multi-head attention.
+        dim_head (`int`,  *optional*, defaults to 64): The number of channels in each head.
+        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
+        bias (`bool`, *optional*, defaults to False):
             Set to `True` for the query, key, and value linear layers to contain a bias parameter.
     """
 
@@ -572,11 +565,11 @@ class FeedForward(nn.Module):
     A feed-forward layer.
 
     Parameters:
-        dim (:obj:`int`): The number of channels in the input.
-        dim_out (:obj:`int`, *optional*): The number of channels in the output. If not given, defaults to `dim`.
-        mult (:obj:`int`, *optional*, defaults to 4): The multiplier to use for the hidden dimension.
-        dropout (:obj:`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        activation_fn (:obj:`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
+        dim (`int`): The number of channels in the input.
+        dim_out (`int`, *optional*): The number of channels in the output. If not given, defaults to `dim`.
+        mult (`int`, *optional*, defaults to 4): The multiplier to use for the hidden dimension.
+        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
+        activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
     """
 
     def __init__(
@@ -616,8 +609,8 @@ class GEGLU(nn.Module):
     A variant of the gated linear unit activation function from https://arxiv.org/abs/2002.05202.
 
     Parameters:
-        dim_in (:obj:`int`): The number of channels in the input.
-        dim_out (:obj:`int`): The number of channels in the output.
+        dim_in (`int`): The number of channels in the input.
+        dim_out (`int`): The number of channels in the output.
     """
 
     def __init__(self, dim_in: int, dim_out: int):
