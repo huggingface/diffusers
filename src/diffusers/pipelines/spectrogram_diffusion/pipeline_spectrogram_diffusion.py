@@ -212,7 +212,7 @@ class DecoderLayer(nn.Module, ModuleUtilsMixin):
         return outputs  # hidden-states, present_key_value_states, (self-attention position bias), (self-attention weights), (cross-attention position bias), (cross-attention weights)
 
 
-class TokenEncoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
+class SpectrogramNotesEncoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
     @register_to_config
     def __init__(
         self,
@@ -276,7 +276,7 @@ class TokenEncoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         return self.dropout_post(x), encoder_inputs_mask
 
 
-class ContinuousEncoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
+class SpectrogramContEncoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
     @register_to_config
     def __init__(
         self,
@@ -342,7 +342,7 @@ class ContinuousEncoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         return self.dropout_post(x), encoder_inputs_mask
 
 
-class Decoder(ModelMixin, ConfigMixin):
+class T5FilmDecoder(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
@@ -453,125 +453,23 @@ class Decoder(ModelMixin, ConfigMixin):
         return spec_out
 
 
-class ContinuousContextTransformer(ModelMixin, ConfigMixin):
-    @register_to_config
+class SpectrogramDiffusionPipeline(DiffusionPipeline):
     def __init__(
         self,
-        input_dims: int,
-        max_length: int,
-        targets_context_length: int,
-        targets_length: int,
-        max_decoder_noise_time: float,
-        vocab_size: int,
-        d_model: int,
-        dropout_rate: float,
-        num_encoder_layers: int,
-        num_decoder_layers: int,
-        num_heads: int,
-        d_kv: int,
-        d_ff: int,
-        feed_forward_proj: str = "gated-gelu",
-    ):
-        super().__init__()
-
-        self.token_encoder = TokenEncoder(
-            max_length=max_length,
-            vocab_size=vocab_size,
-            d_model=d_model,
-            dropout_rate=dropout_rate,
-            num_layers=num_encoder_layers,
-            num_heads=num_heads,
-            d_kv=d_kv,
-            d_ff=d_ff,
-            feed_forward_proj=feed_forward_proj,
-        )
-
-        self.continuous_encoder = ContinuousEncoder(
-            input_dims=input_dims,
-            targets_context_length=targets_context_length,
-            d_model=d_model,
-            dropout_rate=dropout_rate,
-            num_layers=num_encoder_layers,
-            num_heads=num_heads,
-            d_kv=d_kv,
-            d_ff=d_ff,
-            feed_forward_proj=feed_forward_proj,
-        )
-
-        self.decoder = Decoder(
-            input_dims=input_dims,
-            targets_length=targets_length,
-            max_decoder_noise_time=max_decoder_noise_time,
-            d_model=d_model,
-            num_layers=num_decoder_layers,
-            num_heads=num_heads,
-            d_kv=d_kv,
-            d_ff=d_ff,
-            dropout_rate=dropout_rate,
-            feed_forward_proj=feed_forward_proj,
-        )
-
-    def encode(self, input_tokens, continuous_inputs, continuous_mask):
-        tokens_mask = input_tokens > 0
-        tokens_encoded, tokens_mask = self.token_encoder(
-            encoder_input_tokens=input_tokens,
-            encoder_inputs_mask=tokens_mask,
-        )
-
-        continuous_encoded, continuous_mask = self.continuous_encoder(
-            encoder_inputs=continuous_inputs,
-            encoder_inputs_mask=continuous_mask,
-        )
-
-        return [(tokens_encoded, tokens_mask), (continuous_encoded, continuous_mask)]
-
-    def decode(self, encodings_and_masks, input_tokens, noise_time):
-        timesteps = noise_time
-        if not torch.is_tensor(timesteps):
-            timesteps = torch.tensor([timesteps], dtype=torch.long, device=input_tokens.device)
-        elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
-            timesteps = timesteps[None].to(input_tokens.device)
-
-        # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-        timesteps = timesteps * torch.ones(input_tokens.shape[0], dtype=timesteps.dtype, device=timesteps.device)
-
-        logits = self.decoder(
-            encodings_and_masks=encodings_and_masks,
-            decoder_input_tokens=input_tokens,
-            decoder_noise_time=timesteps,
-        )
-        return logits
-
-    def forward(
-        self,
-        encoder_input_tokens,
-        encoder_continuous_inputs,
-        encoder_continuous_mask,
-        decoder_input_tokens,
-        decoder_noise_time,
-    ):
-        encodings_and_masks = self.encode(
-            input_tokens=encoder_input_tokens,
-            continuous_inputs=encoder_continuous_inputs,
-            continuous_mask=encoder_continuous_mask,
-        )
-
-        return self.decode(
-            encodings_and_masks=encodings_and_masks,
-            input_tokens=decoder_input_tokens,
-            noise_time=decoder_noise_time,
-        )
-
-
-class SpectrogramDiffusionPipeline(DiffusionPipeline):
-    def __init__(self, cont_context_trans: ContinuousContextTransformer, scheduler: DDPMScheduler) -> None:
+        notes_encoder: SpectrogramNotesEncoder,
+        continuous_encoder: SpectrogramContEncoder,
+        decoder: T5FilmDecoder,
+        scheduler: DDPMScheduler,
+    ) -> None:
         super().__init__()
 
         # From MELGAN
         self.min_value = math.log(1e-5)  # Matches MelGAN training.
         self.max_value = 4.0  # Largest value for most examples
 
-        self.register_modules(cont_context_trans=cont_context_trans, scheduler=scheduler)
+        self.register_modules(
+            notes_encoder=notes_encoder, continuous_encoder=continuous_encoder, decoder=decoder, scheduler=scheduler
+        )
 
     def scale_features(self, features, output_range=(-1.0, 1.0), clip=False):
         """Linearly scale features to network outputs range."""
@@ -592,6 +490,33 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         # Scale to [self.min_value, self.max_value].
         return zero_one * (self.max_value - self.min_value) + self.min_value
 
+    def encode(self, input_tokens, continuous_inputs, continuous_mask):
+        tokens_mask = input_tokens > 0
+        tokens_encoded, tokens_mask = self.notes_encoder(
+            encoder_input_tokens=input_tokens, encoder_inputs_mask=tokens_mask
+        )
+
+        continuous_encoded, continuous_mask = self.continuous_encoder(
+            encoder_inputs=continuous_inputs, encoder_inputs_mask=continuous_mask
+        )
+
+        return [(tokens_encoded, tokens_mask), (continuous_encoded, continuous_mask)]
+
+    def decode(self, encodings_and_masks, input_tokens, noise_time):
+        timesteps = noise_time
+        if not torch.is_tensor(timesteps):
+            timesteps = torch.tensor([timesteps], dtype=torch.long, device=input_tokens.device)
+        elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
+            timesteps = timesteps[None].to(input_tokens.device)
+
+        # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+        timesteps = timesteps * torch.ones(input_tokens.shape[0], dtype=timesteps.dtype, device=timesteps.device)
+
+        logits = self.decoder(
+            encodings_and_masks=encodings_and_masks, decoder_input_tokens=input_tokens, decoder_noise_time=timesteps
+        )
+        return logits
+
     @torch.no_grad()
     def __call__(
         self,
@@ -605,7 +530,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         target_shape = encoder_continuous_inputs.shape
         encoder_continuous_inputs = self.scale_features(encoder_continuous_inputs, output_range=[-1.0, 1.0], clip=True)
 
-        encodings_and_masks = self.cont_context_trans.encode(
+        encodings_and_masks = self.encode(
             input_tokens=encoder_input_tokens,
             continuous_inputs=encoder_continuous_inputs,
             continuous_mask=encoder_continuous_mask,
@@ -619,7 +544,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps)
 
         for t in self.progress_bar(self.scheduler.timesteps):
-            output = self.cont_context_trans.decode(
+            output = self.decode(
                 encodings_and_masks=encodings_and_masks,
                 input_tokens=x,
                 noise_time=t / num_inference_steps,  # rescale to [0, 1)

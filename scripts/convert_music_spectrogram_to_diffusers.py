@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 
 from diffusers import DDPMScheduler, SpectrogramDiffusionPipeline
-from diffusers.pipelines.spectrogram_diffusion import ContinuousContextTransformer
+from diffusers.pipelines.spectrogram_diffusion import SpectrogramContEncoder, SpectrogramNotesEncoder, T5FilmDecoder
 from music_spectrogram_diffusion import inference
 from t5x import checkpoints
 
@@ -14,7 +14,7 @@ from t5x import checkpoints
 MODEL = "base_with_context"
 
 
-def load_token_encoder(weights, model):
+def load_notes_encoder(weights, model):
     model.token_embedder.weight = nn.Parameter(torch.FloatTensor(weights["token_embedder"]["embedding"]))
     model.position_encoding.weight = nn.Parameter(
         torch.FloatTensor(weights["Embed_0"]["embedding"]), requires_grad=False
@@ -122,13 +122,6 @@ def load_decoder(weights, model):
     return model
 
 
-def load_checkpoint(t5_checkpoint, model):
-    model.token_encoder = load_token_encoder(t5_checkpoint["token_encoder"], model.token_encoder)
-    model.continuous_encoder = load_continuous_encoder(t5_checkpoint["continuous_encoder"], model.continuous_encoder)
-    model.decoder = load_decoder(t5_checkpoint["decoder"], model.decoder)
-    return model
-
-
 def main(args):
     t5_checkpoint = checkpoints.load_t5x_checkpoint(args.checkpoint_path)
 
@@ -145,26 +138,50 @@ def main(args):
 
     scheduler = DDPMScheduler(beta_schedule="squaredcos_cap_v2", variance_type="fixed_large")
 
-    model = ContinuousContextTransformer(
-        vocab_size=synth_model.model.module.config.vocab_size,
+    notes_encoder = SpectrogramNotesEncoder(
         max_length=synth_model.sequence_length["inputs"],
+        vocab_size=synth_model.model.module.config.vocab_size,
+        d_model=synth_model.model.module.config.emb_dim,
+        dropout_rate=synth_model.model.module.config.dropout_rate,
+        num_layers=synth_model.model.module.config.num_encoder_layers,
+        num_heads=synth_model.model.module.config.num_heads,
+        d_kv=synth_model.model.module.config.head_dim,
+        d_ff=synth_model.model.module.config.mlp_dim,
+        feed_forward_proj="gated-gelu",
+    )
+
+    continuous_encoder = SpectrogramContEncoder(
         input_dims=synth_model.audio_codec.n_dims,
         targets_context_length=synth_model.sequence_length["targets_context"],
-        targets_length=synth_model.sequence_length["targets"],
         d_model=synth_model.model.module.config.emb_dim,
+        dropout_rate=synth_model.model.module.config.dropout_rate,
+        num_layers=synth_model.model.module.config.num_encoder_layers,
         num_heads=synth_model.model.module.config.num_heads,
-        num_encoder_layers=synth_model.model.module.config.num_encoder_layers,
-        num_decoder_layers=synth_model.model.module.config.num_decoder_layers,
+        d_kv=synth_model.model.module.config.head_dim,
+        d_ff=synth_model.model.module.config.mlp_dim,
+        feed_forward_proj="gated-gelu",
+    )
+
+    decoder = T5FilmDecoder(
+        input_dims=synth_model.audio_codec.n_dims,
+        targets_length=synth_model.sequence_length["targets_context"],
+        max_decoder_noise_time=synth_model.model.module.config.max_decoder_noise_time,
+        d_model=synth_model.model.module.config.emb_dim,
+        num_layers=synth_model.model.module.config.num_decoder_layers,
+        num_heads=synth_model.model.module.config.num_heads,
         d_kv=synth_model.model.module.config.head_dim,
         d_ff=synth_model.model.module.config.mlp_dim,
         dropout_rate=synth_model.model.module.config.dropout_rate,
         feed_forward_proj="gated-gelu",
-        max_decoder_noise_time=synth_model.model.module.config.max_decoder_noise_time,
     )
 
-    model = load_checkpoint(t5_checkpoint["target"], model).eval()
+    notes_encoder = load_notes_encoder(t5_checkpoint["target"]["token_encoder"], notes_encoder)
+    continuous_encoder = load_continuous_encoder(t5_checkpoint["target"]["continuous_encoder"], continuous_encoder)
+    decoder = load_decoder(t5_checkpoint["target"]["decoder"], decoder)
 
-    pipe = SpectrogramDiffusionPipeline(model, scheduler=scheduler)
+    pipe = SpectrogramDiffusionPipeline(
+        notes_encoder=notes_encoder, continuous_encoder=continuous_encoder, decoder=decoder, scheduler=scheduler
+    )
     if args.save:
         pipe.save_pretrained(args.output_path)
 

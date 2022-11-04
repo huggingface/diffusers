@@ -1,2 +1,7 @@
 # flake8: noqa
-from .pipeline_spectrogram_diffusion import ContinuousContextTransformer, SpectrogramDiffusionPipeline
+from .pipeline_spectrogram_diffusion import (
+    SpectrogramNotesEncoder,
+    SpectrogramContEncoder,
+    T5FilmDecoder,
+    SpectrogramDiffusionPipeline,
+)
