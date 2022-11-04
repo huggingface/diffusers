@@ -93,6 +93,7 @@ if is_flax_available():
     from .schedulers import (
         FlaxDDIMScheduler,
         FlaxDDPMScheduler,
+        FlaxDPMSolverDiscreteScheduler,
         FlaxKarrasVeScheduler,
         FlaxLMSDiscreteScheduler,
         FlaxPNDMScheduler,

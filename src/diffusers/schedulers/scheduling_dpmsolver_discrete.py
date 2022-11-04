@@ -104,12 +104,12 @@ class DPMSolverDiscreteScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
         trained_betas: Optional[np.ndarray] = None,
-        solver_order: int = 3,
+        solver_order: int = 2,
         predict_x0: bool = True,
         thresholding: bool = False,
         sample_max_value: float = 1.0,
         solver_type: str = "dpm_solver",
-        denoise_final: bool = True,
+        denoise_final: bool = False,
     ):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
