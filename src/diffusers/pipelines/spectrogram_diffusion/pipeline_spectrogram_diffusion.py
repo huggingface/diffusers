@@ -580,7 +580,6 @@ class SpectrogramPipeline(DiffusionPipeline):
         encoder_input_tokens,
         encoder_continuous_inputs,
         encoder_continuous_mask,
-        decoder_input_tokens,
         generator: Optional[torch.Generator] = None,
         num_inference_steps: int = 1000,
         return_dict: bool = True,
@@ -606,7 +605,7 @@ class SpectrogramPipeline(DiffusionPipeline):
         for t in self.progress_bar(self.scheduler.timesteps):
             output = self.cont_context_trans.decode(
                 encodings_and_masks=encodings_and_masks,
-                input_tokens=decoder_input_tokens,
+                input_tokens=x,
                 noise_time=t,
             )
 
