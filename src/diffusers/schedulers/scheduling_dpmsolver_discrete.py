@@ -396,7 +396,11 @@ class DPMSolverDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
-        step_index = (self.timesteps == timestep).nonzero().item()
+        step_index = (self.timesteps == timestep).nonzero()
+        if len(step_index) == 0:
+            step_index = len(self.timesteps) - 1
+        else:
+            step_index = step_index.item()
         prev_timestep = 0 if step_index == len(self.timesteps) - 1 else self.timesteps[step_index + 1]
         denoise_final = (step_index == len(self.timesteps) - 1) and self.denoise_final
         denoise_second = (step_index == len(self.timesteps) - 2) and self.denoise_final
