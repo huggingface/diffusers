@@ -1,5 +1,5 @@
-from typing import Optional
 import math
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -105,7 +105,6 @@ class DecoderLayer(nn.Module):
         output_attentions=False,
         return_dict=True,
     ):
-
         if past_key_value is not None:
             expected_num_past_key_values = 2 if encoder_hidden_states is None else 4
 
@@ -540,7 +539,6 @@ class ContinuousContextTransformer(nn.Module):
         decoder_input_tokens,
         decoder_noise_time,
     ):
-
         encodings_and_masks = self.encode(
             input_tokens=encoder_input_tokens,
             continuous_inputs=encoder_continuous_inputs,
