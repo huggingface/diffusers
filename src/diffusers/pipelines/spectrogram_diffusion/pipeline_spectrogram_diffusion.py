@@ -439,7 +439,6 @@ class Decoder(nn.Module):
 
     def encoder_decoder_mask(self, query_input, key_input, pairwise_fn=torch.mul):
         mask = pairwise_fn(query_input.unsqueeze(-1), key_input.unsqueeze(-2))
-
         return mask.unsqueeze(-3)
 
     def forward(self, encodings_and_masks, decoder_input_tokens, decoder_noise_time):
