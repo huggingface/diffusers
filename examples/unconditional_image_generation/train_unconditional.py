@@ -424,30 +424,31 @@ def main(args):
 
                 # denormalize the images to save
                 images_processed = (images * 255).round().astype("uint8")
-                
+
                 if args.logger == "wandb":
                     # denormalize the images
                     wandb_images = [wandb.Image(i) for i in images_processed]
-                    
+
                     #create table holding predictions for generated images
                     table_cols = ['epoch', 'global_step', 'generated_images']
                     wandb_table = wandb.Table(columns=table_cols)
                     wandb_table.add_data(epoch, global_step, wandb_images)
-                    
+
                     #log images to wandb
                     wandb.log({
                         f'generated_samples_{global_step}': wandb_table, 
                         'generated_images':wandb_images,
                     }, step=global_step)
-                
+
                 else:
                     accelerator.trackers[0].writer.add_images(
                     "test_samples", images_processed.transpose(0, 3, 1, 2), epoch
+                )
 
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
                 # save the model
                 pipeline.save_pretrained(args.output_dir)
-                        
+
                 if args.logger == "wandb":
                     # log model checkpoint within a wandb artifact
                     model_artifact = wandb.Artifact(
@@ -456,7 +457,7 @@ def main(args):
                     )
                     model_artifact.add_dir(args.output_dir)
                     wandb.log_artifact(model_artifact, aliases=[f'step_{global_step}', f'epoch_{epoch}'])
-                        
+
                 if args.push_to_hub:
                     repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=False)
         accelerator.wait_for_everyone()
