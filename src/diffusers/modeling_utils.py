@@ -21,15 +21,20 @@ from typing import Callable, List, Optional, Tuple, Union
 import torch
 from torch import Tensor, device
 
-import accelerate
-from accelerate.utils import set_module_tensor_to_device
-from accelerate.utils.versions import is_torch_version
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
 from . import __version__
-from .utils import CONFIG_NAME, DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT, WEIGHTS_NAME, logging
+from .utils import (
+    CONFIG_NAME,
+    DIFFUSERS_CACHE,
+    HUGGINGFACE_CO_RESOLVE_ENDPOINT,
+    WEIGHTS_NAME,
+    is_accelerate_available,
+    is_torch_version,
+    logging,
+)
 
 
 logger = logging.get_logger(__name__)
@@ -39,6 +44,12 @@ if is_torch_version(">=", "1.9.0"):
     _LOW_CPU_MEM_USAGE_DEFAULT = True
 else:
     _LOW_CPU_MEM_USAGE_DEFAULT = False
+
+
+if is_accelerate_available():
+    import accelerate
+    from accelerate.utils import set_module_tensor_to_device
+    from accelerate.utils.versions import is_torch_version
 
 
 def get_parameter_device(parameter: torch.nn.Module):
@@ -318,6 +329,21 @@ class ModelMixin(torch.nn.Module):
         subfolder = kwargs.pop("subfolder", None)
         device_map = kwargs.pop("device_map", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
+
+        if low_cpu_mem_usage and not is_accelerate_available():
+            low_cpu_mem_usage = False
+            logger.warn(
+                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                " install accelerate\n```\n."
+            )
+
+        if device_map is not None and not is_accelerate_available():
+            raise NotImplementedError(
+                "Loading and dispatching requires `accelerate`. Please make sure to install accelerate or set"
+                " `device_map=None`. You can install accelerate with `pip install accelerate`."
+            )
 
         # Check if we can handle device_map and dispatching the weights
         if device_map is not None and not is_torch_version(">=", "1.9.0"):

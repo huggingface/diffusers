@@ -29,7 +29,7 @@ from diffusers import (
     UNet2DModel,
     VQModel,
 )
-from diffusers.utils import floats_tensor, load_image, slow, torch_device
+from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -156,7 +156,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
 
         return extract
 
-    def test_stable_diffusion_img2img(self):
+    def test_stable_diffusion_img2img_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
         scheduler = PNDMScheduler(skip_prk_steps=True)
@@ -208,8 +208,8 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.4492, 0.3865, 0.4222, 0.5854, 0.5139, 0.4379, 0.4193, 0.48, 0.4218])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_img2img_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -251,7 +251,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.4065, 0.3783, 0.4050, 0.5266, 0.4781, 0.4252, 0.4203, 0.4692, 0.4365])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_img2img_multiple_init_images(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -293,7 +293,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
 
         assert image.shape == (2, 32, 32, 3)
         expected_slice = np.array([0.5144, 0.4447, 0.4735, 0.6676, 0.5526, 0.5454, 0.645, 0.5149, 0.4689])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_img2img_k_lms(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -348,8 +348,8 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.4367, 0.4986, 0.4372, 0.6706, 0.5665, 0.444, 0.5864, 0.6019, 0.5203])
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_img2img_num_images_per_prompt(self):
         device = "cpu"
@@ -472,17 +472,15 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_stable_diffusion_img2img_pipeline(self):
+    def test_stable_diffusion_img2img_pipeline_default(self):
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/img2img/sketch-mountains-input.jpg"
         )
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/img2img/fantasy_landscape.png"
-        )
         init_image = init_image.resize((768, 512))
-        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/lewington/expected-images/resolve/main/fantasy_landscape.npy"
+        )
 
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
@@ -508,19 +506,17 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (512, 768, 3)
         # img2img is flaky across GPUs even in fp32, so using MAE here
-        assert np.abs(expected_image - image).mean() < 1e-2
+        assert np.abs(expected_image - image).mean() < 1e-3
 
     def test_stable_diffusion_img2img_pipeline_k_lms(self):
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/img2img/sketch-mountains-input.jpg"
         )
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/img2img/fantasy_landscape_k_lms.png"
-        )
         init_image = init_image.resize((768, 512))
-        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/lewington/expected-images/resolve/main/fantasy_landscape_k_lms.npy"
+        )
 
         model_id = "CompVis/stable-diffusion-v1-4"
         lms = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler")
@@ -548,7 +544,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (512, 768, 3)
         # img2img is flaky across GPUs even in fp32, so using MAE here
-        assert np.abs(expected_image - image).mean() < 1e-2
+        assert np.abs(expected_image - image).mean() < 1e-3
 
     def test_stable_diffusion_img2img_intermediate_state(self):
         number_of_steps = 0
