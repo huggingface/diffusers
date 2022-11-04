@@ -1,0 +1,11 @@
+accelerate launch train_unconditional.py \
+  --dataset_name="huggan/pokemon" \
+  --resolution=64 \
+  --output_dir="ddpm-ema-pokemon-64" \
+  --logger="wandb" \
+  --train_batch_size=16 \
+  --num_epochs=2 \
+  --gradient_accumulation_steps=1 \
+  --learning_rate=1e-4 \
+  --lr_warmup_steps=2 \
+  --mixed_precision=no

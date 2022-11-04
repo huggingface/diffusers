@@ -7,13 +7,19 @@ Creating a training image set is [described in a different document](https://hug
 Before running the scripts, make sure to install the library's training dependencies:
 
 ```bash
-pip install diffusers[training] accelerate datasets tensorboard
+pip install diffusers[training] accelerate datasets tensorboard wandb
 ```
 
 And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
 
 ```bash
 accelerate config
+```
+
+If you're tracking your experiment with [Weights and Biases](https://docs.wandb.ai) you can login via:
+
+```bash
+wandb login
 ```
 
 ### Unconditional Flowers  
@@ -35,6 +41,7 @@ accelerate launch train_unconditional.py \
 ```
 An example trained model: https://huggingface.co/anton-l/ddpm-ema-flowers-64
 
+The bash script is provided in [`unconditional_flowers.sh`](./unconditional_flowers.sh)
 A full training run takes 2 hours on 4xV100 GPUs.
 
 <img src="https://user-images.githubusercontent.com/26864830/180248660-a0b143d0-b89a-42c5-8656-2ebf6ece7e52.png" width="700" />
@@ -59,6 +66,7 @@ accelerate launch train_unconditional.py \
 ```
 An example trained model: https://huggingface.co/anton-l/ddpm-ema-pokemon-64
 
+The bash script is provided in [`unconditional_flowers.sh`](./unconditional_pokemon.sh)
 A full training run takes 2 hours on 4xV100 GPUs.
 
 <img src="https://user-images.githubusercontent.com/26864830/180248200-928953b4-db38-48db-b0c6-8b740fe6786f.png" width="700" />
