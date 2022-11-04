@@ -316,6 +316,7 @@ class DummyObject(type):
         requires_backends(cls, cls._backends)
 
 
+# This function was copied from: https://github.com/huggingface/accelerate/blob/874c4967d94badd24f893064cc3bef45f57cadf7/src/accelerate/utils/versions.py#L319
 def compare_versions(library_or_version: Union[str, Version], operation: str, requirement_version: str):
     """
     Args:
@@ -335,6 +336,7 @@ def compare_versions(library_or_version: Union[str, Version], operation: str, re
     return operation(library_or_version, parse(requirement_version))
 
 
+# This function was copied from: https://github.com/huggingface/accelerate/blob/874c4967d94badd24f893064cc3bef45f57cadf7/src/accelerate/utils/versions.py#L338
 def is_torch_version(operation: str, version: str):
     """
     Args:
