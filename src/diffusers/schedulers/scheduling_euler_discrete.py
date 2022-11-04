@@ -266,7 +266,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if isinstance(timesteps, torch.IntTensor) or isinstance(timesteps, torch.LongTensor):
             deprecate(
                 "timesteps as indices",
-                "0.8.0",
+                "0.9.0",
                 "Passing integer indices  (e.g. from `enumerate(timesteps)`) as timesteps to"
                 " `EulerDiscreteScheduler.add_noise()` will not be supported in future versions. Make sure to"
                 " pass values from `scheduler.timesteps` as timesteps.",
