@@ -25,6 +25,7 @@ from torchvision.transforms import (
 )
 from tqdm.auto import tqdm
 
+import wandb
 
 logger = get_logger(__name__)
 
@@ -183,9 +184,9 @@ def parse_args():
         default="logs",
         help=(
             "Experiment tracker logging directory."
-             "[TensorBoard](https://www.tensorflow.org/tensorboard) Will default to"
-             " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
-             "[Weights and Biases](https://www.wandb.ai) will ignore this argument and will default to ./wandb"
+            "[TensorBoard](https://www.tensorflow.org/tensorboard) Will default to"
+            " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
+            "[Weights and Biases](https://www.wandb.ai) will ignore this argument and will default to ./wandb"
         ),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
@@ -421,11 +422,11 @@ def main(args):
                     predict_epsilon=args.predict_mode == "eps",
                 ).images
 
-                # denormalize the images and save to tensorboard
+                # denormalize the images to save
                 images_processed = (images * 255).round().astype("uint8")
+                
                 if args.logger == "wandb":
                     # denormalize the images
-                    images_processed = (images * 255).round().astype("uint8")
                     wandb_images = [wandb.Image(i) for i in images_processed]
                     
                     #create table holding predictions for generated images
