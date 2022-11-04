@@ -1,3 +1,5 @@
+diffusers[training]
 accelerate
-torchvision
 datasets
+tensorboard
+wandb
