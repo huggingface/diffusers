@@ -152,8 +152,6 @@ class CycleDiffusionPipeline(DiffusionPipeline):
                 " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
             )
 
-        assert isinstance(scheduler, (DDIMScheduler,)), "Only DDIMScheduler is supported for now."
-
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -272,7 +270,11 @@ class CycleDiffusionPipeline(DiffusionPipeline):
         else:
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
-        assert batch_size == 1, "Batch size > 1 is not supported yet."
+        if batch_size != 1:
+            raise ValueError(
+                "At the moment only `batch_size=1` is supported for prompts, but you seem to have passed multiple"
+                f" prompts: {prompt}. Please make sure to pass only a single prompt."
+            )
 
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
@@ -421,7 +423,13 @@ class CycleDiffusionPipeline(DiffusionPipeline):
         # and should be between [0, 1]
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
         extra_step_kwargs = {}
-        assert accepts_eta and (0 < eta <= 1)
+
+        if not (accepts_eta and (0 < eta <= 1)):
+            raise ValueError(
+                "Currently, only the DDIM scheduler is supported. Please make sure that `pipeline.scheduler` is of"
+                f" type {DDIMScheduler.__class__} and not {self.scheduler.__class__}."
+            )
+
         extra_step_kwargs["eta"] = eta
 
         latents = init_latents

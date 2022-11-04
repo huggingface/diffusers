@@ -105,6 +105,7 @@ image.save("astronaut_rides_horse.png")
 ```
 
 ### CycleDiffusion using Stable Diffusion and DDIM scheduler
+
 ```python
 import requests
 import torch
@@ -134,7 +135,6 @@ source_prompt = "An astronaut riding a horse"
 prompt = "An astronaut riding an elephant"
 
 # call the pipeline
-torch.manual_seed(0)
 image = pipe(
     prompt=prompt,
     source_prompt=source_prompt,
