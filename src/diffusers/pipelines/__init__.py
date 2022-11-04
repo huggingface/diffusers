@@ -7,6 +7,7 @@ if is_torch_available():
     from .ddpm import DDPMPipeline
     from .latent_diffusion_uncond import LDMPipeline
     from .pndm import PNDMPipeline
+    from .repaint import RePaintPipeline
     from .score_sde_ve import ScoreSdeVePipeline
     from .stochastic_karras_ve import KarrasVePipeline
 else:
@@ -20,6 +21,7 @@ if is_torch_available() and is_transformers_available():
         StableDiffusionInpaintPipelineLegacy,
         StableDiffusionPipeline,
     )
+    from .vq_diffusion import VQDiffusionPipeline
 
 if is_transformers_available() and is_onnx_available():
     from .stable_diffusion import (
