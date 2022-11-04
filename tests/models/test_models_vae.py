@@ -155,7 +155,10 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         torch_dtype = torch.float16 if fp16 else torch.float32
 
         model = AutoencoderKL.from_pretrained(
-            model_id, subfolder="vae", torch_dtype=torch_dtype, revision=revision, device_map="auto"
+            model_id,
+            subfolder="vae",
+            torch_dtype=torch_dtype,
+            revision=revision,
         )
         model.to(torch_device).eval()
 

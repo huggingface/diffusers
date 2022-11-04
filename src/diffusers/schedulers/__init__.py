@@ -24,9 +24,11 @@ if is_torch_available():
     from .scheduling_ipndm import IPNDMScheduler
     from .scheduling_karras_ve import KarrasVeScheduler
     from .scheduling_pndm import PNDMScheduler
+    from .scheduling_repaint import RePaintScheduler
     from .scheduling_sde_ve import ScoreSdeVeScheduler
     from .scheduling_sde_vp import ScoreSdeVpScheduler
     from .scheduling_utils import SchedulerMixin
+    from .scheduling_vq_diffusion import VQDiffusionScheduler
 else:
     from ..utils.dummy_pt_objects import *  # noqa F403
 

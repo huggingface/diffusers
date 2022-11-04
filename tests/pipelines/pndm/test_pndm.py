@@ -71,7 +71,7 @@ class PNDMPipelineIntegrationTests(unittest.TestCase):
     def test_inference_cifar10(self):
         model_id = "google/ddpm-cifar10-32"
 
-        unet = UNet2DModel.from_pretrained(model_id, device_map="auto")
+        unet = UNet2DModel.from_pretrained(model_id)
         scheduler = PNDMScheduler()
 
         pndm = PNDMPipeline(unet=unet, scheduler=scheduler)

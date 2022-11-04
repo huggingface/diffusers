@@ -19,11 +19,8 @@ specific language governing permissions and limitations under the License.
 - Mac computer with Apple silicon (M1/M2) hardware.
 - macOS 12.6 or later (13.0 or later recommended).
 - arm64 version of Python.
-- PyTorch 1.13.0 RC (Release Candidate). You can install it with `pip` using:
+- PyTorch 1.13. You can install it with `pip` or `conda` using the instructions in https://pytorch.org/get-started/locally/.
 
-```
-pip3 install --pre torch --extra-index-url https://download.pytorch.org/whl/test/cpu
-```
 
 ## Inference Pipeline
 
@@ -63,4 +60,4 @@ pipeline.enable_attention_slicing()
 ## Known Issues
 
 - As mentioned above, we are investigating a strange [first-time inference issue](https://github.com/huggingface/diffusers/issues/372).
-- Generating multiple prompts in a batch [crashes or doesn't work reliably](https://github.com/huggingface/diffusers/issues/363). We believe this is related to the [`mps` backend in PyTorch](https://github.com/pytorch/pytorch/issues/84039). For now, we recommend to iterate instead of batching.
+- Generating multiple prompts in a batch [crashes or doesn't work reliably](https://github.com/huggingface/diffusers/issues/363). We believe this is related to the [`mps` backend in PyTorch](https://github.com/pytorch/pytorch/issues/84039). This is being resolved, but for now we recommend to iterate instead of batching.
