@@ -80,7 +80,18 @@ class FlaxDPMSolverDiscreteSchedulerOutput(FlaxSchedulerOutput):
 
 class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
     """
-    DPM-Solver.
+    DPM-Solver (and the improved version DPM-Solver++) is a fast dedicated high-order solver for diffusion ODEs with
+    the convergence order guarantee. Empirically, sampling by DPM-Solver with only 20 steps can generate high-quality
+    samples, and it can generate quite good samples even in only 10 steps.
+
+    For more details, see the original paper: https://arxiv.org/abs/2206.00927 and https://arxiv.org/abs/2211.01095
+
+    Currently, we support the multistep DPM-Solver for both noise prediction models and data prediction models. We
+    recommend to use `solver_order=2` for guided sampling, and `solver_order=3` for unconditional sampling.
+
+    We also support the "dynamic thresholding" method in Imagen (https://arxiv.org/abs/2205.11487). For pixel-space
+    diffusion models, you can set both `predict_x0=True` and `thresholding=True` to use the dynamic thresholding. Note
+    that the thresholding method is unsuitable for latent-space diffusion models (such as stable-diffusion).
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
@@ -98,17 +109,26 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
         trained_betas (`np.ndarray`, optional):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
-        skip_prk_steps (`bool`):
-            allows the scheduler to skip the Runge-Kutta steps that are defined in the original paper as being required
-            before plms steps; defaults to `False`.
-        set_alpha_to_one (`bool`, default `False`):
-            each diffusion step uses the value of alphas product at that step and at the previous one. For the final
-            step there is no previous alpha. When this option is `True` the previous alpha product is fixed to `1`,
-            otherwise it uses the value of alpha at step 0.
-        steps_offset (`int`, default `0`):
-            an offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
-            stable diffusion.
+        solver_order (`int`, default `2`):
+            the order of DPM-Solver; can be `1` or `2` or `3`. We recommend to use `solver_order=2` for guided
+            sampling, and `solver_order=3` for unconditional sampling.
+        predict_x0 (`bool`, default `True`):
+            DPM-Solver is designed for both the noise prediction model (DPM-Solver, https://arxiv.org/abs/2206.00927)
+            with `predict_x0=False` and the data prediction model (DPM-Solver++, https://arxiv.org/abs/2211.01095) with
+            `predict_x0=True`. We recommend to use `predict_x0=True` and `solver_order=2` for guided sampling (e.g.
+            stable-diffusion).
+        thresholding (`bool`, default `False`):
+            whether to use the "dynamic thresholding" method (introduced by Imagen, https://arxiv.org/abs/2205.11487).
+            For pixel-space diffusion models, you can set both `predict_x0=True` and `thresholding=True` to use the
+            dynamic thresholding. Note that the thresholding method is unsuitable for latent-space diffusion models
+            (such as stable-diffusion).
+        sample_max_value (`float`, default `1.0`):
+            the threshold value for dynamic thresholding. Valid only when `thresholding=True` and `predict_x0=True`.
+        solver_type (`str`, default `dpm_solver`):
+            the solver type for the second-order solver. Either `dpm_solver` or `taylor`. The solver type slightly
+            affects the sample quality, especially for small number of steps.
+        denoise_final (`bool`, default `False`):
+            whether to use lower-order solvers in the final steps.
 
     """
 
@@ -205,7 +225,16 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
     ) -> jnp.ndarray:
         """
-        TODO
+        Convert the noise prediction model to either the noise or the data prediction model.
+
+        Args:
+            model_output (`jnp.ndarray`): direct output from learned diffusion model.
+            timestep (`int`): current discrete timestep in the diffusion chain.
+            sample (`jnp.ndarray`):
+                current instance of sample being created by diffusion process.
+
+        Returns:
+            `jnp.ndarray`: the converted model output.
         """
         if self.predict_x0:
             alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
@@ -224,7 +253,17 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         self, model_output: jnp.ndarray, timestep: int, prev_timestep: int, sample: jnp.ndarray
     ) -> jnp.ndarray:
         """
-        TODO
+        One step for the first-order DPM-Solver (equivalent to DDIM).
+
+        Args:
+            model_output (`jnp.ndarray`): direct output from learned diffusion model.
+            timestep (`int`): current discrete timestep in the diffusion chain.
+            prev_timestep (`int`): previous discrete timestep in the diffusion chain.
+            sample (`jnp.ndarray`):
+                current instance of sample being created by diffusion process.
+
+        Returns:
+            `jnp.ndarray`: the sample tensor at the previous timestep.
         """
         t, s0 = prev_timestep, timestep
         m0 = model_output
@@ -246,7 +285,18 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
     ) -> jnp.ndarray:
         """
-        TODO
+        One step for the second-order multistep DPM-Solver.
+
+        Args:
+            model_output_list (`List[jnp.ndarray]`):
+                direct outputs from learned diffusion model at current and latter timesteps.
+            timestep (`int`): current and latter discrete timestep in the diffusion chain.
+            prev_timestep (`int`): previous discrete timestep in the diffusion chain.
+            sample (`jnp.ndarray`):
+                current instance of sample being created by diffusion process.
+
+        Returns:
+            `jnp.ndarray`: the sample tensor at the previous timestep.
         """
         t, s0, s1 = prev_timestep, timestep_list[-1], timestep_list[-2]
         m0, m1 = model_output_list[-1], model_output_list[-2]
@@ -292,7 +342,18 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         sample: jnp.ndarray,
     ) -> jnp.ndarray:
         """
-        TODO
+        One step for the third-order multistep DPM-Solver.
+
+        Args:
+            model_output_list (`List[jnp.ndarray]`):
+                direct outputs from learned diffusion model at current and latter timesteps.
+            timestep (`int`): current and latter discrete timestep in the diffusion chain.
+            prev_timestep (`int`): previous discrete timestep in the diffusion chain.
+            sample (`jnp.ndarray`):
+                current instance of sample being created by diffusion process.
+
+        Returns:
+            `jnp.ndarray`: the sample tensor at the previous timestep.
         """
         t, s0, s1, s2 = prev_timestep, timestep_list[-1], timestep_list[-2], timestep_list[-3]
         m0, m1, m2 = model_output_list[-1], model_output_list[-2], model_output_list[-3]
