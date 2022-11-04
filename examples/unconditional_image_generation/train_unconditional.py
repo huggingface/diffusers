@@ -92,7 +92,7 @@ def parse_args():
     parser.add_argument(
         "--resolution",
         type=int,
-        default=64,
+        default=-1,
         help=(
             "The resolution for input images, all the images in the train/validation dataset will be resized to this"
             " resolution"
@@ -208,7 +208,16 @@ def parse_args():
     if args.dataset_name is None and args.train_data_dir is None:
         raise ValueError("You must specify either a dataset name from the hub or a train data directory.")
 
+    if args.resolution < 0:     # resolution default
+        if args.dataset_name == "cifar10":
+            args.resolution = 32
+        else:
+            args.resolution = 64
+
     return args
+
+
+def count_parameters(model): return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
 def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
@@ -253,6 +262,9 @@ def main(args):
             "UpBlock2D",
         ),
     )
+
+    print(f"Number of parameters: {count_parameters(model)//1e6:.2f}M")
+
     accepts_predict_epsilon = "predict_epsilon" in set(inspect.signature(DDPMScheduler.__init__).parameters.keys())
 
     if accepts_predict_epsilon:
@@ -292,8 +304,13 @@ def main(args):
     else:
         dataset = load_dataset("imagefolder", data_dir=args.train_data_dir, cache_dir=args.cache_dir, split="train")
 
+    if args.dataset_name == "cifar10":
+        imgkey = "img"
+    else:
+        imgkey = "image"
+
     def transforms(examples):
-        images = [augmentations(image.convert("RGB")) for image in examples["image"]]
+        images = [augmentations(image.convert("RGB")) for image in examples[imgkey]]
         return {"input": images}
 
     logger.info(f"Dataset size: {len(dataset)}")

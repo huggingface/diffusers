@@ -32,6 +32,13 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--split",
+        type=str,
+        default="train",
+        help="The output directory where the model predictions and checkpoints will be written.",
+    )
+
+    parser.add_argument(
         "--cache_dir",
         type=str,
         default=None,
@@ -41,7 +48,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--resolution",
         type=int,
-        default=64,
+        default=-1,
         help=(
             "The resolution for input images, all the images in the train/validation dataset will be resized to this"
             " resolution"
@@ -50,31 +57,42 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    if args.resolution < 0:     # resolution default
+        if args.dataset_name == "cifar10":
+            args.resolution = 32
+        else:
+            args.resolution = 64
+
     dataset = load_dataset(
         args.dataset_name,
         args.dataset_config_name,
         cache_dir=args.cache_dir,
-        split="train",
+        split=args.split,
     )
 
     augmentations = Compose(
         [Resize(args.resolution, interpolation=InterpolationMode.BILINEAR), CenterCrop(args.resolution)]
     )
 
+    if args.dataset_name == "cifar10":
+        imgkey = "img"
+    else:
+        imgkey = "image"
+
     def transforms(examples):
-        images = [augmentations(image.convert("RGB")) for image in examples["image"]]
+        images = [augmentations(image.convert("RGB")) for image in examples[imgkey]]
         return {"input": images}
 
     dataset.set_transform(transforms)
 
-    os.makedirs(os.path.join(args.output_dir, args.dataset_name), exist_ok=True)
+    os.makedirs(os.path.join(args.output_dir, args.dataset_name, args.split), exist_ok=True)
 
     cnt = 0  # how many images generated so far
     numdigits = len(str(len(dataset)))
 
     for example in tqdm(dataset):
         image = example["input"]
-        image.save(os.path.join(args.output_dir, args.dataset_name, f"{{:0{numdigits}d}}.png".format(cnt)))
+        image.save(os.path.join(args.output_dir, args.dataset_name, args.split, f"{{:0{numdigits}d}}.{args.split}.png".format(cnt)))
         cnt += 1
 
     print(f"Saved {cnt} images")
