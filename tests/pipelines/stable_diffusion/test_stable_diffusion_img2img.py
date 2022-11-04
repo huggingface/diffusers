@@ -642,6 +642,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
             guidance_scale=7.5,
             generator=generator,
             output_type="np",
+            num_inference_steps=5,
         )
 
         mem_bytes = torch.cuda.max_memory_allocated()

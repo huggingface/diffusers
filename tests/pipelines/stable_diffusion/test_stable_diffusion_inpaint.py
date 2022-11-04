@@ -417,6 +417,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             image=init_image,
             mask_image=mask_image,
             generator=generator,
+            num_inference_steps=5,
             output_type="np",
         )
 
