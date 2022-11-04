@@ -78,7 +78,7 @@ class DDIMPipelineIntegrationTests(unittest.TestCase):
     def test_inference_ema_bedroom(self):
         model_id = "google/ddpm-ema-bedroom-256"
 
-        unet = UNet2DModel.from_pretrained(model_id, device_map="auto")
+        unet = UNet2DModel.from_pretrained(model_id)
         scheduler = DDIMScheduler.from_config(model_id)
 
         ddpm = DDIMPipeline(unet=unet, scheduler=scheduler)
@@ -97,7 +97,7 @@ class DDIMPipelineIntegrationTests(unittest.TestCase):
     def test_inference_cifar10(self):
         model_id = "google/ddpm-cifar10-32"
 
-        unet = UNet2DModel.from_pretrained(model_id, device_map="auto")
+        unet = UNet2DModel.from_pretrained(model_id)
         scheduler = DDIMScheduler()
 
         ddim = DDIMPipeline(unet=unet, scheduler=scheduler)
