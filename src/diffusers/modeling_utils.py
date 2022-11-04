@@ -334,7 +334,7 @@ class ModelMixin(torch.nn.Module):
             low_cpu_mem_usage = False
             logger.warn(
                 "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
-                " environment. Defaulting to `low_cpu_mem_usage=False`.It is strongly recommended to install"
+                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
                 " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
                 " install accelerate\n```\n."
             )
