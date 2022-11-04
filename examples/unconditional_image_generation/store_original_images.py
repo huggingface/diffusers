@@ -57,7 +57,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if args.resolution < 0:     # resolution default
+    if args.resolution < 0:  # resolution default
         if args.dataset_name == "cifar10":
             args.resolution = 32
         else:
@@ -92,7 +92,11 @@ if __name__ == "__main__":
 
     for example in tqdm(dataset):
         image = example["input"]
-        image.save(os.path.join(args.output_dir, args.dataset_name, args.split, f"{{:0{numdigits}d}}.{args.split}.png".format(cnt)))
+        image.save(
+            os.path.join(
+                args.output_dir, args.dataset_name, args.split, f"{{:0{numdigits}d}}.{args.split}.png".format(cnt)
+            )
+        )
         cnt += 1
 
     print(f"Saved {cnt} images")
