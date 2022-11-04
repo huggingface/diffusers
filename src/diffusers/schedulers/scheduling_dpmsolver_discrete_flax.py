@@ -16,7 +16,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union, List
+from typing import List, Optional, Tuple, Union
 
 import flax
 import jax
@@ -137,9 +137,7 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             self.betas = jnp.linspace(beta_start, beta_end, num_train_timesteps, dtype=jnp.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = (
-                jnp.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=jnp.float32) ** 2
-            )
+            self.betas = jnp.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=jnp.float32) ** 2
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
@@ -170,7 +168,9 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
     def create_state(self):
         return DPMSolverDiscreteSchedulerState.create(num_train_timesteps=self.config.num_train_timesteps)
 
-    def set_timesteps(self, state: DPMSolverDiscreteSchedulerState, num_inference_steps: int, shape: Tuple) -> DPMSolverDiscreteSchedulerState:
+    def set_timesteps(
+        self, state: DPMSolverDiscreteSchedulerState, num_inference_steps: int, shape: Tuple
+    ) -> DPMSolverDiscreteSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -182,7 +182,11 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             shape (`Tuple`):
                 the shape of the samples to be generated.
         """
-        timesteps = jnp.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps + 1).round()[::-1][:-1].astype(jnp.int32)
+        timesteps = (
+            jnp.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps + 1)
+            .round()[::-1][:-1]
+            .astype(jnp.int32)
+        )
 
         return state.replace(
             num_inference_steps=num_inference_steps,
@@ -217,11 +221,7 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             return model_output
 
     def dpm_solver_first_order_update(
-        self,
-        model_output: jnp.ndarray,
-        timestep: int,
-        prev_timestep: int,
-        sample: jnp.ndarray
+        self, model_output: jnp.ndarray, timestep: int, prev_timestep: int, sample: jnp.ndarray
     ) -> jnp.ndarray:
         """
         TODO
@@ -233,15 +233,9 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         sigma_t, sigma_s = self.sigma_t[t], self.sigma_t[s0]
         h = lambda_t - lambda_s
         if self.predict_x0:
-            x_t = (
-                (sigma_t / sigma_s) * sample
-                - (alpha_t * (jnp.exp(-h) - 1.)) * m0
-            )
+            x_t = (sigma_t / sigma_s) * sample - (alpha_t * (jnp.exp(-h) - 1.0)) * m0
         else:
-            x_t = (
-                (alpha_t / alpha_s) * sample
-                - (sigma_t * (jnp.exp(h) - 1.)) * m0
-            )
+            x_t = (alpha_t / alpha_s) * sample - (sigma_t * (jnp.exp(h) - 1.0)) * m0
         return x_t
 
     def multistep_dpm_solver_second_order_update(
@@ -261,32 +255,32 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         sigma_t, sigma_s0 = self.sigma_t[t], self.sigma_t[s0]
         h, h_0 = lambda_t - lambda_s0, lambda_s0 - lambda_s1
         r0 = h_0 / h
-        D0, D1 = m0, (1. / r0) * (m0 - m1)
+        D0, D1 = m0, (1.0 / r0) * (m0 - m1)
         if self.predict_x0:
-            if self.solver_type == 'dpm_solver':
+            if self.solver_type == "dpm_solver":
                 x_t = (
                     (sigma_t / sigma_s0) * sample
-                    - (alpha_t * (jnp.exp(-h) - 1.)) * D0
-                    - 0.5 * (alpha_t * (jnp.exp(-h) - 1.)) * D1
+                    - (alpha_t * (jnp.exp(-h) - 1.0)) * D0
+                    - 0.5 * (alpha_t * (jnp.exp(-h) - 1.0)) * D1
                 )
-            elif self.solver_type == 'taylor':
+            elif self.solver_type == "taylor":
                 x_t = (
                     (sigma_t / sigma_s0) * sample
-                    - (alpha_t * (jnp.exp(-h) - 1.)) * D0
-                    + (alpha_t * ((jnp.exp(-h) - 1.) / h + 1.)) * D1
+                    - (alpha_t * (jnp.exp(-h) - 1.0)) * D0
+                    + (alpha_t * ((jnp.exp(-h) - 1.0) / h + 1.0)) * D1
                 )
         else:
-            if self.solver_type == 'dpm_solver':
+            if self.solver_type == "dpm_solver":
                 x_t = (
                     (alpha_t / alpha_s0) * sample
-                    - (sigma_t * (jnp.exp(h) - 1.)) * D0
-                    - 0.5 * (sigma_t * (jnp.exp(h) - 1.)) * D1
+                    - (sigma_t * (jnp.exp(h) - 1.0)) * D0
+                    - 0.5 * (sigma_t * (jnp.exp(h) - 1.0)) * D1
                 )
-            elif self.solver_type == 'taylor':
+            elif self.solver_type == "taylor":
                 x_t = (
                     (alpha_t / alpha_s0) * sample
-                    - (sigma_t * (jnp.exp(h) - 1.)) * D0
-                    - (sigma_t * ((jnp.exp(h) - 1.) / h - 1.)) * D1
+                    - (sigma_t * (jnp.exp(h) - 1.0)) * D0
+                    - (sigma_t * ((jnp.exp(h) - 1.0) / h - 1.0)) * D1
                 )
         return x_t
 
@@ -302,28 +296,33 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         """
         t, s0, s1, s2 = prev_timestep, timestep_list[-1], timestep_list[-2], timestep_list[-3]
         m0, m1, m2 = model_output_list[-1], model_output_list[-2], model_output_list[-3]
-        lambda_t, lambda_s0, lambda_s1, lambda_s2 = self.lambda_t[t], self.lambda_t[s0], self.lambda_t[s1], self.lambda_t[s2]
+        lambda_t, lambda_s0, lambda_s1, lambda_s2 = (
+            self.lambda_t[t],
+            self.lambda_t[s0],
+            self.lambda_t[s1],
+            self.lambda_t[s2],
+        )
         alpha_t, alpha_s0 = self.alpha_t[t], self.alpha_t[s0]
         sigma_t, sigma_s0 = self.sigma_t[t], self.sigma_t[s0]
         h, h_0, h_1 = lambda_t - lambda_s0, lambda_s0 - lambda_s1, lambda_s1 - lambda_s2
         r0, r1 = h_0 / h, h_1 / h
         D0 = m0
-        D1_0, D1_1 = (1. / r0) * (m0 - m1), (1. / r1) * (m1 - m2)
+        D1_0, D1_1 = (1.0 / r0) * (m0 - m1), (1.0 / r1) * (m1 - m2)
         D1 = D1_0 + (r0 / (r0 + r1)) * (D1_0 - D1_1)
-        D2 = (1. / (r0 + r1)) * (D1_0 - D1_1)
+        D2 = (1.0 / (r0 + r1)) * (D1_0 - D1_1)
         if self.predict_x0:
             x_t = (
                 (sigma_t / sigma_s0) * sample
-                - (alpha_t * (jnp.exp(-h) - 1.)) * D0
-                + (alpha_t * ((jnp.exp(-h) - 1.) / h + 1.)) * D1
-                - (alpha_t * ((jnp.exp(-h) - 1. + h) / h**2 - 0.5)) * D2
+                - (alpha_t * (jnp.exp(-h) - 1.0)) * D0
+                + (alpha_t * ((jnp.exp(-h) - 1.0) / h + 1.0)) * D1
+                - (alpha_t * ((jnp.exp(-h) - 1.0 + h) / h**2 - 0.5)) * D2
             )
         else:
             x_t = (
                 (alpha_t / alpha_s0) * sample
-                - (sigma_t * (jnp.exp(h) - 1.)) * D0
-                - (sigma_t * ((jnp.exp(h) - 1.) / h - 1.)) * D1
-                - (sigma_t * ((jnp.exp(h) - 1. - h) / h**2 - 0.5)) * D2
+                - (sigma_t * (jnp.exp(h) - 1.0)) * D0
+                - (sigma_t * ((jnp.exp(h) - 1.0) / h - 1.0)) * D1
+                - (sigma_t * ((jnp.exp(h) - 1.0 - h) / h**2 - 0.5)) * D2
             )
         return x_t
 
@@ -336,8 +335,8 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         return_dict: bool = True,
     ) -> Union[FlaxDPMSolverDiscreteSchedulerOutput, Tuple]:
         """
-        Predict the sample at the previous timestep by DPM-Solver. Core function to propagate the diffusion
-        process from the learned model outputs (most often the predicted noise).
+        Predict the sample at the previous timestep by DPM-Solver. Core function to propagate the diffusion process
+        from the learned model outputs (most often the predicted noise).
 
         Args:
             state (`DPMSolverDiscreteSchedulerState`): the `FlaxDPMSolverDiscreteScheduler` state data class instance.
@@ -348,8 +347,8 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             return_dict (`bool`): option for returning tuple rather than FlaxDPMSolverDiscreteSchedulerOutput class
 
         Returns:
-            [`FlaxDPMSolverDiscreteSchedulerOutput`] or `tuple`: [`FlaxDPMSolverDiscreteSchedulerOutput`] if `return_dict` is True, otherwise a
-            `tuple`. When returning a tuple, the first element is the sample tensor.
+            [`FlaxDPMSolverDiscreteSchedulerOutput`] or `tuple`: [`FlaxDPMSolverDiscreteSchedulerOutput`] if
+            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
         prev_timestep = jax.lax.cond(
@@ -359,7 +358,7 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             (),
         )
 
-        model_output = self.convert_model_output(model_output, timestep, sample) 
+        model_output = self.convert_model_output(model_output, timestep, sample)
 
         model_outputs_new = jnp.roll(state.model_outputs, -1, axis=0)
         model_outputs_new = model_outputs_new.at[-1].set(model_output)
@@ -369,9 +368,7 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             cur_sample=sample,
         )
 
-        def step_1(
-            state: DPMSolverDiscreteSchedulerState
-        ) -> jnp.ndarray:
+        def step_1(state: DPMSolverDiscreteSchedulerState) -> jnp.ndarray:
             return self.dpm_solver_first_order_update(
                 state.model_outputs[-1],
                 state.timesteps[state.step_index],
@@ -379,17 +376,9 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
                 state.cur_sample,
             )
 
-        def step_23(
-            state: DPMSolverDiscreteSchedulerState
-        ) -> jnp.ndarray:
-
-            def step_2(
-                state: DPMSolverDiscreteSchedulerState
-            ) -> jnp.ndarray:
-                timestep_list = jnp.array([
-                    state.timesteps[state.step_index - 1],
-                    state.timesteps[state.step_index]
-                ])
+        def step_23(state: DPMSolverDiscreteSchedulerState) -> jnp.ndarray:
+            def step_2(state: DPMSolverDiscreteSchedulerState) -> jnp.ndarray:
+                timestep_list = jnp.array([state.timesteps[state.step_index - 1], state.timesteps[state.step_index]])
                 return self.multistep_dpm_solver_second_order_update(
                     state.model_outputs,
                     timestep_list,
@@ -397,14 +386,14 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
                     state.cur_sample,
                 )
 
-            def step_3(
-                state: DPMSolverDiscreteSchedulerState
-            ) -> jnp.ndarray:
-                timestep_list = jnp.array([
-                    state.timesteps[state.step_index - 2],
-                    state.timesteps[state.step_index - 1],
-                    state.timesteps[state.step_index]
-                ])
+            def step_3(state: DPMSolverDiscreteSchedulerState) -> jnp.ndarray:
+                timestep_list = jnp.array(
+                    [
+                        state.timesteps[state.step_index - 2],
+                        state.timesteps[state.step_index - 1],
+                        state.timesteps[state.step_index],
+                    ]
+                )
                 return self.multistep_dpm_solver_third_order_update(
                     state.model_outputs,
                     timestep_list,
@@ -454,7 +443,7 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
                 step_1,
                 step_23,
                 state,
-            ) 
+            )
 
         state = state.replace(
             lower_order_nums=jnp.minimum(state.lower_order_nums + 1, self.solver_order),

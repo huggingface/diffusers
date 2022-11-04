@@ -11,11 +11,11 @@ from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import (
     DDIMScheduler,
+    DPMSolverDiscreteScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
-    DPMSolverDiscreteScheduler,
 )
 from ...utils import deprecate, logging
 from . import StableDiffusionPipelineOutput
@@ -60,7 +60,11 @@ class StableDiffusionPipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
         scheduler: Union[
-            DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler, EulerDiscreteScheduler, EulerAncestralDiscreteScheduler,
+            DDIMScheduler,
+            PNDMScheduler,
+            LMSDiscreteScheduler,
+            EulerDiscreteScheduler,
+            EulerAncestralDiscreteScheduler,
             DPMSolverDiscreteScheduler,
         ],
         safety_checker: StableDiffusionSafetyChecker,
