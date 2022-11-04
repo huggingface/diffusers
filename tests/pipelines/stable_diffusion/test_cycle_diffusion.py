@@ -20,17 +20,9 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import (
-    AutoencoderKL,
-    DDIMScheduler,
-    CycleDiffusionPipeline,
-    UNet2DConditionModel,
-    UNet2DModel,
-    VQModel,
-)
+from diffusers import AutoencoderKL, CycleDiffusionPipeline, DDIMScheduler, UNet2DConditionModel, UNet2DModel, VQModel
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
-from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from ...test_pipelines_common import PipelineTesterMixin
@@ -178,7 +170,7 @@ class CycleDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             vae=vae,
             text_encoder=bert,
             tokenizer=tokenizer,
-            safety_checker=self.dummy_safety_checker,
+            safety_checker=None,
             feature_extractor=self.dummy_extractor,
         )
         sd_pipe = sd_pipe.to(device)
@@ -206,13 +198,67 @@ class CycleDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = images[0, -3:, -3:, -1]
 
         assert images.shape == (1, 32, 32, 3)
-        expected_slice = np.array([0.5112, 0.4692, 0.4715, 0.5206, 0.4894, 0.5114, 0.5096, 0.4932, 0.4755])
+        expected_slice = np.array([0.4459, 0.4943, 0.4544, 0.6643, 0.5474, 0.4327, 0.5701, 0.5959, 0.5179])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
-    def test_cycle_diffusion_fp16(self):
-        pass
+    def test_stable_diffusion_cycle_fp16(self):
+        unet = self.dummy_cond_unet
+        scheduler = DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            num_train_timesteps=1000,
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        unet = unet.half()
+        vae = vae.half()
+        bert = bert.half()
+
+        # make sure here that pndm scheduler skips prk
+        sd_pipe = CycleDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        source_prompt = "An astronaut riding a horse"
+        prompt = "An astronaut riding an elephant"
+        init_image = self.dummy_image.to(torch_device)
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        output = sd_pipe(
+            prompt=prompt,
+            source_prompt=source_prompt,
+            generator=generator,
+            num_inference_steps=2,
+            init_image=init_image,
+            eta=0.1,
+            strength=0.8,
+            guidance_scale=3,
+            source_guidance_scale=1,
+            output_type="np",
+        )
+        images = output.images
+
+        image_slice = images[0, -3:, -3:, -1]
+
+        assert images.shape == (1, 32, 32, 3)
+        expected_slice = np.array([0.3506, 0.4543, 0.446, 0.4575, 0.5195, 0.4155, 0.5273, 0.518, 0.4116])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
 @slow
@@ -224,26 +270,58 @@ class CycleDiffusionPipelineIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-
     def test_cycle_diffusion_pipeline_fp16(self):
-        pass
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/cycle-diffusion/black_colored_car.png"
+        )
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/cycle-diffusion/blue_colored_car_fp16.npy"
+        )
+        init_image = init_image.resize((512, 512))
 
-    @slow
-    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+        model_id = "CompVis/stable-diffusion-v1-4"
+        scheduler = DDIMScheduler.from_config(model_id, subfolder="scheduler")
+        pipe = CycleDiffusionPipeline.from_pretrained(
+            model_id, scheduler=scheduler, safety_checker=None, torch_dtype=torch.float16, revision="fp16"
+        )
+
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        source_prompt = "A black colored car"
+        prompt = "A blue colored car"
+
+        torch.manual_seed(0)
+        output = pipe(
+            prompt=prompt,
+            source_prompt=source_prompt,
+            init_image=init_image,
+            num_inference_steps=100,
+            eta=0.1,
+            strength=0.85,
+            guidance_scale=3,
+            source_guidance_scale=1,
+            output_type="np",
+        )
+        image = output.images
+
+        # the values aren't exactly equal, but the images look the same visually
+        assert np.abs(image - expected_image).max() < 1e-2
+
     def test_cycle_diffusion_pipeline(self):
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/cycle-diffusion/black_colored_car.png"
         )
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/img2img/fantasy_landscape.png"
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/cycle-diffusion/blue_colored_car.npy"
         )
         init_image = init_image.resize((512, 512))
-        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        scheduler = DDIMScheduler(model_id, subfolder="scheduler")
+        scheduler = DDIMScheduler.from_config(model_id, subfolder="scheduler")
         pipe = CycleDiffusionPipeline.from_pretrained(model_id, scheduler=scheduler, safety_checker=None)
 
         pipe.to(torch_device)
@@ -263,13 +341,8 @@ class CycleDiffusionPipelineIntegrationTests(unittest.TestCase):
             strength=0.85,
             guidance_scale=3,
             source_guidance_scale=1,
-#            output_type="np",
+            output_type="np",
         )
-        image = output.images[0]
-        image.save("/home/patrick_huggingface_co/images/tryout.png")
+        image = output.images
 
-        import ipdb; ipdb.set_trace()
-
-        # the values aren't exactly equal, but the images look the same visually
-        assert np.abs(ddpm_images - ddim_images).max() < 1e-1
-
+        assert np.abs(image - expected_image).max() < 1e-2
