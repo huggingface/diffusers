@@ -288,7 +288,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         if eta > 0:
             # randn_like does not support generator https://github.com/pytorch/pytorch/issues/27072
             device = model_output.device if torch.is_tensor(model_output) else "cpu"
-            assert (variance_noise is None) or (generator is None), "Cannot pass both generator and variance_noise"
+            if (variance_noise is not None) and (generator is not None):
+                raise ValueError("You can only provide one of 'variance_noise' and 'generator'.")
             if variance_noise is None:
                 variance_noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator).to(
                     device
