@@ -21,7 +21,7 @@ import torch
 from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput, deprecate
+from ..utils import BaseOutput
 from .scheduling_utils import SchedulerMixin
 
 

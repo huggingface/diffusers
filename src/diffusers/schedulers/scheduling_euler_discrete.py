@@ -19,7 +19,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput, deprecate, logging
+from ..utils import BaseOutput, logging
 from .scheduling_utils import SchedulerMixin
 
 
