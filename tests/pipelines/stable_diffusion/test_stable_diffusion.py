@@ -34,7 +34,7 @@ from diffusers import (
     UNet2DModel,
     VQModel,
 )
-from diffusers.utils import floats_tensor, load_image, slow, torch_device
+from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -753,12 +753,10 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         # however, they should be extremely close.
         assert diff.mean() < 2e-2
 
-    def test_stable_diffusion_text2img_pipeline(self):
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/text2img/astronaut_riding_a_horse.png"
+    def test_stable_diffusion_text2img_pipeline_default(self):
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/lewington/expected-images/resolve/main/astronaut_riding_a_horse.npy"
         )
-        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionPipeline.from_pretrained(model_id, safety_checker=None)
@@ -773,7 +771,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-        assert np.abs(expected_image - image).max() < 1e-2
+        assert np.abs(expected_image - image).max() < 1e-3
 
     def test_stable_diffusion_text2img_intermediate_state(self):
         number_of_steps = 0
