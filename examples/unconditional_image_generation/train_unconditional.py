@@ -208,7 +208,7 @@ def parse_args():
     if args.dataset_name is None and args.train_data_dir is None:
         raise ValueError("You must specify either a dataset name from the hub or a train data directory.")
 
-    if args.resolution < 0:     # resolution default
+    if args.resolution < 0:  # resolution default
         if args.dataset_name == "cifar10":
             args.resolution = 32
         else:
@@ -217,7 +217,8 @@ def parse_args():
     return args
 
 
-def count_parameters(model): return sum(p.numel() for p in model.parameters() if p.requires_grad)
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
 def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
