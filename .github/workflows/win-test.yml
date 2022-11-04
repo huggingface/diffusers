@@ -15,4 +15,5 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install diffusers[flax]==0.7.0
+          pip install diffusers
+          pip install diffusers==0.7.0
