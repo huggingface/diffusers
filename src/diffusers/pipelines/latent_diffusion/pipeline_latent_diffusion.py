@@ -662,6 +662,8 @@ class LDMBertEncoder(LDMBertPreTrainedModel):
 
 
 class LDMBertModel(LDMBertPreTrainedModel):
+    _no_split_modules = []
+
     def __init__(self, config: LDMBertConfig):
         super().__init__(config)
         self.model = LDMBertEncoder(config)

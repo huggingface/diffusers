@@ -23,7 +23,7 @@ from ..configuration_utils import ConfigMixin, flax_register_to_config
 from ..modeling_flax_utils import FlaxModelMixin
 from ..utils import BaseOutput
 from .embeddings_flax import FlaxTimestepEmbedding, FlaxTimesteps
-from .unet_blocks_flax import (
+from .unet_2d_blocks_flax import (
     FlaxCrossAttnDownBlock2D,
     FlaxCrossAttnUpBlock2D,
     FlaxDownBlock2D,
