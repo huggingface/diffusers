@@ -115,11 +115,11 @@ from diffusers import CycleDiffusionPipeline, DDIMScheduler
 
 
 # load the scheduler. CycleDiffusion only supports stochastic schedulers.
-scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
 
 # load the pipeline
 # make sure you're logged in with `huggingface-cli login`
 model_id_or_path = "CompVis/stable-diffusion-v1-4"
+scheduler = DDIMScheduler.from_config(model_id_or_path, subfolder="scheduler")
 pipe = CycleDiffusionPipeline.from_pretrained(model_id_or_path, scheduler=scheduler).to("cuda")
 
 # let's download an initial image
