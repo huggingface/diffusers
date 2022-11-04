@@ -26,7 +26,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 logger = get_logger(__name__)
 
 
-def parse_args(input_args):
+def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
         "--pretrained_model_name_or_path",
@@ -469,9 +469,7 @@ def main(args):
         eps=args.adam_epsilon,
     )
 
-    noise_scheduler = DDPMScheduler(
-        beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000
-    )
+    noise_scheduler = DDPMScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
 
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
@@ -496,7 +494,12 @@ def main(args):
         pixel_values = torch.stack(pixel_values)
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
-        input_ids = tokenizer.pad({"input_ids": input_ids}, padding=True, return_tensors="pt").input_ids
+        input_ids = tokenizer.pad(
+            {"input_ids": input_ids},
+            padding="max_length",
+            max_length=tokenizer.model_max_length,
+            return_tensors="pt",
+        ).input_ids
 
         batch = {
             "input_ids": input_ids,
@@ -574,6 +577,8 @@ def main(args):
 
     for epoch in range(args.num_train_epochs):
         unet.train()
+        if args.train_text_encoder:
+            text_encoder.train()
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Convert images to latent space

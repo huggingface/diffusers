@@ -30,9 +30,10 @@ from packaging import version
 from PIL import Image
 from tqdm.auto import tqdm
 
-from . import __version__
 from .configuration_utils import ConfigMixin
 from .dynamic_modules_utils import get_class_from_dynamic_module
+from .hub_utils import http_user_agent
+from .modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from .utils import (
     CONFIG_NAME,
@@ -41,6 +42,8 @@ from .utils import (
     WEIGHTS_NAME,
     BaseOutput,
     deprecate,
+    is_accelerate_available,
+    is_torch_version,
     is_transformers_available,
     logging,
 )
@@ -176,6 +179,10 @@ class DiffusionPipeline(ConfigMixin):
 
         for pipeline_component_name in model_index_dict.keys():
             sub_model = getattr(self, pipeline_component_name)
+            if sub_model is None:
+                # edge case for saving a pipeline with safety_checker=None
+                continue
+
             model_cls = sub_model.__class__
 
             save_method_name = None
@@ -324,6 +331,19 @@ class DiffusionPipeline(ConfigMixin):
                 Mirror source to accelerate downloads in China. If you are from China and have an accessibility
                 problem, you can set this option to resolve it. Note that we do not guarantee the timeliness or safety.
                 Please refer to the mirror site for more information. specify the folder name here.
+            device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
+                A map that specifies where each submodule should go. It doesn't need to be refined to each
+                parameter/buffer name, once a given module name is inside, every submodule of it will be sent to the
+                same device.
+
+                To have Accelerate compute the most optimized `device_map` automatically, set `device_map="auto"`. For
+                more information about each option see [designing a device
+                map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading by not initializing the weights and only loading the pre-trained weights. This
+                also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
+                model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
+                setting this argument to `True` will raise an error.
 
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
@@ -360,7 +380,7 @@ class DiffusionPipeline(ConfigMixin):
         >>> # Download pipeline, but overwrite scheduler
         >>> from diffusers import LMSDiscreteScheduler
 
-        >>> scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
+        >>> scheduler = LMSDiscreteScheduler.from_config("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
         >>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", scheduler=scheduler)
         ```
         """
@@ -376,6 +396,34 @@ class DiffusionPipeline(ConfigMixin):
         provider = kwargs.pop("provider", None)
         sess_options = kwargs.pop("sess_options", None)
         device_map = kwargs.pop("device_map", None)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
+
+        if low_cpu_mem_usage and not is_accelerate_available():
+            low_cpu_mem_usage = False
+            logger.warn(
+                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                " install accelerate\n```\n."
+            )
+
+        if device_map is not None and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `device_map=None`."
+            )
+
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
+            )
+
+        if low_cpu_mem_usage is False and device_map is not None:
+            raise ValueError(
+                f"You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
+                " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
+            )
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -395,13 +443,20 @@ class DiffusionPipeline(ConfigMixin):
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
             allow_patterns += [WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, ONNX_WEIGHTS_NAME, cls.config_name]
 
+            # make sure we don't download flax weights
+            ignore_patterns = "*.msgpack"
+
             if custom_pipeline is not None:
                 allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
 
-            requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
-            user_agent = {"diffusers": __version__, "pipeline_class": requested_pipeline_class}
+            if cls != DiffusionPipeline:
+                requested_pipeline_class = cls.__name__
+            else:
+                requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
+            user_agent = {"pipeline_class": requested_pipeline_class}
             if custom_pipeline is not None:
                 user_agent["custom_pipeline"] = custom_pipeline
+            user_agent = http_user_agent(user_agent)
 
             # download all allow_patterns
             cached_folder = snapshot_download(
@@ -413,6 +468,7 @@ class DiffusionPipeline(ConfigMixin):
                 use_auth_token=use_auth_token,
                 revision=revision,
                 allow_patterns=allow_patterns,
+                ignore_patterns=ignore_patterns,
                 user_agent=user_agent,
             )
         else:
@@ -469,6 +525,11 @@ class DiffusionPipeline(ConfigMixin):
 
         # 3. Load each module in the pipeline
         for name, (library_name, class_name) in init_dict.items():
+            if class_name is None:
+                # edge case for when the pipeline was saved with safety_checker=None
+                init_kwargs[name] = None
+                continue
+
             # 3.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             if class_name.startswith("Flax"):
                 class_name = class_name[4:]
@@ -555,8 +616,12 @@ class DiffusionPipeline(ConfigMixin):
                     and version.parse(version.parse(transformers.__version__).base_version) >= version.parse("4.20.0")
                 )
 
+                # When loading a transformers model, if the device_map is None, the weights will be initialized as opposed to diffusers.
+                # To make default loading faster we set the `low_cpu_mem_usage=low_cpu_mem_usage` flag which is `True` by default.
+                # This makes sure that the weights won't be initialized which significantly speeds up loading.
                 if is_diffusers_model or is_transformers_model:
                     loading_kwargs["device_map"] = device_map
+                    loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
@@ -598,7 +663,7 @@ class DiffusionPipeline(ConfigMixin):
         ...     StableDiffusionInpaintPipeline,
         ... )
 
-        >>> img2text = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+        >>> img2text = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
         >>> img2img = StableDiffusionImg2ImgPipeline(**img2text.components)
         >>> inpaint = StableDiffusionInpaintPipeline(**img2text.components)
         ```
@@ -625,7 +690,11 @@ class DiffusionPipeline(ConfigMixin):
         if images.ndim == 3:
             images = images[None, ...]
         images = (images * 255).round().astype("uint8")
-        pil_images = [Image.fromarray(image) for image in images]
+        if images.shape[-1] == 1:
+            # special case for grayscale (single channel) images
+            pil_images = [Image.fromarray(image.squeeze(), mode="L") for image in images]
+        else:
+            pil_images = [Image.fromarray(image) for image in images]
 
         return pil_images
 

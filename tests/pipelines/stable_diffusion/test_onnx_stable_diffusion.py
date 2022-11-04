@@ -18,9 +18,13 @@ import unittest
 import numpy as np
 
 from diffusers import OnnxStableDiffusionPipeline
-from diffusers.utils.testing_utils import require_onnxruntime, slow
+from diffusers.utils.testing_utils import is_onnx_available, require_onnxruntime, require_torch_gpu, slow
 
 from ...test_pipelines_onnx_common import OnnxPipelineTesterMixin
+
+
+if is_onnx_available():
+    import onnxruntime as ort
 
 
 class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.TestCase):
@@ -30,10 +34,23 @@ class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.Tes
 
 @slow
 @require_onnxruntime
+@require_torch_gpu
 class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
     def test_inference(self):
+        provider = (
+            "CUDAExecutionProvider",
+            {
+                "gpu_mem_limit": "17179869184",  # 16GB.
+                "arena_extend_strategy": "kSameAsRequested",
+            },
+        )
+        options = ort.SessionOptions()
+        options.enable_mem_pattern = False
         sd_pipe = OnnxStableDiffusionPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider"
+            "CompVis/stable-diffusion-v1-4",
+            revision="onnx",
+            provider=provider,
+            sess_options=options,
         )
 
         prompt = "A painting of a squirrel eating a burger"
@@ -72,7 +89,7 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
         test_callback_fn.has_been_called = False
 
         pipe = OnnxStableDiffusionPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CPUExecutionProvider"
+            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CUDAExecutionProvider"
         )
         pipe.set_progress_bar_config(disable=None)
 
