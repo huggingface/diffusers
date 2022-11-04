@@ -23,7 +23,7 @@ import jax
 import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput
+from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput, broadcast_to_shape_from_left
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps: int, max_beta=0.999) -> jnp.ndarray:
@@ -532,6 +532,23 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             `jnp.ndarray`: scaled input sample
         """
         return sample
+
+    def add_noise(
+        self,
+        original_samples: jnp.ndarray,
+        noise: jnp.ndarray,
+        timesteps: jnp.ndarray,
+    ) -> jnp.ndarray:
+        sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
+        sqrt_alpha_prod = sqrt_alpha_prod.flatten()
+        sqrt_alpha_prod = broadcast_to_shape_from_left(sqrt_alpha_prod, original_samples.shape)
+
+        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.0
+        sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
+        sqrt_one_minus_alpha_prod = broadcast_to_shape_from_left(sqrt_one_minus_alpha_prod, original_samples.shape)
+
+        noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
+        return noisy_samples
 
     def __len__(self):
         return self.config.num_train_timesteps
