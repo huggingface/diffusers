@@ -5,6 +5,7 @@ import numpy as np
 import torch
 
 import PIL
+from diffusers.utils import is_accelerate_available
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
@@ -150,6 +151,23 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         """
         # set slice_size = `None` to disable `attention slicing`
         self.enable_attention_slicing(None)
+
+    def enable_sequential_cpu_offload(self):
+        r"""
+        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
+        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
+        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
+        """
+        if is_accelerate_available():
+            from accelerate import cpu_offload
+        else:
+            raise ImportError("Please install accelerate via `pip install accelerate`")
+
+        device = torch.device("cuda")
+
+        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
+            if cpu_offloaded_model is not None:
+                cpu_offload(cpu_offloaded_model, device)
 
     def enable_xformers_memory_efficient_attention(self):
         r"""
@@ -361,11 +379,14 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
         # prepare mask and masked_image
         mask, masked_image = prepare_mask_and_masked_image(image, mask_image)
-        mask = mask.to(device=self.device, dtype=text_embeddings.dtype)
-        masked_image = masked_image.to(device=self.device, dtype=text_embeddings.dtype)
 
         # resize the mask to latents shape as we concatenate the mask to the latents
+        # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
+        # and half precision
         mask = torch.nn.functional.interpolate(mask, size=(height // 8, width // 8))
+        mask = mask.to(device=self.device, dtype=text_embeddings.dtype)
+
+        masked_image = masked_image.to(device=self.device, dtype=text_embeddings.dtype)
 
         # encode the mask image into latents space so we can concatenate it to the latents
         masked_image_latents = self.vae.encode(masked_image).latent_dist.sample(generator=generator)
@@ -379,6 +400,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         masked_image_latents = (
             torch.cat([masked_image_latents] * 2) if do_classifier_free_guidance else masked_image_latents
         )
+
+        # aligning device to prevent device errors when concating it with the latent model input
+        masked_image_latents = masked_image_latents.to(device=self.device, dtype=text_embeddings.dtype)
 
         num_channels_mask = mask.shape[1]
         num_channels_masked_image = masked_image_latents.shape[1]
