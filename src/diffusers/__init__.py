@@ -1,5 +1,4 @@
 from .utils import (
-    is_accelerate_available,
     is_flax_available,
     is_inflect_available,
     is_onnx_available,
