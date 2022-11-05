@@ -120,7 +120,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
             extra_kwargs["eta"] = eta
 
         for t in self.progress_bar(self.scheduler.timesteps):
-            # concat latents and low resolution image
+            # concat latents and low resolution image in the channel dimension.
             latents_input = torch.cat([latents, init_image], dim=1)
             # predict the noise residual
             noise_pred = self.unet(latents_input, t).sample
