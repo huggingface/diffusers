@@ -7,9 +7,15 @@ import torch.utils.checkpoint
 
 import PIL
 
-from ...models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
+from ...models import UNet2DModel, VQModel
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
-from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from ...schedulers import (
+    DDIMScheduler,
+    EulerAncestralDiscreteScheduler,
+    EulerDiscreteScheduler,
+    LMSDiscreteScheduler,
+    PNDMScheduler,
+)
 
 
 def preprocess(image):
@@ -30,17 +36,20 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
     Parameters:
         vqvae ([`VQModel`]):
             Vector-quantized (VQ) VAE Model to encode and decode images to and from latent representations.
-        unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
+        unet ([`UNet2DModel`]): U-Net architecture to denoise the encoded image.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
-            [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
+            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
+            [`DDIMScheduler`], [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`],
+            [`EulerAncestralDiscreteScheduler`], or [`PNDMScheduler`].
     """
 
     def __init__(
         self,
         vqvae: VQModel,
         unet: UNet2DModel,
-        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+        scheduler: Union[
+            DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler, EulerDiscreteScheduler, EulerAncestralDiscreteScheduler
+        ],
     ):
         super().__init__()
         self.register_modules(vqvae=vqvae, unet=unet, scheduler=scheduler)
@@ -99,16 +108,26 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
 
         height, width = init_image.shape[-2:]
 
+        latents_dtype = self.unet.dtype
+        # in_channels should be 6: 3 for latents, 3 for low resolution image
         latents = torch.randn(
             (batch_size, self.unet.in_channels // 2, height, width),
-            device="cuda",
+            device=self.device,
             generator=generator,
+            dtype=latents_dtype,
         )
         latents = latents.to(self.device)
-        init_image = init_image.to(device=self.device, dtype=latents.dtype)
+        init_image = init_image.to(device=self.device, dtype=latents_dtype)
 
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
+
+        # Some schedulers like PNDM have timesteps as arrays
+        # It's more optimized to move all timesteps to correct device beforehand
+        timesteps_tensor = self.scheduler.timesteps.to(self.device)
+
+        # scale the initial noise by the standard deviation required by the scheduler
+        latents = latents * self.scheduler.init_noise_sigma
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature.
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -119,9 +138,10 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
         if accepts_eta:
             extra_kwargs["eta"] = eta
 
-        for t in self.progress_bar(self.scheduler.timesteps):
+        for t in self.progress_bar(timesteps_tensor):
             # concat latents and low resolution image in the channel dimension.
             latents_input = torch.cat([latents, init_image], dim=1)
+            latents_input = self.scheduler.scale_model_input(latents_input, t)
             # predict the noise residual
             noise_pred = self.unet(latents_input, t).sample
             # compute the previous noisy sample x_t -> x_t-1
@@ -130,7 +150,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
         # decode the image latents with the VQVAE
         image = self.vqvae.decode(latents).sample
         image = torch.clamp(image, -1.0, 1.0)
-        image = (image / 2 + 0.5).clamp(0, 1)
+        image = image / 2 + 0.5
         image = image.cpu().permute(0, 2, 3, 1).numpy()
 
         if output_type == "pil":

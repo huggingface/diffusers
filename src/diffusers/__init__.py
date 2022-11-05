@@ -35,6 +35,7 @@ if is_torch_available():
         DDPMPipeline,
         KarrasVePipeline,
         LDMPipeline,
+        LDMSuperResolutionPipeline,
         PNDMPipeline,
         ScoreSdeVePipeline,
     )
@@ -60,7 +61,6 @@ else:
 
 if is_torch_available() and is_transformers_available():
     from .pipelines import (
-        LDMSuperResolutionPipeline,
         LDMTextToImagePipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
