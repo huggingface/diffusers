@@ -42,7 +42,7 @@ if is_torch_available():
     from .schedulers import (
         DDIMScheduler,
         DDPMScheduler,
-        DPMSolverDiscreteScheduler,
+        DPMSolverMultistepScheduler,
         EulerAncestralDiscreteScheduler,
         EulerDiscreteScheduler,
         IPNDMScheduler,
@@ -93,7 +93,7 @@ if is_flax_available():
     from .schedulers import (
         FlaxDDIMScheduler,
         FlaxDDPMScheduler,
-        FlaxDPMSolverDiscreteScheduler,
+        FlaxDPMSolverMultistepScheduler,
         FlaxKarrasVeScheduler,
         FlaxLMSDiscreteScheduler,
         FlaxPNDMScheduler,

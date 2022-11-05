@@ -24,7 +24,7 @@ import torch.nn.functional as F
 from diffusers import (
     DDIMScheduler,
     DDPMScheduler,
-    DPMSolverDiscreteScheduler,
+    DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     IPNDMScheduler,
@@ -550,8 +550,8 @@ class DDIMSchedulerTest(SchedulerCommonTest):
         assert abs(result_mean.item() - 0.1941) < 1e-3
 
 
-class DPMSolverDiscreteSchedulerTest(SchedulerCommonTest):
-    scheduler_classes = (DPMSolverDiscreteScheduler,)
+class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
+    scheduler_classes = (DPMSolverMultistepScheduler,)
     forward_default_kwargs = (("num_inference_steps", 25),)
 
     def get_scheduler_config(self, **kwargs):

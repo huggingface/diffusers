@@ -302,7 +302,7 @@ class DDPMScheduler(metaclass=DummyObject):
         requires_backends(cls, ["torch", "accelerate"])
 
 
-class DPMSolverDiscreteScheduler(metaclass=DummyObject):
+class DPMSolverMultistepScheduler(metaclass=DummyObject):
     _backends = ["torch", "accelerate"]
 
     def __init__(self, *args, **kwargs):

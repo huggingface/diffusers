@@ -56,7 +56,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps: int, max_beta=0.999) -> jnp.nda
 
 
 @flax.struct.dataclass
-class DPMSolverDiscreteSchedulerState:
+class DPMSolverMultistepSchedulerState:
     # setable values
     num_inference_steps: Optional[int] = None
     timesteps: Optional[jnp.ndarray] = None
@@ -74,11 +74,11 @@ class DPMSolverDiscreteSchedulerState:
 
 
 @dataclass
-class FlaxDPMSolverDiscreteSchedulerOutput(FlaxSchedulerOutput):
-    state: DPMSolverDiscreteSchedulerState
+class FlaxDPMSolverMultistepSchedulerOutput(FlaxSchedulerOutput):
+    state: DPMSolverMultistepSchedulerState
 
 
-class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
+class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
     """
     DPM-Solver (and the improved version DPM-Solver++) is a fast dedicated high-order solver for diffusion ODEs with
     the convergence order guarantee. Empirically, sampling by DPM-Solver with only 20 steps can generate high-quality
@@ -183,17 +183,17 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             raise NotImplementedError(f"{solver_type} does is not implemented for {self.__class__}")
 
     def create_state(self):
-        return DPMSolverDiscreteSchedulerState.create(num_train_timesteps=self.config.num_train_timesteps)
+        return DPMSolverMultistepSchedulerState.create(num_train_timesteps=self.config.num_train_timesteps)
 
     def set_timesteps(
-        self, state: DPMSolverDiscreteSchedulerState, num_inference_steps: int, shape: Tuple
-    ) -> DPMSolverDiscreteSchedulerState:
+        self, state: DPMSolverMultistepSchedulerState, num_inference_steps: int, shape: Tuple
+    ) -> DPMSolverMultistepSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
         Args:
-            state (`DPMSolverDiscreteSchedulerState`):
-                the `FlaxDPMSolverDiscreteScheduler` state data class instance.
+            state (`DPMSolverMultistepSchedulerState`):
+                the `FlaxDPMSolverMultistepScheduler` state data class instance.
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
             shape (`Tuple`):
@@ -395,26 +395,26 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
 
     def step(
         self,
-        state: DPMSolverDiscreteSchedulerState,
+        state: DPMSolverMultistepSchedulerState,
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
         return_dict: bool = True,
-    ) -> Union[FlaxDPMSolverDiscreteSchedulerOutput, Tuple]:
+    ) -> Union[FlaxDPMSolverMultistepSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by DPM-Solver. Core function to propagate the diffusion process
         from the learned model outputs (most often the predicted noise).
 
         Args:
-            state (`DPMSolverDiscreteSchedulerState`): the `FlaxDPMSolverDiscreteScheduler` state data class instance.
+            state (`DPMSolverMultistepSchedulerState`): the `FlaxDPMSolverMultistepScheduler` state data class instance.
             model_output (`jnp.ndarray`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`jnp.ndarray`):
                 current instance of sample being created by diffusion process.
-            return_dict (`bool`): option for returning tuple rather than FlaxDPMSolverDiscreteSchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than FlaxDPMSolverMultistepSchedulerOutput class
 
         Returns:
-            [`FlaxDPMSolverDiscreteSchedulerOutput`] or `tuple`: [`FlaxDPMSolverDiscreteSchedulerOutput`] if
+            [`FlaxDPMSolverMultistepSchedulerOutput`] or `tuple`: [`FlaxDPMSolverMultistepSchedulerOutput`] if
             `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
@@ -435,7 +435,7 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             cur_sample=sample,
         )
 
-        def step_1(state: DPMSolverDiscreteSchedulerState) -> jnp.ndarray:
+        def step_1(state: DPMSolverMultistepSchedulerState) -> jnp.ndarray:
             return self.dpm_solver_first_order_update(
                 state.model_outputs[-1],
                 state.timesteps[state.step_index],
@@ -443,8 +443,8 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
                 state.cur_sample,
             )
 
-        def step_23(state: DPMSolverDiscreteSchedulerState) -> jnp.ndarray:
-            def step_2(state: DPMSolverDiscreteSchedulerState) -> jnp.ndarray:
+        def step_23(state: DPMSolverMultistepSchedulerState) -> jnp.ndarray:
+            def step_2(state: DPMSolverMultistepSchedulerState) -> jnp.ndarray:
                 timestep_list = jnp.array([state.timesteps[state.step_index - 1], state.timesteps[state.step_index]])
                 return self.multistep_dpm_solver_second_order_update(
                     state.model_outputs,
@@ -453,7 +453,7 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
                     state.cur_sample,
                 )
 
-            def step_3(state: DPMSolverDiscreteSchedulerState) -> jnp.ndarray:
+            def step_3(state: DPMSolverMultistepSchedulerState) -> jnp.ndarray:
                 timestep_list = jnp.array(
                     [
                         state.timesteps[state.step_index - 2],
@@ -520,17 +520,17 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         if not return_dict:
             return (prev_sample, state)
 
-        return FlaxDPMSolverDiscreteSchedulerOutput(prev_sample=prev_sample, state=state)
+        return FlaxDPMSolverMultistepSchedulerOutput(prev_sample=prev_sample, state=state)
 
     def scale_model_input(
-        self, state: DPMSolverDiscreteSchedulerState, sample: jnp.ndarray, timestep: Optional[int] = None
+        self, state: DPMSolverMultistepSchedulerState, sample: jnp.ndarray, timestep: Optional[int] = None
     ) -> jnp.ndarray:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
 
         Args:
-            state (`DPMSolverDiscreteSchedulerState`): the `FlaxDPMSolverDiscreteScheduler` state data class instance.
+            state (`DPMSolverMultistepSchedulerState`): the `FlaxDPMSolverMultistepScheduler` state data class instance.
             sample (`jnp.ndarray`): input sample
             timestep (`int`, optional): current timestep
 
