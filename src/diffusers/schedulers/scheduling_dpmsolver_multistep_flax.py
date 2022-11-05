@@ -406,7 +406,8 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         from the learned model outputs (most often the predicted noise).
 
         Args:
-            state (`DPMSolverMultistepSchedulerState`): the `FlaxDPMSolverMultistepScheduler` state data class instance.
+            state (`DPMSolverMultistepSchedulerState`):
+                the `FlaxDPMSolverMultistepScheduler` state data class instance.
             model_output (`jnp.ndarray`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`jnp.ndarray`):
@@ -530,7 +531,8 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         current timestep.
 
         Args:
-            state (`DPMSolverMultistepSchedulerState`): the `FlaxDPMSolverMultistepScheduler` state data class instance.
+            state (`DPMSolverMultistepSchedulerState`):
+                the `FlaxDPMSolverMultistepScheduler` state data class instance.
             sample (`jnp.ndarray`): input sample
             timestep (`int`, optional): current timestep
 
