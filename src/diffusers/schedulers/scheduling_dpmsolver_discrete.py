@@ -169,9 +169,7 @@ class DPMSolverDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = None
         timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=np.float32)[::-1].copy()
         self.timesteps = torch.from_numpy(timesteps)
-        self.model_outputs = [
-            None,
-        ] * self.solver_order
+        self.model_outputs =  [None] * self.solver_order
         self.lower_order_nums = 0
 
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
