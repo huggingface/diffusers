@@ -57,7 +57,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        init_image: Union[torch.FloatTensor, PIL.Image.Image],
+        init_image: Union[torch.Tensor, PIL.Image.Image],
         batch_size: Optional[int] = 1,
         num_inference_steps: Optional[int] = 100,
         eta: Optional[float] = 0.0,
@@ -68,7 +68,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
     ) -> Union[Tuple, ImagePipelineOutput]:
         r"""
         Args:
-            init_image (`torch.FloatTensor` or `PIL.Image.Image`):
+            init_image (`torch.Tensor` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
                 process.
             batch_size (`int`, *optional*, defaults to 1):
@@ -96,11 +96,11 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
 
         if isinstance(init_image, PIL.Image.Image):
             batch_size = 1
-        elif isinstance(init_image, torch.FloatTensor):
+        elif isinstance(init_image, torch.Tensor):
             batch_size = init_image.shape[0]
         else:
             raise ValueError(
-                f"`init_image` has to be of type `PIL.Image.Image` or `torch.FloatTensor` but is {type(init_image)}"
+                f"`init_image` has to be of type `PIL.Image.Image` or `torch.Tensor` but is {type(init_image)}"
             )
 
         if isinstance(init_image, PIL.Image.Image):
