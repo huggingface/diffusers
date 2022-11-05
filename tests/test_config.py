@@ -295,7 +295,7 @@ class ConfigTester(unittest.TestCase):
         logger = logging.get_logger("diffusers.configuration_utils")
 
         with CaptureLogger(logger) as cap_logger:
-            pndm = DPMSolverDiscreteScheduler.from_config(
+            dpm = DPMSolverDiscreteScheduler.from_config(
                 "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler"
             )
 
