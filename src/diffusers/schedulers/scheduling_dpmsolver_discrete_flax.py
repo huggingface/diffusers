@@ -122,12 +122,15 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             For pixel-space diffusion models, you can set both `predict_x0=True` and `thresholding=True` to use the
             dynamic thresholding. Note that the thresholding method is unsuitable for latent-space diffusion models
             (such as stable-diffusion).
+        dynamic_thresholding_ratio (`float`, default `0.995`):
+            the ratio for the dynamic thresholding method. Default is `0.995`, the same as Imagen
+            (https://arxiv.org/abs/2205.11487).
         sample_max_value (`float`, default `1.0`):
             the threshold value for dynamic thresholding. Valid only when `thresholding=True` and `predict_x0=True`.
         solver_type (`str`, default `dpm_solver`):
             the solver type for the second-order solver. Either `dpm_solver` or `taylor`. The solver type slightly
             affects the sample quality, especially for small number of steps.
-        denoise_final (`bool`, default `False`):
+        denoise_final (`bool`, default `True`):
             whether to use lower-order solvers in the final steps.
 
     """
@@ -147,9 +150,10 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         solver_order: int = 2,
         predict_x0: bool = True,
         thresholding: bool = False,
+        dynamic_thresholding_ratio: float = 0.995,
         sample_max_value: float = 1.0,
         solver_type: str = "dpm_solver",
-        denoise_final: bool = False,
+        denoise_final: bool = True,
     ):
         if trained_betas is not None:
             self.betas = jnp.asarray(trained_betas)
@@ -175,14 +179,7 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         self.init_noise_sigma = 1.0
 
         # settings for DPM-Solver
-        self.solver_order = solver_order
-        self.predict_x0 = predict_x0
-        self.thresholding = thresholding
-        self.sample_max_value = sample_max_value
-        self.denoise_final = denoise_final
-        if solver_type in ["dpm_solver", "taylor"]:
-            self.solver_type = solver_type
-        else:
+        if solver_type not in ["dpm_solver", "taylor"]:
             raise NotImplementedError(f"{solver_type} does is not implemented for {self.__class__}")
 
     def create_state(self):
@@ -211,7 +208,7 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         return state.replace(
             num_inference_steps=num_inference_steps,
             timesteps=timesteps,
-            model_outputs=jnp.zeros((self.solver_order,) + shape),
+            model_outputs=jnp.zeros((self.config.solver_order,) + shape),
             lower_order_nums=0,
             step_index=0,
             prev_timestep=-1,
@@ -236,15 +233,18 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         Returns:
             `jnp.ndarray`: the converted model output.
         """
-        if self.predict_x0:
+        if self.config.predict_x0:
             alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
             x0_pred = (sample - sigma_t * model_output) / alpha_t
-            if self.thresholding:
-                # A hyperparameter in the paper of Imagen (https://arxiv.org/abs/2205.11487).
-                p = 0.995
-                s = jnp.percentile(jnp.abs(x0_pred), p, axis=tuple(range(1, x0_pred.ndim)))
-                s = jnp.max(s, self.max_val)
-                x0_pred = jnp.clip(x0_pred, -s, s) / s
+            if self.config.thresholding:
+                # Dynamic thresholding in https://arxiv.org/abs/2205.11487
+                dynamic_max_val = jnp.percentile(
+                    jnp.abs(x0_pred), self.config.dynamic_thresholding_ratio, axis=tuple(range(1, x0_pred.ndim))
+                )
+                dynamic_max_val = jnp.maximum(
+                    dynamic_max_val, self.config.sample_max_value * jnp.ones_like(dynamic_max_val)
+                )
+                x0_pred = jnp.clip(x0_pred, -dynamic_max_val, dynamic_max_val) / dynamic_max_val
             return x0_pred
         else:
             return model_output
@@ -254,6 +254,8 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
     ) -> jnp.ndarray:
         """
         One step for the first-order DPM-Solver (equivalent to DDIM).
+
+        See https://arxiv.org/abs/2206.00927 for the detailed derivation.
 
         Args:
             model_output (`jnp.ndarray`): direct output from learned diffusion model.
@@ -271,7 +273,7 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         alpha_t, alpha_s = self.alpha_t[t], self.alpha_t[s0]
         sigma_t, sigma_s = self.sigma_t[t], self.sigma_t[s0]
         h = lambda_t - lambda_s
-        if self.predict_x0:
+        if self.config.predict_x0:
             x_t = (sigma_t / sigma_s) * sample - (alpha_t * (jnp.exp(-h) - 1.0)) * m0
         else:
             x_t = (alpha_t / alpha_s) * sample - (sigma_t * (jnp.exp(h) - 1.0)) * m0
@@ -306,27 +308,29 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         h, h_0 = lambda_t - lambda_s0, lambda_s0 - lambda_s1
         r0 = h_0 / h
         D0, D1 = m0, (1.0 / r0) * (m0 - m1)
-        if self.predict_x0:
-            if self.solver_type == "dpm_solver":
+        if self.config.predict_x0:
+            # See https://arxiv.org/abs/2211.01095 for detailed derivations
+            if self.config.solver_type == "dpm_solver":
                 x_t = (
                     (sigma_t / sigma_s0) * sample
                     - (alpha_t * (jnp.exp(-h) - 1.0)) * D0
                     - 0.5 * (alpha_t * (jnp.exp(-h) - 1.0)) * D1
                 )
-            elif self.solver_type == "taylor":
+            elif self.config.solver_type == "taylor":
                 x_t = (
                     (sigma_t / sigma_s0) * sample
                     - (alpha_t * (jnp.exp(-h) - 1.0)) * D0
                     + (alpha_t * ((jnp.exp(-h) - 1.0) / h + 1.0)) * D1
                 )
         else:
-            if self.solver_type == "dpm_solver":
+            # See https://arxiv.org/abs/2206.00927 for detailed derivations
+            if self.config.solver_type == "dpm_solver":
                 x_t = (
                     (alpha_t / alpha_s0) * sample
                     - (sigma_t * (jnp.exp(h) - 1.0)) * D0
                     - 0.5 * (sigma_t * (jnp.exp(h) - 1.0)) * D1
                 )
-            elif self.solver_type == "taylor":
+            elif self.config.solver_type == "taylor":
                 x_t = (
                     (alpha_t / alpha_s0) * sample
                     - (sigma_t * (jnp.exp(h) - 1.0)) * D0
@@ -371,7 +375,8 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         D1_0, D1_1 = (1.0 / r0) * (m0 - m1), (1.0 / r1) * (m1 - m2)
         D1 = D1_0 + (r0 / (r0 + r1)) * (D1_0 - D1_1)
         D2 = (1.0 / (r0 + r1)) * (D1_0 - D1_1)
-        if self.predict_x0:
+        if self.config.predict_x0:
+            # See https://arxiv.org/abs/2206.00927 for detailed derivations
             x_t = (
                 (sigma_t / sigma_s0) * sample
                 - (alpha_t * (jnp.exp(-h) - 1.0)) * D0
@@ -379,6 +384,7 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
                 - (alpha_t * ((jnp.exp(-h) - 1.0 + h) / h**2 - 0.5)) * D2
             )
         else:
+            # See https://arxiv.org/abs/2206.00927 for detailed derivations
             x_t = (
                 (alpha_t / alpha_s0) * sample
                 - (sigma_t * (jnp.exp(h) - 1.0)) * D0
@@ -462,9 +468,9 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
                     state.cur_sample,
                 )
 
-            if self.solver_order == 2:
+            if self.config.solver_order == 2:
                 return step_2(state)
-            elif self.denoise_final:
+            elif self.config.denoise_final:
                 return jax.lax.cond(
                     state.lower_order_nums < 2,
                     step_2,
@@ -484,9 +490,9 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
                     state,
                 )
 
-        if self.solver_order == 1:
+        if self.config.solver_order == 1:
             prev_sample = step_1(state)
-        elif self.denoise_final:
+        elif self.config.denoise_final:
             prev_sample = jax.lax.cond(
                 state.lower_order_nums < 1,
                 step_1,
@@ -507,7 +513,7 @@ class FlaxDPMSolverDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
             )
 
         state = state.replace(
-            lower_order_nums=jnp.minimum(state.lower_order_nums + 1, self.solver_order),
+            lower_order_nums=jnp.minimum(state.lower_order_nums + 1, self.config.solver_order),
             step_index=(state.step_index + 1),
         )
 

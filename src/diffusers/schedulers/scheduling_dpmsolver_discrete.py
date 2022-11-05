@@ -95,12 +95,15 @@ class DPMSolverDiscreteScheduler(SchedulerMixin, ConfigMixin):
             For pixel-space diffusion models, you can set both `predict_x0=True` and `thresholding=True` to use the
             dynamic thresholding. Note that the thresholding method is unsuitable for latent-space diffusion models
             (such as stable-diffusion).
+        dynamic_thresholding_ratio (`float`, default `0.995`):
+            the ratio for the dynamic thresholding method. Default is `0.995`, the same as Imagen
+            (https://arxiv.org/abs/2205.11487).
         sample_max_value (`float`, default `1.0`):
             the threshold value for dynamic thresholding. Valid only when `thresholding=True` and `predict_x0=True`.
         solver_type (`str`, default `dpm_solver`):
             the solver type for the second-order solver. Either `dpm_solver` or `taylor`. The solver type slightly
             affects the sample quality, especially for small number of steps.
-        denoise_final (`bool`, default `False`):
+        denoise_final (`bool`, default `True`):
             whether to use lower-order solvers in the final steps.
 
     """
@@ -125,9 +128,10 @@ class DPMSolverDiscreteScheduler(SchedulerMixin, ConfigMixin):
         solver_order: int = 2,
         predict_x0: bool = True,
         thresholding: bool = False,
+        dynamic_thresholding_ratio: float = 0.995,
         sample_max_value: float = 1.0,
         solver_type: str = "dpm_solver",
-        denoise_final: bool = False,
+        denoise_final: bool = True,
     ):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
@@ -155,21 +159,14 @@ class DPMSolverDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.init_noise_sigma = 1.0
 
         # settings for DPM-Solver
-        self.solver_order = solver_order
-        self.predict_x0 = predict_x0
-        self.thresholding = thresholding
-        self.sample_max_value = sample_max_value
-        self.denoise_final = denoise_final
-        if solver_type in ["dpm_solver", "taylor"]:
-            self.solver_type = solver_type
-        else:
+        if solver_type not in ["dpm_solver", "taylor"]:
             raise NotImplementedError(f"{solver_type} does is not implemented for {self.__class__}")
 
         # setable values
         self.num_inference_steps = None
         timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=np.float32)[::-1].copy()
         self.timesteps = torch.from_numpy(timesteps)
-        self.model_outputs =  [None] * self.solver_order
+        self.model_outputs = [None] * solver_order
         self.lower_order_nums = 0
 
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
@@ -192,7 +189,7 @@ class DPMSolverDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(timesteps).to(device)
         self.model_outputs = [
             None,
-        ] * self.solver_order
+        ] * self.config.solver_order
         self.lower_order_nums = 0
 
     def convert_model_output(
@@ -210,17 +207,19 @@ class DPMSolverDiscreteScheduler(SchedulerMixin, ConfigMixin):
         Returns:
             `torch.FloatTensor`: the converted model output.
         """
-        if self.predict_x0:
+        if self.config.predict_x0:
             alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
             x0_pred = (sample - sigma_t * model_output) / alpha_t
-            if self.thresholding:
+            if self.config.thresholding:
                 # Dynamic thresholding in https://arxiv.org/abs/2205.11487
-                p = 0.995  # A hyperparameter in the paper of "Imagen" (https://arxiv.org/abs/2205.11487).
-                s = torch.quantile(torch.abs(x0_pred).reshape((x0_pred.shape[0], -1)), p, dim=1)
-                s = torch.maximum(s, self.sample_max_value * torch.ones_like(s).to(s.device))[
-                    (...,) + (None,) * (x0_pred.ndim - 1)
-                ]
-                x0_pred = torch.clamp(x0_pred, -s, s) / s
+                dynamic_max_val = torch.quantile(
+                    torch.abs(x0_pred).reshape((x0_pred.shape[0], -1)), self.config.dynamic_thresholding_ratio, dim=1
+                )
+                dynamic_max_val = torch.maximum(
+                    dynamic_max_val,
+                    self.config.sample_max_value * torch.ones_like(dynamic_max_val).to(dynamic_max_val.device),
+                )[(...,) + (None,) * (x0_pred.ndim - 1)]
+                x0_pred = torch.clamp(x0_pred, -dynamic_max_val, dynamic_max_val) / dynamic_max_val
             return x0_pred
         else:
             return model_output
@@ -234,6 +233,8 @@ class DPMSolverDiscreteScheduler(SchedulerMixin, ConfigMixin):
     ) -> torch.FloatTensor:
         """
         One step for the first-order DPM-Solver (equivalent to DDIM).
+
+        See https://arxiv.org/abs/2206.00927 for the detailed derivation.
 
         Args:
             model_output (`torch.FloatTensor`): direct output from learned diffusion model.
@@ -249,7 +250,7 @@ class DPMSolverDiscreteScheduler(SchedulerMixin, ConfigMixin):
         alpha_t, alpha_s = self.alpha_t[prev_timestep], self.alpha_t[timestep]
         sigma_t, sigma_s = self.sigma_t[prev_timestep], self.sigma_t[timestep]
         h = lambda_t - lambda_s
-        if self.predict_x0:
+        if self.config.predict_x0:
             x_t = (sigma_t / sigma_s) * sample - (alpha_t * (torch.exp(-h) - 1.0)) * model_output
         else:
             x_t = (alpha_t / alpha_s) * sample - (sigma_t * (torch.exp(h) - 1.0)) * model_output
@@ -284,27 +285,29 @@ class DPMSolverDiscreteScheduler(SchedulerMixin, ConfigMixin):
         h, h_0 = lambda_t - lambda_s0, lambda_s0 - lambda_s1
         r0 = h_0 / h
         D0, D1 = m0, (1.0 / r0) * (m0 - m1)
-        if self.predict_x0:
-            if self.solver_type == "dpm_solver":
+        if self.config.predict_x0:
+            # See https://arxiv.org/abs/2211.01095 for detailed derivations
+            if self.config.solver_type == "dpm_solver":
                 x_t = (
                     (sigma_t / sigma_s0) * sample
                     - (alpha_t * (torch.exp(-h) - 1.0)) * D0
                     - 0.5 * (alpha_t * (torch.exp(-h) - 1.0)) * D1
                 )
-            elif self.solver_type == "taylor":
+            elif self.config.solver_type == "taylor":
                 x_t = (
                     (sigma_t / sigma_s0) * sample
                     - (alpha_t * (torch.exp(-h) - 1.0)) * D0
                     + (alpha_t * ((torch.exp(-h) - 1.0) / h + 1.0)) * D1
                 )
         else:
-            if self.solver_type == "dpm_solver":
+            # See https://arxiv.org/abs/2206.00927 for detailed derivations
+            if self.config.solver_type == "dpm_solver":
                 x_t = (
                     (alpha_t / alpha_s0) * sample
                     - (sigma_t * (torch.exp(h) - 1.0)) * D0
                     - 0.5 * (sigma_t * (torch.exp(h) - 1.0)) * D1
                 )
-            elif self.solver_type == "taylor":
+            elif self.config.solver_type == "taylor":
                 x_t = (
                     (alpha_t / alpha_s0) * sample
                     - (sigma_t * (torch.exp(h) - 1.0)) * D0
@@ -349,7 +352,8 @@ class DPMSolverDiscreteScheduler(SchedulerMixin, ConfigMixin):
         D1_0, D1_1 = (1.0 / r0) * (m0 - m1), (1.0 / r1) * (m1 - m2)
         D1 = D1_0 + (r0 / (r0 + r1)) * (D1_0 - D1_1)
         D2 = (1.0 / (r0 + r1)) * (D1_0 - D1_1)
-        if self.predict_x0:
+        if self.config.predict_x0:
+            # See https://arxiv.org/abs/2206.00927 for detailed derivations
             x_t = (
                 (sigma_t / sigma_s0) * sample
                 - (alpha_t * (torch.exp(-h) - 1.0)) * D0
@@ -357,6 +361,7 @@ class DPMSolverDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 - (alpha_t * ((torch.exp(-h) - 1.0 + h) / h**2 - 0.5)) * D2
             )
         else:
+            # See https://arxiv.org/abs/2206.00927 for detailed derivations
             x_t = (
                 (alpha_t / alpha_s0) * sample
                 - (sigma_t * (torch.exp(h) - 1.0)) * D0
@@ -400,17 +405,17 @@ class DPMSolverDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             step_index = step_index.item()
         prev_timestep = 0 if step_index == len(self.timesteps) - 1 else self.timesteps[step_index + 1]
-        denoise_final = (step_index == len(self.timesteps) - 1) and self.denoise_final
-        denoise_second = (step_index == len(self.timesteps) - 2) and self.denoise_final
+        denoise_final = (step_index == len(self.timesteps) - 1) and self.config.denoise_final
+        denoise_second = (step_index == len(self.timesteps) - 2) and self.config.denoise_final
 
         model_output = self.convert_model_output(model_output, timestep, sample)
-        for i in range(self.solver_order - 1):
+        for i in range(self.config.solver_order - 1):
             self.model_outputs[i] = self.model_outputs[i + 1]
         self.model_outputs[-1] = model_output
 
-        if self.solver_order == 1 or self.lower_order_nums < 1 or denoise_final:
+        if self.config.solver_order == 1 or self.lower_order_nums < 1 or denoise_final:
             prev_sample = self.dpm_solver_first_order_update(model_output, timestep, prev_timestep, sample)
-        elif self.solver_order == 2 or self.lower_order_nums < 2 or denoise_second:
+        elif self.config.solver_order == 2 or self.lower_order_nums < 2 or denoise_second:
             timestep_list = [self.timesteps[step_index - 1], timestep]
             prev_sample = self.multistep_dpm_solver_second_order_update(
                 self.model_outputs, timestep_list, prev_timestep, sample
@@ -421,7 +426,7 @@ class DPMSolverDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 self.model_outputs, timestep_list, prev_timestep, sample
             )
 
-        if self.lower_order_nums < self.solver_order:
+        if self.lower_order_nums < self.config.solver_order:
             self.lower_order_nums += 1
 
         if not return_dict:
