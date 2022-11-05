@@ -299,6 +299,6 @@ class ConfigTester(unittest.TestCase):
                 "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler"
             )
 
-        assert pndm.__class__ == DPMSolverDiscreteScheduler
+        assert dpm.__class__ == DPMSolverDiscreteScheduler
         # no warning should be thrown
         assert cap_logger.out == ""
