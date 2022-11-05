@@ -38,7 +38,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
 
     def __init__(
         self,
-        vqvae: Union[VQModel, AutoencoderKL],
+        vqvae: VQModel,
         unet: Union[UNet2DModel, UNet2DConditionModel],
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
     ):
