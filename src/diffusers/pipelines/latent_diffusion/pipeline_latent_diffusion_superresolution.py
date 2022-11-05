@@ -29,7 +29,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
 
     Parameters:
         vqvae ([`VQModel`]):
-            Vector-quantized (VQ) Model to encode and decode images to and from latent representations.
+            Vector-quantized (VQ) VAE Model to encode and decode images to and from latent representations.
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
@@ -38,8 +38,8 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
 
     def __init__(
         self,
-        vqvae: Union[VQModel, AutoencoderKL],
-        unet: Union[UNet2DModel, UNet2DConditionModel],
+        vqvae: VQModel,
+        unet: UNet2DModel,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
     ):
         super().__init__()
@@ -120,7 +120,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
             extra_kwargs["eta"] = eta
 
         for t in self.progress_bar(self.scheduler.timesteps):
-            # concat latents and low resolution image
+            # concat latents and low resolution image in the channel dimension.
             latents_input = torch.cat([latents, init_image], dim=1)
             # predict the noise residual
             noise_pred = self.unet(latents_input, t).sample
