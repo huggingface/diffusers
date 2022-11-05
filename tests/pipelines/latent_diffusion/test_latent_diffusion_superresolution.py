@@ -13,15 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import random
 import unittest
 
 import numpy as np
 import torch
-import random
 
 from diffusers import DDIMScheduler, LDMSuperResolutionPipeline, UNet2DModel, VQModel
-from diffusers.utils.testing_utils import require_torch
 from diffusers.utils import floats_tensor, load_image, slow, torch_device
+from diffusers.utils.testing_utils import require_torch
 
 from ...test_pipelines_common import PipelineTesterMixin
 
@@ -106,9 +106,7 @@ class LDMSuperResolutionPipelineIntegrationTests(unittest.TestCase):
         ldm.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = ldm(
-            init_image, generator=generator, num_inference_steps=20, output_type="numpy"
-        ).images
+        image = ldm(init_image, generator=generator, num_inference_steps=20, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
 
