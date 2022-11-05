@@ -191,8 +191,9 @@ class DiffusionPipeline(ConfigMixin):
                 if save_method_name is not None:
                     break
 
-            save_method = getattr(sub_model, save_method_name)
-            save_method(os.path.join(save_directory, pipeline_component_name))
+            if save_method_name is not None:
+                save_method = getattr(sub_model, save_method_name)
+                save_method(os.path.join(save_directory, pipeline_component_name))
 
     def to(self, torch_device: Optional[Union[str, torch.device]] = None):
         if torch_device is None:
