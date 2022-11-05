@@ -39,7 +39,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
     def __init__(
         self,
         vqvae: VQModel,
-        unet: Union[UNet2DModel, UNet2DConditionModel],
+        unet: UNet2DModel,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
     ):
         super().__init__()
