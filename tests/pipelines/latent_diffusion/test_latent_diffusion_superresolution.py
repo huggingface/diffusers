@@ -88,7 +88,7 @@ class LDMSuperResolutionPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.8512, 0.818, 0.6411, 0.6808, 0.4465, 0.5618, 0.46, 0.6231, 0.5172])
+        expected_slice = np.array([0.8534, 0.8186, 0.6416, 0.6846, 0.4427, 0.5676, 0.4679, 0.6247, 0.5176])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 

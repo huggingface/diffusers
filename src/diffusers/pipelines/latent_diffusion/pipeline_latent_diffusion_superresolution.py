@@ -108,15 +108,18 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
 
         height, width = init_image.shape[-2:]
 
-        latents_dtype = self.unet.dtype
         # in_channels should be 6: 3 for latents, 3 for low resolution image
-        latents = torch.randn(
-            (batch_size, self.unet.in_channels // 2, height, width),
-            device=self.device,
-            generator=generator,
-            dtype=latents_dtype,
-        )
-        latents = latents.to(self.device)
+        latents_shape = (batch_size, self.unet.in_channels // 2, height, width)
+        latents_dtype = self.unet.dtype
+
+        if self.device.type == "mps":
+            # randn does not work reproducibly on mps
+            latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(
+                self.device
+            )
+        else:
+            latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
+
         init_image = init_image.to(device=self.device, dtype=latents_dtype)
 
         # set timesteps
