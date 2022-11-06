@@ -305,9 +305,6 @@ class ConfigTester(unittest.TestCase):
         with CaptureLogger(logger) as cap_logger_2:
             ddpm_2 = DDPMScheduler.from_config("google/ddpm-celebahq-256", beta_start=88)
 
-        import ipdb
-
-        ipdb.set_trace()
         assert ddpm.__class__ == DDPMScheduler
         assert ddpm.config.predict_epsilon is False
         assert ddpm.config.beta_end == 8
