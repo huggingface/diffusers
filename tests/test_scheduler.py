@@ -561,10 +561,11 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
             "beta_end": 0.02,
             "beta_schedule": "linear",
             "solver_order": 2,
-            "predict_x0": True,
+            "predict_epsilon": True,
             "thresholding": False,
             "sample_max_value": 1.0,
-            "solver_type": "dpm_solver",
+            "algorithm_type": "dpmsolver++",
+            "solver_type": "midpoint",
             "lower_order_final": False,
         }
 
@@ -684,23 +685,36 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
     def test_thresholding(self):
         self.check_over_configs(thresholding=False)
         for order in [1, 2, 3]:
-            for solver_type in ["dpm_solver", "taylor"]:
+            for solver_type in ["midpoint", "heun"]:
                 for threshold in [0.5, 1.0, 2.0]:
-                    self.check_over_configs(
-                        thresholding=True,
-                        sample_max_value=threshold,
-                        predict_x0=True,
-                        solver_order=order,
-                        solver_type=solver_type,
-                    )
+                    for predict_epsilon in [True, False]:
+                        self.check_over_configs(
+                            thresholding=True,
+                            predict_epsilon=predict_epsilon,
+                            sample_max_value=threshold,
+                            algorithm_type="dpmsolver++",
+                            solver_order=order,
+                            solver_type=solver_type,
+                        )
 
     def test_solver_order_and_type(self):
-        for solver_type in ["dpm_solver", "taylor"]:
-            for order in [1, 2, 3]:
-                for predict_x0 in [True, False]:
-                    self.check_over_configs(solver_order=order, solver_type=solver_type, predict_x0=predict_x0)
-                    sample = self.full_loop(solver_order=order, solver_type=solver_type, predict_x0=predict_x0)
-                    assert not torch.isnan(sample).any(), "Samples have nan numbers"
+        for algorithm_type in ["dpmsolver", "dpmsolver++"]:
+            for solver_type in ["midpoint", "heun"]:
+                for order in [1, 2, 3]:
+                    for predict_epsilon in [True, False]:
+                        self.check_over_configs(
+                            solver_order=order,
+                            solver_type=solver_type,
+                            predict_epsilon=predict_epsilon,
+                            algorithm_type=algorithm_type,
+                        )
+                        sample = self.full_loop(
+                            solver_order=order,
+                            solver_type=solver_type,
+                            predict_epsilon=predict_epsilon,
+                            algorithm_type=algorithm_type,
+                        )
+                        assert not torch.isnan(sample).any(), "Samples have nan numbers"
 
     def test_lower_order_final(self):
         self.check_over_configs(lower_order_final=True)
