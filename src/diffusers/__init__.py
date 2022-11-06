@@ -9,7 +9,7 @@ from .utils import (
 )
 
 
-__version__ = "0.7.0.dev0"
+__version__ = "0.8.0.dev0"
 
 from .configuration_utils import ConfigMixin
 from .onnx_utils import OnnxRuntimeModel
@@ -18,7 +18,7 @@ from .utils import logging
 
 if is_torch_available():
     from .modeling_utils import ModelMixin
-    from .models import AutoencoderKL, UNet1DModel, UNet2DConditionModel, UNet2DModel, VQModel
+    from .models import AutoencoderKL, Transformer2DModel, UNet1DModel, UNet2DConditionModel, UNet2DModel, VQModel
     from .optimization import (
         get_constant_schedule,
         get_constant_schedule_with_warmup,
@@ -36,6 +36,7 @@ if is_torch_available():
         KarrasVePipeline,
         LDMPipeline,
         PNDMPipeline,
+        RePaintPipeline,
         ScoreSdeVePipeline,
     )
     from .schedulers import (
@@ -46,8 +47,10 @@ if is_torch_available():
         IPNDMScheduler,
         KarrasVeScheduler,
         PNDMScheduler,
+        RePaintScheduler,
         SchedulerMixin,
         ScoreSdeVeScheduler,
+        VQDiffusionScheduler,
     )
     from .training_utils import EMAModel
 else:
@@ -60,11 +63,13 @@ else:
 
 if is_torch_available() and is_transformers_available():
     from .pipelines import (
+        CycleDiffusionPipeline,
         LDMTextToImagePipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
         StableDiffusionInpaintPipelineLegacy,
         StableDiffusionPipeline,
+        VQDiffusionPipeline,
     )
 else:
     from .utils.dummy_torch_and_transformers_objects import *  # noqa F403

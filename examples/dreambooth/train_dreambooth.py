@@ -115,12 +115,6 @@ def parse_args(input_args=None):
         help="The number of inference steps for save sample.",
     )
     parser.add_argument(
-        "--pad_tokens",
-        default=False,
-        action="store_true",
-        help="Flag to pad tokens to length 77.",
-    )
-    parser.add_argument(
         "--with_prior_preservation",
         default=False,
         action="store_true",
@@ -278,13 +272,11 @@ class DreamBoothDataset(Dataset):
         size=512,
         center_crop=False,
         num_class_images=None,
-        pad_tokens=False
     ):
         self.size = size
         self.center_crop = center_crop
         self.tokenizer = tokenizer
         self.with_prior_preservation = with_prior_preservation
-        self.pad_tokens = pad_tokens
 
         self.instance_images_path = []
         self.class_images_path = []
@@ -323,7 +315,7 @@ class DreamBoothDataset(Dataset):
         example["instance_images"] = self.image_transforms(instance_image)
         example["instance_prompt_ids"] = self.tokenizer(
             instance_prompt,
-            padding="max_length" if self.pad_tokens else "do_not_pad",
+            padding="max_length",
             truncation=True,
             max_length=self.tokenizer.model_max_length,
         ).input_ids
@@ -336,7 +328,7 @@ class DreamBoothDataset(Dataset):
             example["class_images"] = self.image_transforms(class_image)
             example["class_prompt_ids"] = self.tokenizer(
                 class_prompt,
-                padding="max_length" if self.pad_tokens else "do_not_pad",
+                padding="max_length",
                 truncation=True,
                 max_length=self.tokenizer.model_max_length,
             ).input_ids
@@ -507,6 +499,7 @@ def main(args):
         args.pretrained_model_name_or_path,
         subfolder="unet",
         revision=args.revision,
+        torch_dtype=torch.float32
     )
 
     vae.requires_grad_(False)
@@ -556,7 +549,6 @@ def main(args):
         size=args.resolution,
         center_crop=args.center_crop,
         num_class_images=args.num_class_images,
-        pad_tokens=args.pad_tokens
     )
 
     def collate_fn(examples):
@@ -572,7 +564,12 @@ def main(args):
         pixel_values = torch.stack(pixel_values)
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
-        input_ids = tokenizer.pad({"input_ids": input_ids}, padding=True, return_tensors="pt").input_ids
+        input_ids = tokenizer.pad(
+            {"input_ids": input_ids},
+            padding="max_length",
+            max_length=tokenizer.model_max_length,
+            return_tensors="pt",
+        ).input_ids
 
         batch = {
             "input_ids": input_ids,

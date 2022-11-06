@@ -103,3 +103,74 @@ image = pipe(prompt).sample[0]
     
 image.save("astronaut_rides_horse.png")
 ```
+
+### CycleDiffusion using Stable Diffusion and DDIM scheduler
+
+```python
+import requests
+import torch
+from PIL import Image
+from io import BytesIO
+
+from diffusers import CycleDiffusionPipeline, DDIMScheduler
+
+
+# load the scheduler. CycleDiffusion only supports stochastic schedulers.
+
+# load the pipeline
+# make sure you're logged in with `huggingface-cli login`
+model_id_or_path = "CompVis/stable-diffusion-v1-4"
+scheduler = DDIMScheduler.from_config(model_id_or_path, subfolder="scheduler")
+pipe = CycleDiffusionPipeline.from_pretrained(model_id_or_path, scheduler=scheduler).to("cuda")
+
+# let's download an initial image
+url = "https://raw.githubusercontent.com/ChenWu98/cycle-diffusion/main/data/dalle2/An%20astronaut%20riding%20a%20horse.png"
+response = requests.get(url)
+init_image = Image.open(BytesIO(response.content)).convert("RGB")
+init_image = init_image.resize((512, 512))
+init_image.save("horse.png")
+
+# let's specify a prompt
+source_prompt = "An astronaut riding a horse"
+prompt = "An astronaut riding an elephant"
+
+# call the pipeline
+image = pipe(
+    prompt=prompt,
+    source_prompt=source_prompt,
+    init_image=init_image,
+    num_inference_steps=100,
+    eta=0.1,
+    strength=0.8,
+    guidance_scale=2,
+    source_guidance_scale=1,
+).images[0]
+
+image.save("horse_to_elephant.png")
+
+# let's try another example
+# See more samples at the original repo: https://github.com/ChenWu98/cycle-diffusion
+url = "https://raw.githubusercontent.com/ChenWu98/cycle-diffusion/main/data/dalle2/A%20black%20colored%20car.png"
+response = requests.get(url)
+init_image = Image.open(BytesIO(response.content)).convert("RGB")
+init_image = init_image.resize((512, 512))
+init_image.save("black.png")
+
+source_prompt = "A black colored car"
+prompt = "A blue colored car"
+
+# call the pipeline
+torch.manual_seed(0)
+image = pipe(
+    prompt=prompt,
+    source_prompt=source_prompt,
+    init_image=init_image,
+    num_inference_steps=100,
+    eta=0.1,
+    strength=0.85,
+    guidance_scale=3,
+    source_guidance_scale=1,
+).images[0]
+
+image.save("black_to_blue.png")
+```

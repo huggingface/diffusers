@@ -21,7 +21,7 @@ import torch
 from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput, deprecate
+from ..utils import BaseOutput
 from .scheduling_utils import SchedulerMixin
 
 
@@ -211,22 +211,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
-        if (
-            isinstance(timestep, int)
-            or isinstance(timestep, torch.IntTensor)
-            or isinstance(timestep, torch.LongTensor)
-        ):
-            deprecate(
-                "timestep as an index",
-                "0.8.0",
-                "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
-                " `LMSDiscreteScheduler.step()` will not be supported in future versions. Make sure to pass"
-                " one of the `scheduler.timesteps` as a timestep.",
-                standard_warn=False,
-            )
-            step_index = timestep
-        else:
-            step_index = (self.timesteps == timestep).nonzero().item()
+        step_index = (self.timesteps == timestep).nonzero().item()
         sigma = self.sigmas[step_index]
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
@@ -269,19 +254,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             timesteps = timesteps.to(original_samples.device)
 
         schedule_timesteps = self.timesteps
-
-        if isinstance(timesteps, torch.IntTensor) or isinstance(timesteps, torch.LongTensor):
-            deprecate(
-                "timesteps as indices",
-                "0.8.0",
-                "Passing integer indices  (e.g. from `enumerate(timesteps)`) as timesteps to"
-                " `LMSDiscreteScheduler.add_noise()` will not be supported in future versions. Make sure to"
-                " pass values from `scheduler.timesteps` as timesteps.",
-                standard_warn=False,
-            )
-            step_indices = timesteps
-        else:
-            step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
 
         sigma = self.sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):

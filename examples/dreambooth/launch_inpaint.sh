@@ -8,21 +8,19 @@ accelerate launch train_inpainting_dreambooth.py \
   --with_prior_preservation --prior_loss_weight=1.0 \
   --seed=3434554 \
   --resolution=512 \
-  --train_batch_size=4 \
+  --train_batch_size=2 \
   --train_text_encoder \
   --mixed_precision="fp16" \
-  --use_8bit_adam \
   --gradient_accumulation_steps=1 \
-  --learning_rate=4e-6 \
+  --learning_rate=2e-6 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
-  --num_class_images=200 \
+  --num_class_images=300 \
   --sample_batch_size=4 \
-  --max_train_steps=20000 \
+  --max_train_steps=15000 \
   --save_interval=1000 \
   --save_min_steps=6000 \
   --save_infer_steps=35 \
   --concepts_list="concepts_list.json" \
-  --pad_tokens \
   --not_cache_latents \
   --hflip

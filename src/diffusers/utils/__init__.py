@@ -31,6 +31,7 @@ from .import_utils import (
     is_scipy_available,
     is_tf_available,
     is_torch_available,
+    is_torch_version,
     is_transformers_available,
     is_unidecode_available,
     requires_backends,
@@ -42,6 +43,7 @@ from .outputs import BaseOutput
 if is_torch_available():
     from .testing_utils import (
         floats_tensor,
+        load_hf_numpy,
         load_image,
         load_numpy,
         parse_flag_from_env,

@@ -22,5 +22,4 @@ accelerate launch train_dreambooth.py \
   --max_train_steps=800 \
   --save_interval=400 \
   --save_sample_prompt="photo of zwx dog" \
-  --concepts_list="concepts_list.json" \
-  --pad_tokens
+  --concepts_list="concepts_list.json"
