@@ -14,6 +14,7 @@ import jax
 import jax.numpy as jnp
 import optax
 import transformers
+from accelerate import Accelerator
 from datasets import load_dataset
 from diffusers import (
     FlaxAutoencoderKL,
@@ -26,7 +27,8 @@ from diffusers.pipelines.stable_diffusion import FlaxStableDiffusionSafetyChecke
 from flax import jax_utils
 from flax.training import train_state
 from flax.training.common_utils import shard
-from huggingface_hub import HfFolder, Repository, whoami
+from huggingface_hub import HfFolder, Repository, whoami, HfApi
+from huggingface_hub.utils import RepositoryNotFoundError
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
@@ -184,6 +186,12 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--tracker_project_name",
+        type=str,
+        default="text2image-fine-tune",
+        help="Tracker project name.",
+    )
+    parser.add_argument(
         "--mixed_precision",
         type=str,
         default="no",
@@ -248,12 +256,23 @@ def main():
     # Handle the repository creation
     if jax.process_index() == 0:
         if args.push_to_hub:
+            api = HfApi()
             if args.hub_model_id is None:
                 repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
             else:
                 repo_name = args.hub_model_id
-            repo = Repository(args.output_dir, clone_from=repo_name)
-
+            try:
+                repo_exists = True
+                model_info = api.model_info(repo_name, token=args.hub_token)
+                logger.info(f"  Model ID = {model_info.modelId}")
+            except RepositoryNotFoundError:
+                repo_exists = False
+            finally:
+                if repo_exists:
+                    repo = Repository(args.output_dir, clone_from=repo_name, use_auth_token=args.hub_token)
+                else:
+                    api.create_repo(repo_name, private=True, token=args.hub_token)
+                    repo = Repository(args.output_dir, clone_from=repo_name, use_auth_token=args.hub_token)
             with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
                 if "step_*" not in gitignore:
                     gitignore.write("step_*\n")
@@ -494,6 +513,24 @@ def main():
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel & distributed) = {total_train_batch_size}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
+    logger.info(f"  Mixed Precision = {args.mixed_precision}")
+    logger.info(f"  Learning Rate = {args.learning_rate}")
+    logger.info(f"  Max Grad Norm = {args.max_grad_norm}")
+    logger.info(f"  Dataset Name = {args.dataset_name}")
+
+    accelerator = Accelerator(log_with=args.report_to)
+    tracker_config = {
+        "train_dataset": len(train_dataset),
+        "num_train_epochs": args.num_train_epochs,
+        "train_batch_size": args.train_batch_size,
+        "total_train_batch_size": total_train_batch_size,
+        "max_train_steps": args.max_train_steps,
+        "mixed_precision": args.mixed_precision,
+        "learning_rate": args.learning_rate,
+        "max_grad_norm": args.max_grad_norm,
+        "dataset_name": args.dataset_name,
+    }
+    accelerator.init_trackers(args.tracker_project_name, config=tracker_config)
 
     global_step = 0
 
@@ -521,6 +558,8 @@ def main():
 
         train_step_progress_bar.close()
         epochs.write(f"Epoch... ({epoch + 1}/{args.num_train_epochs} | Loss: {train_metric['loss']})")
+        accelerator.log({"training_loss": train_metric["loss"]}, step=epoch)
+    accelerator.end_training()
 
     # Create the pipeline using using the trained modules and save it.
     if jax.process_index() == 0:
@@ -551,7 +590,9 @@ def main():
         )
 
         if args.push_to_hub:
-            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+            repo.git_add(auto_lfs_track=True)
+            repo.git_commit(commit_message="End of training")
+            repo.git_push()
 
 
 if __name__ == "__main__":
