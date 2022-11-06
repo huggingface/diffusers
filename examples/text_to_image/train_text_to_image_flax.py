@@ -27,7 +27,7 @@ from diffusers.pipelines.stable_diffusion import FlaxStableDiffusionSafetyChecke
 from flax import jax_utils
 from flax.training import train_state
 from flax.training.common_utils import shard
-from huggingface_hub import HfFolder, Repository, whoami, HfApi
+from huggingface_hub import HfApi, HfFolder, Repository, whoami
 from huggingface_hub.utils import RepositoryNotFoundError
 from torchvision import transforms
 from tqdm.auto import tqdm
