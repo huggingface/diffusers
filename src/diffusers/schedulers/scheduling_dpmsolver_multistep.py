@@ -103,8 +103,9 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         solver_type (`str`, default `dpm_solver`):
             the solver type for the second-order solver. Either `dpm_solver` or `taylor`. The solver type slightly
             affects the sample quality, especially for small number of steps.
-        denoise_final (`bool`, default `True`):
-            whether to use lower-order solvers in the final steps.
+        lower_order_final (`bool`, default `True`):
+            whether to use lower-order solvers in the final steps. Only valid for < 15 inference steps. We empirically
+            find this trick can stabilize the sampling of DPM-Solver for steps < 15, especially for steps <= 10.
 
     """
 
@@ -131,7 +132,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         dynamic_thresholding_ratio: float = 0.995,
         sample_max_value: float = 1.0,
         solver_type: str = "dpm_solver",
-        denoise_final: bool = True,
+        lower_order_final: bool = True,
     ):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
@@ -405,17 +406,21 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         else:
             step_index = step_index.item()
         prev_timestep = 0 if step_index == len(self.timesteps) - 1 else self.timesteps[step_index + 1]
-        denoise_final = (step_index == len(self.timesteps) - 1) and self.config.denoise_final
-        denoise_second = (step_index == len(self.timesteps) - 2) and self.config.denoise_final
+        lower_order_final = (
+            (step_index == len(self.timesteps) - 1) and self.config.lower_order_final and len(self.timesteps) < 15
+        )
+        lower_order_second = (
+            (step_index == len(self.timesteps) - 2) and self.config.lower_order_final and len(self.timesteps) < 15
+        )
 
         model_output = self.convert_model_output(model_output, timestep, sample)
         for i in range(self.config.solver_order - 1):
             self.model_outputs[i] = self.model_outputs[i + 1]
         self.model_outputs[-1] = model_output
 
-        if self.config.solver_order == 1 or self.lower_order_nums < 1 or denoise_final:
+        if self.config.solver_order == 1 or self.lower_order_nums < 1 or lower_order_final:
             prev_sample = self.dpm_solver_first_order_update(model_output, timestep, prev_timestep, sample)
-        elif self.config.solver_order == 2 or self.lower_order_nums < 2 or denoise_second:
+        elif self.config.solver_order == 2 or self.lower_order_nums < 2 or lower_order_second:
             timestep_list = [self.timesteps[step_index - 1], timestep]
             prev_sample = self.multistep_dpm_solver_second_order_update(
                 self.model_outputs, timestep_list, prev_timestep, sample

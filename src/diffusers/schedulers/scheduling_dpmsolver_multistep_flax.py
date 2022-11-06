@@ -130,8 +130,9 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         solver_type (`str`, default `dpm_solver`):
             the solver type for the second-order solver. Either `dpm_solver` or `taylor`. The solver type slightly
             affects the sample quality, especially for small number of steps.
-        denoise_final (`bool`, default `True`):
-            whether to use lower-order solvers in the final steps.
+        lower_order_final (`bool`, default `True`):
+            whether to use lower-order solvers in the final steps. Only valid for < 15 inference steps. We empirically
+            find this trick can stabilize the sampling of DPM-Solver for steps < 15, especially for steps <= 10.
 
     """
 
@@ -153,7 +154,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         dynamic_thresholding_ratio: float = 0.995,
         sample_max_value: float = 1.0,
         solver_type: str = "dpm_solver",
-        denoise_final: bool = True,
+        lower_order_final: bool = True,
     ):
         if trained_betas is not None:
             self.betas = jnp.asarray(trained_betas)
@@ -471,7 +472,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
 
             if self.config.solver_order == 2:
                 return step_2(state)
-            elif self.config.denoise_final:
+            elif self.config.lower_order_final:
                 return jax.lax.cond(
                     state.lower_order_nums < 2,
                     step_2,
@@ -493,7 +494,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         if self.config.solver_order == 1:
             prev_sample = step_1(state)
-        elif self.config.denoise_final:
+        elif self.config.lower_order_final:
             prev_sample = jax.lax.cond(
                 state.lower_order_nums < 1,
                 step_1,

@@ -565,7 +565,7 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
             "thresholding": False,
             "sample_max_value": 1.0,
             "solver_type": "dpm_solver",
-            "denoise_final": False,
+            "lower_order_final": False,
         }
 
         config.update(**kwargs)
@@ -702,9 +702,9 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
                     sample = self.full_loop(solver_order=order, solver_type=solver_type, predict_x0=predict_x0)
                     assert not torch.isnan(sample).any(), "Samples have nan numbers"
 
-    def test_denoise_final(self):
-        self.check_over_configs(denoise_final=True)
-        self.check_over_configs(denoise_final=False)
+    def test_lower_order_final(self):
+        self.check_over_configs(lower_order_final=True)
+        self.check_over_configs(lower_order_final=False)
 
     def test_inference_steps(self):
         for num_inference_steps in [1, 2, 3, 5, 10, 50, 100, 999, 1000]:
