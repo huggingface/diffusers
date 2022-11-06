@@ -151,7 +151,11 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
-        self.timesteps = torch.from_numpy(timesteps).to(device=device)
+        if device.type == "mps":
+            # mps does not support float64
+            self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.float32)
+        else:
+            self.timesteps = torch.from_numpy(timesteps).to(device=device)
 
     def step(
         self,
