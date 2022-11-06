@@ -303,8 +303,8 @@ class DiffusionPipeline(ConfigMixin):
                         </Tip>
 
                 For more information on how to load and create custom pipelines, please have a look at [Loading and
-                Creating Custom
-                Pipelines](https://huggingface.co/docs/diffusers/main/en/using-diffusers/custom_pipelines)
+                Adding Custom
+                Pipelines](https://huggingface.co/docs/diffusers/using-diffusers/custom_pipeline_overview)
 
             torch_dtype (`str` or `torch.dtype`, *optional*):
             force_download (`bool`, *optional*, defaults to `False`):
