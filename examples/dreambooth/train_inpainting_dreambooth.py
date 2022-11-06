@@ -116,6 +116,12 @@ def parse_args(input_args=None):
         help="The number of inference steps for save sample.",
     )
     parser.add_argument(
+        "--pad_tokens",
+        default=False,
+        action="store_true",
+        help="Flag to pad tokens to length 77.",
+    )
+    parser.add_argument(
         "--with_prior_preservation",
         default=False,
         action="store_true",
@@ -260,7 +266,7 @@ def parse_args(input_args=None):
     return args
 
 
-def get_cutout_holes(height, width, min_holes=8, max_holes=32, min_height=32, max_height=128, min_width=32, max_width=128):
+def get_cutout_holes(height, width, min_holes=8, max_holes=32, min_height=16, max_height=128, min_width=16, max_width=128):
     holes = []
     for _n in range(random.randint(min_holes, max_holes)):
         hole_height = random.randint(min_height, max_height)
@@ -298,12 +304,15 @@ class DreamBoothDataset(Dataset):
         size=512,
         center_crop=False,
         num_class_images=None,
+        pad_tokens=False,
         hflip=False
     ):
         self.size = size
         self.center_crop = center_crop
         self.tokenizer = tokenizer
         self.with_prior_preservation = with_prior_preservation
+        self.pad_tokens = pad_tokens
+
         self.instance_images_path = []
         self.class_images_path = []
 
@@ -343,7 +352,7 @@ class DreamBoothDataset(Dataset):
         example["instance_masks"], example["instance_masked_images"] = generate_random_mask(example["instance_images"])
         example["instance_prompt_ids"] = self.tokenizer(
             instance_prompt,
-            padding="max_length",
+            padding="max_length" if self.pad_tokens else "do_not_pad",
             truncation=True,
             max_length=self.tokenizer.model_max_length,
         ).input_ids
@@ -357,7 +366,7 @@ class DreamBoothDataset(Dataset):
             example["class_masks"], example["class_masked_images"] = generate_random_mask(example["class_images"])
             example["class_prompt_ids"] = self.tokenizer(
                 class_prompt,
-                padding="max_length",
+                padding="max_length" if self.pad_tokens else "do_not_pad",
                 truncation=True,
                 max_length=self.tokenizer.model_max_length,
             ).input_ids
@@ -467,7 +476,8 @@ def main(args):
                         args.pretrained_model_name_or_path,
                         vae=AutoencoderKL.from_pretrained(
                             args.pretrained_vae_name_or_path or args.pretrained_model_name_or_path,
-                            revision=None if args.pretrained_vae_name_or_path else args.revision
+                            revision=None if args.pretrained_vae_name_or_path else args.revision,
+                            torch_dtype=torch_dtype
                         ),
                         torch_dtype=torch_dtype,
                         safety_checker=None,
@@ -487,7 +497,7 @@ def main(args):
                 inp_img = Image.new("RGB", (512, 512), color=(0, 0, 0))
                 inp_mask = Image.new("L", (512, 512), color=255)
 
-                with torch.autocast("cuda"), torch.inference_mode():
+                with torch.inference_mode():
                     for example in tqdm(
                         sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
                     ):
@@ -585,6 +595,7 @@ def main(args):
         size=args.resolution,
         center_crop=args.center_crop,
         num_class_images=args.num_class_images,
+        pad_tokens=args.pad_tokens,
         hflip=args.hflip
     )
 
@@ -608,8 +619,7 @@ def main(args):
 
         input_ids = tokenizer.pad(
             {"input_ids": input_ids},
-            padding="max_length",
-            max_length=tokenizer.model_max_length,
+            padding=True,
             return_tensors="pt",
         ).input_ids
 
@@ -716,12 +726,13 @@ def main(args):
             scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
             pipeline = StableDiffusionInpaintPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
-                unet=accelerator.unwrap_model(unet),
+                unet=accelerator.unwrap_model(unet).to(torch.float16),
                 text_encoder=text_enc_model,
                 vae=AutoencoderKL.from_pretrained(
                     args.pretrained_vae_name_or_path or args.pretrained_model_name_or_path,
                     subfolder=None if args.pretrained_vae_name_or_path else "vae",
-                    revision=None if args.pretrained_vae_name_or_path else args.revision
+                    revision=None if args.pretrained_vae_name_or_path else args.revision,
+                    torch_dtype=torch.float16
                 ),
                 safety_checker=None,
                 scheduler=scheduler,
@@ -743,7 +754,7 @@ def main(args):
                 os.makedirs(sample_dir, exist_ok=True)
                 inp_img = Image.new("RGB", (512, 512), color=(0, 0, 0))
                 inp_mask = Image.new("L", (512, 512), color=255)
-                with torch.autocast("cuda"), torch.inference_mode():
+                with torch.inference_mode():
                     for i in tqdm(range(args.n_save_sample), desc="Generating samples"):
                         images = pipeline(
                             prompt=concept["instance_prompt"],
@@ -804,8 +815,6 @@ def main(args):
                             encoder_hidden_states = batch[0][1]
                     else:
                         encoder_hidden_states = text_encoder(batch["input_ids"])[0]
-
-                encoder_hidden_states = F.dropout(encoder_hidden_states, p=0.1)
 
                 latent_model_input = torch.cat([noisy_latents, mask, masked_image_latents], dim=1)
                 # Predict the noise residual
