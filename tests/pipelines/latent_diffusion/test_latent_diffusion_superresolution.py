@@ -86,7 +86,7 @@ class LDMSuperResolutionPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         image = ldm(init_image, generator=generator, num_inference_steps=2, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
-        print(f'image_slice: {image_slice}')
+        print(f"image_slice: {image_slice}")
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.8512, 0.818, 0.6411, 0.6808, 0.4465, 0.5618, 0.46, 0.6231, 0.5172])
