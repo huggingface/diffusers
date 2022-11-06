@@ -73,6 +73,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         "PNDMScheduler",
         "EulerDiscreteScheduler",
         "EulerAncestralDiscreteScheduler",
+        "DPMSolverMultistepScheduler",
     ]
 
     @register_to_config
