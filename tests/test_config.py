@@ -19,7 +19,14 @@ import tempfile
 import unittest
 
 import diffusers
-from diffusers import DDIMScheduler, EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, PNDMScheduler, logging
+from diffusers import (
+    DDIMScheduler,
+    DDPMScheduler,
+    EulerAncestralDiscreteScheduler,
+    EulerDiscreteScheduler,
+    PNDMScheduler,
+    logging,
+)
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.utils.testing_utils import CaptureLogger
 
@@ -283,3 +290,29 @@ class ConfigTester(unittest.TestCase):
         assert pndm.__class__ == PNDMScheduler
         # no warning should be thrown
         assert cap_logger.out == ""
+
+    def test_overwrite_config_on_load(self):
+        logger = logging.get_logger("diffusers.configuration_utils")
+
+        with CaptureLogger(logger) as cap_logger:
+            ddpm = DDPMScheduler.from_config(
+                "hf-internal-testing/tiny-stable-diffusion-torch",
+                subfolder="scheduler",
+                predict_epsilon=False,
+                beta_end=8,
+            )
+
+        with CaptureLogger(logger) as cap_logger_2:
+            ddpm_2 = DDPMScheduler.from_config("google/ddpm-celebahq-256", beta_start=88)
+
+        import ipdb
+
+        ipdb.set_trace()
+        assert ddpm.__class__ == DDPMScheduler
+        assert ddpm.config.predict_epsilon is False
+        assert ddpm.config.beta_end == 8
+        assert ddpm_2.config.beta_start == 88
+
+        # no warning should be thrown
+        assert cap_logger.out == ""
+        assert cap_logger_2.out == ""
