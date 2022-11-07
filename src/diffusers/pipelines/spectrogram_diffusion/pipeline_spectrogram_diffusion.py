@@ -564,7 +564,7 @@ class ContinuousContextTransformer(ModelMixin, ConfigMixin):
         )
 
 
-class SpectrogramPipeline(DiffusionPipeline):
+class SpectrogramDiffusionPipeline(DiffusionPipeline):
     def __init__(self, cont_context_trans: ContinuousContextTransformer, scheduler: DDPMScheduler) -> None:
         super().__init__()
 
