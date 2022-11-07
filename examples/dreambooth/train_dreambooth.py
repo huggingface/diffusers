@@ -686,12 +686,11 @@ def main(args):
             pipeline = StableDiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 unet=accelerator.unwrap_model(unet).to(torch.float16),
-                text_encoder=text_enc_model,
+                text_encoder=text_enc_model.to(torch.float16),
                 vae=AutoencoderKL.from_pretrained(
                     args.pretrained_vae_name_or_path or args.pretrained_model_name_or_path,
                     subfolder=None if args.pretrained_vae_name_or_path else "vae",
                     revision=None if args.pretrained_vae_name_or_path else args.revision,
-                    torch_dtype=torch.float16
                 ),
                 safety_checker=None,
                 scheduler=scheduler,
@@ -723,6 +722,8 @@ def main(args):
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
             print(f"[*] Weights saved at {save_dir}")
+            unet.to(torch.float32)
+            text_enc_model.to(torch.float32)
 
     # Only show the progress bar once on each machine.
     progress_bar = tqdm(range(args.max_train_steps), disable=not accelerator.is_local_main_process)
