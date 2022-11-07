@@ -497,7 +497,7 @@ def main(args):
                 inp_img = Image.new("RGB", (512, 512), color=(0, 0, 0))
                 inp_mask = Image.new("L", (512, 512), color=255)
 
-                with torch.inference_mode():
+                with torch.autocast("cuda"),torch.inference_mode():
                     for example in tqdm(
                         sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
                     ):

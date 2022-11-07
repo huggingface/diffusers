@@ -468,7 +468,7 @@ def main(args):
 
                 sample_dataloader = accelerator.prepare(sample_dataloader)
 
-                with torch.inference_mode():
+                with torch.autocast("cuda"), torch.inference_mode():
                     for example in tqdm(
                         sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
                     ):
