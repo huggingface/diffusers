@@ -199,6 +199,8 @@ class DecoderLayer(nn.Module):
 
 
 class TokenEncoder(ModelMixin, ConfigMixin):
+    ignore_for_config = ["weights"]
+
     @register_to_config
     def __init__(self, config: T5Config, weights):
         super().__init__()
@@ -271,7 +273,8 @@ class TokenEncoder(ModelMixin, ConfigMixin):
         return self.dropout_post(x), encoder_inputs_mask
 
 
-class ContinuousEncoder(nn.Module):
+class ContinuousEncoder(ModelMixin, ConfigMixin):
+    @register_to_config
     def __init__(self, config, weights):
         super().__init__()
 
@@ -344,8 +347,11 @@ class ContinuousEncoder(nn.Module):
         return self.dropout_post(x), encoder_inputs_mask
 
 
-class Decoder(nn.Module):
-    def __init__(self, config, weights):
+class Decoder(ModelMixin, ConfigMixin):
+    ignore_for_config = ["weights"]
+
+    @register_to_config
+    def __init__(self, config: T5Config, weights):
         super().__init__()
 
         self.conditioning_emb = nn.Sequential(
@@ -504,8 +510,11 @@ class Decoder(nn.Module):
         return spec_out
 
 
-class ContinuousContextTransformer(nn.Module):
-    def __init__(self, config, weights):
+class ContinuousContextTransformer(ModelMixin, ConfigMixin):
+    ignore_for_config = ["weights"]
+
+    @register_to_config
+    def __init__(self, config: T5Config, weights):
         super().__init__()
 
         self.token_encoder = TokenEncoder(config=config, weights=weights["token_encoder"])
