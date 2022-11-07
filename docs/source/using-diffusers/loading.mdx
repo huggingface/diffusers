@@ -156,6 +156,24 @@ from diffusers import DiffusionPipeline, EulerDiscreteScheduler, DPMSolverMultis
 stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, safety_checker=None)
 ```
 
+Another common use case is to reuse the same components in multiple pipelines, *e.g.* the weights and configurations of [`"runwayml/stable-diffusion-v1-5"`](https://huggingface.co/runwayml/stable-diffusion-v1-5) can be used for both [`StableDiffusionPipeline`] and [`StableDiffusionImg2ImgPipeline`] and we might not want to 
+use the exact same weights into RAM twice. In this case, customizing all the input instances would help us 
+to only load the weights into RAM once:
+
+```python
+from diffusers import StableDiffusionPipeline, StableDiffusionImg2ImgPipeline
+
+model_id = "runwayml/stable-diffusion-v1-5"
+stable_diffusion_txt2img = StableDiffusionPipeline.from_pretrained(model_id)
+
+components = stable_diffusion_txt2img.components
+
+# weights are not reloaded into RAM
+stable_diffusion_img2img = StableDiffusionImg2ImgPipeline(**components)
+```
+
+Note how the above code snippet makes use of [`DiffusionPipeline.components`].
+
 ### How does loading work?
 
 As a class method, [`DiffusionPipeline.from_pretrained`] is responsible for two things:
