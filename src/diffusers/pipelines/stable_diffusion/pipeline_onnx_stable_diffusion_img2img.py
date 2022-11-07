@@ -8,7 +8,7 @@ import PIL
 from transformers import CLIPFeatureExtractor, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
-from ...onnx_utils import OnnxRuntimeModel
+from ...onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import deprecate, logging
@@ -338,14 +338,21 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         t_start = max(num_inference_steps - init_timestep + offset, 0)
         timesteps = self.scheduler.timesteps[t_start:].numpy()
 
+        timestep_dtype = next(
+            (input.type for input in self.unet.model.get_inputs() if input.name == "timestep"), "tensor(float)"
+        )
+        timestep_dtype = ORT_TO_NP_TYPE[timestep_dtype]
+
         for i, t in enumerate(self.progress_bar(timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = np.concatenate([latents] * 2) if do_classifier_free_guidance else latents
-            latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+            latent_model_input = self.scheduler.scale_model_input(torch.from_numpy(latent_model_input), t)
+            latent_model_input = latent_model_input.cpu().numpy()
 
             # predict the noise residual
+            timestep = np.array([t], dtype=timestep_dtype)
             noise_pred = self.unet(
-                sample=latent_model_input, timestep=np.array([t]), encoder_hidden_states=text_embeddings
+                sample=latent_model_input, timestep=timestep, encoder_hidden_states=text_embeddings
             )[0]
 
             # perform guidance
@@ -354,7 +361,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+            latents = self.scheduler.step(noise_pred, t, torch.from_numpy(latents), **extra_step_kwargs).prev_sample
             latents = latents.numpy()
 
             # call the callback, if provided
@@ -375,7 +382,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             safety_checker_input = self.feature_extractor(
                 self.numpy_to_pil(image), return_tensors="np"
             ).pixel_values.astype(image.dtype)
-            # There will throw an error if use safety_checker batchsize>1
+            # safety_checker does not support batched inputs yet
             images, has_nsfw_concept = [], []
             for i in range(image.shape[0]):
                 image_i, has_nsfw_concept_i = self.safety_checker(
