@@ -32,6 +32,7 @@ class UNetGraph(flow.nn.Graph):
         self.config.enable_cudnn_conv_heuristic_search_algo(False)
 
     def build(self, latent_model_input, t, text_embeddings):
+        text_embeddings = torch._C.amp_white_identity(text_embeddings)
         return self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
 
 class OneFlowStableDiffusionPipeline(DiffusionPipeline):
@@ -98,6 +99,8 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
+        self.unet_graph = UNetGraph(self.unet)
+        self.unet_compiled = False
 
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
@@ -185,6 +188,8 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
             (nsfw) content, according to the `safety_checker`.
         """
 
+        from timeit import default_timer as timer
+        start = timer()
         if "torch_device" in kwargs:
             device = kwargs.pop("torch_device")
             warnings.warn(
@@ -271,12 +276,17 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
-        unet_graph = UNetGraph(self.unet)
-
-        print("[oneflow]", "compiling unet beforehand to make sure the progress bar is more accurate")
-        i, t = list(enumerate(self.scheduler.timesteps))[0]
-        latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-        unet_graph._compile(latent_model_input, t, text_embeddings)
+        compilation_start = timer()
+        compilation_time = 0
+        if self.unet_compiled == False:
+            print("[oneflow]", "compiling unet beforehand to make sure the progress bar is more accurate")
+            i, t = list(enumerate(self.scheduler.timesteps))[0]
+            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+            self.unet_graph._compile(latent_model_input, t, text_embeddings)
+            self.unet_compiled = True
+            self.unet_graph(latent_model_input, t, text_embeddings) # warmup
+            compilation_time = timer() - compilation_start
+            print("[oneflow]", "[elapsed(s)]", "[unet compilation]", compilation_time)
 
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             torch._oneflow_internal.profiler.RangePush(f"denoise-{i}")
@@ -289,7 +299,7 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
 
             # predict the noise residual
             torch._oneflow_internal.profiler.RangePush(f"denoise-{i}-unet-graph")
-            noise_pred = unet_graph(latent_model_input, t, text_embeddings)
+            noise_pred = self.unet_graph(latent_model_input, t, text_embeddings)
             torch._oneflow_internal.profiler.RangePop()
 
             # perform guidance
@@ -310,6 +320,8 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
         if isinstance(latents, np.ndarray):
             latents = torch.from_numpy(latents)
         image = self.vae.decode(latents).sample
+        print("[oneflow]", "[elapsed(s)]", "[image]", timer() - start - compilation_time)
+        post_process_start = timer()
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
@@ -328,4 +340,6 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
             return (image, has_nsfw_concept)
         import torch as og_torch
         assert og_torch.cuda.is_initialized() is False
+
+        print("[oneflow]", "[elapsed(s)]", "[post-process]", timer() - post_process_start)
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)

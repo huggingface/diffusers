@@ -353,7 +353,7 @@ class OneFlowDiffusionPipeline(ConfigMixin):
                 class_name = "OneFlow" + class_name
                 print(f"[oneflow]", f"[{name}]", f"{library_name}.{class_name}")
             else:
-                print(f"[python]", f"[{name}]", f"{library_name}.{class_name}")
+                print(f"[diffusers]", f"[{name}]", f"{library_name}.{class_name}")
             # 3.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             if class_name.startswith("Flax"):
                 class_name = class_name[4:]
