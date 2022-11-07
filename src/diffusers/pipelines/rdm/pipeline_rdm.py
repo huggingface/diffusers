@@ -168,8 +168,8 @@ class RDMPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        height: int = 512,
-        width: int = 512,
+        height: int = 768,
+        width: int = 768,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -270,7 +270,7 @@ class RDMPipeline(DiffusionPipeline):
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
             text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
-        text_embeddings = self.clip.get_text_features(text_input_ids.to(self.device))[0]
+        text_embeddings = self.clip.get_text_features(text_input_ids.to(self.device))
         text_embeddings = text_embeddings / torch.linalg.norm(text_embeddings, dim=-1, keepdim=True)
         text_embeddings = text_embeddings[:, None, :]
 
@@ -390,7 +390,7 @@ class RDMPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
-        latents = 1 / 0.18215 * latents
+        latents = 1 / 0.22765929 * latents
         image = self.vae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
