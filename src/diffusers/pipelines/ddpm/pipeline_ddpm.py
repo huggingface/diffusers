@@ -14,7 +14,7 @@
 # limitations under the License.
 
 
-from typing import Literal, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 
