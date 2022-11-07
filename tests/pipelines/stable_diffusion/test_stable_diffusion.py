@@ -840,7 +840,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         assert 2 * low_cpu_mem_usage_time < normal_load_time
 
     @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
-    def test_stable_diffusion_pipeline_with_unet_on_gpu_only(self):
+    def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
 

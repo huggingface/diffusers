@@ -78,6 +78,8 @@
   - sections:
     - local: api/pipelines/overview
       title: "Overview"
+    - local: api/pipelines/cycle_diffusion
+      title: "Cycle Diffusion"
     - local: api/pipelines/ddim
       title: "DDIM"
     - local: api/pipelines/ddpm

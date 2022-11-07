@@ -599,3 +599,48 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
             )
         assert test_callback_fn.has_been_called
         assert number_of_steps == 38
+
+    def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
+        torch.cuda.empty_cache()
+        torch.cuda.reset_max_memory_allocated()
+
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/img2img/sketch-mountains-input.jpg"
+        )
+        expected_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/img2img/fantasy_landscape_k_lms.png"
+        )
+        init_image = init_image.resize((768, 512))
+        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
+
+        model_id = "CompVis/stable-diffusion-v1-4"
+        lms = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler")
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
+            model_id,
+            scheduler=lms,
+            safety_checker=None,
+            device_map="auto",
+        )
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing(1)
+        pipe.enable_sequential_cpu_offload()
+
+        prompt = "A fantasy landscape, trending on artstation"
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        _ = pipe(
+            prompt=prompt,
+            init_image=init_image,
+            strength=0.75,
+            guidance_scale=7.5,
+            generator=generator,
+            output_type="np",
+            num_inference_steps=5,
+        )
+
+        mem_bytes = torch.cuda.max_memory_allocated()
+        # make sure that less than 1.5 GB is allocated
+        assert mem_bytes < 1.5 * 10**9
