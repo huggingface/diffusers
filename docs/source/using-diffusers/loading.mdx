@@ -12,7 +12,370 @@ specific language governing permissions and limitations under the License.
 
 # Loading
 
-The core functionality for saving and loading systems in `Diffusers` is the HuggingFace Hub.
+A core premise of the diffusers library is to make diffusion models **as accessible as possible**.
+Accessibility is therefore achieved by providing an API to load complete diffusion pipelines as well as individual components with a single line of code. 
+
+In the following we explain in-detail how to easily load:
+
+- *Complete Diffusion Pipelines* via the [`DiffusionPipeline.from_pretrained`]
+- *Diffusion Models* via [`ModelMixin.from_pretrained`]
+- *Schedulers* via [`ConfigMixin.from_config`]
+
+## Loading pipelines
+
+The [`DiffusionPipeline`] class is the easiest way to access any diffusion model that is [available on the Hub](https://huggingface.co/models?library=diffusers). Let's look at an example on how to download [CompVis' Latent Diffusion model](https://huggingface.co/CompVis/ldm-text2im-large-256).
+
+```python
+from diffusers import DiffusionPipeline
+
+repo_id = "CompVis/ldm-text2im-large-256"
+ldm = DiffusionPipeline.from_pretrained(repo_id)
+```
+
+Here [`DiffusionPipeline`] automatically detects the correct pipeline (*i.e.* [`LDMTextToImagePipeline`]), downloads and caches all required configuration and weight files (if not already done so), and finally returns a pipeline instance, called `ldm`.
+The pipeline instance can then be called using [`LDMTextToImagePipeline.__call__`] (i.e., `ldm("image of a astronaut riding a horse")`) for text-to-image generation.
+
+Instead of using the generic [`DiffusionPipeline`] class for loading, you can also load the appropriate pipeline class directly. The code snippet above yields the same instance as when doing:
+
+```python
+from diffusers import LDMTextToImagePipeline
+
+repo_id = "CompVis/ldm-text2im-large-256"
+ldm = LDMTextToImagePipeline.from_pretrained(repo_id)
+```
+
+Diffusion pipelines like `LDMTextToImagePipeline` often consist of multiple components. These components can be both parameterized models, such as `"unet"`, `"vqvae"` and "bert", tokenizers or schedulers. These components can interact in complex ways with each other when using the pipeline in inference, *e.g.* for [`LDMTextToImagePipeline`] or [`StableDiffusionPipeline`] the inference call is explained [here](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work).
+The purpose of the [pipeline classes](./api/overview#diffusers-summary) is to wrap the complexity of these diffusion systems and give the user an easy-to-use API while staying flexible for customization, as will be shown later.
+
+### Loading pipelines that require access request
+
+Due to the capabilities of diffusion models to generate extremely realistic images, there is a certain danger that such models might be misused for unwanted applications, *e.g.* generating pornography or violent images.
+In order to minimize the possibility of such unsolicited use cases, some of the most powerful diffusion models require users to acknowledge a license before being able to use the model. If the user does not agree to the license, the pipeline cannot be downloaded.
+If you try to load [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) the same way as done previously:
+
+```python
+from diffusers import DiffusionPipeline
+
+repo_id = "runwayml/stable-diffusion-v1-5"
+stable_diffusion = DiffusionPipeline.from_pretrained(repo_id)
+```
+
+it will only work if you have both *click-accepted* the license on [the model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) and are logged into the Hugging Face Hub. Otherwise you will get an error message
+such as the following:
+
+```
+OSError: runwayml/stable-diffusion-v1-5 is not a local folder and is not a valid model identifier listed on 'https://huggingface.co/models'
+If this is a private repository, make sure to pass a token having permission to this repo with `use_auth_token` or log in with `huggingface-cli login`
+```
+
+Therefore, we need to make sure to *click-accept* the license. You can do this by simply visiting 
+the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) and clicking on "Agree and access repository":
+
+![access_request](https://github.com/patrickvonplaten/scientific_images/blob/master/access_request.png)
+
+Second, you need to login with your access token:
+
+```
+huggingface-cli login
+```
+
+before trying to load the model. Or alternatively, you can pass [your access token](https://huggingface.co/docs/hub/security-tokens#user-access-tokens) directly via the flag `use_auth_token`. In this case you do **not** need 
+to run `huggingface-cli login` before:
+
+```python
+from diffusers import DiffusionPipeline
+
+repo_id = "runwayml/stable-diffusion-v1-5"
+stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, use_auth_token="<your-access-token>")
+```
+
+The final option to use pipelines that require access without having to rely on the Hugging Face Hub is to load the pipeline locally as explained in the next section.
+
+### Loading pipelines locally
+
+If you prefer to have complete control over the pipeline and its corresponding files or, as said before, if you want to use pipelines that require an access request without having to be connected to the Hugging Face Hub, 
+we recommend loading pipelines locally.
+
+To load a diffusion pipeline locally, you first need to manually download the whole folder structure on your local disk and then pass a local path to the [`DiffusionPipeline.from_pretrained`]. Let's again look at an example for 
+[CompVis' Latent Diffusion model](https://huggingface.co/CompVis/ldm-text2im-large-256).
+
+First, you should make use of [`git-lfs`](https://git-lfs.github.com/) to download the whole folder structure that has been uploaded to the [model repository](https://huggingface.co/CompVis/ldm-text2im-large-256/tree/main):
+
+```
+git lfs install
+git clone https://huggingface.co/runwayml/stable-diffusion-v1-5
+```
+
+The command above will create a local folder called `./stable-diffusion-v1-5` on your disk.
+Now, all you have to do is to simply pass the local folder path to `from_pretrained`:
+
+```python
+from diffusers import DiffusionPipeline
+
+repo_id = "./stable-diffusion-v1-5"
+stable_diffusion = DiffusionPipeline.from_pretrained(repo_id)
+```
+
+If `repo_id` is a local path, as it is the case here, [`DiffusionPipeline.from_pretrained`] will automatically detect it and therefore not try to download any files from the Hub.
+While we usually recommend to load weights directly from the Hub to be certain to stay up to date with the newest changes, loading pipelines locally should be preferred if one 
+wants to stay anonymous, self-contained applications, etc...
+
+### Loading customized pipelines
+
+Advanced users that want to load customized versions of diffusion pipelines can do so by swapping any of the default components, *e.g.* the scheduler, with other scheduler classes.
+A classical use case of this functionality is to swap the scheduler. [Stable Diffusion v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) uses the [`PNDMScheduler`] by default which is generally not the most performant scheduler. Since the release
+of stable diffusion, multiple improved schedulers have been published. To use those, the user has to manually load their preferred scheduler and pass it into [`DiffusionPipeline.from_pretrained`].
+
+*E.g.* to use [`EulerDiscreteScheduler`] or [`DPMSolverMultistepScheduler`] to have a better quality vs. generation speed trade-off for inference, one could load them as follows:
+
+```python
+from diffusers import DiffusionPipeline, EulerDiscreteScheduler, DPMSolverMultistepScheduler
+
+repo_id = "runwayml/stable-diffusion-v1-5"
+
+scheduler = EulerDiscreteScheduler.from_config(repo_id, subfolder="scheduler")
+# or
+# scheduler = DPMSolverMultistepScheduler.from_config(repo_id, subfolder="scheduler")
+
+stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, scheduler=scheduler)
+```
+
+Three things are worth paying attention to here.
+- First, the scheduler is loaded with [`ConfigMixin.from_config`] since it only depends on a configuration file and not any parameterized weights
+- Second, the scheduler is loaded with a function argument, called `subfolder="scheduler"` as the configuration of stable diffusion's scheduling is defined in a [subfolder of the official pipeline repository](https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main/scheduler)
+- Third, the scheduler instance can simply be passed with the `scheduler` keyword argument to [`DiffusionPipeline.from_pretrained`]. This works because the [`StableDiffusionPipeline`] defines its scheduler with the `scheduler` attribute. It's not possible to use a different name, such as `sampler=scheduler` since `sampler` is not a defined keyword for [`StableDiffusionPipeline.__init__`]
+
+Not only the scheduler components can be customized for diffusion pipelines; in theory, all components of a pipeline can be customized. In practice, however, it often only makes sense to switch out a component that has **compatible** alternatives to what the pipeline expects.
+Many scheduler classes are compatible with each other as can be seen [here](https://github.com/huggingface/diffusers/blob/0dd8c6b4dbab4069de9ed1cafb53cbd495873879/src/diffusers/schedulers/scheduling_ddim.py#L112). This is not always the case for other components, such as the `"unet"`.
+
+One special case that can also be customized is the `"safety_checker"` of stable diffusion. If you believe the safety checker doesn't serve you any good, you can simply disable it by passing `None`:
+
+```python
+from diffusers import DiffusionPipeline, EulerDiscreteScheduler, DPMSolverMultistepScheduler
+
+stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, safety_checker=None)
+```
+
+Another common use case is to reuse the same components in multiple pipelines, *e.g.* the weights and configurations of [`"runwayml/stable-diffusion-v1-5"`](https://huggingface.co/runwayml/stable-diffusion-v1-5) can be used for both [`StableDiffusionPipeline`] and [`StableDiffusionImg2ImgPipeline`] and we might not want to 
+use the exact same weights into RAM twice. In this case, customizing all the input instances would help us 
+to only load the weights into RAM once:
+
+```python
+from diffusers import StableDiffusionPipeline, StableDiffusionImg2ImgPipeline
+
+model_id = "runwayml/stable-diffusion-v1-5"
+stable_diffusion_txt2img = StableDiffusionPipeline.from_pretrained(model_id)
+
+components = stable_diffusion_txt2img.components
+
+# weights are not reloaded into RAM
+stable_diffusion_img2img = StableDiffusionImg2ImgPipeline(**components)
+```
+
+Note how the above code snippet makes use of [`DiffusionPipeline.components`].
+
+### How does loading work?
+
+As a class method, [`DiffusionPipeline.from_pretrained`] is responsible for two things:
+- Download the latest version of the folder structure required to run the `repo_id` with `diffusers` and cache them. If the latest folder structure is available in the local cache, [`DiffusionPipeline.from_pretrained`] will simply reuse the cache and **not** re-download the files.
+- Load the cached weights into the _correct_ pipeline class – one of the [officially supported pipeline classes](./api/overview#diffusers-summary) - and return an instance of the class. The _correct_ pipeline class is thereby retrieved from the `model_index.json` file.
+
+The underlying folder structure of diffusion pipelines correspond 1-to-1 to their corresponding class instances, *e.g.* [`LDMTextToImagePipeline`] for [`CompVis/ldm-text2im-large-256`](https://huggingface.co/CompVis/ldm-text2im-large-256)
+This can be understood better by looking at an example. Let's print out pipeline class instance `pipeline` we just defined:
+
+```python
+from diffusers import DiffusionPipeline
+
+repo_id = "CompVis/ldm-text2im-large-256"
+ldm = DiffusionPipeline.from_pretrained(repo_id)
+print(ldm)
+```
+
+*Output*:
+```
+LDMTextToImagePipeline {
+  "bert": [
+    "latent_diffusion",
+    "LDMBertModel"
+  ],
+  "scheduler": [
+    "diffusers",
+    "DDIMScheduler"
+  ],
+  "tokenizer": [
+    "transformers",
+    "BertTokenizer"
+  ],
+  "unet": [
+    "diffusers",
+    "UNet2DConditionModel"
+  ],
+  "vqvae": [
+    "diffusers",
+    "AutoencoderKL"
+  ]
+}
+```
+
+First, we see that the official pipeline is the [`LDMTextToImagePipeline`], and second we see that the `LDMTextToImagePipeline` consists of 5 components:
+- `"bert"` of class `LDMBertModel` as defined [in the pipeline](https://github.com/huggingface/diffusers/blob/cd502b25cf0debac6f98d27a6638ef95208d1ea2/src/diffusers/pipelines/latent_diffusion/pipeline_latent_diffusion.py#L664)
+- `"scheduler"` of class [`DDIMScheduler`]
+- `"tokenizer"` of class `BertTokenizer` as defined [in `transformers`](https://huggingface.co/docs/transformers/model_doc/bert#transformers.BertTokenizer)
+- `"unet"` of class [`UNet2DConditionModel`]
+- `"vqvae"` of class [`AutoencoderKL`]
+
+Let's now compare the pipeline instance to the folder structure of the model repository `CompVis/ldm-text2im-large-256`. Looking at the folder structure of [`CompVis/ldm-text2im-large-256`](https://huggingface.co/CompVis/ldm-text2im-large-256/tree/main) on the Hub, we can see it matches 1-to-1 the printed out instance of `LDMTextToImagePipeline` above:
+
+```
+.
+├── bert
+│   ├── config.json
+│   └── pytorch_model.bin
+├── model_index.json
+├── scheduler
+│   └── scheduler_config.json
+├── tokenizer
+│   ├── special_tokens_map.json
+│   ├── tokenizer_config.json
+│   └── vocab.txt
+├── unet
+│   ├── config.json
+│   └── diffusion_pytorch_model.bin
+└── vqvae
+    ├── config.json
+    └── diffusion_pytorch_model.bin
+```
+
+As we can see each attribute of the instance of `LDMTextToImagePipeline` has its configuration and possibly weights defined in a subfolder that is called **exactly** like the class attribute (`"bert"`, `"scheduler"`, `"tokenizer"`, `"unet"`, `"vqvae"`). Importantly, every pipeline expects a `model_index.json` file that tells the `DiffusionPipeline` both:
+- which pipeline class should be loaded, and
+- what sub-classes from which library are stored in which subfolders
+
+In the case of `CompVis/ldm-text2im-large-256` the `model_index.json` is therefore defined as follows:
+
+```
+{
+  "_class_name": "LDMTextToImagePipeline",
+  "_diffusers_version": "0.0.4",
+  "bert": [
+    "latent_diffusion",
+    "LDMBertModel"
+  ],
+  "scheduler": [
+    "diffusers",
+    "DDIMScheduler"
+  ],
+  "tokenizer": [
+    "transformers",
+    "BertTokenizer"
+  ],
+  "unet": [
+    "diffusers",
+    "UNet2DConditionModel"
+  ],
+  "vqvae": [
+    "diffusers",
+    "AutoencoderKL"
+  ]
+}
+```
+
+- `_class_name` tells `DiffusionPipeline` which pipeline class should be loaded. 
+- `_diffusers_version` can be useful to know under which `diffusers` version this model was created.
+- Every component of the pipeline is then defined under the form:
+```
+"name" : [
+  "library",
+  "class"
+]
+```
+	- The `"name"` field corresponds both to the name of the subfolder in which the configuration and weights are stored as well as the attribute name of the pipeline class (as can be seen [here](https://huggingface.co/CompVis/ldm-text2im-large-256/tree/main/bert) and [here](https://github.com/huggingface/diffusers/blob/cd502b25cf0debac6f98d27a6638ef95208d1ea2/src/diffusers/pipelines/latent_diffusion/pipeline_latent_diffusion.py#L42)
+	- The `"library"` field corresponds to the name of the library, *e.g.* `diffusers` or `transformers` from which the `"class"` should be loaded
+	- The `"class"` field corresponds to the name of the class, *e.g.* [`BertTokenizer`](https://huggingface.co/docs/transformers/model_doc/bert#transformers.BertTokenizer) or [`UNet2DConditionModel`]
+
+
+## Loading models
+
+Models as defined under [src/diffusers/models](https://github.com/huggingface/diffusers/tree/main/src/diffusers/models) can be loaded via the [`ModelMixin.from_pretrained`] function. The API is very similar the [`DiffusionPipeline.from_pretrained`] and works in the same way:
+- Download the latest version of the model weights and configuration with `diffusers` and cache them. If the latest files are available in the local cache, [`ModelMixin.from_pretrained`] will simply reuse the cache and **not** re-download the files.
+- Load the cached weights into the _defined_ model class - one of [the existing model classes](./api/models) - and return an instance of the class.
+
+In constrast to [`DiffusionPipeline.from_pretrained`], models rely on fewer files that usually don't require a folder structure, but just a `diffusion_pytorch_model.bin` and `config.json` file.
+
+Let's look at an example:
+
+```python
+from diffusers import UNet2DConditionModel
+
+repo_id = "CompVis/ldm-text2im-large-256"
+model = UNet2DConditionModel.from_pretrained(repo_id, subfolder="unet")
+```
+
+Note how we have to define the `subfolder="unet"` argument to tell [`ModelMixin.from_pretrained`] that the model weights are located in a [subfolder of the repository](https://huggingface.co/CompVis/ldm-text2im-large-256/tree/main/unet).
+
+As explained in [Loading customized pipelines]("./using-diffusers/loading#loading-customized-pipelines"), one can pass a loaded model to a diffusion pipeline, via [`DiffusionPipeline.from_pretrained`]:
+
+```python
+from diffusers import DiffusionPipeline
+
+repo_id = "CompVis/ldm-text2im-large-256"
+ldm = DiffusionPipeline.from_pretrained(repo_id, unet=model)
+```
+
+If the model files can be found directly at the root level, which is usually only the case for some very simple diffusion models, such as [`google/ddpm-cifar10-32`](https://huggingface.co/google/ddpm-cifar10-32), we don't 
+need to pass a `subfolder` argument:
+
+```python
+from diffusers import UNet2DModel
+
+repo_id = "google/ddpm-cifar10-32"
+model = UNet2DModel.from_pretrained(repo_id)
+```
+
+## Loading schedulers
+
+Schedulers cannot be loaded via a `from_pretrained` method, but instead rely on [`ConfigMixin.from_config`]. Schedulers are **not parameterized** or **trained**, but instead purely defined by a configuration file.
+Therefore the loading method was given a different name here.
+
+In constrast to pipelines or models, loading schedulers does not consume any significant amount of memory and the same configuration file can often be used for a variety of different schedulers.
+For example, all of:
+
+- [`DDPMScheduler`]
+- [`DDIMScheduler`]
+- [`PNDMScheduler`]
+- [`LMSDiscreteScheduler`]
+- [`EulerDiscreteScheduler`]
+- [`EulerAncestralDiscreteScheduler`]
+- [`DPMSolverMultistepScheduler`]
+
+are compatible with [`StableDiffusionPipeline`] and therefore the same scheduler configuration file can be loaded in any of those classes:
+
+```python
+from diffusers import StableDiffusionPipeline
+from diffusers import (
+    DDPMScheduler,
+    DDIMScheduler,
+    PNDMScheduler,
+    LMSDiscreteScheduler,
+    EulerDiscreteScheduler,
+    EulerAncestralDiscreteScheduler,
+    DPMSolverMultistepScheduler,
+)
+
+repo_id = "runwayml/stable-diffusion-v1-5"
+
+ddpm = DDPMScheduler.from_config(repo_id, subfolder="scheduler")
+ddim = DDIMScheduler.from_config(repo_id, subfolder="scheduler")
+pndm = PNDMScheduler.from_config(repo_id, subfolder="scheduler")
+lms = LMSDiscreteScheduler.from_config(repo_id, subfolder="scheduler")
+euler_anc = EulerAncestralDiscreteScheduler.from_config(repo_id, subfolder="scheduler")
+euler = EulerDiscreteScheduler.from_config(repo_id, subfolder="scheduler")
+dpm = DPMSolverMultistepScheduler.from_config(repo_id, subfolder="scheduler")
+
+# replace `dpm` with any of `ddpm`, `ddim`, `pndm`, `lms`, `euler`, `euler_anc`
+pipeline = StableDiffusionPipeline.from_pretrained(repo_id, scheduler=dpm)
+```
+
+## API
 
 [[autodoc]] modeling_utils.ModelMixin
     - from_pretrained
@@ -29,6 +392,3 @@ The core functionality for saving and loading systems in `Diffusers` is the Hugg
 [[autodoc]] pipeline_flax_utils.FlaxDiffusionPipeline
     - from_pretrained
     - save_pretrained
-
-
-Under further construction 🚧, open a [PR](https://github.com/huggingface/diffusers/compare) if you want to contribute!
