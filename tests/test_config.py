@@ -19,7 +19,14 @@ import tempfile
 import unittest
 
 import diffusers
-from diffusers import DDIMScheduler, EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, PNDMScheduler, logging
+from diffusers import (
+    DDIMScheduler,
+    DPMSolverMultistepScheduler,
+    EulerAncestralDiscreteScheduler,
+    EulerDiscreteScheduler,
+    PNDMScheduler,
+    logging,
+)
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.utils.testing_utils import CaptureLogger
 
@@ -281,5 +288,17 @@ class ConfigTester(unittest.TestCase):
             pndm = PNDMScheduler.from_config("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
 
         assert pndm.__class__ == PNDMScheduler
+        # no warning should be thrown
+        assert cap_logger.out == ""
+
+    def test_load_dpmsolver(self):
+        logger = logging.get_logger("diffusers.configuration_utils")
+
+        with CaptureLogger(logger) as cap_logger:
+            dpm = DPMSolverMultistepScheduler.from_config(
+                "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler"
+            )
+
+        assert dpm.__class__ == DPMSolverMultistepScheduler
         # no warning should be thrown
         assert cap_logger.out == ""

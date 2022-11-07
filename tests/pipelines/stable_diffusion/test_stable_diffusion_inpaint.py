@@ -378,4 +378,49 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-        assert np.abs(expected_image - image).max() < 1e-3
+        assert np.abs(expected_image - image).max() < 1e-2
+
+    @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
+    def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
+        torch.cuda.empty_cache()
+        torch.cuda.reset_max_memory_allocated()
+
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/overture-creations-5sI6fQgYIuo.png"
+        )
+        mask_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
+        )
+        expected_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/yellow_cat_sitting_on_a_park_bench_pndm.png"
+        )
+        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
+
+        model_id = "runwayml/stable-diffusion-inpainting"
+        pndm = PNDMScheduler.from_config(model_id, subfolder="scheduler")
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(
+            model_id, safety_checker=None, scheduler=pndm, device_map="auto"
+        )
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing(1)
+        pipe.enable_sequential_cpu_offload()
+
+        prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        _ = pipe(
+            prompt=prompt,
+            image=init_image,
+            mask_image=mask_image,
+            generator=generator,
+            num_inference_steps=5,
+            output_type="np",
+        )
+
+        mem_bytes = torch.cuda.max_memory_allocated()
+        # make sure that less than 1.5 GB is allocated
+        assert mem_bytes < 1.5 * 10**9

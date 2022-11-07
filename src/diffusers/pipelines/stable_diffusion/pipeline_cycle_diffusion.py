@@ -5,19 +5,12 @@ import numpy as np
 import torch
 
 import PIL
-from diffusers.utils import is_accelerate_available
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import (
-    DDIMScheduler,
-    EulerAncestralDiscreteScheduler,
-    EulerDiscreteScheduler,
-    LMSDiscreteScheduler,
-    PNDMScheduler,
-)
+from ...schedulers import DDIMScheduler
 from ...utils import deprecate, logging
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -36,7 +29,66 @@ def preprocess(image):
     return 2.0 * image - 1.0
 
 
-class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
+def posterior_sample(scheduler, latents, timestep, clean_latents, eta):
+    # 1. get previous step value (=t-1)
+    prev_timestep = timestep - scheduler.config.num_train_timesteps // scheduler.num_inference_steps
+
+    if prev_timestep <= 0:
+        return clean_latents
+
+    # 2. compute alphas, betas
+    alpha_prod_t = scheduler.alphas_cumprod[timestep]
+    alpha_prod_t_prev = (
+        scheduler.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else scheduler.final_alpha_cumprod
+    )
+
+    variance = scheduler._get_variance(timestep, prev_timestep)
+    std_dev_t = eta * variance ** (0.5)
+
+    # direction pointing to x_t
+    e_t = (latents - alpha_prod_t ** (0.5) * clean_latents) / (1 - alpha_prod_t) ** (0.5)
+    dir_xt = (1.0 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * e_t
+    noise = std_dev_t * torch.randn(clean_latents.shape, dtype=clean_latents.dtype, device=clean_latents.device)
+    prev_latents = alpha_prod_t_prev ** (0.5) * clean_latents + dir_xt + noise
+
+    return prev_latents
+
+
+def compute_noise(scheduler, prev_latents, latents, timestep, noise_pred, eta):
+    # 1. get previous step value (=t-1)
+    prev_timestep = timestep - scheduler.config.num_train_timesteps // scheduler.num_inference_steps
+
+    # 2. compute alphas, betas
+    alpha_prod_t = scheduler.alphas_cumprod[timestep]
+    alpha_prod_t_prev = (
+        scheduler.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else scheduler.final_alpha_cumprod
+    )
+
+    beta_prod_t = 1 - alpha_prod_t
+
+    # 3. compute predicted original sample from predicted noise also called
+    # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+    pred_original_sample = (latents - beta_prod_t ** (0.5) * noise_pred) / alpha_prod_t ** (0.5)
+
+    # 4. Clip "predicted x_0"
+    if scheduler.config.clip_sample:
+        pred_original_sample = torch.clamp(pred_original_sample, -1, 1)
+
+    # 5. compute variance: "sigma_t(η)" -> see formula (16)
+    # σ_t = sqrt((1 − α_t−1)/(1 − α_t)) * sqrt(1 − α_t/α_t−1)
+    variance = scheduler._get_variance(timestep, prev_timestep)
+    std_dev_t = eta * variance ** (0.5)
+
+    # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
+    pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * noise_pred
+
+    noise = (prev_latents - (alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction)) / (
+        variance ** (0.5) * eta
+    )
+    return noise
+
+
+class CycleDiffusionPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-guided image to image generation using Stable Diffusion.
 
@@ -59,7 +111,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
+            Please, refer to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) for details.
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
@@ -70,9 +122,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[
-            DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler, EulerDiscreteScheduler, EulerAncestralDiscreteScheduler
-        ],
+        scheduler: DDIMScheduler,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
     ):
@@ -90,19 +140,6 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
             new_config = dict(scheduler.config)
             new_config["steps_offset"] = 1
-            scheduler._internal_dict = FrozenDict(new_config)
-
-        if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
-            deprecation_message = (
-                f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."
-                " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
-                " config accordingly as not setting `clip_sample` in the config might lead to incorrect results in"
-                " future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very"
-                " nice if you could open a Pull request for the `scheduler/scheduler_config.json` file"
-            )
-            deprecate("clip_sample not set", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(scheduler.config)
-            new_config["clip_sample"] = False
             scheduler._internal_dict = FrozenDict(new_config)
 
         if safety_checker is None:
@@ -152,52 +189,18 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         # set slice_size = `None` to disable `set_attention_slice`
         self.enable_attention_slicing(None)
 
-    def enable_sequential_cpu_offload(self):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
-        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
-        """
-        if is_accelerate_available():
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        device = torch.device("cuda")
-
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
-
-    def enable_xformers_memory_efficient_attention(self):
-        r"""
-        Enable memory efficient attention as implemented in xformers.
-
-        When this option is enabled, you should observe lower GPU memory usage and a potential speed up at inference
-        time. Speed up at training time is not guaranteed.
-
-        Warning: When Memory Efficient Attention and Sliced attention are both enabled, the Memory Efficient Attention
-        is used.
-        """
-        self.unet.set_use_memory_efficient_attention_xformers(True)
-
-    def disable_xformers_memory_efficient_attention(self):
-        r"""
-        Disable memory efficient attention as implemented in xformers.
-        """
-        self.unet.set_use_memory_efficient_attention_xformers(False)
-
     @torch.no_grad()
     def __call__(
         self,
         prompt: Union[str, List[str]],
+        source_prompt: Union[str, List[str]],
         init_image: Union[torch.FloatTensor, PIL.Image.Image],
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        source_guidance_scale: Optional[float] = 1,
         num_images_per_prompt: Optional[int] = 1,
-        eta: Optional[float] = 0.0,
+        eta: Optional[float] = 0.1,
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -229,12 +232,12 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
-            negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
-                if `guidance_scale` is less than `1`).
+            source_guidance_scale (`float`, *optional*, defaults to 1):
+                Guidance scale for the source prompt. This is useful to control the amount of influence the source
+                prompt for encoding.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            eta (`float`, *optional*, defaults to 0.0):
+            eta (`float`, *optional*, defaults to 0.1):
                 Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
             generator (`torch.Generator`, *optional*):
@@ -267,6 +270,12 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         else:
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
+        if batch_size != 1:
+            raise ValueError(
+                "At the moment only `batch_size=1` is supported for prompts, but you seem to have passed multiple"
+                f" prompts: {prompt}. Please make sure to pass only a single prompt."
+            )
+
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
@@ -291,7 +300,14 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             max_length=self.tokenizer.model_max_length,
             return_tensors="pt",
         )
+        source_text_inputs = self.tokenizer(
+            source_prompt,
+            padding="max_length",
+            max_length=self.tokenizer.model_max_length,
+            return_tensors="pt",
+        )
         text_input_ids = text_inputs.input_ids
+        source_text_input_ids = source_text_inputs.input_ids
 
         if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
             removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length :])
@@ -300,51 +316,66 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
             text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
+        if source_text_input_ids.shape[-1] > self.tokenizer.model_max_length:
+            removed_text = self.tokenizer.batch_decode(source_text_input_ids[:, self.tokenizer.model_max_length :])
+            logger.warning(
+                "The following part of your input was truncated because CLIP can only handle sequences up to"
+                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+            )
+            source_text_input_ids = source_text_input_ids[:, : self.tokenizer.model_max_length]
         text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
+        source_text_embeddings = self.text_encoder(source_text_input_ids.to(self.device))[0]
 
         # duplicate text embeddings for each generation per prompt
         text_embeddings = text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
+        source_text_embeddings = source_text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = guidance_scale > 1.0
+
         # get unconditional embeddings for classifier free guidance
-        if do_classifier_free_guidance:
-            uncond_tokens: List[str]
-            if negative_prompt is None:
-                uncond_tokens = [""] * batch_size
-            elif type(prompt) is not type(negative_prompt):
-                raise TypeError(
-                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-                    f" {type(prompt)}."
-                )
-            elif isinstance(negative_prompt, str):
-                uncond_tokens = [negative_prompt]
-            elif batch_size != len(negative_prompt):
-                raise ValueError("The length of `negative_prompt` should be equal to batch_size.")
-            else:
-                uncond_tokens = negative_prompt
+        uncond_tokens = [""]
 
-            max_length = text_input_ids.shape[-1]
-            uncond_input = self.tokenizer(
-                uncond_tokens,
-                padding="max_length",
-                max_length=max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
+        max_length = text_input_ids.shape[-1]
+        uncond_input = self.tokenizer(
+            uncond_tokens,
+            padding="max_length",
+            max_length=max_length,
+            truncation=True,
+            return_tensors="pt",
+        )
+        uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
 
-            # duplicate unconditional embeddings for each generation per prompt
-            seq_len = uncond_embeddings.shape[1]
-            uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
-            uncond_embeddings = uncond_embeddings.view(batch_size * num_images_per_prompt, seq_len, -1)
+        # duplicate unconditional embeddings for each generation per prompt
+        uncond_embeddings = uncond_embeddings.repeat_interleave(batch_size * num_images_per_prompt, dim=0)
 
-            # For classifier free guidance, we need to do two forward passes.
-            # Here we concatenate the unconditional and text embeddings into a single batch
-            # to avoid doing two forward passes
-            text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
+        # For classifier free guidance, we need to do two forward passes.
+        # Here we concatenate the unconditional and text embeddings into a single batch
+        # to avoid doing two forward passes
+        text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
+
+        source_uncond_tokens = [""]
+
+        max_length = source_text_input_ids.shape[-1]
+        source_uncond_input = self.tokenizer(
+            source_uncond_tokens,
+            padding="max_length",
+            max_length=max_length,
+            truncation=True,
+            return_tensors="pt",
+        )
+        source_uncond_embeddings = self.text_encoder(source_uncond_input.input_ids.to(self.device))[0]
+
+        # duplicate unconditional embeddings for each generation per prompt
+        source_uncond_embeddings = source_uncond_embeddings.repeat_interleave(
+            batch_size * num_images_per_prompt, dim=0
+        )
+
+        # For classifier free guidance, we need to do two forward passes.
+        # Here we concatenate the unconditional and text embeddings into a single batch
+        # to avoid doing two forward passes
+        source_text_embeddings = torch.cat([source_uncond_embeddings, source_text_embeddings])
 
         # encode the init image into latents and scale the latents
         latents_dtype = text_embeddings.dtype
@@ -383,6 +414,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         # add noise to latents using the timesteps
         noise = torch.randn(init_latents.shape, generator=generator, device=self.device, dtype=latents_dtype)
+        clean_latents = init_latents
         init_latents = self.scheduler.add_noise(init_latents, noise, timesteps)
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -391,15 +423,17 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         # and should be between [0, 1]
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
         extra_step_kwargs = {}
-        if accepts_eta:
-            extra_step_kwargs["eta"] = eta
 
-        # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        if accepts_generator:
-            extra_step_kwargs["generator"] = generator
+        if not (accepts_eta and (0 < eta <= 1)):
+            raise ValueError(
+                "Currently, only the DDIM scheduler is supported. Please make sure that `pipeline.scheduler` is of"
+                f" type {DDIMScheduler.__class__} and not {self.scheduler.__class__}."
+            )
+
+        extra_step_kwargs["eta"] = eta
 
         latents = init_latents
+        source_latents = init_latents
 
         t_start = max(num_inference_steps - init_timestep + offset, 0)
 
@@ -409,19 +443,60 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         for i, t in enumerate(self.progress_bar(timesteps)):
             # expand the latents if we are doing classifier free guidance
-            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+            latent_model_input = torch.cat([latents] * 2)
+            source_latent_model_input = torch.cat([source_latents] * 2)
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+            source_latent_model_input = self.scheduler.scale_model_input(source_latent_model_input, t)
 
             # predict the noise residual
-            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+            concat_latent_model_input = torch.stack(
+                [
+                    source_latent_model_input[0],
+                    latent_model_input[0],
+                    source_latent_model_input[1],
+                    latent_model_input[1],
+                ],
+                dim=0,
+            )
+            concat_text_embeddings = torch.stack(
+                [
+                    source_text_embeddings[0],
+                    text_embeddings[0],
+                    source_text_embeddings[1],
+                    text_embeddings[1],
+                ],
+                dim=0,
+            )
+            concat_noise_pred = self.unet(
+                concat_latent_model_input, t, encoder_hidden_states=concat_text_embeddings
+            ).sample
 
             # perform guidance
-            if do_classifier_free_guidance:
-                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+            (
+                source_noise_pred_uncond,
+                noise_pred_uncond,
+                source_noise_pred_text,
+                noise_pred_text,
+            ) = concat_noise_pred.chunk(4, dim=0)
+            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+            source_noise_pred = source_noise_pred_uncond + source_guidance_scale * (
+                source_noise_pred_text - source_noise_pred_uncond
+            )
+
+            # Sample source_latents from the posterior distribution.
+            prev_source_latents = posterior_sample(
+                self.scheduler, source_latents, t, clean_latents, **extra_step_kwargs
+            )
+            # Compute noise.
+            noise = compute_noise(
+                self.scheduler, prev_source_latents, source_latents, t, source_noise_pred, **extra_step_kwargs
+            )
+            source_latents = prev_source_latents
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+            latents = self.scheduler.step(
+                noise_pred, t, latents, variance_noise=noise, **extra_step_kwargs
+            ).prev_sample
 
             # call the callback, if provided
             if callback is not None and i % callback_steps == 0:

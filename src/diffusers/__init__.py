@@ -9,7 +9,7 @@ from .utils import (
 )
 
 
-__version__ = "0.7.0"
+__version__ = "0.8.0.dev0"
 
 from .configuration_utils import ConfigMixin
 from .onnx_utils import OnnxRuntimeModel
@@ -42,6 +42,7 @@ if is_torch_available():
     from .schedulers import (
         DDIMScheduler,
         DDPMScheduler,
+        DPMSolverMultistepScheduler,
         EulerAncestralDiscreteScheduler,
         EulerDiscreteScheduler,
         IPNDMScheduler,
@@ -63,6 +64,7 @@ else:
 
 if is_torch_available() and is_transformers_available():
     from .pipelines import (
+        CycleDiffusionPipeline,
         LDMTextToImagePipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
@@ -91,6 +93,7 @@ if is_flax_available():
     from .schedulers import (
         FlaxDDIMScheduler,
         FlaxDDPMScheduler,
+        FlaxDPMSolverMultistepScheduler,
         FlaxKarrasVeScheduler,
         FlaxLMSDiscreteScheduler,
         FlaxPNDMScheduler,
