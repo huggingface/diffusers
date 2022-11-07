@@ -14,7 +14,12 @@ from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel
 
 from ...models import FlaxAutoencoderKL, FlaxUNet2DConditionModel
 from ...pipeline_flax_utils import FlaxDiffusionPipeline
-from ...schedulers import FlaxDDIMScheduler, FlaxLMSDiscreteScheduler, FlaxPNDMScheduler
+from ...schedulers import (
+    FlaxDDIMScheduler,
+    FlaxDPMSolverMultistepScheduler,
+    FlaxLMSDiscreteScheduler,
+    FlaxPNDMScheduler,
+)
 from ...utils import logging
 from . import FlaxStableDiffusionPipelineOutput
 from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
@@ -43,7 +48,8 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         unet ([`FlaxUNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
-            [`FlaxDDIMScheduler`], [`FlaxLMSDiscreteScheduler`], or [`FlaxPNDMScheduler`].
+            [`FlaxDDIMScheduler`], [`FlaxLMSDiscreteScheduler`], [`FlaxPNDMScheduler`], or
+            [`FlaxDPMSolverMultistepScheduler`].
         safety_checker ([`FlaxStableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
@@ -57,7 +63,9 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         text_encoder: FlaxCLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: FlaxUNet2DConditionModel,
-        scheduler: Union[FlaxDDIMScheduler, FlaxPNDMScheduler, FlaxLMSDiscreteScheduler],
+        scheduler: Union[
+            FlaxDDIMScheduler, FlaxPNDMScheduler, FlaxLMSDiscreteScheduler, FlaxDPMSolverMultistepScheduler
+        ],
         safety_checker: FlaxStableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
         dtype: jnp.dtype = jnp.float32,

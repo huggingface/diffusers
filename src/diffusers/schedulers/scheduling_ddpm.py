@@ -108,6 +108,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         "LMSDiscreteScheduler",
         "EulerDiscreteScheduler",
         "EulerAncestralDiscreteScheduler",
+        "DPMSolverMultistepScheduler",
     ]
 
     @register_to_config
