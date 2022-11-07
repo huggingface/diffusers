@@ -12,8 +12,8 @@ specific language governing permissions and limitations under the License.
 
 # Loading
 
-A core premise of the diffusers library is to make diffusion models **as accesible as possible**.
-Accessibility is hereby achieved by providing an API to load complete diffusion pipelines as well as individual components with a single line of code. 
+A core premise of the diffusers library is to make diffusion models **as accessible as possible**.
+Accessibility is therefore achieved by providing an API to load complete diffusion pipelines as well as individual components with a single line of code. 
 
 In the following we explain in-detail how to easily load:
 
@@ -44,12 +44,12 @@ repo_id = "CompVis/ldm-text2im-large-256"
 ldm = LDMTextToImagePipeline.from_pretrained(repo_id)
 ```
 
-Diffusion pipelines like `LDMTextToImagePipeline` often consist of multiple components. These components can be both parameterized models, such as `"unet"`, "vqvae"` and "bert", tokenizers or schedulers. These components can interact in complex way with each other when using the pipeline in inference, *e.g.* for [`LDMTextToImagePipeline`] or [`StableDiffusionPipeline`] the inference call is explained [here](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work).
+Diffusion pipelines like `LDMTextToImagePipeline` often consist of multiple components. These components can be both parameterized models, such as `"unet"`, `"vqvae"` and "bert", tokenizers or schedulers. These components can interact in complex ways with each other when using the pipeline in inference, *e.g.* for [`LDMTextToImagePipeline`] or [`StableDiffusionPipeline`] the inference call is explained [here](https://huggingface.co/blog/stable_diffusion#how-does-stable-diffusion-work).
 The purpose of the [pipeline classes](./api/overview#diffusers-summary) is to wrap the complexity of these diffusion systems and give the user an easy-to-use API while staying flexible for customization as will be shown later.
 
 ### Loading pipelines that require access request
 
-Due to the capabilities of diffusion models to generate extremely realistic images, there is a certain danger that such models might be misused for unwanted applications, *e.g.* generating pornography of violent images.
+Due to the capabilities of diffusion models to generate extremely realistic images, there is a certain danger that such models might be misused for unwanted applications, *e.g.* generating pornography or violent images.
 In order to limit the possibility of such unwanted use cases, some of the most powerful diffusion models require users to acknowledge a license before being able to use the model or else the pipeline cannot be downloaded.
 If you try to load [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5) the same way as done previously:
 
@@ -128,7 +128,7 @@ from diffusers import DiffusionPipeline, EulerDiscreteScheduler, DPMSolverMultis
 
 repo_id = "runwayml/stable-diffusion-v1-5"
 
-scheduler = EulerAncestralDiscreteScheduler.from_config(repo_id, subfolder="scheduler")
+scheduler = EulerDiscreteScheduler.from_config(repo_id, subfolder="scheduler")
 # or
 # scheduler = DPMSolverMultistepScheduler.from_config(repo_id, subfolder="scheduler")
 
@@ -143,7 +143,7 @@ Three things are worth paying attention to here.
 Not only the scheduler components can be customized for diffusion pipelines; in theory all components of a pipeline can be customized. However in practice, it often only makes sense to switch out a components that has **compatible** alternatives to what the pipeline expects.
 Many schedulers classes are compatible with each other as can be seen [here](https://github.com/huggingface/diffusers/blob/0dd8c6b4dbab4069de9ed1cafb53cbd495873879/src/diffusers/schedulers/scheduling_ddim.py#L112) whereas this is not always the case for other components, such as the `"unet"`.
 
-One special case that can also be customized is the `"safety_checker"` of stable diffusion. If you believe the safety cheker doesn't serve you any good, you can simply disable it by passing `None`:
+One special case that can also be customized is the `"safety_checker"` of stable diffusion. If you believe the safety checker doesn't serve you any good, you can simply disable it by passing `None`:
 
 ```python
 from diffusers import DiffusionPipeline, EulerDiscreteScheduler, DPMSolverMultistepScheduler
@@ -158,7 +158,7 @@ As a class method [`DiffusionPipeline.from_pretrained`] is responsible for two t
 - Load the cached weights into the _correct_ pipeline class - one of the [official supported pipeline classes](./api/overview#diffusers-summary) - and return an instance of the class. The _correct_ pipeline class is thereby retrieved from the `model_index.json` file.
 
 The underlying of folder structure of diffusion pipelines correspond 1-to-1 to their corresponding class instances, *e.g.* [`LDMTextToImagePipeline`] for [`CompVis/ldm-text2im-large-256`](https://huggingface.co/CompVis/ldm-text2im-large-256)
-This can be understood better by looking at in example. Let's print out pipeline class instance `pipeline` we just defined:
+This can be understood better by looking at an example. Let's print out pipeline class instance `pipeline` we just defined:
 
 ```python
 from diffusers import DiffusionPipeline
@@ -223,7 +223,7 @@ Second, let's compare the pipeline instance to the folder structure of the model
     └── diffusion_pytorch_model.bin
 ```
 
-As we can see each attribute of the instance of `LDMTextToImagePipeline` has its configuration and possibly weights defined in a subfolder that is called **exactly** like the class attribute (`"bert"`, `"scheduler"`, `"tokenizer"`, `"unet"`, `"vqvae"`). Importantly, every pipeline excepts a `model_index.json` file that tells the `DiffusionPipeline` both:
+As we can see each attribute of the instance of `LDMTextToImagePipeline` has its configuration and possibly weights defined in a subfolder that is called **exactly** like the class attribute (`"bert"`, `"scheduler"`, `"tokenizer"`, `"unet"`, `"vqvae"`). Importantly, every pipeline expects a `model_index.json` file that tells the `DiffusionPipeline` both:
 - which pipeline class should be loaded, and
 - what sub-classes from which library are stored in which subfolders
 
@@ -261,11 +261,11 @@ In the case of `CompVis/ldm-text2im-large-256` the `model_index.json` is therefo
 - Every component of the pipeline is then defined under the form:
 ```
 "name" : [
-  "libray",
+  "library",
   "class"
 ]
 ```
-	- The `"name"` field corresponds both to the name of the subfolder the configuration and weights are stored as well as the attribute name of the pipeline class (as can be seen [here](https://huggingface.co/CompVis/ldm-text2im-large-256/tree/main/bert) and [here](https://github.com/huggingface/diffusers/blob/cd502b25cf0debac6f98d27a6638ef95208d1ea2/src/diffusers/pipelines/latent_diffusion/pipeline_latent_diffusion.py#L42)
+	- The `"name"` field corresponds both to the name of the subfolder in which the configuration and weights are stored as well as the attribute name of the pipeline class (as can be seen [here](https://huggingface.co/CompVis/ldm-text2im-large-256/tree/main/bert) and [here](https://github.com/huggingface/diffusers/blob/cd502b25cf0debac6f98d27a6638ef95208d1ea2/src/diffusers/pipelines/latent_diffusion/pipeline_latent_diffusion.py#L42)
 	- The `"library"` field corresponds to the name of the library, *e.g.* `diffusers` or `transformers` from which the `"class"` should be loaded
 	- The `"class"` field corresponds to the name of the class, *e.g.* [`BertTokenizer`](https://huggingface.co/docs/transformers/model_doc/bert#transformers.BertTokenizer) or [`UNet2DConditionModel`]
 
@@ -289,7 +289,7 @@ model = UNet2DConditionModel.from_pretrained(repo_id, subfolder="unet")
 
 Note how we have to define the `subfolder="unet"` argument to tell [`ModelMixin.from_pretrained`] that the model weights are located in a [subfolder of the repository](https://huggingface.co/CompVis/ldm-text2im-large-256/tree/main/unet).
 
-As explained in [Loading customized pipelines]("./using-diffusers/loading#loading-customized-pipelines"), one can pass a loaded model to a diffusion pipline, via [`DiffusionPipeline.from_pretrained`]:
+As explained in [Loading customized pipelines]("./using-diffusers/loading#loading-customized-pipelines"), one can pass a loaded model to a diffusion pipeline, via [`DiffusionPipeline.from_pretrained`]:
 
 ```python
 from diffusers import DiffusionPipeline
@@ -344,8 +344,8 @@ ddpm = DDPMScheduler.from_config(repo_id, subfolder="scheduler")
 ddim = DDIMScheduler.from_config(repo_id, subfolder="scheduler")
 pndm = PNDMScheduler.from_config(repo_id, subfolder="scheduler")
 lms = LMSDiscreteScheduler.from_config(repo_id, subfolder="scheduler")
-euler = EulerAncestralDiscreteScheduler.from_config(repo_id, subfolder="scheduler")
-euler_anc = EulerDiscreteScheduler.from_config(repo_id, subfolder="scheduler")
+euler_anc = EulerAncestralDiscreteScheduler.from_config(repo_id, subfolder="scheduler")
+euler = EulerDiscreteScheduler.from_config(repo_id, subfolder="scheduler")
 dpm = DPMSolverMultistepScheduler.from_config(repo_id, subfolder="scheduler")
 
 # replace `dpm` with any of `ddpm`, `ddim`, `pndm`, `lms`, `euler`, `euler_anc`
