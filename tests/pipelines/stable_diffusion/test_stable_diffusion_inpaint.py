@@ -384,6 +384,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
 
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
@@ -393,16 +394,16 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/in_paint/yellow_cat_sitting_on_a_park_bench_pndm.png"
-        )
-        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
         model_id = "runwayml/stable-diffusion-inpainting"
         pndm = PNDMScheduler.from_config(model_id, subfolder="scheduler")
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            model_id, safety_checker=None, scheduler=pndm, device_map="auto"
+            model_id,
+            safety_checker=None,
+            scheduler=pndm,
+            device_map="auto",
+            revision="fp16",
+            torch_dtype=torch.float16,
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -422,5 +423,5 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         )
 
         mem_bytes = torch.cuda.max_memory_allocated()
-        # make sure that less than 1.5 GB is allocated
-        assert mem_bytes < 1.5 * 10**9
+        # make sure that less than 2.2 GB is allocated
+        assert mem_bytes < 2.2 * 10**9
