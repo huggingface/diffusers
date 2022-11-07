@@ -38,7 +38,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
             Vector-quantized (VQ) VAE Model to encode and decode images to and from latent representations.
         unet ([`UNet2DModel`]): U-Net architecture to denoise the encoded image.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
+            A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`],
             [`EulerAncestralDiscreteScheduler`], or [`PNDMScheduler`].
     """
