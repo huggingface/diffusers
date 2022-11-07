@@ -102,7 +102,7 @@ import torch
 from diffusers import StableDiffusionPipeline
 
 pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, revision="fp16")
-pipe = pipe.to("cuda")
+pipe = pipe.to("cuda") # if you are using an Intel discrete GPU, install intel_extension_for_pytorch from(https://github.com/intel/intel-extension-for-pytorch) and instead of "cuda", use "xpu".
 
 prompt = "a photo of an astronaut riding a horse on mars"
 image = pipe(prompt).images[0]  
