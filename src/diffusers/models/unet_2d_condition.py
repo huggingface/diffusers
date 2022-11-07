@@ -105,7 +105,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         norm_num_groups: int = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1280,
-        attention_head_dim: int = 8,
+        attention_head_dim: Union[int, Tuple[int]] = 8,
     ):
         super().__init__()
 
@@ -125,6 +125,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         self.mid_block = None
         self.up_blocks = nn.ModuleList([])
 
+        if isinstance(attention_head_dim, int):
+            attention_head_dim = (attention_head_dim,) * len(down_block_types)
+
         # down
         output_channel = block_out_channels[0]
         for i, down_block_type in enumerate(down_block_types):
@@ -143,7 +146,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
-                attn_num_head_channels=attention_head_dim,
+                attn_num_head_channels=attention_head_dim[i],
                 downsample_padding=downsample_padding,
             )
             self.down_blocks.append(down_block)
@@ -157,7 +160,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             output_scale_factor=mid_block_scale_factor,
             resnet_time_scale_shift="default",
             cross_attention_dim=cross_attention_dim,
-            attn_num_head_channels=attention_head_dim,
+            attn_num_head_channels=attention_head_dim[-1],
             resnet_groups=norm_num_groups,
         )
 
@@ -166,6 +169,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
 
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
+        reversed_attention_head_dim = list(reversed(attention_head_dim))
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
             is_final_block = i == len(block_out_channels) - 1
@@ -193,7 +197,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
-                attn_num_head_channels=attention_head_dim,
+                attn_num_head_channels=reversed_attention_head_dim[i],
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
