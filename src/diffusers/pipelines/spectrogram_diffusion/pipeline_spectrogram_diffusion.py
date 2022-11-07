@@ -13,8 +13,10 @@ from transformers.models.t5.modeling_t5 import (
     T5LayerNorm,
 )
 
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...modeling_utils import ModelMixin
 from ...models.embeddings import get_timestep_embedding
-from ...pipeline_utils import DiffusionPipeline
+from ...pipeline_utils import DiffusionPipeline, MelPipelineOutput
 from ...schedulers import DDPMScheduler
 
 
@@ -196,7 +198,8 @@ class DecoderLayer(nn.Module):
         return outputs  # hidden-states, present_key_value_states, (self-attention position bias), (self-attention weights), (cross-attention position bias), (cross-attention weights)
 
 
-class TokenEncoder(nn.Module):
+class TokenEncoder(ModelMixin, ConfigMixin):
+    @register_to_config
     def __init__(self, config: T5Config, weights):
         super().__init__()
 
@@ -558,7 +561,7 @@ class SpectrogramPipeline(DiffusionPipeline):
 
         # From MELGAN
         self.min_value = math.log(1e-5)  # Matches MelGAN training.
-        self.max_value = 4.0  # Largest value for most examples.
+        self.max_value = 4.0  # Largest value for most examples
 
         self.register_modules(cont_context_trans=cont_context_trans, scheduler=scheduler)
 
@@ -610,6 +613,9 @@ class SpectrogramPipeline(DiffusionPipeline):
             # 2. compute previous output: x_t -> x_t-1
             x = self.scheduler.step(output, t, x, generator=generator, predict_epsilon=predict_epsilon).prev_sample
 
-        decode = self.scale_to_features(x, input_range=[-1.0, 1.0])
+        mel = self.scale_to_features(x, input_range=[-1.0, 1.0])
 
-        return decode
+        if not return_dict:
+            return (mel,)
+
+        return MelPipelineOutput(mels=mel)
