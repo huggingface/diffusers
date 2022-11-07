@@ -623,6 +623,7 @@ class SpectrogramPipeline(DiffusionPipeline):
             x = self.scheduler.step(output, t, x, generator=generator, predict_epsilon=predict_epsilon).prev_sample
 
         mel = self.scale_to_features(x, input_range=[-1.0, 1.0])
+        mel = mel.cpu().numpy()
 
         if not return_dict:
             return (mel,)
