@@ -23,7 +23,7 @@ The [Dreambooth training script](https://github.com/huggingface/diffusers/tree/m
 
 <!-- TODO: replace with our blog when it's done -->
 
-Dreambooth fine-tuning is very sensitive to hyperparameters and easy to overfit. We recommend you take a look at our [in-depth analysis](https://wandb.ai/psuraj/dreambooth/reports/Dreambooth-Training-Analysis--VmlldzoyNzk0NDc3) with recommended settings for different subjects, and go from there.
+Dreambooth fine-tuning is very sensitive to hyperparameters and easy to overfit. We recommend you take a look at our [in-depth analysis](https://huggingface.co/blog/dreambooth) with recommended settings for different subjects, and go from there.
 
 </Tip>
 
@@ -148,7 +148,7 @@ accelerate launch train_dreambooth.py \
 
 ### Fine-tune the text encoder in addition to the UNet
 
-The script also allows to fine-tune the `text_encoder` along with the `unet`. It has been observed experimentally that this gives much better results, especially on faces. Please, refer to [our report](https://wandb.ai/psuraj/dreambooth/reports/Dreambooth-Training-Analysis--VmlldzoyNzk0NDc3) for more details.
+The script also allows to fine-tune the `text_encoder` along with the `unet`. It has been observed experimentally that this gives much better results, especially on faces. Please, refer to [our blog](https://huggingface.co/blog/dreambooth) for more details.
 
 To enable this option, pass the `--train_text_encoder` argument to the training script.
 
