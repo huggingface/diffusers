@@ -15,7 +15,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from .attention import AttentionBlock, SpatialTransformer
+from .attention import AttentionBlock, Transformer2DModel
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, ResnetBlock2D, Upsample2D
 
 
@@ -109,6 +109,19 @@ def get_down_block(
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
         )
+    elif down_block_type == "AttnDownEncoderBlock2D":
+        return AttnDownEncoderBlock2D(
+            num_layers=num_layers,
+            in_channels=in_channels,
+            out_channels=out_channels,
+            add_downsample=add_downsample,
+            resnet_eps=resnet_eps,
+            resnet_act_fn=resnet_act_fn,
+            resnet_groups=resnet_groups,
+            downsample_padding=downsample_padding,
+            attn_num_head_channels=attn_num_head_channels,
+        )
+    raise ValueError(f"{down_block_type} does not exist.")
 
 
 def get_up_block(
@@ -200,6 +213,17 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
         )
+    elif up_block_type == "AttnUpDecoderBlock2D":
+        return AttnUpDecoderBlock2D(
+            num_layers=num_layers,
+            in_channels=in_channels,
+            out_channels=out_channels,
+            add_upsample=add_upsample,
+            resnet_eps=resnet_eps,
+            resnet_act_fn=resnet_act_fn,
+            resnet_groups=resnet_groups,
+            attn_num_head_channels=attn_num_head_channels,
+        )
     raise ValueError(f"{up_block_type} does not exist.")
 
 
@@ -249,7 +273,7 @@ class UNetMidBlock2D(nn.Module):
                     num_head_channels=attn_num_head_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
-                    num_groups=resnet_groups,
+                    norm_num_groups=resnet_groups,
                 )
             )
             resnets.append(
@@ -325,13 +349,13 @@ class UNetMidBlock2DCrossAttn(nn.Module):
 
         for _ in range(num_layers):
             attentions.append(
-                SpatialTransformer(
-                    in_channels,
+                Transformer2DModel(
                     attn_num_head_channels,
                     in_channels // attn_num_head_channels,
-                    depth=1,
-                    context_dim=cross_attention_dim,
-                    num_groups=resnet_groups,
+                    in_channels=in_channels,
+                    num_layers=1,
+                    cross_attention_dim=cross_attention_dim,
+                    norm_num_groups=resnet_groups,
                 )
             )
             resnets.append(
@@ -367,10 +391,14 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         for attn in self.attentions:
             attn._set_attention_slice(slice_size)
 
+    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
+        for attn in self.attentions:
+            attn._set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
+
     def forward(self, hidden_states, temb=None, encoder_hidden_states=None):
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
-            hidden_states = attn(hidden_states, encoder_hidden_states)
+            hidden_states = attn(hidden_states, encoder_hidden_states).sample
             hidden_states = resnet(hidden_states, temb)
 
         return hidden_states
@@ -423,7 +451,7 @@ class AttnDownBlock2D(nn.Module):
                     num_head_channels=attn_num_head_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
-                    num_groups=resnet_groups,
+                    norm_num_groups=resnet_groups,
                 )
             )
 
@@ -434,7 +462,7 @@ class AttnDownBlock2D(nn.Module):
             self.downsamplers = nn.ModuleList(
                 [
                     Downsample2D(
-                        in_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                        out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
                     )
                 ]
             )
@@ -502,13 +530,13 @@ class CrossAttnDownBlock2D(nn.Module):
                 )
             )
             attentions.append(
-                SpatialTransformer(
-                    out_channels,
+                Transformer2DModel(
                     attn_num_head_channels,
                     out_channels // attn_num_head_channels,
-                    depth=1,
-                    context_dim=cross_attention_dim,
-                    num_groups=resnet_groups,
+                    in_channels=out_channels,
+                    num_layers=1,
+                    cross_attention_dim=cross_attention_dim,
+                    norm_num_groups=resnet_groups,
                 )
             )
         self.attentions = nn.ModuleList(attentions)
@@ -518,7 +546,7 @@ class CrossAttnDownBlock2D(nn.Module):
             self.downsamplers = nn.ModuleList(
                 [
                     Downsample2D(
-                        in_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                        out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
                     )
                 ]
             )
@@ -542,25 +570,32 @@ class CrossAttnDownBlock2D(nn.Module):
         for attn in self.attentions:
             attn._set_attention_slice(slice_size)
 
+    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
+        for attn in self.attentions:
+            attn._set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
+
     def forward(self, hidden_states, temb=None, encoder_hidden_states=None):
         output_states = ()
 
         for resnet, attn in zip(self.resnets, self.attentions):
             if self.training and self.gradient_checkpointing:
 
-                def create_custom_forward(module):
+                def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
-                        return module(*inputs)
+                        if return_dict is not None:
+                            return module(*inputs, return_dict=return_dict)
+                        else:
+                            return module(*inputs)
 
                     return custom_forward
 
                 hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
                 hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(attn), hidden_states, encoder_hidden_states
-                )
+                    create_custom_forward(attn, return_dict=False), hidden_states, encoder_hidden_states
+                )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
-                hidden_states = attn(hidden_states, context=encoder_hidden_states)
+                hidden_states = attn(hidden_states, encoder_hidden_states=encoder_hidden_states).sample
 
             output_states += (hidden_states,)
 
@@ -616,7 +651,7 @@ class DownBlock2D(nn.Module):
             self.downsamplers = nn.ModuleList(
                 [
                     Downsample2D(
-                        in_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                        out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
                     )
                 ]
             )
@@ -694,7 +729,7 @@ class DownEncoderBlock2D(nn.Module):
             self.downsamplers = nn.ModuleList(
                 [
                     Downsample2D(
-                        in_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                        out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
                     )
                 ]
             )
@@ -755,7 +790,7 @@ class AttnDownEncoderBlock2D(nn.Module):
                     num_head_channels=attn_num_head_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
-                    num_groups=resnet_groups,
+                    norm_num_groups=resnet_groups,
                 )
             )
 
@@ -766,7 +801,7 @@ class AttnDownEncoderBlock2D(nn.Module):
             self.downsamplers = nn.ModuleList(
                 [
                     Downsample2D(
-                        in_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                        out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
                     )
                 ]
             )
@@ -851,7 +886,7 @@ class AttnSkipDownBlock2D(nn.Module):
                 down=True,
                 kernel="fir",
             )
-            self.downsamplers = nn.ModuleList([FirDownsample2D(in_channels, out_channels=out_channels)])
+            self.downsamplers = nn.ModuleList([FirDownsample2D(out_channels, out_channels=out_channels)])
             self.skip_conv = nn.Conv2d(3, out_channels, kernel_size=(1, 1), stride=(1, 1))
         else:
             self.resnet_down = None
@@ -931,7 +966,7 @@ class SkipDownBlock2D(nn.Module):
                 down=True,
                 kernel="fir",
             )
-            self.downsamplers = nn.ModuleList([FirDownsample2D(in_channels, out_channels=out_channels)])
+            self.downsamplers = nn.ModuleList([FirDownsample2D(out_channels, out_channels=out_channels)])
             self.skip_conv = nn.Conv2d(3, out_channels, kernel_size=(1, 1), stride=(1, 1))
         else:
             self.resnet_down = None
@@ -1006,7 +1041,7 @@ class AttnUpBlock2D(nn.Module):
                     num_head_channels=attn_num_head_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
-                    num_groups=resnet_groups,
+                    norm_num_groups=resnet_groups,
                 )
             )
 
@@ -1081,13 +1116,13 @@ class CrossAttnUpBlock2D(nn.Module):
                 )
             )
             attentions.append(
-                SpatialTransformer(
-                    out_channels,
+                Transformer2DModel(
                     attn_num_head_channels,
                     out_channels // attn_num_head_channels,
-                    depth=1,
-                    context_dim=cross_attention_dim,
-                    num_groups=resnet_groups,
+                    in_channels=out_channels,
+                    num_layers=1,
+                    cross_attention_dim=cross_attention_dim,
+                    norm_num_groups=resnet_groups,
                 )
             )
         self.attentions = nn.ModuleList(attentions)
@@ -1117,6 +1152,10 @@ class CrossAttnUpBlock2D(nn.Module):
 
         self.gradient_checkpointing = False
 
+    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
+        for attn in self.attentions:
+            attn._set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
+
     def forward(
         self,
         hidden_states,
@@ -1133,19 +1172,22 @@ class CrossAttnUpBlock2D(nn.Module):
 
             if self.training and self.gradient_checkpointing:
 
-                def create_custom_forward(module):
+                def create_custom_forward(module, return_dict=None):
                     def custom_forward(*inputs):
-                        return module(*inputs)
+                        if return_dict is not None:
+                            return module(*inputs, return_dict=return_dict)
+                        else:
+                            return module(*inputs)
 
                     return custom_forward
 
                 hidden_states = torch.utils.checkpoint.checkpoint(create_custom_forward(resnet), hidden_states, temb)
                 hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(attn), hidden_states, encoder_hidden_states
-                )
+                    create_custom_forward(attn, return_dict=False), hidden_states, encoder_hidden_states
+                )[0]
             else:
                 hidden_states = resnet(hidden_states, temb)
-                hidden_states = attn(hidden_states, context=encoder_hidden_states)
+                hidden_states = attn(hidden_states, encoder_hidden_states=encoder_hidden_states).sample
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -1325,7 +1367,7 @@ class AttnUpDecoderBlock2D(nn.Module):
                     num_head_channels=attn_num_head_channels,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
-                    num_groups=resnet_groups,
+                    norm_num_groups=resnet_groups,
                 )
             )
 

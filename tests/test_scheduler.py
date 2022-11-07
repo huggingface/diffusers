@@ -19,16 +19,19 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 from diffusers import (
     DDIMScheduler,
     DDPMScheduler,
+    DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     IPNDMScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
     ScoreSdeVeScheduler,
+    VQDiffusionScheduler,
 )
 from diffusers.utils import torch_device
 
@@ -85,11 +88,17 @@ class SchedulerCommonTest(unittest.TestCase):
             if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
                 time_step = float(time_step)
 
-            sample = self.dummy_sample
-            residual = 0.1 * sample
-
             scheduler_config = self.get_scheduler_config(**config)
             scheduler = scheduler_class(**scheduler_config)
+
+            if scheduler_class == VQDiffusionScheduler:
+                num_vec_classes = scheduler_config["num_vec_classes"]
+                sample = self.dummy_sample(num_vec_classes)
+                model = self.dummy_model(num_vec_classes)
+                residual = model(sample, time_step)
+            else:
+                sample = self.dummy_sample
+                residual = 0.1 * sample
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
@@ -122,11 +131,17 @@ class SchedulerCommonTest(unittest.TestCase):
             if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
                 time_step = float(time_step)
 
-            sample = self.dummy_sample
-            residual = 0.1 * sample
-
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
+
+            if scheduler_class == VQDiffusionScheduler:
+                num_vec_classes = scheduler_config["num_vec_classes"]
+                sample = self.dummy_sample(num_vec_classes)
+                model = self.dummy_model(num_vec_classes)
+                residual = model(sample, time_step)
+            else:
+                sample = self.dummy_sample
+                residual = 0.1 * sample
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
@@ -154,15 +169,21 @@ class SchedulerCommonTest(unittest.TestCase):
         num_inference_steps = kwargs.pop("num_inference_steps", None)
 
         for scheduler_class in self.scheduler_classes:
-            sample = self.dummy_sample
-            residual = 0.1 * sample
+            timestep = 1
+            if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
+                timestep = float(timestep)
 
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
-            timestep = 1
-            if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
-                timestep = float(timestep)
+            if scheduler_class == VQDiffusionScheduler:
+                num_vec_classes = scheduler_config["num_vec_classes"]
+                sample = self.dummy_sample(num_vec_classes)
+                model = self.dummy_model(num_vec_classes)
+                residual = model(sample, timestep)
+            else:
+                sample = self.dummy_sample
+                residual = 0.1 * sample
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
@@ -200,8 +221,14 @@ class SchedulerCommonTest(unittest.TestCase):
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
-            sample = self.dummy_sample
-            residual = 0.1 * sample
+            if scheduler_class == VQDiffusionScheduler:
+                num_vec_classes = scheduler_config["num_vec_classes"]
+                sample = self.dummy_sample(num_vec_classes)
+                model = self.dummy_model(num_vec_classes)
+                residual = model(sample, timestep_0)
+            else:
+                sample = self.dummy_sample
+                residual = 0.1 * sample
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 scheduler.set_timesteps(num_inference_steps)
@@ -255,8 +282,14 @@ class SchedulerCommonTest(unittest.TestCase):
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
 
-            sample = self.dummy_sample
-            residual = 0.1 * sample
+            if scheduler_class == VQDiffusionScheduler:
+                num_vec_classes = scheduler_config["num_vec_classes"]
+                sample = self.dummy_sample(num_vec_classes)
+                model = self.dummy_model(num_vec_classes)
+                residual = model(sample, timestep)
+            else:
+                sample = self.dummy_sample
+                residual = 0.1 * sample
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 scheduler.set_timesteps(num_inference_steps)
@@ -284,22 +317,26 @@ class SchedulerCommonTest(unittest.TestCase):
         for scheduler_class in self.scheduler_classes:
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
-            self.assertTrue(
-                hasattr(scheduler, "init_noise_sigma"),
-                f"{scheduler_class} does not implement a required attribute `init_noise_sigma`",
-            )
-            self.assertTrue(
-                hasattr(scheduler, "scale_model_input"),
-                f"{scheduler_class} does not implement a required class method `scale_model_input(sample, timestep)`",
-            )
+
+            if scheduler_class != VQDiffusionScheduler:
+                self.assertTrue(
+                    hasattr(scheduler, "init_noise_sigma"),
+                    f"{scheduler_class} does not implement a required attribute `init_noise_sigma`",
+                )
+                self.assertTrue(
+                    hasattr(scheduler, "scale_model_input"),
+                    f"{scheduler_class} does not implement a required class method `scale_model_input(sample,"
+                    " timestep)`",
+                )
             self.assertTrue(
                 hasattr(scheduler, "step"),
                 f"{scheduler_class} does not implement a required class method `step(...)`",
             )
 
-            sample = self.dummy_sample
-            scaled_sample = scheduler.scale_model_input(sample, 0.0)
-            self.assertEqual(sample.shape, scaled_sample.shape)
+            if scheduler_class != VQDiffusionScheduler:
+                sample = self.dummy_sample
+                scaled_sample = scheduler.scale_model_input(sample, 0.0)
+                self.assertEqual(sample.shape, scaled_sample.shape)
 
     def test_add_noise_device(self):
         for scheduler_class in self.scheduler_classes:
@@ -511,6 +548,187 @@ class DDIMSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 149.0784) < 1e-2
         assert abs(result_mean.item() - 0.1941) < 1e-3
+
+
+class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
+    scheduler_classes = (DPMSolverMultistepScheduler,)
+    forward_default_kwargs = (("num_inference_steps", 25),)
+
+    def get_scheduler_config(self, **kwargs):
+        config = {
+            "num_train_timesteps": 1000,
+            "beta_start": 0.0001,
+            "beta_end": 0.02,
+            "beta_schedule": "linear",
+            "solver_order": 2,
+            "predict_epsilon": True,
+            "thresholding": False,
+            "sample_max_value": 1.0,
+            "algorithm_type": "dpmsolver++",
+            "solver_type": "midpoint",
+            "lower_order_final": False,
+        }
+
+        config.update(**kwargs)
+        return config
+
+    def check_over_configs(self, time_step=0, **config):
+        kwargs = dict(self.forward_default_kwargs)
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
+        sample = self.dummy_sample
+        residual = 0.1 * sample
+        dummy_past_residuals = [residual + 0.2, residual + 0.15, residual + 0.10]
+
+        for scheduler_class in self.scheduler_classes:
+            scheduler_config = self.get_scheduler_config(**config)
+            scheduler = scheduler_class(**scheduler_config)
+            scheduler.set_timesteps(num_inference_steps)
+            # copy over dummy past residuals
+            scheduler.model_outputs = dummy_past_residuals[: scheduler.config.solver_order]
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                scheduler.save_config(tmpdirname)
+                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler.set_timesteps(num_inference_steps)
+                # copy over dummy past residuals
+                new_scheduler.model_outputs = dummy_past_residuals[: new_scheduler.config.solver_order]
+
+            output, new_output = sample, sample
+            for t in range(time_step, time_step + scheduler.config.solver_order + 1):
+                output = scheduler.step(residual, t, output, **kwargs).prev_sample
+                new_output = new_scheduler.step(residual, t, new_output, **kwargs).prev_sample
+
+                assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
+
+    def test_from_pretrained_save_pretrained(self):
+        pass
+
+    def check_over_forward(self, time_step=0, **forward_kwargs):
+        kwargs = dict(self.forward_default_kwargs)
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
+        sample = self.dummy_sample
+        residual = 0.1 * sample
+        dummy_past_residuals = [residual + 0.2, residual + 0.15, residual + 0.10]
+
+        for scheduler_class in self.scheduler_classes:
+            scheduler_config = self.get_scheduler_config()
+            scheduler = scheduler_class(**scheduler_config)
+            scheduler.set_timesteps(num_inference_steps)
+
+            # copy over dummy past residuals (must be after setting timesteps)
+            scheduler.model_outputs = dummy_past_residuals[: scheduler.config.solver_order]
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                scheduler.save_config(tmpdirname)
+                new_scheduler = scheduler_class.from_config(tmpdirname)
+                # copy over dummy past residuals
+                new_scheduler.set_timesteps(num_inference_steps)
+
+                # copy over dummy past residual (must be after setting timesteps)
+                new_scheduler.model_outputs = dummy_past_residuals[: new_scheduler.config.solver_order]
+
+            output = scheduler.step(residual, time_step, sample, **kwargs).prev_sample
+            new_output = new_scheduler.step(residual, time_step, sample, **kwargs).prev_sample
+
+            assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
+
+    def full_loop(self, **config):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(**config)
+        scheduler = scheduler_class(**scheduler_config)
+
+        num_inference_steps = 10
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter
+        scheduler.set_timesteps(num_inference_steps)
+
+        for i, t in enumerate(scheduler.timesteps):
+            residual = model(sample, t)
+            sample = scheduler.step(residual, t, sample).prev_sample
+
+        return sample
+
+    def test_step_shape(self):
+        kwargs = dict(self.forward_default_kwargs)
+
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
+
+        for scheduler_class in self.scheduler_classes:
+            scheduler_config = self.get_scheduler_config()
+            scheduler = scheduler_class(**scheduler_config)
+
+            sample = self.dummy_sample
+            residual = 0.1 * sample
+
+            if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
+                scheduler.set_timesteps(num_inference_steps)
+            elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
+                kwargs["num_inference_steps"] = num_inference_steps
+
+            # copy over dummy past residuals (must be done after set_timesteps)
+            dummy_past_residuals = [residual + 0.2, residual + 0.15, residual + 0.10]
+            scheduler.model_outputs = dummy_past_residuals[: scheduler.config.solver_order]
+
+            time_step_0 = scheduler.timesteps[5]
+            time_step_1 = scheduler.timesteps[6]
+
+            output_0 = scheduler.step(residual, time_step_0, sample, **kwargs).prev_sample
+            output_1 = scheduler.step(residual, time_step_1, sample, **kwargs).prev_sample
+
+            self.assertEqual(output_0.shape, sample.shape)
+            self.assertEqual(output_0.shape, output_1.shape)
+
+    def test_timesteps(self):
+        for timesteps in [25, 50, 100, 999, 1000]:
+            self.check_over_configs(num_train_timesteps=timesteps)
+
+    def test_thresholding(self):
+        self.check_over_configs(thresholding=False)
+        for order in [1, 2, 3]:
+            for solver_type in ["midpoint", "heun"]:
+                for threshold in [0.5, 1.0, 2.0]:
+                    for predict_epsilon in [True, False]:
+                        self.check_over_configs(
+                            thresholding=True,
+                            predict_epsilon=predict_epsilon,
+                            sample_max_value=threshold,
+                            algorithm_type="dpmsolver++",
+                            solver_order=order,
+                            solver_type=solver_type,
+                        )
+
+    def test_solver_order_and_type(self):
+        for algorithm_type in ["dpmsolver", "dpmsolver++"]:
+            for solver_type in ["midpoint", "heun"]:
+                for order in [1, 2, 3]:
+                    for predict_epsilon in [True, False]:
+                        self.check_over_configs(
+                            solver_order=order,
+                            solver_type=solver_type,
+                            predict_epsilon=predict_epsilon,
+                            algorithm_type=algorithm_type,
+                        )
+                        sample = self.full_loop(
+                            solver_order=order,
+                            solver_type=solver_type,
+                            predict_epsilon=predict_epsilon,
+                            algorithm_type=algorithm_type,
+                        )
+                        assert not torch.isnan(sample).any(), "Samples have nan numbers"
+
+    def test_lower_order_final(self):
+        self.check_over_configs(lower_order_final=True)
+        self.check_over_configs(lower_order_final=False)
+
+    def test_inference_steps(self):
+        for num_inference_steps in [1, 2, 3, 5, 10, 50, 100, 999, 1000]:
+            self.check_over_forward(num_inference_steps=num_inference_steps, time_step=0)
+
+    def test_full_loop_no_noise(self):
+        sample = self.full_loop()
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.3301) < 1e-3
 
 
 class PNDMSchedulerTest(SchedulerCommonTest):
@@ -1238,3 +1456,53 @@ class IPNDMSchedulerTest(SchedulerCommonTest):
         result_mean = torch.mean(torch.abs(sample))
 
         assert abs(result_mean.item() - 2540529) < 10
+
+
+class VQDiffusionSchedulerTest(SchedulerCommonTest):
+    scheduler_classes = (VQDiffusionScheduler,)
+
+    def get_scheduler_config(self, **kwargs):
+        config = {
+            "num_vec_classes": 4097,
+            "num_train_timesteps": 100,
+        }
+
+        config.update(**kwargs)
+        return config
+
+    def dummy_sample(self, num_vec_classes):
+        batch_size = 4
+        height = 8
+        width = 8
+
+        sample = torch.randint(0, num_vec_classes, (batch_size, height * width))
+
+        return sample
+
+    @property
+    def dummy_sample_deter(self):
+        assert False
+
+    def dummy_model(self, num_vec_classes):
+        def model(sample, t, *args):
+            batch_size, num_latent_pixels = sample.shape
+            logits = torch.rand((batch_size, num_vec_classes - 1, num_latent_pixels))
+            return_value = F.log_softmax(logits.double(), dim=1).float()
+            return return_value
+
+        return model
+
+    def test_timesteps(self):
+        for timesteps in [2, 5, 100, 1000]:
+            self.check_over_configs(num_train_timesteps=timesteps)
+
+    def test_num_vec_classes(self):
+        for num_vec_classes in [5, 100, 1000, 4000]:
+            self.check_over_configs(num_vec_classes=num_vec_classes)
+
+    def test_time_indices(self):
+        for t in [0, 50, 99]:
+            self.check_over_forward(time_step=t)
+
+    def test_add_noise_device(self):
+        pass
