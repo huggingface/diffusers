@@ -187,7 +187,7 @@ def convert_models(model_path: str, output_path: str, opset: int, fp16: bool = F
     )
     del pipeline.vae
 
-    # SAFETY
+    # SAFETY CHECKER
     if pipeline.safety_checker is not None:
         safety_checker = pipeline.safety_checker
         clip_num_channels = safety_checker.config.vision_config.num_channels
