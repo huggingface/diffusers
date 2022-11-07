@@ -43,7 +43,7 @@ def preprocess_images(images: List[Image.Image], feature_extractor: CLIPFeatureE
 
 class RDMPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation using Stable Diffusion.
+    Pipeline for text-to-image generation using Retrieval Augmented Diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -52,8 +52,7 @@ class RDMPipeline(DiffusionPipeline):
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
         clip ([`CLIPModel`]):
-            Frozen text-encoder. Stable Diffusion uses the text portion of
-            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
+            Frozen CLIP model. Retrieval Augmented Diffusion uses the CLIP model, specifically
             the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
@@ -239,7 +238,7 @@ class RDMPipeline(DiffusionPipeline):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion.RDMPipelineOutput`] instead of a plain tuple.
+                Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
                 called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
@@ -248,11 +247,9 @@ class RDMPipeline(DiffusionPipeline):
                 called at every step.
 
         Returns:
-            [`~pipelines.stable_diffusion.RDMPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.RDMPipelineOutput`] if `return_dict` is True, otherwise a `tuple. When
-            returning a tuple, the first element is a list with the generated images, and the second element is a list
-            of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work" (nsfw)
-            content, according to the `safety_checker`.
+            [`~pipeline_utils.ImagePipelineOutput`] or `tuple`: [`~pipelines.utils.ImagePipelineOutput`] if
+            `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
+            generated images.
         """
         if isinstance(prompt, str):
             batch_size = 1
