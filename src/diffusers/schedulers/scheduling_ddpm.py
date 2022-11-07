@@ -131,6 +131,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         trained_betas: Optional[np.ndarray] = None,
         variance_type: str = "fixed_small",
         clip_sample: bool = True,
+        prediction_type: Literal["epsilon", "sample", "v"] = "epsilon",
     ):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
@@ -164,6 +165,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy())
 
         self.variance_type = variance_type
+        self.prediction_type = prediction_type
 
     def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
         """
@@ -234,7 +236,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: int,
         sample: torch.FloatTensor,
-        prediction_type: Literal["epsilon", "sample", "v"] = "epsilon",
+        # prediction_type: Literal["epsilon", "sample", "v"] = "epsilon",
         generator=None,
         return_dict: bool = True,
     ) -> Union[DDPMSchedulerOutput, Tuple]:
@@ -261,7 +263,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         """
         if self.variance_type == "v_diffusion":
-            assert prediction_type == "v", "Need to use v prediction with v_diffusion"
+            assert self.prediction_type == "v", "Need to use v prediction with v_diffusion"
         if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
             model_output, predicted_variance = torch.split(model_output, sample.shape[1], dim=1)
         else:
@@ -275,19 +277,21 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         # 2. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (15) from https://arxiv.org/pdf/2006.11239.pdf
-        if prediction_type == "v":
+        if self.prediction_type == "v":
             # x_recon in p_mean_variance
             pred_original_sample = (
                 sample * self.sqrt_alphas_cumprod[timestep]
                 - model_output * self.sqrt_one_minus_alphas_cumprod[timestep]
             )
-        elif prediction_type == "epsilon":
+        elif self.prediction_type == "epsilon":
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
 
-        elif prediction_type == "sample":
+        elif self.prediction_type == "sample":
             pred_original_sample = model_output
         else:
-            raise ValueError(f"prediction_type given as {prediction_type} must be one of `epsilon`, `sample`, or `v`")
+            raise ValueError(
+                f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample`, or `v`"
+            )
 
         # 3. Clip "predicted x_0"
         if self.config.clip_sample:

@@ -14,7 +14,7 @@
 # limitations under the License.
 
 
-from typing import Optional, Tuple, Union, Literal
+from typing import Literal, Optional, Tuple, Union
 
 import torch
 
@@ -44,7 +44,6 @@ class DDPMPipeline(DiffusionPipeline):
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        prediction_type: Literal["epsilon", "sample", "v"] = "epsilon",
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
@@ -81,9 +80,7 @@ class DDPMPipeline(DiffusionPipeline):
             model_output = self.unet(image, t).sample
 
             # 2. compute previous image: x_t -> t_t-1
-            image = self.scheduler.step(
-                model_output, t, image, generator=generator, prediction_type=prediction_type
-            ).prev_sample
+            image = self.scheduler.step(model_output, t, image, generator=generator).prev_sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
