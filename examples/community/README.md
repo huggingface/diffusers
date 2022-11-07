@@ -18,7 +18,9 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | Composable Stable Diffusion| Stable Diffusion Pipeline that supports prompts that contain "&#124;" in prompts (as an AND condition) and weights (separated by "&#124;" as well) to positively / negatively weight prompts.                                                                                                                                                                                                                                                                                                     | [Composable Stable Diffusion](#composable-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
 | Seed Resizing Stable Diffusion| Stable Diffusion Pipeline that supports resizing an image and retaining the concepts of the 512 by 512 generation.                                                                                                                                                                                                                                                                                                     | [Seed Resizing](#seed-resizing)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
 | Imagic Stable Diffusion | Stable Diffusion Pipeline that enables writing a text prompt to edit an existing image| [Imagic Stable Diffusion](#imagic-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
+| Multilingual Stable Diffusion| Stable Diffusion Pipeline that supports prompts in 50 different languages.                                                                                                                                                                                                                                                                                                     | [Multilingual Stable Diffusion](#multilingual-stable-diffusion-pipeline)                                                                 | -                                                                                                                                                                                                                  |                        [Juan Carlos Piñeros](https://github.com/juancopi81) |
 | Image to Image Inpainting Stable Diffusion | Stable Diffusion Pipeline that enables the overlaying of two images and subsequent inpainting| [Image to Image Inpainting Stable Diffusion](#image-to-image-inpainting-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Alex McKinney](https://github.com/vvvm23) |
+
 
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
@@ -501,6 +503,74 @@ res = pipe_compare(
 image = res.images[0]
 image.save('./seed_resize/seed_resize_{w}_{h}_image_compare.png'.format(w=width, h=height))
 ```
+
+### Multilingual Stable Diffusion Pipeline
+
+The following code can generate an images from texts in different languages using the pre-trained [mBART-50 many-to-one multilingual machine translation model](https://huggingface.co/facebook/mbart-large-50-many-to-one-mmt) and Stable Diffusion.
+
+```python
+from PIL import Image
+
+import torch
+
+from diffusers import DiffusionPipeline
+from transformers import (
+    pipeline,
+    MBart50TokenizerFast,
+    MBartForConditionalGeneration,
+)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+device_dict = {"cuda": 0, "cpu": -1}
+
+# helper function taken from: https://huggingface.co/blog/stable_diffusion
+def image_grid(imgs, rows, cols):
+    assert len(imgs) == rows*cols
+
+    w, h = imgs[0].size
+    grid = Image.new('RGB', size=(cols*w, rows*h))
+    grid_w, grid_h = grid.size
+
+    for i, img in enumerate(imgs):
+        grid.paste(img, box=(i%cols*w, i//cols*h))
+    return grid
+
+# Add language detection pipeline
+language_detection_model_ckpt = "papluca/xlm-roberta-base-language-detection"
+language_detection_pipeline = pipeline("text-classification",
+                                       model=language_detection_model_ckpt,
+                                       device=device_dict[device])
+
+# Add model for language translation
+trans_tokenizer = MBart50TokenizerFast.from_pretrained("facebook/mbart-large-50-many-to-one-mmt")
+trans_model = MBartForConditionalGeneration.from_pretrained("facebook/mbart-large-50-many-to-one-mmt").to(device)
+
+diffuser_pipeline = DiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+    custom_pipeline="multilingual_stable_diffusion",
+    detection_pipeline=language_detection_pipeline,
+    translation_model=trans_model,
+    translation_tokenizer=trans_tokenizer,
+    revision="fp16",
+    torch_dtype=torch.float16,
+)
+
+diffuser_pipeline.enable_attention_slicing()
+diffuser_pipeline = diffuser_pipeline.to(device)
+
+prompt = ["a photograph of an astronaut riding a horse", 
+          "Una casa en la playa",
+          "Ein Hund, der Orange isst",
+          "Un restaurant parisien"]
+
+output = diffuser_pipeline(prompt)
+
+images = output.images
+
+grid = image_grid(images, rows=2, cols=2)
+```
+
+This example produces the following images:
+![image](https://user-images.githubusercontent.com/4313860/198328706-295824a4-9856-4ce5-8e66-278ceb42fd29.png)
 
 ### Image to Image Inpainting Stable Diffusion
 
