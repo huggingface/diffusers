@@ -23,6 +23,7 @@ if is_torch_available() and is_transformers_available():
         StableDiffusionPipeline,
     )
     from .vq_diffusion import VQDiffusionPipeline
+    from .rdm import RDMPipeline
 
 if is_transformers_available() and is_onnx_available():
     from .stable_diffusion import (
