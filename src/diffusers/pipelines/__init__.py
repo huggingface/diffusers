@@ -10,6 +10,7 @@ if is_torch_available():
     from .repaint import RePaintPipeline
     from .score_sde_ve import ScoreSdeVePipeline
     from .stochastic_karras_ve import KarrasVePipeline
+    from .spectrogram_diffusion import SpectrogramDiffusionPipeline
 else:
     from ..utils.dummy_pt_objects import *  # noqa F403
 
