@@ -2,6 +2,8 @@ import inspect
 from typing import Callable, List, Optional, Union
 
 import torch
+import numpy as np
+from PIL import Image
 
 from diffusers.utils import is_accelerate_available
 from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTokenizer
@@ -21,6 +23,22 @@ from ...utils import deprecate, logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+def preprocess_images(images: List[Image.Image], feature_extractor: CLIPFeatureExtractor) -> torch.FloatTensor:
+    """
+    Preprocesses a list of images into a batch of tensors.
+
+    Args:
+        images (:obj:`List[Image.Image]`):
+            A list of images to preprocess.
+
+    Returns:
+        :obj:`torch.FloatTensor`: A batch of tensors.
+    """
+    images = [np.array(image) for image in images]
+    images = [(image + 1.) / 2. for image in images]
+    images = feature_extractor(images, return_tensors="pt").pixel_values
+    return images
 
 
 class RDMPipeline(DiffusionPipeline):
@@ -168,6 +186,7 @@ class RDMPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
+        retrieved_images: Optional[List[Image.Image]] = None,
         height: int = 768,
         width: int = 768,
         num_inference_steps: int = 50,
@@ -273,6 +292,16 @@ class RDMPipeline(DiffusionPipeline):
         text_embeddings = self.clip.get_text_features(text_input_ids.to(self.device))
         text_embeddings = text_embeddings / torch.linalg.norm(text_embeddings, dim=-1, keepdim=True)
         text_embeddings = text_embeddings[:, None, :]
+
+        if retrieved_images is not None:
+            # preprocess retrieved images
+            retrieved_images = preprocess_images(retrieved_images, self.feature_extractor).to(self.device)
+            image_embeddings = self.clip.get_image_features(retrieved_images)
+            image_embeddings = image_embeddings / torch.linalg.norm(image_embeddings, dim=-1, keepdim=True)
+            image_embeddings = image_embeddings[None, ...]
+
+            text_embeddings = torch.cat([text_embeddings, image_embeddings], dim=1)
+
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = text_embeddings.shape
