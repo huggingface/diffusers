@@ -29,7 +29,7 @@ class PNDMPipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Parameters:
-        unet (`UNet2DModel`): U-Net architecture to denoise the encoded image latens.
+        unet (`UNet2DModel`): U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             The `PNDMScheduler` to be used in combination with `unet` to denoise the encoded image.
     """

@@ -16,7 +16,7 @@ class LDMPipeline(DiffusionPipeline):
     Parameters:
         vqvae ([`VQModel`]):
             Vector-quantized (VQ) Model to encode and decode images to and from latent representations.
-        unet ([`UNet2DModel`]): U-Net architecture to denoise the encoded image latens.
+        unet ([`UNet2DModel`]): U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             [`DDIMScheduler`] is to be used in combination with `unet` to denoise the encoded image latens.
     """
