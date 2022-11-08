@@ -1,7 +1,7 @@
 import d4rl  # noqa
 import gym
 import tqdm
-from diffusers import DiffusionPipeline
+from diffusers import ValueGuidedRLPipeline
 
 
 config = dict(
@@ -17,11 +17,11 @@ config = dict(
 )
 
 
-def _run():
+if __name__ == "__main__":
     env_name = "hopper-medium-v2"
     env = gym.make(env_name)
 
-    pipeline = DiffusionPipeline.from_pretrained(
+    pipeline = ValueGuidedRLPipeline.from_pretrained(
         "bglick13/hopper-medium-v2-value-function-hor32",
         env=env,
         custom_pipeline="/Users/bglickenhaus/Documents/diffusers/examples/community",
@@ -56,11 +56,3 @@ def _run():
         pass
 
     print(f"Total reward: {total_reward}")
-
-
-def run():
-    _run()
-
-
-if __name__ == "__main__":
-    run()

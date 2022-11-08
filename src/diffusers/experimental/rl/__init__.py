@@ -1,1 +1,1 @@
-from value_guided_sampling import ValueGuidedRLPipeline
+from .value_guided_sampling import ValueGuidedRLPipeline
