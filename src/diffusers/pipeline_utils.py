@@ -116,8 +116,8 @@ class MelPipelineOutput(BaseOutput):
 
     Args:
         mels (`np.ndarray`)
-            List of denoised samples of shape `(batch_size, time, num_channels)`. Numpy array present the
-            denoised mel samples of the diffusion pipeline.
+            List of denoised samples of shape `(batch_size, time, num_channels)`. Numpy array present the denoised mel
+            samples of the diffusion pipeline.
     """
 
     mels: np.ndarray

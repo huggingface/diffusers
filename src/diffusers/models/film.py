@@ -12,18 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ..utils import is_flax_available, is_torch_available
+import torch
+import torch.nn as nn
 
 
-if is_torch_available():
-    from .attention import Transformer2DModel
-    from .film import FiLMLayer
-    from .t5_attention import ContinuousContextTransformer, ContinuousEncoder, Decoder, TokenEncoder
-    from .unet_1d import UNet1DModel
-    from .unet_2d import UNet2DModel
-    from .unet_2d_condition import UNet2DConditionModel
-    from .vae import AutoencoderKL, VQModel
+class FiLMLayer(nn.Module):
+    def __init__(self, in_features, out_features):
+        super().__init__()
+        self.scale_bias = nn.Linear(in_features, out_features * 2)
 
-if is_flax_available():
-    from .unet_2d_condition_flax import FlaxUNet2DConditionModel
-    from .vae_flax import FlaxAutoencoderKL
+    def forward(self, x, conditioning_emb):
+        scale_bias = self.scale_bias(conditioning_emb)
+        scale, bias = torch.chunk(scale_bias, 2, -1)
+        return x * (scale + 1.0) + bias
