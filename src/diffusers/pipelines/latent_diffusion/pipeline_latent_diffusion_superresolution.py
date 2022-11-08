@@ -30,7 +30,9 @@ def preprocess(image):
 
 class LDMSuperResolutionPipeline(DiffusionPipeline):
     r"""
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    A pipeline for image super-resolution using Latent 
+
+    This class inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Parameters:
