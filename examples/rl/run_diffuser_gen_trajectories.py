@@ -24,7 +24,6 @@ if __name__ == "__main__":
     pipeline = ValueGuidedRLPipeline.from_pretrained(
         "bglick13/hopper-medium-v2-value-function-hor32",
         env=env,
-        custom_pipeline="/Users/bglickenhaus/Documents/diffusers/examples/community",
     )
 
     env.seed(0)

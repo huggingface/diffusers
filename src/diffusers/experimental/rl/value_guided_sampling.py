@@ -16,9 +16,10 @@ import numpy as np
 import torch
 
 import tqdm
-from diffusers import DiffusionPipeline
-from diffusers.models.unet_1d import UNet1DModel
-from diffusers.utils.dummy_pt_objects import DDPMScheduler
+
+from ...models.unet_1d import UNet1DModel
+from ...pipeline_utils import DiffusionPipeline
+from ...utils.dummy_pt_objects import DDPMScheduler
 
 
 class ValueGuidedRLPipeline(DiffusionPipeline):
