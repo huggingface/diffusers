@@ -225,6 +225,17 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             if hasattr(block, "attentions") and block.attentions is not None:
                 block.set_attention_slice(slice_size)
 
+    def set_flash_attention(self, enable_flash_attention: bool):
+        for block in self.down_blocks:
+            if hasattr(block, "attentions") and block.attentions is not None:
+                block.set_flash_attention(enable_flash_attention)
+
+        self.mid_block.set_flash_attention(enable_flash_attention)
+
+        for block in self.up_blocks:
+            if hasattr(block, "attentions") and block.attentions is not None:
+                block.set_flash_attention(enable_flash_attention)
+
     def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
         for block in self.down_blocks:
             if hasattr(block, "attentions") and block.attentions is not None:
@@ -264,7 +275,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         # The overall upsampling factor is equal to 2 ** (# num of upsampling layears).
         # However, the upsampling interpolation output size can be forced to fit any upsampling size
         # on the fly if necessary.
-        default_overall_up_factor = 2**self.num_upsamplers
+        default_overall_up_factor = 2 ** self.num_upsamplers
 
         # upsample size should be forwarded when sample is not a multiple of `default_overall_up_factor`
         forward_upsample_size = False

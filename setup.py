@@ -178,14 +178,7 @@ extras["quality"] = deps_list("black", "isort", "flake8", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "modelcards")
 extras["test"] = deps_list(
-    "datasets",
-    "parameterized",
-    "pytest",
-    "pytest-timeout",
-    "pytest-xdist",
-    "scipy",
-    "torchvision",
-    "transformers"
+    "datasets", "parameterized", "pytest", "pytest-timeout", "pytest-xdist", "scipy", "torchvision", "transformers"
 )
 extras["torch"] = deps_list("torch", "accelerate")
 
@@ -210,7 +203,7 @@ install_requires = [
 
 setup(
     name="diffusers",
-    version="0.8.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.8.5.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
@@ -218,7 +211,7 @@ setup(
     license="Apache",
     author="The HuggingFace team",
     author_email="patrick@huggingface.co",
-    url="https://github.com/huggingface/diffusers",
+    url="https://github.com/character-tech/diffusers",
     package_dir={"": "src"},
     packages=find_packages("src"),
     include_package_data=True,
