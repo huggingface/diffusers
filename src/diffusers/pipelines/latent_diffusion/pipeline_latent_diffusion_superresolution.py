@@ -114,9 +114,8 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
 
         if self.device.type == "mps":
             # randn does not work reproducibly on mps
-            latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(
-                self.device
-            )
+            latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype)
+            latents =  latents.to(self.device)
         else:
             latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
 
