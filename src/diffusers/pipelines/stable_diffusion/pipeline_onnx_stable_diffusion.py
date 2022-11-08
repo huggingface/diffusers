@@ -18,6 +18,7 @@ logger = logging.get_logger(__name__)
 
 
 class OnnxStableDiffusionPipeline(DiffusionPipeline):
+    vae_encoder: OnnxRuntimeModel
     vae_decoder: OnnxRuntimeModel
     text_encoder: OnnxRuntimeModel
     tokenizer: CLIPTokenizer
