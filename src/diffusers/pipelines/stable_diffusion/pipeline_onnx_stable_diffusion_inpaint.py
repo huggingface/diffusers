@@ -8,7 +8,7 @@ import PIL
 from transformers import CLIPFeatureExtractor, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
-from ...onnx_utils import OnnxRuntimeModel
+from ...onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import deprecate, logging
@@ -59,7 +59,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
+            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
@@ -102,6 +102,19 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
             deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
             new_config = dict(scheduler.config)
             new_config["steps_offset"] = 1
+            scheduler._internal_dict = FrozenDict(new_config)
+
+        if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
+            deprecation_message = (
+                f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."
+                " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
+                " config accordingly as not setting `clip_sample` in the config might lead to incorrect results in"
+                " future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very"
+                " nice if you could open a Pull request for the `scheduler/scheduler_config.json` file"
+            )
+            deprecate("clip_sample not set", "1.0.0", deprecation_message, standard_warn=False)
+            new_config = dict(scheduler.config)
+            new_config["clip_sample"] = False
             scheduler._internal_dict = FrozenDict(new_config)
 
         if safety_checker is None:
@@ -339,7 +352,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
         self.scheduler.set_timesteps(num_inference_steps)
 
         # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
+        latents = latents * np.float(self.scheduler.init_noise_sigma)
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -350,17 +363,23 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
+        timestep_dtype = next(
+            (input.type for input in self.unet.model.get_inputs() if input.name == "timestep"), "tensor(float)"
+        )
+        timestep_dtype = ORT_TO_NP_TYPE[timestep_dtype]
+
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = np.concatenate([latents] * 2) if do_classifier_free_guidance else latents
             # concat latents, mask, masked_image_latnets in the channel dimension
             latent_model_input = np.concatenate([latent_model_input, mask, masked_image_latents], axis=1)
             latent_model_input = self.scheduler.scale_model_input(torch.from_numpy(latent_model_input), t)
-            latent_model_input = latent_model_input.numpy()
+            latent_model_input = latent_model_input.cpu().numpy()
 
             # predict the noise residual
+            timestep = np.array([t], dtype=timestep_dtype)
             noise_pred = self.unet(
-                sample=latent_model_input, timestep=np.array([t]), encoder_hidden_states=text_embeddings
+                sample=latent_model_input, timestep=timestep, encoder_hidden_states=text_embeddings
             )[0]
 
             # perform guidance
@@ -369,7 +388,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+            latents = self.scheduler.step(noise_pred, t, torch.from_numpy(latents), **extra_step_kwargs).prev_sample
             latents = latents.numpy()
 
             # call the callback, if provided
@@ -390,7 +409,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
             safety_checker_input = self.feature_extractor(
                 self.numpy_to_pil(image), return_tensors="np"
             ).pixel_values.astype(image.dtype)
-            # There will throw an error if use safety_checker batchsize>1
+            # safety_checker does not support batched inputs yet
             images, has_nsfw_concept = [], []
             for i in range(image.shape[0]):
                 image_i, has_nsfw_concept_i = self.safety_checker(

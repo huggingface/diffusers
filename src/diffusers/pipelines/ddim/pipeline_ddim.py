@@ -13,7 +13,7 @@
 
 # limitations under the License.
 
-
+import inspect
 from typing import Optional, Tuple, Union
 
 import torch
@@ -44,6 +44,7 @@ class DDIMPipeline(DiffusionPipeline):
         generator: Optional[torch.Generator] = None,
         eta: float = 0.0,
         num_inference_steps: int = 50,
+        use_clipped_model_output: Optional[bool] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         **kwargs,
@@ -60,6 +61,9 @@ class DDIMPipeline(DiffusionPipeline):
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
+            use_clipped_model_output (`bool`, *optional*, defaults to `None`):
+                if `True` or `False`, see documentation for `DDIMScheduler.step`. If `None`, nothing is passed
+                downstream to the scheduler. So use `None` for schedulers which don't support this argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -82,6 +86,14 @@ class DDIMPipeline(DiffusionPipeline):
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
 
+        # Ignore use_clipped_model_output if the scheduler doesn't accept this argument
+        accepts_use_clipped_model_output = "use_clipped_model_output" in set(
+            inspect.signature(self.scheduler.step).parameters.keys()
+        )
+        extra_kwargs = {}
+        if accepts_use_clipped_model_output:
+            extra_kwargs["use_clipped_model_output"] = use_clipped_model_output
+
         for t in self.progress_bar(self.scheduler.timesteps):
             # 1. predict noise model_output
             model_output = self.unet(image, t).sample
@@ -89,7 +101,7 @@ class DDIMPipeline(DiffusionPipeline):
             # 2. predict previous mean of image x_t-1 and add variance depending on eta
             # eta corresponds to η in paper and should be between [0, 1]
             # do x_t -> x_t-1
-            image = self.scheduler.step(model_output, t, image, eta).prev_sample
+            image = self.scheduler.step(model_output, t, image, eta, **extra_kwargs).prev_sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()

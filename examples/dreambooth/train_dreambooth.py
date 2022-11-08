@@ -26,7 +26,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 logger = get_logger(__name__)
 
 
-def parse_args():
+def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
         "--pretrained_model_name_or_path",
@@ -66,6 +66,7 @@ def parse_args():
         "--instance_prompt",
         type=str,
         default=None,
+        required=True,
         help="The prompt with identifier specifying the instance",
     )
     parser.add_argument(
@@ -196,19 +197,25 @@ def parse_args():
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
 
-    args = parser.parse_args()
+    if input_args is not None:
+        args = parser.parse_args(input_args)
+    else:
+        args = parser.parse_args()
+
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
-
-    if args.instance_data_dir is None:
-        raise ValueError("You must specify a train data directory.")
 
     if args.with_prior_preservation:
         if args.class_data_dir is None:
             raise ValueError("You must specify a data directory for class images.")
         if args.class_prompt is None:
             raise ValueError("You must specify prompt for class images.")
+    else:
+        if args.class_data_dir is not None:
+            logger.warning("You need not use --class_data_dir without --with_prior_preservation.")
+        if args.class_prompt is not None:
+            logger.warning("You need not use --class_prompt without --with_prior_preservation.")
 
     return args
 
@@ -319,8 +326,7 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
         return f"{organization}/{model_id}"
 
 
-def main():
-    args = parse_args()
+def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator = Accelerator(
@@ -466,9 +472,7 @@ def main():
         eps=args.adam_epsilon,
     )
 
-    noise_scheduler = DDPMScheduler(
-        beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000
-    )
+    noise_scheduler = DDPMScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
 
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
@@ -493,7 +497,12 @@ def main():
         pixel_values = torch.stack(pixel_values)
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
-        input_ids = tokenizer.pad({"input_ids": input_ids}, padding=True, return_tensors="pt").input_ids
+        input_ids = tokenizer.pad(
+            {"input_ids": input_ids},
+            padding="max_length",
+            max_length=tokenizer.model_max_length,
+            return_tensors="pt",
+        ).input_ids
 
         batch = {
             "input_ids": input_ids,
@@ -502,7 +511,7 @@ def main():
         return batch
 
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn
+        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn, num_workers=1
     )
 
     # Scheduler and math around the number of training steps.
@@ -571,6 +580,8 @@ def main():
 
     for epoch in range(args.num_train_epochs):
         unet.train()
+        if args.train_text_encoder:
+            text_encoder.train()
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Convert images to latent space
@@ -653,4 +664,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(args)

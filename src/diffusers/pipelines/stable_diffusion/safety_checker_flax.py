@@ -1,7 +1,4 @@
-import warnings
 from typing import Optional, Tuple
-
-import numpy as np
 
 import jax
 import jax.numpy as jnp
@@ -39,56 +36,22 @@ class FlaxStableDiffusionSafetyCheckerModule(nn.Module):
 
         special_cos_dist = jax_cosine_distance(image_embeds, self.special_care_embeds)
         cos_dist = jax_cosine_distance(image_embeds, self.concept_embeds)
-        return special_cos_dist, cos_dist
 
-    def filtered_with_scores(self, special_cos_dist, cos_dist, images):
-        batch_size = special_cos_dist.shape[0]
-        special_cos_dist = np.asarray(special_cos_dist)
-        cos_dist = np.asarray(cos_dist)
+        # increase this value to create a stronger `nfsw` filter
+        # at the cost of increasing the possibility of filtering benign image inputs
+        adjustment = 0.0
 
-        result = []
-        for i in range(batch_size):
-            result_img = {"special_scores": {}, "special_care": [], "concept_scores": {}, "bad_concepts": []}
+        special_scores = special_cos_dist - self.special_care_embeds_weights[None, :] + adjustment
+        special_scores = jnp.round(special_scores, 3)
+        is_special_care = jnp.any(special_scores > 0, axis=1, keepdims=True)
+        # Use a lower threshold if an image has any special care concept
+        special_adjustment = is_special_care * 0.01
 
-            # increase this value to create a stronger `nfsw` filter
-            # at the cost of increasing the possibility of filtering benign image inputs
-            adjustment = 0.0
+        concept_scores = cos_dist - self.concept_embeds_weights[None, :] + special_adjustment
+        concept_scores = jnp.round(concept_scores, 3)
+        has_nsfw_concepts = jnp.any(concept_scores > 0, axis=1)
 
-            for concept_idx in range(len(special_cos_dist[0])):
-                concept_cos = special_cos_dist[i][concept_idx]
-                concept_threshold = self.special_care_embeds_weights[concept_idx].item()
-                result_img["special_scores"][concept_idx] = round(concept_cos - concept_threshold + adjustment, 3)
-                if result_img["special_scores"][concept_idx] > 0:
-                    result_img["special_care"].append({concept_idx, result_img["special_scores"][concept_idx]})
-                    adjustment = 0.01
-
-            for concept_idx in range(len(cos_dist[0])):
-                concept_cos = cos_dist[i][concept_idx]
-                concept_threshold = self.concept_embeds_weights[concept_idx].item()
-                result_img["concept_scores"][concept_idx] = round(concept_cos - concept_threshold + adjustment, 3)
-                if result_img["concept_scores"][concept_idx] > 0:
-                    result_img["bad_concepts"].append(concept_idx)
-
-            result.append(result_img)
-
-        has_nsfw_concepts = [len(res["bad_concepts"]) > 0 for res in result]
-
-        images_was_copied = False
-        for idx, has_nsfw_concept in enumerate(has_nsfw_concepts):
-            if has_nsfw_concept:
-                if not images_was_copied:
-                    images_was_copied = True
-                    images = images.copy()
-
-                images[idx] = np.zeros(images[idx].shape)  # black image
-
-            if any(has_nsfw_concepts):
-                warnings.warn(
-                    "Potential NSFW content was detected in one or more images. A black image will be returned"
-                    " instead. Try again with a different prompt and/or seed."
-                )
-
-        return images, has_nsfw_concepts
+        return has_nsfw_concepts
 
 
 class FlaxStableDiffusionSafetyChecker(FlaxPreTrainedModel):
@@ -132,16 +95,4 @@ class FlaxStableDiffusionSafetyChecker(FlaxPreTrainedModel):
             {"params": params or self.params},
             jnp.array(clip_input, dtype=jnp.float32),
             rngs={},
-        )
-
-    def filtered_with_scores(self, special_cos_dist, cos_dist, images, params: dict = None):
-        def _filtered_with_scores(module, special_cos_dist, cos_dist, images):
-            return module.filtered_with_scores(special_cos_dist, cos_dist, images)
-
-        return self.module.apply(
-            {"params": params or self.params},
-            special_cos_dist,
-            cos_dist,
-            images,
-            method=_filtered_with_scores,
         )
