@@ -4,10 +4,10 @@ import os
 
 import jax
 import tensorflow as tf
+import torch
 
 from t5x import checkpoints
 from music_spectrogram_diffusion import inference
-
 from transformers import T5Config
 
 from diffusers import DDPMScheduler, ContinuousContextTransformer, SpectrogramDiffusionPipeline
@@ -49,21 +49,21 @@ def main(args):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     scheduler = DDPMScheduler(beta_schedule="squaredcos_cap_v2", variance_type="fixed_large")
-    model = ContinuousContextTransformer(config=t5config)
+    model = ContinuousContextTransformer(t5config=t5config)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--model_path", default=None, type=str, required=True, help="Path to the model to convert.")
-    parser.add_argument(
-        "--save", default=True, type=bool, required=False, help="Whether to save the converted model or not."
-    )
+    # parser.add_argument("--model_path", default=None, type=str, required=True, help="Path to the model to convert.")
+    # parser.add_argument(
+    #     "--save", default=True, type=bool, required=False, help="Whether to save the converted model or not."
+    # )
     parser.add_argument(
         "--checkpoint_path",
         default=f"{MODEL}/checkpoint_500000",
         type=str,
-        required=True,
+        required=False,
         help="Path to the original jax model checkpoint.",
     )
     args = parser.parse_args()

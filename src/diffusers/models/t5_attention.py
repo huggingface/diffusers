@@ -199,25 +199,25 @@ class DecoderLayer(nn.Module):
 
 class TokenEncoder(ModelMixin, ConfigMixin):
     @register_to_config
-    def __init__(self, config: T5Config):
+    def __init__(self, t5config: T5Config):
         super().__init__()
 
-        self.token_embedder = nn.Embedding(config.vocab_size, config.d_model)
+        self.token_embedder = nn.Embedding(t5config.vocab_size, t5config.d_model)
 
-        self.position_encoding = nn.Embedding(config.max_length, config.d_model)
+        self.position_encoding = nn.Embedding(t5config.max_length, t5config.d_model)
         self.position_encoding.weight.requires_grad = False
 
-        self.dropout_pre = nn.Dropout(p=config.dropout_rate)
+        self.dropout_pre = nn.Dropout(p=t5config.dropout_rate)
 
-        config.is_decoder = False
-        config.is_encoder_decoder = False
+        t5config.is_decoder = False
+        t5config.is_encoder_decoder = False
         self.encoders = nn.ModuleList()
-        for lyr_num in range(config.num_layers):
-            lyr = T5Block(config)
+        for lyr_num in range(t5config.num_layers):
+            lyr = T5Block(t5config)
             self.encoders.append(lyr)
 
-        self.layer_norm = T5LayerNorm(hidden_size=config.d_model)
-        self.dropout_post = nn.Dropout(p=config.dropout_rate)
+        self.layer_norm = T5LayerNorm(hidden_size=t5config.d_model)
+        self.dropout_post = nn.Dropout(p=t5config.dropout_rate)
 
     def forward(self, encoder_input_tokens, encoder_inputs_mask):
         x = self.token_embedder(encoder_input_tokens)
@@ -237,25 +237,25 @@ class TokenEncoder(ModelMixin, ConfigMixin):
 
 class ContinuousEncoder(ModelMixin, ConfigMixin):
     @register_to_config
-    def __init__(self, config):
+    def __init__(self, t5config):
         super().__init__()
 
-        self.input_proj = nn.Linear(config.input_dims, config.d_model, bias=False)
+        self.input_proj = nn.Linear(t5config.input_dims, t5config.d_model, bias=False)
 
-        self.position_encoding = nn.Embedding(config.targets_context_length, config.d_model)
+        self.position_encoding = nn.Embedding(t5config.targets_context_length, t5config.d_model)
         self.position_encoding.weight.requires_grad = False
 
-        self.dropout_pre = nn.Dropout(p=config.dropout_rate)
+        self.dropout_pre = nn.Dropout(p=t5config.dropout_rate)
 
-        config.is_decoder = False
-        config.is_encoder_decoder = False
+        t5config.is_decoder = False
+        t5config.is_encoder_decoder = False
         self.encoders = nn.ModuleList()
-        for lyr_num in range(config.num_layers):
-            lyr = T5Block(config)
+        for lyr_num in range(t5config.num_layers):
+            lyr = T5Block(t5config)
             self.encoders.append(lyr)
 
-        self.layer_norm = T5LayerNorm(hidden_size=config.d_model)
-        self.dropout_post = nn.Dropout(p=config.dropout_rate)
+        self.layer_norm = T5LayerNorm(hidden_size=t5config.d_model)
+        self.dropout_post = nn.Dropout(p=t5config.dropout_rate)
 
     def forward(self, encoder_inputs, encoder_inputs_mask):
         x = self.input_proj(encoder_inputs)
@@ -279,38 +279,35 @@ class ContinuousEncoder(ModelMixin, ConfigMixin):
 
 class Decoder(ModelMixin, ConfigMixin):
     @register_to_config
-    def __init__(self, config: T5Config):
+    def __init__(self, t5config: T5Config):
         super().__init__()
 
         self.conditioning_emb = nn.Sequential(
-            nn.Linear(config.d_model, config.d_model * 4, bias=False),
+            nn.Linear(t5config.d_model, t5config.d_model * 4, bias=False),
             nn.SiLU(),
-            nn.Linear(config.d_model * 4, config.d_model * 4, bias=False),
+            nn.Linear(t5config.d_model * 4, t5config.d_model * 4, bias=False),
             nn.SiLU(),
         )
 
-        self.position_encoding = nn.Embedding(config.targets_length, config.d_model)
+        self.position_encoding = nn.Embedding(t5config.targets_length, t5config.d_model)
         self.position_encoding.weight.requires_grad = False
 
-        self.continuous_inputs_projection = nn.Linear(config.input_dims, config.d_model)
+        self.continuous_inputs_projection = nn.Linear(t5config.input_dims, t5config.d_model)
 
-        self.dropout = nn.Dropout(p=config.dropout_rate)
+        self.dropout = nn.Dropout(p=t5config.dropout_rate)
 
-        config.is_decoder = True
-        config.is_encoder_decoder = False
+        t5config.is_decoder = True
+        t5config.is_encoder_decoder = False
         self.decoders = nn.ModuleList()
-        for lyr_num in range(config.num_decoder_layers):
+        for lyr_num in range(t5config.num_decoder_layers):
             # FiLM conditional T5 decoder
-            lyr = DecoderLayer(config)
+            lyr = DecoderLayer(t5config)
             self.decoders.append(lyr)
 
-        self.decoder_norm = T5LayerNorm(config.d_model)
+        self.decoder_norm = T5LayerNorm(t5config.d_model)
 
-        self.post_dropout = nn.Dropout(p=config.dropout_rate)
-        self.spec_out = nn.Linear(config.d_model, config.input_dims, bias=False)
-
-        self.max_decoder_noise_time = config.max_decoder_noise_time
-        self.emb_dim = config.d_model
+        self.post_dropout = nn.Dropout(p=t5config.dropout_rate)
+        self.spec_out = nn.Linear(t5config.d_model, t5config.input_dims, bias=False)
 
     def encoder_decoder_mask(self, query_input, key_input, pairwise_fn=torch.mul):
         mask = pairwise_fn(query_input.unsqueeze(-1), key_input.unsqueeze(-2))
@@ -322,14 +319,14 @@ class Decoder(ModelMixin, ConfigMixin):
 
         # decoder_noise_time is in [0, 1), so rescale to expected timing range.
         conditioning_emb = get_timestep_embedding(
-            decoder_noise_time * self.max_decoder_noise_time,
-            embedding_dim=self.emb_dim,
+            decoder_noise_time * self.config.t5config.max_decoder_noise_time,
+            embedding_dim=self.config.t5config.d_model,
             max_period=self.max_decoder_noise_time,
         )
 
         conditioning_emb = self.conditioning_emb(conditioning_emb)
 
-        assert conditioning_emb.shape == (batch, self.emb_dim * 4)
+        assert conditioning_emb.shape == (batch, self.config.t5config.d_model * 4)
 
         seq_length = decoder_input_tokens.shape[1]
 
@@ -374,12 +371,12 @@ class Decoder(ModelMixin, ConfigMixin):
 
 class ContinuousContextTransformer(ModelMixin, ConfigMixin):
     @register_to_config
-    def __init__(self, config: T5Config):
+    def __init__(self, t5config: T5Config):
         super().__init__()
 
-        self.token_encoder = TokenEncoder(config=config)
-        self.continuous_encoder = ContinuousEncoder(config=config)
-        self.decoder = Decoder(config=config)
+        self.token_encoder = TokenEncoder(t5config=t5config)
+        self.continuous_encoder = ContinuousEncoder(t5config=t5config)
+        self.decoder = Decoder(t5config=t5config)
 
     def encode(self, input_tokens, continuous_inputs, continuous_mask):
         tokens_mask = input_tokens > 0
