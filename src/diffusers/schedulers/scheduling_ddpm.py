@@ -100,7 +100,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         clip_sample (`bool`, default `True`):
             option to clip predicted sample between -1 and 1 for numerical stability.
         predict_epsilon (`bool`):
-            optional flag to use when model predicts the samples directly instead of the noise, epsilon.
+            optional flag to use when the model predicts the noise (epsilon), or the samples instead of the noise.
 
     """
 
