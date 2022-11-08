@@ -13,11 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import tempfile
 import unittest
 
 import numpy as np
 
-from diffusers import OnnxStableDiffusionPipeline
+from diffusers import DDIMScheduler, LMSDiscreteScheduler, OnnxStableDiffusionPipeline
 from diffusers.utils.testing_utils import is_onnx_available, require_onnxruntime, require_torch_gpu, slow
 
 from ...test_pipelines_onnx_common import OnnxPipelineTesterMixin
@@ -36,32 +37,87 @@ class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.Tes
 @require_onnxruntime
 @require_torch_gpu
 class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
-    def test_inference(self):
-        provider = (
+    @property
+    def gpu_provider(self):
+        return (
             "CUDAExecutionProvider",
             {
-                "gpu_mem_limit": "17179869184",  # 16GB.
+                "gpu_mem_limit": "15000000000",  # 15GB
                 "arena_extend_strategy": "kSameAsRequested",
             },
         )
+
+    @property
+    def gpu_options(self):
         options = ort.SessionOptions()
         options.enable_mem_pattern = False
+        return options
+
+    def test_inference_default_pndm(self):
+        # using the PNDM scheduler by default
         sd_pipe = OnnxStableDiffusionPipeline.from_pretrained(
             "CompVis/stable-diffusion-v1-4",
             revision="onnx",
-            provider=provider,
-            sess_options=options,
+            provider=self.gpu_provider,
+            sess_options=self.gpu_options,
         )
+        sd_pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger"
         np.random.seed(0)
-        output = sd_pipe([prompt], guidance_scale=6.0, num_inference_steps=5, output_type="np")
+        output = sd_pipe([prompt], guidance_scale=6.0, num_inference_steps=10, output_type="np")
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.3602, 0.3688, 0.3652, 0.3895, 0.3782, 0.3747, 0.3927, 0.4241, 0.4327])
+        expected_slice = np.array([0.0452, 0.0390, 0.0087, 0.0350, 0.0617, 0.0364, 0.0544, 0.0523, 0.0720])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_inference_ddim(self):
+        ddim_scheduler = DDIMScheduler.from_config(
+            "runwayml/stable-diffusion-v1-5", subfolder="scheduler", revision="onnx"
+        )
+        sd_pipe = OnnxStableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5",
+            revision="onnx",
+            scheduler=ddim_scheduler,
+            provider=self.gpu_provider,
+            sess_options=self.gpu_options,
+        )
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "open neural network exchange"
+        generator = np.random.RandomState(0)
+        output = sd_pipe([prompt], guidance_scale=7.5, num_inference_steps=10, generator=generator, output_type="np")
+        image = output.images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.2867, 0.1974, 0.1481, 0.7294, 0.7251, 0.6667, 0.4194, 0.5642, 0.6486])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_inference_k_lms(self):
+        lms_scheduler = LMSDiscreteScheduler.from_config(
+            "runwayml/stable-diffusion-v1-5", subfolder="scheduler", revision="onnx"
+        )
+        sd_pipe = OnnxStableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5",
+            revision="onnx",
+            scheduler=lms_scheduler,
+            provider=self.gpu_provider,
+            sess_options=self.gpu_options,
+        )
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "open neural network exchange"
+        generator = np.random.RandomState(0)
+        output = sd_pipe([prompt], guidance_scale=7.5, num_inference_steps=10, generator=generator, output_type="np")
+        image = output.images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.2306, 0.1959, 0.1593, 0.6549, 0.6394, 0.5408, 0.5065, 0.6010, 0.6161])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_intermediate_state(self):
@@ -75,27 +131,61 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array(
-                    [-0.5950, -0.3039, -1.1672, 0.1594, -1.1572, 0.6719, -1.9712, -0.0403, 0.9592]
+                    [-0.6772, -0.3835, -1.2456, 0.1905, -1.0974, 0.6967, -1.9353, 0.0178, 1.0167]
                 )
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
             elif step == 5:
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array(
-                    [-0.4776, -0.0119, -0.8519, -0.0275, -0.9764, 0.9820, -0.3843, 0.3788, 1.2264]
+                    [-0.3351, 0.2241, -0.1837, -0.2325, -0.6577, 0.3393, -0.0241, 0.5899, 1.3875]
                 )
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
 
         test_callback_fn.has_been_called = False
 
         pipe = OnnxStableDiffusionPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", revision="onnx", provider="CUDAExecutionProvider"
+            "runwayml/stable-diffusion-v1-5",
+            revision="onnx",
+            provider=self.gpu_provider,
+            sess_options=self.gpu_options,
         )
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "Andromeda galaxy in a bottle"
 
-        np.random.seed(0)
-        pipe(prompt=prompt, num_inference_steps=5, guidance_scale=7.5, callback=test_callback_fn, callback_steps=1)
+        generator = np.random.RandomState(0)
+        pipe(
+            prompt=prompt,
+            num_inference_steps=5,
+            guidance_scale=7.5,
+            generator=generator,
+            callback=test_callback_fn,
+            callback_steps=1,
+        )
         assert test_callback_fn.has_been_called
         assert number_of_steps == 6
+
+    def test_stable_diffusion_no_safety_checker(self):
+        pipe = OnnxStableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5",
+            revision="onnx",
+            provider=self.gpu_provider,
+            sess_options=self.gpu_options,
+            safety_checker=None,
+        )
+        assert isinstance(pipe, OnnxStableDiffusionPipeline)
+        assert pipe.safety_checker is None
+
+        image = pipe("example prompt", num_inference_steps=2).images[0]
+        assert image is not None
+
+        # check that there's no error when saving a pipeline with one of the models being None
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.save_pretrained(tmpdirname)
+            pipe = OnnxStableDiffusionPipeline.from_pretrained(tmpdirname)
+
+        # sanity check that the pipeline still works
+        assert pipe.safety_checker is None
+        image = pipe("example prompt", num_inference_steps=2).images[0]
+        assert image is not None
