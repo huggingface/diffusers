@@ -18,6 +18,7 @@ logger = logging.get_logger(__name__)
 
 
 class OnnxStableDiffusionPipeline(DiffusionPipeline):
+    vae_encoder: OnnxRuntimeModel
     vae_decoder: OnnxRuntimeModel
     text_encoder: OnnxRuntimeModel
     tokenizer: CLIPTokenizer
@@ -268,6 +269,7 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
 class StableDiffusionOnnxPipeline(OnnxStableDiffusionPipeline):
     def __init__(
         self,
+        vae_encoder: OnnxRuntimeModel,
         vae_decoder: OnnxRuntimeModel,
         text_encoder: OnnxRuntimeModel,
         tokenizer: CLIPTokenizer,
@@ -279,6 +281,7 @@ class StableDiffusionOnnxPipeline(OnnxStableDiffusionPipeline):
         deprecation_message = "Please use `OnnxStableDiffusionPipeline` instead of `StableDiffusionOnnxPipeline`."
         deprecate("StableDiffusionOnnxPipeline", "1.0.0", deprecation_message)
         super().__init__(
+            vae_encoder=vae_encoder,
             vae_decoder=vae_decoder,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
