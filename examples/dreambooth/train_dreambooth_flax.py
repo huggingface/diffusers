@@ -15,6 +15,7 @@ import jax
 import jax.numpy as jnp
 import optax
 import transformers
+from accelerate import Accelerator
 from diffusers import (
     FlaxAutoencoderKL,
     FlaxDDPMScheduler,
@@ -26,7 +27,8 @@ from diffusers.pipelines.stable_diffusion import FlaxStableDiffusionSafetyChecke
 from flax import jax_utils
 from flax.training import train_state
 from flax.training.common_utils import shard
-from huggingface_hub import HfFolder, Repository, whoami
+from huggingface_hub import HfApi, HfFolder, Repository, whoami
+from huggingface_hub.utils import RepositoryNotFoundError
 from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -168,6 +170,22 @@ def parse_args():
             "[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. Will default to"
             " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
         ),
+    )
+    parser.add_argument(
+        "--report_to",
+        type=str,
+        default="tensorboard",
+        help=(
+            'The integration to report the results and logs to. Supported platforms are `"tensorboard"`,'
+            ' `"wandb"` and `"comet_ml"`. Use `"all"` (default) to report to all integrations.'
+            "Only applicable when `--with_tracking` is passed."
+        ),
+    )
+    parser.add_argument(
+        "--tracker_project_name",
+        type=str,
+        default="text2image-dreambooth",
+        help="Tracker project name.",
     )
     parser.add_argument(
         "--mixed_precision",
@@ -327,14 +345,26 @@ def main():
     if args.seed is not None:
         set_seed(args.seed)
 
+    # Handle the repository creation
     if jax.process_index() == 0:
         if args.push_to_hub:
+            api = HfApi()
             if args.hub_model_id is None:
                 repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
             else:
                 repo_name = args.hub_model_id
-            repo = Repository(args.output_dir, clone_from=repo_name)
-
+            try:
+                repo_exists = True
+                model_info = api.model_info(repo_name, token=args.hub_token)
+                logger.info(f"  Model ID = {model_info.modelId}")
+            except RepositoryNotFoundError:
+                repo_exists = False
+            finally:
+                if repo_exists:
+                    repo = Repository(args.output_dir, clone_from=repo_name, use_auth_token=args.hub_token)
+                else:
+                    api.create_repo(repo_name, private=True, token=args.hub_token)
+                    repo = Repository(args.output_dir, clone_from=repo_name, use_auth_token=args.hub_token)
             with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
                 if "step_*" not in gitignore:
                     gitignore.write("step_*\n")
@@ -382,23 +412,6 @@ def main():
                     image.save(image_filename)
 
             del pipeline
-
-    # Handle the repository creation
-    if jax.process_index() == 0:
-        if args.push_to_hub:
-            if args.hub_model_id is None:
-                repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
-            else:
-                repo_name = args.hub_model_id
-            repo = Repository(args.output_dir, clone_from=repo_name)
-
-            with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
-                if "step_*" not in gitignore:
-                    gitignore.write("step_*\n")
-                if "epoch_*" not in gitignore:
-                    gitignore.write("epoch_*\n")
-        elif args.output_dir is not None:
-            os.makedirs(args.output_dir, exist_ok=True)
 
     # Load the tokenizer and add the placeholder token as a additional special token
     if args.tokenizer_name:
@@ -602,6 +615,22 @@ def main():
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel & distributed) = {total_train_batch_size}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
+    logger.info(f"  Mixed Precision = {args.mixed_precision}")
+    logger.info(f"  Learning Rate = {args.learning_rate}")
+    logger.info(f"  Max Grad Norm = {args.max_grad_norm}")
+
+    accelerator = Accelerator(log_with=args.report_to)
+    tracker_config = {
+        "train_dataset": len(train_dataset),
+        "num_train_epochs": args.num_train_epochs,
+        "train_batch_size": args.train_batch_size,
+        "total_train_batch_size": total_train_batch_size,
+        "max_train_steps": args.max_train_steps,
+        "mixed_precision": args.mixed_precision,
+        "learning_rate": args.learning_rate,
+        "max_grad_norm": args.max_grad_norm,
+    }
+    accelerator.init_trackers(args.tracker_project_name, config=tracker_config)
 
     global_step = 0
 
@@ -631,6 +660,8 @@ def main():
 
         train_step_progress_bar.close()
         epochs.write(f"Epoch... ({epoch + 1}/{args.num_train_epochs} | Loss: {train_metric['loss']})")
+        accelerator.log({"training_loss": train_metric["loss"]}, step=epoch)
+    accelerator.end_training()
 
     # Create the pipeline using using the trained modules and save it.
     if jax.process_index() == 0:
@@ -661,7 +692,9 @@ def main():
         )
 
         if args.push_to_hub:
-            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+            repo.git_add(auto_lfs_track=True)
+            repo.git_commit(commit_message="End of training")
+            repo.git_push()
 
 
 if __name__ == "__main__":
