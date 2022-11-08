@@ -181,6 +181,24 @@ class StableDiffusionPipeline(DiffusionPipeline):
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
 
+    @property
+    def _execution_device(self):
+        r"""
+        Returns the device on which the pipeline's models will be executed. After calling
+        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
+        hooks.
+        """
+        if self.device != torch.device("meta") or not hasattr(self.unet, "_hf_hook"):
+            return self.device
+        for module in self.unet.modules():
+            if (
+                hasattr(module, "_hf_hook")
+                and hasattr(module._hf_hook, "execution_device")
+                and module._hf_hook.execution_device is not None
+            ):
+                return torch.device(module._hf_hook.execution_device)
+        return self.device
+
     @torch.no_grad()
     def __call__(
         self,
@@ -272,6 +290,8 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
+        device = self._execution_device
+
         # get prompt text embeddings
         text_inputs = self.tokenizer(
             prompt,
@@ -288,7 +308,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
             text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
-        text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
+        text_embeddings = self.text_encoder(text_input_ids.to(device))[0]
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = text_embeddings.shape
@@ -328,7 +348,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 truncation=True,
                 return_tensors="pt",
             )
-            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
+            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(device))[0]
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = uncond_embeddings.shape[1]
@@ -348,24 +368,22 @@ class StableDiffusionPipeline(DiffusionPipeline):
         latents_shape = (batch_size * num_images_per_prompt, self.unet.in_channels, height // 8, width // 8)
         latents_dtype = text_embeddings.dtype
         if latents is None:
-            if self.device.type == "mps":
+            if device.type == "mps":
                 # randn does not work reproducibly on mps
-                latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(
-                    self.device
-                )
+                latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(device)
             else:
-                latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
+                latents = torch.randn(latents_shape, generator=generator, device=device, dtype=latents_dtype)
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
-            latents = latents.to(self.device)
+            latents = latents.to(device)
 
         # set timesteps
         self.scheduler.set_timesteps(num_inference_steps)
 
         # Some schedulers like PNDM have timesteps as arrays
         # It's more optimized to move all timesteps to correct device beforehand
-        timesteps_tensor = self.scheduler.timesteps.to(self.device)
+        timesteps_tensor = self.scheduler.timesteps.to(device)
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
@@ -413,9 +431,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
 
         if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(
-                self.device
-            )
+            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(text_embeddings.dtype)
             )

@@ -842,6 +842,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
 
         pipeline_id = "CompVis/stable-diffusion-v1-4"
         prompt = "Andromeda galaxy in a bottle"
@@ -855,5 +856,5 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         _ = pipeline(prompt, generator=generator, num_inference_steps=5)
 
         mem_bytes = torch.cuda.max_memory_allocated()
-        # make sure that less than 1.5 GB is allocated
-        assert mem_bytes < 1.5 * 10**9
+        # make sure that less than 2.8 GB is allocated
+        assert mem_bytes < 2.8 * 10**9
