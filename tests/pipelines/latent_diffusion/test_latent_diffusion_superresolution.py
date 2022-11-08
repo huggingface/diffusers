@@ -19,6 +19,7 @@ import unittest
 import numpy as np
 import torch
 
+import PIL
 from diffusers import DDIMScheduler, LDMSuperResolutionPipeline, UNet2DModel, VQModel
 from diffusers.utils import floats_tensor, load_image, slow, torch_device
 from diffusers.utils.testing_utils import require_torch
@@ -101,6 +102,7 @@ class LDMSuperResolutionPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/vq_diffusion/teddy_bear_pool.png"
         )
+        init_image = init_image.resize((64, 64), resample=PIL.Image.LANCZOS)
 
         ldm = LDMSuperResolutionPipeline.from_pretrained("duongna/ldm-super-resolution", device_map="auto")
         ldm.to(torch_device)
@@ -111,6 +113,6 @@ class LDMSuperResolutionPipelineIntegrationTests(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 1024, 1024, 3)
-        expected_slice = np.array([0.726, 0.7249, 0.7085, 0.774, 0.7419, 0.7188, 0.8359, 0.8031, 0.7158])
+        assert image.shape == (1, 256, 256, 3)
+        expected_slice = np.array([0.7418, 0.7472, 0.7424, 0.7422, 0.7463, 0.726, 0.7382, 0.7248, 0.6828])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
