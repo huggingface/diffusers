@@ -11,6 +11,7 @@ from ...models import UNet2DModel, VQModel
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import (
     DDIMScheduler,
+    DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     LMSDiscreteScheduler,
@@ -30,7 +31,7 @@ def preprocess(image):
 
 class LDMSuperResolutionPipeline(DiffusionPipeline):
     r"""
-    A pipeline for image super-resolution using Latent 
+    A pipeline for image super-resolution using Latent
 
     This class inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -42,7 +43,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`],
-            [`EulerAncestralDiscreteScheduler`], or [`PNDMScheduler`].
+            [`EulerAncestralDiscreteScheduler`], [`DPMSolverMultistepScheduler`], or [`PNDMScheduler`].
     """
 
     def __init__(
@@ -50,7 +51,12 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
         vqvae: VQModel,
         unet: UNet2DModel,
         scheduler: Union[
-            DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler, EulerDiscreteScheduler, EulerAncestralDiscreteScheduler, DPMSolverMultistepScheduler
+            DDIMScheduler,
+            PNDMScheduler,
+            LMSDiscreteScheduler,
+            EulerDiscreteScheduler,
+            EulerAncestralDiscreteScheduler,
+            DPMSolverMultistepScheduler,
         ],
     ):
         super().__init__()
@@ -117,7 +123,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
         if self.device.type == "mps":
             # randn does not work reproducibly on mps
             latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype)
-            latents =  latents.to(self.device)
+            latents = latents.to(self.device)
         else:
             latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
 
