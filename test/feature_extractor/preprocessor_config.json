@@ -1,0 +1,27 @@
+{
+  "crop_size": {
+    "height": 224,
+    "width": 224
+  },
+  "do_center_crop": true,
+  "do_convert_rgb": true,
+  "do_normalize": true,
+  "do_rescale": true,
+  "do_resize": true,
+  "feature_extractor_type": "CLIPImageProcessor",
+  "image_mean": [
+    0.48145466,
+    0.4578275,
+    0.40821073
+  ],
+  "image_std": [
+    0.26862954,
+    0.26130258,
+    0.27577711
+  ],
+  "resample": 3,
+  "rescale_factor": 0.00392156862745098,
+  "size": {
+    "shortest_edge": 224
+  }
+}

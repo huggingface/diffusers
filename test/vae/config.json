@@ -1,0 +1,24 @@
+{
+  "_class_name": "AutoencoderKL",
+  "_diffusers_version": "0.8.0.dev0",
+  "_name_or_path": "/home/patrick/.cache/huggingface/diffusers/models--hf-internal-testing--tiny-stable-diffusion-torch/snapshots/895564fe990c3e443580679ac0ad2958f09b2c67/vae",
+  "act_fn": "silu",
+  "block_out_channels": [
+    32,
+    64
+  ],
+  "down_block_types": [
+    "DownEncoderBlock2D",
+    "DownEncoderBlock2D"
+  ],
+  "in_channels": 3,
+  "latent_channels": 4,
+  "layers_per_block": 1,
+  "norm_num_groups": 32,
+  "out_channels": 3,
+  "sample_size": 128,
+  "up_block_types": [
+    "UpDecoderBlock2D",
+    "UpDecoderBlock2D"
+  ]
+}

@@ -88,6 +88,50 @@ class DownloadTests(unittest.TestCase):
             # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe/blob/main/unet/diffusion_flax_model.msgpack
             assert not any(f.endswith(".msgpack") for f in files)
 
+    def test_download_no_safety_checker(self):
+        prompt = "hello"
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+        pipe_2 = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
+        generator_2 = torch.Generator(device=torch_device).manual_seed(0)
+        out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator_2, output_type="numpy").images
+
+        assert np.max(np.abs(out - out_2)) < 1e-3
+
+    def test_load_no_safety_checker_explicit_locally(self):
+        prompt = "hello"
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.save_pretrained(tmpdirname)
+            pipe_2 = StableDiffusionPipeline.from_pretrained(tmpdirname, safety_checker=None)
+            generator_2 = torch.Generator(device=torch_device).manual_seed(0)
+            out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator_2, output_type="numpy").images
+
+        assert np.max(np.abs(out - out_2)) < 1e-3
+
+    def test_load_no_safety_checker_default_locally(self):
+        prompt = "hello"
+        pipe = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.save_pretrained(tmpdirname)
+            pipe_2 = StableDiffusionPipeline.from_pretrained(tmpdirname)
+            generator_2 = torch.Generator(device=torch_device).manual_seed(0)
+            out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator_2, output_type="numpy").images
+
+        assert np.max(np.abs(out - out_2)) < 1e-3
+
 
 class CustomPipelineTests(unittest.TestCase):
     def test_load_custom_pipeline(self):

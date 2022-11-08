@@ -1,0 +1,34 @@
+{
+  "add_prefix_space": false,
+  "bos_token": {
+    "__type": "AddedToken",
+    "content": "<|startoftext|>",
+    "lstrip": false,
+    "normalized": true,
+    "rstrip": false,
+    "single_word": false
+  },
+  "do_lower_case": true,
+  "eos_token": {
+    "__type": "AddedToken",
+    "content": "<|endoftext|>",
+    "lstrip": false,
+    "normalized": true,
+    "rstrip": false,
+    "single_word": false
+  },
+  "errors": "replace",
+  "model_max_length": 77,
+  "name_or_path": "/home/patrick/.cache/huggingface/diffusers/models--hf-internal-testing--tiny-stable-diffusion-torch/snapshots/895564fe990c3e443580679ac0ad2958f09b2c67/tokenizer",
+  "pad_token": "<|endoftext|>",
+  "special_tokens_map_file": "/home/lysandre/.cache/huggingface/transformers/18a566598f286c9139f88160c99f84eec492a26bd22738fa9cb44d5b7e0a5c76.cce1206abbad28826f000510f22f354e53e66a97f7c23745a7dfe27609cc07f5",
+  "tokenizer_class": "CLIPTokenizer",
+  "unk_token": {
+    "__type": "AddedToken",
+    "content": "<|endoftext|>",
+    "lstrip": false,
+    "normalized": true,
+    "rstrip": false,
+    "single_word": false
+  }
+}

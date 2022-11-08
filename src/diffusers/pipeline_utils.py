@@ -579,6 +579,13 @@ class DiffusionPipeline(ConfigMixin):
             else:
                 # else we just import it from the library.
                 library = importlib.import_module(library_name)
+
+                # TODO(Patrick) - This is a hack to make current main on transformers work
+                # NOTE - this hack is not necessary in any stable version of transformers
+                # remove this when https://github.com/huggingface/transformers/pull/20111 is merged
+                if class_name == "CLIPImageProcessor":
+                    class_name = "CLIPFeatureExtractor"
+
                 class_obj = getattr(library, class_name)
                 importable_classes = LOADABLE_CLASSES[library_name]
                 class_candidates = {c: getattr(library, c) for c in importable_classes.keys()}
