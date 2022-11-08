@@ -218,8 +218,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
 
-        device = model_output.device if torch.is_tensor(model_output) else "cpu"
-        if str(device) == "mps":
+        device = model_output.device if torch.is_tensor(model_output) else torch.device("cpu")
+        if device.type == "mps":
             # randn does not work reproducibly on mps
             noise = torch.randn(model_output.shape, dtype=model_output.dtype, device="cpu", generator=generator).to(
                 device
