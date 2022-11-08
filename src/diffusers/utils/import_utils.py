@@ -166,13 +166,6 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _accelerate_available = False
 
-_d4rl_available = importlib.util.find_spec("d4rl") is not None
-try:
-    _d4rl_version = importlib_metadata.version("d4rl")
-    logger.debug(f"Successfully imported accelerate version {_d4rl_version}")
-except importlib_metadata.PackageNotFoundError:
-    _d4rl_available = False
-
 
 def is_torch_available():
     return _torch_available
@@ -212,10 +205,6 @@ def is_scipy_available():
 
 def is_accelerate_available():
     return _accelerate_available
-
-
-def is_d4rl_available():
-    return _d4rl_available
 
 
 # docstyle-ignore
