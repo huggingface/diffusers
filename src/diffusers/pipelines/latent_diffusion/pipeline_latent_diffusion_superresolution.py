@@ -48,7 +48,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
         vqvae: VQModel,
         unet: UNet2DModel,
         scheduler: Union[
-            DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler, EulerDiscreteScheduler, EulerAncestralDiscreteScheduler
+            DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler, EulerDiscreteScheduler, EulerAncestralDiscreteScheduler, DPMSolverMultistepScheduler
         ],
     ):
         super().__init__()
