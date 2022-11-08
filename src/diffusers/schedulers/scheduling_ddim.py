@@ -297,7 +297,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
             if variance_noise is None:
                 if variance_noise is None:
-                    if self.device.type == "mps":
+                    if device.type == "mps":
                         # randn does not work reproducibly on mps
                         variance_noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator)
                         variance_noise = variance_noise.to(device)
