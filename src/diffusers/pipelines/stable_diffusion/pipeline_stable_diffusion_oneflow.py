@@ -142,6 +142,7 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        compile_unet: bool = True,
         **kwargs,
     ):
         r"""
@@ -179,6 +180,8 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
+            compile_unet (`bool`, *optional*, defaults to `True`):
+                Whether or not to compile unet as nn.graph
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
@@ -278,15 +281,16 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
 
         compilation_start = timer()
         compilation_time = 0
-        if self.unet_compiled == False:
-            print("[oneflow]", "compiling unet beforehand to make sure the progress bar is more accurate")
-            i, t = list(enumerate(self.scheduler.timesteps))[0]
-            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-            self.unet_graph._compile(latent_model_input, t, text_embeddings)
-            self.unet_compiled = True
-            self.unet_graph(latent_model_input, t, text_embeddings) # warmup
-            compilation_time = timer() - compilation_start
-            print("[oneflow]", "[elapsed(s)]", "[unet compilation]", compilation_time)
+        if compile_unet:
+            if self.unet_compiled == False:
+                print("[oneflow]", "compiling unet beforehand to make sure the progress bar is more accurate")
+                i, t = list(enumerate(self.scheduler.timesteps))[0]
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                self.unet_graph._compile(latent_model_input, t, text_embeddings)
+                self.unet_compiled = True
+                self.unet_graph(latent_model_input, t, text_embeddings) # warmup
+                compilation_time = timer() - compilation_start
+                print("[oneflow]", "[elapsed(s)]", "[unet compilation]", compilation_time)
 
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             torch._oneflow_internal.profiler.RangePush(f"denoise-{i}")
@@ -298,9 +302,12 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
                 latent_model_input = latent_model_input / ((sigma**2 + 1) ** 0.5)
 
             # predict the noise residual
-            torch._oneflow_internal.profiler.RangePush(f"denoise-{i}-unet-graph")
-            noise_pred = self.unet_graph(latent_model_input, t, text_embeddings)
-            torch._oneflow_internal.profiler.RangePop()
+            if compile_unet:
+                torch._oneflow_internal.profiler.RangePush(f"denoise-{i}-unet-graph")
+                noise_pred = self.unet_graph(latent_model_input, t, text_embeddings)
+                torch._oneflow_internal.profiler.RangePop()
+            else:
+                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
 
             # perform guidance
             if do_classifier_free_guidance:
