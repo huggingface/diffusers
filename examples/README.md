@@ -36,9 +36,10 @@ If you feel like another important example should exist, we are more than happy 
 
 Training examples show how to pretrain or fine-tune diffusion models for a variety of tasks. Currently we support:
 
-| Task | 🤗 Accelerate | 🤗 Datasets | Colab
-|---|---|:---:|:---:|
+| Task                                                                                                                                                    | 🤗 Accelerate | 🤗 Datasets | Colab
+|---------------------------------------------------------------------------------------------------------------------------------------------------------|---|:---:|:---:|
 | [**Unconditional Image Generation**](https://github.com/huggingface/diffusers/blob/main/examples/unconditional_image_generation/train_unconditional.py) | ✅ | ✅ | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb)
+| [**Reinforcement Learning for Control**](https://github.com/huggingface/diffusers/blob/main/examples/rl/run_diffusers_locomotion.py)                    |  |  | coming soon.
 
 ## Community
 

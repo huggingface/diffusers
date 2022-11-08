@@ -1,6 +1,9 @@
 # Overview
 
-These examples show how to run (Diffuser)[https://arxiv.org/pdf/2205.09991.pdf] in Diffusers. There are two scripts, `run_diffuser_value_guided.py` and `run_diffuser.py`.
+These examples show how to run (Diffuser)[https://arxiv.org/abs/2205.09991] in Diffusers. 
+There are four scripts, 
+1. `run_diffuser_locomotion.py` to sample actions and run them in the environment,
+2. and `run_diffuser_gen_trajectories.py` to just sample actions from the pre-trained diffusion model.
 
 You will need some RL specific requirements to run the examples:
 

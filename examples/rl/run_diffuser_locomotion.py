@@ -1,7 +1,7 @@
 import d4rl  # noqa
 import gym
 import tqdm
-from diffusers import DiffusionPipeline
+from diffusers import ValueGuidedRLPipeline
 
 
 config = dict(
@@ -17,18 +17,15 @@ config = dict(
 )
 
 
-def _run():
+if __name__ == "__main__":
     env_name = "hopper-medium-v2"
     env = gym.make(env_name)
 
-    pipeline = DiffusionPipeline.from_pretrained(
+    pipeline = ValueGuidedRLPipeline.from_pretrained(
         "bglick13/hopper-medium-v2-value-function-hor32",
         env=env,
-        custom_pipeline="/Users/bglickenhaus/Documents/diffusers/examples/community",
     )
 
-    # add a batch dimension and repeat for multiple samples
-    # [ observation_dim ] --> [ n_samples x observation_dim ]
     env.seed(0)
     obs = env.reset()
     total_reward = 0
@@ -37,8 +34,7 @@ def _run():
     rollout = [obs.copy()]
     try:
         for t in tqdm.tqdm(range(T)):
-            # 1. Call the policy
-            # normalize observations for forward passes
+            # call the policy
             denorm_actions = pipeline(obs, planning_horizon=32)
 
             # execute action in environment
@@ -59,11 +55,3 @@ def _run():
         pass
 
     print(f"Total reward: {total_reward}")
-
-
-def run():
-    _run()
-
-
-if __name__ == "__main__":
-    run()
