@@ -83,8 +83,8 @@ class SchedulerCommonTest(unittest.TestCase):
 
         num_inference_steps = kwargs.pop("num_inference_steps", None)
 
-        # TODO(Suraj) - delete the following two lines once DDPM, DDIM, and PNDM have timesteps casted to float by default
         for scheduler_class in self.scheduler_classes:
+            # TODO(Suraj) - delete the following two lines once DDPM, DDIM, and PNDM have timesteps casted to float by default
             if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
                 time_step = float(time_step)
 
@@ -1192,6 +1192,31 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
         assert abs(result_sum.item() - 1006.388) < 1e-2
         assert abs(result_mean.item() - 1.31) < 1e-3
 
+    def test_full_loop_device(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        scheduler.set_timesteps(self.num_inference_steps, device=torch_device)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+        sample = sample.to(torch_device)
+
+        for i, t in enumerate(scheduler.timesteps):
+            sample = scheduler.scale_model_input(sample, t)
+
+            model_output = model(sample, t)
+
+            output = scheduler.step(model_output, t, sample)
+            sample = output.prev_sample
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_sum.item() - 1006.388) < 1e-2
+        assert abs(result_mean.item() - 1.31) < 1e-3
+
 
 class EulerDiscreteSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (EulerDiscreteScheduler,)
@@ -1234,6 +1259,34 @@ class EulerDiscreteSchedulerTest(SchedulerCommonTest):
         sample = self.dummy_sample_deter * scheduler.init_noise_sigma
 
         for i, t in enumerate(scheduler.timesteps):
+            sample = scheduler.scale_model_input(sample, t)
+
+            model_output = model(sample, t)
+
+            output = scheduler.step(model_output, t, sample, generator=generator)
+            sample = output.prev_sample
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+        print(result_sum, result_mean)
+
+        assert abs(result_sum.item() - 10.0807) < 1e-2
+        assert abs(result_mean.item() - 0.0131) < 1e-3
+
+    def test_full_loop_device(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        scheduler.set_timesteps(self.num_inference_steps, device=torch_device)
+
+        generator = torch.Generator().manual_seed(0)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+        sample = sample.to(torch_device)
+
+        for t in scheduler.timesteps:
             sample = scheduler.scale_model_input(sample, t)
 
             model_output = model(sample, t)
@@ -1302,6 +1355,38 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
         print(result_sum, result_mean)
         assert abs(result_sum.item() - 152.3192) < 1e-2
         assert abs(result_mean.item() - 0.1983) < 1e-3
+
+    def test_full_loop_device(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        scheduler.set_timesteps(self.num_inference_steps, device=torch_device)
+
+        generator = torch.Generator().manual_seed(0)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+        sample = sample.to(torch_device)
+
+        for t in scheduler.timesteps:
+            sample = scheduler.scale_model_input(sample, t)
+
+            model_output = model(sample, t)
+
+            output = scheduler.step(model_output, t, sample, generator=generator)
+            sample = output.prev_sample
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+        print(result_sum, result_mean)
+        if not str(torch_device).startswith("mps"):
+            # The following sum varies between 148 and 156 on mps. Why?
+            assert abs(result_sum.item() - 152.3192) < 1e-2
+            assert abs(result_mean.item() - 0.1983) < 1e-3
+        else:
+            # Larger tolerance on mps
+            assert abs(result_mean.item() - 0.1983) < 1e-2
 
 
 class IPNDMSchedulerTest(SchedulerCommonTest):

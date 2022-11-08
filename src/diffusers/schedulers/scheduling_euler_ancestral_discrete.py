@@ -151,7 +151,11 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
-        self.timesteps = torch.from_numpy(timesteps).to(device=device)
+        if str(device).startswith("mps"):
+            # mps does not support float64
+            self.timesteps = torch.from_numpy(timesteps).to(device, dtype=torch.float32)
+        else:
+            self.timesteps = torch.from_numpy(timesteps).to(device=device)
 
     def step(
         self,
@@ -217,8 +221,8 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         prev_sample = sample + derivative * dt
 
-        device = model_output.device if torch.is_tensor(model_output) else "cpu"
-        if str(device) == "mps":
+        device = model_output.device if torch.is_tensor(model_output) else torch.device("cpu")
+        if device.type == "mps":
             # randn does not work reproducibly on mps
             noise = torch.randn(model_output.shape, dtype=model_output.dtype, device="cpu", generator=generator).to(
                 device
