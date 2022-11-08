@@ -422,6 +422,11 @@ class DiffusionPipeline(ConfigMixin):
 
         # 3. Load each module in the pipeline
         for name, (library_name, class_name) in init_dict.items():
+            if class_name is None:
+                # edge case for when the pipeline was saved with safety_checker=None
+                init_kwargs[name] = None
+                continue
+                
             # 3.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             if class_name.startswith("Flax"):
                 class_name = class_name[4:]
