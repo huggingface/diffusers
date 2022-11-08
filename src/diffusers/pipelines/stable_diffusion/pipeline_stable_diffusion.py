@@ -378,12 +378,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
             latents = latents.to(device)
 
-        # set timesteps
-        self.scheduler.set_timesteps(num_inference_steps)
-
-        # Some schedulers like PNDM have timesteps as arrays
-        # It's more optimized to move all timesteps to correct device beforehand
-        timesteps_tensor = self.scheduler.timesteps.to(device)
+        # set timesteps and move to the correct device
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps_tensor = self.scheduler.timesteps
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma

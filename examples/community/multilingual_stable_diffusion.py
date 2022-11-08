@@ -1,50 +1,68 @@
 import inspect
 from typing import Callable, List, Optional, Union
 
-import numpy as np
 import torch
 
-import PIL
-from diffusers.utils import is_accelerate_available
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
-
-from ...configuration_utils import FrozenDict
-from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from ...utils import deprecate, logging
-from . import StableDiffusionPipelineOutput
-from .safety_checker import StableDiffusionSafetyChecker
+from diffusers.configuration_utils import FrozenDict
+from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
+from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from diffusers.utils import deprecate, logging
+from transformers import (
+    CLIPFeatureExtractor,
+    CLIPTextModel,
+    CLIPTokenizer,
+    MBart50TokenizerFast,
+    MBartForConditionalGeneration,
+    pipeline,
+)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def prepare_mask_and_masked_image(image, mask):
-    image = np.array(image.convert("RGB"))
-    image = image[None].transpose(0, 3, 1, 2)
-    image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
+def detect_language(pipe, prompt, batch_size):
+    """helper function to detect language(s) of prompt"""
 
-    mask = np.array(mask.convert("L"))
-    mask = mask.astype(np.float32) / 255.0
-    mask = mask[None, None]
-    mask[mask < 0.5] = 0
-    mask[mask >= 0.5] = 1
-    mask = torch.from_numpy(mask)
+    if batch_size == 1:
+        preds = pipe(prompt, top_k=1, truncation=True, max_length=128)
+        return preds[0]["label"]
+    else:
+        detected_languages = []
+        for p in prompt:
+            preds = pipe(p, top_k=1, truncation=True, max_length=128)
+            detected_languages.append(preds[0]["label"])
 
-    masked_image = image * (mask < 0.5)
-
-    return mask, masked_image
+        return detected_languages
 
 
-class StableDiffusionInpaintPipeline(DiffusionPipeline):
+def translate_prompt(prompt, translation_tokenizer, translation_model, device):
+    """helper function to translate prompt to English"""
+
+    encoded_prompt = translation_tokenizer(prompt, return_tensors="pt").to(device)
+    generated_tokens = translation_model.generate(**encoded_prompt, max_new_tokens=1000)
+    en_trans = translation_tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+
+    return en_trans[0]
+
+
+class MultilingualStableDiffusion(DiffusionPipeline):
     r"""
-    Pipeline for text-guided image inpainting using Stable Diffusion. *This is an experimental feature*.
+    Pipeline for text-to-image generation using Stable Diffusion in different languages.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
+        detection_pipeline ([`pipeline`]):
+            Transformers pipeline to detect prompt's language.
+        translation_model ([`MBartForConditionalGeneration`]):
+            Model to translate prompt to English, if necessary. Please refer to the
+            [model card](https://huggingface.co/docs/transformers/model_doc/mbart) for details.
+        translation_tokenizer ([`MBart50TokenizerFast`]):
+            Tokenizer of the translation model.
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
         text_encoder ([`CLIPTextModel`]):
@@ -56,7 +74,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
+            A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
@@ -67,6 +85,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
     def __init__(
         self,
+        detection_pipeline: pipeline,
+        translation_model: MBartForConditionalGeneration,
+        translation_tokenizer: MBart50TokenizerFast,
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
@@ -91,20 +112,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             new_config["steps_offset"] = 1
             scheduler._internal_dict = FrozenDict(new_config)
 
-        if hasattr(scheduler.config, "skip_prk_steps") and scheduler.config.skip_prk_steps is False:
-            deprecation_message = (
-                f"The configuration file of this scheduler: {scheduler} has not set the configuration"
-                " `skip_prk_steps`. `skip_prk_steps` should be set to True in the configuration file. Please make"
-                " sure to update the config accordingly as not setting `skip_prk_steps` in the config might lead to"
-                " incorrect results in future versions. If you have downloaded this checkpoint from the Hugging Face"
-                " Hub, it would be very nice if you could open a Pull request for the"
-                " `scheduler/scheduler_config.json` file"
-            )
-            deprecate("skip_prk_steps not set", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(scheduler.config)
-            new_config["skip_prk_steps"] = True
-            scheduler._internal_dict = FrozenDict(new_config)
-
         if safety_checker is None:
             logger.warn(
                 f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
@@ -116,6 +123,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             )
 
         self.register_modules(
+            detection_pipeline=detection_pipeline,
+            translation_model=translation_model,
+            translation_tokenizer=translation_tokenizer,
             vae=vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
@@ -152,66 +162,10 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         # set slice_size = `None` to disable `attention slicing`
         self.enable_attention_slicing(None)
 
-    def enable_sequential_cpu_offload(self):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
-        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
-        """
-        if is_accelerate_available():
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        device = torch.device("cuda")
-
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
-
-    @property
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
-    def _execution_device(self):
-        r"""
-        Returns the device on which the pipeline's models will be executed. After calling
-        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
-        hooks.
-        """
-        if self.device != torch.device("meta") or not hasattr(self.unet, "_hf_hook"):
-            return self.device
-        for module in self.unet.modules():
-            if (
-                hasattr(module, "_hf_hook")
-                and hasattr(module._hf_hook, "execution_device")
-                and module._hf_hook.execution_device is not None
-            ):
-                return torch.device(module._hf_hook.execution_device)
-        return self.device
-
-    def enable_xformers_memory_efficient_attention(self):
-        r"""
-        Enable memory efficient attention as implemented in xformers.
-
-        When this option is enabled, you should observe lower GPU memory usage and a potential speed up at inference
-        time. Speed up at training time is not guaranteed.
-
-        Warning: When Memory Efficient Attention and Sliced attention are both enabled, the Memory Efficient Attention
-        is used.
-        """
-        self.unet.set_use_memory_efficient_attention_xformers(True)
-
-    def disable_xformers_memory_efficient_attention(self):
-        r"""
-        Disable memory efficient attention as implemented in xformers.
-        """
-        self.unet.set_use_memory_efficient_attention_xformers(False)
-
     @torch.no_grad()
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        image: Union[torch.FloatTensor, PIL.Image.Image],
-        mask_image: Union[torch.FloatTensor, PIL.Image.Image],
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 50,
@@ -232,15 +186,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
         Args:
             prompt (`str` or `List[str]`):
-                The prompt or prompts to guide the image generation.
-            image (`PIL.Image.Image`):
-                `Image`, or tensor representing an image batch which will be inpainted, *i.e.* parts of the image will
-                be masked out with `mask_image` and repainted according to `prompt`.
-            mask_image (`PIL.Image.Image`):
-                `Image`, or tensor representing an image batch, to mask `image`. White pixels in the mask will be
-                repainted, while black pixels will be preserved. If `mask_image` is a PIL image, it will be converted
-                to a single channel (luminance) before use. If it's a tensor, it should contain one color channel (L)
-                instead of 3, so the expected shape would be `(B, H, W, 1)`.
+                The prompt or prompts to guide the image generation. Can be in different languages.
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 512):
@@ -289,7 +235,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-
         if isinstance(prompt, str):
             batch_size = 1
         elif isinstance(prompt, list):
@@ -308,7 +253,18 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
-        device = self._execution_device
+        # detect language and translate if necessary
+        prompt_language = detect_language(self.detection_pipeline, prompt, batch_size)
+        if batch_size == 1 and prompt_language != "en":
+            prompt = translate_prompt(prompt, self.translation_tokenizer, self.translation_model, self.device)
+
+        if isinstance(prompt, list):
+            for index in range(batch_size):
+                if prompt_language[index] != "en":
+                    p = translate_prompt(
+                        prompt[index], self.translation_tokenizer, self.translation_model, self.device
+                    )
+                    prompt[index] = p
 
         # get prompt text embeddings
         text_inputs = self.tokenizer(
@@ -326,7 +282,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
             text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
-        text_embeddings = self.text_encoder(text_input_ids.to(device))[0]
+        text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = text_embeddings.shape
@@ -348,7 +304,14 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                     f" {type(prompt)}."
                 )
             elif isinstance(negative_prompt, str):
-                uncond_tokens = [negative_prompt]
+                # detect language and translate it if necessary
+                negative_prompt_language = detect_language(self.detection_pipeline, negative_prompt, batch_size)
+                if negative_prompt_language != "en":
+                    negative_prompt = translate_prompt(
+                        negative_prompt, self.translation_tokenizer, self.translation_model, self.device
+                    )
+                if isinstance(negative_prompt, str):
+                    uncond_tokens = [negative_prompt]
             elif batch_size != len(negative_prompt):
                 raise ValueError(
                     f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
@@ -356,6 +319,15 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                     " the batch size of `prompt`."
                 )
             else:
+                # detect language and translate it if necessary
+                if isinstance(negative_prompt, list):
+                    negative_prompt_languages = detect_language(self.detection_pipeline, negative_prompt, batch_size)
+                    for index in range(batch_size):
+                        if negative_prompt_languages[index] != "en":
+                            p = translate_prompt(
+                                negative_prompt[index], self.translation_tokenizer, self.translation_model, self.device
+                            )
+                            negative_prompt[index] = p
                 uncond_tokens = negative_prompt
 
             max_length = text_input_ids.shape[-1]
@@ -366,7 +338,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 truncation=True,
                 return_tensors="pt",
             )
-            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(device))[0]
+            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = uncond_embeddings.shape[1]
@@ -379,65 +351,31 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
 
         # get the initial random noise unless the user supplied it
+
         # Unlike in other pipelines, latents need to be generated in the target device
         # for 1-to-1 results reproducibility with the CompVis implementation.
         # However this currently doesn't work in `mps`.
-        num_channels_latents = self.vae.config.latent_channels
-        latents_shape = (batch_size * num_images_per_prompt, num_channels_latents, height // 8, width // 8)
+        latents_shape = (batch_size * num_images_per_prompt, self.unet.in_channels, height // 8, width // 8)
         latents_dtype = text_embeddings.dtype
         if latents is None:
-            if device.type == "mps":
-                # randn does not exist on mps
-                latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(device)
+            if self.device.type == "mps":
+                # randn does not work reproducibly on mps
+                latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(
+                    self.device
+                )
             else:
-                latents = torch.randn(latents_shape, generator=generator, device=device, dtype=latents_dtype)
+                latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
-            latents = latents.to(device)
+            latents = latents.to(self.device)
 
-        # prepare mask and masked_image
-        mask, masked_image = prepare_mask_and_masked_image(image, mask_image)
+        # set timesteps
+        self.scheduler.set_timesteps(num_inference_steps)
 
-        # resize the mask to latents shape as we concatenate the mask to the latents
-        # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
-        # and half precision
-        mask = torch.nn.functional.interpolate(mask, size=(height // 8, width // 8))
-        mask = mask.to(device=device, dtype=text_embeddings.dtype)
-
-        masked_image = masked_image.to(device=device, dtype=text_embeddings.dtype)
-
-        # encode the mask image into latents space so we can concatenate it to the latents
-        masked_image_latents = self.vae.encode(masked_image).latent_dist.sample(generator=generator)
-        masked_image_latents = 0.18215 * masked_image_latents
-
-        # duplicate mask and masked_image_latents for each generation per prompt, using mps friendly method
-        mask = mask.repeat(batch_size * num_images_per_prompt, 1, 1, 1)
-        masked_image_latents = masked_image_latents.repeat(batch_size * num_images_per_prompt, 1, 1, 1)
-
-        mask = torch.cat([mask] * 2) if do_classifier_free_guidance else mask
-        masked_image_latents = (
-            torch.cat([masked_image_latents] * 2) if do_classifier_free_guidance else masked_image_latents
-        )
-
-        # aligning device to prevent device errors when concating it with the latent model input
-        masked_image_latents = masked_image_latents.to(device=device, dtype=text_embeddings.dtype)
-
-        num_channels_mask = mask.shape[1]
-        num_channels_masked_image = masked_image_latents.shape[1]
-
-        if num_channels_latents + num_channels_mask + num_channels_masked_image != self.unet.config.in_channels:
-            raise ValueError(
-                f"Incorrect configuration settings! The config of `pipeline.unet`: {self.unet.config} expects"
-                f" {self.unet.config.in_channels} but received `num_channels_latents`: {num_channels_latents} +"
-                f" `num_channels_mask`: {num_channels_mask} + `num_channels_masked_image`: {num_channels_masked_image}"
-                f" = {num_channels_latents+num_channels_masked_image+num_channels_mask}. Please verify the config of"
-                " `pipeline.unet` or your `mask_image` or `image` input."
-            )
-
-        # set timesteps and move to the correct device
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps_tensor = self.scheduler.timesteps
+        # Some schedulers like PNDM have timesteps as arrays
+        # It's more optimized to move all timesteps to correct device beforehand
+        timesteps_tensor = self.scheduler.timesteps.to(self.device)
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
@@ -451,18 +389,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
-        # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        if accepts_generator:
-            extra_step_kwargs["generator"] = generator
-
         for i, t in enumerate(self.progress_bar(timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-
-            # concat latents, mask, masked_image_latents in the channel dimension
-            latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
-
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
             # predict the noise residual
@@ -489,7 +418,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
 
         if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
+            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(
+                self.device
+            )
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(text_embeddings.dtype)
             )

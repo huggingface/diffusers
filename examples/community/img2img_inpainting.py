@@ -1,20 +1,18 @@
 import inspect
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 
 import PIL
-from diffusers.utils import is_accelerate_available
+from diffusers.configuration_utils import FrozenDict
+from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
+from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from diffusers.utils import deprecate, logging
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
-
-from ...configuration_utils import FrozenDict
-from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from ...utils import deprecate, logging
-from . import StableDiffusionPipelineOutput
-from .safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -37,9 +35,29 @@ def prepare_mask_and_masked_image(image, mask):
     return mask, masked_image
 
 
-class StableDiffusionInpaintPipeline(DiffusionPipeline):
+def check_size(image, height, width):
+    if isinstance(image, PIL.Image.Image):
+        w, h = image.size
+    elif isinstance(image, torch.Tensor):
+        *_, h, w = image.shape
+
+    if h != height or w != width:
+        raise ValueError(f"Image size should be {height}x{width}, but got {h}x{w}")
+
+
+def overlay_inner_image(image, inner_image, paste_offset: Tuple[int] = (0, 0)):
+    inner_image = inner_image.convert("RGBA")
+    image = image.convert("RGB")
+
+    image.paste(inner_image, paste_offset, inner_image)
+    image = image.convert("RGB")
+
+    return image
+
+
+class ImageToImageInpaintingPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-guided image inpainting using Stable Diffusion. *This is an experimental feature*.
+    Pipeline for text-guided image-to-image inpainting using Stable Diffusion. *This is an experimental feature*.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -56,7 +74,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
+            A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
@@ -89,20 +107,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
             new_config = dict(scheduler.config)
             new_config["steps_offset"] = 1
-            scheduler._internal_dict = FrozenDict(new_config)
-
-        if hasattr(scheduler.config, "skip_prk_steps") and scheduler.config.skip_prk_steps is False:
-            deprecation_message = (
-                f"The configuration file of this scheduler: {scheduler} has not set the configuration"
-                " `skip_prk_steps`. `skip_prk_steps` should be set to True in the configuration file. Please make"
-                " sure to update the config accordingly as not setting `skip_prk_steps` in the config might lead to"
-                " incorrect results in future versions. If you have downloaded this checkpoint from the Hugging Face"
-                " Hub, it would be very nice if you could open a Pull request for the"
-                " `scheduler/scheduler_config.json` file"
-            )
-            deprecate("skip_prk_steps not set", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(scheduler.config)
-            new_config["skip_prk_steps"] = True
             scheduler._internal_dict = FrozenDict(new_config)
 
         if safety_checker is None:
@@ -152,65 +156,12 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         # set slice_size = `None` to disable `attention slicing`
         self.enable_attention_slicing(None)
 
-    def enable_sequential_cpu_offload(self):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
-        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
-        """
-        if is_accelerate_available():
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        device = torch.device("cuda")
-
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
-
-    @property
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
-    def _execution_device(self):
-        r"""
-        Returns the device on which the pipeline's models will be executed. After calling
-        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
-        hooks.
-        """
-        if self.device != torch.device("meta") or not hasattr(self.unet, "_hf_hook"):
-            return self.device
-        for module in self.unet.modules():
-            if (
-                hasattr(module, "_hf_hook")
-                and hasattr(module._hf_hook, "execution_device")
-                and module._hf_hook.execution_device is not None
-            ):
-                return torch.device(module._hf_hook.execution_device)
-        return self.device
-
-    def enable_xformers_memory_efficient_attention(self):
-        r"""
-        Enable memory efficient attention as implemented in xformers.
-
-        When this option is enabled, you should observe lower GPU memory usage and a potential speed up at inference
-        time. Speed up at training time is not guaranteed.
-
-        Warning: When Memory Efficient Attention and Sliced attention are both enabled, the Memory Efficient Attention
-        is used.
-        """
-        self.unet.set_use_memory_efficient_attention_xformers(True)
-
-    def disable_xformers_memory_efficient_attention(self):
-        r"""
-        Disable memory efficient attention as implemented in xformers.
-        """
-        self.unet.set_use_memory_efficient_attention_xformers(False)
-
     @torch.no_grad()
     def __call__(
         self,
         prompt: Union[str, List[str]],
         image: Union[torch.FloatTensor, PIL.Image.Image],
+        inner_image: Union[torch.FloatTensor, PIL.Image.Image],
         mask_image: Union[torch.FloatTensor, PIL.Image.Image],
         height: int = 512,
         width: int = 512,
@@ -233,9 +184,14 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
-            image (`PIL.Image.Image`):
+            image (`torch.Tensor` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch which will be inpainted, *i.e.* parts of the image will
                 be masked out with `mask_image` and repainted according to `prompt`.
+            inner_image (`torch.Tensor` or `PIL.Image.Image`):
+                `Image`, or tensor representing an image batch which will be overlayed onto `image`. Non-transparent
+                regions of `inner_image` must fit inside white pixels in `mask_image`. Expects four channels, with
+                the last channel representing the alpha channel, which will be used to blend `inner_image` with
+                `image`. If not provided, it will be forcibly cast to RGBA.
             mask_image (`PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, to mask `image`. White pixels in the mask will be
                 repainted, while black pixels will be preserved. If `mask_image` is a PIL image, it will be converted
@@ -308,7 +264,10 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
-        device = self._execution_device
+        # check if input sizes are correct
+        check_size(image, height, width)
+        check_size(inner_image, height, width)
+        check_size(mask_image, height, width)
 
         # get prompt text embeddings
         text_inputs = self.tokenizer(
@@ -326,7 +285,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
             text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
-        text_embeddings = self.text_encoder(text_input_ids.to(device))[0]
+        text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = text_embeddings.shape
@@ -341,7 +300,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         if do_classifier_free_guidance:
             uncond_tokens: List[str]
             if negative_prompt is None:
-                uncond_tokens = [""] * batch_size
+                uncond_tokens = [""]
             elif type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
@@ -366,11 +325,11 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 truncation=True,
                 return_tensors="pt",
             )
-            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(device))[0]
+            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = uncond_embeddings.shape[1]
-            uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
+            uncond_embeddings = uncond_embeddings.repeat(batch_size, num_images_per_prompt, 1)
             uncond_embeddings = uncond_embeddings.view(batch_size * num_images_per_prompt, seq_len, -1)
 
             # For classifier free guidance, we need to do two forward passes.
@@ -386,26 +345,28 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         latents_shape = (batch_size * num_images_per_prompt, num_channels_latents, height // 8, width // 8)
         latents_dtype = text_embeddings.dtype
         if latents is None:
-            if device.type == "mps":
+            if self.device.type == "mps":
                 # randn does not exist on mps
-                latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(device)
+                latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(
+                    self.device
+                )
             else:
-                latents = torch.randn(latents_shape, generator=generator, device=device, dtype=latents_dtype)
+                latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
-            latents = latents.to(device)
+            latents = latents.to(self.device)
+
+        # overlay the inner image
+        image = overlay_inner_image(image, inner_image)
 
         # prepare mask and masked_image
         mask, masked_image = prepare_mask_and_masked_image(image, mask_image)
+        mask = mask.to(device=self.device, dtype=text_embeddings.dtype)
+        masked_image = masked_image.to(device=self.device, dtype=text_embeddings.dtype)
 
         # resize the mask to latents shape as we concatenate the mask to the latents
-        # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
-        # and half precision
         mask = torch.nn.functional.interpolate(mask, size=(height // 8, width // 8))
-        mask = mask.to(device=device, dtype=text_embeddings.dtype)
-
-        masked_image = masked_image.to(device=device, dtype=text_embeddings.dtype)
 
         # encode the mask image into latents space so we can concatenate it to the latents
         masked_image_latents = self.vae.encode(masked_image).latent_dist.sample(generator=generator)
@@ -420,9 +381,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             torch.cat([masked_image_latents] * 2) if do_classifier_free_guidance else masked_image_latents
         )
 
-        # aligning device to prevent device errors when concating it with the latent model input
-        masked_image_latents = masked_image_latents.to(device=device, dtype=text_embeddings.dtype)
-
         num_channels_mask = mask.shape[1]
         num_channels_masked_image = masked_image_latents.shape[1]
 
@@ -435,9 +393,12 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 " `pipeline.unet` or your `mask_image` or `image` input."
             )
 
-        # set timesteps and move to the correct device
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps_tensor = self.scheduler.timesteps
+        # set timesteps
+        self.scheduler.set_timesteps(num_inference_steps)
+
+        # Some schedulers like PNDM have timesteps as arrays
+        # It's more optimized to move all timesteps to correct device beforehand
+        timesteps_tensor = self.scheduler.timesteps.to(self.device)
 
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
@@ -450,11 +411,6 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         extra_step_kwargs = {}
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
-
-        # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        if accepts_generator:
-            extra_step_kwargs["generator"] = generator
 
         for i, t in enumerate(self.progress_bar(timesteps_tensor)):
             # expand the latents if we are doing classifier free guidance
@@ -485,11 +441,13 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
 
         image = (image / 2 + 0.5).clamp(0, 1)
 
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
 
         if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
+            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(
+                self.device
+            )
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(text_embeddings.dtype)
             )

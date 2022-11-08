@@ -21,8 +21,8 @@ from typing import Optional, Tuple, Union
 import numpy as np
 import torch
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..configuration_utils import ConfigMixin, FrozenDict, register_to_config
+from ..utils import BaseOutput, deprecate
 from .scheduling_utils import SchedulerMixin
 
 
@@ -99,6 +99,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
         clip_sample (`bool`, default `True`):
             option to clip predicted sample between -1 and 1 for numerical stability.
+        predict_epsilon (`bool`):
+            optional flag to use when the model predicts the noise (epsilon), or the samples instead of the noise.
 
     """
 
@@ -121,6 +123,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         trained_betas: Optional[np.ndarray] = None,
         variance_type: str = "fixed_small",
         clip_sample: bool = True,
+        predict_epsilon: bool = True,
     ):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
@@ -221,9 +224,9 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: int,
         sample: torch.FloatTensor,
-        predict_epsilon=True,
         generator=None,
         return_dict: bool = True,
+        **kwargs,
     ) -> Union[DDPMSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
@@ -234,8 +237,6 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
-            predict_epsilon (`bool`):
-                optional flag to use when model predicts the samples directly instead of the noise, epsilon.
             generator: random number generator.
             return_dict (`bool`): option for returning tuple rather than DDPMSchedulerOutput class
 
@@ -245,6 +246,16 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             returning a tuple, the first element is the sample tensor.
 
         """
+        message = (
+            "Please make sure to instantiate your scheduler with `predict_epsilon` instead. E.g. `scheduler ="
+            " DDPMScheduler.from_config(<model_id>, predict_epsilon=True)`."
+        )
+        predict_epsilon = deprecate("predict_epsilon", "0.10.0", message, take_from=kwargs)
+        if predict_epsilon is not None and predict_epsilon != self.config.predict_epsilon:
+            new_config = dict(self.config)
+            new_config["predict_epsilon"] = predict_epsilon
+            self._internal_dict = FrozenDict(new_config)
+
         t = timestep
 
         if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
@@ -260,7 +271,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         # 2. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (15) from https://arxiv.org/pdf/2006.11239.pdf
-        if predict_epsilon:
+        if self.config.predict_epsilon:
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
         else:
             pred_original_sample = model_output
