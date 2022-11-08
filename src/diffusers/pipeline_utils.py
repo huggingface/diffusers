@@ -541,7 +541,7 @@ class DiffusionPipeline(ConfigMixin):
             # if the model is in a pipeline module, then we load it from the pipeline
             if name in passed_class_obj:
                 # 1. check that passed_class_obj has correct parent class
-                if not is_pipeline_module:
+                if not is_pipeline_module and passed_class_obj[name] is not None:
                     library = importlib.import_module(library_name)
                     class_obj = getattr(library, class_name)
                     importable_classes = LOADABLE_CLASSES[library_name]
