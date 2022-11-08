@@ -18,7 +18,15 @@ from .utils import logging
 
 if is_torch_available():
     from .modeling_utils import ModelMixin
-    from .models import AutoencoderKL, Transformer, Transformer2DModel, UNet1DModel, UNet2DConditionModel, UNet2DModel, VQModel
+    from .models import (
+        AutoencoderKL,
+        Transformer,
+        Transformer2DModel,
+        UNet1DModel,
+        UNet2DConditionModel,
+        UNet2DModel,
+        VQModel,
+    )
     from .optimization import (
         get_constant_schedule,
         get_constant_schedule_with_warmup,
@@ -65,7 +73,6 @@ else:
 
 if is_torch_available() and is_transformers_available():
     from .pipelines import (
-        AbsorbingDiffusionPipeline,
         CycleDiffusionPipeline,
         LDMTextToImagePipeline,
         StableDiffusionImg2ImgPipeline,

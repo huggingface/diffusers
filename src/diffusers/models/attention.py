@@ -661,7 +661,6 @@ class AdaLayerNorm(nn.Module):
         scale, shift = torch.chunk(emb, 2)
         x = self.norm(x) * (1 + scale) + shift
         return x
-        return hidden_states * F.gelu(gate)
 
 
 class SelfAttention(nn.Module):
