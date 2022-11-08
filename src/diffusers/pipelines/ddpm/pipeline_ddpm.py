@@ -18,7 +18,9 @@ from typing import Optional, Tuple, Union
 
 import torch
 
+from ...configuration_utils import FrozenDict
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ...utils import deprecate
 
 
 class DDPMPipeline(DiffusionPipeline):
@@ -45,7 +47,6 @@ class DDPMPipeline(DiffusionPipeline):
         num_inference_steps: int = 1000,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        predict_epsilon: bool = True,
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
@@ -69,6 +70,16 @@ class DDPMPipeline(DiffusionPipeline):
             `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
             generated images.
         """
+        message = (
+            "Please make sure to instantiate your scheduler with `predict_epsilon` instead. E.g. `scheduler ="
+            " DDPMScheduler.from_config(<model_id>, predict_epsilon=True)`."
+        )
+        predict_epsilon = deprecate("predict_epsilon", "0.10.0", message, take_from=kwargs)
+
+        if predict_epsilon is not None:
+            new_config = dict(self.scheduler.config)
+            new_config["predict_epsilon"] = predict_epsilon
+            self.scheduler._internal_dict = FrozenDict(new_config)
 
         # Sample gaussian noise to begin loop
         image = torch.randn(
