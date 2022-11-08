@@ -17,7 +17,7 @@ import unittest
 
 import numpy as np
 
-from diffusers import OnnxStableDiffusionInpaintPipeline
+from diffusers import LMSDiscreteScheduler, OnnxStableDiffusionInpaintPipeline
 from diffusers.utils.testing_utils import is_onnx_available, load_image, require_onnxruntime, require_torch_gpu, slow
 
 from ...test_pipelines_onnx_common import OnnxPipelineTesterMixin
@@ -35,8 +35,24 @@ class OnnxStableDiffusionPipelineFastTests(OnnxPipelineTesterMixin, unittest.Tes
 @slow
 @require_onnxruntime
 @require_torch_gpu
-class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
-    def test_stable_diffusion_inpaint_onnx(self):
+class OnnxStableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
+    @property
+    def gpu_provider(self):
+        return (
+            "CUDAExecutionProvider",
+            {
+                "gpu_mem_limit": "15000000000",  # 15GB
+                "arena_extend_strategy": "kSameAsRequested",
+            },
+        )
+
+    @property
+    def gpu_options(self):
+        options = ort.SessionOptions()
+        options.enable_mem_pattern = False
+        return options
+
+    def test_inference_default_pndm(self):
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/in_paint/overture-creations-5sI6fQgYIuo.png"
@@ -45,37 +61,69 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
-        provider = (
-            "CUDAExecutionProvider",
-            {
-                "gpu_mem_limit": "17179869184",  # 16GB.
-                "arena_extend_strategy": "kSameAsRequested",
-            },
-        )
-        options = ort.SessionOptions()
-        options.enable_mem_pattern = False
         pipe = OnnxStableDiffusionInpaintPipeline.from_pretrained(
             "runwayml/stable-diffusion-inpainting",
             revision="onnx",
-            provider=provider,
-            sess_options=options,
+            provider=self.gpu_provider,
+            sess_options=self.gpu_options,
         )
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "A red cat sitting on a park bench"
 
-        np.random.seed(0)
+        generator = np.random.RandomState(0)
         output = pipe(
             prompt=prompt,
             image=init_image,
             mask_image=mask_image,
             guidance_scale=7.5,
-            num_inference_steps=8,
+            num_inference_steps=10,
+            generator=generator,
             output_type="np",
         )
         images = output.images
         image_slice = images[0, 255:258, 255:258, -1]
 
         assert images.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.2951, 0.2955, 0.2922, 0.2036, 0.1977, 0.2279, 0.1716, 0.1641, 0.1799])
+        expected_slice = np.array([0.2514, 0.3007, 0.3517, 0.1790, 0.2382, 0.3167, 0.1944, 0.2273, 0.2464])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
+
+    def test_inference_k_lms(self):
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/overture-creations-5sI6fQgYIuo.png"
+        )
+        mask_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
+        )
+        lms_scheduler = LMSDiscreteScheduler.from_config(
+            "runwayml/stable-diffusion-inpainting", subfolder="scheduler", revision="onnx"
+        )
+        pipe = OnnxStableDiffusionInpaintPipeline.from_pretrained(
+            "runwayml/stable-diffusion-inpainting",
+            revision="onnx",
+            scheduler=lms_scheduler,
+            provider=self.gpu_provider,
+            sess_options=self.gpu_options,
+        )
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A red cat sitting on a park bench"
+
+        generator = np.random.RandomState(0)
+        output = pipe(
+            prompt=prompt,
+            image=init_image,
+            mask_image=mask_image,
+            guidance_scale=7.5,
+            num_inference_steps=10,
+            generator=generator,
+            output_type="np",
+        )
+        images = output.images
+        image_slice = images[0, 255:258, 255:258, -1]
+
+        assert images.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.2520, 0.2743, 0.2643, 0.2641, 0.2517, 0.2650, 0.2498, 0.2688, 0.2529])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3

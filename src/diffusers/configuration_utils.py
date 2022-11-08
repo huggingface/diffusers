@@ -101,7 +101,7 @@ class ConfigMixin:
         output_config_file = os.path.join(save_directory, self.config_name)
 
         self.to_json_file(output_config_file)
-        logger.info(f"ConfigMixinuration saved in {output_config_file}")
+        logger.info(f"Configuration saved in {output_config_file}")
 
     @classmethod
     def from_config(cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs):
