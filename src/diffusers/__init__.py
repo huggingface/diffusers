@@ -26,7 +26,15 @@ if is_torch_available() and not is_accelerate_available():
 
 if is_torch_available():
     from .modeling_utils import ModelMixin
-    from .models import AutoencoderKL, Transformer2DModel, UNet1DModel, UNet2DConditionModel, UNet2DModel, VQModel
+    from .models import (
+        AutoencoderKL,
+        ContinuousContextTransformer,
+        Transformer2DModel,
+        UNet1DModel,
+        UNet2DConditionModel,
+        UNet2DModel,
+        VQModel,
+    )
     from .optimization import (
         get_constant_schedule,
         get_constant_schedule_with_warmup,
@@ -46,6 +54,7 @@ if is_torch_available():
         PNDMPipeline,
         RePaintPipeline,
         ScoreSdeVePipeline,
+        SpectrogramDiffusionPipeline,
     )
     from .schedulers import (
         DDIMScheduler,
