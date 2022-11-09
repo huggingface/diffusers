@@ -141,7 +141,7 @@ def main(args):
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
-                noise_pred = model(noisy_images, timesteps)
+                noise_pred = model(noisy_images, timesteps, return_dict=True)[0]
                 loss = F.mse_loss(noise_pred, noise)
                 accelerator.backward(loss)
 
