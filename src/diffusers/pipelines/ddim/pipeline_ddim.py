@@ -93,7 +93,7 @@ class DDIMPipeline(DiffusionPipeline):
         if self.device.type == "mps":
             # randn does not work reproducibly on mps
             image = torch.randn(image_shape, generator=generator)
-            image = image.to(device)
+            image = image.to(self.device)
         else:
             image = torch.randn(image_shape, generator=generator, device=self.device)
 
