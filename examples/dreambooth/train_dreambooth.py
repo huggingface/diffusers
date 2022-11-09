@@ -176,6 +176,12 @@ def parse_args(input_args=None):
         help="Uses the filename as the image labels instead of the instance_prompt, useful for regularization when training for styles with wide image variance",
     )
     parser.add_argument(
+        "--use_txt_as_label",
+        action="store_true",
+        help="Uses the filename.txt file's content as the image labels instead of the instance_prompt, useful for regularization when training for styles with wide image variance",
+    )
+    parser.add_argument("--train_text_encoder", action="store_true", help="Whether to train the text encoder")
+    parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
     )
     parser.add_argument(
@@ -376,6 +382,15 @@ def get_filename(path):
     return path.stem
 
 
+def get_label_from_txt(path):
+    txt_path = path.with_suffix(".txt")  # get the path to the .txt file
+    if txt_path.exists():
+        with open(txt_path, "r") as f:
+            return f.read()
+    else:
+        return ""
+
+
 class DreamBoothDataset(Dataset):
     """
     A dataset to prepare the instance and class images with the prompts for fine-tuning the model.
@@ -392,6 +407,7 @@ class DreamBoothDataset(Dataset):
         size=512,
         center_crop=False,
         use_filename_as_label=False,
+        use_txt_as_label=False,
     ):
         self.size = size
         self.center_crop = center_crop
@@ -401,10 +417,13 @@ class DreamBoothDataset(Dataset):
         if not self.instance_data_root.exists():
             raise ValueError(f"Instance {self.instance_data_root} images root doesn't exists.")
 
-        self.instance_images_path = list(Path(instance_data_root).iterdir())
+        self.instance_images_path = list(self.instance_data_root.glob("*.jpg")) + list(
+            self.instance_data_root.glob("*.png")
+        )  # get all the images in the instance data root
         self.num_instance_images = len(self.instance_images_path)
         self.instance_prompt = instance_prompt
         self.use_filename_as_label = use_filename_as_label
+        self.use_txt_as_label = use_txt_as_label
         self._length = self.num_instance_images
 
         if class_data_root is not None:
@@ -433,6 +452,10 @@ class DreamBoothDataset(Dataset):
         example = {}
         path = self.instance_images_path[index % self.num_instance_images]
         prompt = get_filename(path) if self.use_filename_as_label else self.instance_prompt
+        prompt = get_label_from_txt(path) if self.use_txt_as_label else prompt
+
+        print("prompt", prompt)
+
         instance_image = Image.open(path)
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
@@ -527,7 +550,6 @@ def save_model(accelerator, unet, text_encoder, args, step=None):
     if accelerator.is_main_process:
         pipeline = StableDiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
-            use_auth_token=access_token,
             unet=unet,
             text_encoder=text_encoder,
             revision=args.revision,
@@ -539,7 +561,7 @@ def save_model(accelerator, unet, text_encoder, args, step=None):
 
 
 def main(args):
-    logging_dir = Path(args.output_dir, args.logging_dir)
+    logging_dir = Path(args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(total_limit=args.checkpoints_total_limit)
 
@@ -771,7 +793,8 @@ def main(args):
         eps=args.adam_epsilon,
     )
 
-    # Dataset and DataLoaders creation:
+    noise_scheduler = DDPMScheduler.from_config(args.pretrained_model_name_or_path, subfolder="scheduler")
+
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
         instance_prompt=args.instance_prompt,
@@ -781,6 +804,7 @@ def main(args):
         size=args.resolution,
         center_crop=args.center_crop,
         use_filename_as_label=args.use_filename_as_label,
+        use_txt_as_label=args.use_txt_as_label,
     )
 
     train_dataloader = torch.utils.data.DataLoader(
