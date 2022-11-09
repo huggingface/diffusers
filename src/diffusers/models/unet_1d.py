@@ -62,7 +62,8 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         act_fn (`str`, *optional*, defaults to None): optional activitation function in UNet blocks.
         norm_num_groups (`int`, *optional*, defaults to 8): group norm member count in UNet blocks.
         layers_per_block (`int`, *optional*, defaults to 1): added number of layers in a UNet block.
-        always_downsample (`int`, *optional*, defaults to False: experimental feature for using a UNet without upsampling.
+        always_downsample (`int`, *optional*, defaults to False:
+            experimental feature for using a UNet without upsampling.
     """
 
     @register_to_config

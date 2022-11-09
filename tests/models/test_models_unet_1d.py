@@ -58,6 +58,10 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
     def test_determinism(self):
         super().test_determinism()
 
+    @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
+    def test_outputs_equivalence(self):
+        super().test_outputs_equivalence()
+
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
             "block_out_channels": (32, 128, 256),
@@ -152,6 +156,15 @@ class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
     def output_shape(self):
         return (4, 14, 1)
 
+    @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
+    def test_determinism(self):
+        super().test_determinism()
+
+    @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
+    def test_outputs_equivalence(self):
+        super().test_outputs_equivalence()
+
+    @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
     def test_output(self):
         # UNetRL is a value-function is different output shape
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
