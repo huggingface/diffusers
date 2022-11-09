@@ -74,6 +74,8 @@ LOADABLE_CLASSES = {
         "PreTrainedTokenizerFast": ["save_pretrained", "from_pretrained"],
         "PreTrainedModel": ["save_pretrained", "from_pretrained"],
         "FeatureExtractionMixin": ["save_pretrained", "from_pretrained"],
+        "ProcessorMixin": ["save_pretrained", "from_pretrained"],
+        "ImageProcessingMixin": ["save_pretrained", "from_pretrained"],
     },
 }
 
@@ -190,8 +192,8 @@ class DiffusionPipeline(ConfigMixin):
             for library_name, library_classes in LOADABLE_CLASSES.items():
                 library = importlib.import_module(library_name)
                 for base_class, save_load_methods in library_classes.items():
-                    class_candidate = getattr(library, base_class)
-                    if issubclass(model_cls, class_candidate):
+                    class_candidate = getattr(library, base_class, None)
+                    if class_candidate is not None and issubclass(model_cls, class_candidate):
                         # if we found a suitable base class in LOADABLE_CLASSES then grab its save method
                         save_method_name = save_load_methods[0]
                         break
@@ -543,11 +545,11 @@ class DiffusionPipeline(ConfigMixin):
                     library = importlib.import_module(library_name)
                     class_obj = getattr(library, class_name)
                     importable_classes = LOADABLE_CLASSES[library_name]
-                    class_candidates = {c: getattr(library, c) for c in importable_classes.keys()}
+                    class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
 
                     expected_class_obj = None
                     for class_name, class_candidate in class_candidates.items():
-                        if issubclass(class_obj, class_candidate):
+                        if class_candidate is not None and issubclass(class_obj, class_candidate):
                             expected_class_obj = class_candidate
 
                     if not issubclass(passed_class_obj[name].__class__, expected_class_obj):
@@ -577,14 +579,15 @@ class DiffusionPipeline(ConfigMixin):
             else:
                 # else we just import it from the library.
                 library = importlib.import_module(library_name)
+
                 class_obj = getattr(library, class_name)
                 importable_classes = LOADABLE_CLASSES[library_name]
-                class_candidates = {c: getattr(library, c) for c in importable_classes.keys()}
+                class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
 
             if loaded_sub_model is None and sub_model_should_be_defined:
                 load_method_name = None
                 for class_name, class_candidate in class_candidates.items():
-                    if issubclass(class_obj, class_candidate):
+                    if class_candidate is not None and issubclass(class_obj, class_candidate):
                         load_method_name = importable_classes[class_name][1]
 
                 if load_method_name is None:
