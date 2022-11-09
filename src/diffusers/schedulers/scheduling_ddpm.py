@@ -21,8 +21,8 @@ from typing import Literal, Optional, Tuple, Union
 import numpy as np
 import torch
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..configuration_utils import ConfigMixin, FrozenDict, register_to_config
+from ..utils import BaseOutput, deprecate
 from .scheduling_utils import SchedulerMixin
 
 
@@ -110,7 +110,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
         clip_sample (`bool`, default `True`):
             option to clip predicted sample between -1 and 1 for numerical stability.
-
+        prediction_type (`Literal["epsilon", "sample", "v"]`, optional):
+                prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
+                process), `sample` (directly predicting the noisy sample`) or `v` (see section 2.4
+                https://imagen.research.google/video/paper.pdf)
     """
 
     _compatible_classes = [
@@ -119,6 +122,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         "LMSDiscreteScheduler",
         "EulerDiscreteScheduler",
         "EulerAncestralDiscreteScheduler",
+        "DPMSolverMultistepScheduler",
     ]
 
     @register_to_config
@@ -236,9 +240,9 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: int,
         sample: torch.FloatTensor,
-        # prediction_type: Literal["epsilon", "sample", "v"] = "epsilon",
         generator=None,
         return_dict: bool = True,
+        **kwargs,
     ) -> Union[DDPMSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
@@ -249,10 +253,6 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
-            prediction_type (`Literal["epsilon", "sample", "v"]`, optional):
-                prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
-                process), `sample` (directly predicting the noisy sample`) or `v` (see section 2.4
-                https://imagen.research.google/video/paper.pdf)
             generator: random number generator.
             return_dict (`bool`): option for returning tuple rather than DDPMSchedulerOutput class
 
@@ -264,6 +264,18 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         """
         if self.variance_type == "v_diffusion":
             assert self.prediction_type == "v", "Need to use v prediction with v_diffusion"
+        message = (
+            "Please make sure to instantiate your scheduler with `predict_epsilon` instead. E.g. `scheduler ="
+            " DDPMScheduler.from_config(<model_id>, predict_epsilon=True)`."
+        )
+        predict_epsilon = deprecate("predict_epsilon", "0.10.0", message, take_from=kwargs)
+        if predict_epsilon is not None and predict_epsilon != self.config.predict_epsilon:
+            new_config = dict(self.config)
+            new_config["predict_epsilon"] = predict_epsilon
+            self._internal_dict = FrozenDict(new_config)
+
+        t = timestep
+
         if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
             model_output, predicted_variance = torch.split(model_output, sample.shape[1], dim=1)
         else:
@@ -283,7 +295,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
                 sample * self.sqrt_alphas_cumprod[timestep]
                 - model_output * self.sqrt_one_minus_alphas_cumprod[timestep]
             )
-        elif self.prediction_type == "epsilon":
+        elif self.prediction_type == "epsilon" or self.config.predict_epsilon:
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
 
         elif self.prediction_type == "sample":

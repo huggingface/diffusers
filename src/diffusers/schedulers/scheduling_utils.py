@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 import torch
 
-from ..utils import BaseOutput, deprecate
+from ..utils import BaseOutput
 
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
@@ -41,12 +41,3 @@ class SchedulerMixin:
     """
 
     config_name = SCHEDULER_CONFIG_NAME
-
-    def set_format(self, tensor_format="pt"):
-        deprecate(
-            "set_format",
-            "0.6.0",
-            "If you're running your code in PyTorch, you can safely remove this function as the schedulers are always"
-            " in Pytorch",
-        )
-        return self
