@@ -87,7 +87,7 @@ class DDIMPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 256, 256, 3)
-        expected_slice = np.array([0.4215, 0.2433, 0.2897, 0.4166, 0.2351, 0.2893, 0.4241, 0.2337, 0.3011])
+        expected_slice = np.array([0.1546, 0.1561, 0.1595, 0.1564, 0.1569, 0.1585, 0.1554, 0.1550, 0.1575])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_inference_cifar10(self):
