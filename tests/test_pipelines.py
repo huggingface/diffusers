@@ -506,40 +506,8 @@ class PipelineSlowTests(unittest.TestCase):
         assert isinstance(images, list)
         assert isinstance(images[0], PIL.Image.Image)
 
-    # Make sure the test passes for different values of random seed
-    @parameterized.expand([(0,), (4,)])
-    def test_ddpm_ddim_equality(self, seed):
-        model_id = "google/ddpm-cifar10-32"
-
-        unet = UNet2DModel.from_pretrained(model_id)
-        ddpm_scheduler = DDPMScheduler()
-        ddim_scheduler = DDIMScheduler()
-
-        ddpm = DDPMPipeline(unet=unet, scheduler=ddpm_scheduler)
-        ddpm.to(torch_device)
-        ddpm.set_progress_bar_config(disable=None)
-        ddim = DDIMPipeline(unet=unet, scheduler=ddim_scheduler)
-        ddim.to(torch_device)
-        ddim.set_progress_bar_config(disable=None)
-
-        generator = torch.manual_seed(seed)
-        ddpm_image = ddpm(generator=generator, output_type="numpy").images
-
-        generator = torch.manual_seed(seed)
-        ddim_image = ddim(
-            generator=generator,
-            num_inference_steps=1000,
-            eta=1.0,
-            output_type="numpy",
-            use_clipped_model_output=True,  # Need this to make DDIM match DDPM
-        ).images
-
-        # the values aren't exactly equal, but the images look the same visually
-        assert np.abs(ddpm_image - ddim_image).max() < 1e-1
-
-    # Make sure the test passes for different values of random seed
-    @parameterized.expand([(0,), (4,)])
-    def test_ddpm_ddim_equality_batched(self, seed):
+    def test_ddpm_ddim_equality_batched(self):
+        seed = 0
         model_id = "google/ddpm-cifar10-32"
 
         unet = UNet2DModel.from_pretrained(model_id)
@@ -554,12 +522,12 @@ class PipelineSlowTests(unittest.TestCase):
         ddim.to(torch_device)
         ddim.set_progress_bar_config(disable=None)
 
-        generator = torch.manual_seed(seed)
-        ddpm_images = ddpm(batch_size=4, generator=generator, output_type="numpy").images
+        generator = torch.Generator().manual_seed(seed)
+        ddpm_images = ddpm(batch_size=2, generator=generator, output_type="numpy").images
 
-        generator = torch.manual_seed(seed)
+        generator = torch.Generator(device=torch_device).manual_seed(seed)
         ddim_images = ddim(
-            batch_size=4,
+            batch_size=2,
             generator=generator,
             num_inference_steps=1000,
             eta=1.0,
