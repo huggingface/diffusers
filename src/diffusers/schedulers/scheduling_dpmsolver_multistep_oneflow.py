@@ -21,7 +21,7 @@ import numpy as np
 import oneflow as torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from .scheduling_oneflow_utils import OneFlowSchedulerMixin, SchedulerOutput
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
@@ -53,7 +53,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     return torch.tensor(betas, dtype=torch.float32)
 
 
-class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
+class OneFlowDPMSolverMultistepScheduler(OneFlowSchedulerMixin, ConfigMixin):
     """
     DPM-Solver (and the improved version DPM-Solver++) is a fast dedicated high-order solver for diffusion ODEs with
     the convergence order guarantee. Empirically, sampling by DPM-Solver with only 20 steps can generate high-quality
