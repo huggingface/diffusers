@@ -5,6 +5,7 @@ if is_torch_available():
     from .dance_diffusion import DanceDiffusionPipeline
     from .ddim import DDIMPipeline
     from .ddpm import DDPMPipeline
+    from .latent_diffusion import LDMSuperResolutionPipeline
     from .latent_diffusion_uncond import LDMPipeline
     from .pndm import PNDMPipeline
     from .repaint import RePaintPipeline
