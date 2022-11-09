@@ -54,6 +54,10 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
     def test_training(self):
         pass
 
+    @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
+    def test_determinism(self):
+        super().test_determinism(self)
+
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
             "block_out_channels": (32, 128, 256),
@@ -66,6 +70,7 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
+    @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
     def test_from_pretrained_hub(self):
         model, loading_info = UNet1DModel.from_pretrained(
             "bglick13/hopper-medium-v2-value-function-hor32", output_loading_info=True, subfolder="unet"
@@ -78,6 +83,7 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
 
         assert image is not None, "Make sure output is not None"
 
+    @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
     def test_output_pretrained(self):
         model = UNet1DModel.from_pretrained("bglick13/hopper-medium-v2-value-function-hor32", subfolder="unet")
         torch.manual_seed(0)
@@ -185,6 +191,7 @@ class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
+    @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
     def test_from_pretrained_hub(self):
         value_function, vf_loading_info = UNet1DModel.from_pretrained(
             "bglick13/hopper-medium-v2-value-function-hor32", output_loading_info=True, subfolder="value_function"
@@ -197,6 +204,7 @@ class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
 
         assert image is not None, "Make sure output is not None"
 
+    @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
     def test_output_pretrained(self):
         value_function, vf_loading_info = UNet1DModel.from_pretrained(
             "bglick13/hopper-medium-v2-value-function-hor32", output_loading_info=True, subfolder="value_function"
