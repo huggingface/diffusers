@@ -56,7 +56,7 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
 
     @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
     def test_determinism(self):
-        super().test_determinism(self)
+        super().test_determinism()
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {

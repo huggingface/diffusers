@@ -48,7 +48,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         in_channels (`int`, *optional*, defaults to 2): Number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 2): Number of channels in the output.
         time_embedding_type (`str`, *optional*, defaults to `"fourier"`): Type of time embedding to use.
-        freq_shift (`int`, *optional*, defaults to 0): Frequency shift for fourier time embedding.
+        downscale_freq_shift (`float`, *optional*, defaults to 0.0): Frequency shift for fourier time embedding.
         flip_sin_to_cos (`bool`, *optional*, defaults to :
             obj:`False`): Whether to flip sin to cos for fourier time embedding.
         down_block_types (`Tuple[str]`, *optional*, defaults to :
@@ -57,10 +57,12 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             obj:`("UpBlock1D", "UpBlock1DNoSkip", "AttnUpBlock1D")`): Tuple of upsample block types.
         block_out_channels (`Tuple[int]`, *optional*, defaults to :
             obj:`(32, 32, 64)`): Tuple of block output channels.
-        mid_block_type:
-        out_block_type:
-        act_fn:
-        norm_num_groups:
+        mid_block_type (`str`, *optional*, defaults to "UNetMidBlock1D"): block type for middle of UNet.
+        out_block_type (`str`, *optional*, defaults to `None`): optional output processing of UNet.
+        act_fn (`str`, *optional*, defaults to None): optional activitation function in UNet blocks.
+        norm_num_groups (`int`, *optional*, defaults to 8): group norm member count in UNet blocks.
+        layers_per_block (`int`, *optional*, defaults to 1): added number of layers in a UNet block.
+        always_downsample (`int`, *optional*, defaults to False: experimental feature for using a UNet without upsampling.
     """
 
     @register_to_config
@@ -68,19 +70,19 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         self,
         sample_size: int = 65536,
         sample_rate: Optional[int] = None,
-        in_channels: int = 14,
-        out_channels: int = 14,
+        in_channels: int = 2,
+        out_channels: int = 2,
         extra_in_channels: int = 0,
-        time_embedding_type: str = "positional",
-        flip_sin_to_cos: bool = False,
-        use_timestep_embedding: bool = True,
+        time_embedding_type: str = "fourier",
+        flip_sin_to_cos: bool = True,
+        use_timestep_embedding: bool = False,
         downscale_freq_shift: float = 1.0,
-        down_block_types: Tuple[str] = ("DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"),
-        up_block_types: Tuple[str] = ("UpResnetBlock1D", "UpResnetBlock1D"),
-        mid_block_type: Tuple[str] = "MidResTemporalBlock1D",
+        down_block_types: Tuple[str] = ("DownBlock1DNoSkip", "DownBlock1D", "AttnDownBlock1D"),
+        up_block_types: Tuple[str] = ("AttnUpBlock1D", "UpBlock1D", "UpBlock1DNoSkip"),
+        mid_block_type: Tuple[str] = "UNetMidBlock1D",
         out_block_type: str = None,
         block_out_channels: Tuple[int] = (32, 128, 256),
-        act_fn: str = "mish",
+        act_fn: str = None,
         norm_num_groups: int = 8,
         layers_per_block: int = 1,
         always_downsample: bool = False,
