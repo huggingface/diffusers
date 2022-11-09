@@ -36,7 +36,7 @@
       title: "Audio"
     - local: using-diffusers/other-modalities
       title: "Other Modalities"
-    title: "Beyond Images"
+    title: "Taking Diffusers Beyond Images"
   title: "Using Diffusers"
 - sections:
   - local: optimization/fp16
