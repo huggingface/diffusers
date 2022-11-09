@@ -205,6 +205,8 @@ class CycleDiffusionPipeline(DiffusionPipeline):
         # set slice_size = `None` to disable `set_attention_slice`
         self.enable_attention_slicing(None)
 
+    @property
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
     def _execution_device(self):
         r"""
         Returns the device on which the pipeline's models will be executed. After calling
