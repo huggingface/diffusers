@@ -30,6 +30,7 @@ from .modeling_pytorch_flax_utils import load_flax_checkpoint_in_pytorch_model
 from .utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
+    FLAX_WEIGHTS_NAME,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     WEIGHTS_NAME,
     is_accelerate_available,
