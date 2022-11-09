@@ -42,7 +42,6 @@ from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, require_torch_gpu
-from parameterized import parameterized
 from PIL import Image
 from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -93,11 +92,17 @@ class DownloadTests(unittest.TestCase):
         pipe = StableDiffusionPipeline.from_pretrained(
             "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
         )
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        pipe = pipe.to(torch_device)
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
         out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         pipe_2 = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
-        generator_2 = torch.Generator(device=torch_device).manual_seed(0)
+        pipe_2 = pipe_2.to(torch_device)
+        generator_2 = generator.manual_seed(0)
         out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator_2, output_type="numpy").images
 
         assert np.max(np.abs(out - out_2)) < 1e-3
@@ -107,13 +112,19 @@ class DownloadTests(unittest.TestCase):
         pipe = StableDiffusionPipeline.from_pretrained(
             "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
         )
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        pipe = pipe.to(torch_device)
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
         out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             pipe.save_pretrained(tmpdirname)
             pipe_2 = StableDiffusionPipeline.from_pretrained(tmpdirname, safety_checker=None)
-            generator_2 = torch.Generator(device=torch_device).manual_seed(0)
+            pipe_2 = pipe_2.to(torch_device)
+            generator_2 = generator.manual_seed(0)
             out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator_2, output_type="numpy").images
 
         assert np.max(np.abs(out - out_2)) < 1e-3
@@ -121,13 +132,19 @@ class DownloadTests(unittest.TestCase):
     def test_load_no_safety_checker_default_locally(self):
         prompt = "hello"
         pipe = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        pipe = pipe.to(torch_device)
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
         out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             pipe.save_pretrained(tmpdirname)
             pipe_2 = StableDiffusionPipeline.from_pretrained(tmpdirname)
-            generator_2 = torch.Generator(device=torch_device).manual_seed(0)
+            pipe_2 = pipe_2.to(torch_device)
+            generator_2 = generator.manual_seed(0)
             out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator_2, output_type="numpy").images
 
         assert np.max(np.abs(out - out_2)) < 1e-3
@@ -431,7 +448,7 @@ class PipelineSlowTests(unittest.TestCase):
             new_ddpm = DDPMPipeline.from_pretrained(tmpdirname)
             new_ddpm.to(torch_device)
 
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         image = ddpm(generator=generator, output_type="numpy").images
 
         generator = generator.manual_seed(0)
@@ -452,7 +469,7 @@ class PipelineSlowTests(unittest.TestCase):
         ddpm_from_hub = ddpm_from_hub.to(torch_device)
         ddpm_from_hub.set_progress_bar_config(disable=None)
 
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         image = ddpm(generator=generator, output_type="numpy").images
 
         generator = generator.manual_seed(0)
@@ -475,7 +492,7 @@ class PipelineSlowTests(unittest.TestCase):
         ddpm_from_hub = ddpm_from_hub.to(torch_device)
         ddpm_from_hub_custom_model.set_progress_bar_config(disable=None)
 
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         image = ddpm_from_hub_custom_model(generator=generator, output_type="numpy").images
 
         generator = generator.manual_seed(0)
@@ -491,7 +508,7 @@ class PipelineSlowTests(unittest.TestCase):
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         images = pipe(generator=generator, output_type="numpy").images
         assert images.shape == (1, 32, 32, 3)
         assert isinstance(images, np.ndarray)
@@ -506,40 +523,8 @@ class PipelineSlowTests(unittest.TestCase):
         assert isinstance(images, list)
         assert isinstance(images[0], PIL.Image.Image)
 
-    # Make sure the test passes for different values of random seed
-    @parameterized.expand([(0,), (4,)])
-    def test_ddpm_ddim_equality(self, seed):
-        model_id = "google/ddpm-cifar10-32"
-
-        unet = UNet2DModel.from_pretrained(model_id)
-        ddpm_scheduler = DDPMScheduler()
-        ddim_scheduler = DDIMScheduler()
-
-        ddpm = DDPMPipeline(unet=unet, scheduler=ddpm_scheduler)
-        ddpm.to(torch_device)
-        ddpm.set_progress_bar_config(disable=None)
-        ddim = DDIMPipeline(unet=unet, scheduler=ddim_scheduler)
-        ddim.to(torch_device)
-        ddim.set_progress_bar_config(disable=None)
-
-        generator = torch.manual_seed(seed)
-        ddpm_image = ddpm(generator=generator, output_type="numpy").images
-
-        generator = torch.manual_seed(seed)
-        ddim_image = ddim(
-            generator=generator,
-            num_inference_steps=1000,
-            eta=1.0,
-            output_type="numpy",
-            use_clipped_model_output=True,  # Need this to make DDIM match DDPM
-        ).images
-
-        # the values aren't exactly equal, but the images look the same visually
-        assert np.abs(ddpm_image - ddim_image).max() < 1e-1
-
-    # Make sure the test passes for different values of random seed
-    @parameterized.expand([(0,), (4,)])
-    def test_ddpm_ddim_equality_batched(self, seed):
+    def test_ddpm_ddim_equality_batched(self):
+        seed = 0
         model_id = "google/ddpm-cifar10-32"
 
         unet = UNet2DModel.from_pretrained(model_id)
@@ -554,12 +539,12 @@ class PipelineSlowTests(unittest.TestCase):
         ddim.to(torch_device)
         ddim.set_progress_bar_config(disable=None)
 
-        generator = torch.manual_seed(seed)
-        ddpm_images = ddpm(batch_size=4, generator=generator, output_type="numpy").images
+        generator = torch.Generator(device=torch_device).manual_seed(seed)
+        ddpm_images = ddpm(batch_size=2, generator=generator, output_type="numpy").images
 
-        generator = torch.manual_seed(seed)
+        generator = torch.Generator(device=torch_device).manual_seed(seed)
         ddim_images = ddim(
-            batch_size=4,
+            batch_size=2,
             generator=generator,
             num_inference_steps=1000,
             eta=1.0,

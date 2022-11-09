@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
 from typing import Optional, Tuple, Union
 
 import torch
 
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ...utils import deprecate
 
 
 class DDIMPipeline(DiffusionPipeline):
@@ -75,23 +75,28 @@ class DDIMPipeline(DiffusionPipeline):
             generated images.
         """
 
+        if generator is not None and generator.device.type != self.device.type and self.device.type != "mps":
+            message = (
+                f"The `generator` device is `{generator.device}` and does not match the pipeline "
+                f"device `{self.device}`, so the `generator` will be set to `None`. "
+                f'Please use `generator=torch.Generator(device="{self.device}")` instead.'
+            )
+            deprecate(
+                "generator.device == 'cpu'",
+                "0.11.0",
+                message,
+            )
+            generator = None
+
         # Sample gaussian noise to begin loop
         image = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
             generator=generator,
+            device=self.device,
         )
-        image = image.to(self.device)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
-
-        # Ignore use_clipped_model_output if the scheduler doesn't accept this argument
-        accepts_use_clipped_model_output = "use_clipped_model_output" in set(
-            inspect.signature(self.scheduler.step).parameters.keys()
-        )
-        extra_kwargs = {}
-        if accepts_use_clipped_model_output:
-            extra_kwargs["use_clipped_model_output"] = use_clipped_model_output
 
         for t in self.progress_bar(self.scheduler.timesteps):
             # 1. predict noise model_output
@@ -100,7 +105,9 @@ class DDIMPipeline(DiffusionPipeline):
             # 2. predict previous mean of image x_t-1 and add variance depending on eta
             # eta corresponds to η in paper and should be between [0, 1]
             # do x_t -> x_t-1
-            image = self.scheduler.step(model_output, t, image, eta, **extra_kwargs).prev_sample
+            image = self.scheduler.step(
+                model_output, t, image, eta=eta, use_clipped_model_output=use_clipped_model_output, generator=generator
+            ).prev_sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()

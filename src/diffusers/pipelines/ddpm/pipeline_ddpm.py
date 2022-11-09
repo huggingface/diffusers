@@ -80,12 +80,25 @@ class DDPMPipeline(DiffusionPipeline):
             new_config["predict_epsilon"] = predict_epsilon
             self.scheduler._internal_dict = FrozenDict(new_config)
 
+        if generator is not None and generator.device.type != self.device.type and self.device.type != "mps":
+            message = (
+                f"The `generator` device is `{generator.device}` and does not match the pipeline "
+                f"device `{self.device}`, so the `generator` will be set to `None`. "
+                f'Please use `torch.Generator(device="{self.device}")` instead.'
+            )
+            deprecate(
+                "generator.device == 'cpu'",
+                "0.11.0",
+                message,
+            )
+            generator = None
+
         # Sample gaussian noise to begin loop
         image = torch.randn(
             (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
             generator=generator,
+            device=self.device,
         )
-        image = image.to(self.device)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
