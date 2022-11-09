@@ -46,7 +46,6 @@ class DDPMPipeline(DiffusionPipeline):
         num_inference_steps: int = 1000,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        predict_epsilon: bool = True,
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
