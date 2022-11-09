@@ -282,7 +282,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
         >>> 
         >>> dpm_pipe, dpm_params = FlaxStableDiffusionPipeline.from_pretrained(
         >>>     model_id,
-        >>>     revision="bf16", dtype=dtype,
+        >>>     revision="bf16", dtype=jnp.bfloat16,
         >>>     scheduler=dpmpp
         >>> )
         >>> dpm_params["scheduler"] = dpmpp_state
