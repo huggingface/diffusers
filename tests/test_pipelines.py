@@ -442,7 +442,8 @@ class PipelineSlowTests(unittest.TestCase):
     def test_output_format(self):
         model_path = "google/ddpm-cifar10-32"
 
-        pipe = DDIMPipeline.from_pretrained(model_path)
+        scheduler = DDIMScheduler.from_config(model_path)
+        pipe = DDIMPipeline.from_pretrained(model_path, scheduler=scheduler)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -451,13 +452,13 @@ class PipelineSlowTests(unittest.TestCase):
         assert images.shape == (1, 32, 32, 3)
         assert isinstance(images, np.ndarray)
 
-        images = pipe(generator=generator, output_type="pil").images
+        images = pipe(generator=generator, output_type="pil", num_inference_steps=4).images
         assert isinstance(images, list)
         assert len(images) == 1
         assert isinstance(images[0], PIL.Image.Image)
 
         # use PIL by default
-        images = pipe(generator=generator).images
+        images = pipe(generator=generator, num_inference_steps=4).images
         assert isinstance(images, list)
         assert isinstance(images[0], PIL.Image.Image)
 
