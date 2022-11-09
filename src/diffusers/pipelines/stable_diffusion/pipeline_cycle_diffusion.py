@@ -43,7 +43,7 @@ def preprocess(image):
     return 2.0 * image - 1.0
 
 
-def posterior_sample(scheduler, latents, timestep, clean_latents, eta):
+def posterior_sample(scheduler, latents, timestep, clean_latents, generator, eta):
     # 1. get previous step value (=t-1)
     prev_timestep = timestep - scheduler.config.num_train_timesteps // scheduler.num_inference_steps
 
@@ -62,7 +62,9 @@ def posterior_sample(scheduler, latents, timestep, clean_latents, eta):
     # direction pointing to x_t
     e_t = (latents - alpha_prod_t ** (0.5) * clean_latents) / (1 - alpha_prod_t) ** (0.5)
     dir_xt = (1.0 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * e_t
-    noise = std_dev_t * torch.randn(clean_latents.shape, dtype=clean_latents.dtype, device=clean_latents.device)
+    noise = std_dev_t * torch.randn(
+        clean_latents.shape, dtype=clean_latents.dtype, device=clean_latents.device, generator=generator
+    )
     prev_latents = alpha_prod_t_prev ** (0.5) * clean_latents + dir_xt + noise
 
     return prev_latents
@@ -499,7 +501,7 @@ class CycleDiffusionPipeline(DiffusionPipeline):
 
             # Sample source_latents from the posterior distribution.
             prev_source_latents = posterior_sample(
-                self.scheduler, source_latents, t, clean_latents, **extra_step_kwargs
+                self.scheduler, source_latents, t, clean_latents, generator=generator, **extra_step_kwargs
             )
             # Compute noise.
             noise = compute_noise(

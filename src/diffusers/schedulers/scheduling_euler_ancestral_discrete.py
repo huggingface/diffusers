@@ -221,7 +221,7 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         prev_sample = sample + derivative * dt
 
-        device = model_output.device if torch.is_tensor(model_output) else torch.device("cpu")
+        device = model_output.device
         if device.type == "mps":
             # randn does not work reproducibly on mps
             noise = torch.randn(model_output.shape, dtype=model_output.dtype, device="cpu", generator=generator).to(
