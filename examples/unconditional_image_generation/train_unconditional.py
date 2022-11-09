@@ -1,4 +1,5 @@
 import argparse
+import inspect
 import math
 import os
 from pathlib import Path
@@ -190,10 +191,10 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--predict_mode",
-        type=str,
-        default="eps",
-        help="What the model should predict. 'eps' to predict error, 'x0' to directly predict reconstruction",
+        "--predict_epsilon",
+        action="store_true",
+        default=True,
+        help="Whether the model should predict the 'epsilon'/noise error or directly the reconstructed image 'x0'.",
     )
 
     parser.add_argument("--ddpm_num_steps", type=int, default=1000)
@@ -252,7 +253,17 @@ def main(args):
             "UpBlock2D",
         ),
     )
-    noise_scheduler = DDPMScheduler(num_train_timesteps=args.ddpm_num_steps, beta_schedule=args.ddpm_beta_schedule)
+    accepts_predict_epsilon = "predict_epsilon" in set(inspect.signature(DDPMScheduler.__init__).parameters.keys())
+
+    if accepts_predict_epsilon:
+        noise_scheduler = DDPMScheduler(
+            num_train_timesteps=args.ddpm_num_steps,
+            beta_schedule=args.ddpm_beta_schedule,
+            predict_epsilon=args.predict_epsilon,
+        )
+    else:
+        noise_scheduler = DDPMScheduler(num_train_timesteps=args.ddpm_num_steps, beta_schedule=args.ddpm_beta_schedule)
+
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
@@ -351,9 +362,9 @@ def main(args):
                 # Predict the noise residual
                 model_output = model(noisy_images, timesteps).sample
 
-                if args.predict_mode == "eps":
+                if args.predict_epsilon:
                     loss = F.mse_loss(model_output, noise)  # this could have different weights!
-                elif args.predict_mode == "x0":
+                else:
                     alpha_t = _extract_into_tensor(
                         noise_scheduler.alphas_cumprod, timesteps, (clean_images.shape[0], 1, 1, 1)
                     )
@@ -401,7 +412,6 @@ def main(args):
                     generator=generator,
                     batch_size=args.eval_batch_size,
                     output_type="numpy",
-                    predict_epsilon=args.predict_mode == "eps",
                 ).images
 
                 # denormalize the images and save to tensorboard

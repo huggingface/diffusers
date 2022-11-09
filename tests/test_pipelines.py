@@ -41,7 +41,7 @@ from diffusers import (
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, slow, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir
+from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, require_torch_gpu
 from parameterized import parameterized
 from PIL import Image
 from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
@@ -107,6 +107,7 @@ class CustomPipelineTests(unittest.TestCase):
         images, output_str = pipeline(num_inference_steps=2, output_type="np")
 
         assert images[0].shape == (1, 32, 32, 3)
+
         # compare output to https://huggingface.co/hf-internal-testing/diffusers-dummy-pipeline/blob/main/pipeline.py#L102
         assert output_str == "This is a test"
 
@@ -124,7 +125,7 @@ class CustomPipelineTests(unittest.TestCase):
         assert output_str == "This is a local test"
 
     @slow
-    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    @require_torch_gpu
     def test_load_pipeline_from_git(self):
         clip_model_id = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 

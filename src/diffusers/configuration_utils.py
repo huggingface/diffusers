@@ -101,7 +101,7 @@ class ConfigMixin:
         output_config_file = os.path.join(save_directory, self.config_name)
 
         self.to_json_file(output_config_file)
-        logger.info(f"ConfigMixinuration saved in {output_config_file}")
+        logger.info(f"Configuration saved in {output_config_file}")
 
     @classmethod
     def from_config(cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs):
@@ -334,6 +334,11 @@ class ConfigMixin:
         # 3. Create keyword arguments that will be passed to __init__ from expected keyword arguments
         init_dict = {}
         for key in expected_keys:
+            # if config param is passed to kwarg and is present in config dict
+            # it should overwrite existing config dict key
+            if key in kwargs and key in config_dict:
+                config_dict[key] = kwargs.pop(key)
+
             if key in kwargs:
                 # overwrite key
                 init_dict[key] = kwargs.pop(key)

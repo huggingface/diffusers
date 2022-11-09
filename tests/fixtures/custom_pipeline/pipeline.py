@@ -42,7 +42,6 @@ class CustomLocalPipeline(DiffusionPipeline):
         self,
         batch_size: int = 1,
         generator: Optional[torch.Generator] = None,
-        eta: float = 0.0,
         num_inference_steps: int = 50,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -89,7 +88,7 @@ class CustomLocalPipeline(DiffusionPipeline):
             # 2. predict previous mean of image x_t-1 and add variance depending on eta
             # eta corresponds to η in paper and should be between [0, 1]
             # do x_t -> x_t-1
-            image = self.scheduler.step(model_output, t, image, eta).prev_sample
+            image = self.scheduler.step(model_output, t, image).prev_sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
