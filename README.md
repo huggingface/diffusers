@@ -330,6 +330,32 @@ prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
 image = pipe(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
 ```
 
+### Weight Reuse
+
+It's possible to reuse weights between pipelines. For example, if you wanted to use a StableDiffusionPipeline and a StableDiffusionImg2ImgPipeline, you could initialize the weights for the first and apply them to the latter:
+```python
+# make sure you're logged in with `huggingface-cli login`
+from diffusers import StableDiffusionPipeline, StableDiffusionImg2ImgPipeline
+
+SD = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+
+# Note that each subcomponent can be added or removed separately.
+SD_IMG2IMG = StableDiffusionImg2ImgPipeline.from_pretrained(
+  "runwayml/stable-diffusion-v1-5",
+  vae=SD.vae,
+  text_encoder=SD.text_encoder,
+  tokenizer=SD.tokenizer,
+  unet=SD.unet,
+  scheduler=SD.scheduler,
+  feature_extractor=SD.feature_extractor)
+
+
+SD_PIPE = SD.to("cuda")
+SD_IMG2IMG_PIPE = SD_IMG2IMG.to("cuda")
+```
+
+Now you can call both pipelines without additional GPU memory cost. 
+
 ### Tweak prompts reusing seeds and latents
 
 You can generate your own latents to reproduce results, or tweak your prompt on a specific result you liked. [This notebook](https://github.com/pcuenca/diffusers-examples/blob/main/notebooks/stable-diffusion-seeds.ipynb) shows how to do it step by step. You can also run it in Google Colab [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/pcuenca/diffusers-examples/blob/main/notebooks/stable-diffusion-seeds.ipynb).
