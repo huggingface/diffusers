@@ -92,10 +92,12 @@ class DownloadTests(unittest.TestCase):
         pipe = StableDiffusionPipeline.from_pretrained(
             "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
         )
+        pipe = pipe.to(torch_device)
         generator = torch.Generator(device=torch_device).manual_seed(0)
         out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         pipe_2 = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
+        pipe_2 = pipe_2.to(torch_device)
         generator_2 = torch.Generator(device=torch_device).manual_seed(0)
         out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator_2, output_type="numpy").images
 
@@ -106,12 +108,14 @@ class DownloadTests(unittest.TestCase):
         pipe = StableDiffusionPipeline.from_pretrained(
             "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
         )
+        pipe = pipe.to(torch_device)
         generator = torch.Generator(device=torch_device).manual_seed(0)
         out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             pipe.save_pretrained(tmpdirname)
             pipe_2 = StableDiffusionPipeline.from_pretrained(tmpdirname, safety_checker=None)
+            pipe_2 = pipe_2.to(torch_device)
             generator_2 = torch.Generator(device=torch_device).manual_seed(0)
             out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator_2, output_type="numpy").images
 
@@ -120,12 +124,14 @@ class DownloadTests(unittest.TestCase):
     def test_load_no_safety_checker_default_locally(self):
         prompt = "hello"
         pipe = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
+        pipe = pipe.to(torch_device)
         generator = torch.Generator(device=torch_device).manual_seed(0)
         out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             pipe.save_pretrained(tmpdirname)
             pipe_2 = StableDiffusionPipeline.from_pretrained(tmpdirname)
+            pipe_2 = pipe_2.to(torch_device)
             generator_2 = torch.Generator(device=torch_device).manual_seed(0)
             out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator_2, output_type="numpy").images
 
@@ -430,7 +436,7 @@ class PipelineSlowTests(unittest.TestCase):
             new_ddpm = DDPMPipeline.from_pretrained(tmpdirname)
             new_ddpm.to(torch_device)
 
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         image = ddpm(generator=generator, output_type="numpy").images
 
         generator = generator.manual_seed(0)
@@ -451,7 +457,7 @@ class PipelineSlowTests(unittest.TestCase):
         ddpm_from_hub = ddpm_from_hub.to(torch_device)
         ddpm_from_hub.set_progress_bar_config(disable=None)
 
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         image = ddpm(generator=generator, output_type="numpy").images
 
         generator = generator.manual_seed(0)
@@ -474,7 +480,7 @@ class PipelineSlowTests(unittest.TestCase):
         ddpm_from_hub = ddpm_from_hub.to(torch_device)
         ddpm_from_hub_custom_model.set_progress_bar_config(disable=None)
 
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         image = ddpm_from_hub_custom_model(generator=generator, output_type="numpy").images
 
         generator = generator.manual_seed(0)
@@ -490,7 +496,7 @@ class PipelineSlowTests(unittest.TestCase):
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         images = pipe(generator=generator, output_type="numpy").images
         assert images.shape == (1, 32, 32, 3)
         assert isinstance(images, np.ndarray)

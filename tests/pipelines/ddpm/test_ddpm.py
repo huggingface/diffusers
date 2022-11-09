@@ -20,7 +20,7 @@ import torch
 
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.utils import deprecate
-from diffusers.utils.testing_utils import require_torch, slow, torch_device
+from diffusers.utils.testing_utils import require_torch_gpu, slow, torch_device
 
 from ...test_pipelines_common import PipelineTesterMixin
 
@@ -65,9 +65,8 @@ class DDPMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        # TODO (Anton): update values in this PR
         expected_slice = np.array(
-            [5.589e-01, 7.089e-01, 2.632e-01, 6.841e-01, 1.000e-04, 9.999e-01, 1.973e-01, 1.000e-04, 8.010e-02]
+            [8.296e-05, 6.484e-01, 5.530e-01, 7.004e-02, 4.530e-01, 2.200e-01, 2.348e-01, 9.999e-01, 7.396e-01]
         )
         tolerance = 1e-2 if torch_device != "mps" else 3e-2
         assert np.abs(image_slice.flatten() - expected_slice).max() < tolerance
@@ -101,7 +100,7 @@ class DDPMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 
 @slow
-@require_torch
+@require_torch_gpu
 class DDPMPipelineIntegrationTests(unittest.TestCase):
     def test_inference_cifar10(self):
         model_id = "google/ddpm-cifar10-32"
@@ -119,6 +118,5 @@ class DDPMPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 32, 32, 3)
-        # TODO (Anton): update values in this PR
-        expected_slice = np.array([0.41995, 0.35885, 0.19385, 0.38475, 0.3382, 0.2647, 0.41545, 0.3582, 0.33845])
+        expected_slice = np.array([0.4454, 0.2025, 0.0315, 0.3023, 0.2575, 0.1031, 0.0953, 0.1604, 0.2020])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
