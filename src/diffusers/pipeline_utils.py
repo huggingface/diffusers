@@ -389,6 +389,7 @@ class DiffusionPipeline(ConfigMixin):
         local_files_only = kwargs.pop("local_files_only", False)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
+        from_flax = kwargs.pop("from_flax", False)
         torch_dtype = kwargs.pop("torch_dtype", None)
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         provider = kwargs.pop("provider", None)
@@ -617,12 +618,14 @@ class DiffusionPipeline(ConfigMixin):
                 # When loading a transformers model, if the device_map is None, the weights will be initialized as opposed to diffusers.
                 # To make default loading faster we set the `low_cpu_mem_usage=low_cpu_mem_usage` flag which is `True` by default.
                 # This makes sure that the weights won't be initialized which significantly speeds up loading.
-                if is_diffusers_model or is_transformers_model:
+                if from_flax:
+                    loaded_sub_model = load_method(loadable_folder, from_flax=from_flax)
+                elif is_diffusers_model or is_transformers_model:
                     loading_kwargs["device_map"] = device_map
                     loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
                 # check if the module is in a subdirectory
-                if os.path.isdir(os.path.join(cached_folder, name)):
+                elif os.path.isdir(os.path.join(cached_folder, name)):
                     loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
                 else:
                     # else load from the root directory
