@@ -618,18 +618,21 @@ class DiffusionPipeline(ConfigMixin):
                 # When loading a transformers model, if the device_map is None, the weights will be initialized as opposed to diffusers.
                 # To make default loading faster we set the `low_cpu_mem_usage=low_cpu_mem_usage` flag which is `True` by default.
                 # This makes sure that the weights won't be initialized which significantly speeds up loading.
-                if from_flax:
-                    loaded_sub_model = load_method(loadable_folder, from_flax=from_flax)
-                elif is_diffusers_model or is_transformers_model:
+                if is_diffusers_model or is_transformers_model:
                     loading_kwargs["device_map"] = device_map
                     loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
-
                 # check if the module is in a subdirectory
                 elif os.path.isdir(os.path.join(cached_folder, name)):
-                    loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
+                    if from_flax:
+                        loaded_sub_model = load_method(os.path.join(cached_folder, name), from_flax=from_flax, **loading_kwargs)
+                    else:
+                        loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
                 else:
                     # else load from the root directory
-                    loaded_sub_model = load_method(cached_folder, **loading_kwargs)
+                    if from_flax:
+                        loaded_sub_model = load_method(cached_folder, from_flax=from_flax, **loading_kwargs)
+                    else:
+                        loaded_sub_model = load_method(cached_folder, **loading_kwargs)
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
