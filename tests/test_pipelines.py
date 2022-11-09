@@ -42,7 +42,6 @@ from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, require_torch_gpu
-from parameterized import parameterized
 from PIL import Image
 from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -462,40 +461,9 @@ class PipelineSlowTests(unittest.TestCase):
         assert isinstance(images, list)
         assert isinstance(images[0], PIL.Image.Image)
 
-    # Make sure the test passes for different values of random seed
-    @parameterized.expand([(0,), (4,)])
-    def test_ddpm_ddim_equality(self, seed):
-        model_id = "google/ddpm-cifar10-32"
-
-        unet = UNet2DModel.from_pretrained(model_id)
-        ddpm_scheduler = DDPMScheduler()
-        ddim_scheduler = DDIMScheduler()
-
-        ddpm = DDPMPipeline(unet=unet, scheduler=ddpm_scheduler)
-        ddpm.to(torch_device)
-        ddpm.set_progress_bar_config(disable=None)
-        ddim = DDIMPipeline(unet=unet, scheduler=ddim_scheduler)
-        ddim.to(torch_device)
-        ddim.set_progress_bar_config(disable=None)
-
-        generator = torch.manual_seed(seed)
-        ddpm_image = ddpm(generator=generator, output_type="numpy").images
-
-        generator = torch.manual_seed(seed)
-        ddim_image = ddim(
-            generator=generator,
-            num_inference_steps=1000,
-            eta=1.0,
-            output_type="numpy",
-            use_clipped_model_output=True,  # Need this to make DDIM match DDPM
-        ).images
-
-        # the values aren't exactly equal, but the images look the same visually
-        assert np.abs(ddpm_image - ddim_image).max() < 1e-1
-
-    # Make sure the test passes for different values of random seed
-    @parameterized.expand([(0,), (4,)])
-    def test_ddpm_ddim_equality_batched(self, seed):
+    def test_ddpm_ddim_equality_batched(self):
+        seed = 0
+        batch_size = 2
         model_id = "google/ddpm-cifar10-32"
 
         unet = UNet2DModel.from_pretrained(model_id)
@@ -511,11 +479,11 @@ class PipelineSlowTests(unittest.TestCase):
         ddim.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(seed)
-        ddpm_images = ddpm(batch_size=4, generator=generator, output_type="numpy").images
+        ddpm_images = ddpm(batch_size=batch_size, generator=generator, output_type="numpy").images
 
         generator = torch.manual_seed(seed)
         ddim_images = ddim(
-            batch_size=4,
+            batch_size=batch_size,
             generator=generator,
             num_inference_steps=1000,
             eta=1.0,
@@ -523,5 +491,4 @@ class PipelineSlowTests(unittest.TestCase):
             use_clipped_model_output=True,  # Need this to make DDIM match DDPM
         ).images
 
-        # the values aren't exactly equal, but the images look the same visually
         assert np.abs(ddpm_images - ddim_images).max() < 1e-1

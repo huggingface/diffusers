@@ -300,9 +300,13 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
                     # randn does not work reproducibly on mps
                     variance_noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator)
                     variance_noise = variance_noise.to(device)
-                else:
+                elif generator is not None and generator.device.type == device.type:
                     variance_noise = torch.randn(
                         model_output.shape, generator=generator, device=device, dtype=model_output.dtype
+                    )
+                else:
+                    variance_noise = torch.randn(model_output.shape, generator=generator, dtype=model_output.dtype).to(
+                        device
                     )
             variance = self._get_variance(timestep, prev_timestep) ** (0.5) * eta * variance_noise
 
