@@ -380,20 +380,14 @@ class ModelMixin(torch.nn.Module):
 
         # This variable will flag if we're loading a sharded checkpoint. In this case the archive file is just the
         # Load model
-        # Load model
-        pretrained_path_with_subfolder = (
-            pretrained_model_name_or_path
-            if subfolder is None
-            else os.path.join(pretrained_model_name_or_path, subfolder)
-        )
         pretrained_model_name_or_path = str(pretrained_model_name_or_path)
         if os.path.isdir(pretrained_model_name_or_path):
             if from_flax:
-                if not os.path.isfile(os.path.join(pretrained_path_with_subfolder, FLAX_WEIGHTS_NAME)):
+                if not os.path.isfile(os.path.join(pretrained_model_name_or_path, subfolder, FLAX_WEIGHTS_NAME)):
                     raise EnvironmentError(
-                        f"Error no file named {FLAX_WEIGHTS_NAME} found in directory {pretrained_path_with_subfolder} "
+                        f"Error no file named {FLAX_WEIGHTS_NAME} found in directory {pretrained_model_name_or_path} "
                     )
-                model_file = os.path.join(pretrained_path_with_subfolder, FLAX_WEIGHTS_NAME)
+                model_file = os.path.join(pretrained_model_name_or_path, subfolder, FLAX_WEIGHTS_NAME)
             elif os.path.isfile(os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)):
                 # Load from a PyTorch checkpoint
                 model_file = os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)
@@ -401,11 +395,6 @@ class ModelMixin(torch.nn.Module):
                 os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)
             ):
                 model_file = os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)
-            elif os.path.isfile(os.path.join(pretrained_path_with_subfolder, FLAX_WEIGHTS_NAME)):
-                raise EnvironmentError(
-                    f"{FLAX_WEIGHTS_NAME} file found in directory {pretrained_path_with_subfolder}. Please load the"
-                    " model using  `from_flax=True`."
-                )
             else:
                 raise EnvironmentError(
                     f"Error no file named {WEIGHTS_NAME} or {FLAX_WEIGHTS_NAME} found in directory"
