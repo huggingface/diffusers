@@ -15,18 +15,16 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/LuChengTHU/dpm-solver
 
 import math
-from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
-import flax
-import jax
-import jax.numpy as jnp
+import numpy as np
+import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput, broadcast_to_shape_from_left
+from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
-def betas_for_alpha_bar(num_diffusion_timesteps: int, max_beta=0.999) -> jnp.ndarray:
+def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     """
     Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
     (1-beta) over time from t = [0,1].
@@ -41,7 +39,7 @@ def betas_for_alpha_bar(num_diffusion_timesteps: int, max_beta=0.999) -> jnp.nda
                      prevent singularities.
 
     Returns:
-        betas (`jnp.ndarray`): the betas used by the scheduler to step the model outputs
+        betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
     """
 
     def alpha_bar(time_step):
@@ -52,33 +50,10 @@ def betas_for_alpha_bar(num_diffusion_timesteps: int, max_beta=0.999) -> jnp.nda
         t1 = i / num_diffusion_timesteps
         t2 = (i + 1) / num_diffusion_timesteps
         betas.append(min(1 - alpha_bar(t2) / alpha_bar(t1), max_beta))
-    return jnp.array(betas, dtype=jnp.float32)
+    return torch.tensor(betas, dtype=torch.float32)
 
 
-@flax.struct.dataclass
-class DPMSolverMultistepSchedulerState:
-    # setable values
-    num_inference_steps: Optional[int] = None
-    timesteps: Optional[jnp.ndarray] = None
-
-    # running values
-    model_outputs: Optional[jnp.ndarray] = None
-    lower_order_nums: Optional[int] = None
-    step_index: Optional[int] = None
-    prev_timestep: Optional[int] = None
-    cur_sample: Optional[jnp.ndarray] = None
-
-    @classmethod
-    def create(cls, num_train_timesteps: int):
-        return cls(timesteps=jnp.arange(0, num_train_timesteps)[::-1])
-
-
-@dataclass
-class FlaxDPMSolverMultistepSchedulerOutput(FlaxSchedulerOutput):
-    state: DPMSolverMultistepSchedulerState
-
-
-class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
+class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     """
     DPM-Solver (and the improved version DPM-Solver++) is a fast dedicated high-order solver for diffusion ODEs with
     the convergence order guarantee. Empirically, sampling by DPM-Solver with only 20 steps can generate high-quality
@@ -98,8 +73,6 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
     [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
     [`~ConfigMixin.from_config`] functions.
-
-    For more details, see the original paper: https://arxiv.org/abs/2206.00927 and https://arxiv.org/abs/2211.01095
 
     Args:
         num_train_timesteps (`int`): number of diffusion steps used to train the model.
@@ -143,9 +116,14 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
 
     """
 
-    @property
-    def has_state(self):
-        return True
+    _compatible_classes = [
+        "DDIMScheduler",
+        "DDPMScheduler",
+        "PNDMScheduler",
+        "LMSDiscreteScheduler",
+        "EulerDiscreteScheduler",
+        "EulerAncestralDiscreteScheduler",
+    ]
 
     @register_to_config
     def __init__(
@@ -154,7 +132,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[jnp.ndarray] = None,
+        trained_betas: Optional[np.ndarray] = None,
         solver_order: int = 2,
         predict_epsilon: bool = True,
         thresholding: bool = False,
@@ -165,12 +143,14 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         lower_order_final: bool = True,
     ):
         if trained_betas is not None:
-            self.betas = jnp.asarray(trained_betas)
+            self.betas = torch.from_numpy(trained_betas)
         elif beta_schedule == "linear":
-            self.betas = jnp.linspace(beta_start, beta_end, num_train_timesteps, dtype=jnp.float32)
+            self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = jnp.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=jnp.float32) ** 2
+            self.betas = (
+                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
+            )
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
@@ -178,11 +158,11 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
         self.alphas = 1.0 - self.betas
-        self.alphas_cumprod = jnp.cumprod(self.alphas, axis=0)
+        self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
         # Currently we only support VP-type noise schedule
-        self.alpha_t = jnp.sqrt(self.alphas_cumprod)
-        self.sigma_t = jnp.sqrt(1 - self.alphas_cumprod)
-        self.lambda_t = jnp.log(self.alpha_t) - jnp.log(self.sigma_t)
+        self.alpha_t = torch.sqrt(self.alphas_cumprod)
+        self.sigma_t = torch.sqrt(1 - self.alphas_cumprod)
+        self.lambda_t = torch.log(self.alpha_t) - torch.log(self.sigma_t)
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
@@ -193,45 +173,39 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         if solver_type not in ["midpoint", "heun"]:
             raise NotImplementedError(f"{solver_type} does is not implemented for {self.__class__}")
 
-    def create_state(self):
-        return DPMSolverMultistepSchedulerState.create(num_train_timesteps=self.config.num_train_timesteps)
+        # setable values
+        self.num_inference_steps = None
+        timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=np.float32)[::-1].copy()
+        self.timesteps = torch.from_numpy(timesteps)
+        self.model_outputs = [None] * solver_order
+        self.lower_order_nums = 0
 
-    def set_timesteps(
-        self, state: DPMSolverMultistepSchedulerState, num_inference_steps: int, shape: Tuple
-    ) -> DPMSolverMultistepSchedulerState:
+    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
-        Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
+        Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
 
         Args:
-            state (`DPMSolverMultistepSchedulerState`):
-                the `FlaxDPMSolverMultistepScheduler` state data class instance.
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
-            shape (`Tuple`):
-                the shape of the samples to be generated.
+            device (`str` or `torch.device`, optional):
+                the device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         """
+        self.num_inference_steps = num_inference_steps
         timesteps = (
-            jnp.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps + 1)
+            np.linspace(0, self.num_train_timesteps - 1, num_inference_steps + 1)
             .round()[::-1][:-1]
-            .astype(jnp.int32)
+            .copy()
+            .astype(np.int64)
         )
-
-        return state.replace(
-            num_inference_steps=num_inference_steps,
-            timesteps=timesteps,
-            model_outputs=jnp.zeros((self.config.solver_order,) + shape),
-            lower_order_nums=0,
-            step_index=0,
-            prev_timestep=-1,
-            cur_sample=jnp.zeros(shape),
-        )
+        self.timesteps = torch.from_numpy(timesteps).to(device)
+        self.model_outputs = [
+            None,
+        ] * self.config.solver_order
+        self.lower_order_nums = 0
 
     def convert_model_output(
-        self,
-        model_output: jnp.ndarray,
-        timestep: int,
-        sample: jnp.ndarray,
-    ) -> jnp.ndarray:
+        self, model_output: torch.FloatTensor, timestep: int, sample: torch.FloatTensor
+    ) -> torch.FloatTensor:
         """
         Convert the model output to the corresponding type that the algorithm (DPM-Solver / DPM-Solver++) needs.
 
@@ -243,13 +217,13 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         DPM-Solver++ for both noise prediction model and data prediction model.
 
         Args:
-            model_output (`jnp.ndarray`): direct output from learned diffusion model.
+            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
-            sample (`jnp.ndarray`):
+            sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
 
         Returns:
-            `jnp.ndarray`: the converted model output.
+            `torch.FloatTensor`: the converted model output.
         """
         # DPM-Solver++ needs to solve an integral of the data prediction model.
         if self.config.algorithm_type == "dpmsolver++":
@@ -260,13 +234,14 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
                 x0_pred = model_output
             if self.config.thresholding:
                 # Dynamic thresholding in https://arxiv.org/abs/2205.11487
-                dynamic_max_val = jnp.percentile(
-                    jnp.abs(x0_pred), self.config.dynamic_thresholding_ratio, axis=tuple(range(1, x0_pred.ndim))
+                dynamic_max_val = torch.quantile(
+                    torch.abs(x0_pred).reshape((x0_pred.shape[0], -1)), self.config.dynamic_thresholding_ratio, dim=1
                 )
-                dynamic_max_val = jnp.maximum(
-                    dynamic_max_val, self.config.sample_max_value * jnp.ones_like(dynamic_max_val)
-                )
-                x0_pred = jnp.clip(x0_pred, -dynamic_max_val, dynamic_max_val) / dynamic_max_val
+                dynamic_max_val = torch.maximum(
+                    dynamic_max_val,
+                    self.config.sample_max_value * torch.ones_like(dynamic_max_val).to(dynamic_max_val.device),
+                )[(...,) + (None,) * (x0_pred.ndim - 1)]
+                x0_pred = torch.clamp(x0_pred, -dynamic_max_val, dynamic_max_val) / dynamic_max_val
             return x0_pred
         # DPM-Solver needs to solve an integral of the noise prediction model.
         elif self.config.algorithm_type == "dpmsolver":
@@ -278,55 +253,57 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
                 return epsilon
 
     def dpm_solver_first_order_update(
-        self, model_output: jnp.ndarray, timestep: int, prev_timestep: int, sample: jnp.ndarray
-    ) -> jnp.ndarray:
+        self,
+        model_output: torch.FloatTensor,
+        timestep: int,
+        prev_timestep: int,
+        sample: torch.FloatTensor,
+    ) -> torch.FloatTensor:
         """
         One step for the first-order DPM-Solver (equivalent to DDIM).
 
         See https://arxiv.org/abs/2206.00927 for the detailed derivation.
 
         Args:
-            model_output (`jnp.ndarray`): direct output from learned diffusion model.
+            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
             prev_timestep (`int`): previous discrete timestep in the diffusion chain.
-            sample (`jnp.ndarray`):
+            sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
 
         Returns:
-            `jnp.ndarray`: the sample tensor at the previous timestep.
+            `torch.FloatTensor`: the sample tensor at the previous timestep.
         """
-        t, s0 = prev_timestep, timestep
-        m0 = model_output
-        lambda_t, lambda_s = self.lambda_t[t], self.lambda_t[s0]
-        alpha_t, alpha_s = self.alpha_t[t], self.alpha_t[s0]
-        sigma_t, sigma_s = self.sigma_t[t], self.sigma_t[s0]
+        lambda_t, lambda_s = self.lambda_t[prev_timestep], self.lambda_t[timestep]
+        alpha_t, alpha_s = self.alpha_t[prev_timestep], self.alpha_t[timestep]
+        sigma_t, sigma_s = self.sigma_t[prev_timestep], self.sigma_t[timestep]
         h = lambda_t - lambda_s
         if self.config.algorithm_type == "dpmsolver++":
-            x_t = (sigma_t / sigma_s) * sample - (alpha_t * (jnp.exp(-h) - 1.0)) * m0
+            x_t = (sigma_t / sigma_s) * sample - (alpha_t * (torch.exp(-h) - 1.0)) * model_output
         elif self.config.algorithm_type == "dpmsolver":
-            x_t = (alpha_t / alpha_s) * sample - (sigma_t * (jnp.exp(h) - 1.0)) * m0
+            x_t = (alpha_t / alpha_s) * sample - (sigma_t * (torch.exp(h) - 1.0)) * model_output
         return x_t
 
     def multistep_dpm_solver_second_order_update(
         self,
-        model_output_list: jnp.ndarray,
+        model_output_list: List[torch.FloatTensor],
         timestep_list: List[int],
         prev_timestep: int,
-        sample: jnp.ndarray,
-    ) -> jnp.ndarray:
+        sample: torch.FloatTensor,
+    ) -> torch.FloatTensor:
         """
         One step for the second-order multistep DPM-Solver.
 
         Args:
-            model_output_list (`List[jnp.ndarray]`):
+            model_output_list (`List[torch.FloatTensor]`):
                 direct outputs from learned diffusion model at current and latter timesteps.
             timestep (`int`): current and latter discrete timestep in the diffusion chain.
             prev_timestep (`int`): previous discrete timestep in the diffusion chain.
-            sample (`jnp.ndarray`):
+            sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
 
         Returns:
-            `jnp.ndarray`: the sample tensor at the previous timestep.
+            `torch.FloatTensor`: the sample tensor at the previous timestep.
         """
         t, s0, s1 = prev_timestep, timestep_list[-1], timestep_list[-2]
         m0, m1 = model_output_list[-1], model_output_list[-2]
@@ -341,51 +318,51 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
             if self.config.solver_type == "midpoint":
                 x_t = (
                     (sigma_t / sigma_s0) * sample
-                    - (alpha_t * (jnp.exp(-h) - 1.0)) * D0
-                    - 0.5 * (alpha_t * (jnp.exp(-h) - 1.0)) * D1
+                    - (alpha_t * (torch.exp(-h) - 1.0)) * D0
+                    - 0.5 * (alpha_t * (torch.exp(-h) - 1.0)) * D1
                 )
             elif self.config.solver_type == "heun":
                 x_t = (
                     (sigma_t / sigma_s0) * sample
-                    - (alpha_t * (jnp.exp(-h) - 1.0)) * D0
-                    + (alpha_t * ((jnp.exp(-h) - 1.0) / h + 1.0)) * D1
+                    - (alpha_t * (torch.exp(-h) - 1.0)) * D0
+                    + (alpha_t * ((torch.exp(-h) - 1.0) / h + 1.0)) * D1
                 )
         elif self.config.algorithm_type == "dpmsolver":
             # See https://arxiv.org/abs/2206.00927 for detailed derivations
             if self.config.solver_type == "midpoint":
                 x_t = (
                     (alpha_t / alpha_s0) * sample
-                    - (sigma_t * (jnp.exp(h) - 1.0)) * D0
-                    - 0.5 * (sigma_t * (jnp.exp(h) - 1.0)) * D1
+                    - (sigma_t * (torch.exp(h) - 1.0)) * D0
+                    - 0.5 * (sigma_t * (torch.exp(h) - 1.0)) * D1
                 )
             elif self.config.solver_type == "heun":
                 x_t = (
                     (alpha_t / alpha_s0) * sample
-                    - (sigma_t * (jnp.exp(h) - 1.0)) * D0
-                    - (sigma_t * ((jnp.exp(h) - 1.0) / h - 1.0)) * D1
+                    - (sigma_t * (torch.exp(h) - 1.0)) * D0
+                    - (sigma_t * ((torch.exp(h) - 1.0) / h - 1.0)) * D1
                 )
         return x_t
 
     def multistep_dpm_solver_third_order_update(
         self,
-        model_output_list: jnp.ndarray,
+        model_output_list: List[torch.FloatTensor],
         timestep_list: List[int],
         prev_timestep: int,
-        sample: jnp.ndarray,
-    ) -> jnp.ndarray:
+        sample: torch.FloatTensor,
+    ) -> torch.FloatTensor:
         """
         One step for the third-order multistep DPM-Solver.
 
         Args:
-            model_output_list (`List[jnp.ndarray]`):
+            model_output_list (`List[torch.FloatTensor]`):
                 direct outputs from learned diffusion model at current and latter timesteps.
             timestep (`int`): current and latter discrete timestep in the diffusion chain.
             prev_timestep (`int`): previous discrete timestep in the diffusion chain.
-            sample (`jnp.ndarray`):
+            sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
 
         Returns:
-            `jnp.ndarray`: the sample tensor at the previous timestep.
+            `torch.FloatTensor`: the sample tensor at the previous timestep.
         """
         t, s0, s1, s2 = prev_timestep, timestep_list[-1], timestep_list[-2], timestep_list[-3]
         m0, m1, m2 = model_output_list[-1], model_output_list[-2], model_output_list[-3]
@@ -407,181 +384,120 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
             # See https://arxiv.org/abs/2206.00927 for detailed derivations
             x_t = (
                 (sigma_t / sigma_s0) * sample
-                - (alpha_t * (jnp.exp(-h) - 1.0)) * D0
-                + (alpha_t * ((jnp.exp(-h) - 1.0) / h + 1.0)) * D1
-                - (alpha_t * ((jnp.exp(-h) - 1.0 + h) / h**2 - 0.5)) * D2
+                - (alpha_t * (torch.exp(-h) - 1.0)) * D0
+                + (alpha_t * ((torch.exp(-h) - 1.0) / h + 1.0)) * D1
+                - (alpha_t * ((torch.exp(-h) - 1.0 + h) / h**2 - 0.5)) * D2
             )
         elif self.config.algorithm_type == "dpmsolver":
             # See https://arxiv.org/abs/2206.00927 for detailed derivations
             x_t = (
                 (alpha_t / alpha_s0) * sample
-                - (sigma_t * (jnp.exp(h) - 1.0)) * D0
-                - (sigma_t * ((jnp.exp(h) - 1.0) / h - 1.0)) * D1
-                - (sigma_t * ((jnp.exp(h) - 1.0 - h) / h**2 - 0.5)) * D2
+                - (sigma_t * (torch.exp(h) - 1.0)) * D0
+                - (sigma_t * ((torch.exp(h) - 1.0) / h - 1.0)) * D1
+                - (sigma_t * ((torch.exp(h) - 1.0 - h) / h**2 - 0.5)) * D2
             )
         return x_t
 
     def step(
         self,
-        state: DPMSolverMultistepSchedulerState,
-        model_output: jnp.ndarray,
+        model_output: torch.FloatTensor,
         timestep: int,
-        sample: jnp.ndarray,
+        sample: torch.FloatTensor,
         return_dict: bool = True,
-    ) -> Union[FlaxDPMSolverMultistepSchedulerOutput, Tuple]:
+    ) -> Union[SchedulerOutput, Tuple]:
         """
-        Predict the sample at the previous timestep by DPM-Solver. Core function to propagate the diffusion process
-        from the learned model outputs (most often the predicted noise).
+        Step function propagating the sample with the multistep DPM-Solver.
 
         Args:
-            state (`DPMSolverMultistepSchedulerState`):
-                the `FlaxDPMSolverMultistepScheduler` state data class instance.
-            model_output (`jnp.ndarray`): direct output from learned diffusion model.
+            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
-            sample (`jnp.ndarray`):
+            sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
-            return_dict (`bool`): option for returning tuple rather than FlaxDPMSolverMultistepSchedulerOutput class
+            return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
 
         Returns:
-            [`FlaxDPMSolverMultistepSchedulerOutput`] or `tuple`: [`FlaxDPMSolverMultistepSchedulerOutput`] if
-            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
+            [`~scheduling_utils.SchedulerOutput`] or `tuple`: [`~scheduling_utils.SchedulerOutput`] if `return_dict` is
+            True, otherwise a `tuple`. When returning a tuple, the first element is the sample tensor.
 
         """
-        prev_timestep = jax.lax.cond(
-            state.step_index == len(state.timesteps) - 1,
-            lambda _: 0,
-            lambda _: state.timesteps[state.step_index + 1],
-            (),
+        if self.num_inference_steps is None:
+            raise ValueError(
+                "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
+            )
+
+        if isinstance(timestep, torch.Tensor):
+            timestep = timestep.to(self.timesteps.device)
+        step_index = (self.timesteps == timestep).nonzero()
+        if len(step_index) == 0:
+            step_index = len(self.timesteps) - 1
+        else:
+            step_index = step_index.item()
+        prev_timestep = 0 if step_index == len(self.timesteps) - 1 else self.timesteps[step_index + 1]
+        lower_order_final = (
+            (step_index == len(self.timesteps) - 1) and self.config.lower_order_final and len(self.timesteps) < 15
+        )
+        lower_order_second = (
+            (step_index == len(self.timesteps) - 2) and self.config.lower_order_final and len(self.timesteps) < 15
         )
 
         model_output = self.convert_model_output(model_output, timestep, sample)
+        for i in range(self.config.solver_order - 1):
+            self.model_outputs[i] = self.model_outputs[i + 1]
+        self.model_outputs[-1] = model_output
 
-        model_outputs_new = jnp.roll(state.model_outputs, -1, axis=0)
-        model_outputs_new = model_outputs_new.at[-1].set(model_output)
-        state = state.replace(
-            model_outputs=model_outputs_new,
-            prev_timestep=prev_timestep,
-            cur_sample=sample,
-        )
-
-        def step_1(state: DPMSolverMultistepSchedulerState) -> jnp.ndarray:
-            return self.dpm_solver_first_order_update(
-                state.model_outputs[-1],
-                state.timesteps[state.step_index],
-                state.prev_timestep,
-                state.cur_sample,
-            )
-
-        def step_23(state: DPMSolverMultistepSchedulerState) -> jnp.ndarray:
-            def step_2(state: DPMSolverMultistepSchedulerState) -> jnp.ndarray:
-                timestep_list = jnp.array([state.timesteps[state.step_index - 1], state.timesteps[state.step_index]])
-                return self.multistep_dpm_solver_second_order_update(
-                    state.model_outputs,
-                    timestep_list,
-                    state.prev_timestep,
-                    state.cur_sample,
-                )
-
-            def step_3(state: DPMSolverMultistepSchedulerState) -> jnp.ndarray:
-                timestep_list = jnp.array(
-                    [
-                        state.timesteps[state.step_index - 2],
-                        state.timesteps[state.step_index - 1],
-                        state.timesteps[state.step_index],
-                    ]
-                )
-                return self.multistep_dpm_solver_third_order_update(
-                    state.model_outputs,
-                    timestep_list,
-                    state.prev_timestep,
-                    state.cur_sample,
-                )
-
-            if self.config.solver_order == 2:
-                return step_2(state)
-            elif self.config.lower_order_final and len(state.timesteps) < 15:
-                return jax.lax.cond(
-                    state.lower_order_nums < 2,
-                    step_2,
-                    lambda state: jax.lax.cond(
-                        state.step_index == len(state.timesteps) - 2,
-                        step_2,
-                        step_3,
-                        state,
-                    ),
-                    state,
-                )
-            else:
-                return jax.lax.cond(
-                    state.lower_order_nums < 2,
-                    step_2,
-                    step_3,
-                    state,
-                )
-
-        if self.config.solver_order == 1:
-            prev_sample = step_1(state)
-        elif self.config.lower_order_final and len(state.timesteps) < 15:
-            prev_sample = jax.lax.cond(
-                state.lower_order_nums < 1,
-                step_1,
-                lambda state: jax.lax.cond(
-                    state.step_index == len(state.timesteps) - 1,
-                    step_1,
-                    step_23,
-                    state,
-                ),
-                state,
+        if self.config.solver_order == 1 or self.lower_order_nums < 1 or lower_order_final:
+            prev_sample = self.dpm_solver_first_order_update(model_output, timestep, prev_timestep, sample)
+        elif self.config.solver_order == 2 or self.lower_order_nums < 2 or lower_order_second:
+            timestep_list = [self.timesteps[step_index - 1], timestep]
+            prev_sample = self.multistep_dpm_solver_second_order_update(
+                self.model_outputs, timestep_list, prev_timestep, sample
             )
         else:
-            prev_sample = jax.lax.cond(
-                state.lower_order_nums < 1,
-                step_1,
-                step_23,
-                state,
+            timestep_list = [self.timesteps[step_index - 2], self.timesteps[step_index - 1], timestep]
+            prev_sample = self.multistep_dpm_solver_third_order_update(
+                self.model_outputs, timestep_list, prev_timestep, sample
             )
 
-        state = state.replace(
-            lower_order_nums=jnp.minimum(state.lower_order_nums + 1, self.config.solver_order),
-            step_index=(state.step_index + 1),
-        )
+        if self.lower_order_nums < self.config.solver_order:
+            self.lower_order_nums += 1
 
         if not return_dict:
-            return (prev_sample, state)
+            return (prev_sample,)
 
-        return FlaxDPMSolverMultistepSchedulerOutput(prev_sample=prev_sample, state=state)
+        return SchedulerOutput(prev_sample=prev_sample)
 
-    def scale_model_input(
-        self, state: DPMSolverMultistepSchedulerState, sample: jnp.ndarray, timestep: Optional[int] = None
-    ) -> jnp.ndarray:
+    def scale_model_input(self, sample: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
 
         Args:
-            state (`DPMSolverMultistepSchedulerState`):
-                the `FlaxDPMSolverMultistepScheduler` state data class instance.
-            sample (`jnp.ndarray`): input sample
-            timestep (`int`, optional): current timestep
+            sample (`torch.FloatTensor`): input sample
 
         Returns:
-            `jnp.ndarray`: scaled input sample
+            `torch.FloatTensor`: scaled input sample
         """
         return sample
 
     def add_noise(
         self,
-        original_samples: jnp.ndarray,
-        noise: jnp.ndarray,
-        timesteps: jnp.ndarray,
-    ) -> jnp.ndarray:
+        original_samples: torch.FloatTensor,
+        noise: torch.FloatTensor,
+        timesteps: torch.IntTensor,
+    ) -> torch.FloatTensor:
+        # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
+        self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        timesteps = timesteps.to(original_samples.device)
+
         sqrt_alpha_prod = self.alphas_cumprod[timesteps] ** 0.5
         sqrt_alpha_prod = sqrt_alpha_prod.flatten()
-        sqrt_alpha_prod = broadcast_to_shape_from_left(sqrt_alpha_prod, original_samples.shape)
+        while len(sqrt_alpha_prod.shape) < len(original_samples.shape):
+            sqrt_alpha_prod = sqrt_alpha_prod.unsqueeze(-1)
 
-        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.0
+        sqrt_one_minus_alpha_prod = (1 - self.alphas_cumprod[timesteps]) ** 0.5
         sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.flatten()
-        sqrt_one_minus_alpha_prod = broadcast_to_shape_from_left(sqrt_one_minus_alpha_prod, original_samples.shape)
+        while len(sqrt_one_minus_alpha_prod.shape) < len(original_samples.shape):
+            sqrt_one_minus_alpha_prod = sqrt_one_minus_alpha_prod.unsqueeze(-1)
 
         noisy_samples = sqrt_alpha_prod * original_samples + sqrt_one_minus_alpha_prod * noise
         return noisy_samples
