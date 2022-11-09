@@ -129,9 +129,12 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         clip_sample: bool = True,
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
+        predict_epsilon: bool = True,
     ):
         if trained_betas is not None:
-            self.betas = torch.from_numpy(trained_betas)
+            self.betas = (
+                torch.from_numpy(trained_betas) if not isinstance(trained_betas, torch.Tensor) else trained_betas
+            )
         elif beta_schedule == "linear":
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
@@ -185,7 +188,11 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         return variance
 
-    def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
+    def set_timesteps(
+        self,
+        num_inference_steps: int,
+        device: Union[str, torch.device] = None,
+    ):
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -193,18 +200,20 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
+        # using linearly spaced steps
         self.num_inference_steps = num_inference_steps
-        step_ratio = self.config.num_train_timesteps // self.num_inference_steps
+        step_ratio = self.config.num_train_timesteps / self.num_inference_steps
         # creates integer timesteps by multiplying by ratio
         # casting to int to avoid issues when num_inference_step is power of 3
         timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.int64)
+        timesteps += self.config.steps_offset
+
         self.timesteps = torch.from_numpy(timesteps).to(device)
-        self.timesteps += self.config.steps_offset
 
     def step(
         self,
         model_output: torch.FloatTensor,
-        timestep: int,
+        timestep: Union[int, Tuple[torch.Tensor, torch.Tensor]],
         sample: torch.FloatTensor,
         eta: float = 0.0,
         use_clipped_model_output: bool = False,
@@ -231,7 +240,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
                 can directly provide the noise for the variance itself. This is useful for methods such as
                 CycleDiffusion. (https://arxiv.org/abs/2210.05559)
             return_dict (`bool`): option for returning tuple rather than DDIMSchedulerOutput class
-
         Returns:
             [`~schedulers.scheduling_utils.DDIMSchedulerOutput`] or `tuple`:
             [`~schedulers.scheduling_utils.DDIMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
@@ -255,17 +263,25 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # - pred_prev_sample -> "x_t-1"
 
         # 1. get previous step value (=t-1)
-        prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
+        if isinstance(timestep, tuple) and len(timestep) == 2:
+            timestep, prev_timestep = timestep
+        else:
+            prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
 
         # 2. compute alphas, betas
         alpha_prod_t = self.alphas_cumprod[timestep]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
+        alpha_prod_t_prev = (
+            self.alphas_cumprod[prev_timestep] if bool(prev_timestep >= 0) else self.final_alpha_cumprod
+        )
 
         beta_prod_t = 1 - alpha_prod_t
 
         # 3. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+        if self.config.predict_epsilon:
+            pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
+        else:
+            pred_original_sample = model_output
 
         # 4. Clip "predicted x_0"
         if self.config.clip_sample:
