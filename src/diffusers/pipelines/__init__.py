@@ -8,6 +8,7 @@ if is_torch_available():
     from .latent_diffusion import LDMSuperResolutionPipeline
     from .latent_diffusion_uncond import LDMPipeline
     from .pndm import PNDMPipeline
+    from .repaint import RePaintPipeline
     from .score_sde_ve import ScoreSdeVePipeline
     from .stochastic_karras_ve import KarrasVePipeline
 else:
@@ -16,11 +17,13 @@ else:
 if is_torch_available() and is_transformers_available():
     from .latent_diffusion import LDMTextToImagePipeline
     from .stable_diffusion import (
+        CycleDiffusionPipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
         StableDiffusionInpaintPipelineLegacy,
         StableDiffusionPipeline,
     )
+    from .vq_diffusion import VQDiffusionPipeline
 
 if is_transformers_available() and is_onnx_available():
     from .stable_diffusion import (

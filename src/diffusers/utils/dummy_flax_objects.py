@@ -94,6 +94,21 @@ class FlaxDDPMScheduler(metaclass=DummyObject):
         requires_backends(cls, ["flax"])
 
 
+class FlaxDPMSolverMultistepScheduler(metaclass=DummyObject):
+    _backends = ["flax"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["flax"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["flax"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["flax"])
+
+
 class FlaxKarrasVeScheduler(metaclass=DummyObject):
     _backends = ["flax"]
 
