@@ -755,7 +755,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
 
     def test_stable_diffusion_text2img_pipeline_default(self):
         expected_image = load_numpy(
-            "https://huggingface.co/datasets/lewington/expected-images/resolve/main/astronaut_riding_a_horse.npy"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text2img/astronaut_riding_a_horse.npy"
         )
 
         model_id = "CompVis/stable-diffusion-v1-4"
@@ -771,7 +771,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
-        assert np.abs(expected_image - image).max() < 1e-3
+        assert np.abs(expected_image - image).max() < 5e-3
 
     def test_stable_diffusion_text2img_intermediate_state(self):
         number_of_steps = 0
