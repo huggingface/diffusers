@@ -249,7 +249,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
 #        time_step = torch.tensor([10] * noise.shape[0])
 #
 #        with torch.no_grad():
-#            output = model(noise, time_step, context=context).sample
+#            output = model(noise, time_step, context=context)
 #
 #        output_slice = output[0, -1, -3:, -3:].flatten()
 # fmt: off
