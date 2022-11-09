@@ -1393,7 +1393,7 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        if str(torch_device).startswith("cpu"):
+        if torch_device in ["cpu", "mps"]:
             assert abs(result_sum.item() - 152.3192) < 1e-2
             assert abs(result_mean.item() - 0.1983) < 1e-3
         else:
