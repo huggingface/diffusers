@@ -522,7 +522,7 @@ class PipelineSlowTests(unittest.TestCase):
         ddim.to(torch_device)
         ddim.set_progress_bar_config(disable=None)
 
-        generator = torch.Generator().manual_seed(seed)
+        generator = torch.Generator(device=torch_device).manual_seed(seed)
         ddpm_images = ddpm(batch_size=2, generator=generator, output_type="numpy").images
 
         generator = torch.Generator(device=torch_device).manual_seed(seed)

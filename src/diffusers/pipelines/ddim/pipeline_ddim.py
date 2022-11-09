@@ -79,7 +79,7 @@ class DDIMPipeline(DiffusionPipeline):
             message = (
                 f"The `generator` device is `{generator.device}` and does not match the pipeline "
                 f"device `{self.device}`, so the `generator` will be set to `None`. "
-                f"Please use `generator=torch.Generator(device=\"{self.device}\")` instead."
+                f'Please use `generator=torch.Generator(device="{self.device}")` instead.'
             )
             deprecate(
                 "generator.device == 'cpu'",
