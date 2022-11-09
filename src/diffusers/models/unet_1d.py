@@ -89,7 +89,6 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         always_downsample: bool = False,
     ):
         super().__init__()
-
         self.sample_size = sample_size
 
         # time

@@ -64,7 +64,7 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "block_out_channels": (32, 128, 256),
+            "block_out_channels": (32, 64, 128, 256),
             "in_channels": 14,
             "out_channels": 14,
             "time_embedding_type": "positional",
@@ -73,8 +73,8 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
             "downscale_freq_shift": 1.0,
             "out_block_type": "OutConv1DBlock",
             "mid_block_type": "MidResTemporalBlock1D",
-            "down_block_types": ("DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"),
-            "up_block_types": ("UpResnetBlock1D", "UpResnetBlock1D"),
+            "down_block_types": ("DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"),
+            "up_block_types": ("UpResnetBlock1D", "UpResnetBlock1D", "UpResnetBlock1D"),
             "act_fn": "mish",
         }
         inputs_dict = self.dummy_input
@@ -197,7 +197,7 @@ class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
             "in_channels": 14,
-            "out_channels": 1,
+            "out_channels": 14,
             "down_block_types": ["DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D", "DownResnetBlock1D"],
             "up_block_types": [],
             "out_block_type": "ValueFunction",
@@ -208,6 +208,8 @@ class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
             "use_timestep_embedding": True,
             "downscale_freq_shift": 1.0,
             "flip_sin_to_cos": False,
+            "time_embedding_type": "positional",
+            "act_fn": "mish",
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
