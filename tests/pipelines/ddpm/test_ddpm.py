@@ -44,21 +44,18 @@ class DDPMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return model
 
     def test_inference(self):
+        device = "cpu"
         unet = self.dummy_uncond_unet
         scheduler = DDPMScheduler()
 
         ddpm = DDPMPipeline(unet=unet, scheduler=scheduler)
-        ddpm.to(torch_device)
+        ddpm.to(device)
         ddpm.set_progress_bar_config(disable=None)
 
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            _ = ddpm(num_inference_steps=1)
-
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator(device=device).manual_seed(0)
         image = ddpm(generator=generator, num_inference_steps=2, output_type="numpy").images
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = torch.Generator(device=device).manual_seed(0)
         image_from_tuple = ddpm(generator=generator, num_inference_steps=2, output_type="numpy", return_dict=False)[0]
 
         image_slice = image[0, -3:, -3:, -1]
@@ -66,11 +63,10 @@ class DDPMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array(
-            [8.296e-05, 6.484e-01, 5.530e-01, 7.004e-02, 4.530e-01, 2.200e-01, 2.348e-01, 9.999e-01, 7.396e-01]
+            [5.589e-01, 7.089e-01, 2.632e-01, 6.841e-01, 1.000e-04, 9.999e-01, 1.973e-01, 1.000e-04, 8.010e-02]
         )
-        tolerance = 1e-2 if torch_device != "mps" else 3e-2
-        assert np.abs(image_slice.flatten() - expected_slice).max() < tolerance
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < tolerance
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_inference_predict_epsilon(self):
         deprecate("remove this test", "0.10.0", "remove")

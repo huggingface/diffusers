@@ -408,6 +408,7 @@ def main(args):
                     scheduler=noise_scheduler,
                 )
 
+                deprecate("todo: remove this check", "0.10.0", "when the most used version is >= 0.8.0")
                 if diffusers_version < version.parse("0.8.0"):
                     generator = torch.manual_seed(0)
                 else:
