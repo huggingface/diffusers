@@ -92,7 +92,7 @@ accelerate launch train_dreambooth.py \
 
 With the help of gradient checkpointing and the 8-bit optimizer from bitsandbytes it's possible to run train dreambooth on a 16GB GPU.
 
-Install `bitsandbytes` with `pip install bitsandbytes`
+Install `bitsandbytes` with `pip install bitsandbytes`, and it's required dependency `cudatoolkit` with `conda install cudatoolkit`.
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
