@@ -377,8 +377,6 @@ class OnnxStableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
 
             latents = (init_latents_proper * mask) + (latents * (1 - mask))
 
-            #latents = latents.numpy()
-
             # call the callback, if provided
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
