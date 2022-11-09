@@ -78,7 +78,7 @@ class DDIMPipeline(DiffusionPipeline):
         if generator is not None and generator.device.type != self.device.type and self.device.type != "mps":
             message = (
                 f"The `generator` device is `{generator.device}` and does not match the pipeline "
-                f"device `{self.device}`, so the `generator` will be set to `None`. "
+                f"device `{self.device}`, so the `generator` will be ignored. "
                 f'Please use `generator=torch.Generator(device="{self.device}")` instead.'
             )
             deprecate(
