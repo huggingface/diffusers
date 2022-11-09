@@ -42,7 +42,6 @@ from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, require_torch_gpu
-from parameterized import parameterized
 from PIL import Image
 from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
