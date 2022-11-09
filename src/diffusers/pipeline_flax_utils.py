@@ -269,22 +269,23 @@ class FlaxDiffusionPipeline(ConfigMixin):
         >>> # Requires to be logged in to Hugging Face hub,
         >>> # see more in [the documentation](https://huggingface.co/docs/hub/security-tokens)
         >>> pipeline, params = FlaxDiffusionPipeline.from_pretrained(
-        >>>     "runwayml/stable-diffusion-v1-5", revision="bf16", dtype=jnp.bfloat16,
-        >>> )
+        ...     "runwayml/stable-diffusion-v1-5",
+        ...     revision="bf16",
+        ...     dtype=jnp.bfloat16,
+        ... )
 
         >>> # Download pipeline, but use a different scheduler
         >>> from diffusers import FlaxDPMSolverMultistepScheduler
-        >>> 
+
         >>> model_id = "runwayml/stable-diffusion-v1-5"
         >>> sched, sched_state = FlaxDPMSolverMultistepScheduler.from_config(
-        >>>     model_id, subfolder="scheduler",
-        >>> )
-        >>> 
+        ...     model_id,
+        ...     subfolder="scheduler",
+        ... )
+
         >>> dpm_pipe, dpm_params = FlaxStableDiffusionPipeline.from_pretrained(
-        >>>     model_id,
-        >>>     revision="bf16", dtype=jnp.bfloat16,
-        >>>     scheduler=dpmpp
-        >>> )
+        ...     model_id, revision="bf16", dtype=jnp.bfloat16, scheduler=dpmpp
+        ... )
         >>> dpm_params["scheduler"] = dpmpp_state
         ```
         """
