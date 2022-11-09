@@ -303,7 +303,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
 
-            return text_embeddings
+        return text_embeddings
 
     @torch.no_grad()
     def __call__(

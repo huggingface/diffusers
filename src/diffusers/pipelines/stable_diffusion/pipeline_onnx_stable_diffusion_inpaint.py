@@ -226,7 +226,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
             text_embeddings = np.concatenate([uncond_embeddings, text_embeddings])
 
-            return num_images_per_prompt
+        return text_embeddings
 
     @torch.no_grad()
     def __call__(

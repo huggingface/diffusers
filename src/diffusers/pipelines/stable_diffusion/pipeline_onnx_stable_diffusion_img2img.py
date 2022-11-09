@@ -212,7 +212,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
             text_embeddings = np.concatenate([uncond_embeddings, text_embeddings])
 
-            return num_images_per_prompt
+        return text_embeddings
 
     def __call__(
         self,
