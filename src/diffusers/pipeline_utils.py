@@ -53,6 +53,9 @@ LOADABLE_CLASSES = {
         "PreTrainedModel": ["save_pretrained", "from_pretrained"],
         "FeatureExtractionMixin": ["save_pretrained", "from_pretrained"],
     },
+    "onnxruntime.training": {
+        "ORTModule": ["save_pretrained", "from_pretrained"],
+    }
 }
 
 ALL_IMPORTABLE_CLASSES = {}

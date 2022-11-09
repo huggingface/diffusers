@@ -59,6 +59,11 @@ def main(args):
             "UpBlock2D",
         ),
     )
+
+    if args.ort:
+        from onnxruntime.training import ORTModule
+        model = ORTModule(model)
+
     noise_scheduler = DDPMScheduler(num_train_timesteps=1000, tensor_format="pt")
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -139,7 +144,10 @@ def main(args):
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
-                noise_pred = model(noisy_images, timesteps).sample
+                if args.ort:
+                    noise_pred = model(noisy_images, timesteps, return_dict=False)[0]
+                else:
+                    noise_pred = model(noisy_images, timesteps).sample
                 loss = F.mse_loss(noise_pred, noise)
                 accelerator.backward(loss)
 
@@ -237,6 +245,7 @@ if __name__ == "__main__":
             "and an Nvidia Ampere GPU."
         ),
     )
+    parser.add_argument("--ort", action="store_true")
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
