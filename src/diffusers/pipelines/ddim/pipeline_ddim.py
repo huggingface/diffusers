@@ -93,9 +93,13 @@ class DDIMPipeline(DiffusionPipeline):
         if accepts_use_clipped_model_output:
             extra_kwargs["use_clipped_model_output"] = use_clipped_model_output
 
-        for t in self.progress_bar(self.scheduler.timesteps):
+        timesteps = self.scheduler.timesteps
+        timesteps = torch.cat([timesteps, -1 * torch.ones_like(timesteps)[:1]], 0)
+        timepairs = list(zip(timesteps[:-1], timesteps[1:]))
+        for t in self.progress_bar(timepairs):
+            start_t, end_t = t
             # 1. predict noise model_output
-            model_output = self.unet(image, t).sample
+            model_output = self.unet(image, start_t).sample
 
             # 2. predict previous mean of image x_t-1 and add variance depending on eta
             # eta corresponds to η in paper and should be between [0, 1]
@@ -111,3 +115,4 @@ class DDIMPipeline(DiffusionPipeline):
             return (image,)
 
         return ImagePipelineOutput(images=image)
+
