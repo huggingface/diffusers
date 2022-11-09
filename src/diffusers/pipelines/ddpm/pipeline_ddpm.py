@@ -83,7 +83,7 @@ class DDPMPipeline(DiffusionPipeline):
         if generator is not None and generator.device.type != self.device.type and self.device.type != "mps":
             message = (
                 f"The `generator` device is `{generator.device}` and does not match the pipeline "
-                f"device `{self.device}`, so the `generator` will be set to `None`. "
+                f"device `{self.device}`, so the `generator` will be ignored. "
                 f'Please use `torch.Generator(device="{self.device}")` instead.'
             )
             deprecate(
@@ -94,11 +94,13 @@ class DDPMPipeline(DiffusionPipeline):
             generator = None
 
         # Sample gaussian noise to begin loop
-        image = torch.randn(
-            (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
-            generator=generator,
-            device=self.device,
-        )
+        image_shape = (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size)
+        if self.device.type == "mps":
+            # randn does not work reproducibly on mps
+            image = torch.randn(image_shape, generator=generator)
+            image = image.to(self.device)
+        else:
+            image = torch.randn(image_shape, generator=generator, device=self.device)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)

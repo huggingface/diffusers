@@ -81,10 +81,14 @@ class DDPMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         if torch_device == "mps":
             _ = ddpm(num_inference_steps=1)
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
         image = ddpm(generator=generator, num_inference_steps=2, output_type="numpy").images
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        generator = generator.manual_seed(0)
         image_eps = ddpm(generator=generator, num_inference_steps=2, output_type="numpy", predict_epsilon=False)[0]
 
         image_slice = image[0, -3:, -3:, -1]
