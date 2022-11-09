@@ -34,7 +34,7 @@
       title: "Reinforcement Learning"
     - local: using-diffusers/audio
       title: "Audio"
-    - local: using-diffusers/other
+    - local: using-diffusers/other-modalities
       title: "Other Modalities"
     title: "Beyond Images"
   title: "Using Diffusers"
