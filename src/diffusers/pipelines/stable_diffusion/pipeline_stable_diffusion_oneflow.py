@@ -13,6 +13,7 @@ from ...models import OneFlowUNet2DConditionModel as UNet2DConditionModel
 from ...pipeline_oneflow_utils import OneFlowDiffusionPipeline as DiffusionPipeline
 from ...schedulers import OneFlowDDIMScheduler as DDIMScheduler
 from ...schedulers import OneFlowPNDMScheduler as PNDMScheduler
+from ...schedulers import OneFlowDPMSolverMultistepScheduler as DPMSolverMultistepScheduler
 from ...schedulers import LMSDiscreteScheduler
 from . import StableDiffusionPipelineOutput
 from .safety_checker_oneflow import OneFlowStableDiffusionSafetyChecker as StableDiffusionSafetyChecker
@@ -69,7 +70,7 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+        scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler, DPMSolverMultistepScheduler],
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
     ):
