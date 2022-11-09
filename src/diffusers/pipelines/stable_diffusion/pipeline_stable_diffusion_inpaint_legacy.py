@@ -190,7 +190,23 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         return self.device
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
-    def _encode_prompt(self, prompt, device, num_images_per_prompt, guidance_scale, negative_prompt):
+    def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt):
+        r"""
+        Encodes the prompt into text encoder hidden states.
+
+        Args:
+            prompt (`str` or `list(int)`):
+                prompt to be encoded
+            device: (`torch.device`):
+                torch device
+            num_images_per_prompt (`int`):
+                number of images that should be generated per prompt
+            do_classifier_free_guidance (`bool`):
+                whether to use classifier free guidance or not
+            negative_prompt (`str` or `List[str]`):
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `guidance_scale` is less than `1`).
+        """
         batch_size = len(prompt) if isinstance(prompt, list) else 1
 
         text_inputs = self.tokenizer(
@@ -215,10 +231,6 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         text_embeddings = text_embeddings.repeat(1, num_images_per_prompt, 1)
         text_embeddings = text_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
-        # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
-        # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = guidance_scale > 1.0
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
             uncond_tokens: List[str]
@@ -367,7 +379,14 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         if not isinstance(init_image, torch.FloatTensor):
             init_image = preprocess_image(init_image)
 
-        text_embeddings = self._encode_prompt(prompt, device, num_images_per_prompt, guidance_scale, negative_prompt)
+        # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
+        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+        # corresponds to doing no classifier free guidance.
+        do_classifier_free_guidance = guidance_scale > 1.0
+
+        text_embeddings = self._encode_prompt(
+            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+        )
 
         # encode the init image into latents and scale the latents
         latents_dtype = text_embeddings.dtype
@@ -423,8 +442,6 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         # Some schedulers like PNDM have timesteps as arrays
         # It's more optimized to move all timesteps to correct device beforehand
         timesteps = self.scheduler.timesteps[t_start:].to(self.device)
-
-        do_classifier_free_guidance = guidance_scale > 1.0
 
         for i, t in tqdm(enumerate(timesteps)):
             # expand the latents if we are doing classifier free guidance

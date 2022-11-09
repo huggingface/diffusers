@@ -221,7 +221,23 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         self.unet.set_use_memory_efficient_attention_xformers(False)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
-    def _encode_prompt(self, prompt, device, num_images_per_prompt, guidance_scale, negative_prompt):
+    def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt):
+        r"""
+        Encodes the prompt into text encoder hidden states.
+
+        Args:
+            prompt (`str` or `list(int)`):
+                prompt to be encoded
+            device: (`torch.device`):
+                torch device
+            num_images_per_prompt (`int`):
+                number of images that should be generated per prompt
+            do_classifier_free_guidance (`bool`):
+                whether to use classifier free guidance or not
+            negative_prompt (`str` or `List[str]`):
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `guidance_scale` is less than `1`).
+        """
         batch_size = len(prompt) if isinstance(prompt, list) else 1
 
         text_inputs = self.tokenizer(
@@ -246,10 +262,6 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         text_embeddings = text_embeddings.repeat(1, num_images_per_prompt, 1)
         text_embeddings = text_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
-        # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
-        # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = guidance_scale > 1.0
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
             uncond_tokens: List[str]
@@ -392,7 +404,14 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
         if isinstance(init_image, PIL.Image.Image):
             init_image = preprocess(init_image)
 
-        text_embeddings = self._encode_prompt(prompt, device, num_images_per_prompt, guidance_scale, negative_prompt)
+        # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
+        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+        # corresponds to doing no classifier free guidance.
+        do_classifier_free_guidance = guidance_scale > 1.0
+
+        text_embeddings = self._encode_prompt(
+            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+        )
 
         # encode the init image into latents and scale the latents
         latents_dtype = text_embeddings.dtype
@@ -448,8 +467,6 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
 
         latents = init_latents
-
-        do_classifier_free_guidance = guidance_scale > 1.0
 
         t_start = max(num_inference_steps - init_timestep + offset, 0)
 
