@@ -89,11 +89,13 @@ class DDIMPipeline(DiffusionPipeline):
             generator = None
 
         # Sample gaussian noise to begin loop
-        image = torch.randn(
-            (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
-            generator=generator,
-            device=self.device,
-        )
+        image_shape = (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size)
+        if self.device.type == "mps":
+            # randn does not work reproducibly on mps
+            image = torch.randn(image_shape, generator=generator)
+            image = image.to(device)
+        else:
+            image = torch.randn(image_shape, generator=generator, device=self.device)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
