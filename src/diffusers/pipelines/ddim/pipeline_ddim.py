@@ -46,7 +46,6 @@ class DDIMPipeline(DiffusionPipeline):
         use_clipped_model_output: Optional[bool] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        predict_epsilon: bool = True,
         substeps_mode="linear",  # linear or quad(ratic)
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
@@ -70,8 +69,6 @@ class DDIMPipeline(DiffusionPipeline):
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipeline_utils.ImagePipelineOutput`] instead of a plain tuple.
-            predict_epsilon (`bool`, *optional*, defaults to True):
-                Whether the Unet model should be used to predict eps (as opposed to x0).
             substeps_mode (`str`, *optional*, defaults to "linear"):
                 How the steps are selected in the DDIM sampler. When "linear", the selected steps are linearly spaced.
                 When quadratic, the step size grows with decreasing t, such that for noisier x_t, the steps are larger.
@@ -111,9 +108,7 @@ class DDIMPipeline(DiffusionPipeline):
             # 2. predict previous mean of image x_t-1 and add variance depending on eta
             # eta corresponds to η in paper and should be between [0, 1]
             # do x_t -> x_t-1
-            image = self.scheduler.step(
-                model_output, t, image, eta, predict_epsilon=predict_epsilon, **extra_kwargs
-            ).prev_sample
+            image = self.scheduler.step(model_output, t, image, eta, **extra_kwargs).prev_sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
