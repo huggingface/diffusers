@@ -1,4 +1,5 @@
 import argparse
+import inspect
 import math
 import os
 from pathlib import Path
@@ -24,8 +25,6 @@ from torchvision.transforms import (
     ToTensor,
 )
 from tqdm.auto import tqdm
-
-import wandb
 
 logger = get_logger(__name__)
 
@@ -173,6 +172,7 @@ def parse_args():
         type=str,
         default="tensorboard",
         choices=["tensorboard", "wandb"],
+        nargs="+",
         help=(
             "Whether to use [tensorboard](https://www.tensorflow.org/tensorboard) or [wandb](https://www.wandb.ai)"
             " for experiment tracking and logging of model metrics and model checkpoints"
@@ -201,14 +201,12 @@ def parse_args():
             "and an Nvidia Ampere GPU."
         ),
     )
-
     parser.add_argument(
-        "--predict_mode",
-        type=str,
-        default="eps",
-        help="What the model should predict. 'eps' to predict error, 'x0' to directly predict reconstruction",
+        "--predict_epsilon",
+        action="store_true",
+        default=True,
+        help="Whether the model should predict the 'epsilon'/noise error or directly the reconstructed image 'x0'.",
     )
-
     parser.add_argument("--ddpm_num_steps", type=int, default=1000)
     parser.add_argument("--ddpm_beta_schedule", type=str, default="linear")
 
@@ -235,10 +233,13 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
 
 def main(args):
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
+    log_with = args.logger.copy()
+    if "wandb" and "tensorboard" in args.logger:
+        log_with.remove("wandb")
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
-        log_with=args.logger,
+        log_with=log_with,
         logging_dir=logging_dir,
     )
 
@@ -265,7 +266,16 @@ def main(args):
             "UpBlock2D",
         ),
     )
-    noise_scheduler = DDPMScheduler(num_train_timesteps=args.ddpm_num_steps, beta_schedule=args.ddpm_beta_schedule)
+    accepts_predict_epsilon = "predict_epsilon" in set(inspect.signature(DDPMScheduler.__init__).parameters.keys())
+
+    if accepts_predict_epsilon:
+        noise_scheduler = DDPMScheduler(
+            num_train_timesteps=args.ddpm_num_steps,
+            beta_schedule=args.ddpm_beta_schedule,
+            predict_epsilon=args.predict_epsilon,
+        )
+    else:
+        noise_scheduler = DDPMScheduler(num_train_timesteps=args.ddpm_num_steps, beta_schedule=args.ddpm_beta_schedule)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
@@ -339,12 +349,25 @@ def main(args):
 
     if accelerator.is_main_process:
         run = os.path.split(__file__)[-1].split(".")[0]
-        if args.logger == "wandb":
-            accelerator.init_trackers(
-                project_name=f"{run}-{args.output_dir}", 
-                init_kwargs={"wandb":{'config':vars(args)}})
+        if "wandb" in args.logger:
+            try:
+                import wandb
+            except:
+                raise ImportError("please run `pip install wandb --upgrade`")
+            project_name = f"{run}-{args.output_dir}"
+            if "tensorboard" in args.logger:
+                tfevents_folder = os.path.join(logging_dir,project_name)
+                wandb.tensorboard.patch(root_logdir=tfevents_folder)
+                wandb.init(project=project_name, config=vars(args))
+                accelerator.init_trackers(project_name)
+            else:
+                accelerator.init_trackers(
+                    project_name=project_name, 
+                    init_kwargs={"wandb":{'config':vars(args)}})
+            table_cols = ['epoch', 'global_step', 'generated_images']
+            wandb_table = wandb.Table(columns=table_cols)
         else:
-            accelerator.init_trackers(run)
+            accelerator.init_trackers(run) 
 
     global_step = 0
     for epoch in range(args.num_epochs):
@@ -369,9 +392,9 @@ def main(args):
                 # Predict the noise residual
                 model_output = model(noisy_images, timesteps).sample
 
-                if args.predict_mode == "eps":
+                if args.predict_epsilon:
                     loss = F.mse_loss(model_output, noise)  # this could have different weights!
-                elif args.predict_mode == "x0":
+                else:
                     alpha_t = _extract_into_tensor(
                         noise_scheduler.alphas_cumprod, timesteps, (clean_images.shape[0], 1, 1, 1)
                     )
@@ -418,38 +441,33 @@ def main(args):
                 images = pipeline(
                     generator=generator,
                     batch_size=args.eval_batch_size,
-                    output_type="numpy",
-                    predict_epsilon=args.predict_mode == "eps",
+                    output_type="numpy"
                 ).images
 
                 # denormalize the images to save
                 images_processed = (images * 255).round().astype("uint8")
 
-                if args.logger == "wandb":
+                if "wandb" in args.logger:
                     # denormalize the images
                     wandb_images = [wandb.Image(i) for i in images_processed]
 
-                    #create table holding predictions for generated images
-                    table_cols = ['epoch', 'global_step', 'generated_images']
-                    wandb_table = wandb.Table(columns=table_cols)
                     wandb_table.add_data(epoch, global_step, wandb_images)
 
                     #log images to wandb
                     wandb.log({
-                        f'generated_samples_{global_step}': wandb_table, 
                         'generated_images':wandb_images,
                     }, step=global_step)
 
-                else:
+                if "tensorboard" in args.logger:
                     accelerator.trackers[0].writer.add_images(
-                    "test_samples", images_processed.transpose(0, 3, 1, 2), epoch
-                )
+                        "test_samples", images_processed.transpose(0, 3, 1, 2), epoch
+                    )
 
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
                 # save the model
                 pipeline.save_pretrained(args.output_dir)
 
-                if args.logger == "wandb":
+                if "wandb" in args.logger:
                     # log model checkpoint within a wandb artifact
                     model_artifact = wandb.Artifact(
                         f'{wandb.run.id}-{args.output_dir}', 
@@ -462,9 +480,13 @@ def main(args):
                     repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=False)
         accelerator.wait_for_everyone()
 
+    if "wandb" in args.logger:
+        wandb.log({
+            "generated_samples_table": wandb_table
+    })
     accelerator.end_training()
-
-
+    
+        
 if __name__ == "__main__":
     args = parse_args()
     main(args)

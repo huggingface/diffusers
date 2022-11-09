@@ -16,12 +16,6 @@ And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) e
 accelerate config
 ```
 
-If you're tracking your experiment with [Weights and Biases](https://docs.wandb.ai) you can login via:
-
-```bash
-wandb login
-```
-
 ### Unconditional Flowers  
 
 The command to train a DDPM UNet model on the Oxford Flowers dataset:

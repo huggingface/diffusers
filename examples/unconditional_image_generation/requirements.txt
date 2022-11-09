@@ -1,5 +1,3 @@
 diffusers[training]
 accelerate
 datasets
-tensorboard
-wandb
