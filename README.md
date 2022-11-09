@@ -337,21 +337,21 @@ It's possible to reuse weights between pipelines. For example, if you wanted to 
 # make sure you're logged in with `huggingface-cli login`
 from diffusers import StableDiffusionPipeline, StableDiffusionImg2ImgPipeline
 
-SD = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+sd = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 
 # Note that each subcomponent can be added or removed separately.
-SD_IMG2IMG = StableDiffusionImg2ImgPipeline.from_pretrained(
+sd_img2img = StableDiffusionImg2ImgPipeline.from_pretrained(
   "runwayml/stable-diffusion-v1-5",
-  vae=SD.vae,
-  text_encoder=SD.text_encoder,
-  tokenizer=SD.tokenizer,
-  unet=SD.unet,
-  scheduler=SD.scheduler,
-  feature_extractor=SD.feature_extractor)
+  vae=sd.vae,
+  text_encoder=sd.text_encoder,
+  tokenizer=sd.tokenizer,
+  unet=sd.unet,
+  scheduler=sd.scheduler,
+  feature_extractor=sd.feature_extractor)
 
 
-SD_PIPE = SD.to("cuda")
-SD_IMG2IMG_PIPE = SD_IMG2IMG.to("cuda")
+sd_pipe = sd.to("cuda")
+sd_img2img_pipe = sd_img2_img.to("cuda")
 ```
 
 Now you can call both pipelines without additional GPU memory cost. 
