@@ -873,7 +873,7 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
 
         if jax_device == "tpu":
             assert abs(result_sum - 186.83226) < 1e-2
-            assert abs(result_mean - 0.24145) < 1e-3
+            assert abs(result_mean - 0.24327) < 1e-3
         else:
             assert abs(result_sum - 186.9466) < 1e-2
             assert abs(result_mean - 0.24342) < 1e-3
@@ -886,7 +886,7 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
 
         if jax_device == "tpu":
             assert abs(result_sum - 186.83226) < 1e-2
-            assert abs(result_mean - 0.2414) < 1e-3
+            assert abs(result_mean - 0.24327) < 1e-3
         else:
             assert abs(result_sum - 186.9482) < 1e-2
             assert abs(result_mean - 0.2434) < 1e-3
