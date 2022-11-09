@@ -1281,7 +1281,11 @@ class EulerDiscreteSchedulerTest(SchedulerCommonTest):
 
         scheduler.set_timesteps(self.num_inference_steps)
 
-        generator = torch.Generator(torch_device).manual_seed(0)
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
 
         model = self.dummy_model()
         sample = self.dummy_sample_deter * scheduler.init_noise_sigma
@@ -1308,7 +1312,11 @@ class EulerDiscreteSchedulerTest(SchedulerCommonTest):
 
         scheduler.set_timesteps(self.num_inference_steps, device=torch_device)
 
-        generator = torch.Generator(torch_device).manual_seed(0)
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
 
         model = self.dummy_model()
         sample = self.dummy_sample_deter * scheduler.init_noise_sigma
@@ -1364,7 +1372,11 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
 
         scheduler.set_timesteps(self.num_inference_steps)
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
 
         model = self.dummy_model()
         sample = self.dummy_sample_deter * scheduler.init_noise_sigma
@@ -1396,7 +1408,11 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
 
         scheduler.set_timesteps(self.num_inference_steps, device=torch_device)
 
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
 
         model = self.dummy_model()
         sample = self.dummy_sample_deter * scheduler.init_noise_sigma
