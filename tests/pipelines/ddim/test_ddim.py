@@ -71,6 +71,30 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < tolerance
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < tolerance
 
+    def test_inference_eta(self):
+        unet = self.dummy_uncond_unet
+        scheduler = DDIMScheduler()
+
+        ddim = DDIMPipeline(unet=unet, scheduler=scheduler)
+        ddim.to(torch_device)
+        ddim.set_progress_bar_config(disable=None)
+
+        # Warmup pass when using mps (see #372)
+        if torch_device == "mps":
+            _ = ddim(num_inference_steps=1)
+
+        generator = torch.manual_seed(0)
+        # set eta > 0 to test the variance noise generation
+        image = ddim(generator=generator, eta=1.0, num_inference_steps=2, output_type="numpy").images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 32, 32, 3)
+        expected_slice = np.array(
+            [[9.955e-01, 5.785e-01, 4.674e-01, 9.93e-01, 0.0e00, 1.0e00, 1.2e-03, 2.73e-04, 5.19e-04]]
+        )
+        tolerance = 1e-2 if torch_device != "mps" else 3e-2
+        assert np.abs(image_slice.flatten() - expected_slice).max() < tolerance
+
 
 @slow
 @require_torch
