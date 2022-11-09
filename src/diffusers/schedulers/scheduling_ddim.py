@@ -237,7 +237,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         generator=None,
         variance_noise: Optional[torch.FloatTensor] = None,
         return_dict: bool = True,
-        predict_epsilon: bool = True,
     ) -> Union[DDIMSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
@@ -258,8 +257,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
                 can directly provide the noise for the variance itself. This is useful for methods such as
                 CycleDiffusion. (https://arxiv.org/abs/2210.05559)
             return_dict (`bool`): option for returning tuple rather than DDIMSchedulerOutput class
-            predict_epsilon (`bool`, *optional*, defaults to True):
-                Whether the Unet model should be used to predict eps (as opposed to x0).
         Returns:
             [`~schedulers.scheduling_utils.DDIMSchedulerOutput`] or `tuple`:
             [`~schedulers.scheduling_utils.DDIMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
@@ -298,7 +295,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         # 3. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        if predict_epsilon:
+        if self.config.predict_epsilon:
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
         else:
             pred_original_sample = model_output
