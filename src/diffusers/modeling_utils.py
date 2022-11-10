@@ -35,6 +35,7 @@ from .utils import (
     is_torch_version,
     logging,
 )
+FLAX_WEIGHTS_NAME = "diffusion_flax_model.msgpack"
 
 
 logger = logging.get_logger(__name__)
@@ -317,6 +318,7 @@ class ModelMixin(torch.nn.Module):
 
         """
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        from_flax = kwargs.pop("from_flax", False)
         ignore_mismatched_sizes = kwargs.pop("ignore_mismatched_sizes", False)
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", False)
@@ -330,6 +332,8 @@ class ModelMixin(torch.nn.Module):
         device_map = kwargs.pop("device_map", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
 
+        from_pt = not from_flax
+        
         if low_cpu_mem_usage and not is_accelerate_available():
             low_cpu_mem_usage = False
             logger.warn(
@@ -377,23 +381,40 @@ class ModelMixin(torch.nn.Module):
         # Load model
         pretrained_model_name_or_path = str(pretrained_model_name_or_path)
         if os.path.isdir(pretrained_model_name_or_path):
-            if os.path.isfile(os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)):
-                # Load from a PyTorch checkpoint
-                model_file = os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)
-            elif subfolder is not None and os.path.isfile(
-                os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)
-            ):
-                model_file = os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)
+            if from_flax:
+                if os.path.isfile(os.path.join(pretrained_model_name_or_path, FLAX_WEIGHTS_NAME)):
+                    # Load from a FLAX checkpoint
+                    model_file = os.path.join(pretrained_model_name_or_path, FLAX_WEIGHTS_NAME)
+                elif subfolder is not None and os.path.isfile(
+                    os.path.join(pretrained_model_name_or_path, subfolder, FLAX_WEIGHTS_NAME)
+                ):
+                    model_file = os.path.join(pretrained_model_name_or_path, subfolder, FLAX_WEIGHTS_NAME)
+                else:
+                    raise EnvironmentError(
+                        f"Error no file named {FLAX_WEIGHTS_NAME} found in directory {pretrained_model_name_or_path}."
+                    )            
             else:
-                raise EnvironmentError(
-                    f"Error no file named {WEIGHTS_NAME} found in directory {pretrained_model_name_or_path}."
-                )
+                if os.path.isfile(os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)):
+                    # Load from a PyTorch checkpoint
+                    model_file = os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)
+                elif subfolder is not None and os.path.isfile(
+                    os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)
+                ):
+                    model_file = os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)
+                else:
+                    raise EnvironmentError(
+                        f"Error no file named {WEIGHTS_NAME} found in directory {pretrained_model_name_or_path}."
+                    )
         else:
             try:
+                if from_flax:
+                    filename = FLAX_WEIGHTS_NAME
+                else:
+                    filename = WEIGHTS_NAME
                 # Load from URL or cache if already cached
                 model_file = hf_hub_download(
                     pretrained_model_name_or_path,
-                    filename=WEIGHTS_NAME,
+                    filename=filename,
                     cache_dir=cache_dir,
                     force_download=force_download,
                     proxies=proxies,
@@ -420,7 +441,7 @@ class ModelMixin(torch.nn.Module):
                 )
             except EntryNotFoundError:
                 raise EnvironmentError(
-                    f"{pretrained_model_name_or_path} does not appear to have a file named {WEIGHTS_NAME}."
+                    f"{pretrained_model_name_or_path} does not appear to have a file named {filename}."
                 )
             except HTTPError as err:
                 raise EnvironmentError(
@@ -431,7 +452,7 @@ class ModelMixin(torch.nn.Module):
                 raise EnvironmentError(
                     f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load this model, couldn't find it"
                     f" in the cached files and it looks like {pretrained_model_name_or_path} is not the path to a"
-                    f" directory containing a file named {WEIGHTS_NAME} or"
+                    f" directory containing a file named {filename} or"
                     " \nCheckout your internet connection or see how to run the library in"
                     " offline mode at 'https://huggingface.co/docs/diffusers/installation#offline-mode'."
                 )
@@ -440,14 +461,49 @@ class ModelMixin(torch.nn.Module):
                     f"Can't load the model for '{pretrained_model_name_or_path}'. If you were trying to load it from "
                     "'https://huggingface.co/models', make sure you don't have a local directory with the same name. "
                     f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
-                    f"containing a file named {WEIGHTS_NAME}"
+                    f"containing a file named {filename}"
                 )
 
             # restore default dtype
+        
+        if from_pt:
+            if low_cpu_mem_usage:
+                # Instantiate model with empty weights
+                with accelerate.init_empty_weights():
+                    model, unused_kwargs = cls.from_config(
+                        config_path,
+                        cache_dir=cache_dir,
+                        return_unused_kwargs=True,
+                        force_download=force_download,
+                        resume_download=resume_download,
+                        proxies=proxies,
+                        local_files_only=local_files_only,
+                        use_auth_token=use_auth_token,
+                        revision=revision,
+                        subfolder=subfolder,
+                        device_map=device_map,
+                        **kwargs,
+                    )
 
-        if low_cpu_mem_usage:
-            # Instantiate model with empty weights
-            with accelerate.init_empty_weights():
+                # if device_map is Non,e load the state dict on move the params from meta device to the cpu
+                if device_map is None:
+                    param_device = "cpu"
+                    state_dict = load_state_dict(model_file)
+                    # move the parms from meta device to cpu
+                    for param_name, param in state_dict.items():
+                        set_module_tensor_to_device(model, param_name, param_device, value=param)
+                else:  # else let accelerate handle loading and dispatching.
+                    # Load weights and dispatch according to the device_map
+                    # by deafult the device_map is None and the weights are loaded on the CPU
+                    accelerate.load_checkpoint_and_dispatch(model, model_file, device_map)
+
+                loading_info = {
+                    "missing_keys": [],
+                    "unexpected_keys": [],
+                    "mismatched_keys": [],
+                    "error_msgs": [],
+                }
+            else:
                 model, unused_kwargs = cls.from_config(
                     config_path,
                     cache_dir=cache_dir,
@@ -463,62 +519,56 @@ class ModelMixin(torch.nn.Module):
                     **kwargs,
                 )
 
-            # if device_map is Non,e load the state dict on move the params from meta device to the cpu
-            if device_map is None:
-                param_device = "cpu"
                 state_dict = load_state_dict(model_file)
-                # move the parms from meta device to cpu
-                for param_name, param in state_dict.items():
-                    set_module_tensor_to_device(model, param_name, param_device, value=param)
-            else:  # else let accelerate handle loading and dispatching.
-                # Load weights and dispatch according to the device_map
-                # by deafult the device_map is None and the weights are loaded on the CPU
-                accelerate.load_checkpoint_and_dispatch(model, model_file, device_map)
+                model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
+                    model,
+                    state_dict,
+                    model_file,
+                    pretrained_model_name_or_path,
+                    ignore_mismatched_sizes=ignore_mismatched_sizes,
+                )
 
-            loading_info = {
-                "missing_keys": [],
-                "unexpected_keys": [],
-                "mismatched_keys": [],
-                "error_msgs": [],
-            }
-        else:
-            model, unused_kwargs = cls.from_config(
-                config_path,
-                cache_dir=cache_dir,
-                return_unused_kwargs=True,
-                force_download=force_download,
-                resume_download=resume_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
-                revision=revision,
-                subfolder=subfolder,
-                device_map=device_map,
-                **kwargs,
-            )
+                loading_info = {
+                    "missing_keys": missing_keys,
+                    "unexpected_keys": unexpected_keys,
+                    "mismatched_keys": mismatched_keys,
+                    "error_msgs": error_msgs,
+                }
 
-            state_dict = load_state_dict(model_file)
-            model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
-                model,
-                state_dict,
-                model_file,
-                pretrained_model_name_or_path,
-                ignore_mismatched_sizes=ignore_mismatched_sizes,
-            )
+        if from_flax:
+            try:
+                from .modeling_flax_pytorch_utils import load_flax_checkpoint_in_pytorch_model
 
-            loading_info = {
-                "missing_keys": missing_keys,
-                "unexpected_keys": unexpected_keys,
-                "mismatched_keys": mismatched_keys,
-                "error_msgs": error_msgs,
-            }
+                model, unused_kwargs = cls.from_config(
+                    config_path,
+                    cache_dir=cache_dir,
+                    return_unused_kwargs=True,
+                    force_download=force_download,
+                    resume_download=resume_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                    subfolder=subfolder,
+                    device_map=device_map,
+                    **kwargs,
+                )
 
-        if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
-            raise ValueError(
-                f"{torch_dtype} needs to be of type `torch.dtype`, e.g. `torch.float16`, but is {type(torch_dtype)}."
-            )
-        elif torch_dtype is not None:
-            model = model.to(torch_dtype)
+                model = load_flax_checkpoint_in_pytorch_model(model, model_file)
+            except ImportError:
+                logger.error(
+                    "Loading a Flax model in PyTorch, requires both PyTorch and Flax to be installed. Please see"
+                    " https://pytorch.org/ and https://flax.readthedocs.io/en/latest/installation.html for"
+                    " installation instructions."
+                )
+                raise
+        elif from_pt:
+            if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
+                raise ValueError(
+                    f"{torch_dtype} needs to be of type `torch.dtype`, e.g. `torch.float16`, but is {type(torch_dtype)}."
+                )
+            elif torch_dtype is not None:
+                model = model.to(torch_dtype)
 
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
 
