@@ -17,15 +17,12 @@ import gc
 import os
 import random
 import tempfile
-import tracemalloc
 import unittest
 
 import numpy as np
 import torch
 
-import accelerate
 import PIL
-import transformers
 from diffusers import (
     AutoencoderKL,
     DDIMPipeline,
@@ -45,7 +42,6 @@ from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, require_torch_gpu
-from packaging import version
 from PIL import Image
 from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -76,11 +72,106 @@ def test_progress_bar(capsys):
     assert captured.err == "", "Progress bar should be disabled"
 
 
+class DownloadTests(unittest.TestCase):
+    def test_download_only_pytorch(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            # pipeline has Flax weights
+            _ = DiffusionPipeline.from_pretrained(
+                "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
+            )
+
+            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots"))]
+            files = [item for sublist in all_root_files for item in sublist]
+
+            # None of the downloaded files should be a flax file even if we have some here:
+            # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe/blob/main/unet/diffusion_flax_model.msgpack
+            assert not any(f.endswith(".msgpack") for f in files)
+
+    def test_download_no_safety_checker(self):
+        prompt = "hello"
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        pipe = pipe.to(torch_device)
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
+        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+        pipe_2 = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
+        pipe_2 = pipe_2.to(torch_device)
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
+        out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+        assert np.max(np.abs(out - out_2)) < 1e-3
+
+    def test_load_no_safety_checker_explicit_locally(self):
+        prompt = "hello"
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        pipe = pipe.to(torch_device)
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
+        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.save_pretrained(tmpdirname)
+            pipe_2 = StableDiffusionPipeline.from_pretrained(tmpdirname, safety_checker=None)
+            pipe_2 = pipe_2.to(torch_device)
+
+            if torch_device == "mps":
+                # device type MPS is not supported for torch.Generator() api.
+                generator = torch.manual_seed(0)
+            else:
+                generator = torch.Generator(device=torch_device).manual_seed(0)
+
+            out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+        assert np.max(np.abs(out - out_2)) < 1e-3
+
+    def test_load_no_safety_checker_default_locally(self):
+        prompt = "hello"
+        pipe = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
+        pipe = pipe.to(torch_device)
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
+        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.save_pretrained(tmpdirname)
+            pipe_2 = StableDiffusionPipeline.from_pretrained(tmpdirname)
+            pipe_2 = pipe_2.to(torch_device)
+
+            if torch_device == "mps":
+                # device type MPS is not supported for torch.Generator() api.
+                generator = torch.manual_seed(0)
+            else:
+                generator = torch.Generator(device=torch_device).manual_seed(0)
+
+            out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+        assert np.max(np.abs(out - out_2)) < 1e-3
+
+
 class CustomPipelineTests(unittest.TestCase):
     def test_load_custom_pipeline(self):
         pipeline = DiffusionPipeline.from_pretrained(
             "google/ddpm-cifar10-32", custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline"
         )
+        pipeline = pipeline.to(torch_device)
         # NOTE that `"CustomPipeline"` is not a class that is defined in this library, but solely on the Hub
         # under https://huggingface.co/hf-internal-testing/diffusers-dummy-pipeline/blob/main/pipeline.py#L24
         assert pipeline.__class__.__name__ == "CustomPipeline"
@@ -89,9 +180,11 @@ class CustomPipelineTests(unittest.TestCase):
         pipeline = DiffusionPipeline.from_pretrained(
             "google/ddpm-cifar10-32", custom_pipeline="hf-internal-testing/diffusers-dummy-pipeline"
         )
+        pipeline = pipeline.to(torch_device)
         images, output_str = pipeline(num_inference_steps=2, output_type="np")
 
         assert images[0].shape == (1, 32, 32, 3)
+
         # compare output to https://huggingface.co/hf-internal-testing/diffusers-dummy-pipeline/blob/main/pipeline.py#L102
         assert output_str == "This is a test"
 
@@ -100,6 +193,7 @@ class CustomPipelineTests(unittest.TestCase):
         pipeline = DiffusionPipeline.from_pretrained(
             "google/ddpm-cifar10-32", custom_pipeline=local_custom_pipeline_path
         )
+        pipeline = pipeline.to(torch_device)
         images, output_str = pipeline(num_inference_steps=2, output_type="np")
 
         assert pipeline.__class__.__name__ == "CustomLocalPipeline"
@@ -108,7 +202,7 @@ class CustomPipelineTests(unittest.TestCase):
         assert output_str == "This is a local test"
 
     @slow
-    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    @require_torch_gpu
     def test_load_pipeline_from_git(self):
         clip_model_id = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 
@@ -339,7 +433,12 @@ class PipelineSlowTests(unittest.TestCase):
         logger = logging.get_logger("diffusers.pipeline_utils")
         with tempfile.TemporaryDirectory() as tmpdirname:
             with CaptureLogger(logger) as cap_logger:
-                DiffusionPipeline.from_pretrained(model_id, not_used=True, cache_dir=tmpdirname, force_download=True)
+                DiffusionPipeline.from_pretrained(
+                    model_id,
+                    not_used=True,
+                    cache_dir=tmpdirname,
+                    force_download=True,
+                )
 
         assert cap_logger.out == "Keyword arguments {'not_used': True} not recognized.\n"
 
@@ -365,7 +464,7 @@ class PipelineSlowTests(unittest.TestCase):
             new_ddpm = DDPMPipeline.from_pretrained(tmpdirname)
             new_ddpm.to(torch_device)
 
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         image = ddpm(generator=generator, output_type="numpy").images
 
         generator = generator.manual_seed(0)
@@ -379,13 +478,14 @@ class PipelineSlowTests(unittest.TestCase):
         scheduler = DDPMScheduler(num_train_timesteps=10)
 
         ddpm = DDPMPipeline.from_pretrained(model_path, scheduler=scheduler)
-        ddpm.to(torch_device)
+        ddpm = ddpm.to(torch_device)
         ddpm.set_progress_bar_config(disable=None)
+
         ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path, scheduler=scheduler)
-        ddpm_from_hub.to(torch_device)
+        ddpm_from_hub = ddpm_from_hub.to(torch_device)
         ddpm_from_hub.set_progress_bar_config(disable=None)
 
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         image = ddpm(generator=generator, output_type="numpy").images
 
         generator = generator.manual_seed(0)
@@ -401,14 +501,14 @@ class PipelineSlowTests(unittest.TestCase):
         # pass unet into DiffusionPipeline
         unet = UNet2DModel.from_pretrained(model_path)
         ddpm_from_hub_custom_model = DiffusionPipeline.from_pretrained(model_path, unet=unet, scheduler=scheduler)
-        ddpm_from_hub_custom_model.to(torch_device)
+        ddpm_from_hub_custom_model = ddpm_from_hub_custom_model.to(torch_device)
         ddpm_from_hub_custom_model.set_progress_bar_config(disable=None)
 
         ddpm_from_hub = DiffusionPipeline.from_pretrained(model_path, scheduler=scheduler)
-        ddpm_from_hub.to(torch_device)
+        ddpm_from_hub = ddpm_from_hub.to(torch_device)
         ddpm_from_hub_custom_model.set_progress_bar_config(disable=None)
 
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         image = ddpm_from_hub_custom_model(generator=generator, output_type="numpy").images
 
         generator = generator.manual_seed(0)
@@ -419,50 +519,28 @@ class PipelineSlowTests(unittest.TestCase):
     def test_output_format(self):
         model_path = "google/ddpm-cifar10-32"
 
-        pipe = DDIMPipeline.from_pretrained(model_path)
+        scheduler = DDIMScheduler.from_config(model_path)
+        pipe = DDIMPipeline.from_pretrained(model_path, scheduler=scheduler)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         images = pipe(generator=generator, output_type="numpy").images
         assert images.shape == (1, 32, 32, 3)
         assert isinstance(images, np.ndarray)
 
-        images = pipe(generator=generator, output_type="pil").images
+        images = pipe(generator=generator, output_type="pil", num_inference_steps=4).images
         assert isinstance(images, list)
         assert len(images) == 1
         assert isinstance(images[0], PIL.Image.Image)
 
         # use PIL by default
-        images = pipe(generator=generator).images
+        images = pipe(generator=generator, num_inference_steps=4).images
         assert isinstance(images, list)
         assert isinstance(images[0], PIL.Image.Image)
 
-    def test_ddpm_ddim_equality(self):
-        model_id = "google/ddpm-cifar10-32"
-
-        unet = UNet2DModel.from_pretrained(model_id)
-        ddpm_scheduler = DDPMScheduler()
-        ddim_scheduler = DDIMScheduler()
-
-        ddpm = DDPMPipeline(unet=unet, scheduler=ddpm_scheduler)
-        ddpm.to(torch_device)
-        ddpm.set_progress_bar_config(disable=None)
-        ddim = DDIMPipeline(unet=unet, scheduler=ddim_scheduler)
-        ddim.to(torch_device)
-        ddim.set_progress_bar_config(disable=None)
-
-        generator = torch.manual_seed(0)
-        ddpm_image = ddpm(generator=generator, output_type="numpy").images
-
-        generator = torch.manual_seed(0)
-        ddim_image = ddim(generator=generator, num_inference_steps=1000, eta=1.0, output_type="numpy").images
-
-        # the values aren't exactly equal, but the images look the same visually
-        assert np.abs(ddpm_image - ddim_image).max() < 1e-1
-
-    @unittest.skip("(Anton) The test is failing for large batch sizes, needs investigation")
     def test_ddpm_ddim_equality_batched(self):
+        seed = 0
         model_id = "google/ddpm-cifar10-32"
 
         unet = UNet2DModel.from_pretrained(model_id)
@@ -477,81 +555,18 @@ class PipelineSlowTests(unittest.TestCase):
         ddim.to(torch_device)
         ddim.set_progress_bar_config(disable=None)
 
-        generator = torch.manual_seed(0)
-        ddpm_images = ddpm(batch_size=4, generator=generator, output_type="numpy").images
+        generator = torch.Generator(device=torch_device).manual_seed(seed)
+        ddpm_images = ddpm(batch_size=2, generator=generator, output_type="numpy").images
 
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(seed)
         ddim_images = ddim(
-            batch_size=4, generator=generator, num_inference_steps=1000, eta=1.0, output_type="numpy"
+            batch_size=2,
+            generator=generator,
+            num_inference_steps=1000,
+            eta=1.0,
+            output_type="numpy",
+            use_clipped_model_output=True,  # Need this to make DDIM match DDPM
         ).images
 
         # the values aren't exactly equal, but the images look the same visually
         assert np.abs(ddpm_images - ddim_images).max() < 1e-1
-
-    @require_torch_gpu
-    def test_stable_diffusion_accelerate_load_works(self):
-        if version.parse(version.parse(transformers.__version__).base_version) < version.parse("4.23"):
-            return
-
-        if version.parse(version.parse(accelerate.__version__).base_version) < version.parse("0.14"):
-            return
-
-        model_id = "CompVis/stable-diffusion-v1-4"
-        _ = StableDiffusionPipeline.from_pretrained(
-            model_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, device_map="auto"
-        ).to(torch_device)
-
-    @require_torch_gpu
-    def test_stable_diffusion_accelerate_load_reduces_memory_footprint(self):
-        if version.parse(version.parse(transformers.__version__).base_version) < version.parse("4.23"):
-            return
-
-        if version.parse(version.parse(accelerate.__version__).base_version) < version.parse("0.14"):
-            return
-
-        pipeline_id = "CompVis/stable-diffusion-v1-4"
-
-        torch.cuda.empty_cache()
-        gc.collect()
-
-        tracemalloc.start()
-        pipeline_normal_load = StableDiffusionPipeline.from_pretrained(
-            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True
-        )
-        pipeline_normal_load.to(torch_device)
-        _, peak_normal = tracemalloc.get_traced_memory()
-        tracemalloc.stop()
-
-        del pipeline_normal_load
-        torch.cuda.empty_cache()
-        gc.collect()
-
-        tracemalloc.start()
-        _ = StableDiffusionPipeline.from_pretrained(
-            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, device_map="auto"
-        )
-        _, peak_accelerate = tracemalloc.get_traced_memory()
-
-        tracemalloc.stop()
-
-        assert peak_accelerate < peak_normal
-
-    @slow
-    @unittest.skipIf(torch_device == "cpu", "This test is supposed to run on GPU")
-    def test_stable_diffusion_pipeline_with_unet_on_gpu_only(self):
-        torch.cuda.empty_cache()
-        torch.cuda.reset_max_memory_allocated()
-
-        pipeline_id = "CompVis/stable-diffusion-v1-4"
-        prompt = "Andromeda galaxy in a bottle"
-
-        pipeline = StableDiffusionPipeline.from_pretrained(
-            pipeline_id, revision="fp16", torch_dtype=torch.float32, use_auth_token=True
-        )
-        pipeline.cuda_with_minimal_gpu_usage()
-
-        _ = pipeline(prompt)
-
-        mem_bytes = torch.cuda.max_memory_allocated()
-        # make sure that less than 0.8 GB is allocated
-        assert mem_bytes < 0.8 * 10**9

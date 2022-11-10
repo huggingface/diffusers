@@ -46,9 +46,11 @@
   - local: training/unconditional_training
     title: "Unconditional Image Generation"
   - local: training/text_inversion
-    title: "Text Inversion"
+    title: "Textual Inversion"
+  - local: training/dreambooth
+    title: "Dreambooth"
   - local: training/text2image
-    title: "Text-to-image"
+    title: "Text-to-image fine-tuning"
   title: "Training"
 - sections:
   - local: conceptual/stable_diffusion
@@ -76,6 +78,8 @@
   - sections:
     - local: api/pipelines/overview
       title: "Overview"
+    - local: api/pipelines/cycle_diffusion
+      title: "Cycle Diffusion"
     - local: api/pipelines/ddim
       title: "DDIM"
     - local: api/pipelines/ddpm
@@ -94,5 +98,9 @@
       title: "Stochastic Karras VE"
     - local: api/pipelines/dance_diffusion
       title: "Dance Diffusion"
+    - local: api/pipelines/vq_diffusion
+      title: "VQ Diffusion"
+    - local: api/pipelines/repaint
+      title: "RePaint"
     title: "Pipelines"
   title: "API"

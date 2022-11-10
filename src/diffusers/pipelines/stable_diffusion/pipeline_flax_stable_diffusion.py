@@ -1,3 +1,18 @@
+# Copyright 2022 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import warnings
 from functools import partial
 from typing import Dict, List, Optional, Union
 
@@ -13,7 +28,12 @@ from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel
 
 from ...models import FlaxAutoencoderKL, FlaxUNet2DConditionModel
 from ...pipeline_flax_utils import FlaxDiffusionPipeline
-from ...schedulers import FlaxDDIMScheduler, FlaxLMSDiscreteScheduler, FlaxPNDMScheduler
+from ...schedulers import (
+    FlaxDDIMScheduler,
+    FlaxDPMSolverMultistepScheduler,
+    FlaxLMSDiscreteScheduler,
+    FlaxPNDMScheduler,
+)
 from ...utils import logging
 from . import FlaxStableDiffusionPipelineOutput
 from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
@@ -41,8 +61,9 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`FlaxUNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
-            [`FlaxDDIMScheduler`], [`FlaxLMSDiscreteScheduler`], or [`FlaxPNDMScheduler`].
+            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
+            [`FlaxDDIMScheduler`], [`FlaxLMSDiscreteScheduler`], [`FlaxPNDMScheduler`], or
+            [`FlaxDPMSolverMultistepScheduler`].
         safety_checker ([`FlaxStableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
             Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
@@ -56,7 +77,9 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         text_encoder: FlaxCLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: FlaxUNet2DConditionModel,
-        scheduler: Union[FlaxDDIMScheduler, FlaxPNDMScheduler, FlaxLMSDiscreteScheduler],
+        scheduler: Union[
+            FlaxDDIMScheduler, FlaxPNDMScheduler, FlaxLMSDiscreteScheduler, FlaxDPMSolverMultistepScheduler
+        ],
         safety_checker: FlaxStableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
         dtype: jnp.dtype = jnp.float32,
@@ -97,9 +120,9 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         )
         return text_input.input_ids
 
-    def _get_safety_scores(self, features, params):
-        special_cos_dist, cos_dist = self.safety_checker(features, params)
-        return (special_cos_dist, cos_dist)
+    def _get_has_nsfw_concepts(self, features, params):
+        has_nsfw_concepts = self.safety_checker(features, params)
+        return has_nsfw_concepts
 
     def _run_safety_checker(self, images, safety_model_params, jit=False):
         # safety_model_params should already be replicated when jit is True
@@ -108,20 +131,28 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
 
         if jit:
             features = shard(features)
-            special_cos_dist, cos_dist = _p_get_safety_scores(self, features, safety_model_params)
-            special_cos_dist = unshard(special_cos_dist)
-            cos_dist = unshard(cos_dist)
+            has_nsfw_concepts = _p_get_has_nsfw_concepts(self, features, safety_model_params)
+            has_nsfw_concepts = unshard(has_nsfw_concepts)
             safety_model_params = unreplicate(safety_model_params)
         else:
-            special_cos_dist, cos_dist = self._get_safety_scores(features, safety_model_params)
+            has_nsfw_concepts = self._get_has_nsfw_concepts(features, safety_model_params)
 
-        images, has_nsfw = self.safety_checker.filtered_with_scores(
-            special_cos_dist,
-            cos_dist,
-            images,
-            safety_model_params,
-        )
-        return images, has_nsfw
+        images_was_copied = False
+        for idx, has_nsfw_concept in enumerate(has_nsfw_concepts):
+            if has_nsfw_concept:
+                if not images_was_copied:
+                    images_was_copied = True
+                    images = images.copy()
+
+                images[idx] = np.zeros(images[idx].shape, dtype=np.uint8)  # black image
+
+            if any(has_nsfw_concepts):
+                warnings.warn(
+                    "Potential NSFW content was detected in one or more images. A black image will be returned"
+                    " instead. Try again with a different prompt and/or seed."
+                )
+
+        return images, has_nsfw_concepts
 
     def _generate(
         self,
@@ -310,8 +341,8 @@ def _p_generate(
 
 
 @partial(jax.pmap, static_broadcasted_argnums=(0,))
-def _p_get_safety_scores(pipe, features, params):
-    return pipe._get_safety_scores(features, params)
+def _p_get_has_nsfw_concepts(pipe, features, params):
+    return pipe._get_has_nsfw_concepts(features, params)
 
 
 def unshard(x: jnp.ndarray):

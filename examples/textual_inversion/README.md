@@ -11,7 +11,7 @@ Colab for training
 Colab for inference
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/stable_conceptualizer_inference.ipynb)
 
-## Running locally 
+## Running locally with PyTorch
 ### Installing the dependencies
 
 Before running the scripts, make sure to install the library's training dependencies:
@@ -29,7 +29,7 @@ accelerate config
 
 ### Cat toy example
 
-You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-4`, so you'll need to visit [its card](https://huggingface.co/CompVis/stable-diffusion-v1-4), read the license and tick the checkbox if you agree. 
+You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-5`, so you'll need to visit [its card](https://huggingface.co/runwayml/stable-diffusion-v1-5), read the license and tick the checkbox if you agree. 
 
 You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section of the documentation](https://huggingface.co/docs/hub/security-tokens).
 
@@ -68,7 +68,33 @@ accelerate launch textual_inversion.py \
 
 A full training run takes ~1 hour on one V100 GPU.
 
-If you want to speed it up even more, Flax implementation is available:
+### Inference
+
+Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline`. Make sure to include the `placeholder_token` in your prompt.
+
+```python
+from diffusers import StableDiffusionPipeline
+
+model_id = "path-to-your-trained-model"
+pipe = StableDiffusionPipeline.from_pretrained(model_id,torch_dtype=torch.float16).to("cuda")
+
+prompt = "A <cat-toy> backpack"
+
+image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+
+image.save("cat-backpack.png")
+```
+
+
+## Training with Flax/JAX
+
+For faster training on TPUs and GPUs you can leverage the flax training example. Follow the instructions above to get the model and dataset before running the script.
+
+Before running the scripts, make sure to install the library's training dependencies:
+
+```bash
+pip install -U -r requirements_flax.txt
+```
 
 ```bash
 export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
@@ -86,20 +112,3 @@ python textual_inversion_flax.py \
   --output_dir="textual_inversion_cat"
 ```
 It should be at least 70% faster than the PyTorch script with the same configuration.
-
-### Inference
-
-Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline`. Make sure to include the `placeholder_token` in your prompt.
-
-```python
-from diffusers import StableDiffusionPipeline
-
-model_id = "path-to-your-trained-model"
-pipe = StableDiffusionPipeline.from_pretrained(model_id,torch_dtype=torch.float16).to("cuda")
-
-prompt = "A <cat-toy> backpack"
-
-image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
-
-image.save("cat-backpack.png")
-```
