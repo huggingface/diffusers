@@ -5,7 +5,6 @@ import numpy as np
 import torch
 
 import PIL
-from torchvision.transforms.functional import to_pil_image
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
@@ -18,27 +17,6 @@ from .safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-def prepare_mask_and_masked_image(image, mask):
-    if isinstance(image, torch.Tensor):
-        image = to_pil_image(image)
-    image = np.array(image.convert("RGB"))
-    image = image[None].transpose(0, 3, 1, 2)
-    image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
-
-    if isinstance(mask, torch.Tensor):
-        mask = to_pil_image(mask)
-    mask = np.array(mask.convert("L"))
-    mask = mask.astype(np.float32) / 255.0
-    mask = mask[None, None]
-    mask[mask < 0.5] = 0
-    mask[mask >= 0.5] = 1
-    mask = torch.from_numpy(mask)
-
-    masked_image = image * (mask < 0.5)
-
-    return mask, masked_image
 
 
 class StableDiffusionInpaintPipeline(DiffusionPipeline):
@@ -142,6 +120,36 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         # set slice_size = `None` to disable `attention slicing`
         self.enable_attention_slicing(None)
 
+    def _prepare_mask_and_masked_image(self, image, mask):
+        if isinstance(image, PIL.Image.Image):
+            image = np.array(image.convert("RGB"))
+        elif isinstance(image, torch.Tensor):
+            image = image.detach().permute(1, 2, 0).numpy()
+            if image.dtype.kind == "f":
+                image = (image * 255).astype(np.uint8)
+        else:
+            raise ValueError(f"Unsupported type for image: {type(image)}")
+        image = image[None].transpose(0, 3, 1, 2)
+        image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
+
+        if isinstance(mask, PIL.Image.Image):
+            mask = np.array(mask.convert("L"))
+        elif isinstance(mask, torch.Tensor):
+            mask = mask.detach().numpy()
+            if mask.dtype.kind == "f":
+                mask = (mask * 255).astype(np.uint8)
+        else:
+            raise ValueError(f"Unsupported type for mask: {type(mask)}")
+        mask = mask.astype(np.float32) / 255.0
+        mask = mask[None, None]
+        mask[mask < 0.5] = 0
+        mask[mask >= 0.5] = 1
+        mask = torch.from_numpy(mask)
+
+        masked_image = image * (mask < 0.5)
+
+        return mask, masked_image
+
     @torch.no_grad()
     def __call__(
         self,
@@ -175,8 +183,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             mask_image (`PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, to mask `image`. White pixels in the mask will be
                 repainted, while black pixels will be preserved. If `mask_image` is a PIL image, it will be converted
-                to a single channel (luminance) before use. If it's a tensor, it should contain one color channel (L)
-                instead of 3, so the expected shape would be `(B, H, W, 1)`.
+                to a single channel (luminance) before use. If it's a tensor, it should be of shape `(B, H, W)`.
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 512):
@@ -333,7 +340,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             latents = latents.to(self.device)
 
         # prepare mask and masked_image
-        mask, masked_image = prepare_mask_and_masked_image(image, mask_image)
+        mask, masked_image = self._prepare_mask_and_masked_image(image, mask_image)
         mask = mask.to(device=self.device, dtype=text_embeddings.dtype)
         masked_image = masked_image.to(device=self.device, dtype=text_embeddings.dtype)
 
