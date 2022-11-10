@@ -33,6 +33,7 @@ if is_torch_available():
     from .schedulers import (
         DDIMScheduler,
         DDPMScheduler,
+        DPMSolverMultistepScheduler,
         KarrasVeScheduler,
         PNDMScheduler,
         SchedulerMixin,

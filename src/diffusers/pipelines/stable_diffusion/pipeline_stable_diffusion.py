@@ -386,7 +386,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
 #### ADDITIONAL GUIDANCE ###
-            if loss_callbacks is not None:
+            if loss_callbacks is not None and len(loss_callbacks) > 0:
                 with torch.enable_grad():
                     grads = torch.zeros_like(latents)
                     step_index = self.scheduler.get_current_step(t)
