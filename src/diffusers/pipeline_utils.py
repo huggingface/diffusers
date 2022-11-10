@@ -709,5 +709,14 @@ class DiffusionPipeline(ConfigMixin):
 
         return tqdm(iterable, **self._progress_bar_config)
 
+    def set_scheduler(self, scheduler_type=Union[str, Dict[str, str]]):
+        schedulers = [k for k, c in self.components if isinstance(c, SchedulerMixin)]
+        if len(schedulers) > 1 and isinstance(scheduler_type, str):
+           raise ValueError("Ambigous")
+    
+        scheduler_type = scheduler_type if isinstance(scheduler_type, dict) else {schedulers[0]: scheduler_type}
+
+        # .. load and set all schedulers
+
     def set_progress_bar_config(self, **kwargs):
         self._progress_bar_config = kwargs
