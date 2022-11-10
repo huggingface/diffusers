@@ -129,6 +129,7 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         generator: Optional[torch.Generator] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        compile_unet: bool = True,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -220,7 +221,7 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             padding="max_length",
             max_length=self.tokenizer.model_max_length,
             truncation=True,
-            return_tensors="pt",
+            return_tensors="np",
         )
         text_input.input_ids = torch.from_numpy(text_input.input_ids)
         text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
@@ -234,8 +235,9 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         if do_classifier_free_guidance:
             max_length = text_input.input_ids.shape[-1]
             uncond_input = self.tokenizer(
-                [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="pt"
+                [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="np"
             )
+            uncond_input.input_ids = torch.from_numpy(uncond_input.input_ids)
             uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
 
             # For classifier free guidance, we need to do two forward passes.
@@ -308,10 +310,12 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
 
-        # # run safety checker
-        # safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(self.device)
-        # image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
-        has_nsfw_concept = []
+        # run safety checker
+        safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="np")
+        safety_checker_input.pixel_values = torch.from_numpy(safety_checker_input.pixel_values).to(self.device)
+        torch._oneflow_internal.profiler.RangePush(f"safety-checker")
+        image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
+        torch._oneflow_internal.profiler.RangePop()
 
         if output_type == "pil":
             image = self.numpy_to_pil(image)
