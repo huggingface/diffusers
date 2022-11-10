@@ -2,16 +2,16 @@
 import argparse
 import os
 
-import jax
-import tensorflow as tf
 import torch
 import torch.nn as nn
 
-from t5x import checkpoints
+import jax
+import tensorflow as tf
+from diffusers import DDPMScheduler, SpectrogramDiffusionPipeline
+from diffusers.pipelines.spectrogram_diffusion import ContinuousContextTransformer
 from music_spectrogram_diffusion import inference
-from transformers import T5Config
+from t5x import checkpoints
 
-from diffusers import DDPMScheduler, ContinuousContextTransformer, SpectrogramDiffusionPipeline
 
 MODEL = "base_with_context"
 
@@ -141,7 +141,10 @@ def main(args):
     gin_config = inference.parse_training_gin_file(gin_file, gin_overrides)
     synth_model = inference.InferenceModel(args.checkpoint_path, gin_config)
 
-    t5config = T5Config(
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    scheduler = DDPMScheduler(beta_schedule="squaredcos_cap_v2", variance_type="fixed_large")
+
+    model = ContinuousContextTransformer(
         vocab_size=synth_model.model.module.config.vocab_size,
         max_length=synth_model.sequence_length["inputs"],
         input_dims=synth_model.audio_codec.n_dims,
@@ -149,23 +152,20 @@ def main(args):
         targets_length=synth_model.sequence_length["targets"],
         d_model=synth_model.model.module.config.emb_dim,
         num_heads=synth_model.model.module.config.num_heads,
-        num_layers=synth_model.model.module.config.num_encoder_layers,
+        num_encoder_layers=synth_model.model.module.config.num_encoder_layers,
         num_decoder_layers=synth_model.model.module.config.num_decoder_layers,
         d_kv=synth_model.model.module.config.head_dim,
         d_ff=synth_model.model.module.config.mlp_dim,
         dropout_rate=synth_model.model.module.config.dropout_rate,
-        feed_forward_proj=synth_model.model.module.config.mlp_activations[0],
-        is_gated_act=True,
+        feed_forward_proj="gated-gelu",
         max_decoder_noise_time=synth_model.model.module.config.max_decoder_noise_time,
     )
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    scheduler = DDPMScheduler(beta_schedule="squaredcos_cap_v2", variance_type="fixed_large")
-
-    model = ContinuousContextTransformer(t5config=t5config)
-    model = load_checkpoint(t5_checkpoint["target"], model).to(device)
+    model = load_checkpoint(t5_checkpoint["target"], model)
 
     pipe = SpectrogramDiffusionPipeline(model, scheduler=scheduler)
+    import pdb
+
+    pdb.set_trace()
     pipe.save_pretrained(args.output_path)
 
 
@@ -174,7 +174,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
-    # parser.add_argument("--model_path", default=None, type=str, required=True, help="Path to the model to convert.")
+    # parser.add_argument("--model_path", default=None, type=str, required=True, help="Path to the converted model.")
     # parser.add_argument(
     #     "--save", default=True, type=bool, required=False, help="Whether to save the converted model or not."
     # )
