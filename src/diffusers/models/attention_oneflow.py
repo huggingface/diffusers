@@ -65,7 +65,7 @@ class AttentionBlock(nn.Module):
         key_proj = self.key(hidden_states)
         value_proj = self.value(hidden_states)
 
-        if query.device == torch.device("cpu"):
+        if query_proj.device == torch.device("cpu"):
             # transpose
             query_states = self.transpose_for_scores(query_proj)
             key_states = self.transpose_for_scores(key_proj)
