@@ -311,7 +311,7 @@ class ResnetBlock2D(nn.Module):
         kernel=None,
         output_scale_factor=1.0,
         use_in_shortcut=None,
-        use_scale_shift_norm=False,
+        use_scale_shift_norm=True,
         up=False,
         down=False,
     ):
@@ -336,9 +336,7 @@ class ResnetBlock2D(nn.Module):
         self.conv1 = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         if temb_channels is not None:
-            self.time_emb_proj = torch.nn.Linear(
-                temb_channels, out_channels * 2 if use_scale_shift_norm else out_channels
-            )
+            self.time_emb_proj = torch.nn.Linear(temb_channels, out_channels * 2 if use_scale_shift_norm else out_channels)
         else:
             self.time_emb_proj = None
 
