@@ -311,7 +311,7 @@ class ResnetBlock2D(nn.Module):
         kernel=None,
         output_scale_factor=1.0,
         use_in_shortcut=None,
-        use_scale_shift_norm=True,
+        use_scale_shift_norm=False,
         up=False,
         down=False,
     ):
@@ -336,7 +336,9 @@ class ResnetBlock2D(nn.Module):
         self.conv1 = torch.nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         if temb_channels is not None:
-            self.time_emb_proj = torch.nn.Linear(temb_channels, out_channels * 2 if use_scale_shift_norm else out_channels)
+            self.time_emb_proj = torch.nn.Linear(
+                temb_channels, out_channels * 2 if use_scale_shift_norm else out_channels
+            )
         else:
             self.time_emb_proj = None
 
@@ -397,12 +399,14 @@ class ResnetBlock2D(nn.Module):
         if temb is not None:
             temb = self.time_emb_proj(self.nonlinearity(temb))[:, :, None, None]
             if self.use_scale_shift_norm:
-                temb_shift, temb_scale = torch.chunk(temb, 2, dim=1)
                 hidden_states = self.norm2(hidden_states)
+                temb_shift, temb_scale = torch.chunk(temb, 2, dim=1)
                 hidden_states = hidden_states * (1 + temb_scale) + temb_shift
             else:
                 hidden_states = hidden_states + temb
                 hidden_states = self.norm2(hidden_states)
+        else:
+            hidden_states = self.norm2(hidden_states)
 
         hidden_states = self.nonlinearity(hidden_states)
 
