@@ -65,27 +65,26 @@ class AttentionBlock(nn.Module):
         key_proj = self.key(hidden_states)
         value_proj = self.value(hidden_states)
 
-        '''
+        if query_proj.device == torch.device("cpu"):
+            # transpose
+            query_states = self.transpose_for_scores(query_proj)
+            key_states = self.transpose_for_scores(key_proj)
+            value_states = self.transpose_for_scores(value_proj)
 
-        # transpose
-        query_states = self.transpose_for_scores(query_proj)
-        key_states = self.transpose_for_scores(key_proj)
-        value_states = self.transpose_for_scores(value_proj)
+            # get scores
+            scale = 1 / math.sqrt(math.sqrt(self.channels / self.num_heads))
 
-        # get scores
-        scale = 1 / math.sqrt(math.sqrt(self.channels / self.num_heads))
+            attention_scores = torch.matmul(query_states * scale, key_states.transpose(-1, -2) * scale)
+            attention_probs = torch.softmax(attention_scores.float(), dim=-1).type(attention_scores.dtype)
 
-        attention_scores = torch.matmul(query_states * scale, key_states.transpose(-1, -2) * scale)
-        attention_probs = torch.softmax(attention_scores.float(), dim=-1).type(attention_scores.dtype)
+            # compute attention output
+            hidden_states = torch.matmul(attention_probs, value_states)
 
-        # compute attention output
-        hidden_states = torch.matmul(attention_probs, value_states)
-
-        hidden_states = hidden_states.permute(0, 2, 1, 3).contiguous()
-        new_hidden_states_shape = hidden_states.size()[:-2] + (self.channels,)
-        hidden_states = hidden_states.view(new_hidden_states_shape)
-        '''
-        hidden_states = torch._C.fused_multi_head_attention_inference(query_proj, key_proj, value_proj, self.num_heads)
+            hidden_states = hidden_states.permute(0, 2, 1, 3).contiguous()
+            new_hidden_states_shape = hidden_states.size()[:-2] + (self.channels,)
+            hidden_states = hidden_states.view(new_hidden_states_shape)
+        else:
+            hidden_states = torch._C.fused_multi_head_attention_inference(query_proj, key_proj, value_proj, self.num_heads)
         # compute next hidden_states
         hidden_states = self.proj_attn(hidden_states)
         hidden_states = hidden_states.transpose(-1, -2).reshape(batch, channel, height, width)
@@ -259,23 +258,23 @@ class CrossAttention(nn.Module):
         key = self.to_k(context)
         value = self.to_v(context)
 
-        '''
-        dim = query.shape[-1]
+        if query.device == torch.device("cpu"):
+            dim = query.shape[-1]
 
-        query = self.reshape_heads_to_batch_dim(query)
-        key = self.reshape_heads_to_batch_dim(key)
-        value = self.reshape_heads_to_batch_dim(value)
+            query = self.reshape_heads_to_batch_dim(query)
+            key = self.reshape_heads_to_batch_dim(key)
+            value = self.reshape_heads_to_batch_dim(value)
 
-        # TODO(PVP) - mask is currently never used. Remember to re-implement when used
+            # TODO(PVP) - mask is currently never used. Remember to re-implement when used
 
-        # attention, what we cannot get enough of
+            # attention, what we cannot get enough of
 
-        if self._slice_size is None or query.shape[0] // self._slice_size == 1:
-            hidden_states = self._attention(query, key, value)
+            if self._slice_size is None or query.shape[0] // self._slice_size == 1:
+                hidden_states = self._attention(query, key, value)
+            else:
+                hidden_states = self._sliced_attention(query, key, value, sequence_length, dim)
         else:
-            hidden_states = self._sliced_attention(query, key, value, sequence_length, dim)
-        '''
-        hidden_states = torch._C.fused_multi_head_attention_inference(query, key, value, self.heads)
+            hidden_states = torch._C.fused_multi_head_attention_inference(query, key, value, self.heads)
 
         return self.to_out(hidden_states)
 
@@ -349,13 +348,14 @@ class GEGLU(nn.Module):
         self.proj = nn.Linear(dim_in, dim_out * 2)
 
     def forward(self, hidden_states):
-        x_shape = hidden_states.shape
-        if len(x_shape) != 2:
-            hidden_states = hidden_states.reshape(-1, x_shape[-1])
-        out = torch._C.fused_geglu(hidden_states, self.proj.weight, self.proj.bias)
-        if len(x_shape) != 2:
-            out_shape = x_shape[0:len(x_shape) -1 ] + (-1, )
-            out = out.reshape(out_shape)
-        return out
+        if hasattr(torch._C, "fused_geglu"):
+            x_shape = hidden_states.shape
+            if len(x_shape) != 2:
+                hidden_states = hidden_states.reshape(-1, x_shape[-1])
+            out = torch._C.fused_geglu(hidden_states, self.proj.weight, self.proj.bias)
+            if len(x_shape) != 2:
+                out_shape = x_shape[0:len(x_shape) -1 ] + (-1, )
+                out = out.reshape(out_shape)
+            return out
         hidden_states, gate = self.proj(hidden_states).chunk(2, dim=-1)
         return hidden_states * F.gelu(gate)

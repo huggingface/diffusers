@@ -25,9 +25,9 @@ import torch as og_torch
 
 import PIL
 from diffusers import (
-    # AutoencoderKL,
+    OneFlowAutoencoderKL as AutoencoderKL,
     DDIMPipeline,
-    # DDIMScheduler,
+    OneFlowDDIMScheduler as DDIMScheduler,
     DDPMPipeline,
     DDPMScheduler,
     KarrasVePipeline,
@@ -36,28 +36,23 @@ from diffusers import (
     LDMTextToImagePipeline,
     LMSDiscreteScheduler,
     PNDMPipeline,
-    # PNDMScheduler,
+    OneFlowPNDMScheduler as PNDMScheduler,
     ScoreSdeVePipeline,
     ScoreSdeVeScheduler,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
     StableDiffusionOnnxPipeline,
-    # StableDiffusionPipeline,
-    # UNet2DConditionModel,
+    OneFlowStableDiffusionPipeline as StableDiffusionPipeline,
+    OneFlowUNet2DConditionModel as UNet2DConditionModel,
     UNet2DModel,
     VQModel,
 )
-from diffusers import OneFlowAutoencoderKL as AutoencoderKL
-from diffusers import OneFlowStableDiffusionPipeline as StableDiffusionPipeline
-from diffusers import OneFlowDDIMScheduler as DDIMScheduler
-from diffusers import OneFlowPNDMScheduler as PNDMScheduler
-from diffusers import OneFlowUNet2DConditionModel as UNet2DConditionModel
 from diffusers.pipeline_oneflow_utils import OneFlowDiffusionPipeline as DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.testing_utils import floats_tensor, load_image, slow, torch_device
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME
 from PIL import Image
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextConfig, OneFlowCLIPTextModel as CLIPTextModel, CLIPTokenizer
 
 @unittest.skip("not implemented in oneflow")
 def test_progress_bar(capsys):
@@ -180,11 +175,20 @@ class PipelineFastTests(unittest.TestCase):
     @property
     def dummy_extractor(self):
         def extract(*args, **kwargs):
+            if "return_tensors" in kwargs:
+                return_tensors = kwargs["return_tensors"]
+            else:
+                return_tensors = "pt"
+
             class Out:
                 def __init__(self):
                     self.pixel_values = torch.ones([0])
+                    if return_tensors == "np":
+                        self.pixel_values = torch.ones([0]).numpy()
 
                 def to(self, device):
+                    if return_tensors == "np":
+                        return self
                     self.pixel_values.to(device)
                     return self
 
@@ -320,7 +324,7 @@ class PipelineFastTests(unittest.TestCase):
         prompt = "A painting of a squirrel eating a burger"
 
         generator = torch.Generator(device=device).manual_seed(0)
-        output = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
+        output = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np", compile_unet=False)
         image = output.images
 
         generator = torch.Generator(device=device).manual_seed(0)
@@ -331,6 +335,7 @@ class PipelineFastTests(unittest.TestCase):
             num_inference_steps=2,
             output_type="np",
             return_dict=False,
+            compile_unet=False
         )[0]
 
         image_slice = image[0, -3:, -3:, -1]
@@ -365,7 +370,7 @@ class PipelineFastTests(unittest.TestCase):
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.Generator(device=device).manual_seed(0)
-        output = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
+        output = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np", compile_unet=False)
 
         image = output.images
 
@@ -377,6 +382,7 @@ class PipelineFastTests(unittest.TestCase):
             num_inference_steps=2,
             output_type="np",
             return_dict=False,
+            compile_unet=False
         )[0]
 
         image_slice = image[0, -3:, -3:, -1]
@@ -978,7 +984,7 @@ class PipelineTesterMixin(unittest.TestCase):
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion(self):
         # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1", use_auth_token=True)
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -1000,7 +1006,7 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_stable_diffusion_fast_ddim(self):
-        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1", use_auth_token=True)
+        sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_auth_token=True)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -1140,7 +1146,7 @@ class PipelineTesterMixin(unittest.TestCase):
     @slow
     @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
     def test_lms_stable_diffusion_pipeline(self):
-        model_id = "CompVis/stable-diffusion-v1-1"
+        model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionPipeline.from_pretrained(model_id, use_auth_token=True).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         scheduler = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler", use_auth_token=True)
@@ -1170,29 +1176,22 @@ class PipelineTesterMixin(unittest.TestCase):
 
         # make attention efficient
         pipe.enable_attention_slicing()
-        generator = torch.Generator(device=torch_device)
-        generator.manual_seed(0)
-        with og_torch.autocast(torch_device):
-            with torch.autocast(torch_device):
-                output_chunked = pipe(
-                    [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
-                )
-                image_chunked = output_chunked.images
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        with torch.autocast(torch_device):
+            output_chunked = pipe(
+                [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
+            )
+            image_chunked = output_chunked.images
 
         # disable chunking
         pipe.disable_attention_slicing()
-        generator = torch.Generator(device=torch_device)
-        generator.manual_seed(0)
-        with og_torch.autocast(torch_device):
-            with torch.autocast(torch_device):
-                output = pipe(
-                    [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
-                )
-                image = output.images
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        with torch.autocast(torch_device):
+            output = pipe(
+                [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
+            )
+            image = output.images
 
-        # make sure that more than 3.75 GB is allocated
-        mem_bytes = torch.cuda.max_memory_allocated()
-        assert mem_bytes > 3.75 * 10**9
         assert np.abs(image_chunked.flatten() - image.flatten()).max() < 1e-3
 
     @unittest.skip("not implemented in oneflow")

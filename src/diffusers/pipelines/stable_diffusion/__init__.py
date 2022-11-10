@@ -60,4 +60,5 @@ if is_transformers_available() and is_flax_available():
     from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
 
 from .pipeline_stable_diffusion_oneflow import OneFlowStableDiffusionPipeline
+from .pipeline_stable_diffusion_img2img_oneflow import OneFlowStableDiffusionImg2ImgPipeline
 from .safety_checker_oneflow import OneFlowStableDiffusionSafetyChecker
