@@ -576,7 +576,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         encoder_continuous_inputs = self.scale_features(encoder_continuous_inputs, output_range=[-1.0, 1.0], clip=True)
 
         encodings_and_masks = self.cont_context_trans.encode(
-            encoder_input_tokens=encoder_input_tokens,
+            input_tokens=encoder_input_tokens,
             continuous_inputs=encoder_continuous_inputs,
             continuous_mask=encoder_continuous_mask,
         )
