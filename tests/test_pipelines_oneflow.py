@@ -25,9 +25,9 @@ import torch as og_torch
 
 import PIL
 from diffusers import (
-    # AutoencoderKL,
+    OneFlowAutoencoderKL as AutoencoderKL,
     DDIMPipeline,
-    # DDIMScheduler,
+    OneFlowDDIMScheduler as DDIMScheduler,
     DDPMPipeline,
     DDPMScheduler,
     KarrasVePipeline,
@@ -36,22 +36,17 @@ from diffusers import (
     LDMTextToImagePipeline,
     LMSDiscreteScheduler,
     PNDMPipeline,
-    # PNDMScheduler,
+    OneFlowPNDMScheduler as PNDMScheduler,
     ScoreSdeVePipeline,
     ScoreSdeVeScheduler,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
     StableDiffusionOnnxPipeline,
-    # StableDiffusionPipeline,
-    # UNet2DConditionModel,
+    OneFlowStableDiffusionPipeline as StableDiffusionPipeline,
+    OneFlowUNet2DConditionModel as UNet2DConditionModel,
     UNet2DModel,
     VQModel,
 )
-from diffusers import OneFlowAutoencoderKL as AutoencoderKL
-from diffusers import OneFlowStableDiffusionPipeline as StableDiffusionPipeline
-from diffusers import OneFlowDDIMScheduler as DDIMScheduler
-from diffusers import OneFlowPNDMScheduler as PNDMScheduler
-from diffusers import OneFlowUNet2DConditionModel as UNet2DConditionModel
 from diffusers.pipeline_oneflow_utils import OneFlowDiffusionPipeline as DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.testing_utils import floats_tensor, load_image, slow, torch_device
