@@ -2,11 +2,11 @@
 import argparse
 import os
 
+import numpy as np
+
 import torch
 import torch.nn as nn
 
-import jax
-import tensorflow as tf
 from diffusers import DDPMScheduler, SpectrogramDiffusionPipeline
 from diffusers.pipelines.spectrogram_diffusion import ContinuousContextTransformer
 from music_spectrogram_diffusion import inference
@@ -33,11 +33,13 @@ def load_token_encoder(weights, model):
         )
 
         lyr.layer[1].DenseReluDense.wi_0.weight = nn.Parameter(torch.FloatTensor(ly_weight["mlp"]["wi_0"]["kernel"].T))
-        lyr.layer[1].DenseReluDense.wi_1.weight = nn.Parameter(torch.FloatTensor(ly_weight["mlp"]["wi_0"]["kernel"].T))
+        lyr.layer[1].DenseReluDense.wi_1.weight = nn.Parameter(torch.FloatTensor(ly_weight["mlp"]["wi_1"]["kernel"].T))
         lyr.layer[1].DenseReluDense.wo.weight = nn.Parameter(torch.FloatTensor(ly_weight["mlp"]["wo"]["kernel"].T))
         lyr.layer[1].layer_norm.weight = nn.Parameter(torch.FloatTensor(ly_weight["pre_mlp_layer_norm"]["scale"]))
 
     model.layer_norm.weight = nn.Parameter(torch.FloatTensor(weights["encoder_norm"]["scale"]))
+
+    return model
 
 
 def load_continuous_encoder(weights, model):
@@ -60,11 +62,13 @@ def load_continuous_encoder(weights, model):
         )
 
         lyr.layer[1].DenseReluDense.wi_0.weight = nn.Parameter(torch.FloatTensor(ly_weight["mlp"]["wi_0"]["kernel"].T))
-        lyr.layer[1].DenseReluDense.wi_1.weight = nn.Parameter(torch.FloatTensor(ly_weight["mlp"]["wi_0"]["kernel"].T))
+        lyr.layer[1].DenseReluDense.wi_1.weight = nn.Parameter(torch.FloatTensor(ly_weight["mlp"]["wi_1"]["kernel"].T))
         lyr.layer[1].DenseReluDense.wo.weight = nn.Parameter(torch.FloatTensor(ly_weight["mlp"]["wo"]["kernel"].T))
         lyr.layer[1].layer_norm.weight = nn.Parameter(torch.FloatTensor(ly_weight["pre_mlp_layer_norm"]["scale"]))
 
     model.layer_norm.weight = nn.Parameter(torch.FloatTensor(weights["encoder_norm"]["scale"]))
+
+    return model
 
 
 def load_decoder(weights, model):
@@ -112,18 +116,21 @@ def load_decoder(weights, model):
         )
 
         lyr.layer[4].DenseReluDense.wi_0.weight = nn.Parameter(torch.FloatTensor(ly_weight["mlp"]["wi_0"]["kernel"].T))
-        lyr.layer[4].DenseReluDense.wi_1.weight = nn.Parameter(torch.FloatTensor(ly_weight["mlp"]["wi_0"]["kernel"].T))
+        lyr.layer[4].DenseReluDense.wi_1.weight = nn.Parameter(torch.FloatTensor(ly_weight["mlp"]["wi_1"]["kernel"].T))
         lyr.layer[4].DenseReluDense.wo.weight = nn.Parameter(torch.FloatTensor(ly_weight["mlp"]["wo"]["kernel"].T))
 
     model.decoder_norm.weight = nn.Parameter(torch.FloatTensor(weights["decoder_norm"]["scale"]))
 
     model.spec_out.weight = nn.Parameter(torch.FloatTensor(weights["spec_out_dense"]["kernel"].T))
 
+    return model
+
 
 def load_checkpoint(t5_checkpoint, model):
-    load_token_encoder(t5_checkpoint["token_encoder"], model.token_encoder)
-    load_continuous_encoder(t5_checkpoint["continuous_encoder"], model.continuous_encoder)
-    load_decoder(t5_checkpoint["decoder"], model.decoder)
+    model.token_encoder = load_token_encoder(t5_checkpoint["token_encoder"], model.token_encoder)
+
+    model.continuous_encoder = load_continuous_encoder(t5_checkpoint["continuous_encoder"], model.continuous_encoder)
+    model.decoder = load_decoder(t5_checkpoint["decoder"], model.decoder)
     return model
 
 
@@ -163,15 +170,10 @@ def main(args):
     model = load_checkpoint(t5_checkpoint["target"], model)
 
     pipe = SpectrogramDiffusionPipeline(model, scheduler=scheduler)
-    import pdb
-
-    pdb.set_trace()
-    pipe.save_pretrained(args.output_path)
+    pipe.save_pretrained("kashif")
 
 
 if __name__ == "__main__":
-    jax.config.update("jax_platform_name", "cpu")
-
     parser = argparse.ArgumentParser()
 
     # parser.add_argument("--model_path", default=None, type=str, required=True, help="Path to the converted model.")
