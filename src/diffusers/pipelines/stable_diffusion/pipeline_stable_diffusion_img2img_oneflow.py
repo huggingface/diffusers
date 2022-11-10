@@ -10,12 +10,9 @@ from transformers import CLIPFeatureExtractor, CLIPTokenizer
 from transformers import OneFlowCLIPTextModel as CLIPTextModel
 
 from ...configuration_utils import FrozenDict
-from ...models import OneFlowAutoencoderKL as AutoencoderKL
-from ...models import OneFlowUNet2DConditionModel as UNet2DConditionModel
+from ...models import OneFlowAutoencoderKL as AutoencoderKL, OneFlowUNet2DConditionModel as UNet2DConditionModel
 from ...pipeline_oneflow_utils import OneFlowDiffusionPipeline as DiffusionPipeline
-from ...schedulers import OneFlowDDIMScheduler as DDIMScheduler
-from ...schedulers import OneFlowPNDMScheduler as PNDMScheduler
-from ...schedulers import OneFlowDPMSolverMultistepScheduler as DPMSolverMultistepScheduler
+from ...schedulers import OneFlowDDIMScheduler as DDIMScheduler, import OneFlowPNDMScheduler as PNDMScheduler, import OneFlowDPMSolverMultistepScheduler as DPMSolverMultistepScheduler
 from ...schedulers import LMSDiscreteScheduler
 from . import StableDiffusionPipelineOutput
 from .safety_checker_oneflow import OneFlowStableDiffusionSafetyChecker as StableDiffusionSafetyChecker
