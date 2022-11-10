@@ -371,6 +371,8 @@ def main(args):
                 accelerator.init_trackers(
                     project_name=project_name, 
                     init_kwargs={"wandb":{'config':vars(args)}})
+            table_cols = ['epoch', 'global_step', 'generated_images']
+            wandb_table = wandb.Table(columns=table_cols)
         else:
             accelerator.init_trackers(run) 
 
@@ -455,6 +457,16 @@ def main(args):
 
                 # denormalize the images and save to tensorboard
                 images_processed = (images * 255).round().astype("uint8")
+
+                if "wandb" in args.logger:
+                    wandb_images = [wandb.Image(i) for i in images_processed]
+                    wandb_table.add_data(epoch, global_step, wandb_images)
+
+                    #log images to wandb
+                    wandb.log({
+                        'generated_images':wandb_images,
+                    }, step=global_step)
+
                 if "tensorboard" in args.logger:
                     accelerator.trackers[0].writer.add_images(
                         "test_samples", images_processed.transpose(0, 3, 1, 2), epoch
@@ -467,6 +479,10 @@ def main(args):
                     repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=False)
         accelerator.wait_for_everyone()
 
+    if "wandb" in args.logger:
+        wandb.log({
+            "generated_samples_table": wandb_table
+    })
     accelerator.end_training()
 
 
