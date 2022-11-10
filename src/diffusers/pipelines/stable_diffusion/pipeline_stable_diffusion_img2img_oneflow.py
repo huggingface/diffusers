@@ -16,6 +16,8 @@ from ...schedulers import OneFlowDDIMScheduler as DDIMScheduler, OneFlowPNDMSche
 from ...schedulers import LMSDiscreteScheduler
 from . import StableDiffusionPipelineOutput
 from .safety_checker_oneflow import OneFlowStableDiffusionSafetyChecker as StableDiffusionSafetyChecker
+from ...modeling_oneflow_utils import extract_scalar
+from timeit import default_timer as timer
 
 import os
 os.environ["ONEFLOW_MLIR_ENABLE_ROUND_TRIP"] = "1"
@@ -23,6 +25,7 @@ os.environ["ONEFLOW_MLIR_ENABLE_INFERENCE_OPTIMIZATION"] = "1"
 os.environ["ONEFLOW_MLIR_PREFER_NHWC"] = "1"
 os.environ["ONEFLOW_KERNEL_ENABLE_CUDNN_FUSED_CONV_BIAS"] = "1"
 os.environ["ONEFLOW_KERNEL_ENABLE_FUSED_LINEAR"] = "1"
+
 
 def preprocess(image):
     w, h = image.size
@@ -213,6 +216,7 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
+        start = timer()
         if isinstance(prompt, str):
             batch_size = 1
         elif isinstance(prompt, list):
@@ -247,6 +251,7 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             )
         else:
             timesteps = self.scheduler.timesteps[-init_timestep]
+            timesteps = extract_scalar(timesteps)
             timesteps = torch.tensor([timesteps] * batch_size, dtype=torch.long, device=self.device)
 
         # add noise to latents using the timesteps

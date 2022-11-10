@@ -17,6 +17,7 @@ from ...schedulers import OneFlowDPMSolverMultistepScheduler as DPMSolverMultist
 from ...schedulers import LMSDiscreteScheduler
 from . import StableDiffusionPipelineOutput
 from .safety_checker_oneflow import OneFlowStableDiffusionSafetyChecker as StableDiffusionSafetyChecker
+from timeit import default_timer as timer
 
 import os
 os.environ["ONEFLOW_MLIR_ENABLE_ROUND_TRIP"] = "1"
@@ -206,8 +207,6 @@ class OneFlowStableDiffusionPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-
-        from timeit import default_timer as timer
         start = timer()
         if "torch_device" in kwargs:
             device = kwargs.pop("torch_device")
