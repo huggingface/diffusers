@@ -428,7 +428,7 @@ If you just want to play around with some web demos, you can try out the followi
 <p>
     
 **Schedulers**: Algorithm class for both **inference** and **training**.
-The class provides functionality to compute previous image according to alpha, beta schedule as well as predict noise for training.
+The class provides functionality to compute previous image according to alpha, beta schedule as well as predict noise for training. Also known as **Samplers**.
 *Examples*: [DDPM](https://arxiv.org/abs/2006.11239), [DDIM](https://arxiv.org/abs/2010.02502), [PNDM](https://arxiv.org/abs/2202.09778), [DEIS](https://arxiv.org/abs/2204.13902)
 
 <p align="center">
