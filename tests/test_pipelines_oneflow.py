@@ -1192,7 +1192,6 @@ class PipelineTesterMixin(unittest.TestCase):
             )
             image = output.images
 
-        assert mem_bytes > 3.75 * 10**9
         assert np.abs(image_chunked.flatten() - image.flatten()).max() < 1e-3
 
     @unittest.skip("not implemented in oneflow")
