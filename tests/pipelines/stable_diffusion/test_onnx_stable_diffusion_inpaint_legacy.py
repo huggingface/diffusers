@@ -25,9 +25,9 @@ from ...test_pipelines_onnx_common import OnnxPipelineTesterMixin
 if is_onnx_available():
     import onnxruntime as ort
 
-#@slow
-#@require_onnxruntime
-#@require_torch_gpu
+@slow
+@require_onnxruntime
+@require_torch_gpu
 class StableDiffusionOnnxInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
     @property
     def gpu_provider(self):
