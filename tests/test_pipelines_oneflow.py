@@ -52,7 +52,7 @@ from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.testing_utils import floats_tensor, load_image, slow, torch_device
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME
 from PIL import Image
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextConfig, OneFlowCLIPTextModel as CLIPTextModel, CLIPTokenizer
 
 @unittest.skip("not implemented in oneflow")
 def test_progress_bar(capsys):
@@ -315,7 +315,7 @@ class PipelineFastTests(unittest.TestCase):
         prompt = "A painting of a squirrel eating a burger"
 
         generator = torch.Generator(device=device).manual_seed(0)
-        output = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
+        output = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np", compile_unet=False)
         image = output.images
 
         generator = torch.Generator(device=device).manual_seed(0)
@@ -326,6 +326,7 @@ class PipelineFastTests(unittest.TestCase):
             num_inference_steps=2,
             output_type="np",
             return_dict=False,
+            compile_unet=False
         )[0]
 
         image_slice = image[0, -3:, -3:, -1]
@@ -360,7 +361,7 @@ class PipelineFastTests(unittest.TestCase):
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.Generator(device=device).manual_seed(0)
-        output = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
+        output = sd_pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np", compile_unet=False)
 
         image = output.images
 
@@ -372,6 +373,7 @@ class PipelineFastTests(unittest.TestCase):
             num_inference_steps=2,
             output_type="np",
             return_dict=False,
+            compile_unet=False
         )[0]
 
         image_slice = image[0, -3:, -3:, -1]
