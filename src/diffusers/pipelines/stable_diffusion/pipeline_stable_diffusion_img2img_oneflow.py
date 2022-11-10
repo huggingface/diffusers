@@ -57,12 +57,9 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
-        # safety_checker: StableDiffusionSafetyChecker,
-        # feature_extractor: CLIPFeatureExtractor,
+        safety_checker: StableDiffusionSafetyChecker,
+        feature_extractor: CLIPFeatureExtractor,
     ):
-        safety_checker = None
-        feature_extractor = None
-
         super().__init__()
         scheduler = scheduler.set_format("pt")
 
@@ -86,9 +83,12 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             tokenizer=tokenizer,
             unet=unet,
             scheduler=scheduler,
-            # safety_checker=safety_checker,
-            # feature_extractor=feature_extractor,
+            safety_checker=safety_checker,
+            feature_extractor=feature_extractor,
         )
+        self.unet_graphs = dict()
+        self.unet_graphs_cache_size = 1
+        self.unet_graphs_lru_cache_time = 0
 
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
@@ -116,6 +116,18 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         """
         # set slice_size = `None` to disable `set_attention_slice`
         self.enable_attention_slicing(None)
+
+    def set_unet_graphs_cache_size(self, cache_size: int):
+        r"""
+        Set the cache size of compiled unet graphs.
+
+        This option is designed to control the GPU memory size.
+
+        Args:
+            cache_size ([`int`]):
+                New cache size, i.e., the maximum number of unet graphs.
+        """
+        self.unet_graphs_cache_size = cache_size
 
     @torch.no_grad()
     def __call__(
@@ -167,6 +179,8 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
+            compile_unet (`bool`, *optional*, defaults to `True`):
+                Whether or not to compile unet as nn.graph
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
@@ -225,7 +239,6 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         )
         text_input.input_ids = torch.from_numpy(text_input.input_ids)
         text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
-        # text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -259,15 +272,27 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         compilation_start = timer()
         compilation_time = 0
         if compile_unet:
-            if self.unet_compiled == False:
+            self.unet_graphs_lru_cache_time += 1
+            if (height, width) in self.unet_graphs:
+                _, unet_graph = self.unet_graphs[height, width]
+                self.unet_graphs[height, width] = (self.unet_graphs_lru_cache_time, unet_graph)
+            else:
+                while len(self.unet_graphs) >= self.unet_graphs_cache_size:
+                    shape_to_del = min(self.unet_graphs.keys(), key=lambda shape: self.unet_graphs[shape][0])
+                    print("[oneflow]", f"a compiled unet (height={shape_to_del[0]}, width={shape_to_del[1]}) "
+                          "is deleted according to the LRU policy")
+                    print("[oneflow]", "cache size can be changed by `pipeline.set_unet_graphs_cache_size`")
+                    del self.unet_graphs[shape_to_del]
                 print("[oneflow]", "compiling unet beforehand to make sure the progress bar is more accurate")
                 i, t = list(enumerate(self.scheduler.timesteps))[0]
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                self.unet_graph._compile(latent_model_input, t, text_embeddings)
-                self.unet_compiled = True
-                self.unet_graph(latent_model_input, t, text_embeddings)  # warmup
+                unet_graph = UNetGraph(self.unet)
+                unet_graph._compile(latent_model_input, t, text_embeddings)
+                unet_graph(latent_model_input, t, text_embeddings) # warmup
                 compilation_time = timer() - compilation_start
                 print("[oneflow]", "[elapsed(s)]", "[unet compilation]", compilation_time)
+                self.unet_graphs[height, width] = (self.unet_graphs_lru_cache_time, unet_graph)
+
 
         t_start = max(num_inference_steps - init_timestep + offset, 0)
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps[t_start:])):
@@ -284,7 +309,7 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
             # predict the noise residual
             if compile_unet:
-                noise_pred = self.unet_graph(latent_model_input, t, text_embeddings)
+                noise_pred = unet_graph(latent_model_input, t, text_embeddings)
             else:
                 # predict the noise residual
                 noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
