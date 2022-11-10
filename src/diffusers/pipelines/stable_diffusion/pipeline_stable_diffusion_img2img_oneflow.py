@@ -223,7 +223,6 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             return_tensors="pt",
         )
         text_input.input_ids = torch.from_numpy(text_input.input_ids)
-        torch._oneflow_internal.profiler.RangePush(f"text-encoder")
         text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
         # text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
 
@@ -243,8 +242,6 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
-
-        torch._oneflow_internal.profiler.RangePop()
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -274,8 +271,6 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps[t_start:])):
             t_index = t_start + i
 
-            torch._oneflow_internal.profiler.RangePush(f"denoise-{i}")
-
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
@@ -287,9 +282,7 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
             # predict the noise residual
             if compile_unet:
-                torch._oneflow_internal.profiler.RangePush(f"denoise-{i}-unet-graph")
                 noise_pred = self.unet_graph(latent_model_input, t, text_embeddings)
-                torch._oneflow_internal.profiler.RangePop()
             else:
                 # predict the noise residual
                 noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
@@ -304,7 +297,6 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 latents = self.scheduler.step(noise_pred, t_index, latents, **extra_step_kwargs).prev_sample
             else:
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
-            torch._oneflow_internal.profiler.RangePop()
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
