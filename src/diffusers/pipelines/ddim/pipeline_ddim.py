@@ -115,4 +115,3 @@ class DDIMPipeline(DiffusionPipeline):
             return (image,)
 
         return ImagePipelineOutput(images=image)
-
