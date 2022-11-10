@@ -68,30 +68,25 @@ class LDMSuperResolutionPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         return model
 
     def test_inference_superresolution(self):
+        device = "cpu"
         unet = self.dummy_uncond_unet
         scheduler = DDIMScheduler()
         vqvae = self.dummy_vq_model
 
         ldm = LDMSuperResolutionPipeline(unet=unet, vqvae=vqvae, scheduler=scheduler)
-        ldm.to(torch_device)
+        ldm.to(device)
         ldm.set_progress_bar_config(disable=None)
 
-        init_image = self.dummy_image.to(torch_device)
+        init_image = self.dummy_image.to(device)
 
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            generator = torch.manual_seed(0)
-            _ = ldm(init_image, generator=generator, num_inference_steps=1, output_type="numpy").images
-
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=device).manual_seed(0)
         image = ldm(init_image, generator=generator, num_inference_steps=2, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.8634, 0.8186, 0.6416, 0.6846, 0.4427, 0.5676, 0.4679, 0.6247, 0.5176])
-        tolerance = 1e-2 if torch_device != "mps" else 3e-2
-        assert np.abs(image_slice.flatten() - expected_slice).max() < tolerance
+        expected_slice = np.array([0.8678, 0.8245, 0.6381, 0.6830, 0.4385, 0.5599, 0.4641, 0.6201, 0.5150])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
 @slow
