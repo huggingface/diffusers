@@ -175,11 +175,20 @@ class PipelineFastTests(unittest.TestCase):
     @property
     def dummy_extractor(self):
         def extract(*args, **kwargs):
+            if "return_tensors" in kwargs:
+                return_tensors = kwargs["return_tensors"]
+            else:
+                return_tensors = "pt"
+
             class Out:
                 def __init__(self):
                     self.pixel_values = torch.ones([0])
+                    if return_tensors == "np":
+                        self.pixel_values = torch.ones([0]).numpy()
 
                 def to(self, device):
+                    if return_tensors == "np":
+                        return self
                     self.pixel_values.to(device)
                     return self
 
