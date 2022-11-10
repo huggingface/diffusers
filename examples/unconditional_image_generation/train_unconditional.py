@@ -363,18 +363,16 @@ def main(args):
                 raise ImportError("please run `pip install wandb --upgrade`")
             project_name = f"{run}-{args.output_dir}"
             if "tensorboard" in args.logger:
-                tfevents_folder = os.path.join(logging_dir,project_name)
+                tfevents_folder = os.path.join(logging_dir, project_name)
                 wandb.tensorboard.patch(root_logdir=tfevents_folder)
                 wandb.init(project=project_name, config=vars(args))
                 accelerator.init_trackers(project_name)
             else:
-                accelerator.init_trackers(
-                    project_name=project_name, 
-                    init_kwargs={"wandb":{'config':vars(args)}})
-            table_cols = ['epoch', 'global_step', 'generated_images']
+                accelerator.init_trackers(project_name=project_name, init_kwargs={"wandb": {"config": vars(args)}})
+            table_cols = ["epoch", "global_step", "generated_images"]
             wandb_table = wandb.Table(columns=table_cols)
         else:
-            accelerator.init_trackers(run) 
+            accelerator.init_trackers(run)
 
     global_step = 0
     for epoch in range(args.num_epochs):
@@ -462,10 +460,13 @@ def main(args):
                     wandb_images = [wandb.Image(i) for i in images_processed]
                     wandb_table.add_data(epoch, global_step, wandb_images)
 
-                    #log images to wandb
-                    wandb.log({
-                        'generated_images':wandb_images,
-                    }, step=global_step)
+                    # log images to wandb
+                    wandb.log(
+                        {
+                            "generated_images": wandb_images,
+                        },
+                        step=global_step,
+                    )
 
                 if "tensorboard" in args.logger:
                     accelerator.trackers[0].writer.add_images(
@@ -475,24 +476,19 @@ def main(args):
             if epoch % args.save_model_epochs == 0 or epoch == args.num_epochs - 1:
                 # save the model
                 pipeline.save_pretrained(args.output_dir)
-                
+
                 if "wandb" in args.logger:
                     # log model checkpoint within a wandb artifact
-                    model_artifact = wandb.Artifact(
-                        f'{wandb.run.id}-{args.output_dir}', 
-                        type='model'
-                    )
+                    model_artifact = wandb.Artifact(f"{wandb.run.id}-{args.output_dir}", type="model")
                     model_artifact.add_dir(args.output_dir)
-                    wandb.log_artifact(model_artifact, aliases=[f'step_{global_step}', f'epoch_{epoch}'])
+                    wandb.log_artifact(model_artifact, aliases=[f"step_{global_step}", f"epoch_{epoch}"])
 
                 if args.push_to_hub:
                     repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=False)
         accelerator.wait_for_everyone()
 
     if "wandb" in args.logger:
-        wandb.log({
-            "generated_samples_table": wandb_table
-    })
+        wandb.log({"generated_samples_table": wandb_table})
     accelerator.end_training()
 
 
