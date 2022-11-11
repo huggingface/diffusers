@@ -89,6 +89,7 @@ class DownloadTests(unittest.TestCase):
 
     def test_download_no_safety_checker(self):
         prompt = "hello"
+	negative_prompt = "good_bye"
         pipe = StableDiffusionPipeline.from_pretrained(
             "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
         )
@@ -98,7 +99,7 @@ class DownloadTests(unittest.TestCase):
             generator = torch.manual_seed(0)
         else:
             generator = torch.Generator(device=torch_device).manual_seed(0)
-        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+        out = pipe(prompt, negative_prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         pipe_2 = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
         pipe_2 = pipe_2.to(torch_device)
@@ -107,13 +108,13 @@ class DownloadTests(unittest.TestCase):
             generator = torch.manual_seed(0)
         else:
             generator = torch.Generator(device=torch_device).manual_seed(0)
-        out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+        out_2 = pipe_2(prompt, negative_prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         assert np.max(np.abs(out - out_2)) < 1e-3
 
     def test_load_no_safety_checker_explicit_locally(self):
         prompt = "hello"
-		negative_prompt = "good_bye"
+	negative_prompt = "good_bye"
         pipe = StableDiffusionPipeline.from_pretrained(
             "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
         )
@@ -136,13 +137,13 @@ class DownloadTests(unittest.TestCase):
             else:
                 generator = torch.Generator(device=torch_device).manual_seed(0)
 
-            out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+            out_2 = pipe_2(prompt, negative_prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         assert np.max(np.abs(out - out_2)) < 1e-3
 
     def test_load_no_safety_checker_default_locally(self):
         prompt = "hello"
-		negative_prompt = "good_bye"
+	negative_prompt = "good_bye"
         pipe = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
         pipe = pipe.to(torch_device)
         if torch_device == "mps":
@@ -163,7 +164,7 @@ class DownloadTests(unittest.TestCase):
             else:
                 generator = torch.Generator(device=torch_device).manual_seed(0)
 
-            out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+            out_2 = pipe_2(prompt, negative_prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         assert np.max(np.abs(out - out_2)) < 1e-3
 
