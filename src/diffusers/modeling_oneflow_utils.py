@@ -39,7 +39,12 @@ def index_cast(indices):
     else:
         return indices
 
-def extract_scalar(t):
+def extract_scalar(t, device=None):
+    if t.is_lazy:
+        if device is None:
+            return t
+        else:
+            return t.to(device=device)
     if isinstance(t, torch.Tensor) and t.size() == torch.Size([]) and t.device == torch.device("cpu"):
         return t.item()
     return t
@@ -48,6 +53,8 @@ def from_numpy_if_needed(*args):
     if len(args) == 1:
         if isinstance(args[0], np.ndarray):
             return torch.from_numpy(args[0])
+        if isinstance(args[0], np.float32):
+            return args[0].item()
         else:
             return args[0]
     return [torch.from_numpy(a) if isinstance(a, np.ndarray) else a for a in args]
