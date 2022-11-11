@@ -99,7 +99,7 @@ class DownloadTests(unittest.TestCase):
             generator = torch.manual_seed(0)
         else:
             generator = torch.Generator(device=torch_device).manual_seed(0)
-        out = pipe(prompt, negative_prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+        out = pipe(prompt, negative_prompt=negative_prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         pipe_2 = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
         pipe_2 = pipe_2.to(torch_device)
@@ -108,7 +108,7 @@ class DownloadTests(unittest.TestCase):
             generator = torch.manual_seed(0)
         else:
             generator = torch.Generator(device=torch_device).manual_seed(0)
-        out_2 = pipe_2(prompt, negative_prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+        out_2 = pipe_2(prompt, negative_prompt=negative_prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         assert np.max(np.abs(out - out_2)) < 1e-3
 
@@ -124,7 +124,7 @@ class DownloadTests(unittest.TestCase):
             generator = torch.manual_seed(0)
         else:
             generator = torch.Generator(device=torch_device).manual_seed(0)
-        out = pipe(prompt, negative_prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+        out = pipe(prompt, negative_prompt=negative_prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             pipe.save_pretrained(tmpdirname)
@@ -137,7 +137,7 @@ class DownloadTests(unittest.TestCase):
             else:
                 generator = torch.Generator(device=torch_device).manual_seed(0)
 
-            out_2 = pipe_2(prompt, negative_prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+            out_2 = pipe_2(prompt, negative_prompt=negative_prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         assert np.max(np.abs(out - out_2)) < 1e-3
 
@@ -151,7 +151,7 @@ class DownloadTests(unittest.TestCase):
             generator = torch.manual_seed(0)
         else:
             generator = torch.Generator(device=torch_device).manual_seed(0)
-        out = pipe(prompt, negative_prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+        out = pipe(prompt, negative_prompt=negative_prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             pipe.save_pretrained(tmpdirname)
@@ -164,7 +164,7 @@ class DownloadTests(unittest.TestCase):
             else:
                 generator = torch.Generator(device=torch_device).manual_seed(0)
 
-            out_2 = pipe_2(prompt, negative_prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+            out_2 = pipe_2(prompt, negative_prompt=negative_prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         assert np.max(np.abs(out - out_2)) < 1e-3
 
