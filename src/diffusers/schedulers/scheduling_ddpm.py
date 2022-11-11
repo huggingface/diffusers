@@ -292,10 +292,16 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         # 6. Add noise
         variance = 0
         if t > 0:
-            noise = torch.randn(
-                model_output.size(), dtype=model_output.dtype, layout=model_output.layout, generator=generator
-            ).to(model_output.device)
-            variance = (self._get_variance(t, predicted_variance=predicted_variance) ** 0.5) * noise
+            device = model_output.device
+            if device.type == "mps":
+                # randn does not work reproducibly on mps
+                variance_noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator)
+                variance_noise = variance_noise.to(device)
+            else:
+                variance_noise = torch.randn(
+                    model_output.shape, generator=generator, device=device, dtype=model_output.dtype
+                )
+            variance = (self._get_variance(t, predicted_variance=predicted_variance) ** 0.5) * variance_noise
 
         pred_prev_sample = pred_prev_sample + variance
 

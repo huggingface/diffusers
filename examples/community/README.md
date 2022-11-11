@@ -179,9 +179,20 @@ images = pipe.inpaint(prompt=prompt, init_image=init_image, mask_image=mask_imag
 As shown above this one pipeline can run all both "text-to-image", "image-to-image", and "inpainting" in one pipeline.
 
 ### Long Prompt Weighting Stable Diffusion
+Features of this custom pipeline:
+- Input a prompt without the 77 token length limit.
+- Includes tx2img, img2img. and inpainting pipelines.
+- Emphasize/weigh part of your prompt with parentheses as so: `a baby deer with (big eyes)`
+- De-emphasize part of your prompt as so: `a [baby] deer with big eyes`
+- Precisely weigh part of your prompt as so: `a baby deer with (big eyes:1.3)`
 
-The Pipeline lets you input prompt without 77 token length limit. And you can increase words weighting by using "()" or decrease words weighting by using "[]"
-The Pipeline also lets you use the main use cases of the stable diffusion pipeline in a single class.
+Prompt weighting equivalents:
+- `a baby deer with` == `(a baby deer with:1.0)`
+- `(big eyes)` == `(big eyes:1.1)`
+- `((big eyes))` == `(big eyes:1.21)`
+- `[big eyes]` == `(big eyes:0.91)`
+
+You can run this custom pipeline as so:
 
 #### pytorch
 

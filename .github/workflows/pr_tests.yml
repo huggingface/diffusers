@@ -136,7 +136,7 @@ jobs:
     - name: Run fast PyTorch tests on M1 (MPS)
       shell: arch -arch arm64 bash {0}
       run: |
-        ${CONDA_RUN} python -m pytest -n 1 -s -v --make-reports=tests_torch_mps tests/
+        ${CONDA_RUN} python -m pytest -n 0 -s -v --make-reports=tests_torch_mps tests/
 
     - name: Failure short reports
       if: ${{ failure() }}
