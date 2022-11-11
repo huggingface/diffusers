@@ -99,7 +99,7 @@ class DownloadTests(unittest.TestCase):
             generator = torch.manual_seed(0)
         else:
             generator = torch.Generator(device=torch_device).manual_seed(0)
-        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+        out = pipe(prompt, negative_prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
 
         pipe_2 = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
         pipe_2 = pipe_2.to(torch_device)
@@ -227,7 +227,7 @@ class CustomPipelineTests(unittest.TestCase):
         # https://github.com/huggingface/diffusers/blob/main/examples/community/clip_guided_stable_diffusion.py
         assert pipeline.__class__.__name__ == "CLIPGuidedStableDiffusion"
 
-        image = pipeline("a prompt", "negative_prompt", num_inference_steps=2, output_type="np").images[0]
+        image = pipeline("a prompt", negative_prompt="negative_prompt", num_inference_steps=2, output_type="np").images[0]
         assert image.shape == (512, 512, 3)
 
 
