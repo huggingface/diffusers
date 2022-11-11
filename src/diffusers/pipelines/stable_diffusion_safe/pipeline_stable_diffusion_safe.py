@@ -281,26 +281,25 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
                 called at every step.
             sld_guidance_scale (`float`, *optional*, defaults to 1000):
                 Safe latent guidance as defined in [Safe Latent Diffusion](https://arxiv.org/abs/2211.05105).
-                `sld_guidance_scale` is defined as sS of Eq. 6.
-                If set to be less than 1, safety guidance will be disabled.
+                `sld_guidance_scale` is defined as sS of Eq. 6. If set to be less than 1, safety guidance will be
+                disabled.
             sld_warmup_steps (`int`, *optional*, defaults to 10):
                 Number of warmup steps for safety guidance. SLD will only be applied for diffusion steps greater than
-                `sld_warmup_steps`. `sld_warmup_steps` is defined as `delta` of
-                [Safe Latent Diffusion](https://arxiv.org/abs/2211.05105).
+                `sld_warmup_steps`. `sld_warmup_steps` is defined as `delta` of [Safe Latent
+                Diffusion](https://arxiv.org/abs/2211.05105).
             sld_threshold (`float`, *optional*, defaults to 0.01):
-                Threshold that separates the hyperplane between appropriate and inappropriate images.
-                `sld_threshold` is defined as `lamda` of Eq. 5 in
-                [Safe Latent Diffusion](https://arxiv.org/abs/2211.05105).
+                Threshold that separates the hyperplane between appropriate and inappropriate images. `sld_threshold`
+                is defined as `lamda` of Eq. 5 in [Safe Latent Diffusion](https://arxiv.org/abs/2211.05105).
             sld_momentum_scale (`float`, *optional*, defaults to 0.3):
                 Scale of the SLD momentum to be added to the safety guidance at each diffusion step. If set to 0.0
                 momentum will be disabled. Momentum is already built up during warmup, i.e. for diffusion steps smaller
-                than `sld_warmup_steps`. `sld_momentum_scale` is defined as `sm` of Eq. 7 in
-                [Safe Latent Diffusion](https://arxiv.org/abs/2211.05105).
+                than `sld_warmup_steps`. `sld_momentum_scale` is defined as `sm` of Eq. 7 in [Safe Latent
+                Diffusion](https://arxiv.org/abs/2211.05105).
             sld_mom_beta (`float`, *optional*, defaults to 0.4):
                 Defines how safety guidance momentum builds up. `sld_mom_beta` indicates how much of the previous
                 momentum will be kept. Momentum is already built up during warmup, i.e. for diffusion steps smaller
-                than `sld_warmup_steps`. `sld_mom_beta` is defined as `beta m` of Eq. 8 in
-                [Safe Latent Diffusion](https://arxiv.org/abs/2211.05105).
+                than `sld_warmup_steps`. `sld_mom_beta` is defined as `beta m` of Eq. 8 in [Safe Latent
+                Diffusion](https://arxiv.org/abs/2211.05105).
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
