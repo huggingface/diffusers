@@ -629,17 +629,18 @@ from diffusers import DiffusionPipeline
 
 from PIL import Image
 import requests
+from torch import autocast
 
 processor = CLIPSegProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
 model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined")
-
 
 pipe = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-inpainting",
     custom_pipeline="text_inpainting",
     segmentation_model=model,
-    segmentation_processor=processor,
+    segmentation_processor=processor
 )
+pipe = pipe.to("cuda")
 
 
 url = "https://github.com/timojl/clipseg/blob/master/example_image.jpg?raw=true"
@@ -647,5 +648,6 @@ image = Image.open(requests.get(url, stream=True).raw).resize((512, 512))
 text = "a glass"  # will mask out this text
 prompt = "a cup"  # the masked out region will be replaced with this
 
-image = pipe(image=image, text=text, prompt=prompt).images[0]
+with autocast("cuda"):
+    image = pipe(image=image, text=text, prompt=prompt).images[0]
 ```

@@ -3,12 +3,13 @@ from typing import Callable, List, Optional, Union
 import torch
 
 import PIL
+from diffusers.configuration_utils import FrozenDict
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionInpaintPipeline
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from diffusers.utils import logging
+from diffusers.utils import deprecate, is_accelerate_available, logging
 from transformers import (
     CLIPFeatureExtractor,
     CLIPSegForImageSegmentation,
@@ -68,7 +69,48 @@ class TextInpainting(DiffusionPipeline):
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
-        inpainting_pipeline = StableDiffusionInpaintPipeline(
+
+        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
+            deprecation_message = (
+                f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
+                f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
+                "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
+                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
+                " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
+                " file"
+            )
+            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
+            new_config = dict(scheduler.config)
+            new_config["steps_offset"] = 1
+            scheduler._internal_dict = FrozenDict(new_config)
+
+        if hasattr(scheduler.config, "skip_prk_steps") and scheduler.config.skip_prk_steps is False:
+            deprecation_message = (
+                f"The configuration file of this scheduler: {scheduler} has not set the configuration"
+                " `skip_prk_steps`. `skip_prk_steps` should be set to True in the configuration file. Please make"
+                " sure to update the config accordingly as not setting `skip_prk_steps` in the config might lead to"
+                " incorrect results in future versions. If you have downloaded this checkpoint from the Hugging Face"
+                " Hub, it would be very nice if you could open a Pull request for the"
+                " `scheduler/scheduler_config.json` file"
+            )
+            deprecate("skip_prk_steps not set", "1.0.0", deprecation_message, standard_warn=False)
+            new_config = dict(scheduler.config)
+            new_config["skip_prk_steps"] = True
+            scheduler._internal_dict = FrozenDict(new_config)
+
+        if safety_checker is None:
+            logger.warn(
+                f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
+                " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
+                " results in services or applications open to the public. Both the diffusers team and Hugging Face"
+                " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
+                " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
+                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
+            )
+
+        self.register_modules(
+            segmentation_model=segmentation_model,
+            segmentation_processor=segmentation_processor,
             vae=vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
@@ -77,11 +119,87 @@ class TextInpainting(DiffusionPipeline):
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
-        self.register_modules(
-            segmentation_model=segmentation_model,
-            segmentation_processor=segmentation_processor,
-            inpainting_pipeline=inpainting_pipeline,
-        )
+
+    def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
+        r"""
+        Enable sliced attention computation.
+
+        When this option is enabled, the attention module will split the input tensor in slices, to compute attention
+        in several steps. This is useful to save some memory in exchange for a small speed decrease.
+
+        Args:
+            slice_size (`str` or `int`, *optional*, defaults to `"auto"`):
+                When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
+                a number is provided, uses as many slices as `attention_head_dim // slice_size`. In this case,
+                `attention_head_dim` must be a multiple of `slice_size`.
+        """
+        if slice_size == "auto":
+            # half the attention head size is usually a good trade-off between
+            # speed and memory
+            slice_size = self.unet.config.attention_head_dim // 2
+        self.unet.set_attention_slice(slice_size)
+
+    def disable_attention_slicing(self):
+        r"""
+        Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go
+        back to computing attention in one step.
+        """
+        # set slice_size = `None` to disable `attention slicing`
+        self.enable_attention_slicing(None)
+
+    def enable_sequential_cpu_offload(self):
+        r"""
+        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
+        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
+        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
+        """
+        if is_accelerate_available():
+            from accelerate import cpu_offload
+        else:
+            raise ImportError("Please install accelerate via `pip install accelerate`")
+
+        device = torch.device("cuda")
+
+        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
+            if cpu_offloaded_model is not None:
+                cpu_offload(cpu_offloaded_model, device)
+
+    @property
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
+    def _execution_device(self):
+        r"""
+        Returns the device on which the pipeline's models will be executed. After calling
+        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
+        hooks.
+        """
+        if self.device != torch.device("meta") or not hasattr(self.unet, "_hf_hook"):
+            return self.device
+        for module in self.unet.modules():
+            if (
+                hasattr(module, "_hf_hook")
+                and hasattr(module._hf_hook, "execution_device")
+                and module._hf_hook.execution_device is not None
+            ):
+                return torch.device(module._hf_hook.execution_device)
+        return self.device
+
+    def enable_xformers_memory_efficient_attention(self):
+        r"""
+        Enable memory efficient attention as implemented in xformers.
+
+        When this option is enabled, you should observe lower GPU memory usage and a potential speed up at inference
+        time. Speed up at training time is not guaranteed.
+
+        Warning: When Memory Efficient Attention and Sliced attention are both enabled, the Memory Efficient Attention
+        is used.
+        """
+        self.unet.set_use_memory_efficient_attention_xformers(True)
+
+    def disable_xformers_memory_efficient_attention(self):
+        r"""
+        Disable memory efficient attention as implemented in xformers.
+        """
+        self.unet.set_use_memory_efficient_attention_xformers(False)
 
     @torch.no_grad()
     def __call__(
@@ -165,13 +283,24 @@ class TextInpainting(DiffusionPipeline):
         """
 
         # We use the input text to generate the mask
-        inputs = self.segmentation_processor(text=[text], images=[image], padding="max_length", return_tensors="pt")
+        inputs = self.segmentation_processor(
+            text=[text], images=[image], padding="max_length", return_tensors="pt"
+        ).to(self.device)
         outputs = self.segmentation_model(**inputs)
         mask = torch.sigmoid(outputs.logits).cpu().detach().unsqueeze(-1).numpy()
         mask_pil = self.numpy_to_pil(mask)[0].resize(image.size)
 
         # Run inpainting pipeline with the generated mask
-        inpainting_res = self.inpainting_pipeline(
+        inpainting_pipeline = StableDiffusionInpaintPipeline(
+            vae=self.vae,
+            text_encoder=self.text_encoder,
+            tokenizer=self.tokenizer,
+            unet=self.unet,
+            scheduler=self.scheduler,
+            safety_checker=self.safety_checker,
+            feature_extractor=self.feature_extractor,
+        )
+        return inpainting_pipeline(
             prompt=prompt,
             image=image,
             mask_image=mask_pil,
@@ -189,4 +318,3 @@ class TextInpainting(DiffusionPipeline):
             callback=callback,
             callback_steps=callback_steps,
         )
-        return inpainting_res
