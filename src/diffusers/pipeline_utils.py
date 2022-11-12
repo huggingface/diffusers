@@ -627,17 +627,13 @@ class DiffusionPipeline(ConfigMixin):
                 # check if the module is in a subdirectory
                 elif os.path.isdir(os.path.join(cached_folder, name)):
                     if from_flax:
-                        loaded_sub_model = load_method(
-                            os.path.join(cached_folder, name), from_flax=from_flax, **loading_kwargs
-                        )
-                    else:
-                        loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
+                        loading_kwargs['from_flax'] = True
+                    loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
                 else:
                     # else load from the root directory
                     if from_flax:
-                        loaded_sub_model = load_method(cached_folder, from_flax=from_flax, **loading_kwargs)
-                    else:
-                        loaded_sub_model = load_method(cached_folder, **loading_kwargs)
+                        loading_kwargs['from_flax'] = True
+                    loaded_sub_model = load_method(cached_folder, **loading_kwargs)
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
