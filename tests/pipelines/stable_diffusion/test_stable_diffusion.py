@@ -33,9 +33,10 @@ from diffusers import (
     UNet2DConditionModel,
     UNet2DModel,
     VQModel,
+    logging,
 )
 from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import require_torch_gpu
+from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from ...test_pipelines_common import PipelineTesterMixin
@@ -618,6 +619,57 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image = sd_pipe([prompt], generator=generator, num_inference_steps=2, output_type="np").images
 
         assert image.shape == (1, 128, 128, 3)
+
+    def test_stable_diffusion_long_prompt(self):
+        unet = self.dummy_cond_unet
+        scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        # make sure here that pndm scheduler skips prk
+        sd_pipe = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        do_classifier_free_guidance = True
+        negative_prompt = None
+        num_images_per_prompt = 1
+        logger = logging.get_logger("diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion")
+
+        prompt = 25 * "@"
+        with CaptureLogger(logger) as cap_logger_3:
+            text_embeddings_3 = sd_pipe._encode_prompt(
+                prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+            )
+
+        prompt = 100 * "@"
+        with CaptureLogger(logger) as cap_logger:
+            text_embeddings = sd_pipe._encode_prompt(
+                prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+            )
+
+        negative_prompt = "Hello"
+        with CaptureLogger(logger) as cap_logger_2:
+            text_embeddings_2 = sd_pipe._encode_prompt(
+                prompt, torch_device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+            )
+
+        assert text_embeddings_3.shape == text_embeddings_2.shape == text_embeddings.shape
+        assert text_embeddings.shape[1] == 77
+
+        assert cap_logger.out == cap_logger_2.out
+        # 100 - 77 + 1 (BOS token) + 1 (EOS token) = 25
+        assert cap_logger.out.count("@") == 25
+        assert cap_logger_3.out == ""
 
 
 @slow
