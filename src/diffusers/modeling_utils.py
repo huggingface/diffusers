@@ -463,6 +463,7 @@ class ModelMixin(torch.nn.Module):
 
         if from_flax:
             if is_torch_available():
+                import jax.numpy as jnp 
                 from flax.serialization import from_bytes
 
                 model, unused_kwargs = cls.from_config(
@@ -477,8 +478,7 @@ class ModelMixin(torch.nn.Module):
                     revision=revision,
                     subfolder=subfolder,
                     device_map=device_map,
-                    # model args
-                    dtype=dtype,
+                    dtype=jnp.float32,
                     **kwargs,
                 )
 
