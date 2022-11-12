@@ -434,8 +434,9 @@ class FlaxModelMixin:
 
         # ---TEST-BEGIN---
 
+        from .modeling_utils import load_state_dict
         flax_state_dict = state
-        pt_model = model_file
+        pt_model = load_state_dict(model_file)
         pt_model_dict = pt_model.state_dict()
 
         load_model_with_head_into_base_model = (pt_model.base_model_prefix in flax_state) and (
