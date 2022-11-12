@@ -478,7 +478,6 @@ class ModelMixin(torch.nn.Module):
                     revision=revision,
                     subfolder=subfolder,
                     device_map=device_map,
-                    dtype=jnp.float32,
                     **kwargs,
                 )
 
