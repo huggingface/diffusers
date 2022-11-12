@@ -208,7 +208,7 @@ class DiffusionPipeline(ConfigMixin):
         if torch_device is None:
             return self
 
-        module_names, _ = self.extract_init_dict(dict(self.config))
+        module_names, _, _ = self.extract_init_dict(dict(self.config))
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
@@ -229,7 +229,7 @@ class DiffusionPipeline(ConfigMixin):
         Returns:
             `torch.device`: The torch device on which the pipeline is located.
         """
-        module_names, _ = self.extract_init_dict(dict(self.config))
+        module_names, _, _ = self.extract_init_dict(dict(self.config))
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
@@ -514,7 +514,7 @@ class DiffusionPipeline(ConfigMixin):
         expected_modules = set(inspect.signature(pipeline_class.__init__).parameters.keys()) - set(["self"])
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
 
-        init_dict, unused_kwargs = pipeline_class.extract_init_dict(config_dict, **kwargs)
+        init_dict, unused_kwargs, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
         if len(unused_kwargs) > 0:
             logger.warning(f"Keyword arguments {unused_kwargs} not recognized.")
@@ -762,7 +762,7 @@ class DiffusionPipeline(ConfigMixin):
                     f" {', '.join(SCHEDULER_TYPE_TO_CLASS_MAPPING.keys())}."
                 )
 
-            if scheduler_class not in current_scheduler._compatible_classes and scheduler_class != type(
+            if scheduler_class.__name__ not in current_scheduler._compatible_classes and scheduler_class != type(
                 current_scheduler
             ):
                 diffusers_library = importlib.import_module(__name__.split(".")[0])
@@ -774,13 +774,16 @@ class DiffusionPipeline(ConfigMixin):
                     f"Changing scheduler from type {CLASS_TO_SCHEDULER_TYPE_MAPPING[type(current_scheduler)]} to an"
                     f" uncompatible scheduler type {scheduler_type}. This is very likely going to lead to incorrect"
                     f" predictions when running the pipeline. Make sure to set {component_name} to a scheduler of type"
-                    f" {[' ,'.join(_compatible_class_types)]}."
+                    f" {[', '.join(_compatible_class_types)]}."
                 )
 
-            scheduler_config = current_scheduler.config
-            scheduler_init_dict, _ = scheduler_class.extract_init_dict(scheduler_config)
+            # new scheduler config is current config + hidden config
+            scheduler_config = {**current_scheduler.config, **current_scheduler.hidden_config}
+
+            scheduler_init_dict, _, hidden_dict = scheduler_class.extract_init_dict(scheduler_config)
 
             scheduler = scheduler_class(**scheduler_init_dict)
+            scheduler.register_to_hidden_config(**hidden_dict)
 
             logger.info(
                 f"Changing scheduler from type {CLASS_TO_SCHEDULER_TYPE_MAPPING[type(current_scheduler)]} to"

@@ -63,7 +63,6 @@ class ConfigMixin:
         kwargs["_class_name"] = self.__class__.__name__
         kwargs["_diffusers_version"] = __version__
 
-        # Special case for `kwargs` used in deprecation warning added to schedulers
         # TODO: remove this when we remove the deprecation warning, and the `kwargs` argument,
         # or solve in a more general way.
         kwargs.pop("kwargs", None)
@@ -82,6 +81,16 @@ class ConfigMixin:
             logger.debug(f"Updating config from {previous_dict} to {internal_dict}")
 
         self._internal_dict = FrozenDict(internal_dict)
+
+    def register_to_hidden_config(self, **kwargs):
+        if not hasattr(self, "_hidden_internal_dict"):
+            internal_hidden_dict = kwargs
+        else:
+            prev_hidden_dict = dict(self._hidden_internal_dict)
+            internal_hidden_dict = {**self._hidden_internal_dict, **kwargs}
+            logger.debug(f"Updating config from {prev_hidden_dict} to {internal_hidden_dict}")
+
+        self._hidden_internal_dict = FrozenDict(internal_hidden_dict)
 
     def save_config(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
         """
@@ -164,7 +173,7 @@ class ConfigMixin:
 
         """
         config_dict = cls.get_config_dict(pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs)
-        init_dict, unused_kwargs = cls.extract_init_dict(config_dict, **kwargs)
+        init_dict, unused_kwargs, hidden_dict = cls.extract_init_dict(config_dict, **kwargs)
 
         # Allow dtype to be specified on initialization
         if "dtype" in unused_kwargs:
@@ -172,6 +181,10 @@ class ConfigMixin:
 
         # Return model and optionally state and/or unused_kwargs
         model = cls(**init_dict)
+
+        # make sure to also save config parameters that might be used for compatible classes
+        model.register_to_hidden_config(**hidden_dict)
+
         return_tuple = (model,)
 
         # Flax schedulers have a state, so return it.
@@ -291,6 +304,9 @@ class ConfigMixin:
 
     @classmethod
     def extract_init_dict(cls, config_dict, **kwargs):
+        # 0. Copy origin config dict
+        original_dict = {k: v for k, v in config_dict.items()}
+
         # 1. Retrieve expected config attributes from __init__ signature
         expected_keys = cls._get_init_keys(cls)
         expected_keys.remove("self")
@@ -364,7 +380,10 @@ class ConfigMixin:
         # 6. Define unused keyword arguments
         unused_kwargs = {**config_dict, **kwargs}
 
-        return init_dict, unused_kwargs
+        # 7. Define "hidden" config parameters that were saved for compatible classes
+        hidden_config_dict = {k: v for k, v in original_dict.items() if k not in init_dict and not k.startswith("_")}
+
+        return init_dict, unused_kwargs, hidden_config_dict
 
     @classmethod
     def _dict_from_json_file(cls, json_file: Union[str, os.PathLike]):
@@ -378,6 +397,12 @@ class ConfigMixin:
     @property
     def config(self) -> Dict[str, Any]:
         return self._internal_dict
+
+    @property
+    def hidden_config(self) -> Dict[str, Any]:
+        if not hasattr(self, "_hidden_internal_dict"):
+            return {}
+        return self._hidden_internal_dict
 
     def to_json_string(self) -> str:
         """

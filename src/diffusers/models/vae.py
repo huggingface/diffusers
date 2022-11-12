@@ -84,6 +84,7 @@ class Encoder(nn.Module):
         self.mid_block = None
         self.down_blocks = nn.ModuleList([])
 
+        # import ipdb; ipdb.set_trace()
         # down
         output_channel = block_out_channels[0]
         for i, down_block_type in enumerate(down_block_types):
