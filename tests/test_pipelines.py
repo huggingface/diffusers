@@ -487,9 +487,10 @@ class PipelineFastTests(unittest.TestCase):
         )
 
         pndm_config = sd.scheduler.config
-        sd.set_scheduler("ddpm")
-        sd.set_scheduler("pndm")
+        sd.scheduler = DDPMScheduler.from_config(sd.scheduler.config)
+        sd.scheduler = PNDMScheduler.from_config(sd.scheduler.config)
         pndm_config_2 = sd.scheduler.config
+        pndm_config_2 = {k: v for k, v in pndm_config_2.items() if k in pndm_config}
 
         assert dict(pndm_config) == dict(pndm_config_2)
 
@@ -507,6 +508,7 @@ class PipelineFastTests(unittest.TestCase):
         sd.set_scheduler("lms_discrete")
         sd.set_scheduler("ddim")
         ddim_config_2 = sd.scheduler.config
+        ddim_config_2 = {k: v for k, v in ddim_config_2.items() if k in ddim_config}
 
         assert dict(ddim_config) == dict(ddim_config_2)
 

@@ -82,16 +82,6 @@ class ConfigMixin:
 
         self._internal_dict = FrozenDict(internal_dict)
 
-    def register_to_hidden_config(self, **kwargs):
-        if not hasattr(self, "_hidden_internal_dict"):
-            internal_hidden_dict = kwargs
-        else:
-            prev_hidden_dict = dict(self._hidden_internal_dict)
-            internal_hidden_dict = {**self._hidden_internal_dict, **kwargs}
-            logger.debug(f"Updating config from {prev_hidden_dict} to {internal_hidden_dict}")
-
-        self._hidden_internal_dict = FrozenDict(internal_hidden_dict)
-
     def save_config(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
         """
         Save a configuration object to the directory `save_directory`, so that it can be re-loaded using the
@@ -113,7 +103,9 @@ class ConfigMixin:
         logger.info(f"Configuration saved in {output_config_file}")
 
     @classmethod
-    def from_config(cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs):
+    def from_config(
+        cls, pretrained_model_name_or_path: Union[str, os.PathLike, dict], return_unused_kwargs=False, **kwargs
+    ):
         r"""
         Instantiate a Python class from a pre-defined JSON-file.
 
@@ -172,7 +164,11 @@ class ConfigMixin:
         </Tip>
 
         """
-        config_dict = cls.get_config_dict(pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs)
+        if not isinstance(pretrained_model_name_or_path, dict):
+            config_dict = cls.get_config_dict(pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs)
+        else:
+            config_dict = pretrained_model_name_or_path
+
         init_dict, unused_kwargs, hidden_dict = cls.extract_init_dict(config_dict, **kwargs)
 
         # Allow dtype to be specified on initialization
@@ -183,7 +179,7 @@ class ConfigMixin:
         model = cls(**init_dict)
 
         # make sure to also save config parameters that might be used for compatible classes
-        model.register_to_hidden_config(**hidden_dict)
+        model.register_to_config(**hidden_dict)
 
         return_tuple = (model,)
 
@@ -398,12 +394,6 @@ class ConfigMixin:
     def config(self) -> Dict[str, Any]:
         return self._internal_dict
 
-    @property
-    def hidden_config(self) -> Dict[str, Any]:
-        if not hasattr(self, "_hidden_internal_dict"):
-            return {}
-        return self._hidden_internal_dict
-
     def to_json_string(self) -> str:
         """
         Serializes this instance to a JSON string.
@@ -471,6 +461,8 @@ def register_to_config(init):
     def inner_init(self, *args, **kwargs):
         # Ignore private kwargs in the init.
         init_kwargs = {k: v for k, v in kwargs.items() if not k.startswith("_")}
+        signature = inspect.signature(init)
+
         init(self, *args, **init_kwargs)
         if not isinstance(self, ConfigMixin):
             raise RuntimeError(
@@ -481,7 +473,6 @@ def register_to_config(init):
         ignore = getattr(self, "ignore_for_config", [])
         # Get positional arguments aligned with kwargs
         new_kwargs = {}
-        signature = inspect.signature(init)
         parameters = {
             name: p.default for i, (name, p) in enumerate(signature.parameters.items()) if i > 0 and name not in ignore
         }

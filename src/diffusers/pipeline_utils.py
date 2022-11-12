@@ -777,13 +777,7 @@ class DiffusionPipeline(ConfigMixin):
                     f" {[', '.join(_compatible_class_types)]}."
                 )
 
-            # new scheduler config is current config + hidden config
-            scheduler_config = {**current_scheduler.config, **current_scheduler.hidden_config}
-
-            scheduler_init_dict, _, hidden_dict = scheduler_class.extract_init_dict(scheduler_config)
-
-            scheduler = scheduler_class(**scheduler_init_dict)
-            scheduler.register_to_hidden_config(**hidden_dict)
+            scheduler = scheduler_class.from_config(current_scheduler.config)
 
             logger.info(
                 f"Changing scheduler from type {CLASS_TO_SCHEDULER_TYPE_MAPPING[type(current_scheduler)]} to"
