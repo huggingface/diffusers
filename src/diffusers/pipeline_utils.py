@@ -34,7 +34,7 @@ from .configuration_utils import ConfigMixin
 from .dynamic_modules_utils import get_class_from_dynamic_module
 from .hub_utils import http_user_agent
 from .modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
-from .schedulers import CLASS_TO_SCHEDULER_TYPE_MAPPING, SCHEDULER_TYPE_TO_CLASS_MAPPING
+from .schedulers import CLASS_TO_SCHEDULER_TYPE_MAPPING, SCHEDULER_TYPE_TO_CLASS_MAPPING, SchedulerType
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME, SchedulerMixin
 from .utils import (
     CONFIG_NAME,
@@ -710,7 +710,7 @@ class DiffusionPipeline(ConfigMixin):
 
         return tqdm(iterable, **self._progress_bar_config)
 
-    def set_scheduler(self, scheduler_type=Union[str, Dict[str, str]]):
+    def set_scheduler(self, scheduler_type=Union[SchedulerType, str, Dict[str, str]]):
         r"""
 
         Parameters:
@@ -723,7 +723,7 @@ class DiffusionPipeline(ConfigMixin):
 
         >>> from diffusers import DiffusionPipeline
 
-        >>> pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5") >>>
+        >>> pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5") >>> >>>
         pipe.set_scheduler("euler-discrete")
         """
         schedulers = {k: type(v) for k, v in self.components.items() if isinstance(v, SchedulerMixin)}
