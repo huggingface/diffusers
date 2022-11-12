@@ -467,7 +467,7 @@ class ModelMixin(torch.nn.Module):
                 from flax.serialization import from_bytes
 
                 model, unused_kwargs = cls.from_config(
-                    config_path,
+                    pretrained_model_name_or_path,
                     cache_dir=cache_dir,
                     return_unused_kwargs=True,
                     force_download=force_download,
