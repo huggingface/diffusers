@@ -73,7 +73,9 @@ SCHEDULER_TYPE_TO_CLASS_MAPPING = OrderedDict(
 CLASS_TO_SCHEDULER_TYPE_MAPPING = OrderedDict({v: k for k, v in SCHEDULER_TYPE_TO_CLASS_MAPPING.items()})
 
 SchedulerType = Enum("SchedulerType", list(SCHEDULER_TYPE_TO_CLASS_MAPPING.keys()))
-SchedulerType.__doc__ = """Possible values for the `scheduler_type` argument in [`DiffusionPipeline.set_scheduler`]. Useful for tab-completion in
-an IDE. Possible values are\n""" + "\n- ".join(
-    SCHEDULER_TYPE_TO_CLASS_MAPPING.keys()
+SchedulerType.__doc__ = (
+    """Possible values for the `scheduler_type` argument in [`DiffusionPipeline.set_scheduler`]. Useful for tab-completion in
+an IDE. Possible values are"""
+    + "\n"
+    + "\n- ".join(SCHEDULER_TYPE_TO_CLASS_MAPPING.keys())
 )
