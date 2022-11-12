@@ -519,12 +519,11 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         )
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        lms = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler")
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
             model_id,
-            scheduler=lms,
             safety_checker=None,
         )
+        pipe.set_scheduler("lms-discrete")
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -612,10 +611,10 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         init_image = init_image.resize((768, 512))
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        lms = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler")
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-            model_id, scheduler=lms, safety_checker=None, device_map="auto", revision="fp16", torch_dtype=torch.float16
+            model_id, safety_checker=None, device_map="auto", revision="fp16", torch_dtype=torch.float16
         )
+        pipe.set_scheduler("lms-discrete")
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)

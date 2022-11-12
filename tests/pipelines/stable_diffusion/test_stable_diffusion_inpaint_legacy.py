@@ -22,7 +22,6 @@ import torch
 
 from diffusers import (
     AutoencoderKL,
-    LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionInpaintPipeline,
     StableDiffusionInpaintPipelineLegacy,
@@ -402,12 +401,8 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
         )
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        lms = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler")
-        pipe = StableDiffusionInpaintPipeline.from_pretrained(
-            model_id,
-            scheduler=lms,
-            safety_checker=None,
-        )
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(model_id, safety_checker=None)
+        pipe.set_scheduler("lms-discrete")
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
