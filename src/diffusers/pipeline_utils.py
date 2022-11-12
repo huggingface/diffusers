@@ -711,7 +711,23 @@ class DiffusionPipeline(ConfigMixin):
         return tqdm(iterable, **self._progress_bar_config)
 
     def set_scheduler(self, scheduler_type=Union[str, Dict[str, str]]):
+        r"""
+
+        Parameters:
+            scheduler_type (`str` or `Dict[str, str]`):
+                Can be either a string representing the type the scheduler should be set to or a mapping component name
+                to scheduler types in case the pipeline has multiple schedulers. Make sure to set the schedulers to one
+                of the officially supported scheduler types of [`schedulers.SchedulerType`].
+
+        Examples:
+
+        >>> from diffusers import DiffusionPipeline
+
+        >>> pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5") >>>
+        pipe.set_scheduler("euler-discrete")
+        """
         schedulers = {k: type(v) for k, v in self.components.items() if isinstance(v, SchedulerMixin)}
+
         if isinstance(scheduler_type, str) and len(set(schedulers.values())) > 1:
             raise ValueError(
                 f"The pipeline {self} contains the schedulers {schedulers}. Please make sure to provide a dictionary"

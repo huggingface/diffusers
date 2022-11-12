@@ -160,6 +160,22 @@ pipe = StableDiffusionPipeline.from_pretrained(
     torch_dtype=torch.float16,
     scheduler=lms,
 )
+```
+
+or even easier you can make use of the `set_scheduler` functionality.
+
+```python
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", 
+    revision="fp16", 
+    torch_dtype=torch.float16,
+)
+pipe.set_scheduler("lms-discrete")
+```
+
+Then you can run the pipeline just as before.
+
+```
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"

@@ -379,6 +379,9 @@ dpm = DPMSolverMultistepScheduler.from_config(repo_id, subfolder="scheduler")
 pipeline = StableDiffusionPipeline.from_pretrained(repo_id, scheduler=dpm)
 ```
 
+**Note**: If you are often changing schedulers within the same script it is recommended to make use 
+of [`DiffusionPipeline.set_scheduler`] instead.
+
 ## API
 
 [[autodoc]] modeling_utils.ModelMixin

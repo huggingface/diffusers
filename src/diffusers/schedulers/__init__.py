@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from collections import OrderedDict
+from enum import Enum
 
 from ..utils import is_flax_available, is_scipy_available, is_torch_available
 
@@ -70,3 +71,5 @@ SCHEDULER_TYPE_TO_CLASS_MAPPING = OrderedDict(
     ]
 )
 CLASS_TO_SCHEDULER_TYPE_MAPPING = OrderedDict({v: k for k, v in SCHEDULER_TYPE_TO_CLASS_MAPPING.items()})
+
+SchedulerType = Enum("SchedulerType", SCHEDULER_TYPE_TO_CLASS_MAPPING.keys())
