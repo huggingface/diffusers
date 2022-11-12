@@ -673,7 +673,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         model_id = "CompVis/stable-diffusion-v1-1"
         pipe = StableDiffusionPipeline.from_pretrained(model_id).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-        pipe.set_scheduler("lms-discrete")
+        pipe.set_scheduler("lms_discrete")
 
         prompt = "a photograph of an astronaut riding a horse"
         generator = torch.Generator(device=torch_device).manual_seed(0)

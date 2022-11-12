@@ -725,7 +725,7 @@ class DiffusionPipeline(ConfigMixin):
         >>> from diffusers import DiffusionPipeline
 
         >>> pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
-        >>> pipe.set_scheduler("euler-discrete")
+        >>> pipe.set_scheduler("euler_discrete")
         ```
         """
         schedulers = {k: type(v) for k, v in self.components.items() if isinstance(v, SchedulerMixin)}

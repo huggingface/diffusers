@@ -170,7 +170,7 @@ pipe = StableDiffusionPipeline.from_pretrained(
     revision="fp16", 
     torch_dtype=torch.float16,
 )
-pipe.set_scheduler("lms-discrete")
+pipe.set_scheduler("lms_discrete")
 ```
 
 Then you can run the pipeline just as before.

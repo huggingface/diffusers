@@ -402,7 +402,7 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
 
         model_id = "CompVis/stable-diffusion-v1-4"
         pipe = StableDiffusionInpaintPipeline.from_pretrained(model_id, safety_checker=None)
-        pipe.set_scheduler("lms-discrete")
+        pipe.set_scheduler("lms_discrete")
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()

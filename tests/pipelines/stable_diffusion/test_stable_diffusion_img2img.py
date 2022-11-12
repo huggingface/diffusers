@@ -523,7 +523,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
             model_id,
             safety_checker=None,
         )
-        pipe.set_scheduler("lms-discrete")
+        pipe.set_scheduler("lms_discrete")
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
@@ -614,7 +614,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
             model_id, safety_checker=None, device_map="auto", revision="fp16", torch_dtype=torch.float16
         )
-        pipe.set_scheduler("lms-discrete")
+        pipe.set_scheduler("lms_discrete")
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing(1)
