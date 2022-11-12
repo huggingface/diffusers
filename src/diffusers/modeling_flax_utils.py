@@ -448,7 +448,6 @@ class FlaxModelMixin:
             use_auth_token=use_auth_token,
             revision=revision,
             subfolder=subfolder,
-            device_map=device_map,
             **kwargs,
         )
         pt_model_dict = pt_model.state_dict()
