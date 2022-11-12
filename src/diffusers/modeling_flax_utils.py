@@ -450,6 +450,7 @@ class FlaxModelMixin:
             subfolder=subfolder,
             **kwargs,
         )
+        pt_model.register_to_config(_name_or_path=config_path)
         pt_model_dict = pt_model.state_dict()
 
         load_model_with_head_into_base_model = (pt_model.base_model_prefix in flax_state) and (
