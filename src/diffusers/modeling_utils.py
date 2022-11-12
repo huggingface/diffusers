@@ -280,7 +280,7 @@ class ModelMixin(torch.nn.Module):
                 The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
                 git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
                 identifier allowed by git.
-            from_flax (`bool`, *optional*, defaults to `False`):
+            from_diffusers_flax (`bool`, *optional*, defaults to `False`):
                 Load the model weights from a Flax checkpoint save file.
             subfolder (`str`, *optional*, defaults to `""`):
                 In case the relevant files are located inside a subfolder of the model repo (either remote in
@@ -322,7 +322,7 @@ class ModelMixin(torch.nn.Module):
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         ignore_mismatched_sizes = kwargs.pop("ignore_mismatched_sizes", False)
         force_download = kwargs.pop("force_download", False)
-        from_flax = kwargs.pop("from_flax", False)
+        from_diffusers_flax = kwargs.pop("from_diffusers_flax", False)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
         output_loading_info = kwargs.pop("output_loading_info", False)
@@ -381,7 +381,7 @@ class ModelMixin(torch.nn.Module):
         # Load model
         pretrained_model_name_or_path = str(pretrained_model_name_or_path)
         if os.path.isdir(pretrained_model_name_or_path):
-            if from_flax:
+            if from_diffusers_flax:
                 if os.path.isfile(os.path.join(pretrained_model_name_or_path, FLAX_WEIGHTS_NAME)):
                     # Load from a FLAX checkpoint
                     model_file = os.path.join(pretrained_model_name_or_path, FLAX_WEIGHTS_NAME)
@@ -410,7 +410,7 @@ class ModelMixin(torch.nn.Module):
                 # Load from URL or cache if already cached
                 model_file = hf_hub_download(
                     pretrained_model_name_or_path,
-                    filename=WEIGHTS_NAME if not from_flax else FLAX_WEIGHTS_NAME,
+                    filename=WEIGHTS_NAME if not from_diffusers_flax else FLAX_WEIGHTS_NAME,
                     cache_dir=cache_dir,
                     force_download=force_download,
                     proxies=proxies,
@@ -460,7 +460,7 @@ class ModelMixin(torch.nn.Module):
                     f"containing a file named {WEIGHTS_NAME}"
                 )
 
-        if from_flax:
+        if from_diffusers_flax:
             if is_torch_available():
                 import jax.numpy as jnp 
                 from flax.serialization import from_bytes
