@@ -399,6 +399,8 @@ class DiffusionPipeline(ConfigMixin):
         device_map = kwargs.pop("device_map", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
 
+        from_pt = not from_flax
+
         if low_cpu_mem_usage and not is_accelerate_available():
             low_cpu_mem_usage = False
             logger.warn(
