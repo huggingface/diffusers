@@ -433,8 +433,9 @@ class FlaxModelMixin:
         state = flatten_dict(state)
 
         # ---TEST-BEGIN---
-        
+
         flax_state_dict = state
+        pt_model = model_file
         pt_model_dict = pt_model.state_dict()
 
         load_model_with_head_into_base_model = (pt_model.base_model_prefix in flax_state) and (
