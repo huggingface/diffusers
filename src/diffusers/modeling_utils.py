@@ -462,8 +462,6 @@ class ModelMixin(torch.nn.Module):
 
         if from_flax:
             if is_flax_available():
-                import jax.numpy as jnp 
-                from flax.serialization import from_bytes
                 from .modeling_pytorch_flax_utils import load_flax_checkpoint_in_pytorch_model
 
                 model, unused_kwargs = cls.from_config(
