@@ -20,7 +20,6 @@ from flax.traverse_util import flatten_dict
 import numpy as np
 import os
 from pickle import UnpicklingError
-import transformers
 
 from .utils import logging
 
@@ -40,7 +39,7 @@ def load_flax_checkpoint_in_pytorch_model(model, flax_checkpoint_path):
     logger.info(f"Loading Flax weights from {flax_checkpoint_path}")
 
     # import correct flax class
-    flax_cls = getattr(transformers, "Flax" + model.__class__.__name__)
+    flax_cls = getattr(diffusers, "Flax" + model.__class__.__name__)
 
     # load flax weight dict
     with open(flax_checkpoint_path, "rb") as state_f:
