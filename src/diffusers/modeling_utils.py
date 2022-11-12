@@ -464,7 +464,7 @@ class ModelMixin(torch.nn.Module):
             if is_torch_available():
                 import jax.numpy as jnp 
                 from flax.serialization import from_bytes
-                from .modeling_pytorch_flax_utils import load_flax_weights_in_pytorch_model
+                from .modeling_pytorch_flax_utils import load_flax_checkpoint_in_pytorch_model
 
                 model, unused_kwargs = cls.from_config(
                     pretrained_model_name_or_path,
@@ -478,31 +478,12 @@ class ModelMixin(torch.nn.Module):
                     revision=revision,
                     subfolder=subfolder,
                     device_map=device_map,
+                    dtype=jnp.float32,
                     **kwargs,
                 )
 
-                try:
-                    with open(model_file, "rb") as state_f:
-                        flax_state = from_bytes(cls, state_f.read())
-                except (UnpicklingError, msgpack.exceptions.ExtraData) as e:
-                    try:
-                        with open(model_file) as f:
-                            if f.read().startswith("version"):
-                                raise OSError(
-                                    "You seem to have cloned a repository without having git-lfs installed. Please"
-                                    " install git-lfs and run `git lfs install` followed by `git lfs pull` in the"
-                                    " folder you cloned."
-                                )
-                            else:
-                                raise ValueError from e
-                    except (UnicodeDecodeError, ValueError):
-                        raise EnvironmentError(f"Unable to convert {model_file} to Flax deserializable object. ")
-                # make sure all arrays are stored as jnp.ndarray
-                # NOTE: This is to prevent a bug this will be fixed in Flax >= v0.3.4:
-                # https://github.com/google/flax/issues/1261
-
                 # Convert the weights
-                model = load_flax_weights_in_pytorch_model(model, flax_state)
+                model = load_flax_checkpoint_in_pytorch_model(model, model_file)
             else:
                 raise EnvironmentError(
                     "Can't load the model in Flax format because Flax or PyTorch is not installed. "

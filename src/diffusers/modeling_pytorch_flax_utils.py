@@ -33,22 +33,22 @@ logger = logging.get_logger(__name__)
 
 
 # from https://github.com/huggingface/transformers/blob/main/src/transformers/modeling_flax_pytorch_utils.py#L224-L352
-# def load_flax_checkpoint_in_pytorch_model(model, flax_checkpoint_path):
-#     """Load flax checkpoints in a PyTorch model"""
-#     flax_checkpoint_path = os.path.abspath(flax_checkpoint_path)
-#     logger.info(f"Loading Flax weights from {flax_checkpoint_path}")
+def load_flax_checkpoint_in_pytorch_model(model, flax_checkpoint_path):
+    """Load flax checkpoints in a PyTorch model"""
+    flax_checkpoint_path = os.path.abspath(flax_checkpoint_path)
+    logger.info(f"Loading Flax weights from {flax_checkpoint_path}")
 
-#     # import correct flax class
-#     flax_cls = getattr(transformers, "Flax" + model.__class__.__name__)
+    # import correct flax class
+    flax_cls = getattr(transformers, "Flax" + model.__class__.__name__)
 
-#     # load flax weight dict
-#     with open(flax_checkpoint_path, "rb") as state_f:
-#         try:
-#             flax_state_dict = from_bytes(flax_cls, state_f.read())
-#         except UnpicklingError:
-#             raise EnvironmentError(f"Unable to convert {flax_checkpoint_path} to Flax deserializable object. ")
+    # load flax weight dict
+    with open(flax_checkpoint_path, "rb") as state_f:
+        try:
+            flax_state_dict = from_bytes(flax_cls, state_f.read())
+        except UnpicklingError:
+            raise EnvironmentError(f"Unable to convert {flax_checkpoint_path} to Flax deserializable object. ")
 
-#     return load_flax_weights_in_pytorch_model(model, flax_state_dict)
+    return load_flax_weights_in_pytorch_model(model, flax_state_dict)
 
 
 def load_flax_weights_in_pytorch_model(pt_model, flax_state):
