@@ -44,6 +44,7 @@ from diffusers import (
     logging,
 )
 from diffusers.pipeline_utils import DiffusionPipeline
+from diffusers.schedulers import SchedulerType
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, require_torch_gpu
@@ -426,28 +427,31 @@ class PipelineFastTests(unittest.TestCase):
         assert isinstance(sd.scheduler, DDPMScheduler)
         sd.set_scheduler("pndm")
         assert isinstance(sd.scheduler, PNDMScheduler)
-        sd.set_scheduler("lms-discrete")
+        sd.set_scheduler("lms_discrete")
         assert isinstance(sd.scheduler, LMSDiscreteScheduler)
-        sd.set_scheduler("euler-discrete")
+        sd.set_scheduler("euler_discrete")
         assert isinstance(sd.scheduler, EulerDiscreteScheduler)
-        sd.set_scheduler("euler-ancestral-discrete")
+        sd.set_scheduler("euler_ancestral_discrete")
         assert isinstance(sd.scheduler, EulerAncestralDiscreteScheduler)
-        sd.set_scheduler("dpm-multistep")
+        sd.set_scheduler("dpm_multistep")
         assert isinstance(sd.scheduler, DPMSolverMultistepScheduler)
-
-        sd.set_scheduler({"scheduler": "dpm-multistep"})
+        sd.set_scheduler(SchedulerType.dpm_multistep)
+        assert isinstance(sd.scheduler, DPMSolverMultistepScheduler)
+        sd.set_scheduler("dpm_multistep")
+        assert isinstance(sd.scheduler, DPMSolverMultistepScheduler)
+        sd.set_scheduler({"scheduler": "dpm_multistep"})
         assert isinstance(sd.scheduler, DPMSolverMultistepScheduler)
 
         logger = logging.get_logger("diffusers.pipeline_utils")
         with self.assertRaises(ValueError) as error_1:
-            sd.set_scheduler({"schedule": "dpm-multistep"})
+            sd.set_scheduler({"schedule": "dpm_multistep"})
 
         with self.assertRaises(ValueError) as error_2:
-            sd.set_scheduler({"scheduler": "dpm-multiste"})
+            sd.set_scheduler({"scheduler": "dpm_multiste"})
 
         logger.setLevel(diffusers.logging.INFO)
         with CaptureLogger(logger) as cap_logger:
-            sd.set_scheduler({"scheduler": "dpm-multistep"})
+            sd.set_scheduler({"scheduler": "dpm_multistep"})
 
         with CaptureLogger(logger) as cap_logger_warn:
             sd.set_scheduler({"scheduler": "ipndm"})
@@ -457,10 +461,10 @@ class PipelineFastTests(unittest.TestCase):
             == "The following component names are not schedulers ['schedule']. Please make sure to only set new"
             " scheduler types for dict_keys(['scheduler'])."
         )
-        assert "dpm-multiste does not exist, make sure to chose a scheduler type from" in str(error_2.exception)
-        assert cap_logger.out == "Changing scheduler from type dpm-multistep to dpm-multistep.\n"
+        assert "dpm_multiste does not exist, make sure to chose a scheduler type from" in str(error_2.exception)
+        assert cap_logger.out == "Changing scheduler from type dpm_multistep to dpm_multistep.\n"
         assert (
-            "Changing scheduler from type dpm-multistep to an uncompatible scheduler type ipndm."
+            "Changing scheduler from type dpm_multistep to an uncompatible scheduler type ipndm."
             in cap_logger_warn.out
         )
 

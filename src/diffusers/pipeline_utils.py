@@ -710,7 +710,7 @@ class DiffusionPipeline(ConfigMixin):
 
         return tqdm(iterable, **self._progress_bar_config)
 
-    def set_scheduler(self, scheduler_type=Union[SchedulerType, str, Dict[str, str]]):
+    def set_scheduler(self, scheduler_type=Union[str, SchedulerType, Dict[str, str], Dict[str, SchedulerType]]):
         r"""
 
         Parameters:
@@ -721,18 +721,20 @@ class DiffusionPipeline(ConfigMixin):
 
         Examples:
 
+        ```py
         >>> from diffusers import DiffusionPipeline
 
-        >>> pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5") >>> >>>
-        pipe.set_scheduler("euler-discrete")
+        >>> pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> pipe.set_scheduler("euler-discrete")
+        ```
         """
         schedulers = {k: type(v) for k, v in self.components.items() if isinstance(v, SchedulerMixin)}
 
         if isinstance(scheduler_type, str) and len(set(schedulers.values())) > 1:
             raise ValueError(
                 f"The pipeline {self} contains the schedulers {schedulers}. Please make sure to provide a dictionary"
-                f" that maps the componet names {schedulers.keys()} to scheduler types instead of just one scheduler"
-                f" type {scheduler_type}"
+                f" that maps the componet names {schedulers.keys()} to scheduler types. Providing just one scheduler"
+                f" type {scheduler_type} is ambiguous."
             )
         elif isinstance(scheduler_type, dict):
             is_type_scheduler = {k: k in schedulers for k in scheduler_type.keys()}
@@ -748,6 +750,9 @@ class DiffusionPipeline(ConfigMixin):
         )
 
         for component_name, scheduler_type in scheduler_mapping.items():
+            if isinstance(scheduler_type, SchedulerType):
+                scheduler_type = scheduler_type.name
+
             scheduler_class = SCHEDULER_TYPE_TO_CLASS_MAPPING.get(scheduler_type, None)
             current_scheduler = getattr(self, component_name)
 
