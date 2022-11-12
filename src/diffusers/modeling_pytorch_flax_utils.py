@@ -17,6 +17,7 @@
 import diffusers
 import jax
 import jax.numpy as jnp
+from flax.serialization import from_bytes
 from flax.traverse_util import flatten_dict
 import numpy as np
 import os
