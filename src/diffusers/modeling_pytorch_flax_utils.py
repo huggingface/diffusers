@@ -74,6 +74,7 @@ def load_flax_weights_in_pytorch_model(pt_model, flax_state):
             lambda params: params.astype(np.float32) if params.dtype == jnp.bfloat16 else params, flax_state
         )
 
+    pt_model.base_model_prefix = ""
     flax_state_dict = flatten_dict(flax_state)
     pt_model_dict = pt_model.state_dict()
 
