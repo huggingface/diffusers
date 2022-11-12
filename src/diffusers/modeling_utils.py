@@ -383,23 +383,29 @@ class ModelMixin(torch.nn.Module):
         pretrained_model_name_or_path = str(pretrained_model_name_or_path)
         if os.path.isdir(pretrained_model_name_or_path):
             if from_flax:
-                if not os.path.isfile(os.path.join(pretrained_model_name_or_path, subfolder, FLAX_WEIGHTS_NAME)):
+                if os.path.isfile(os.path.join(pretrained_model_name_or_path, FLAX_WEIGHTS_NAME)):
+                    # Load from a FLAX checkpoint
+                    model_file = os.path.join(pretrained_model_name_or_path, FLAX_WEIGHTS_NAME)
+                elif subfolder is not None and os.path.isfile(
+                    os.path.join(pretrained_model_name_or_path, subfolder, FLAX_WEIGHTS_NAME)
+                ):
+                    model_file = os.path.join(pretrained_model_name_or_path, subfolder, FLAX_WEIGHTS_NAME)
+                else:
                     raise EnvironmentError(
-                        f"Error no file named {FLAX_WEIGHTS_NAME} found in directory {pretrained_model_name_or_path} "
-                    )
-                model_file = os.path.join(pretrained_model_name_or_path, subfolder, FLAX_WEIGHTS_NAME)
-            elif os.path.isfile(os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)):
-                # Load from a PyTorch checkpoint
-                model_file = os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)
-            elif subfolder is not None and os.path.isfile(
-                os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)
-            ):
-                model_file = os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)
+                        f"Error no file named {FLAX_WEIGHTS_NAME} found in directory {pretrained_model_name_or_path}."
+                    )            
             else:
-                raise EnvironmentError(
-                    f"Error no file named {WEIGHTS_NAME} or {FLAX_WEIGHTS_NAME} found in directory"
-                    f" {pretrained_model_name_or_path}."
-                )
+                if os.path.isfile(os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)):
+                    # Load from a PyTorch checkpoint
+                    model_file = os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)
+                elif subfolder is not None and os.path.isfile(
+                    os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)
+                ):
+                    model_file = os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)
+                else:
+                    raise EnvironmentError(
+                        f"Error no file named {WEIGHTS_NAME} found in directory {pretrained_model_name_or_path}."
+                    )
         else:
             try:
                 # Load from URL or cache if already cached
@@ -458,16 +464,31 @@ class ModelMixin(torch.nn.Module):
         if from_flax:
             if is_torch_available():
                 from .modeling_flax_utils import load_state_dict
+                
+                model, unused_kwargs = cls.from_config(
+                    config_path,
+                    cache_dir=cache_dir,
+                    return_unused_kwargs=True,
+                    force_download=force_download,
+                    resume_download=resume_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                    subfolder=subfolder,
+                    device_map=device_map,
+                    **kwargs,
+                )
+
+                # Convert the weights
+                model = load_flax_checkpoint_in_pytorch_model(model, model_file)
             else:
                 raise EnvironmentError(
                     "Can't load the model in Flax format because Flax or PyTorch is not installed. "
                     "Please, install Flax and PyTorch or use native PyTorch weights."
                 )
-
-            # Step 2: Convert the weights
-            model = load_flax_checkpoint_in_pytorch_model(model, model_file, cls)
-        # restore default dtype
         else:
+            # restore default dtype
             if low_cpu_mem_usage:
                 # Instantiate model with empty weights
                 with accelerate.init_empty_weights():
@@ -536,12 +557,12 @@ class ModelMixin(torch.nn.Module):
                     "error_msgs": error_msgs,
                 }
 
-        if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
-            raise ValueError(
-                f"{torch_dtype} needs to be of type `torch.dtype`, e.g. `torch.float16`, but is {type(torch_dtype)}."
-            )
-        elif torch_dtype is not None:
-            model = model.to(torch_dtype)
+            if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
+                raise ValueError(
+                    f"{torch_dtype} needs to be of type `torch.dtype`, e.g. `torch.float16`, but is {type(torch_dtype)}."
+                )
+            elif torch_dtype is not None:
+                model = model.to(torch_dtype)
 
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
 

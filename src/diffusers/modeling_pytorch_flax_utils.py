@@ -13,11 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """ PyTorch - Flax general utilities."""
-import re
 
 import jax.numpy as jnp
-from flax.traverse_util import flatten_dict, unflatten_dict
-from jax.random import PRNGKey
+from flax.traverse_util import flatten_dict
 
 from .utils import logging
 
@@ -30,10 +28,14 @@ logger = logging.get_logger(__name__)
 #####################
 
 
-def load_flax_checkpoint_in_pytorch_model(model, flax_checkpoint_path, flax_cls):
+# from https://github.com/huggingface/transformers/blob/main/src/transformers/modeling_flax_pytorch_utils.py#L224-L352
+def load_flax_checkpoint_in_pytorch_model(model, flax_checkpoint_path):
     """Load flax checkpoints in a PyTorch model"""
     flax_checkpoint_path = os.path.abspath(flax_checkpoint_path)
     logger.info(f"Loading Flax weights from {flax_checkpoint_path}")
+
+    # import correct flax class
+    flax_cls = getattr(transformers, "Flax" + model.__class__.__name__)
 
     # load flax weight dict
     with open(flax_checkpoint_path, "rb") as state_f:
