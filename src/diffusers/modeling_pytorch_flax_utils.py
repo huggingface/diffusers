@@ -18,8 +18,8 @@ import jax
 import jax.numpy as jnp
 from flax.traverse_util import flatten_dict
 import numpy as np
-# import os
-# from pickle import UnpicklingError
+import os
+from pickle import UnpicklingError
 
 from .utils import logging
 
