@@ -435,8 +435,22 @@ class FlaxModelMixin:
         flax_state_dict = state
 
         # ---TEST-BEGIN---
+        from .modeling_utils import load_state_dict
 
-        pt_model = model_file
+        pt_model, unused_kwargs = cls.from_config(
+            config_path,
+            cache_dir=cache_dir,
+            return_unused_kwargs=True,
+            force_download=force_download,
+            resume_download=resume_download,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            use_auth_token=use_auth_token,
+            revision=revision,
+            subfolder=subfolder,
+            device_map=device_map,
+            **kwargs,
+        )
         pt_model_dict = pt_model.state_dict()
 
         load_model_with_head_into_base_model = (pt_model.base_model_prefix in flax_state) and (
