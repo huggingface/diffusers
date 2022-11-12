@@ -26,7 +26,6 @@ from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, R
 from requests import HTTPError
 
 from . import __version__, is_torch_available
-from .modeling_pytorch_flax_utils import load_flax_checkpoint_in_pytorch_model
 from .utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
@@ -465,6 +464,7 @@ class ModelMixin(torch.nn.Module):
             if is_torch_available():
                 import jax.numpy as jnp 
                 from flax.serialization import from_bytes
+                from .modeling_pytorch_flax_utils import load_flax_weights_in_pytorch_model
 
                 model, unused_kwargs = cls.from_config(
                     pretrained_model_name_or_path,
