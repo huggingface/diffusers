@@ -268,18 +268,27 @@ class FlaxDiffusionPipeline(ConfigMixin):
         >>> from diffusers import FlaxDiffusionPipeline
 
         >>> # Download pipeline from huggingface.co and cache.
-        >>> pipeline = FlaxDiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large-256")
+        >>> # Requires to be logged in to Hugging Face hub,
+        >>> # see more in [the documentation](https://huggingface.co/docs/hub/security-tokens)
+        >>> pipeline, params = FlaxDiffusionPipeline.from_pretrained(
+        ...     "runwayml/stable-diffusion-v1-5",
+        ...     revision="bf16",
+        ...     dtype=jnp.bfloat16,
+        ... )
 
-        >>> # Download pipeline that requires an authorization token
-        >>> # For more information on access tokens, please refer to this section
-        >>> # of the documentation](https://huggingface.co/docs/hub/security-tokens)
-        >>> pipeline = FlaxDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> # Download pipeline, but use a different scheduler
+        >>> from diffusers import FlaxDPMSolverMultistepScheduler
 
-        >>> # Download pipeline, but overwrite scheduler
-        >>> from diffusers import LMSDiscreteScheduler
+        >>> model_id = "runwayml/stable-diffusion-v1-5"
+        >>> sched, sched_state = FlaxDPMSolverMultistepScheduler.from_config(
+        ...     model_id,
+        ...     subfolder="scheduler",
+        ... )
 
-        >>> scheduler = LMSDiscreteScheduler.from_config("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
-        >>> pipeline = FlaxDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", scheduler=scheduler)
+        >>> dpm_pipe, dpm_params = FlaxStableDiffusionPipeline.from_pretrained(
+        ...     model_id, revision="bf16", dtype=jnp.bfloat16, scheduler=dpmpp
+        ... )
+        >>> dpm_params["scheduler"] = dpmpp_state
         ```
         """
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
