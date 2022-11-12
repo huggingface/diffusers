@@ -428,14 +428,15 @@ class FlaxModelMixin:
             # NOTE: This is to prevent a bug this will be fixed in Flax >= v0.3.4:
             # https://github.com/google/flax/issues/1261
         state = jax.tree_util.tree_map(lambda x: jax.device_put(x, jax.devices("cpu")[0]), state)
-
+        flax_state = state
+        
         # flatten dicts
         state = flatten_dict(state)
+        flax_state_dict = state
 
         # ---TEST-BEGIN---
 
         from .modeling_utils import load_state_dict
-        flax_state_dict = state
         pt_model = load_state_dict(model_file)
         pt_model_dict = pt_model.state_dict()
 
