@@ -632,8 +632,6 @@ class DiffusionPipeline(ConfigMixin):
                     loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
                 else:
                     # else load from the root directory
-                    if from_flax:
-                        loading_kwargs['from_flax'] = True
                     loaded_sub_model = load_method(cached_folder, **loading_kwargs)
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
