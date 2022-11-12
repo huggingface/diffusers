@@ -14,6 +14,7 @@
 # limitations under the License.
 """ PyTorch - Flax general utilities."""
 
+import jax
 import jax.numpy as jnp
 from flax.traverse_util import flatten_dict
 
