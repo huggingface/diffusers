@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+from collections import OrderedDict
 
 from ..utils import is_flax_available, is_scipy_available, is_torch_available
 
@@ -50,3 +50,23 @@ if is_scipy_available() and is_torch_available():
     from .scheduling_lms_discrete import LMSDiscreteScheduler
 else:
     from ..utils.dummy_torch_and_scipy_objects import *  # noqa F403
+
+
+SCHEDULER_TYPE_TO_CLASS_MAPPING = OrderedDict(
+    [
+        ("ddim", DDIMScheduler),
+        ("ddpm", DDPMScheduler),
+        ("dpm-multistep", DPMSolverMultistepScheduler),
+        ("euler-ancestral-discrete", EulerAncestralDiscreteScheduler),
+        ("euler-discrete", EulerDiscreteScheduler),
+        ("ipndm", IPNDMScheduler),
+        ("karras-ve", KarrasVeScheduler),
+        ("pndm", PNDMScheduler),
+        ("repaint", RePaintScheduler),
+        ("score-sde-ve", ScoreSdeVeScheduler),
+        ("score-sde-vp", ScoreSdeVpScheduler),
+        ("vq-diffusion", VQDiffusionScheduler),
+        ("lms-discrete", LMSDiscreteScheduler),
+    ]
+)
+CLASS_TO_SCHEDULER_TYPE_MAPPING = OrderedDict({v: k for k, v in SCHEDULER_TYPE_TO_CLASS_MAPPING.items()})

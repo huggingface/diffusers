@@ -34,7 +34,8 @@ from .configuration_utils import ConfigMixin
 from .dynamic_modules_utils import get_class_from_dynamic_module
 from .hub_utils import http_user_agent
 from .modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
-from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
+from .schedulers import CLASS_TO_SCHEDULER_TYPE_MAPPING, SCHEDULER_TYPE_TO_CLASS_MAPPING
+from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME, SchedulerMixin
 from .utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
@@ -710,13 +711,61 @@ class DiffusionPipeline(ConfigMixin):
         return tqdm(iterable, **self._progress_bar_config)
 
     def set_scheduler(self, scheduler_type=Union[str, Dict[str, str]]):
-        schedulers = [k for k, c in self.components if isinstance(c, SchedulerMixin)]
-        if len(schedulers) > 1 and isinstance(scheduler_type, str):
-           raise ValueError("Ambigous")
-    
-        scheduler_type = scheduler_type if isinstance(scheduler_type, dict) else {schedulers[0]: scheduler_type}
+        schedulers = {k: type(v) for k, v in self.components.items() if isinstance(v, SchedulerMixin)}
+        if isinstance(scheduler_type, str) and len(set(schedulers.values())) > 1:
+            raise ValueError(
+                f"The pipeline {self} contains the schedulers {schedulers}. Please make sure to provide a dictionary"
+                f" that maps the componet names {schedulers.keys()} to scheduler types instead of just one scheduler"
+                f" type {scheduler_type}"
+            )
+        elif isinstance(scheduler_type, dict):
+            is_type_scheduler = {k: k in schedulers for k in scheduler_type.keys()}
+            if not all(is_type_scheduler.values()):
+                raise ValueError(
+                    "The following component names are not schedulers"
+                    f" {[k for k, v in is_type_scheduler.items() if v == False]}. Please make sure to only set new"
+                    f" scheduler types for {schedulers.keys()}."
+                )
 
-        # .. load and set all schedulers
+        scheduler_mapping = (
+            scheduler_type if isinstance(scheduler_type, dict) else {next(iter(schedulers.keys())): scheduler_type}
+        )
+
+        for component_name, scheduler_type in scheduler_mapping.items():
+            scheduler_class = SCHEDULER_TYPE_TO_CLASS_MAPPING.get(scheduler_type, None)
+            current_scheduler = getattr(self, component_name)
+
+            if scheduler_class is None:
+                raise ValueError(
+                    f"{scheduler_type} does not exist, make sure to chose a scheduler type from"
+                    f" {', '.join(SCHEDULER_TYPE_TO_CLASS_MAPPING.keys())}."
+                )
+
+            if scheduler_class not in current_scheduler._compatible_classes and scheduler_class != type(
+                current_scheduler
+            ):
+                diffusers_library = importlib.import_module(__name__.split(".")[0])
+                _compatible_class_types = [
+                    CLASS_TO_SCHEDULER_TYPE_MAPPING[getattr(diffusers_library, c)]
+                    for c in current_scheduler._compatible_classes
+                ]
+                logger.warn(
+                    f"Changing scheduler from type {CLASS_TO_SCHEDULER_TYPE_MAPPING[type(current_scheduler)]} to an"
+                    f" uncompatible scheduler type {scheduler_type}. This is very likely going to lead to incorrect"
+                    f" predictions when running the pipeline. Make sure to set {component_name} to a scheduler of type"
+                    f" {[' ,'.join(_compatible_class_types)]}."
+                )
+
+            scheduler_config = current_scheduler.config
+            scheduler_init_dict, _ = scheduler_class.extract_init_dict(scheduler_config)
+
+            scheduler = scheduler_class(**scheduler_init_dict)
+
+            logger.info(
+                f"Changing scheduler from type {CLASS_TO_SCHEDULER_TYPE_MAPPING[type(current_scheduler)]} to"
+                f" {scheduler_type}."
+            )
+            setattr(self, component_name, scheduler)
 
     def set_progress_bar_config(self, **kwargs):
         self._progress_bar_config = kwargs

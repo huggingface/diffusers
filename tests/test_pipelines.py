@@ -22,6 +22,7 @@ import unittest
 import numpy as np
 import torch
 
+import diffusers
 import PIL
 from diffusers import (
     AutoencoderKL,
@@ -29,6 +30,10 @@ from diffusers import (
     DDIMScheduler,
     DDPMPipeline,
     DDPMScheduler,
+    DPMSolverMultistepScheduler,
+    EulerAncestralDiscreteScheduler,
+    EulerDiscreteScheduler,
+    LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipelineLegacy,
@@ -397,6 +402,67 @@ class PipelineFastTests(unittest.TestCase):
         assert image_inpaint.shape == (1, 32, 32, 3)
         assert image_img2img.shape == (1, 32, 32, 3)
         assert image_text2img.shape == (1, 128, 128, 3)
+
+    def test_set_scheduler(self):
+        unet = self.dummy_cond_unet
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        sd = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        sd.set_scheduler("ddim")
+        assert isinstance(sd.scheduler, DDIMScheduler)
+        sd.set_scheduler("ddpm")
+        assert isinstance(sd.scheduler, DDPMScheduler)
+        sd.set_scheduler("pndm")
+        assert isinstance(sd.scheduler, PNDMScheduler)
+        sd.set_scheduler("lms-discrete")
+        assert isinstance(sd.scheduler, LMSDiscreteScheduler)
+        sd.set_scheduler("euler-discrete")
+        assert isinstance(sd.scheduler, EulerDiscreteScheduler)
+        sd.set_scheduler("euler-ancestral-discrete")
+        assert isinstance(sd.scheduler, EulerAncestralDiscreteScheduler)
+        sd.set_scheduler("dpm-multistep")
+        assert isinstance(sd.scheduler, DPMSolverMultistepScheduler)
+
+        sd.set_scheduler({"scheduler": "dpm-multistep"})
+        assert isinstance(sd.scheduler, DPMSolverMultistepScheduler)
+
+        logger = logging.get_logger("diffusers.pipeline_utils")
+        with self.assertRaises(ValueError) as error_1:
+            sd.set_scheduler({"schedule": "dpm-multistep"})
+
+        with self.assertRaises(ValueError) as error_2:
+            sd.set_scheduler({"scheduler": "dpm-multiste"})
+
+        logger.setLevel(diffusers.logging.INFO)
+        with CaptureLogger(logger) as cap_logger:
+            sd.set_scheduler({"scheduler": "dpm-multistep"})
+
+        with CaptureLogger(logger) as cap_logger_warn:
+            sd.set_scheduler({"scheduler": "ipndm"})
+
+        assert (
+            str(error_1.exception)
+            == "The following component names are not schedulers ['schedule']. Please make sure to only set new"
+            " scheduler types for dict_keys(['scheduler'])."
+        )
+        assert "dpm-multiste does not exist, make sure to chose a scheduler type from" in str(error_2.exception)
+        assert cap_logger.out == "Changing scheduler from type dpm-multistep to dpm-multistep.\n"
+        assert (
+            "Changing scheduler from type dpm-multistep to an uncompatible scheduler type ipndm."
+            in cap_logger_warn.out
+        )
 
 
 @slow
