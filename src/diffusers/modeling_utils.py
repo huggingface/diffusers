@@ -25,7 +25,7 @@ from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
-from . import __version__
+from . import __version__, is_torch_available
 from .modeling_pytorch_flax_utils import load_flax_checkpoint_in_pytorch_model
 from .utils import (
     CONFIG_NAME,
