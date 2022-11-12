@@ -467,7 +467,7 @@ class ModelMixin(torch.nn.Module):
                 from .modeling_pytorch_flax_utils import load_flax_checkpoint_in_pytorch_model
 
                 model, unused_kwargs = cls.from_config(
-                    pretrained_model_name_or_path,
+                    config_path,
                     cache_dir=cache_dir,
                     return_unused_kwargs=True,
                     force_download=force_download,
