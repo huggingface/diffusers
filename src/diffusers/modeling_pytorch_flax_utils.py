@@ -14,14 +14,16 @@
 # limitations under the License.
 """ PyTorch - Flax general utilities."""
 
+import os
+from pickle import UnpicklingError
+
+import numpy as np
+
 import diffusers
 import jax
 import jax.numpy as jnp
 from flax.serialization import from_bytes
 from flax.traverse_util import flatten_dict
-import numpy as np
-import os
-from pickle import UnpicklingError
 
 from .utils import logging
 
