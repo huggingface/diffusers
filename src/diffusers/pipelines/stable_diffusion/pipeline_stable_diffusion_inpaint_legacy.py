@@ -331,7 +331,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
 
         return text_embeddings
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.return_tensors
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is not None:
             safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
@@ -369,7 +369,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionImg2ImgPipeline.check_inputs
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.check_inputs
     def check_inputs(self, prompt, strength, callback_steps):
         if not isinstance(prompt, str) and not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
