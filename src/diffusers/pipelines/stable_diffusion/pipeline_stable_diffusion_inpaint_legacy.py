@@ -385,7 +385,19 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
-    def prepare_latents(self, init_image, timesteps, batch_size, num_images_per_prompt, dtype, device, generator):
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
+    def get_timesteps(self, num_inference_steps, strength, device):
+        # get the original timestep using init_timestep
+        offset = self.scheduler.config.get("steps_offset", 0)
+        init_timestep = int(num_inference_steps * strength) + offset
+        init_timestep = min(init_timestep, num_inference_steps)
+
+        t_start = max(num_inference_steps - init_timestep + offset, 0)
+        timesteps = self.scheduler.timesteps[t_start:]
+
+        return timesteps
+
+    def prepare_latents(self, init_image, timestep, batch_size, num_images_per_prompt, dtype, device, generator):
         init_image = init_image.to(device=self.device, dtype=dtype)
         init_latent_dist = self.vae.encode(init_image).latent_dist
         init_latents = init_latent_dist.sample(generator=generator)
@@ -397,7 +409,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
 
         # add noise to latents using the timesteps
         noise = torch.randn(init_latents.shape, generator=generator, device=self.device, dtype=dtype)
-        init_latents = self.scheduler.add_noise(init_latents, noise, timesteps)
+        init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
         latents = init_latents
         return latents, init_latents_orig, noise
 
@@ -503,25 +515,14 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             mask_image = preprocess_mask(mask_image)
 
         # 5. set timesteps
-        self.scheduler.set_timesteps(num_inference_steps)
-
-        # get the original timestep using init_timestep
-        offset = self.scheduler.config.get("steps_offset", 0)
-        init_timestep = int(num_inference_steps * strength) + offset
-        init_timestep = min(init_timestep, num_inference_steps)
-
-        timesteps = self.scheduler.timesteps[-init_timestep]
-        timesteps = torch.tensor([timesteps] * batch_size * num_images_per_prompt, device=self.device)
-
-        t_start = max(num_inference_steps - init_timestep + offset, 0)
-        # Some schedulers like PNDM have timesteps as arrays
-        # It's more optimized to move all timesteps to correct device beforehand
-        loop_timesteps = self.scheduler.timesteps[t_start:].to(self.device)
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps = self.get_timesteps(num_inference_steps, strength, device)
+        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 6. Prepare latent variables
         # encode the init image into latents and scale the latents
         latents, init_latents_orig, noise = self.prepare_latents(
-            init_image, timesteps, batch_size, num_images_per_prompt, text_embeddings.dtype, device, generator
+            init_image, latent_timestep, batch_size, num_images_per_prompt, text_embeddings.dtype, device, generator
         )
 
         # 7. Prepare mask latent
@@ -532,7 +533,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 9. Denoising loop
-        for i, t in enumerate(self.progress_bar(loop_timesteps)):
+        for i, t in enumerate(self.progress_bar(timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
