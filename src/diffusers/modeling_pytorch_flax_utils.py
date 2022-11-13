@@ -96,15 +96,24 @@ def load_flax_weights_in_pytorch_model(pt_model, flax_state):
     unexpected_keys = []
     missing_keys = set(pt_model_dict.keys())
 
+    # print(list(flax_state_dict.keys())[0][0])
+    if (list(flax_state_dict.keys())[0][0] != "decoder"): 
+        crop = False
+    else:
+        crop = True
+
     for flax_key_tuple, flax_tensor in flax_state_dict.items():
         has_base_model_prefix = flax_key_tuple[0] == pt_model.base_model_prefix
         require_base_model_prefix = ".".join((pt_model.base_model_prefix,) + flax_key_tuple) in pt_model_dict
 
-        # adapt flax_key to prepare for loading from/to base model only
-        if load_model_with_head_into_base_model and has_base_model_prefix:
+        if crop:
             flax_key_tuple = flax_key_tuple[1:]
-        elif load_base_model_into_model_with_head and require_base_model_prefix:
-            flax_key_tuple = (pt_model.base_model_prefix,) + flax_key_tuple
+
+        # # adapt flax_key to prepare for loading from/to base model only
+        # if load_model_with_head_into_base_model and has_base_model_prefix:
+        #     flax_key_tuple = flax_key_tuple[1:]
+        # elif load_base_model_into_model_with_head and require_base_model_prefix:
+        #     flax_key_tuple = (pt_model.base_model_prefix,) + flax_key_tuple
 
         # rename flax weights to PyTorch format
         if flax_key_tuple[-1] == "kernel" and flax_tensor.ndim == 4 and ".".join(flax_key_tuple) not in pt_model_dict:
