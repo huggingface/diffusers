@@ -395,7 +395,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         """
 
         # 1. Check inputs
-        if not isinstance(prompt, str) or isinstance(prompt, list):
+        if not isinstance(prompt, str) and not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         if height % 8 != 0 or width % 8 != 0:
