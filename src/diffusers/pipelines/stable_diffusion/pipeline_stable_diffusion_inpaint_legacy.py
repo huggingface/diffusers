@@ -20,13 +20,19 @@ import torch
 
 import PIL
 from diffusers.utils import is_accelerate_available
-from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
+from ...schedulers import (
+    DDIMScheduler,
+    DPMSolverMultistepScheduler,
+    EulerAncestralDiscreteScheduler,
+    EulerDiscreteScheduler,
+    LMSDiscreteScheduler,
+    PNDMScheduler,
+)
 from ...utils import deprecate, logging
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
@@ -402,11 +408,8 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-        if isinstance(prompt, str):
-            batch_size = 1
-        elif isinstance(prompt, list):
-            batch_size = len(prompt)
-        else:
+        # 1. Check inputs
+        if not isinstance(prompt, str) or isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
         if strength < 0 or strength > 1:
@@ -420,24 +423,44 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
+        # 2. Define call parameters
+        batch_size = 1 if isinstance(prompt, str) else len(prompt)
         device = self._execution_device
-
-        # set timesteps
-        self.scheduler.set_timesteps(num_inference_steps)
-
-        # preprocess image
-        if not isinstance(init_image, torch.FloatTensor):
-            init_image = preprocess_image(init_image)
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
+        # 3. Encode input prompt
         text_embeddings = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
+        # 4. Preprocess image and mask
+        if not isinstance(init_image, torch.FloatTensor):
+            init_image = preprocess_image(init_image)
+
+        if not isinstance(mask_image, torch.FloatTensor):
+            mask_image = preprocess_mask(mask_image)
+
+        # 5. set timesteps
+        self.scheduler.set_timesteps(num_inference_steps)
+
+        # get the original timestep using init_timestep
+        offset = self.scheduler.config.get("steps_offset", 0)
+        init_timestep = int(num_inference_steps * strength) + offset
+        init_timestep = min(init_timestep, num_inference_steps)
+
+        timesteps = self.scheduler.timesteps[-init_timestep]
+        timesteps = torch.tensor([timesteps] * batch_size * num_images_per_prompt, device=self.device)
+
+        t_start = max(num_inference_steps - init_timestep + offset, 0)
+        # Some schedulers like PNDM have timesteps as arrays
+        # It's more optimized to move all timesteps to correct device beforehand
+        loop_timesteps = self.scheduler.timesteps[t_start:].to(self.device)
+
+        # 6. Prepare latent variables
         # encode the init image into latents and scale the latents
         latents_dtype = text_embeddings.dtype
         init_image = init_image.to(device=self.device, dtype=latents_dtype)
@@ -449,29 +472,18 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         init_latents = torch.cat([init_latents] * batch_size * num_images_per_prompt, dim=0)
         init_latents_orig = init_latents
 
-        # preprocess mask
-        if not isinstance(mask_image, torch.FloatTensor):
-            mask_image = preprocess_mask(mask_image)
-        mask_image = mask_image.to(device=self.device, dtype=latents_dtype)
-        mask = torch.cat([mask_image] * batch_size * num_images_per_prompt)
-
-        # check sizes
-        if not mask.shape == init_latents.shape:
-            raise ValueError("The mask and init_image should be the same size!")
-
-        # get the original timestep using init_timestep
-        offset = self.scheduler.config.get("steps_offset", 0)
-        init_timestep = int(num_inference_steps * strength) + offset
-        init_timestep = min(init_timestep, num_inference_steps)
-
-        timesteps = self.scheduler.timesteps[-init_timestep]
-        timesteps = torch.tensor([timesteps] * batch_size * num_images_per_prompt, device=self.device)
-
         # add noise to latents using the timesteps
         noise = torch.randn(init_latents.shape, generator=generator, device=self.device, dtype=latents_dtype)
         init_latents = self.scheduler.add_noise(init_latents, noise, timesteps)
 
-        # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
+        # 7. Prepare mask latent
+        mask_image = mask_image.to(device=self.device, dtype=latents_dtype)
+        mask = torch.cat([mask_image] * batch_size * num_images_per_prompt)
+        # check sizes
+        if not mask.shape == init_latents.shape:
+            raise ValueError("The mask and init_image should be the same size!")
+
+        # 8. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
@@ -487,13 +499,8 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
 
         latents = init_latents
 
-        t_start = max(num_inference_steps - init_timestep + offset, 0)
-
-        # Some schedulers like PNDM have timesteps as arrays
-        # It's more optimized to move all timesteps to correct device beforehand
-        timesteps = self.scheduler.timesteps[t_start:].to(self.device)
-
-        for i, t in tqdm(enumerate(timesteps)):
+        # 9. Denoising loop
+        for i, t in enumerate(self.progress_bar(loop_timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
@@ -517,12 +524,13 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
+        # 10. Post-processing
         latents = 1 / 0.18215 * latents
         image = self.vae.decode(latents).sample
-
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
 
+        # 11. Run safety checker
         if self.safety_checker is not None:
             safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(
                 self.device
@@ -533,6 +541,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         else:
             has_nsfw_concept = None
 
+        # 12. Convert to PIL
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
