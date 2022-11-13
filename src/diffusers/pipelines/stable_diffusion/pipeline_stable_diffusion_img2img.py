@@ -477,7 +477,6 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-
         # 1. Check inputs
         self.check_inputs(prompt, strength, callback_steps)
 
