@@ -399,7 +399,6 @@ class DiffusionPipeline(ConfigMixin):
         device_map = kwargs.pop("device_map", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
 
-
         if low_cpu_mem_usage and not is_accelerate_available():
             low_cpu_mem_usage = False
             logger.warn(
@@ -625,11 +624,11 @@ class DiffusionPipeline(ConfigMixin):
                 if is_diffusers_model or is_transformers_model:
                     loading_kwargs["device_map"] = device_map
                     loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
-                
+
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
                     if from_flax:
-                        loading_kwargs['from_flax'] = True
+                        loading_kwargs["from_flax"] = True
                     loaded_sub_model = load_method(os.path.join(cached_folder, name), **loading_kwargs)
                 else:
                     # else load from the root directory

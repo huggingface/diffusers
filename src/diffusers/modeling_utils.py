@@ -392,7 +392,7 @@ class ModelMixin(torch.nn.Module):
                 else:
                     raise EnvironmentError(
                         f"Error no file named {FLAX_WEIGHTS_NAME} found in directory {pretrained_model_name_or_path}."
-                    )            
+                    )
             else:
                 if os.path.isfile(os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)):
                     # Load from a PyTorch checkpoint
@@ -558,7 +558,8 @@ class ModelMixin(torch.nn.Module):
 
             if torch_dtype is not None and not isinstance(torch_dtype, torch.dtype):
                 raise ValueError(
-                    f"{torch_dtype} needs to be of type `torch.dtype`, e.g. `torch.float16`, but is {type(torch_dtype)}."
+                    f"{torch_dtype} needs to be of type `torch.dtype`, e.g. `torch.float16`, but is"
+                    f" {type(torch_dtype)}."
                 )
             elif torch_dtype is not None:
                 model = model.to(torch_dtype)
