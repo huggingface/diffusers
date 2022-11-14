@@ -11,7 +11,7 @@ You will need some RL specific requirements to run the examples:
 pip install -f https://download.pytorch.org/whl/torch_stable.html \
                 free-mujoco-py \
                 einops \
-                gym \
+                gym==0.24.1 \
                 protobuf==3.20.1 \
                 git+https://github.com/rail-berkeley/d4rl.git \
                 mediapy \
