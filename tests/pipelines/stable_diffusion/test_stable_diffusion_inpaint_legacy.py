@@ -387,7 +387,6 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
         assert np.abs(expected_image - image).max() < 1e-3
 
     def test_stable_diffusion_inpaint_legacy_pipeline_k_lms(self):
-        # TODO(Anton, Patrick) - I think we can remove this test soon
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/in_paint/overture-creations-5sI6fQgYIuo.png"
