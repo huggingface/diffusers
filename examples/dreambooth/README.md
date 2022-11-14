@@ -185,7 +185,7 @@ accelerate launch train_dreambooth.py \
   --class_prompt="a photo of dog" \
   --resolution=512 \
   --train_batch_size=1 \
-  --use_8bit_adam
+  --use_8bit_adam \
   --gradient_checkpointing \
   --learning_rate=2e-6 \
   --lr_scheduler="constant" \
