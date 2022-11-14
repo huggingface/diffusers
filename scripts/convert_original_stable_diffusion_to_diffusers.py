@@ -673,7 +673,7 @@ if __name__ == "__main__":
 
     original_config = OmegaConf.load(args.original_config_file)
 
-    checkpoint = torch.load(args.checkpoint_path)
+    checkpoint = torch.load(args.checkpoint_path, weights_only=True)
     checkpoint = checkpoint["state_dict"]
 
     num_train_timesteps = original_config.model.params.timesteps
