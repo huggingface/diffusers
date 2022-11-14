@@ -81,7 +81,7 @@ class SampleObject3(ConfigMixin):
 class ConfigTester(unittest.TestCase):
     def test_load_not_from_mixin(self):
         with self.assertRaises(ValueError):
-            ConfigMixin.from_config("dummy_path")
+            ConfigMixin.load_config("dummy_path")
 
     def test_register_to_config(self):
         obj = SampleObject()
@@ -131,7 +131,8 @@ class ConfigTester(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             obj.save_config(tmpdirname)
-            new_obj = SampleObject.from_config(tmpdirname)
+            config = SampleObject.load_config(tmpdirname)
+            new_obj = SampleObject.from_config(config)
             new_config = new_obj.config
 
         # unfreeze configs
@@ -152,7 +153,8 @@ class ConfigTester(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdirname:
             obj.save_config(tmpdirname)
             with CaptureLogger(logger) as cap_logger_1:
-                new_obj_1 = SampleObject2.from_config(tmpdirname)
+                config = SampleObject2.load_config(tmpdirname)
+                new_obj_1 = SampleObject2.from_config(config)
 
             # now save a config parameter that is not expected
             with open(os.path.join(tmpdirname, SampleObject.config_name), "r") as f:
@@ -163,10 +165,12 @@ class ConfigTester(unittest.TestCase):
                 json.dump(data, f)
 
             with CaptureLogger(logger) as cap_logger_2:
-                new_obj_2 = SampleObject.from_config(tmpdirname)
+                config = SampleObject.load_config(tmpdirname)
+                new_obj_2 = SampleObject.from_config(config)
 
             with CaptureLogger(logger) as cap_logger_3:
-                new_obj_3 = SampleObject2.from_config(tmpdirname)
+                config = SampleObject2.load_config(tmpdirname)
+                new_obj_3 = SampleObject2.from_config(config)
 
         assert new_obj_1.__class__ == SampleObject2
         assert new_obj_2.__class__ == SampleObject
@@ -204,7 +208,8 @@ class ConfigTester(unittest.TestCase):
                 json.dump(data, f)
 
             with CaptureLogger(logger) as cap_logger:
-                new_obj = SampleObject.from_config(tmpdirname)
+                config = SampleObject.load_config(tmpdirname)
+                new_obj = SampleObject.from_config(config)
 
         assert new_obj.__class__ == SampleObject
 
@@ -232,13 +237,16 @@ class ConfigTester(unittest.TestCase):
             obj.save_config(tmpdirname)
 
             with CaptureLogger(logger) as cap_logger_1:
-                new_obj_1 = SampleObject.from_config(tmpdirname)
+                config = SampleObject.load_config(tmpdirname)
+                new_obj_1 = SampleObject.from_config(config)
 
             with CaptureLogger(logger) as cap_logger_2:
-                new_obj_2 = SampleObject2.from_config(tmpdirname)
+                config = SampleObject2.load_config(tmpdirname)
+                new_obj_2 = SampleObject2.from_config(config)
 
             with CaptureLogger(logger) as cap_logger_3:
-                new_obj_3 = SampleObject3.from_config(tmpdirname)
+                config = SampleObject3.load_config(tmpdirname)
+                new_obj_3 = SampleObject3.from_config(config)
 
         assert new_obj_1.__class__ == SampleObject
         assert new_obj_2.__class__ == SampleObject2
@@ -252,7 +260,7 @@ class ConfigTester(unittest.TestCase):
         logger = logging.get_logger("diffusers.configuration_utils")
 
         with CaptureLogger(logger) as cap_logger:
-            ddim = DDIMScheduler.from_config("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
+            ddim = DDIMScheduler.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
 
         assert ddim.__class__ == DDIMScheduler
         # no warning should be thrown
@@ -262,7 +270,7 @@ class ConfigTester(unittest.TestCase):
         logger = logging.get_logger("diffusers.configuration_utils")
 
         with CaptureLogger(logger) as cap_logger:
-            euler = EulerDiscreteScheduler.from_config(
+            euler = EulerDiscreteScheduler.from_pretrained(
                 "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler"
             )
 
@@ -274,7 +282,7 @@ class ConfigTester(unittest.TestCase):
         logger = logging.get_logger("diffusers.configuration_utils")
 
         with CaptureLogger(logger) as cap_logger:
-            euler = EulerAncestralDiscreteScheduler.from_config(
+            euler = EulerAncestralDiscreteScheduler.from_pretrained(
                 "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler"
             )
 
@@ -286,7 +294,7 @@ class ConfigTester(unittest.TestCase):
         logger = logging.get_logger("diffusers.configuration_utils")
 
         with CaptureLogger(logger) as cap_logger:
-            pndm = PNDMScheduler.from_config("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
+            pndm = PNDMScheduler.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
 
         assert pndm.__class__ == PNDMScheduler
         # no warning should be thrown
@@ -296,7 +304,7 @@ class ConfigTester(unittest.TestCase):
         logger = logging.get_logger("diffusers.configuration_utils")
 
         with CaptureLogger(logger) as cap_logger:
-            ddpm = DDPMScheduler.from_config(
+            ddpm = DDPMScheduler.from_pretrained(
                 "hf-internal-testing/tiny-stable-diffusion-torch",
                 subfolder="scheduler",
                 predict_epsilon=False,
@@ -304,7 +312,7 @@ class ConfigTester(unittest.TestCase):
             )
 
         with CaptureLogger(logger) as cap_logger_2:
-            ddpm_2 = DDPMScheduler.from_config("google/ddpm-celebahq-256", beta_start=88)
+            ddpm_2 = DDPMScheduler.from_pretrained("google/ddpm-celebahq-256", beta_start=88)
 
         assert ddpm.__class__ == DDPMScheduler
         assert ddpm.config.predict_epsilon is False
@@ -319,7 +327,7 @@ class ConfigTester(unittest.TestCase):
         logger = logging.get_logger("diffusers.configuration_utils")
 
         with CaptureLogger(logger) as cap_logger:
-            dpm = DPMSolverMultistepScheduler.from_config(
+            dpm = DPMSolverMultistepScheduler.from_pretrained(
                 "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler"
             )
 
