@@ -16,7 +16,7 @@ Diffusers contains multiple pre-built schedule functions for the diffusion proce
 
 ## What is a scheduler?
 
-The schedule functions, denoted *Schedulers* in the library take in the output of a trained model, a sample which the diffusion process is iterating on, and a timestep to return a denoised sample.
+The schedule functions, denoted *Schedulers* in the library take in the output of a trained model, a sample which the diffusion process is iterating on, and a timestep to return a denoised sample. That's why schedulers may also be called *Samplers* in other diffusion models implementations.
 
 - Schedulers define the methodology for iteratively adding noise to an image or for updating a sample based on model outputs.
     - adding noise in different manners represent the algorithmic processes to train a diffusion model by adding noise to images.

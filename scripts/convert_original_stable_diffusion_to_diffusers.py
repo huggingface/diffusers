@@ -30,6 +30,9 @@ except ImportError:
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
+    DPMSolverMultistepScheduler,
+    EulerAncestralDiscreteScheduler,
+    EulerDiscreteScheduler,
     LDMTextToImagePipeline,
     LMSDiscreteScheduler,
     PNDMScheduler,
@@ -647,7 +650,7 @@ if __name__ == "__main__":
         "--scheduler_type",
         default="pndm",
         type=str,
-        help="Type of scheduler to use. Should be one of ['pndm', 'lms', 'ddim']",
+        help="Type of scheduler to use. Should be one of ['pndm', 'lms', 'ddim', 'euler', 'euler-ancest', 'dpm']",
     )
     parser.add_argument(
         "--extract_ema",
@@ -686,6 +689,16 @@ if __name__ == "__main__":
         )
     elif args.scheduler_type == "lms":
         scheduler = LMSDiscreteScheduler(beta_start=beta_start, beta_end=beta_end, beta_schedule="scaled_linear")
+    elif args.scheduler_type == "euler":
+        scheduler = EulerDiscreteScheduler(beta_start=beta_start, beta_end=beta_end, beta_schedule="scaled_linear")
+    elif args.scheduler_type == "euler-ancestral":
+        scheduler = EulerAncestralDiscreteScheduler(
+            beta_start=beta_start, beta_end=beta_end, beta_schedule="scaled_linear"
+        )
+    elif args.scheduler_type == "dpm":
+        scheduler = DPMSolverMultistepScheduler(
+            beta_start=beta_start, beta_end=beta_end, beta_schedule="scaled_linear"
+        )
     elif args.scheduler_type == "ddim":
         scheduler = DDIMScheduler(
             beta_start=beta_start,
