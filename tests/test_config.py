@@ -131,8 +131,7 @@ class ConfigTester(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             obj.save_config(tmpdirname)
-            config = SampleObject.load_config(tmpdirname)
-            new_obj = SampleObject.from_config(config)
+            new_obj = SampleObject.from_config(SampleObject.load_config(tmpdirname))
             new_config = new_obj.config
 
         # unfreeze configs
@@ -260,7 +259,9 @@ class ConfigTester(unittest.TestCase):
         logger = logging.get_logger("diffusers.configuration_utils")
 
         with CaptureLogger(logger) as cap_logger:
-            ddim = DDIMScheduler.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
+            ddim = DDIMScheduler.from_pretrained(
+                "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler"
+            )
 
         assert ddim.__class__ == DDIMScheduler
         # no warning should be thrown
@@ -294,7 +295,9 @@ class ConfigTester(unittest.TestCase):
         logger = logging.get_logger("diffusers.configuration_utils")
 
         with CaptureLogger(logger) as cap_logger:
-            pndm = PNDMScheduler.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
+            pndm = PNDMScheduler.from_pretrained(
+                "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler"
+            )
 
         assert pndm.__class__ == PNDMScheduler
         # no warning should be thrown

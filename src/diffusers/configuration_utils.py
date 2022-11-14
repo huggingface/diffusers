@@ -168,18 +168,18 @@ class ConfigMixin:
             config = kwargs.pop("pretrained_model_name_or_path")
 
         if not isinstance(config, dict):
+            deprecation_message = "It is deprecated to pass a pretrained model name or path to `from_config`."
             if "Scheduler" in cls.__name__:
-                deprecation_message = (
-                    " It is deprecated to pass a pretrained model name or path to `from_config`. If you were trying"
-                    f" to load a scheduler, please use {cls}.from_pretrained(...) instead. Otherwise, please make sure"
-                    " to pass a configuration dictionary instead. This functionality will be removed in v1.0.0."
-                )
-            elif "Model" in cls.__name__:
-                deprecation_message = (
-                    " It is deprecated to pass a pretrained model name or path to `from_config`. If you were trying"
-                    f" to load a model, please use {cls}.load_config(...) followed by {cls}.from_config(...) instead."
+                deprecation_message += (
+                    f"If you were trying to load a scheduler, please use {cls}.from_pretrained(...) instead."
                     " Otherwise, please make sure to pass a configuration dictionary instead. This functionality will"
                     " be removed in v1.0.0."
+                )
+            elif "Model" in cls.__name__:
+                deprecation_message += (
+                    f"If you were trying to load a model, please use {cls}.load_config(...) followed by"
+                    f" {cls}.from_config(...) instead. Otherwise, please make sure to pass a configuration dictionary"
+                    " instead. This functionality will be removed in v1.0.0."
                 )
             deprecate("config-passed-as-path", "1.0.0", deprecation_message, standard_warn=False)
             config, kwargs = cls.load_config(pretrained_model_name_or_path=config, return_unused_kwargs=True, **kwargs)
@@ -203,7 +203,6 @@ class ConfigMixin:
 
     @classmethod
     def get_config_dict(cls, *args, **kwargs):
-        deprecate()
         deprecation_message = (
             f" The function get_config_dict is deprecated. Please use {cls}.load_config instead. This function will be"
             " removed in version v1.0.0"
