@@ -536,7 +536,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         mask, masked_image_latents = self.prepare_mask_latents(
             mask,
             masked_image,
-            batch_size,
+            batch_size * num_images_per_prompt,
             height,
             width,
             text_embeddings.dtype,
