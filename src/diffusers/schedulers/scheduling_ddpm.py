@@ -303,9 +303,9 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
                     model_output.shape, generator=generator, device=device, dtype=model_output.dtype
                 )
             if self.variance_type == "fixed_small_log":
-                variance = self._get_variance(t, predicted_variance=predicted_variance) * noise
+                variance = self._get_variance(t, predicted_variance=predicted_variance) * variance_noise
             else:
-                variance = (self._get_variance(t, predicted_variance=predicted_variance) ** 0.5) * noise
+                variance = (self._get_variance(t, predicted_variance=predicted_variance) ** 0.5) * variance_noise
 
         pred_prev_sample = pred_prev_sample + variance
 
