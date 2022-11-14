@@ -48,7 +48,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         in_channels (`int`, *optional*, defaults to 2): Number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 2): Number of channels in the output.
         time_embedding_type (`str`, *optional*, defaults to `"fourier"`): Type of time embedding to use.
-        downscale_freq_shift (`float`, *optional*, defaults to 0.0): Frequency shift for fourier time embedding.
+        freq_shift (`float`, *optional*, defaults to 0.0): Frequency shift for fourier time embedding.
         flip_sin_to_cos (`bool`, *optional*, defaults to :
             obj:`False`): Whether to flip sin to cos for fourier time embedding.
         down_block_types (`Tuple[str]`, *optional*, defaults to :
@@ -62,7 +62,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         act_fn (`str`, *optional*, defaults to None): optional activitation function in UNet blocks.
         norm_num_groups (`int`, *optional*, defaults to 8): group norm member count in UNet blocks.
         layers_per_block (`int`, *optional*, defaults to 1): added number of layers in a UNet block.
-        always_downsample (`int`, *optional*, defaults to False:
+        downsample_each_block (`int`, *optional*, defaults to False:
             experimental feature for using a UNet without upsampling.
     """
 
