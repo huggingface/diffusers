@@ -519,7 +519,7 @@ class PipelineSlowTests(unittest.TestCase):
     def test_output_format(self):
         model_path = "google/ddpm-cifar10-32"
 
-        scheduler = DDIMScheduler.from_config(model_path)
+        scheduler = DDIMScheduler.from_pretrained(model_path)
         pipe = DDIMPipeline.from_pretrained(model_path, scheduler=scheduler)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

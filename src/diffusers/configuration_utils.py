@@ -163,6 +163,7 @@ class ConfigMixin:
         </Tip>
 
         """
+        deprecate()
         config_dict = cls.get_config_dict(pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs)
         init_dict, unused_kwargs = cls.extract_init_dict(config_dict, **kwargs)
 
@@ -176,6 +177,7 @@ class ConfigMixin:
 
         # Flax schedulers have a state, so return it.
         if cls.__name__.startswith("Flax") and hasattr(model, "create_state") and getattr(model, "has_state", False):
+            deprecate()
             state = model.create_state()
             return_tuple += (state,)
 

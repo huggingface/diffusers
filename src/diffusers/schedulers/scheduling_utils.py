@@ -41,3 +41,9 @@ class SchedulerMixin:
     """
 
     config_name = SCHEDULER_CONFIG_NAME
+
+    def from_pretrained(self):
+        pass
+
+    def save_pretrained(self):
+        pass

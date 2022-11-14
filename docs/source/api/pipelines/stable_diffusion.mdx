@@ -39,7 +39,7 @@ To use a different scheduler, you can pass the `scheduler` argument to `from_pre
 ```python
 from diffusers import StableDiffusionPipeline, EulerDiscreteScheduler
 
-euler_scheduler = EulerDiscreteScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
+euler_scheduler = EulerDiscreteScheduler.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
 pipeline = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=euler_scheduler)
 ```
 

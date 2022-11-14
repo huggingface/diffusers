@@ -248,7 +248,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         """
         message = (
             "Please make sure to instantiate your scheduler with `predict_epsilon` instead. E.g. `scheduler ="
-            " DDPMScheduler.from_config(<model_id>, predict_epsilon=True)`."
+            " DDPMScheduler.from_pretrained(<model_id>, predict_epsilon=True)`."
         )
         predict_epsilon = deprecate("predict_epsilon", "0.10.0", message, take_from=kwargs)
         if predict_epsilon is not None and predict_epsilon != self.config.predict_epsilon:

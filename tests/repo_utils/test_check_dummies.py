@@ -82,7 +82,7 @@ class FakeClass(metaclass=DummyObject):
         requires_backends(self, 'torch')
 
     @classmethod
-    def from_config(cls, *args, **kwargs):
+    def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, 'torch')
 
     @classmethod
@@ -113,7 +113,7 @@ class FakeClass(metaclass=DummyObject):
         requires_backends(self, ["torch"])
 
     @classmethod
-    def from_config(cls, *args, **kwargs):
+    def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch"])
 
     @classmethod

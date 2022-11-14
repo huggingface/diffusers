@@ -43,6 +43,12 @@ class FlaxSchedulerMixin:
 
     config_name = SCHEDULER_CONFIG_NAME
 
+    def from_pretrained(self):
+        pass
+
+    def save_pretrained(self):
+        pass
+
 
 def broadcast_to_shape_from_left(x: jnp.ndarray, shape: Tuple[int]) -> jnp.ndarray:
     assert len(shape) >= x.ndim

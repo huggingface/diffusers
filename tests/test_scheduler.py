@@ -102,7 +102,7 @@ class SchedulerCommonTest(unittest.TestCase):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 scheduler.set_timesteps(num_inference_steps)
@@ -145,7 +145,7 @@ class SchedulerCommonTest(unittest.TestCase):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 scheduler.set_timesteps(num_inference_steps)
@@ -187,7 +187,7 @@ class SchedulerCommonTest(unittest.TestCase):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 scheduler.set_timesteps(num_inference_steps)
@@ -616,7 +616,7 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
                 new_scheduler.set_timesteps(num_inference_steps)
                 # copy over dummy past residuals
                 new_scheduler.model_outputs = dummy_past_residuals[: new_scheduler.config.solver_order]
@@ -648,7 +648,7 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
                 # copy over dummy past residuals
                 new_scheduler.set_timesteps(num_inference_steps)
 
@@ -790,7 +790,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
                 new_scheduler.set_timesteps(num_inference_steps)
                 # copy over dummy past residuals
                 new_scheduler.ets = dummy_past_residuals[:]
@@ -825,7 +825,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
                 # copy over dummy past residuals
                 new_scheduler.set_timesteps(num_inference_steps)
 
@@ -1043,7 +1043,7 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 
             output = scheduler.step_pred(
                 residual, time_step, sample, generator=torch.manual_seed(0), **kwargs
@@ -1074,7 +1074,7 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 
             output = scheduler.step_pred(
                 residual, time_step, sample, generator=torch.manual_seed(0), **kwargs
@@ -1470,7 +1470,7 @@ class IPNDMSchedulerTest(SchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
                 new_scheduler.set_timesteps(num_inference_steps)
                 # copy over dummy past residuals
                 new_scheduler.ets = dummy_past_residuals[:]
@@ -1508,7 +1508,7 @@ class IPNDMSchedulerTest(SchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
                 # copy over dummy past residuals
                 new_scheduler.set_timesteps(num_inference_steps)
 
