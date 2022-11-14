@@ -187,6 +187,10 @@ class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
         super().test_from_pretrained_save_pretrained()
 
     @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
+    def test_model_from_config(self):
+        super().test_model_from_config()
+
+    @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
     def test_output(self):
         # UNetRL is a value-function is different output shape
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
