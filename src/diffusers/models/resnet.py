@@ -523,13 +523,9 @@ class Conv1dBlock(nn.Module):
 class ResidualTemporalBlock1D(nn.Module):
     def __init__(self, inp_channels, out_channels, embed_dim, kernel_size=5):
         super().__init__()
+        self.conv_in = Conv1dBlock(inp_channels, out_channels, kernel_size)
+        self.conv_out = Conv1dBlock(out_channels, out_channels, kernel_size)
 
-        self.blocks = nn.ModuleList(
-            [
-                Conv1dBlock(inp_channels, out_channels, kernel_size),
-                Conv1dBlock(out_channels, out_channels, kernel_size),
-            ]
-        )
         self.time_emb_act = nn.Mish()
         self.time_emb = nn.Linear(embed_dim, out_channels)
 
@@ -548,8 +544,8 @@ class ResidualTemporalBlock1D(nn.Module):
         """
         t = self.time_emb_act(t)
         t = self.time_emb(t)
-        out = self.blocks[0](x) + rearrange_dims(t)
-        out = self.blocks[1](out)
+        out = self.conv_in(x) + rearrange_dims(t)
+        out = self.conv_out(out)
         return out + self.residual_conv(x)
 
 

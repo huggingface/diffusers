@@ -29,6 +29,19 @@ def unet(hor):
         block_out_channels=block_out_channels,
         up_block_types=up_block_types,
         layers_per_block=1,
+        use_timestep_embedding=True,
+        out_block_type="OutConv1DBlock",
+        norm_num_groups=8,
+        downsample_each_block=False,
+        in_channels=14,
+        out_channels=14,
+        extra_in_channels=0,
+        time_embedding_type="positional",
+        flip_sin_to_cos=False,
+        freq_shift=1,
+        sample_size=65536,
+        mid_block_type="MidResTemporalBlock1D",
+        act_fn="mish",
     )
     hf_value_function = UNet1DModel(**config)
     print(f"length of state dict: {len(state_dict.keys())}")
@@ -52,7 +65,16 @@ def value_function():
         mid_block_type="ValueFunctionMidBlock1D",
         block_out_channels=(32, 64, 128, 256),
         layers_per_block=1,
-        always_downsample=True,
+        downsample_each_block=True,
+        sample_size=65536,
+        out_channels=14,
+        extra_in_channels=0,
+        time_embedding_type="positional",
+        use_timestep_embedding=True,
+        flip_sin_to_cos=False,
+        freq_shift=1,
+        norm_num_groups=8,
+        act_fn="mish",
     )
 
     model = torch.load("/Users/bglickenhaus/Documents/diffuser/value_function-hopper-mediumv2-hor32.torch")

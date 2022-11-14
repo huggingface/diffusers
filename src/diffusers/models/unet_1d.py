@@ -77,7 +77,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         time_embedding_type: str = "fourier",
         flip_sin_to_cos: bool = True,
         use_timestep_embedding: bool = False,
-        downscale_freq_shift: float = 0.0,
+        freq_shift: float = 0.0,
         down_block_types: Tuple[str] = ("DownBlock1DNoSkip", "DownBlock1D", "AttnDownBlock1D"),
         up_block_types: Tuple[str] = ("AttnUpBlock1D", "UpBlock1D", "UpBlock1DNoSkip"),
         mid_block_type: Tuple[str] = "UNetMidBlock1D",
@@ -86,7 +86,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         act_fn: str = None,
         norm_num_groups: int = 8,
         layers_per_block: int = 1,
-        always_downsample: bool = False,
+        downsample_each_block: bool = False,
     ):
         super().__init__()
         self.sample_size = sample_size
@@ -99,7 +99,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             timestep_input_dim = 2 * block_out_channels[0]
         elif time_embedding_type == "positional":
             self.time_proj = Timesteps(
-                block_out_channels[0], flip_sin_to_cos=flip_sin_to_cos, downscale_freq_shift=downscale_freq_shift
+                block_out_channels[0], flip_sin_to_cos=flip_sin_to_cos, downscale_freq_shift=freq_shift
             )
             timestep_input_dim = block_out_channels[0]
 
@@ -134,7 +134,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
                 in_channels=input_channel,
                 out_channels=output_channel,
                 temb_channels=block_out_channels[0],
-                add_downsample=not is_final_block or always_downsample,
+                add_downsample=not is_final_block or downsample_each_block,
             )
             self.down_blocks.append(down_block)
 
@@ -146,7 +146,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             out_channels=block_out_channels[-1],
             embed_dim=block_out_channels[0],
             num_layers=layers_per_block,
-            add_downsample=always_downsample,
+            add_downsample=downsample_each_block,
         )
 
         # up
