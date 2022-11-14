@@ -351,6 +351,11 @@ Textual Inversion is a technique for capturing novel concepts from a small numbe
 - Full Stable Diffusion fine-tuning. If you have a more sizable dataset with a specific look or style, you can fine-tune Stable Diffusion so that it outputs images following those examples. This was the approach taken to create [a Pokémon Stable Diffusion model](https://huggingface.co/justinpinkney/pokemon-stable-diffusion) (by Justing Pinkney / Lambda Labs), [a Japanese specific version of Stable Diffusion](https://huggingface.co/spaces/rinna/japanese-stable-diffusion) (by [Rinna Co.](https://github.com/rinnakk/japanese-stable-diffusion/) and others. You can start at [our text-to-image fine-tuning example](https://github.com/huggingface/diffusers/tree/main/examples/text_to_image) and go from there.
 
 
+## Quantizing Stable Diffusion
+
+Quantization is one of widey-used model compression techniques to accelerate the inference performance. There are two typical approaches: 1) post-training quantization (PTQ), and 2) during-training quantization (DTQ). PTQ is an effective approach to quantizing a model without additional training steps but requires an offline calibration process using a representative dataset to determinate the quantization scale and zero point for the model. DTQ is designed to simulate the quantization error and get recovered during training, and quantization-aware training is one typical approach for DTQ. Optimum-Intel provides the code sample on how to support quantization for Stable Diffusion using [post-training static or dynamic quantization](https://github.com/huggingface/optimum-intel/tree/main/examples/neural_compressor/text-to-image).
+
+
 ## Stable Diffusion Community Pipelines
 
 The release of Stable Diffusion as an open source model has fostered a lot of interesting ideas and experimentation. Our [Community Examples folder](https://github.com/huggingface/diffusers/tree/main/examples/community) contains many ideas worth exploring, like interpolating to create animated videos, using CLIP Guidance for additional prompt fidelity, term weighting, and much more! [Take a look](https://huggingface.co/docs/diffusers/using-diffusers/custom_pipeline_overview) and [contribute your own](https://huggingface.co/docs/diffusers/using-diffusers/contribute_pipeline).
