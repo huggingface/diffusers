@@ -23,22 +23,23 @@ def load_token_encoder(weights, model):
     )
     for lyr_num, lyr in enumerate(model.encoders):
         ly_weight = weights[f"layers_{lyr_num}"]
+        lyr.layer[0].layer_norm.weight = nn.Parameter(
+            torch.FloatTensor(ly_weight["pre_attention_layer_norm"]["scale"])
+        )
+
         attention_weights = ly_weight["attention"]
         lyr.layer[0].SelfAttention.q.weight = nn.Parameter(torch.FloatTensor(attention_weights["query"]["kernel"].T))
         lyr.layer[0].SelfAttention.k.weight = nn.Parameter(torch.FloatTensor(attention_weights["key"]["kernel"].T))
         lyr.layer[0].SelfAttention.v.weight = nn.Parameter(torch.FloatTensor(attention_weights["value"]["kernel"].T))
         lyr.layer[0].SelfAttention.o.weight = nn.Parameter(torch.FloatTensor(attention_weights["out"]["kernel"].T))
-        lyr.layer[0].layer_norm.weight = nn.Parameter(
-            torch.FloatTensor(ly_weight["pre_attention_layer_norm"]["scale"].T)
-        )
+
+        lyr.layer[1].layer_norm.weight = nn.Parameter(torch.FloatTensor(ly_weight["pre_mlp_layer_norm"]["scale"]))
 
         lyr.layer[1].DenseReluDense.wi_0.weight = nn.Parameter(torch.FloatTensor(ly_weight["mlp"]["wi_0"]["kernel"].T))
         lyr.layer[1].DenseReluDense.wi_1.weight = nn.Parameter(torch.FloatTensor(ly_weight["mlp"]["wi_1"]["kernel"].T))
         lyr.layer[1].DenseReluDense.wo.weight = nn.Parameter(torch.FloatTensor(ly_weight["mlp"]["wo"]["kernel"].T))
-        lyr.layer[1].layer_norm.weight = nn.Parameter(torch.FloatTensor(ly_weight["pre_mlp_layer_norm"]["scale"].T))
 
-    model.layer_norm.weight = nn.Parameter(torch.FloatTensor(weights["encoder_norm"]["scale"].T))
-
+    model.layer_norm.weight = nn.Parameter(torch.FloatTensor(weights["encoder_norm"]["scale"]))
     return model
 
 
@@ -58,15 +59,15 @@ def load_continuous_encoder(weights, model):
         lyr.layer[0].SelfAttention.v.weight = nn.Parameter(torch.FloatTensor(attention_weights["value"]["kernel"].T))
         lyr.layer[0].SelfAttention.o.weight = nn.Parameter(torch.FloatTensor(attention_weights["out"]["kernel"].T))
         lyr.layer[0].layer_norm.weight = nn.Parameter(
-            torch.FloatTensor(ly_weight["pre_attention_layer_norm"]["scale"].T)
+            torch.FloatTensor(ly_weight["pre_attention_layer_norm"]["scale"])
         )
 
         lyr.layer[1].DenseReluDense.wi_0.weight = nn.Parameter(torch.FloatTensor(ly_weight["mlp"]["wi_0"]["kernel"].T))
         lyr.layer[1].DenseReluDense.wi_1.weight = nn.Parameter(torch.FloatTensor(ly_weight["mlp"]["wi_1"]["kernel"].T))
         lyr.layer[1].DenseReluDense.wo.weight = nn.Parameter(torch.FloatTensor(ly_weight["mlp"]["wo"]["kernel"].T))
-        lyr.layer[1].layer_norm.weight = nn.Parameter(torch.FloatTensor(ly_weight["pre_mlp_layer_norm"]["scale"].T))
+        lyr.layer[1].layer_norm.weight = nn.Parameter(torch.FloatTensor(ly_weight["pre_mlp_layer_norm"]["scale"]))
 
-    model.layer_norm.weight = nn.Parameter(torch.FloatTensor(weights["encoder_norm"]["scale"].T))
+    model.layer_norm.weight = nn.Parameter(torch.FloatTensor(weights["encoder_norm"]["scale"]))
 
     return model
 
@@ -86,7 +87,7 @@ def load_decoder(weights, model):
     for lyr_num, lyr in enumerate(model.decoders):
         ly_weight = weights[f"layers_{lyr_num}"]
         lyr.layer[0].layer_norm.weight = nn.Parameter(
-            torch.FloatTensor(ly_weight["pre_self_attention_layer_norm"]["scale"].T)
+            torch.FloatTensor(ly_weight["pre_self_attention_layer_norm"]["scale"])
         )
 
         lyr.layer[0].FiLMLayer.scale_bias.weight = nn.Parameter(
@@ -106,10 +107,10 @@ def load_decoder(weights, model):
         lyr.layer[1].EncDecAttention.o.weight = nn.Parameter(torch.FloatTensor(attention_weights["out"]["kernel"].T))
 
         lyr.layer[1].layer_norm.weight = nn.Parameter(
-            torch.FloatTensor(ly_weight["pre_cross_attention_layer_norm"]["scale"].T)
+            torch.FloatTensor(ly_weight["pre_cross_attention_layer_norm"]["scale"])
         )
 
-        lyr.layer[2].weight = nn.Parameter(torch.FloatTensor(ly_weight["pre_mlp_layer_norm"]["scale"].T))
+        lyr.layer[2].weight = nn.Parameter(torch.FloatTensor(ly_weight["pre_mlp_layer_norm"]["scale"]))
 
         lyr.layer[3].scale_bias.weight = nn.Parameter(
             torch.FloatTensor(ly_weight["FiLMLayer_1"]["DenseGeneral_0"]["kernel"].T)
@@ -119,7 +120,7 @@ def load_decoder(weights, model):
         lyr.layer[4].DenseReluDense.wi_1.weight = nn.Parameter(torch.FloatTensor(ly_weight["mlp"]["wi_1"]["kernel"].T))
         lyr.layer[4].DenseReluDense.wo.weight = nn.Parameter(torch.FloatTensor(ly_weight["mlp"]["wo"]["kernel"].T))
 
-    model.decoder_norm.weight = nn.Parameter(torch.FloatTensor(weights["decoder_norm"]["scale"].T))
+    model.decoder_norm.weight = nn.Parameter(torch.FloatTensor(weights["decoder_norm"]["scale"]))
 
     model.spec_out.weight = nn.Parameter(torch.FloatTensor(weights["spec_out_dense"]["kernel"].T))
 
@@ -167,7 +168,7 @@ def main(args):
         feed_forward_proj="gated-gelu",
         max_decoder_noise_time=synth_model.model.module.config.max_decoder_noise_time,
     )
-    model = load_checkpoint(t5_checkpoint["target"], model)
+    model = load_checkpoint(t5_checkpoint["target"], model).eval()
 
     pipe = SpectrogramDiffusionPipeline(model, scheduler=scheduler)
     pipe.save_pretrained("kashif")
