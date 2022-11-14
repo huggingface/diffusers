@@ -62,6 +62,18 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
     def test_outputs_equivalence(self):
         super().test_outputs_equivalence()
 
+    @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
+    def test_from_pretrained_save_pretrained(self):
+        super().test_from_pretrained_save_pretrained()
+
+    @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
+    def test_model_from_config(self):
+        super().test_model_from_config()
+
+    @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
+    def test_output(self):
+        super().test_output()
+
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
             "block_out_channels": (32, 64, 128, 256),
@@ -169,6 +181,10 @@ class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
     @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
     def test_outputs_equivalence(self):
         super().test_outputs_equivalence()
+
+    @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
+    def test_from_pretrained_save_pretrained(self):
+        super().test_from_pretrained_save_pretrained()
 
     @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
     def test_output(self):
