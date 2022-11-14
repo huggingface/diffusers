@@ -29,7 +29,7 @@ from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, R
 from requests import HTTPError
 
 from . import __version__
-from .utils import DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT, logging
+from .utils import DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT, deprecate, logging
 
 
 logger = logging.get_logger(__name__)
@@ -104,7 +104,7 @@ class ConfigMixin:
         logger.info(f"Configuration saved in {output_config_file}")
 
     @classmethod
-    def from_config(cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs):
+    def from_config(cls, config: Dict[str, Any] = None, return_unused_kwargs=False, **kwargs):
         r"""
         Instantiate a Python class from a pre-defined JSON-file.
 
@@ -163,9 +163,28 @@ class ConfigMixin:
         </Tip>
 
         """
-        deprecate()
-        config_dict = cls.get_config_dict(pretrained_model_name_or_path=pretrained_model_name_or_path, **kwargs)
-        init_dict, unused_kwargs = cls.extract_init_dict(config_dict, **kwargs)
+        # TODO(Patrick) - make sure to remove the following two lines when config=="model_path" is deprecated
+        if "pretrained_model_name_or_path" in kwargs:
+            config = kwargs.pop("pretrained_model_name_or_path")
+
+        if not isinstance(config, dict):
+            if "Scheduler" in cls.__name__:
+                deprecation_message = (
+                    " It is deprecated to pass a pretrained model name or path to `from_config`. If you were trying"
+                    f" to load a scheduler, please use {cls}.from_pretrained(...) instead. Otherwise, please make sure"
+                    " to pass a configuration dictionary instead. This functionality will be removed in v1.0.0."
+                )
+            elif "Model" in cls.__name__:
+                deprecation_message = (
+                    " It is deprecated to pass a pretrained model name or path to `from_config`. If you were trying"
+                    f" to load a model, please use {cls}.load_config(...) followed by {cls}.from_config(...) instead."
+                    " Otherwise, please make sure to pass a configuration dictionary instead. This functionality will"
+                    " be removed in v1.0.0."
+                )
+            deprecate("config-passed-as-path", "1.0.0", deprecation_message, standard_warn=False)
+            config, kwargs = cls.load_config(pretrained_model_name_or_path=config, return_unused_kwargs=True, **kwargs)
+
+        init_dict, unused_kwargs, hidden_dict = cls.extract_init_dict(config, **kwargs)
 
         # Allow dtype to be specified on initialization
         if "dtype" in unused_kwargs:
@@ -173,22 +192,28 @@ class ConfigMixin:
 
         # Return model and optionally state and/or unused_kwargs
         model = cls(**init_dict)
-        return_tuple = (model,)
 
-        # Flax schedulers have a state, so return it.
-        if cls.__name__.startswith("Flax") and hasattr(model, "create_state") and getattr(model, "has_state", False):
-            deprecate()
-            state = model.create_state()
-            return_tuple += (state,)
+        # make sure to also save config parameters that might be used for compatible classes
+        model.register_to_config(**hidden_dict)
 
         if return_unused_kwargs:
-            return return_tuple + (unused_kwargs,)
+            return (model, unused_kwargs)
         else:
-            return return_tuple if len(return_tuple) > 1 else model
+            return model
 
     @classmethod
-    def get_config_dict(
-        cls, pretrained_model_name_or_path: Union[str, os.PathLike], **kwargs
+    def get_config_dict(cls, *args, **kwargs):
+        deprecate()
+        deprecation_message = (
+            f" The function get_config_dict is deprecated. Please use {cls}.load_config instead. This function will be"
+            " removed in version v1.0.0"
+        )
+        deprecate("get_config_dict", "1.0.0", deprecation_message, standard_warn=False)
+        return cls.load_config(*args, **kwargs)
+
+    @classmethod
+    def load_config(
+        cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
@@ -285,6 +310,9 @@ class ConfigMixin:
         except (json.JSONDecodeError, UnicodeDecodeError):
             raise EnvironmentError(f"It looks like the config file at '{config_file}' is not a valid JSON file.")
 
+        if return_unused_kwargs:
+            return config_dict, kwargs
+
         return config_dict
 
     @staticmethod
@@ -293,6 +321,9 @@ class ConfigMixin:
 
     @classmethod
     def extract_init_dict(cls, config_dict, **kwargs):
+        # 0. Copy origin config dict
+        original_dict = {k: v for k, v in config_dict.items()}
+
         # 1. Retrieve expected config attributes from __init__ signature
         expected_keys = cls._get_init_keys(cls)
         expected_keys.remove("self")
@@ -366,7 +397,10 @@ class ConfigMixin:
         # 6. Define unused keyword arguments
         unused_kwargs = {**config_dict, **kwargs}
 
-        return init_dict, unused_kwargs
+        # 7. Define "hidden" config parameters that were saved for compatible classes
+        hidden_config_dict = {k: v for k, v in original_dict.items() if k not in init_dict and not k.startswith("_")}
+
+        return init_dict, unused_kwargs, hidden_config_dict
 
     @classmethod
     def _dict_from_json_file(cls, json_file: Union[str, os.PathLike]):
