@@ -69,7 +69,7 @@ class TimestepEmbedding(nn.Module):
         self.act = None
         if act_fn == "silu":
             self.act = nn.SiLU()
-        if act_fn == "mish":
+        elif act_fn == "mish":
             self.act = nn.Mish()
 
         if out_dim is not None:
