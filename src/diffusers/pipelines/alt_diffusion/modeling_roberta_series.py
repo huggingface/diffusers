@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 import torch
 from torch import nn
 
-from transformers import XLMRobertaConfig, XLMRobertaModel, RobertaPreTrainedModel
+from transformers import RobertaPreTrainedModel, XLMRobertaConfig, XLMRobertaModel
 from transformers.utils import ModelOutput
 
 
