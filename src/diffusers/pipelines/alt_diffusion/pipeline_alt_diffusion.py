@@ -32,8 +32,8 @@ from ...schedulers import (
     PNDMScheduler,
 )
 from ...utils import deprecate, logging
-from . import AltDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from . import AltDiffusionPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -514,6 +514,5 @@ class AltDiffusionPipeline(DiffusionPipeline):
 
 
 class RobertaSeriesModelWithTransformation:
-
     def __init__(self):
         self.todo = True
