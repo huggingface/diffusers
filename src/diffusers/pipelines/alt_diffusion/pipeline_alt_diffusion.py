@@ -18,7 +18,7 @@ from typing import Callable, List, Optional, Union
 import torch
 
 from diffusers.utils import is_accelerate_available
-from transformers import CLIPFeatureExtractor, CLIPTokenizer
+from transformers import CLIPFeatureExtractor, XLMRobertaTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
@@ -71,7 +71,7 @@ class AltDiffusionPipeline(DiffusionPipeline):
     def __init__(
         self,
         vae: AutoencoderKL,
-        text_encoder: RobertaSeriesModelWithTransformation,
+        text_encoder: "RobertaSeriesModelWithTransformation",
         tokenizer: XLMRobertaTokenizer,
         unet: UNet2DConditionModel,
         scheduler: Union[
@@ -511,3 +511,9 @@ class AltDiffusionPipeline(DiffusionPipeline):
             return (image, has_nsfw_concept)
 
         return AltDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+
+
+class RobertaSeriesModelWithTransformation:
+
+    def __init__(self):
+        self.todo = True
