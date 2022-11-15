@@ -158,6 +158,7 @@ we change the scheduler to the [`DDIMScheduler`].
 
 ```python
 from diffusers import DDIMScheduler
+
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 ```
 
@@ -185,6 +186,7 @@ A number of better schedulers have been released that can be run with much fewer
 
 ```python
 from diffusers import LMSDiscreteScheduler
+
 pipeline.scheduler = LMSDiscreteScheduler.from_config(pipeline.scheduler.config)
 
 generator = torch.Generator(device="cuda").manual_seed(8)
@@ -203,6 +205,7 @@ image
 
 ```python
 from diffusers import EulerDiscreteScheduler
+
 pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
 
 generator = torch.Generator(device="cuda").manual_seed(8)
@@ -221,6 +224,7 @@ and:
 
 ```python
 from diffusers import EulerAncestralDiscreteScheduler
+
 pipeline.scheduler = EulerAncestralDiscreteScheduler.from_config(pipeline.scheduler.config)
 
 generator = torch.Generator(device="cuda").manual_seed(8)
@@ -240,6 +244,7 @@ as 20 steps.
 
 ```python
 from diffusers import DPMSolverMultistepScheduler
+
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
 
 generator = torch.Generator(device="cuda").manual_seed(8)

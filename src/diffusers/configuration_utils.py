@@ -496,7 +496,10 @@ class ConfigMixin:
     def _get_compatibles(cls):
         compatible_classes_str = list(set([cls.__name__] + cls._compatible_classes))
         diffusers_library = importlib.import_module(__name__.split(".")[0])
-        return [getattr(diffusers_library, c) for c in compatible_classes_str]
+        compatible_classes = [
+            getattr(diffusers_library, c) for c in compatible_classes_str if hasattr(diffusers_library, c)
+        ]
+        return compatible_classes
 
     def to_json_string(self) -> str:
         """
