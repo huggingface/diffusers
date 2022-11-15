@@ -72,7 +72,7 @@ image.save("astronaut_rides_horse.png")
 # make sure you're logged in with `huggingface-cli login`
 from diffusers import StableDiffusionPipeline, DDIMScheduler
 
-scheduler =  DDIMScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
+scheduler =  DDIMScheduler.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5", 
@@ -91,7 +91,7 @@ image.save("astronaut_rides_horse.png")
 # make sure you're logged in with `huggingface-cli login`
 from diffusers import StableDiffusionPipeline, LMSDiscreteScheduler
 
-lms = LMSDiscreteScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
+lms = LMSDiscreteScheduler.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
 
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5", 
@@ -120,7 +120,7 @@ from diffusers import CycleDiffusionPipeline, DDIMScheduler
 # load the pipeline
 # make sure you're logged in with `huggingface-cli login`
 model_id_or_path = "CompVis/stable-diffusion-v1-4"
-scheduler = DDIMScheduler.from_config(model_id_or_path, subfolder="scheduler")
+scheduler = DDIMScheduler.from_pretrained(model_id_or_path, subfolder="scheduler")
 pipe = CycleDiffusionPipeline.from_pretrained(model_id_or_path, scheduler=scheduler).to("cuda")
 
 # let's download an initial image

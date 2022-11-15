@@ -67,8 +67,8 @@ class UNet1DModelTests(ModelTesterMixin, unittest.TestCase):
         super().test_from_pretrained_save_pretrained()
 
     @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
-    def test_model_from_config(self):
-        super().test_model_from_config()
+    def test_model_from_pretrained(self):
+        super().test_model_from_pretrained()
 
     @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
     def test_output(self):
@@ -187,8 +187,8 @@ class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
         super().test_from_pretrained_save_pretrained()
 
     @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
-    def test_model_from_config(self):
-        super().test_model_from_config()
+    def test_model_from_pretrained(self):
+        super().test_model_from_pretrained()
 
     @unittest.skipIf(torch_device == "mps", "mish op not supported in MPS")
     def test_output(self):

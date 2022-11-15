@@ -10,6 +10,8 @@
   - sections:
     - local: using-diffusers/loading
       title: "Loading Pipelines, Models, and Schedulers"
+    - local: using-diffusers/schedulers
+      title: "Using different Schedulers"
     - local: using-diffusers/configuration
       title: "Configuring Pipelines, Models, and Schedulers"
     - local: using-diffusers/custom_pipeline_overview
