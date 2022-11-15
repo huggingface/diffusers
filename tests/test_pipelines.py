@@ -434,7 +434,7 @@ class PipelineFastTests(unittest.TestCase):
         sd.scheduler = DPMSolverMultistepScheduler.from_config(sd.scheduler.config)
         assert isinstance(sd.scheduler, DPMSolverMultistepScheduler)
 
-    def test_set_scheduler_consitency(self):
+    def test_set_scheduler_consistency(self):
         unet = self.dummy_cond_unet
         pndm = PNDMScheduler.from_config("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
         ddim = DDIMScheduler.from_config("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")

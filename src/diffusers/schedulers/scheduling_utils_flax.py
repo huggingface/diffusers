@@ -61,10 +61,6 @@ class FlaxSchedulerMixin:
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory in which a downloaded pretrained model configuration should be cached if the
                 standard cache should not be used.
-            ignore_mismatched_sizes (`bool`, *optional*, defaults to `False`):
-                Whether or not to raise an error if some of the weights from the checkpoint do not have the same size
-                as the weights of the model (if for instance, you are instantiating a model with 10 labels from a
-                checkpoint with 3 labels).
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.

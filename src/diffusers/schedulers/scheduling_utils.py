@@ -55,9 +55,9 @@ class SchedulerMixin:
     config_name = SCHEDULER_CONFIG_NAME
 
     @classmethod
-    def from_pretrained(cls, config: Dict[str, Any] = None, return_unused_kwargs=False, **kwargs):
+    def from_pretrained(cls, pretrained_model_name_or_path: Dict[str, Any] = None, return_unused_kwargs=False, **kwargs):
         r"""
-        Instantiate a Scheduler class from a pre-defined JSON-file.
+        Instantiate a Scheduler class from a pre-defined JSON configuration file inside a directory or Hub repo.
 
         Parameters:
             pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
@@ -65,16 +65,12 @@ class SchedulerMixin:
 
                     - A string, the *model id* of a model repo on huggingface.co. Valid model ids should have an
                       organization name, like `google/ddpm-celebahq-256`.
-                    - A path to a *directory* containing model weights saved using [`~ConfigMixin.save_config`], e.g.,
+                    - A path to a *directory* containing model weights and configurations saved using [`~ConfigMixin.save_config`], e.g.,
                       `./my_model_directory/`.
 
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory in which a downloaded pretrained model configuration should be cached if the
                 standard cache should not be used.
-            ignore_mismatched_sizes (`bool`, *optional*, defaults to `False`):
-                Whether or not to raise an error if some of the weights from the checkpoint do not have the same size
-                as the weights of the model (if for instance, you are instantiating a model with 10 labels from a
-                checkpoint with 3 labels).
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.

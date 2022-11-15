@@ -145,7 +145,7 @@ stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, scheduler=schedule
 ```
 
 Three things are worth paying attention to here.
-- First, the scheduler is loaded with [`SchedulerMixin.from_pretrained`] since it only depends on a configuration file and not any parameterized weights
+- First, the scheduler is loaded with [`SchedulerMixin.from_pretrained`]
 - Second, the scheduler is loaded with a function argument, called `subfolder="scheduler"` as the configuration of stable diffusion's scheduling is defined in a [subfolder of the official pipeline repository](https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main/scheduler)
 - Third, the scheduler instance can simply be passed with the `scheduler` keyword argument to [`DiffusionPipeline.from_pretrained`]. This works because the [`StableDiffusionPipeline`] defines its scheduler with the `scheduler` attribute. It's not possible to use a different name, such as `sampler=scheduler` since `sampler` is not a defined keyword for [`StableDiffusionPipeline.__init__`]
 
@@ -337,8 +337,8 @@ model = UNet2DModel.from_pretrained(repo_id)
 
 ## Loading schedulers
 
-Schedulers cannot be loaded via a `from_pretrained` method, but instead rely on [`SchedulerMixin.from_pretrained`]. Schedulers are **not parameterized** or **trained**, but instead purely defined by a configuration file.
-Therefore the loading method was given a different name here.
+Schedulers rely on [`SchedulerMixin.from_pretrained`]. Schedulers are **not parameterized** or **trained**, but instead purely defined by a configuration file.
+For consistency, we use the same method name as we do for models or pipelines, but no weights are loaded in this case.
 
 In constrast to pipelines or models, loading schedulers does not consume any significant amount of memory and the same configuration file can often be used for a variety of different schedulers.
 For example, all of:

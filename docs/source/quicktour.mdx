@@ -52,7 +52,7 @@ You can move the generator object to GPU, just like you would in PyTorch.
 >>> pipeline.to("cuda")
 ```
 
-Now you can use the `generator` on your text prompt:
+Now you can use the `pipeline` on your text prompt:
 
 ```python
 >>> image = pipeline("An image of a squirrel in Picasso style").images[0]

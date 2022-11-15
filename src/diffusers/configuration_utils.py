@@ -149,7 +149,7 @@ class ConfigMixin:
 
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to update the configuration object (after it being loaded) and initiate the Python class.
-                `**kwargs` will be directly passed to the underlying model's `__init__` method and eventually overwrite
+                `**kwargs` will be directly passed to the underlying scheduler/model's `__init__` method and eventually overwrite
                 same named arguments of `config`.
 
         Examples:
