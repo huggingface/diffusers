@@ -15,7 +15,7 @@ else:
     from ..utils.dummy_pt_objects import *  # noqa F403
 
 if is_torch_available() and is_transformers_available():
-    from .alt_diffusion import AltDiffusionPipeline
+    from .alt_diffusion import AltDiffusionPipeline, AltDiffusionImg2ImgPipeline
     from .latent_diffusion import LDMTextToImagePipeline
     from .stable_diffusion import (
         CycleDiffusionPipeline,
