@@ -27,6 +27,7 @@ from .unet_2d_blocks import (
     CrossAttnUpBlock2D,
     DownBlock2D,
     UNetMidBlock2DCrossAttn,
+    UNetMidBlock2DDualCrossAttn,
     UpBlock2D,
     get_down_block,
     get_up_block,
@@ -149,7 +150,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             self.down_blocks.append(down_block)
 
         # mid
-        self.mid_block = UNetMidBlock2DCrossAttn(
+        # TODO: temporary, need to add get_mid_block()
+        self.mid_block = UNetMidBlock2DDualCrossAttn(
             in_channels=block_out_channels[-1],
             temb_channels=time_embed_dim,
             resnet_eps=norm_eps,

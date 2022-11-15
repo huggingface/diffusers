@@ -207,27 +207,29 @@ def conv_attn_to_linear(checkpoint):
                 checkpoint[key] = checkpoint[key][:, :, 0]
 
 
-def create_unet_diffusers_config(original_config):
+def create_unet_diffusers_config(unet_params):
     """
     Creates a config for the diffusers based on the config of the LDM model.
     """
-    unet_params = original_config.model.params.unet_config.params
 
     block_out_channels = [unet_params.model_channels * mult for mult in unet_params.channel_mult]
 
     down_block_types = []
     resolution = 1
     for i in range(len(block_out_channels)):
-        block_type = "CrossAttnDownBlock2D" if resolution in unet_params.attention_resolutions else "DownBlock2D"
+        block_type = "DualCrossAttnDownBlock2D" if resolution in unet_params.attention_resolutions else "DownBlock2D"
         down_block_types.append(block_type)
         if i != len(block_out_channels) - 1:
             resolution *= 2
 
     up_block_types = []
     for i in range(len(block_out_channels)):
-        block_type = "CrossAttnUpBlock2D" if resolution in unet_params.attention_resolutions else "UpBlock2D"
+        block_type = "DualCrossAttnUpBlock2D" if resolution in unet_params.attention_resolutions else "UpBlock2D"
         up_block_types.append(block_type)
         resolution //= 2
+
+    if not all(n == unet_params.num_res_blocks[0] for n in unet_params.num_res_blocks):
+        raise ValueError("Not all num_res_blocks are equal, which is not supported in this script.")
 
     config = dict(
         sample_size=unet_params.image_size,
@@ -236,7 +238,7 @@ def create_unet_diffusers_config(original_config):
         down_block_types=tuple(down_block_types),
         up_block_types=tuple(up_block_types),
         block_out_channels=tuple(block_out_channels),
-        layers_per_block=unet_params.num_res_blocks,
+        layers_per_block=unet_params.num_res_blocks[0],
         cross_attention_dim=unet_params.context_dim,
         attention_head_dim=unet_params.num_heads,
     )
@@ -288,7 +290,7 @@ def create_ldm_bert_config(original_config):
     return config
 
 
-def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False):
+def convert_vd_unet_checkpoint(checkpoint, config, path=None, extract_ema=False):
     """
     Takes a state dict and a config, and returns a converted checkpoint.
     """
@@ -419,7 +421,6 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
             resnets = [key for key in output_blocks[i] if f"output_blocks.{i}.0" in key]
             attentions = [key for key in output_blocks[i] if f"output_blocks.{i}.1" in key]
 
-            resnet_0_paths = renew_resnet_paths(resnets)
             paths = renew_resnet_paths(resnets)
 
             meta_path = {"old": f"output_blocks.{i}.0", "new": f"up_blocks.{block_id}.resnets.{layer_in_block_id}"}
@@ -457,7 +458,7 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
 
                 new_checkpoint[new_path] = unet_state_dict[old_path]
 
-    return new_checkpoint
+     return new_checkpoint
 
 
 def convert_ldm_vae_checkpoint(checkpoint, config):
@@ -656,6 +657,15 @@ if __name__ == "__main__":
         type=str,
         help="Type of scheduler to use. Should be one of ['pndm', 'lms', 'ddim', 'euler', 'euler-ancest', 'dpm']",
     )
+    parser.add_argument(
+        "--extract_ema",
+        action="store_true",
+        help=(
+            "Only relevant for checkpoints that have both EMA and non-EMA weights. Whether to extract the EMA weights"
+            " or not. Defaults to `False`. Add `--extract_ema` to extract the EMA weights. EMA weights usually yield"
+            " higher quality images for inference. Non-EMA weights are usually better to continue fine-tuning."
+        ),
+    )
     parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
 
     args = parser.parse_args()
@@ -704,14 +714,19 @@ if __name__ == "__main__":
         raise ValueError(f"Scheduler of type {args.scheduler_type} doesn't exist!")
 
     # Convert the UNet2DConditionModel model.
-#    checkpoint = torch.load(args.unet_checkpoint_path)
-#    unet_config = create_unet_diffusers_config(original_config)
-#    converted_unet_checkpoint = convert_ldm_unet_checkpoint(
-#        checkpoint, unet_config, path=args.checkpoint_path, extract_ema=args.extract_ema
-#    )
-#
-#    unet = UNet2DConditionModel(**unet_config)
-#    unet.load_state_dict(converted_unet_checkpoint)
+    checkpoint = torch.load(args.unet_checkpoint_path)
+    # FIXME: temporary, extracted from a resolved cfg.model.unet_config object
+    # fmt: off
+    unet_config = {'image_size': None, 'in_channels': 4, 'out_channels': 4, 'model_channels': 320, 'attention_resolutions': [4, 2, 1], 'num_res_blocks': [2, 2, 2, 2], 'channel_mult': [1, 2, 4, 4], 'num_heads': 8, 'use_spatial_transformer': True, 'transformer_depth': 1, 'context_dim': 768, 'use_checkpoint': True, 'legacy': False}
+    unet_config = argparse.Namespace(**unet_config)
+    # fmt: on
+    unet_config = create_unet_diffusers_config(unet_config)
+    converted_unet_checkpoint = convert_vd_unet_checkpoint(
+        checkpoint, unet_config, path=args.unet_checkpoint_path, extract_ema=args.extract_ema
+    )
+
+    unet = UNet2DConditionModel(**unet_config)
+    unet.load_state_dict(converted_unet_checkpoint)
 
     # Convert the VAE model.
     if args.vae_checkpoint_path is not None:
