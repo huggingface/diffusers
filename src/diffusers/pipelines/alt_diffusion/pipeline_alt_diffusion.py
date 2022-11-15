@@ -566,7 +566,7 @@ class RobertaSeriesModelWithTransformation(XLMRobertaModel):
     _keys_to_ignore_on_load_unexpected = [r"pooler"]
     _keys_to_ignore_on_load_missing = [r"position_ids", r"predictions.decoder.bias"]
     base_model_prefix = "roberta"
-    config_class = XLMRobertaConfig
+    config_class = RobertaSeriesConfig
 
     def __init__(self, config):
         super().__init__(config)
