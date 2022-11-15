@@ -1,18 +1,10 @@
-import inspect
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 from torch import nn
 
-from diffusers.utils import is_accelerate_available
-from transformers import (
-    CLIPFeatureExtractor,
-    XLMRobertaConfig,
-    XLMRobertaModel,
-    XLMRobertaPreTrainedModel,
-    XLMRobertaTokenizer,
-)
+from transformers import XLMRobertaConfig, XLMRobertaModel, XLMRobertaPreTrainedModel
 from transformers.utils import ModelOutput
 
 

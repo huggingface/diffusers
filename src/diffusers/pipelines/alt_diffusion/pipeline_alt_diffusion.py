@@ -16,7 +16,6 @@ import inspect
 from typing import Callable, List, Optional, Union
 
 import torch
-from torch import nn
 
 from diffusers.utils import is_accelerate_available
 from transformers import CLIPFeatureExtractor, XLMRobertaTokenizer
