@@ -62,14 +62,21 @@ def get_timestep_embedding(
 
 
 class TimestepEmbedding(nn.Module):
-    def __init__(self, channel: int, time_embed_dim: int, act_fn: str = "silu"):
+    def __init__(self, in_channels: int, time_embed_dim: int, act_fn: str = "silu", out_dim: int = None):
         super().__init__()
 
-        self.linear_1 = nn.Linear(channel, time_embed_dim)
+        self.linear_1 = nn.Linear(in_channels, time_embed_dim)
         self.act = None
         if act_fn == "silu":
             self.act = nn.SiLU()
-        self.linear_2 = nn.Linear(time_embed_dim, time_embed_dim)
+        elif act_fn == "mish":
+            self.act = nn.Mish()
+
+        if out_dim is not None:
+            time_embed_dim_out = out_dim
+        else:
+            time_embed_dim_out = time_embed_dim
+        self.linear_2 = nn.Linear(time_embed_dim, time_embed_dim_out)
 
     def forward(self, sample):
         sample = self.linear_1(sample)
