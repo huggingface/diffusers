@@ -11,16 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import importlib
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import jax.numpy as jnp
 
-from ..utils import BaseOutput
+from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput
 
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
+_FLAX_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS = ["Flax" + c for c in _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS]
 
 
 @dataclass
@@ -40,12 +42,25 @@ class FlaxSchedulerOutput(BaseOutput):
 class FlaxSchedulerMixin:
     """
     Mixin containing common functions for the schedulers.
+
+    Class attributes:
+        - **_compatibles** (`List[str]`) -- A list of classes that are compatible with the parent class, so that
+          `from_config` can be used from a class different than the one used to save the config (should be overridden
+          by parent class).
     """
 
     config_name = SCHEDULER_CONFIG_NAME
+    _compatibles = []
+    has_compatibles = True
 
     @classmethod
-    def from_pretrained(cls, config: Dict[str, Any] = None, return_unused_kwargs=False, **kwargs):
+    def from_pretrained(
+        cls,
+        pretrained_model_name_or_path: Dict[str, Any] = None,
+        subfolder: Optional[str] = None,
+        return_unused_kwargs=False,
+        **kwargs,
+    ):
         r"""
         Instantiate a Scheduler class from a pre-defined JSON-file.
 
@@ -55,8 +70,13 @@ class FlaxSchedulerMixin:
 
                     - A string, the *model id* of a model repo on huggingface.co. Valid model ids should have an
                       organization name, like `google/ddpm-celebahq-256`.
-                    - A path to a *directory* containing model weights saved using [`~ConfigMixin.save_config`], e.g.,
-                      `./my_model_directory/`.
+                    - A path to a *directory* containing model weights saved using [`~SchedulerMixin.save_pretrained`],
+                      e.g., `./my_model_directory/`.
+            subfolder (`str`, *optional*):
+                In case the relevant files are located inside a subfolder of the model repo (either remote in
+                huggingface.co or downloaded locally), you can specify the folder name here.
+            return_unused_kwargs (`bool`, *optional*, defaults to `False`):
+                Whether kwargs that are not consumed by the Python class should be returned or not.
 
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory in which a downloaded pretrained model configuration should be cached if the
@@ -81,9 +101,6 @@ class FlaxSchedulerMixin:
                 The specific model version to use. It can be a branch name, a tag name, or a commit id, since we use a
                 git-based system for storing models and other artifacts on huggingface.co, so `revision` can be any
                 identifier allowed by git.
-            subfolder (`str`, *optional*, defaults to `""`):
-                In case the relevant files are located inside a subfolder of the model repo (either remote in
-                huggingface.co or downloaded locally), you can specify the folder name here.
 
         <Tip>
 
@@ -100,7 +117,9 @@ class FlaxSchedulerMixin:
         </Tip>
 
         """
-        config, kwargs = cls.load_config(pretrained_model_name_or_path=config, return_unused_kwargs=True, **kwargs)
+        config, kwargs = cls.load_config(
+            pretrained_model_name_or_path=pretrained_model_name_or_path, return_unused_kwargs=True, **kwargs
+        )
         scheduler, unused_kwargs = cls.from_config(config, return_unused_kwargs=True, **kwargs)
 
         if hasattr(scheduler, "create_state") and getattr(scheduler, "has_state", False):
@@ -121,6 +140,25 @@ class FlaxSchedulerMixin:
                 Directory where the configuration JSON file will be saved (will be created if it does not exist).
         """
         self.save_config(save_directory=save_directory, push_to_hub=push_to_hub, **kwargs)
+
+    @property
+    def compatibles(self):
+        """
+        Returns all schedulers that are compatible with this scheduler
+
+        Returns:
+            `List[SchedulerMixin]`: List of compatible schedulers
+        """
+        return self._get_compatibles()
+
+    @classmethod
+    def _get_compatibles(cls):
+        compatible_classes_str = list(set([cls.__name__] + cls._compatibles))
+        diffusers_library = importlib.import_module(__name__.split(".")[0])
+        compatible_classes = [
+            getattr(diffusers_library, c) for c in compatible_classes_str if hasattr(diffusers_library, c)
+        ]
+        return compatible_classes
 
 
 def broadcast_to_shape_from_left(x: jnp.ndarray, shape: Tuple[int]) -> jnp.ndarray:

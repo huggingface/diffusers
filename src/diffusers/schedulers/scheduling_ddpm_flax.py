@@ -24,7 +24,12 @@ from jax import random
 
 from ..configuration_utils import ConfigMixin, FrozenDict, register_to_config
 from ..utils import deprecate
-from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput, broadcast_to_shape_from_left
+from .scheduling_utils_flax import (
+    _FLAX_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS,
+    FlaxSchedulerMixin,
+    FlaxSchedulerOutput,
+    broadcast_to_shape_from_left,
+)
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> jnp.ndarray:
@@ -102,6 +107,8 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
             optional flag to use when the model predicts the noise (epsilon), or the samples instead of the noise.
 
     """
+
+    _compatibles = _FLAX_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
 
     @property
     def has_state(self):

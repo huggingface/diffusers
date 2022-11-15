@@ -22,8 +22,8 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, FrozenDict, register_to_config
-from ..utils import BaseOutput, deprecate
-from .scheduling_utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, SchedulerMixin
+from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput, deprecate
+from .scheduling_utils import SchedulerMixin
 
 
 @dataclass
@@ -104,7 +104,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
     """
 
-    _compatible_classes = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
+    _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
 
     @register_to_config
     def __init__(

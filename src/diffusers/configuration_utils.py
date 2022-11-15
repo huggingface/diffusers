@@ -16,7 +16,6 @@
 """ ConfigMixin base class and utilities."""
 import dataclasses
 import functools
-import importlib
 import inspect
 import json
 import os
@@ -81,13 +80,12 @@ class ConfigMixin:
           [`~ConfigMixin.save_config`] (should be overridden by parent class).
         - **ignore_for_config** (`List[str]`) -- A list of attributes that should not be saved in the config (should be
           overridden by parent class).
-        - **_compatible_classes** (`List[str]`) -- A list of classes that are compatible with the parent class, so that
-          `from_config` can be used from a class different than the one used to save the config (should be overridden
-          by parent class).
+        - **has_compatibles** (`bool`) -- Whether the class has compatible classes (should be overridden by parent
+          class).
     """
     config_name = None
     ignore_for_config = []
-    _compatible_classes = []
+    has_compatibles = False
 
     def register_to_config(self, **kwargs):
         if self.config_name is None:
@@ -149,8 +147,8 @@ class ConfigMixin:
 
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to update the configuration object (after it being loaded) and initiate the Python class.
-                `**kwargs` will be directly passed to the underlying scheduler/model's `__init__` method and eventually overwrite
-                same named arguments of `config`.
+                `**kwargs` will be directly passed to the underlying scheduler/model's `__init__` method and eventually
+                overwrite same named arguments of `config`.
 
         Examples:
 
@@ -407,7 +405,11 @@ class ConfigMixin:
         # load diffusers library to import compatible and original scheduler
         diffusers_library = importlib.import_module(__name__.split(".")[0])
 
-        compatible_classes = [c for c in cls._get_compatibles() if not isinstance(c, DummyObject)]
+        if cls.has_compatibles:
+            compatible_classes = [c for c in cls._get_compatibles() if not isinstance(c, DummyObject)]
+        else:
+            compatible_classes = []
+
         expected_keys_comp_cls = set()
         for c in compatible_classes:
             expected_keys_c = cls._get_init_keys(c)
@@ -481,25 +483,6 @@ class ConfigMixin:
             `Dict[str, Any]`: Config of the class.
         """
         return self._internal_dict
-
-    @property
-    def compatibles(self):
-        """
-        Returns all classes that are compatible with this configuration
-
-        Returns:
-            `List[ConfigMixin]`: List of compatible classes
-        """
-        return self._get_compatibles()
-
-    @classmethod
-    def _get_compatibles(cls):
-        compatible_classes_str = list(set([cls.__name__] + cls._compatible_classes))
-        diffusers_library = importlib.import_module(__name__.split(".")[0])
-        compatible_classes = [
-            getattr(diffusers_library, c) for c in compatible_classes_str if hasattr(diffusers_library, c)
-        ]
-        return compatible_classes
 
     def to_json_string(self) -> str:
         """

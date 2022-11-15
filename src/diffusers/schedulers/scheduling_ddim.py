@@ -23,8 +23,8 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
-from .scheduling_utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, SchedulerMixin
+from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput
+from .scheduling_utils import SchedulerMixin
 
 
 @dataclass
@@ -109,7 +109,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
     """
 
-    _compatible_classes = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
+    _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
 
     @register_to_config
     def __init__(
