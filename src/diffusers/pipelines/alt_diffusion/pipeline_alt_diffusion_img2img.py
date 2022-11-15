@@ -269,7 +269,7 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
-        text_embeddings = self.text_encoder(**text_inputs.to(device))[0]
+        text_embeddings = self.text_encoder(text_input_ids.to(device))[0]
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = text_embeddings.shape
@@ -305,7 +305,7 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
                 truncation=True,
                 return_tensors="pt",
             )
-            uncond_embeddings = self.text_encoder(**uncond_input.to(device))[0]
+            uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(device))[0]
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = uncond_embeddings.shape[1]

@@ -46,12 +46,14 @@ class RobertaSeriesConfig(XLMRobertaConfig):
         project_dim=512,
         pooler_fn="cls",
         learn_encoder=False,
+        use_attention_mask=True,
         **kwargs,
     ):
         super().__init__(pad_token_id=pad_token_id, bos_token_id=bos_token_id, eos_token_id=eos_token_id, **kwargs)
         self.project_dim = project_dim
         self.pooler_fn = pooler_fn
         self.learn_encoder = learn_encoder
+        self.use_attention_mask = use_attention_mask
 
 
 class RobertaSeriesModelWithTransformation(RobertaPreTrainedModel):
