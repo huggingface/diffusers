@@ -29,4 +29,5 @@ class AltDiffusionPipelineOutput(BaseOutput):
 
 
 if is_transformers_available() and is_torch_available():
-    from .pipeline_alt_diffusion import AltDiffusionPipeline, RobertaSeriesConfig, RobertaSeriesModelWithTransformation
+    from .modeling_roberta_series import RobertaSeriesModelWithTransformation
+    from .pipeline_alt_diffusion import AltDiffusionPipeline
