@@ -12,10 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
+from typing import Optional
 
 import numpy as np
 import torch
 from torch import nn
+
+from diffusers.configuration_utils import ConfigMixin, register_to_config
+from diffusers.modeling_utils import ModelMixin
 
 
 def get_timestep_embedding(
@@ -198,3 +202,25 @@ class ImagePositionalEmbeddings(nn.Module):
         emb = emb + pos_emb[:, : emb.shape[1], :]
 
         return emb
+
+
+class LearnedClassifierFreeSamplingEmbeddings(ModelMixin, ConfigMixin):
+    """
+    Utility class for storing learned text embeddings for classifier free sampling
+    """
+
+    @register_to_config
+    def __init__(self, learnable: bool, hidden_size: Optional[int] = None, length: Optional[int] = None):
+        super().__init__()
+
+        self.learnable = learnable
+
+        if self.learnable:
+            assert hidden_size is not None, "learnable=True requires `hidden_size` to be set"
+            assert length is not None, "learnable=True requires `length` to be set"
+
+            embeddings = torch.zeros(length, hidden_size)
+        else:
+            embeddings = None
+
+        self.embeddings = nn.Parameter(embeddings)
