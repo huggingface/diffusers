@@ -23,6 +23,7 @@ if is_torch_available() and is_transformers_available():
         StableDiffusionInpaintPipelineLegacy,
         StableDiffusionPipeline,
     )
+    from .versatile_diffusion import VersatileDiffusionPipeline
     from .vq_diffusion import VQDiffusionPipeline
 
 if is_transformers_available() and is_onnx_available():

@@ -1,0 +1,1 @@
+from .pipeline_versatile_diffusion import VersatileDiffusionPipeline
