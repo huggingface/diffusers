@@ -16,16 +16,9 @@
 
 import argparse
 import os
+from argparse import Namespace
 
 import torch
-
-
-try:
-    from omegaconf import OmegaConf
-except ImportError:
-    raise ImportError(
-        "OmegaConf is required to convert the LDM checkpoints. Please install it with `pip install OmegaConf`."
-    )
 
 from diffusers import (
     AutoencoderKL,
@@ -33,15 +26,67 @@ from diffusers import (
     DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
-    LDMTextToImagePipeline,
     LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
 from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
-from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from transformers import AutoFeatureExtractor, BertTokenizerFast, CLIPTextModel, CLIPTokenizer
+
+
+SCHEDULER_CONFIG = Namespace(
+    **{
+        "beta_linear_start": 0.00085,
+        "beta_linear_end": 0.012,
+        "timesteps": 1000,
+        "scale_factor": 0.18215,
+    }
+)
+
+UNET_IMAGE_CONFIG = Namespace(
+    **{
+        "input_channels": 4,
+        "model_channels": 320,
+        "output_channels": 4,
+        "num_noattn_blocks": [2, 2, 2, 2],
+        "channel_mult": [1, 2, 4, 4],
+        "with_attn": [True, True, True, False],
+        "num_heads": 8,
+        "context_dim": 768,
+        "use_checkpoint": True,
+    }
+)
+
+UNET_TEXT_CONFIG = Namespace(
+    **{
+        "input_channels": 768,
+        "model_channels": 320,
+        "output_channels": 768,
+        "num_noattn_blocks": [2, 2, 2, 2],
+        "channel_mult": [1, 2, 4, 4],
+        "second_dim": [4, 4, 4, 4],
+        "with_attn": [True, True, True, False],
+        "num_heads": 8,
+        "context_dim": 768,
+        "use_checkpoint": True,
+    }
+)
+
+AUTOENCODER_CONFIG = Namespace(
+    **{
+        "double_z": True,
+        "z_channels": 4,
+        "resolution": 256,
+        "in_channels": 3,
+        "out_ch": 3,
+        "ch": 128,
+        "ch_mult": [1, 2, 4, 4],
+        "num_res_blocks": 2,
+        "attn_resolutions": [],
+        "dropout": 0.0,
+    }
+)
 
 
 def shave_segments(path, n_shave_prefix_segments=1):
@@ -217,28 +262,28 @@ def create_unet_diffusers_config(unet_params):
     down_block_types = []
     resolution = 1
     for i in range(len(block_out_channels)):
-        block_type = "DualCrossAttnDownBlock2D" if resolution in unet_params.attention_resolutions else "DownBlock2D"
+        block_type = "CrossAttnDownBlock2D" if unet_params.with_attn[i] else "DownBlock2D"
         down_block_types.append(block_type)
         if i != len(block_out_channels) - 1:
             resolution *= 2
 
     up_block_types = []
     for i in range(len(block_out_channels)):
-        block_type = "DualCrossAttnUpBlock2D" if resolution in unet_params.attention_resolutions else "UpBlock2D"
+        block_type = "CrossAttnUpBlock2D" if unet_params.with_attn[-i - 1] else "UpBlock2D"
         up_block_types.append(block_type)
         resolution //= 2
 
-    if not all(n == unet_params.num_res_blocks[0] for n in unet_params.num_res_blocks):
+    if not all(n == unet_params.num_noattn_blocks[0] for n in unet_params.num_noattn_blocks):
         raise ValueError("Not all num_res_blocks are equal, which is not supported in this script.")
 
     config = dict(
-        sample_size=unet_params.image_size,
-        in_channels=unet_params.in_channels,
-        out_channels=unet_params.out_channels,
+        sample_size=None,
+        in_channels=unet_params.input_channels,
+        out_channels=unet_params.output_channels,
         down_block_types=tuple(down_block_types),
         up_block_types=tuple(up_block_types),
         block_out_channels=tuple(block_out_channels),
-        layers_per_block=unet_params.num_res_blocks[0],
+        layers_per_block=unet_params.num_noattn_blocks[0],
         cross_attention_dim=unet_params.context_dim,
         attention_head_dim=unet_params.num_heads,
     )
@@ -246,12 +291,10 @@ def create_unet_diffusers_config(unet_params):
     return config
 
 
-def create_vae_diffusers_config(original_config):
+def create_vae_diffusers_config(vae_params):
     """
-    Creates a config for the diffusers based on the config of the LDM model.
+    Creates a config for the diffusers based on the config of the VD model.
     """
-    vae_params = original_config.model.params.first_stage_config.params.ddconfig
-    _ = original_config.model.params.first_stage_config.params.embed_dim
 
     block_out_channels = [vae_params.ch * mult for mult in vae_params.ch_mult]
     down_block_types = ["DownEncoderBlock2D"] * len(block_out_channels)
@@ -290,7 +333,7 @@ def create_ldm_bert_config(original_config):
     return config
 
 
-def convert_vd_unet_checkpoint(checkpoint, config, path=None, extract_ema=False):
+def convert_vd_unet_checkpoint(checkpoint, config, unet_key, extract_ema=False):
     """
     Takes a state dict and a config, and returns a converted checkpoint.
     """
@@ -299,10 +342,9 @@ def convert_vd_unet_checkpoint(checkpoint, config, path=None, extract_ema=False)
     unet_state_dict = {}
     keys = list(checkpoint.keys())
 
-    unet_key = "model.diffusion_model."
     # at least a 100 parameters have to start with `model_ema` in order for the checkpoint to be EMA
     if sum(k.startswith("model_ema") for k in keys) > 100:
-        print(f"Checkpoint {path} has both EMA and non-EMA weights.")
+        print(f"Checkpoint has both EMA and non-EMA weights.")
         if extract_ema:
             print(
                 "In this conversion only the EMA weights are extracted. If you want to instead extract the non-EMA"
@@ -324,10 +366,10 @@ def convert_vd_unet_checkpoint(checkpoint, config, path=None, extract_ema=False)
 
     new_checkpoint = {}
 
-    new_checkpoint["time_embedding.linear_1.weight"] = unet_state_dict["time_embed.0.weight"]
-    new_checkpoint["time_embedding.linear_1.bias"] = unet_state_dict["time_embed.0.bias"]
-    new_checkpoint["time_embedding.linear_2.weight"] = unet_state_dict["time_embed.2.weight"]
-    new_checkpoint["time_embedding.linear_2.bias"] = unet_state_dict["time_embed.2.bias"]
+    new_checkpoint["time_embedding.linear_1.weight"] = checkpoint["model.diffusion_model.time_embed.0.weight"]
+    new_checkpoint["time_embedding.linear_1.bias"] = checkpoint["model.diffusion_model.time_embed.0.bias"]
+    new_checkpoint["time_embedding.linear_2.weight"] = checkpoint["model.diffusion_model.time_embed.2.weight"]
+    new_checkpoint["time_embedding.linear_2.bias"] = checkpoint["model.diffusion_model.time_embed.2.bias"]
 
     new_checkpoint["conv_in.weight"] = unet_state_dict["input_blocks.0.0.weight"]
     new_checkpoint["conv_in.bias"] = unet_state_dict["input_blocks.0.0.bias"]
@@ -458,7 +500,7 @@ def convert_vd_unet_checkpoint(checkpoint, config, path=None, extract_ema=False)
 
                 new_checkpoint[new_path] = unet_state_dict[old_path]
 
-     return new_checkpoint
+    return new_checkpoint
 
 
 def convert_ldm_vae_checkpoint(checkpoint, config):
@@ -670,18 +712,11 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if args.original_config_file is None:
-        os.system(
-            "wget https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
-        )
-        args.original_config_file = "./v1-inference.yaml"
+    scheduler_config = SCHEDULER_CONFIG
 
-    original_config = OmegaConf.load(args.original_config_file)
-
-
-    num_train_timesteps = original_config.model.params.timesteps
-    beta_start = original_config.model.params.linear_start
-    beta_end = original_config.model.params.linear_end
+    num_train_timesteps = scheduler_config.timesteps
+    beta_start = scheduler_config.beta_linear_start
+    beta_end = scheduler_config.beta_linear_end
     if args.scheduler_type == "pndm":
         scheduler = PNDMScheduler(
             beta_end=beta_end,
@@ -714,23 +749,26 @@ if __name__ == "__main__":
         raise ValueError(f"Scheduler of type {args.scheduler_type} doesn't exist!")
 
     # Convert the UNet2DConditionModel model.
-    checkpoint = torch.load(args.unet_checkpoint_path)
-    # FIXME: temporary, extracted from a resolved cfg.model.unet_config object
-    # fmt: off
-    unet_config = {'image_size': None, 'in_channels': 4, 'out_channels': 4, 'model_channels': 320, 'attention_resolutions': [4, 2, 1], 'num_res_blocks': [2, 2, 2, 2], 'channel_mult': [1, 2, 4, 4], 'num_heads': 8, 'use_spatial_transformer': True, 'transformer_depth': 1, 'context_dim': 768, 'use_checkpoint': True, 'legacy': False}
-    unet_config = argparse.Namespace(**unet_config)
-    # fmt: on
-    unet_config = create_unet_diffusers_config(unet_config)
-    converted_unet_checkpoint = convert_vd_unet_checkpoint(
-        checkpoint, unet_config, path=args.unet_checkpoint_path, extract_ema=args.extract_ema
-    )
+    if args.unet_checkpoint_path is not None:
+        unet_image_config = create_unet_diffusers_config(UNET_IMAGE_CONFIG)
+        checkpoint = torch.load(args.unet_checkpoint_path)
+        converted_unet_image_checkpoint = convert_vd_unet_checkpoint(
+            checkpoint, unet_image_config, unet_key="model.diffusion_model.unet_image.", extract_ema=args.extract_ema
+        )
+        unet_image = UNet2DConditionModel(**unet_image_config)
+        unet_image.load_state_dict(converted_unet_image_checkpoint)
+        unet_image.save_pretrained(os.path.join(args.dump_path, "unet_image"))
 
-    unet = UNet2DConditionModel(**unet_config)
-    unet.load_state_dict(converted_unet_checkpoint)
+        # unet_text_config = create_unet_diffusers_config(UNET_TEXT_CONFIG)
+        # converted_unet_text_checkpoint = convert_vd_unet_checkpoint(
+        #    checkpoint, unet_text_config, unet_key="model.diffusion_model.unet_text.", extract_ema=args.extract_ema
+        # )
+        # unet_text = UNet2DConditionModel(**unet_text_config)
+        # unet_text.load_state_dict(converted_unet_text_checkpoint)
 
     # Convert the VAE model.
     if args.vae_checkpoint_path is not None:
-        vae_config = create_vae_diffusers_config(original_config)
+        vae_config = create_vae_diffusers_config(AUTOENCODER_CONFIG)
         checkpoint = torch.load(args.vae_checkpoint_path)
         converted_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
 
