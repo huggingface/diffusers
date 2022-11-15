@@ -33,7 +33,7 @@ from ...schedulers import (
 )
 from ...utils import deprecate, logging
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-from . import AltDiffusionPipelineOutput
+from . import AltDiffusionPipelineOutput, RobertaSeriesModelWithTransformation
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
