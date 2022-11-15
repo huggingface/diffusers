@@ -400,7 +400,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         )
 
         model_id = "runwayml/stable-diffusion-inpainting"
-        pndm = PNDMScheduler.from_config(model_id, subfolder="scheduler")
+        pndm = PNDMScheduler.from_pretrained(model_id, subfolder="scheduler")
         pipe = StableDiffusionInpaintPipeline.from_pretrained(model_id, safety_checker=None, scheduler=pndm)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -437,7 +437,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         )
 
         model_id = "runwayml/stable-diffusion-inpainting"
-        pndm = PNDMScheduler.from_config(model_id, subfolder="scheduler")
+        pndm = PNDMScheduler.from_pretrained(model_id, subfolder="scheduler")
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             model_id,
             safety_checker=None,

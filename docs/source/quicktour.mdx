@@ -41,7 +41,7 @@ In this guide though, you'll use [`DiffusionPipeline`] for text-to-image generat
 ```python
 >>> from diffusers import DiffusionPipeline
 
->>> generator = DiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large-256")
+>>> pipeline = DiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large-256")
 ```
 
 The [`DiffusionPipeline`] downloads and caches all modeling, tokenization, and scheduling components. 
@@ -49,13 +49,13 @@ Because the model consists of roughly 1.4 billion parameters, we strongly recomm
 You can move the generator object to GPU, just like you would in PyTorch.
 
 ```python
->>> generator.to("cuda")
+>>> pipeline.to("cuda")
 ```
 
-Now you can use the `generator` on your text prompt:
+Now you can use the `pipeline` on your text prompt:
 
 ```python
->>> image = generator("An image of a squirrel in Picasso style").images[0]
+>>> image = pipeline("An image of a squirrel in Picasso style").images[0]
 ```
 
 The output is by default wrapped into a [PIL Image object](https://pillow.readthedocs.io/en/stable/reference/Image.html?highlight=image#the-image-class).
@@ -82,7 +82,7 @@ just like we did before only that now you need to pass your `AUTH_TOKEN`:
 ```python
 >>> from diffusers import DiffusionPipeline
 
->>> generator = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", use_auth_token=AUTH_TOKEN)
+>>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", use_auth_token=AUTH_TOKEN)
 ```
 
 If you do not pass your authentication token you will see that the diffusion system will not be correctly 
@@ -102,7 +102,7 @@ token. Assuming that `"./stable-diffusion-v1-5"` is the local path to the cloned
 you can also load the pipeline as follows:
 
 ```python
->>> generator = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5")
+>>> pipeline = DiffusionPipeline.from_pretrained("./stable-diffusion-v1-5")
 ```
 
 Running the pipeline is then identical to the code above as it's the same model architecture.
@@ -115,18 +115,19 @@ Running the pipeline is then identical to the code above as it's the same model 
 
 Diffusion systems can be used with multiple different [schedulers](./api/schedulers) each with their
 pros and cons. By default, Stable Diffusion runs with [`PNDMScheduler`], but it's very simple to 
-use a different scheduler. *E.g.* if you would instead like to use the [`LMSDiscreteScheduler`] scheduler,
+use a different scheduler. *E.g.* if you would instead like to use the [`EulerDiscreteScheduler`] scheduler,
 you could use it as follows:
 
 ```python
->>> from diffusers import LMSDiscreteScheduler
+>>> from diffusers import EulerDiscreteScheduler
 
->>> scheduler = LMSDiscreteScheduler.from_config("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
+>>> pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", use_auth_token=AUTH_TOKEN)
 
->>> generator = StableDiffusionPipeline.from_pretrained(
-...     "runwayml/stable-diffusion-v1-5", scheduler=scheduler, use_auth_token=AUTH_TOKEN
-... )
+>>> # change scheduler to Euler
+>>> pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
 ```
+
+For more in-detail information on how to change between schedulers, please refer to the [Using Schedulers](./using-diffusers/schedulers) guide.
 
 [Stability AI's](https://stability.ai/) Stable Diffusion model is an impressive image generation model
 and can do much more than just generating images from text. We have dedicated a whole documentation page,
