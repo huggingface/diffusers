@@ -22,6 +22,16 @@ from ..utils import BaseOutput
 
 SCHEDULER_CONFIG_NAME = "scheduler_config.json"
 
+_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS = [
+    "DDIMScheduler",
+    "DDPMScheduler",
+    "PNDMScheduler",
+    "LMSDiscreteScheduler",
+    "EulerDiscreteScheduler",
+    "EulerAncestralDiscreteScheduler",
+    "DPMSolverMultistepScheduler",
+]
+
 
 @dataclass
 class SchedulerOutput(BaseOutput):

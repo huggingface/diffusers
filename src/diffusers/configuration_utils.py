@@ -29,12 +29,44 @@ from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, R
 from requests import HTTPError
 
 from . import __version__
-from .utils import DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT, deprecate, logging
+from .utils import DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT, DummyObject, deprecate, logging
 
 
 logger = logging.get_logger(__name__)
 
 _re_configuration_file = re.compile(r"config\.(.*)\.json")
+
+
+class FrozenDict(OrderedDict):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        for key, value in self.items():
+            setattr(self, key, value)
+
+        self.__frozen = True
+
+    def __delitem__(self, *args, **kwargs):
+        raise Exception(f"You cannot use ``__delitem__`` on a {self.__class__.__name__} instance.")
+
+    def setdefault(self, *args, **kwargs):
+        raise Exception(f"You cannot use ``setdefault`` on a {self.__class__.__name__} instance.")
+
+    def pop(self, *args, **kwargs):
+        raise Exception(f"You cannot use ``pop`` on a {self.__class__.__name__} instance.")
+
+    def update(self, *args, **kwargs):
+        raise Exception(f"You cannot use ``update`` on a {self.__class__.__name__} instance.")
+
+    def __setattr__(self, name, value):
+        if hasattr(self, "__frozen") and self.__frozen:
+            raise Exception(f"You cannot use ``__setattr__`` on a {self.__class__.__name__} instance.")
+        super().__setattr__(name, value)
+
+    def __setitem__(self, name, value):
+        if hasattr(self, "__frozen") and self.__frozen:
+            raise Exception(f"You cannot use ``__setattr__`` on a {self.__class__.__name__} instance.")
+        super().__setitem__(name, value)
 
 
 class ConfigMixin:
@@ -104,9 +136,98 @@ class ConfigMixin:
         logger.info(f"Configuration saved in {output_config_file}")
 
     @classmethod
-    def from_config(cls, config: Dict[str, Any] = None, return_unused_kwargs=False, **kwargs):
+    def from_config(cls, config: Union[FrozenDict, Dict[str, Any]] = None, return_unused_kwargs=False, **kwargs):
         r"""
-        Instantiate a Python class from a pre-defined JSON-file.
+        Instantiate a Python class from a config dictionary
+
+        Parameters:
+            config (`Dict[str, Any]`):
+                A config dictionary from which the Python class will be instantiated. Make sure to only load
+                configuration files of compatible classes.
+            return_unused_kwargs (`bool`, *optional*, defaults to `False`):
+                Whether kwargs that are not consumed by the Python class should be returned or not.
+
+            kwargs (remaining dictionary of keyword arguments, *optional*):
+                Can be used to update the configuration object (after it being loaded) and initiate the Python class.
+                `**kwargs` will be directly passed to the underlying model's `__init__` method and eventually overwrite
+                same named arguments of `config`.
+
+        Examples:
+
+        ```python
+        >>> from diffusers import DDPMScheduler, DDIMScheduler, PNDMScheduler
+
+        >>> # Download scheduler from huggingface.co and cache.
+        >>> scheduler = DDPMScheduler.from_pretrained("google/ddpm-cifar10-32")
+
+        >>> # Instantiate DDIM scheduler class with same config as DDPM
+        >>> scheduler = DDIMScheduler.from_config(scheduler.config)
+
+        >>> # Instantiate PNDM scheduler class with same config as DDPM
+        >>> scheduler = PNDMScheduler.from_config(scheduler.config)
+        ```
+        """
+        # <===== TO BE REMOVED WITH DEPRECATION
+        # TODO(Patrick) - make sure to remove the following lines when config=="model_path" is deprecated
+        if "pretrained_model_name_or_path" in kwargs:
+            config = kwargs.pop("pretrained_model_name_or_path")
+
+        if config is None:
+            raise ValueError("Please make sure to provide a config as the first positional argument.")
+        # ======>
+
+        if not isinstance(config, dict):
+            deprecation_message = "It is deprecated to pass a pretrained model name or path to `from_config`."
+            if "Scheduler" in cls.__name__:
+                deprecation_message += (
+                    f"If you were trying to load a scheduler, please use {cls}.from_pretrained(...) instead."
+                    " Otherwise, please make sure to pass a configuration dictionary instead. This functionality will"
+                    " be removed in v1.0.0."
+                )
+            elif "Model" in cls.__name__:
+                deprecation_message += (
+                    f"If you were trying to load a model, please use {cls}.load_config(...) followed by"
+                    f" {cls}.from_config(...) instead. Otherwise, please make sure to pass a configuration dictionary"
+                    " instead. This functionality will be removed in v1.0.0."
+                )
+            deprecate("config-passed-as-path", "1.0.0", deprecation_message, standard_warn=False)
+            config, kwargs = cls.load_config(pretrained_model_name_or_path=config, return_unused_kwargs=True, **kwargs)
+
+        init_dict, unused_kwargs, hidden_dict = cls.extract_init_dict(config, **kwargs)
+
+        # Allow dtype to be specified on initialization
+        if "dtype" in unused_kwargs:
+            init_dict["dtype"] = unused_kwargs.pop("dtype")
+
+        # Return model and optionally state and/or unused_kwargs
+        model = cls(**init_dict)
+
+        # make sure to also save config parameters that might be used for compatible classes
+        model.register_to_config(**hidden_dict)
+
+        # add hidden kwargs of compatible classes to unused_kwargs
+        unused_kwargs = {**unused_kwargs, **hidden_dict}
+
+        if return_unused_kwargs:
+            return (model, unused_kwargs)
+        else:
+            return model
+
+    @classmethod
+    def get_config_dict(cls, *args, **kwargs):
+        deprecation_message = (
+            f" The function get_config_dict is deprecated. Please use {cls}.load_config instead. This function will be"
+            " removed in version v1.0.0"
+        )
+        deprecate("get_config_dict", "1.0.0", deprecation_message, standard_warn=False)
+        return cls.load_config(*args, **kwargs)
+
+    @classmethod
+    def load_config(
+        cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        r"""
+        Instantiate a Python class from a config dictionary
 
         Parameters:
             pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
@@ -120,10 +241,6 @@ class ConfigMixin:
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory in which a downloaded pretrained model configuration should be cached if the
                 standard cache should not be used.
-            ignore_mismatched_sizes (`bool`, *optional*, defaults to `False`):
-                Whether or not to raise an error if some of the weights from the checkpoint do not have the same size
-                as the weights of the model (if for instance, you are instantiating a model with 10 labels from a
-                checkpoint with 3 labels).
             force_download (`bool`, *optional*, defaults to `False`):
                 Whether or not to force the (re-)download of the model weights and configuration files, overriding the
                 cached versions if they exist.
@@ -161,59 +278,7 @@ class ConfigMixin:
         use this method in a firewalled environment.
 
         </Tip>
-
         """
-        # TODO(Patrick) - make sure to remove the following two lines when config=="model_path" is deprecated
-        if "pretrained_model_name_or_path" in kwargs:
-            config = kwargs.pop("pretrained_model_name_or_path")
-
-        if not isinstance(config, dict):
-            deprecation_message = "It is deprecated to pass a pretrained model name or path to `from_config`."
-            if "Scheduler" in cls.__name__:
-                deprecation_message += (
-                    f"If you were trying to load a scheduler, please use {cls}.from_pretrained(...) instead."
-                    " Otherwise, please make sure to pass a configuration dictionary instead. This functionality will"
-                    " be removed in v1.0.0."
-                )
-            elif "Model" in cls.__name__:
-                deprecation_message += (
-                    f"If you were trying to load a model, please use {cls}.load_config(...) followed by"
-                    f" {cls}.from_config(...) instead. Otherwise, please make sure to pass a configuration dictionary"
-                    " instead. This functionality will be removed in v1.0.0."
-                )
-            deprecate("config-passed-as-path", "1.0.0", deprecation_message, standard_warn=False)
-            config, kwargs = cls.load_config(pretrained_model_name_or_path=config, return_unused_kwargs=True, **kwargs)
-
-        init_dict, unused_kwargs, hidden_dict = cls.extract_init_dict(config, **kwargs)
-
-        # Allow dtype to be specified on initialization
-        if "dtype" in unused_kwargs:
-            init_dict["dtype"] = unused_kwargs.pop("dtype")
-
-        # Return model and optionally state and/or unused_kwargs
-        model = cls(**init_dict)
-
-        # make sure to also save config parameters that might be used for compatible classes
-        model.register_to_config(**hidden_dict)
-
-        if return_unused_kwargs:
-            return (model, unused_kwargs)
-        else:
-            return model
-
-    @classmethod
-    def get_config_dict(cls, *args, **kwargs):
-        deprecation_message = (
-            f" The function get_config_dict is deprecated. Please use {cls}.load_config instead. This function will be"
-            " removed in version v1.0.0"
-        )
-        deprecate("get_config_dict", "1.0.0", deprecation_message, standard_warn=False)
-        return cls.load_config(*args, **kwargs)
-
-    @classmethod
-    def load_config(
-        cls, pretrained_model_name_or_path: Union[str, os.PathLike], return_unused_kwargs=False, **kwargs
-    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", False)
@@ -342,10 +407,7 @@ class ConfigMixin:
         # load diffusers library to import compatible and original scheduler
         diffusers_library = importlib.import_module(__name__.split(".")[0])
 
-        # remove attributes from compatible classes that orig cannot expect
-        compatible_classes = [getattr(diffusers_library, c, None) for c in cls._compatible_classes]
-        # filter out None potentially undefined dummy classes
-        compatible_classes = [c for c in compatible_classes if c is not None]
+        compatible_classes = [c for c in cls._get_compatibles() if not isinstance(c, DummyObject)]
         expected_keys_comp_cls = set()
         for c in compatible_classes:
             expected_keys_c = cls._get_init_keys(c)
@@ -412,7 +474,29 @@ class ConfigMixin:
 
     @property
     def config(self) -> Dict[str, Any]:
+        """
+        Returns the config of the class as a frozen dictionary
+
+        Returns:
+            `Dict[str, Any]`: Config of the class.
+        """
         return self._internal_dict
+
+    @property
+    def compatibles(self):
+        """
+        Returns all classes that are compatible with this configuration
+
+        Returns:
+            `List[ConfigMixin]`: List of compatible classes
+        """
+        return self._get_compatibles()
+
+    @classmethod
+    def _get_compatibles(cls):
+        compatible_classes_str = list(set([cls.__name__] + cls._compatible_classes))
+        diffusers_library = importlib.import_module(__name__.split(".")[0])
+        return [getattr(diffusers_library, c) for c in compatible_classes_str]
 
     def to_json_string(self) -> str:
         """
@@ -434,38 +518,6 @@ class ConfigMixin:
         """
         with open(json_file_path, "w", encoding="utf-8") as writer:
             writer.write(self.to_json_string())
-
-
-class FrozenDict(OrderedDict):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        for key, value in self.items():
-            setattr(self, key, value)
-
-        self.__frozen = True
-
-    def __delitem__(self, *args, **kwargs):
-        raise Exception(f"You cannot use ``__delitem__`` on a {self.__class__.__name__} instance.")
-
-    def setdefault(self, *args, **kwargs):
-        raise Exception(f"You cannot use ``setdefault`` on a {self.__class__.__name__} instance.")
-
-    def pop(self, *args, **kwargs):
-        raise Exception(f"You cannot use ``pop`` on a {self.__class__.__name__} instance.")
-
-    def update(self, *args, **kwargs):
-        raise Exception(f"You cannot use ``update`` on a {self.__class__.__name__} instance.")
-
-    def __setattr__(self, name, value):
-        if hasattr(self, "__frozen") and self.__frozen:
-            raise Exception(f"You cannot use ``__setattr__`` on a {self.__class__.__name__} instance.")
-        super().__setattr__(name, value)
-
-    def __setitem__(self, name, value):
-        if hasattr(self, "__frozen") and self.__frozen:
-            raise Exception(f"You cannot use ``__setattr__`` on a {self.__class__.__name__} instance.")
-        super().__setitem__(name, value)
 
 
 def register_to_config(init):

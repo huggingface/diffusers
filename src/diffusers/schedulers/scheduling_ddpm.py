@@ -23,7 +23,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, FrozenDict, register_to_config
 from ..utils import BaseOutput, deprecate
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, SchedulerMixin
 
 
 @dataclass
@@ -104,14 +104,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
     """
 
-    _compatible_classes = [
-        "DDIMScheduler",
-        "PNDMScheduler",
-        "LMSDiscreteScheduler",
-        "EulerDiscreteScheduler",
-        "EulerAncestralDiscreteScheduler",
-        "DPMSolverMultistepScheduler",
-    ]
+    _compatible_classes = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
 
     @register_to_config
     def __init__(

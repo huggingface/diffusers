@@ -205,6 +205,42 @@ class SchedulerCommonTest(unittest.TestCase):
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
+    def test_compatible_classes(self):
+        for scheduler_class in self.scheduler_classes:
+            scheduler_config = self.get_scheduler_config()
+
+            scheduler = scheduler_class(**scheduler_config)
+
+            assert all(c is not None for c in scheduler.compatibles)
+
+            for comp_scheduler_cls in scheduler.compatibles:
+                comp_scheduler = comp_scheduler_cls.from_config(scheduler.config)
+                assert comp_scheduler is not None
+
+            new_scheduler = scheduler_class.from_config(comp_scheduler.config)
+
+            new_scheduler_config = {k: v for k, v in new_scheduler.config.items() if k in scheduler.config}
+            scheduler_diff = {k: v for k, v in new_scheduler.config.items() if k not in scheduler.config}
+
+            # make sure that configs are essentially identical
+            assert new_scheduler_config == dict(scheduler.config)
+
+            # make sure that only differences are for configs that are not in init
+            init_keys = inspect.signature(scheduler_class.__init__).parameters.keys()
+            assert set(scheduler_diff.keys()).intersection(set(init_keys)) == set()
+
+    def test_from_pretrained(self):
+        for scheduler_class in self.scheduler_classes:
+            scheduler_config = self.get_scheduler_config()
+
+            scheduler = scheduler_class(**scheduler_config)
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                scheduler.save_pretrained(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
+
+            assert scheduler.config == new_scheduler.config
+
     def test_step_shape(self):
         kwargs = dict(self.forward_default_kwargs)
 
