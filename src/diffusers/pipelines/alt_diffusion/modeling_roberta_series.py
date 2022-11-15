@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 import torch
 from torch import nn
 
-from transformers import XLMRobertaConfig, XLMRobertaModel, XLMRobertaPreTrainedModel
+from transformers import XLMRobertaConfig, XLMRobertaModel, RobertaPreTrainedModel
 from transformers.utils import ModelOutput
 
 
@@ -54,7 +54,7 @@ class RobertaSeriesConfig(XLMRobertaConfig):
         self.learn_encoder = learn_encoder
 
 
-class RobertaSeriesModelWithTransformation(XLMRobertaPreTrainedModel):
+class RobertaSeriesModelWithTransformation(RobertaPreTrainedModel):
     _keys_to_ignore_on_load_unexpected = [r"pooler"]
     _keys_to_ignore_on_load_missing = [r"position_ids", r"predictions.decoder.bias"]
     base_model_prefix = "roberta"

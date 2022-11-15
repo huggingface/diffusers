@@ -39,7 +39,9 @@ from . import AltDiffusionPipelineOutput, RobertaSeriesModelWithTransformation
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline with Stable->Alt, CLIPTextModel->RobertaSeriesModelWithTransformation, CLIPTokenizer->XLMRobertaTokenizer, AltDiffusionSafetyChecker->StableDiffusionSafetyChecker
+#### Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline with Stable->Alt, CLIPTextModel->RobertaSeriesModelWithTransformation, CLIPTokenizer->XLMRobertaTokenizer, AltDiffusionSafetyChecker->StableDiffusionSafetyChecker
+
+
 class AltDiffusionPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using Alt Diffusion.
