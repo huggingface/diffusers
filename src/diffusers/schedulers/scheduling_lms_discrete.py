@@ -21,7 +21,7 @@ import torch
 from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput, deprecate
+from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput
 from .scheduling_utils import SchedulerMixin
 
 
@@ -52,8 +52,8 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
-    [`~ConfigMixin.from_config`] functions.
+    [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
+    [`~SchedulerMixin.from_pretrained`] functions.
 
     Args:
         num_train_timesteps (`int`): number of diffusion steps used to train the model.
@@ -67,13 +67,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     """
 
-    _compatible_classes = [
-        "DDIMScheduler",
-        "DDPMScheduler",
-        "PNDMScheduler",
-        "EulerDiscreteScheduler",
-        "EulerAncestralDiscreteScheduler",
-    ]
+    _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
 
     @register_to_config
     def __init__(
@@ -172,8 +166,13 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
+
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
-        self.timesteps = torch.from_numpy(timesteps).to(device=device)
+        if str(device).startswith("mps"):
+            # mps does not support float64
+            self.timesteps = torch.from_numpy(timesteps).to(device, dtype=torch.float32)
+        else:
+            self.timesteps = torch.from_numpy(timesteps).to(device=device)
 
         self.derivatives = []
 
@@ -211,22 +210,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
-        if (
-            isinstance(timestep, int)
-            or isinstance(timestep, torch.IntTensor)
-            or isinstance(timestep, torch.LongTensor)
-        ):
-            deprecate(
-                "timestep as an index",
-                "0.8.0",
-                "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
-                " `LMSDiscreteScheduler.step()` will not be supported in future versions. Make sure to pass"
-                " one of the `scheduler.timesteps` as a timestep.",
-                standard_warn=False,
-            )
-            step_index = timestep
-        else:
-            step_index = (self.timesteps == timestep).nonzero().item()
+        step_index = (self.timesteps == timestep).nonzero().item()
         sigma = self.sigmas[step_index]
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
@@ -269,19 +253,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             timesteps = timesteps.to(original_samples.device)
 
         schedule_timesteps = self.timesteps
-
-        if isinstance(timesteps, torch.IntTensor) or isinstance(timesteps, torch.LongTensor):
-            deprecate(
-                "timesteps as indices",
-                "0.8.0",
-                "Passing integer indices  (e.g. from `enumerate(timesteps)`) as timesteps to"
-                " `LMSDiscreteScheduler.add_noise()` will not be supported in future versions. Make sure to"
-                " pass values from `scheduler.timesteps` as timesteps.",
-                standard_warn=False,
-            )
-            step_indices = timesteps
-        else:
-            step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
 
         sigma = self.sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):

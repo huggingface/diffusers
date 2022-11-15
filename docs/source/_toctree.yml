@@ -10,6 +10,8 @@
   - sections:
     - local: using-diffusers/loading
       title: "Loading Pipelines, Models, and Schedulers"
+    - local: using-diffusers/schedulers
+      title: "Using different Schedulers"
     - local: using-diffusers/configuration
       title: "Configuring Pipelines, Models, and Schedulers"
     - local: using-diffusers/custom_pipeline_overview
@@ -78,6 +80,8 @@
   - sections:
     - local: api/pipelines/overview
       title: "Overview"
+    - local: api/pipelines/cycle_diffusion
+      title: "Cycle Diffusion"
     - local: api/pipelines/ddim
       title: "DDIM"
     - local: api/pipelines/ddpm
@@ -96,5 +100,9 @@
       title: "Stochastic Karras VE"
     - local: api/pipelines/dance_diffusion
       title: "Dance Diffusion"
+    - local: api/pipelines/vq_diffusion
+      title: "VQ Diffusion"
+    - local: api/pipelines/repaint
+      title: "RePaint"
     title: "Pipelines"
   title: "API"

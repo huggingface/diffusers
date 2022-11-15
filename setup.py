@@ -89,11 +89,10 @@ _deps = [
     "huggingface-hub>=0.10.0",
     "importlib_metadata",
     "isort>=5.5.4",
-    "jax>=0.2.8,!=0.3.2,<=0.3.6",
-    "jaxlib>=0.1.65,<=0.3.6",
+    "jax>=0.2.8,!=0.3.2",
+    "jaxlib>=0.1.65",
     "modelcards>=0.1.4",
     "numpy",
-    "onnxruntime",
     "parameterized",
     "pytest",
     "pytest-timeout",
@@ -179,9 +178,7 @@ extras["quality"] = deps_list("black", "isort", "flake8", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "modelcards")
 extras["test"] = deps_list(
-    "accelerate",
     "datasets",
-    "onnxruntime",
     "parameterized",
     "pytest",
     "pytest-timeout",
@@ -190,7 +187,7 @@ extras["test"] = deps_list(
     "torchvision",
     "transformers"
 )
-extras["torch"] = deps_list("torch")
+extras["torch"] = deps_list("torch", "accelerate")
 
 if os.name == "nt":  # windows
     extras["flax"] = []  # jax is not supported on windows
@@ -213,7 +210,7 @@ install_requires = [
 
 setup(
     name="diffusers",
-    version="0.7.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.8.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

@@ -1,4 +1,5 @@
 import argparse
+import inspect
 import math
 import os
 from pathlib import Path
@@ -10,10 +11,12 @@ import torch.nn.functional as F
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from datasets import load_dataset
-from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
+from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel, __version__
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
+from diffusers.utils import deprecate
 from huggingface_hub import HfFolder, Repository, whoami
+from packaging import version
 from torchvision.transforms import (
     CenterCrop,
     Compose,
@@ -27,6 +30,25 @@ from tqdm.auto import tqdm
 
 
 logger = get_logger(__name__)
+diffusers_version = version.parse(version.parse(__version__).base_version)
+
+
+def _extract_into_tensor(arr, timesteps, broadcast_shape):
+    """
+    Extract values from a 1-D numpy array for a batch of indices.
+
+    :param arr: the 1-D numpy array.
+    :param timesteps: a tensor of indices into the array to extract.
+    :param broadcast_shape: a larger shape of K dimensions with the batch
+                            dimension equal to the length of timesteps.
+    :return: a tensor of shape [batch_size, 1, ...] where the shape has K dims.
+    """
+    if not isinstance(arr, torch.Tensor):
+        arr = torch.from_numpy(arr)
+    res = arr[timesteps].float().to(timesteps.device)
+    while len(res.shape) < len(broadcast_shape):
+        res = res[..., None]
+    return res.expand(broadcast_shape)
 
 
 def parse_args():
@@ -171,6 +193,16 @@ def parse_args():
         ),
     )
 
+    parser.add_argument(
+        "--predict_epsilon",
+        action="store_true",
+        default=True,
+        help="Whether the model should predict the 'epsilon'/noise error or directly the reconstructed image 'x0'.",
+    )
+
+    parser.add_argument("--ddpm_num_steps", type=int, default=1000)
+    parser.add_argument("--ddpm_beta_schedule", type=str, default="linear")
+
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
@@ -224,7 +256,17 @@ def main(args):
             "UpBlock2D",
         ),
     )
-    noise_scheduler = DDPMScheduler(num_train_timesteps=1000)
+    accepts_predict_epsilon = "predict_epsilon" in set(inspect.signature(DDPMScheduler.__init__).parameters.keys())
+
+    if accepts_predict_epsilon:
+        noise_scheduler = DDPMScheduler(
+            num_train_timesteps=args.ddpm_num_steps,
+            beta_schedule=args.ddpm_beta_schedule,
+            predict_epsilon=args.predict_epsilon,
+        )
+    else:
+        noise_scheduler = DDPMScheduler(num_train_timesteps=args.ddpm_num_steps, beta_schedule=args.ddpm_beta_schedule)
+
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
@@ -256,6 +298,8 @@ def main(args):
     def transforms(examples):
         images = [augmentations(image.convert("RGB")) for image in examples["image"]]
         return {"input": images}
+
+    logger.info(f"Dataset size: {len(dataset)}")
 
     dataset.set_transform(transforms)
     train_dataloader = torch.utils.data.DataLoader(
@@ -319,8 +363,20 @@ def main(args):
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
-                noise_pred = model(noisy_images, timesteps).sample
-                loss = F.mse_loss(noise_pred, noise)
+                model_output = model(noisy_images, timesteps).sample
+
+                if args.predict_epsilon:
+                    loss = F.mse_loss(model_output, noise)  # this could have different weights!
+                else:
+                    alpha_t = _extract_into_tensor(
+                        noise_scheduler.alphas_cumprod, timesteps, (clean_images.shape[0], 1, 1, 1)
+                    )
+                    snr_weights = alpha_t / (1 - alpha_t)
+                    loss = snr_weights * F.mse_loss(
+                        model_output, clean_images, reduction="none"
+                    )  # use SNR weighting from distillation paper
+                    loss = loss.mean()
+
                 accelerator.backward(loss)
 
                 if accelerator.sync_gradients:
@@ -353,9 +409,17 @@ def main(args):
                     scheduler=noise_scheduler,
                 )
 
-                generator = torch.manual_seed(0)
+                deprecate("todo: remove this check", "0.10.0", "when the most used version is >= 0.8.0")
+                if diffusers_version < version.parse("0.8.0"):
+                    generator = torch.manual_seed(0)
+                else:
+                    generator = torch.Generator(device=pipeline.device).manual_seed(0)
                 # run pipeline in inference (sample random noise and denoise)
-                images = pipeline(generator=generator, batch_size=args.eval_batch_size, output_type="numpy").images
+                images = pipeline(
+                    generator=generator,
+                    batch_size=args.eval_batch_size,
+                    output_type="numpy",
+                ).images
 
                 # denormalize the images and save to tensorboard
                 images_processed = (images * 255).round().astype("uint8")
