@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
+import json
+import os
 import tempfile
 import unittest
 from typing import Dict, List, Tuple
@@ -21,6 +23,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+import diffusers
 from diffusers import (
     DDIMScheduler,
     DDPMScheduler,
@@ -32,11 +35,178 @@ from diffusers import (
     PNDMScheduler,
     ScoreSdeVeScheduler,
     VQDiffusionScheduler,
+    logging,
 )
+from diffusers.configuration_utils import ConfigMixin, register_to_config
+from diffusers.schedulers.scheduling_utils import SchedulerMixin
 from diffusers.utils import deprecate, torch_device
+from diffusers.utils.testing_utils import CaptureLogger
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+
+
+class SchedulerObject(SchedulerMixin, ConfigMixin):
+    config_name = "config.json"
+
+    @register_to_config
+    def __init__(
+        self,
+        a=2,
+        b=5,
+        c=(2, 5),
+        d="for diffusion",
+        e=[1, 3],
+    ):
+        pass
+
+
+class SchedulerObject2(SchedulerMixin, ConfigMixin):
+    config_name = "config.json"
+
+    @register_to_config
+    def __init__(
+        self,
+        a=2,
+        b=5,
+        c=(2, 5),
+        d="for diffusion",
+        f=[1, 3],
+    ):
+        pass
+
+
+class SchedulerObject3(SchedulerMixin, ConfigMixin):
+    config_name = "config.json"
+
+    @register_to_config
+    def __init__(
+        self,
+        a=2,
+        b=5,
+        c=(2, 5),
+        d="for diffusion",
+        e=[1, 3],
+        f=[1, 3],
+    ):
+        pass
+
+
+class SchedulerBaseTests(unittest.TestCase):
+    def test_save_load_from_different_config(self):
+        obj = SchedulerObject()
+
+        # mock add obj class to `diffusers`
+        setattr(diffusers, "SchedulerObject", SchedulerObject)
+        logger = logging.get_logger("diffusers.configuration_utils")
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            obj.save_config(tmpdirname)
+            with CaptureLogger(logger) as cap_logger_1:
+                config = SchedulerObject2.load_config(tmpdirname)
+                new_obj_1 = SchedulerObject2.from_config(config)
+
+            # now save a config parameter that is not expected
+            with open(os.path.join(tmpdirname, SchedulerObject.config_name), "r") as f:
+                data = json.load(f)
+                data["unexpected"] = True
+
+            with open(os.path.join(tmpdirname, SchedulerObject.config_name), "w") as f:
+                json.dump(data, f)
+
+            with CaptureLogger(logger) as cap_logger_2:
+                config = SchedulerObject.load_config(tmpdirname)
+                new_obj_2 = SchedulerObject.from_config(config)
+
+            with CaptureLogger(logger) as cap_logger_3:
+                config = SchedulerObject2.load_config(tmpdirname)
+                new_obj_3 = SchedulerObject2.from_config(config)
+
+        assert new_obj_1.__class__ == SchedulerObject2
+        assert new_obj_2.__class__ == SchedulerObject
+        assert new_obj_3.__class__ == SchedulerObject2
+
+        assert cap_logger_1.out == ""
+        assert (
+            cap_logger_2.out
+            == "The config attributes {'unexpected': True} were passed to SchedulerObject, but are not expected and"
+            " will"
+            " be ignored. Please verify your config.json configuration file.\n"
+        )
+        assert cap_logger_2.out.replace("SchedulerObject", "SchedulerObject2") == cap_logger_3.out
+
+    def test_save_load_compatible_schedulers(self):
+        SchedulerObject2._compatibles = ["SchedulerObject"]
+        SchedulerObject._compatibles = ["SchedulerObject2"]
+
+        obj = SchedulerObject()
+
+        # mock add obj class to `diffusers`
+        setattr(diffusers, "SchedulerObject", SchedulerObject)
+        setattr(diffusers, "SchedulerObject2", SchedulerObject2)
+        logger = logging.get_logger("diffusers.configuration_utils")
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            obj.save_config(tmpdirname)
+
+            # now save a config parameter that is expected by another class, but not origin class
+            with open(os.path.join(tmpdirname, SchedulerObject.config_name), "r") as f:
+                data = json.load(f)
+                data["f"] = [0, 0]
+                data["unexpected"] = True
+
+            with open(os.path.join(tmpdirname, SchedulerObject.config_name), "w") as f:
+                json.dump(data, f)
+
+            with CaptureLogger(logger) as cap_logger:
+                config = SchedulerObject.load_config(tmpdirname)
+                new_obj = SchedulerObject.from_config(config)
+
+        assert new_obj.__class__ == SchedulerObject
+
+        assert (
+            cap_logger.out
+            == "The config attributes {'unexpected': True} were passed to SchedulerObject, but are not expected and"
+            " will"
+            " be ignored. Please verify your config.json configuration file.\n"
+        )
+
+    def test_save_load_from_different_config_comp_schedulers(self):
+        SchedulerObject3._compatibles = ["SchedulerObject", "SchedulerObject2"]
+        SchedulerObject2._compatibles = ["SchedulerObject", "SchedulerObject3"]
+        SchedulerObject._compatibles = ["SchedulerObject2", "SchedulerObject3"]
+
+        obj = SchedulerObject()
+
+        # mock add obj class to `diffusers`
+        setattr(diffusers, "SchedulerObject", SchedulerObject)
+        setattr(diffusers, "SchedulerObject2", SchedulerObject2)
+        setattr(diffusers, "SchedulerObject3", SchedulerObject3)
+        logger = logging.get_logger("diffusers.configuration_utils")
+        logger.setLevel(diffusers.logging.INFO)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            obj.save_config(tmpdirname)
+
+            with CaptureLogger(logger) as cap_logger_1:
+                config = SchedulerObject.load_config(tmpdirname)
+                new_obj_1 = SchedulerObject.from_config(config)
+
+            with CaptureLogger(logger) as cap_logger_2:
+                config = SchedulerObject2.load_config(tmpdirname)
+                new_obj_2 = SchedulerObject2.from_config(config)
+
+            with CaptureLogger(logger) as cap_logger_3:
+                config = SchedulerObject3.load_config(tmpdirname)
+                new_obj_3 = SchedulerObject3.from_config(config)
+
+        assert new_obj_1.__class__ == SchedulerObject
+        assert new_obj_2.__class__ == SchedulerObject2
+        assert new_obj_3.__class__ == SchedulerObject3
+
+        assert cap_logger_1.out == ""
+        assert cap_logger_2.out == "{'f'} was not found in config. Values will be initialized to default values.\n"
+        assert cap_logger_3.out == "{'f'} was not found in config. Values will be initialized to default values.\n"
 
 
 class SchedulerCommonTest(unittest.TestCase):
@@ -205,7 +375,7 @@ class SchedulerCommonTest(unittest.TestCase):
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-    def test_compatible_classes(self):
+    def test_compatibles(self):
         for scheduler_class in self.scheduler_classes:
             scheduler_config = self.get_scheduler_config()
 
