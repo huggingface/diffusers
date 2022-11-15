@@ -430,7 +430,6 @@ class OneFlowDPMSolverMultistepScheduler(OneFlowSchedulerMixin, ConfigMixin):
 
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
-        # arrange gather?
         step_index = (self.timesteps == timestep).nonzero()
         if len(step_index) == 0:
             step_index = len(self.timesteps) - 1
