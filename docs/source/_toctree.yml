@@ -80,6 +80,8 @@
   - sections:
     - local: api/pipelines/overview
       title: "Overview"
+    - local: api/pipelines/alt_diffusion
+      title: "AltDiffusion"
     - local: api/pipelines/cycle_diffusion
       title: "Cycle Diffusion"
     - local: api/pipelines/ddim
