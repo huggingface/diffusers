@@ -520,7 +520,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         )
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        lms = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler")
+        lms = LMSDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
             model_id,
             scheduler=lms,
@@ -557,7 +557,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         )
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        ddim = DDIMScheduler.from_config(model_id, subfolder="scheduler")
+        ddim = DDIMScheduler.from_pretrained(model_id, subfolder="scheduler")
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
             model_id,
             scheduler=ddim,
@@ -649,7 +649,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         init_image = init_image.resize((768, 512))
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        lms = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler")
+        lms = LMSDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
             model_id, scheduler=lms, safety_checker=None, device_map="auto", revision="fp16", torch_dtype=torch.float16
         )

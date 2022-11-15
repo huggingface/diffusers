@@ -83,7 +83,7 @@ class FlaxSchedulerCommonTest(unittest.TestCase):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler, new_state = scheduler_class.from_config(tmpdirname)
+                new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 state = scheduler.set_timesteps(state, num_inference_steps)
@@ -112,7 +112,7 @@ class FlaxSchedulerCommonTest(unittest.TestCase):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler, new_state = scheduler_class.from_config(tmpdirname)
+                new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 state = scheduler.set_timesteps(state, num_inference_steps)
@@ -140,7 +140,7 @@ class FlaxSchedulerCommonTest(unittest.TestCase):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler, new_state = scheduler_class.from_config(tmpdirname)
+                new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 state = scheduler.set_timesteps(state, num_inference_steps)
@@ -373,7 +373,7 @@ class FlaxDDIMSchedulerTest(FlaxSchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler, new_state = scheduler_class.from_config(tmpdirname)
+                new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 state = scheduler.set_timesteps(state, num_inference_steps)
@@ -401,7 +401,7 @@ class FlaxDDIMSchedulerTest(FlaxSchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler, new_state = scheduler_class.from_config(tmpdirname)
+                new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 state = scheduler.set_timesteps(state, num_inference_steps)
@@ -430,7 +430,7 @@ class FlaxDDIMSchedulerTest(FlaxSchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler, new_state = scheduler_class.from_config(tmpdirname)
+                new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 state = scheduler.set_timesteps(state, num_inference_steps)
@@ -633,7 +633,7 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler, new_state = scheduler_class.from_config(tmpdirname)
+                new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
                 new_state = new_scheduler.set_timesteps(new_state, num_inference_steps, shape=sample.shape)
                 # copy over dummy past residuals
                 new_state = new_state.replace(ets=dummy_past_residuals[:])
@@ -720,7 +720,7 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler, new_state = scheduler_class.from_config(tmpdirname)
+                new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
                 # copy over dummy past residuals
                 new_state = new_scheduler.set_timesteps(new_state, num_inference_steps, shape=sample.shape)
 

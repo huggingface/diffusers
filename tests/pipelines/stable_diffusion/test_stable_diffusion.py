@@ -703,7 +703,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_fast_ddim(self):
-        scheduler = DDIMScheduler.from_config("CompVis/stable-diffusion-v1-1", subfolder="scheduler")
+        scheduler = DDIMScheduler.from_pretrained("CompVis/stable-diffusion-v1-1", subfolder="scheduler")
 
         sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-1", scheduler=scheduler)
         sd_pipe = sd_pipe.to(torch_device)
@@ -726,7 +726,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         model_id = "CompVis/stable-diffusion-v1-1"
         pipe = StableDiffusionPipeline.from_pretrained(model_id).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-        scheduler = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler")
+        scheduler = LMSDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
         pipe.scheduler = scheduler
 
         prompt = "a photograph of an astronaut riding a horse"

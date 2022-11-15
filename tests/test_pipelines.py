@@ -29,6 +29,10 @@ from diffusers import (
     DDIMScheduler,
     DDPMPipeline,
     DDPMScheduler,
+    DPMSolverMultistepScheduler,
+    EulerAncestralDiscreteScheduler,
+    EulerDiscreteScheduler,
+    LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipelineLegacy,
@@ -398,6 +402,82 @@ class PipelineFastTests(unittest.TestCase):
         assert image_img2img.shape == (1, 32, 32, 3)
         assert image_text2img.shape == (1, 128, 128, 3)
 
+    def test_set_scheduler(self):
+        unet = self.dummy_cond_unet
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        sd = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        sd.scheduler = DDIMScheduler.from_config(sd.scheduler.config)
+        assert isinstance(sd.scheduler, DDIMScheduler)
+        sd.scheduler = DDPMScheduler.from_config(sd.scheduler.config)
+        assert isinstance(sd.scheduler, DDPMScheduler)
+        sd.scheduler = PNDMScheduler.from_config(sd.scheduler.config)
+        assert isinstance(sd.scheduler, PNDMScheduler)
+        sd.scheduler = LMSDiscreteScheduler.from_config(sd.scheduler.config)
+        assert isinstance(sd.scheduler, LMSDiscreteScheduler)
+        sd.scheduler = EulerDiscreteScheduler.from_config(sd.scheduler.config)
+        assert isinstance(sd.scheduler, EulerDiscreteScheduler)
+        sd.scheduler = EulerAncestralDiscreteScheduler.from_config(sd.scheduler.config)
+        assert isinstance(sd.scheduler, EulerAncestralDiscreteScheduler)
+        sd.scheduler = DPMSolverMultistepScheduler.from_config(sd.scheduler.config)
+        assert isinstance(sd.scheduler, DPMSolverMultistepScheduler)
+
+    def test_set_scheduler_consistency(self):
+        unet = self.dummy_cond_unet
+        pndm = PNDMScheduler.from_config("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
+        ddim = DDIMScheduler.from_config("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        sd = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=pndm,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        pndm_config = sd.scheduler.config
+        sd.scheduler = DDPMScheduler.from_config(pndm_config)
+        sd.scheduler = PNDMScheduler.from_config(sd.scheduler.config)
+        pndm_config_2 = sd.scheduler.config
+        pndm_config_2 = {k: v for k, v in pndm_config_2.items() if k in pndm_config}
+
+        assert dict(pndm_config) == dict(pndm_config_2)
+
+        sd = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=ddim,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        ddim_config = sd.scheduler.config
+        sd.scheduler = LMSDiscreteScheduler.from_config(ddim_config)
+        sd.scheduler = DDIMScheduler.from_config(sd.scheduler.config)
+        ddim_config_2 = sd.scheduler.config
+        ddim_config_2 = {k: v for k, v in ddim_config_2.items() if k in ddim_config}
+
+        assert dict(ddim_config) == dict(ddim_config_2)
+
 
 @slow
 class PipelineSlowTests(unittest.TestCase):
@@ -519,7 +599,7 @@ class PipelineSlowTests(unittest.TestCase):
     def test_output_format(self):
         model_path = "google/ddpm-cifar10-32"
 
-        scheduler = DDIMScheduler.from_config(model_path)
+        scheduler = DDIMScheduler.from_pretrained(model_path)
         pipe = DDIMPipeline.from_pretrained(model_path, scheduler=scheduler)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

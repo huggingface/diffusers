@@ -281,7 +281,7 @@ class CycleDiffusionPipelineIntegrationTests(unittest.TestCase):
         init_image = init_image.resize((512, 512))
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        scheduler = DDIMScheduler.from_config(model_id, subfolder="scheduler")
+        scheduler = DDIMScheduler.from_pretrained(model_id, subfolder="scheduler")
         pipe = CycleDiffusionPipeline.from_pretrained(
             model_id, scheduler=scheduler, safety_checker=None, torch_dtype=torch.float16, revision="fp16"
         )
@@ -322,7 +322,7 @@ class CycleDiffusionPipelineIntegrationTests(unittest.TestCase):
         init_image = init_image.resize((512, 512))
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        scheduler = DDIMScheduler.from_config(model_id, subfolder="scheduler")
+        scheduler = DDIMScheduler.from_pretrained(model_id, subfolder="scheduler")
         pipe = CycleDiffusionPipeline.from_pretrained(model_id, scheduler=scheduler, safety_checker=None)
 
         pipe.to(torch_device)
