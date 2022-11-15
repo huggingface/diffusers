@@ -80,6 +80,14 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> torch.Tensor
     return torch.tensor(betas)
 
 
+def t_to_alpha_sigma(num_diffusion_timesteps):
+    """Returns the scaling factors for the clean image and for the noise, given
+    a timestep."""
+    alphas = torch.cos(torch.tensor([t * math.pi / 2 for t in range(num_diffusion_timesteps)]))
+    sigmas = torch.sin(torch.tensor([t * math.pi / 2 for t in range(num_diffusion_timesteps)]))
+    return alphas, sigmas
+
+
 class DDIMScheduler(SchedulerMixin, ConfigMixin):
     """
     Denoising diffusion implicit models is a scheduler that extends the denoising procedure introduced in denoising
@@ -149,7 +157,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
-        self.sigmas = 1 - self.alphas**2
+        if prediction_type == "v":
+            self.alphas, self.sigmas = t_to_alpha_sigma(num_train_timesteps)
 
         # At every step in ddim, we are looking into the previous alphas_cumprod
         # For the final step, there is no previous alphas_cumprod because we are already at 0
@@ -178,7 +187,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    def _get_variance(self, timestep, prev_timestep):
+    def _get_variance(self, timestep, prev_timestep, eta=0):
         if self.variance_type == "fixed":
             alpha_prod_t = self.alphas_cumprod[timestep]
             alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
@@ -189,9 +198,14 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         elif self.variance_type == "v_diffusion":
             # If eta > 0, adjust the scaling factor for the predicted noise
             # downward according to the amount of additional noise to add
-            ddim_sigma = (self.sigmas[timestep + 1] ** 2 / self.sigmas[timestep] ** 2).sqrt() * (
-                1 - self.alphas[timestep] ** 2 / self.alphas[timestep + 1] ** 2
-            ).sqrt()
+            if eta:
+                numerator = (
+                    eta * (self.sigmas[timestep + 1] ** 2 / self.sigmas[timestep] ** 2).clamp(min=1.0e-7).sqrt()
+                )
+            else:
+                numerator = 0
+            denominator = (self.alphas[timestep + 1] / self.alphas[timestep]).clamp(min=1.0e-7).sqrt()
+            ddim_sigma = (numerator / denominator).clamp(min=1.0e-7)
             variance = (self.sigmas[timestep + 1] ** 2 - ddim_sigma**2).sqrt()
 
         return variance
@@ -221,7 +235,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: int,
         sample: torch.FloatTensor,
-        prediction_type: str = "epsilon",
         eta: float = 0.0,
         use_clipped_model_output: bool = False,
         generator=None,
@@ -275,19 +288,21 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         # 3. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        if prediction_type == "epsilon":
+        if self.prediction_type == "epsilon":
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
             eps = torch.tensor(1)
-        elif prediction_type == "sample":
+        elif self.prediction_type == "sample":
             pred_original_sample = model_output
             eps = torch.tensor(1)
-        elif prediction_type == "v":
+        elif self.prediction_type == "v":
             # v_t = alpha_t * epsilon - sigma_t * x
             # need to merge the PRs for sigma to be available in DDPM
             pred_original_sample = sample * self.alphas[timestep] - model_output * self.sigmas[timestep]
-            eps = model_output * self.alphas[timestep] - sample * self.sigmas[timestep]
+            eps = model_output * self.alphas[timestep] + sample * self.sigmas[timestep]
         else:
-            raise ValueError(f"prediction_type given as {prediction_type} must be one of `epsilon`, `sample`, or `v`")
+            raise ValueError(
+                f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample`, or `v`"
+            )
 
         # 4. Clip "predicted x_0"
         if self.config.clip_sample:
@@ -295,7 +310,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         # 5. compute variance: "sigma_t(η)" -> see formula (16)
         # σ_t = sqrt((1 − α_t−1)/(1 − α_t)) * sqrt(1 − α_t/α_t−1)
-        variance = self._get_variance(timestep, prev_timestep)
+        variance = self._get_variance(timestep, prev_timestep, eta)
         std_dev_t = eta * variance ** (0.5)
 
         if use_clipped_model_output:
@@ -309,7 +324,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
             prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + eps * pred_sample_direction
         else:
-            if timestep < len(self.timesteps) - 1:
+            if timestep < len(self.alphas) - 1:
                 prev_sample = pred_original_sample + self.alphas[timestep + 1] + eps * variance
             else:
                 prev_sample = None
@@ -364,6 +379,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         return self.config.num_train_timesteps
 
     def get_alpha_sigma(self, sample, timesteps, device):
-        alpha = expand_to_shape(self.sqrt_alphas_cumprod, timesteps, sample.shape, device)
-        sigma = expand_to_shape(self.sqrt_one_minus_alphas_cumprod, timesteps, sample.shape, device)
+        alpha = expand_to_shape(self.alphas, timesteps, sample.shape, device)
+        sigma = expand_to_shape(self.sigmas, timesteps, sample.shape, device)
         return alpha, sigma
