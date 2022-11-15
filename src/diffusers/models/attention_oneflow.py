@@ -5,6 +5,8 @@ import oneflow as torch
 import oneflow.nn.functional as F
 from oneflow import nn
 
+(major, _minor) = torch.cuda.get_device_capability(0)
+IS_CUDA_SUPPORT_FUSE_ATTENTION = major >= 7
 
 class AttentionBlock(nn.Module):
     """
@@ -65,7 +67,7 @@ class AttentionBlock(nn.Module):
         key_proj = self.key(hidden_states)
         value_proj = self.value(hidden_states)
 
-        if query_proj.device == torch.device("cpu"):
+        if query_proj.device == torch.device("cpu") or not IS_CUDA_SUPPORT_FUSE_ATTENTION:
             # transpose
             query_states = self.transpose_for_scores(query_proj)
             key_states = self.transpose_for_scores(key_proj)
@@ -258,7 +260,7 @@ class CrossAttention(nn.Module):
         key = self.to_k(context)
         value = self.to_v(context)
 
-        if query.device == torch.device("cpu"):
+        if query.device == torch.device("cpu") or not IS_CUDA_SUPPORT_FUSE_ATTENTION:
             dim = query.shape[-1]
 
             query = self.reshape_heads_to_batch_dim(query)
