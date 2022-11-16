@@ -37,10 +37,10 @@ class VersatileDiffusionPipelineIntegrationTests(unittest.TestCase):
     def test_inference_text2img(self):
         pipe = VersatileDiffusionPipeline.from_pretrained("scripts/vd-diffusers")
         pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
+        #pipe.set_progress_bar_config(disable=None)
 
-        prompt = "A painting of a squirrel eating a burger"
-        generator = torch.manual_seed(0)
+        prompt = "a dream of a village in china, by Caspar David Friedrich, matte painting trending on artstation HQ"
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         image = pipe(
             [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=50, output_type="numpy"
         ).images
