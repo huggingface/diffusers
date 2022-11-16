@@ -164,8 +164,8 @@ class AltDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         expected_slice = np.array(
             [0.41293705, 0.38656747, 0.40876025, 0.4782187, 0.4656803, 0.41394007, 0.4142093, 0.47150758, 0.4570448]
         )
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
-        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-3
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1.5e-3
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1.5e-3
 
     @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
     def test_stable_diffusion_img2img_fp16(self):
