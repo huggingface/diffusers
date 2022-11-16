@@ -29,6 +29,7 @@ from diffusers.utils.testing_utils import (
 
 from ...test_pipelines_onnx_common import OnnxPipelineTesterMixin
 
+
 if is_onnx_available():
     import onnxruntime as ort
 
