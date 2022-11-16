@@ -43,6 +43,7 @@ def prepare_mask_and_masked_image(image, mask):
 
     Raises:
         ValueError: ``torch.Tensor`` images should be in the ``[-1, 1]`` range.
+        ValueError: ``torch.Tensor`` mask should be in the ``[0, 1]`` range.
         ValueError: ``mask`` and ``image`` should have the same spatial dimensions.
         TypeError: ``mask`` is a ``torch.Tensor`` but ``image`` is not
             (ot the other way around).
