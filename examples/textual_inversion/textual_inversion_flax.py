@@ -14,7 +14,6 @@ from torch.utils.data import Dataset
 import jax
 import jax.numpy as jnp
 import optax
-import PIL
 import transformers
 from diffusers import (
     FlaxAutoencoderKL,
@@ -24,6 +23,7 @@ from diffusers import (
     FlaxUNet2DConditionModel,
 )
 from diffusers.pipelines.stable_diffusion import FlaxStableDiffusionSafetyChecker
+from diffusers.utils import PIL_INTERPOLATION
 from flax import jax_utils
 from flax.training import train_state
 from flax.training.common_utils import shard
@@ -246,10 +246,10 @@ class TextualInversionDataset(Dataset):
             self._length = self.num_images * repeats
 
         self.interpolation = {
-            "linear": PIL.Image.LINEAR,
-            "bilinear": PIL.Image.BILINEAR,
-            "bicubic": PIL.Image.BICUBIC,
-            "lanczos": PIL.Image.LANCZOS,
+            "linear": PIL_INTERPOLATION["linear"],
+            "bilinear": PIL_INTERPOLATION["bilinear"],
+            "bicubic": PIL_INTERPOLATION["bicubic"],
+            "lanczos": PIL_INTERPOLATION["lanczos"],
         }[interpolation]
 
         self.templates = imagenet_style_templates_small if learnable_property == "style" else imagenet_templates_small
