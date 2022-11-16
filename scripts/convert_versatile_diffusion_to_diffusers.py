@@ -648,6 +648,7 @@ if __name__ == "__main__":
             beta_start=beta_start,
             num_train_timesteps=num_train_timesteps,
             skip_prk_steps=True,
+            steps_offset=1,
         )
     elif args.scheduler_type == "lms":
         scheduler = LMSDiscreteScheduler(beta_start=beta_start, beta_end=beta_end, beta_schedule="scaled_linear")
@@ -668,12 +669,14 @@ if __name__ == "__main__":
             beta_schedule="scaled_linear",
             clip_sample=False,
             set_alpha_to_one=False,
+            steps_offset=1,
         )
     else:
         raise ValueError(f"Scheduler of type {args.scheduler_type} doesn't exist!")
 
-    # Convert the UNet2DConditionModel model.
+    # Convert the UNet2DConditionModel models.
     if args.unet_checkpoint_path is not None:
+        # image UNet
         image_unet_config = create_unet_diffusers_config(IMAGE_UNET_CONFIG)
         checkpoint = torch.load(args.unet_checkpoint_path)
         converted_image_unet_checkpoint = convert_vd_unet_checkpoint(
@@ -682,11 +685,28 @@ if __name__ == "__main__":
         image_unet = UNet2DConditionModel(**image_unet_config)
         image_unet.load_state_dict(converted_image_unet_checkpoint)
 
+        # text UNet
         text_unet_config = create_unet_diffusers_config(TEXT_UNET_CONFIG)
         converted_text_unet_checkpoint = convert_vd_unet_checkpoint(
             checkpoint, text_unet_config, unet_key="model.diffusion_model.unet_text.", extract_ema=args.extract_ema
         )
         text_unet = UNet2DConditionModel(**text_unet_config)
+        # TEMP hack to skip converting the 1x1 blocks for the text unet
+        del converted_text_unet_checkpoint["conv_in.weight"]
+        del converted_text_unet_checkpoint["conv_in.bias"]
+        del converted_text_unet_checkpoint["conv_out.weight"]
+        for block in ["down_blocks", "mid_block", "up_blocks"]:
+            for i in range(4):
+                for j in range(3):
+                    for module in ["time_emb_proj", "conv1", "norm1", "conv2", "norm2", "conv_shortcut"]:
+                        for type in ["weight", "bias"]:
+                            if block == "mid_block":
+                                key = f"{block}.resnets.{j}.{module}.{type}"
+                            else:
+                                key = f"{block}.{i}.resnets.{j}.{module}.{type}"
+                            if key in converted_text_unet_checkpoint:
+                                del converted_text_unet_checkpoint[key]
+        # END TEMP hack
         text_unet.load_state_dict(converted_text_unet_checkpoint, strict=False)
 
     # Convert the VAE model.
