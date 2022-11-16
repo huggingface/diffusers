@@ -121,7 +121,7 @@ class AltDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         init_image = self.dummy_image.to(device)
 
         # make sure here that pndm scheduler skips prk
-        sd_pipe = AltDiffusionImg2ImgPipeline(
+        alt_pipe = AltDiffusionImg2ImgPipeline(
             unet=unet,
             scheduler=scheduler,
             vae=vae,
@@ -130,12 +130,12 @@ class AltDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
         )
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        alt_pipe = alt_pipe.to(device)
+        alt_pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.Generator(device=device).manual_seed(0)
-        output = sd_pipe(
+        output = alt_pipe(
             [prompt],
             generator=generator,
             guidance_scale=6.0,
@@ -147,7 +147,7 @@ class AltDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         image = output.images
 
         generator = torch.Generator(device=device).manual_seed(0)
-        image_from_tuple = sd_pipe(
+        image_from_tuple = alt_pipe(
             [prompt],
             generator=generator,
             guidance_scale=6.0,
@@ -163,17 +163,7 @@ class AltDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array(
-            [
-                0.4133255,
-                0.3871094,
-                0.4091961,
-                0.47926807,
-                0.465555,
-                0.4140814,
-                0.41414154,
-                0.47132245,
-                0.45673078,
-            ]
+            [0.4133255, 0.3871094, 0.4091961, 0.47926807, 0.465555, 0.4140814, 0.41414154, 0.47132245, 0.45673078]
         )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-3
@@ -196,7 +186,7 @@ class AltDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         bert = bert.half()
 
         # make sure here that pndm scheduler skips prk
-        sd_pipe = AltDiffusionImg2ImgPipeline(
+        alt_pipe = AltDiffusionImg2ImgPipeline(
             unet=unet,
             scheduler=scheduler,
             vae=vae,
@@ -205,12 +195,12 @@ class AltDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
             safety_checker=None,
             feature_extractor=self.dummy_extractor,
         )
-        sd_pipe = sd_pipe.to(torch_device)
-        sd_pipe.set_progress_bar_config(disable=None)
+        alt_pipe = alt_pipe.to(torch_device)
+        alt_pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = sd_pipe(
+        image = alt_pipe(
             [prompt],
             generator=generator,
             num_inference_steps=2,
