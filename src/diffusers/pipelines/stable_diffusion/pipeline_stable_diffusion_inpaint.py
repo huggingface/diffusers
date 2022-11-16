@@ -76,7 +76,7 @@ def prepare_mask_and_masked_image(image, mask):
                 mask = mask.unsqueeze(1)
 
         assert image.ndim == 4 and mask.ndim == 4, "Image and Mask must have 4 dimensions"
-        assert image.shape[-2:] == mask.shape[-2], "Image and Mask must have the same spatial dimensions"
+        assert image.shape[-2:] == mask.shape[-2:], "Image and Mask must have the same spatial dimensions"
 
         # Check image is in [-1, 1]
         if image.min() < -1 or image.max() > 1:
