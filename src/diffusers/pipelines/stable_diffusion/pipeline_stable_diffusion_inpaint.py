@@ -34,7 +34,6 @@ def prepare_mask_and_masked_image(image, mask):
 
         # Batch single mask or add channel dim
         if mask.ndim == 3:
-
             # Single batched mask, no channel dim or single mask not batched but channel dim
             if mask.shape[0] == 1:
                 mask = mask.unsqueeze(0)
