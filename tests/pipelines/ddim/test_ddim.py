@@ -75,7 +75,7 @@ class DDIMPipelineIntegrationTests(unittest.TestCase):
         model_id = "google/ddpm-ema-bedroom-256"
 
         unet = UNet2DModel.from_pretrained(model_id)
-        scheduler = DDIMScheduler.from_config(model_id)
+        scheduler = DDIMScheduler.from_pretrained(model_id)
 
         ddpm = DDIMPipeline(unet=unet, scheduler=scheduler)
         ddpm.to(torch_device)

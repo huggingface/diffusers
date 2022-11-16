@@ -54,7 +54,7 @@ original_image = download_image(img_url).resize((256, 256))
 mask_image = download_image(mask_url).resize((256, 256))
 
 # Load the RePaint scheduler and pipeline based on a pretrained DDPM model
-scheduler = RePaintScheduler.from_config("google/ddpm-ema-celebahq-256")
+scheduler = RePaintScheduler.from_pretrained("google/ddpm-ema-celebahq-256")
 pipe = RePaintPipeline.from_pretrained("google/ddpm-ema-celebahq-256", scheduler=scheduler)
 pipe = pipe.to("cuda")
 

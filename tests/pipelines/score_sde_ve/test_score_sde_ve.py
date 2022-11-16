@@ -74,7 +74,7 @@ class ScoreSdeVePipelineIntegrationTests(unittest.TestCase):
         model_id = "google/ncsnpp-church-256"
         model = UNet2DModel.from_pretrained(model_id)
 
-        scheduler = ScoreSdeVeScheduler.from_config(model_id)
+        scheduler = ScoreSdeVeScheduler.from_pretrained(model_id)
 
         sde_ve = ScoreSdeVePipeline(unet=model, scheduler=scheduler)
         sde_ve.to(torch_device)

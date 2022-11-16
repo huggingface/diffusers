@@ -19,7 +19,7 @@ In the following we explain in-detail how to easily load:
 
 - *Complete Diffusion Pipelines* via the [`DiffusionPipeline.from_pretrained`]
 - *Diffusion Models* via [`ModelMixin.from_pretrained`]
-- *Schedulers* via [`ConfigMixin.from_config`]
+- *Schedulers* via [`SchedulerMixin.from_pretrained`]
 
 ## Loading pipelines
 
@@ -137,15 +137,15 @@ from diffusers import DiffusionPipeline, EulerDiscreteScheduler, DPMSolverMultis
 
 repo_id = "runwayml/stable-diffusion-v1-5"
 
-scheduler = EulerDiscreteScheduler.from_config(repo_id, subfolder="scheduler")
+scheduler = EulerDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
 # or
-# scheduler = DPMSolverMultistepScheduler.from_config(repo_id, subfolder="scheduler")
+# scheduler = DPMSolverMultistepScheduler.from_pretrained(repo_id, subfolder="scheduler")
 
 stable_diffusion = DiffusionPipeline.from_pretrained(repo_id, scheduler=scheduler)
 ```
 
 Three things are worth paying attention to here.
-- First, the scheduler is loaded with [`ConfigMixin.from_config`] since it only depends on a configuration file and not any parameterized weights
+- First, the scheduler is loaded with [`SchedulerMixin.from_pretrained`]
 - Second, the scheduler is loaded with a function argument, called `subfolder="scheduler"` as the configuration of stable diffusion's scheduling is defined in a [subfolder of the official pipeline repository](https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main/scheduler)
 - Third, the scheduler instance can simply be passed with the `scheduler` keyword argument to [`DiffusionPipeline.from_pretrained`]. This works because the [`StableDiffusionPipeline`] defines its scheduler with the `scheduler` attribute. It's not possible to use a different name, such as `sampler=scheduler` since `sampler` is not a defined keyword for [`StableDiffusionPipeline.__init__`]
 
@@ -337,8 +337,8 @@ model = UNet2DModel.from_pretrained(repo_id)
 
 ## Loading schedulers
 
-Schedulers cannot be loaded via a `from_pretrained` method, but instead rely on [`ConfigMixin.from_config`]. Schedulers are **not parameterized** or **trained**, but instead purely defined by a configuration file.
-Therefore the loading method was given a different name here.
+Schedulers rely on [`SchedulerMixin.from_pretrained`]. Schedulers are **not parameterized** or **trained**, but instead purely defined by a configuration file.
+For consistency, we use the same method name as we do for models or pipelines, but no weights are loaded in this case.
 
 In constrast to pipelines or models, loading schedulers does not consume any significant amount of memory and the same configuration file can often be used for a variety of different schedulers.
 For example, all of:
@@ -367,13 +367,13 @@ from diffusers import (
 
 repo_id = "runwayml/stable-diffusion-v1-5"
 
-ddpm = DDPMScheduler.from_config(repo_id, subfolder="scheduler")
-ddim = DDIMScheduler.from_config(repo_id, subfolder="scheduler")
-pndm = PNDMScheduler.from_config(repo_id, subfolder="scheduler")
-lms = LMSDiscreteScheduler.from_config(repo_id, subfolder="scheduler")
-euler_anc = EulerAncestralDiscreteScheduler.from_config(repo_id, subfolder="scheduler")
-euler = EulerDiscreteScheduler.from_config(repo_id, subfolder="scheduler")
-dpm = DPMSolverMultistepScheduler.from_config(repo_id, subfolder="scheduler")
+ddpm = DDPMScheduler.from_pretrained(repo_id, subfolder="scheduler")
+ddim = DDIMScheduler.from_pretrained(repo_id, subfolder="scheduler")
+pndm = PNDMScheduler.from_pretrained(repo_id, subfolder="scheduler")
+lms = LMSDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
+euler_anc = EulerAncestralDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
+euler = EulerDiscreteScheduler.from_pretrained(repo_id, subfolder="scheduler")
+dpm = DPMSolverMultistepScheduler.from_pretrained(repo_id, subfolder="scheduler")
 
 # replace `dpm` with any of `ddpm`, `ddim`, `pndm`, `lms`, `euler`, `euler_anc`
 pipeline = StableDiffusionPipeline.from_pretrained(repo_id, scheduler=dpm)
