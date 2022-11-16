@@ -21,16 +21,35 @@ from typing import Callable, List, Optional, Tuple, Union
 import torch
 from torch import Tensor, device
 
-from diffusers.utils import is_accelerate_available
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
 from . import __version__
-from .utils import CONFIG_NAME, DIFFUSERS_CACHE, HUGGINGFACE_CO_RESOLVE_ENDPOINT, WEIGHTS_NAME, logging
+from .utils import (
+    CONFIG_NAME,
+    DIFFUSERS_CACHE,
+    HUGGINGFACE_CO_RESOLVE_ENDPOINT,
+    WEIGHTS_NAME,
+    is_accelerate_available,
+    is_torch_version,
+    logging,
+)
 
 
 logger = logging.get_logger(__name__)
+
+
+if is_torch_version(">=", "1.9.0"):
+    _LOW_CPU_MEM_USAGE_DEFAULT = True
+else:
+    _LOW_CPU_MEM_USAGE_DEFAULT = False
+
+
+if is_accelerate_available():
+    import accelerate
+    from accelerate.utils import set_module_tensor_to_device
+    from accelerate.utils.versions import is_torch_version
 
 
 def get_parameter_device(parameter: torch.nn.Module):
@@ -268,6 +287,19 @@ class ModelMixin(torch.nn.Module):
                 Mirror source to accelerate downloads in China. If you are from China and have an accessibility
                 problem, you can set this option to resolve it. Note that we do not guarantee the timeliness or safety.
                 Please refer to the mirror site for more information.
+            device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
+                A map that specifies where each submodule should go. It doesn't need to be refined to each
+                parameter/buffer name, once a given module name is inside, every submodule of it will be sent to the
+                same device.
+
+                To have Accelerate compute the most optimized `device_map` automatically, set `device_map="auto"`. For
+                more information about each option see [designing a device
+                map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading by not initializing the weights and only loading the pre-trained weights. This
+                also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
+                model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
+                setting this argument to `True` will raise an error.
 
         <Tip>
 
@@ -296,6 +328,41 @@ class ModelMixin(torch.nn.Module):
         torch_dtype = kwargs.pop("torch_dtype", None)
         subfolder = kwargs.pop("subfolder", None)
         device_map = kwargs.pop("device_map", None)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
+
+        if low_cpu_mem_usage and not is_accelerate_available():
+            low_cpu_mem_usage = False
+            logger.warn(
+                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                " install accelerate\n```\n."
+            )
+
+        if device_map is not None and not is_accelerate_available():
+            raise NotImplementedError(
+                "Loading and dispatching requires `accelerate`. Please make sure to install accelerate or set"
+                " `device_map=None`. You can install accelerate with `pip install accelerate`."
+            )
+
+        # Check if we can handle device_map and dispatching the weights
+        if device_map is not None and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `device_map=None`."
+            )
+
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
+            )
+
+        if low_cpu_mem_usage is False and device_map is not None:
+            raise ValueError(
+                f"You cannot set `low_cpu_mem_usage` to `False` while using device_map={device_map} for loading and"
+                " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
+            )
 
         user_agent = {
             "diffusers": __version__,
@@ -378,12 +445,8 @@ class ModelMixin(torch.nn.Module):
 
             # restore default dtype
 
-        if device_map == "auto":
-            if is_accelerate_available():
-                import accelerate
-            else:
-                raise ImportError("Please install accelerate via `pip install accelerate`")
-
+        if low_cpu_mem_usage:
+            # Instantiate model with empty weights
             with accelerate.init_empty_weights():
                 model, unused_kwargs = cls.from_config(
                     config_path,
@@ -400,7 +463,17 @@ class ModelMixin(torch.nn.Module):
                     **kwargs,
                 )
 
-            accelerate.load_checkpoint_and_dispatch(model, model_file, device_map)
+            # if device_map is Non,e load the state dict on move the params from meta device to the cpu
+            if device_map is None:
+                param_device = "cpu"
+                state_dict = load_state_dict(model_file)
+                # move the parms from meta device to cpu
+                for param_name, param in state_dict.items():
+                    set_module_tensor_to_device(model, param_name, param_device, value=param)
+            else:  # else let accelerate handle loading and dispatching.
+                # Load weights and dispatch according to the device_map
+                # by deafult the device_map is None and the weights are loaded on the CPU
+                accelerate.load_checkpoint_and_dispatch(model, model_file, device_map)
 
             loading_info = {
                 "missing_keys": [],

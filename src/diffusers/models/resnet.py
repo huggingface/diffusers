@@ -48,6 +48,10 @@ class Upsample2D(nn.Module):
         if dtype == torch.bfloat16:
             hidden_states = hidden_states.to(torch.float32)
 
+        # upsample_nearest_nhwc fails with large batch sizes. see https://github.com/huggingface/diffusers/issues/984
+        if hidden_states.shape[0] >= 64:
+            hidden_states = hidden_states.contiguous()
+
         # if `output_size` is passed we force the interpolation output
         # size and do not make use of `scale_factor=2`
         if output_size is None:
@@ -376,6 +380,10 @@ class ResnetBlock2D(nn.Module):
         hidden_states = self.nonlinearity(hidden_states)
 
         if self.upsample is not None:
+            # upsample_nearest_nhwc fails with large batch sizes. see https://github.com/huggingface/diffusers/issues/984
+            if hidden_states.shape[0] >= 64:
+                input_tensor = input_tensor.contiguous()
+                hidden_states = hidden_states.contiguous()
             input_tensor = self.upsample(input_tensor)
             hidden_states = self.upsample(hidden_states)
         elif self.downsample is not None:
@@ -492,10 +500,6 @@ def upfirdn2d_native(tensor, kernel, up=1, down=1, pad=(0, 0)):
     kernel_h, kernel_w = kernel.shape
 
     out = tensor.view(-1, in_h, 1, in_w, 1, minor)
-
-    # Temporary workaround for mps specific issue: https://github.com/pytorch/pytorch/issues/84535
-    if tensor.device.type == "mps":
-        out = out.to("cpu")
     out = F.pad(out, [0, 0, 0, up_x - 1, 0, 0, 0, up_y - 1])
     out = out.view(-1, in_h * up_y, in_w * up_x, minor)
 

@@ -87,6 +87,10 @@ class FlaxKarrasVeScheduler(FlaxSchedulerMixin, ConfigMixin):
             A reasonable range is [0.2, 80].
     """
 
+    @property
+    def has_state(self):
+        return True
+
     @register_to_config
     def __init__(
         self,
@@ -97,10 +101,13 @@ class FlaxKarrasVeScheduler(FlaxSchedulerMixin, ConfigMixin):
         s_min: float = 0.05,
         s_max: float = 50,
     ):
-        self.state = KarrasVeSchedulerState.create()
+        pass
+
+    def create_state(self):
+        return KarrasVeSchedulerState.create()
 
     def set_timesteps(
-        self, state: KarrasVeSchedulerState, num_inference_steps: int, shape: Tuple
+        self, state: KarrasVeSchedulerState, num_inference_steps: int, shape: Tuple = ()
     ) -> KarrasVeSchedulerState:
         """
         Sets the continuous timesteps used for the diffusion chain. Supporting function to be run before inference.

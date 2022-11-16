@@ -101,17 +101,93 @@ class Timesteps(nn.Module):
 class GaussianFourierProjection(nn.Module):
     """Gaussian Fourier embeddings for noise levels."""
 
-    def __init__(self, embedding_size: int = 256, scale: float = 1.0):
+    def __init__(
+        self, embedding_size: int = 256, scale: float = 1.0, set_W_to_weight=True, log=True, flip_sin_to_cos=False
+    ):
         super().__init__()
         self.weight = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)
+        self.log = log
+        self.flip_sin_to_cos = flip_sin_to_cos
 
-        # to delete later
-        self.W = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)
+        if set_W_to_weight:
+            # to delete later
+            self.W = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)
 
-        self.weight = self.W
+            self.weight = self.W
 
     def forward(self, x):
-        x = torch.log(x)
+        if self.log:
+            x = torch.log(x)
+
         x_proj = x[:, None] * self.weight[None, :] * 2 * np.pi
-        out = torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1)
+
+        if self.flip_sin_to_cos:
+            out = torch.cat([torch.cos(x_proj), torch.sin(x_proj)], dim=-1)
+        else:
+            out = torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1)
         return out
+
+
+class ImagePositionalEmbeddings(nn.Module):
+    """
+    Converts latent image classes into vector embeddings. Sums the vector embeddings with positional embeddings for the
+    height and width of the latent space.
+
+    For more details, see figure 10 of the dall-e paper: https://arxiv.org/abs/2102.12092
+
+    For VQ-diffusion:
+
+    Output vector embeddings are used as input for the transformer.
+
+    Note that the vector embeddings for the transformer are different than the vector embeddings from the VQVAE.
+
+    Args:
+        num_embed (`int`):
+            Number of embeddings for the latent pixels embeddings.
+        height (`int`):
+            Height of the latent image i.e. the number of height embeddings.
+        width (`int`):
+            Width of the latent image i.e. the number of width embeddings.
+        embed_dim (`int`):
+            Dimension of the produced vector embeddings. Used for the latent pixel, height, and width embeddings.
+    """
+
+    def __init__(
+        self,
+        num_embed: int,
+        height: int,
+        width: int,
+        embed_dim: int,
+    ):
+        super().__init__()
+
+        self.height = height
+        self.width = width
+        self.num_embed = num_embed
+        self.embed_dim = embed_dim
+
+        self.emb = nn.Embedding(self.num_embed, embed_dim)
+        self.height_emb = nn.Embedding(self.height, embed_dim)
+        self.width_emb = nn.Embedding(self.width, embed_dim)
+
+    def forward(self, index):
+        emb = self.emb(index)
+
+        height_emb = self.height_emb(torch.arange(self.height, device=index.device).view(1, self.height))
+
+        # 1 x H x D -> 1 x H x 1 x D
+        height_emb = height_emb.unsqueeze(2)
+
+        width_emb = self.width_emb(torch.arange(self.width, device=index.device).view(1, self.width))
+
+        # 1 x W x D -> 1 x 1 x W x D
+        width_emb = width_emb.unsqueeze(1)
+
+        pos_emb = height_emb + width_emb
+
+        # 1 x H x W x D -> 1 x L xD
+        pos_emb = pos_emb.view(1, self.height * self.width, -1)
+
+        emb = emb + pos_emb[:, : emb.shape[1], :]
+
+        return emb

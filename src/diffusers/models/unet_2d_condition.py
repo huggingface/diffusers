@@ -22,7 +22,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput, logging
 from .embeddings import TimestepEmbedding, Timesteps
-from .unet_blocks import (
+from .unet_2d_blocks import (
     CrossAttnDownBlock2D,
     CrossAttnUpBlock2D,
     DownBlock2D,
@@ -224,6 +224,17 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         for block in self.up_blocks:
             if hasattr(block, "attentions") and block.attentions is not None:
                 block.set_attention_slice(slice_size)
+
+    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
+        for block in self.down_blocks:
+            if hasattr(block, "attentions") and block.attentions is not None:
+                block.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
+
+        self.mid_block.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
+
+        for block in self.up_blocks:
+            if hasattr(block, "attentions") and block.attentions is not None:
+                block.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D, CrossAttnUpBlock2D, UpBlock2D)):
