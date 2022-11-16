@@ -26,7 +26,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 logger = get_logger(__name__)
 
 
-def parse_args():
+def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
         "--pretrained_model_name_or_path",
@@ -66,6 +66,7 @@ def parse_args():
         "--instance_prompt",
         type=str,
         default=None,
+        required=True,
         help="The prompt with identifier specifying the instance",
     )
     parser.add_argument(
@@ -108,6 +109,12 @@ def parse_args():
     )
     parser.add_argument(
         "--center_crop", action="store_true", help="Whether to center crop images before resizing to resolution"
+    )
+    parser.add_argument(
+        "--use_filename_as_label", action="store_true", help="Uses the filename as the image labels instead of the instance_prompt, useful for regularization when training for styles with wide image variance"
+    )
+    parser.add_argument(
+        "--use_txt_as_label", action="store_true", help="Uses the filename.txt file's content as the image labels instead of the instance_prompt, useful for regularization when training for styles with wide image variance"
     )
     parser.add_argument("--train_text_encoder", action="store_true", help="Whether to train the text encoder")
     parser.add_argument(
@@ -184,6 +191,12 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--log_with",
+        type=str,
+        default="tensorboard",
+        choices=["tensorboard", "wandb"]
+    )
+    parser.add_argument(
         "--mixed_precision",
         type=str,
         default="no",
@@ -195,23 +208,41 @@ def parse_args():
         ),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
+    parser.add_argument("--save_model_every_n_steps", type=int)
 
-    args = parser.parse_args()
+    if input_args is not None:
+        args = parser.parse_args(input_args)
+    else:
+        args = parser.parse_args()
+
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
-
-    if args.instance_data_dir is None:
-        raise ValueError("You must specify a train data directory.")
 
     if args.with_prior_preservation:
         if args.class_data_dir is None:
             raise ValueError("You must specify a data directory for class images.")
         if args.class_prompt is None:
             raise ValueError("You must specify prompt for class images.")
+    else:
+        if args.class_data_dir is not None:
+            logger.warning("You need not use --class_data_dir without --with_prior_preservation.")
+        if args.class_prompt is not None:
+            logger.warning("You need not use --class_prompt without --with_prior_preservation.")
 
     return args
 
+# turns a path into a filename without the extension
+def get_filename(path):
+    return path.stem
+
+def get_label_from_txt(path):
+    txt_path = path.with_suffix(".txt") # get the path to the .txt file
+    if txt_path.exists():
+        with open(txt_path, "r") as f:
+            return f.read()
+    else:
+        return ""
 
 class DreamBoothDataset(Dataset):
     """
@@ -228,6 +259,8 @@ class DreamBoothDataset(Dataset):
         class_prompt=None,
         size=512,
         center_crop=False,
+        use_filename_as_label=False,
+        use_txt_as_label=False,
     ):
         self.size = size
         self.center_crop = center_crop
@@ -237,9 +270,11 @@ class DreamBoothDataset(Dataset):
         if not self.instance_data_root.exists():
             raise ValueError("Instance images root doesn't exists.")
 
-        self.instance_images_path = list(Path(instance_data_root).iterdir())
+        self.instance_images_path = list(self.instance_data_root.glob("*.jpg")) + list(self.instance_data_root.glob("*.png")) # get all the images in the instance data root
         self.num_instance_images = len(self.instance_images_path)
         self.instance_prompt = instance_prompt
+        self.use_filename_as_label = use_filename_as_label
+        self.use_txt_as_label = use_txt_as_label
         self._length = self.num_instance_images
 
         if class_data_root is not None:
@@ -266,12 +301,18 @@ class DreamBoothDataset(Dataset):
 
     def __getitem__(self, index):
         example = {}
-        instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
+        path = self.instance_images_path[index % self.num_instance_images]
+        prompt = get_filename(path) if self.use_filename_as_label else self.instance_prompt
+        prompt = get_label_from_txt(path) if self.use_txt_as_label else prompt
+        
+        print("prompt", prompt)
+        
+        instance_image = Image.open(path)
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
         example["instance_images"] = self.image_transforms(instance_image)
         example["instance_prompt_ids"] = self.tokenizer(
-            self.instance_prompt,
+            prompt,
             padding="do_not_pad",
             truncation=True,
             max_length=self.tokenizer.model_max_length,
@@ -319,16 +360,42 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
         return f"{organization}/{model_id}"
 
 
-def main():
-    args = parse_args()
-    logging_dir = Path(args.output_dir, args.logging_dir)
+def save_model(accelerator, unet, text_encoder, args, step=None):
+    unet = accelerator.unwrap_model(unet)
+    text_encoder = accelerator.unwrap_model(text_encoder)
+
+    if step == None:
+        folder = args.output_dir
+    else:
+        folder = args.output_dir + "-Step-" + str(step)
+
+    print("Saving Model Checkpoint...")
+    print("Directory: " + folder)
+
+    # Create the pipeline using using the trained modules and save it.
+    if accelerator.is_main_process:
+        pipeline = StableDiffusionPipeline.from_pretrained(
+            args.pretrained_model_name_or_path,
+            unet=unet,
+            text_encoder=text_encoder,
+            revision=args.revision,
+        )
+        pipeline.save_pretrained(folder)
+
+        if args.push_to_hub:
+            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+
+
+def main(args):
+    logging_dir = Path(args.logging_dir)
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
-        log_with="tensorboard",
+        log_with=args.log_with,
         logging_dir=logging_dir,
     )
+
 
     # Currently, it's not possible to do gradient accumulation when training two models with accelerate.accumulate
     # This will be enabled soon in accelerate. For now, we don't allow gradient accumulation when training two models.
@@ -466,9 +533,7 @@ def main():
         eps=args.adam_epsilon,
     )
 
-    noise_scheduler = DDPMScheduler(
-        beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000
-    )
+    noise_scheduler = DDPMScheduler.from_config(args.pretrained_model_name_or_path, subfolder="scheduler")
 
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
@@ -478,6 +543,8 @@ def main():
         tokenizer=tokenizer,
         size=args.resolution,
         center_crop=args.center_crop,
+        use_filename_as_label=args.use_filename_as_label,
+        use_txt_as_label=args.use_txt_as_label,
     )
 
     def collate_fn(examples):
@@ -493,7 +560,12 @@ def main():
         pixel_values = torch.stack(pixel_values)
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
-        input_ids = tokenizer.pad({"input_ids": input_ids}, padding=True, return_tensors="pt").input_ids
+        input_ids = tokenizer.pad(
+            {"input_ids": input_ids},
+            padding="max_length",
+            max_length=tokenizer.model_max_length,
+            return_tensors="pt",
+        ).input_ids
 
         batch = {
             "input_ids": input_ids,
@@ -502,7 +574,7 @@ def main():
         return batch
 
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn
+        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn, num_workers=1
     )
 
     # Scheduler and math around the number of training steps.
@@ -571,6 +643,8 @@ def main():
 
     for epoch in range(args.num_train_epochs):
         unet.train()
+        if args.train_text_encoder:
+            text_encoder.train()
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Convert images to latent space
@@ -634,23 +708,17 @@ def main():
             if global_step >= args.max_train_steps:
                 break
 
+
+            if args.save_model_every_n_steps != None and (global_step % args.save_model_every_n_steps) == 0:
+                save_model(accelerator, unet, text_encoder, args, global_step)
+
         accelerator.wait_for_everyone()
 
-    # Create the pipeline using using the trained modules and save it.
-    if accelerator.is_main_process:
-        pipeline = StableDiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path,
-            unet=accelerator.unwrap_model(unet),
-            text_encoder=accelerator.unwrap_model(text_encoder),
-            revision=args.revision,
-        )
-        pipeline.save_pretrained(args.output_dir)
-
-        if args.push_to_hub:
-            repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
+    save_model(accelerator, unet, text_encoder, args, step=None)
 
     accelerator.end_training()
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(args)

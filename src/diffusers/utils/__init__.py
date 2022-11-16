@@ -31,6 +31,7 @@ from .import_utils import (
     is_scipy_available,
     is_tf_available,
     is_torch_available,
+    is_torch_version,
     is_transformers_available,
     is_unidecode_available,
     requires_backends,
@@ -40,7 +41,17 @@ from .outputs import BaseOutput
 
 
 if is_torch_available():
-    from .testing_utils import floats_tensor, load_image, parse_flag_from_env, slow, torch_device
+    from .testing_utils import (
+        floats_tensor,
+        load_hf_numpy,
+        load_image,
+        load_numpy,
+        parse_flag_from_env,
+        require_torch_gpu,
+        slow,
+        torch_all_close,
+        torch_device,
+    )
 
 
 logger = get_logger(__name__)
@@ -56,7 +67,18 @@ CONFIG_NAME = "config.json"
 WEIGHTS_NAME = "diffusion_pytorch_model.bin"
 FLAX_WEIGHTS_NAME = "diffusion_flax_model.msgpack"
 ONNX_WEIGHTS_NAME = "model.onnx"
+ONNX_EXTERNAL_WEIGHTS_NAME = "weights.pb"
 HUGGINGFACE_CO_RESOLVE_ENDPOINT = "https://huggingface.co"
 DIFFUSERS_CACHE = default_cache_path
 DIFFUSERS_DYNAMIC_MODULE_NAME = "diffusers_modules"
 HF_MODULES_CACHE = os.getenv("HF_MODULES_CACHE", os.path.join(hf_cache_home, "modules"))
+
+_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS = [
+    "DDIMScheduler",
+    "DDPMScheduler",
+    "PNDMScheduler",
+    "LMSDiscreteScheduler",
+    "EulerDiscreteScheduler",
+    "EulerAncestralDiscreteScheduler",
+    "DPMSolverMultistepScheduler",
+]

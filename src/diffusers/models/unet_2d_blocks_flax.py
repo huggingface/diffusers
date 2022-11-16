@@ -15,7 +15,7 @@
 import flax.linen as nn
 import jax.numpy as jnp
 
-from .attention_flax import FlaxSpatialTransformer
+from .attention_flax import FlaxTransformer2DModel
 from .resnet_flax import FlaxDownsample2D, FlaxResnetBlock2D, FlaxUpsample2D
 
 
@@ -63,7 +63,7 @@ class FlaxCrossAttnDownBlock2D(nn.Module):
             )
             resnets.append(res_block)
 
-            attn_block = FlaxSpatialTransformer(
+            attn_block = FlaxTransformer2DModel(
                 in_channels=self.out_channels,
                 n_heads=self.attn_num_head_channels,
                 d_head=self.out_channels // self.attn_num_head_channels,
@@ -196,7 +196,7 @@ class FlaxCrossAttnUpBlock2D(nn.Module):
             )
             resnets.append(res_block)
 
-            attn_block = FlaxSpatialTransformer(
+            attn_block = FlaxTransformer2DModel(
                 in_channels=self.out_channels,
                 n_heads=self.attn_num_head_channels,
                 d_head=self.out_channels // self.attn_num_head_channels,
@@ -326,7 +326,7 @@ class FlaxUNetMidBlock2DCrossAttn(nn.Module):
         attentions = []
 
         for _ in range(self.num_layers):
-            attn_block = FlaxSpatialTransformer(
+            attn_block = FlaxTransformer2DModel(
                 in_channels=self.in_channels,
                 n_heads=self.attn_num_head_channels,
                 d_head=self.in_channels // self.attn_num_head_channels,

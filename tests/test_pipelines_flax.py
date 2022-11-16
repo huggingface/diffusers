@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+import tempfile
 import unittest
 
 import numpy as np
@@ -24,10 +26,27 @@ from diffusers.utils.testing_utils import require_flax, slow
 if is_flax_available():
     import jax
     import jax.numpy as jnp
-    from diffusers import FlaxDDIMScheduler, FlaxStableDiffusionPipeline
+    from diffusers import FlaxDDIMScheduler, FlaxDiffusionPipeline, FlaxStableDiffusionPipeline
     from flax.jax_utils import replicate
     from flax.training.common_utils import shard
     from jax import pmap
+
+
+@require_flax
+class DownloadTests(unittest.TestCase):
+    def test_download_only_pytorch(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            # pipeline has Flax weights
+            _ = FlaxDiffusionPipeline.from_pretrained(
+                "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None, cache_dir=tmpdirname
+            )
+
+            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots"))]
+            files = [item for sublist in all_root_files for item in sublist]
+
+            # None of the downloaded files should be a PyTorch file even if we have some here:
+            # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe/blob/main/unet/diffusion_pytorch_model.bin
+            assert not any(f.endswith(".bin") for f in files)
 
 
 @slow
@@ -54,18 +73,19 @@ class FlaxPipelineTests(unittest.TestCase):
 
         # shard inputs and rng
         params = replicate(params)
-        prng_seed = jax.random.split(prng_seed, 8)
+        prng_seed = jax.random.split(prng_seed, num_samples)
         prompt_ids = shard(prompt_ids)
 
         images = p_sample(prompt_ids, params, prng_seed, num_inference_steps).images
 
-        assert images.shape == (8, 1, 64, 64, 3)
-        assert np.abs((np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 4.151474)) < 1e-3
-        assert np.abs((np.abs(images, dtype=np.float32).sum() - 49947.875)) < 5e-1
+        assert images.shape == (num_samples, 1, 128, 128, 3)
+        if jax.device_count() == 8:
+            assert np.abs(np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 3.1111548) < 1e-3
+            assert np.abs(np.abs(images, dtype=np.float32).sum() - 199746.95) < 5e-1
 
         images_pil = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 
-        assert len(images_pil) == 8
+        assert len(images_pil) == num_samples
 
     def test_stable_diffusion_v1_4(self):
         pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
@@ -88,14 +108,15 @@ class FlaxPipelineTests(unittest.TestCase):
 
         # shard inputs and rng
         params = replicate(params)
-        prng_seed = jax.random.split(prng_seed, 8)
+        prng_seed = jax.random.split(prng_seed, num_samples)
         prompt_ids = shard(prompt_ids)
 
         images = p_sample(prompt_ids, params, prng_seed, num_inference_steps).images
 
-        assert images.shape == (8, 1, 512, 512, 3)
-        assert np.abs((np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 0.05652401)) < 1e-3
-        assert np.abs((np.abs(images, dtype=np.float32).sum() - 2383808.2)) < 5e-1
+        assert images.shape == (num_samples, 1, 512, 512, 3)
+        if jax.device_count() == 8:
+            assert np.abs((np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 0.05652401)) < 1e-3
+            assert np.abs((np.abs(images, dtype=np.float32).sum() - 2383808.2)) < 5e-1
 
     def test_stable_diffusion_v1_4_bfloat_16(self):
         pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
@@ -118,14 +139,15 @@ class FlaxPipelineTests(unittest.TestCase):
 
         # shard inputs and rng
         params = replicate(params)
-        prng_seed = jax.random.split(prng_seed, 8)
+        prng_seed = jax.random.split(prng_seed, num_samples)
         prompt_ids = shard(prompt_ids)
 
         images = p_sample(prompt_ids, params, prng_seed, num_inference_steps).images
 
-        assert images.shape == (8, 1, 512, 512, 3)
-        assert np.abs((np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 0.06652832)) < 1e-3
-        assert np.abs((np.abs(images, dtype=np.float32).sum() - 2384849.8)) < 5e-1
+        assert images.shape == (num_samples, 1, 512, 512, 3)
+        if jax.device_count() == 8:
+            assert np.abs((np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 0.06652832)) < 1e-3
+            assert np.abs((np.abs(images, dtype=np.float32).sum() - 2384849.8)) < 5e-1
 
     def test_stable_diffusion_v1_4_bfloat_16_with_safety(self):
         pipeline, params = FlaxStableDiffusionPipeline.from_pretrained(
@@ -146,14 +168,15 @@ class FlaxPipelineTests(unittest.TestCase):
 
         # shard inputs and rng
         params = replicate(params)
-        prng_seed = jax.random.split(prng_seed, 8)
+        prng_seed = jax.random.split(prng_seed, num_samples)
         prompt_ids = shard(prompt_ids)
 
         images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).images
 
-        assert images.shape == (8, 1, 512, 512, 3)
-        assert np.abs((np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 0.06652832)) < 1e-3
-        assert np.abs((np.abs(images, dtype=np.float32).sum() - 2384849.8)) < 5e-1
+        assert images.shape == (num_samples, 1, 512, 512, 3)
+        if jax.device_count() == 8:
+            assert np.abs((np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 0.06652832)) < 1e-3
+            assert np.abs((np.abs(images, dtype=np.float32).sum() - 2384849.8)) < 5e-1
 
     def test_stable_diffusion_v1_4_bfloat_16_ddim(self):
         scheduler = FlaxDDIMScheduler(
@@ -191,11 +214,12 @@ class FlaxPipelineTests(unittest.TestCase):
 
         # shard inputs and rng
         params = replicate(params)
-        prng_seed = jax.random.split(prng_seed, 8)
+        prng_seed = jax.random.split(prng_seed, num_samples)
         prompt_ids = shard(prompt_ids)
 
         images = p_sample(prompt_ids, params, prng_seed, num_inference_steps).images
 
-        assert images.shape == (8, 1, 512, 512, 3)
-        assert np.abs((np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 0.045043945)) < 1e-3
-        assert np.abs((np.abs(images, dtype=np.float32).sum() - 2347693.5)) < 5e-1
+        assert images.shape == (num_samples, 1, 512, 512, 3)
+        if jax.device_count() == 8:
+            assert np.abs((np.abs(images[0, 0, :2, :2, -2:], dtype=np.float32).sum() - 0.045043945)) < 1e-3
+            assert np.abs((np.abs(images, dtype=np.float32).sum() - 2347693.5)) < 5e-1

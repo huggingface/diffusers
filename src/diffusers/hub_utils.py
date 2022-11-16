@@ -16,13 +16,25 @@
 
 import os
 import shutil
+import sys
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional, Union
+from uuid import uuid4
 
 from huggingface_hub import HfFolder, Repository, whoami
 
-from .pipeline_utils import DiffusionPipeline
-from .utils import is_modelcards_available, logging
+from . import __version__
+from .utils import ENV_VARS_TRUE_VALUES, deprecate, logging
+from .utils.import_utils import (
+    _flax_version,
+    _jax_version,
+    _onnxruntime_version,
+    _torch_version,
+    is_flax_available,
+    is_modelcards_available,
+    is_onnx_available,
+    is_torch_available,
+)
 
 
 if is_modelcards_available():
@@ -33,6 +45,32 @@ logger = logging.get_logger(__name__)
 
 
 MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "utils" / "model_card_template.md"
+SESSION_ID = uuid4().hex
+DISABLE_TELEMETRY = os.getenv("DISABLE_TELEMETRY", "").upper() in ENV_VARS_TRUE_VALUES
+
+
+def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
+    """
+    Formats a user-agent string with basic info about a request.
+    """
+    ua = f"diffusers/{__version__}; python/{sys.version.split()[0]}; session_id/{SESSION_ID}"
+    if DISABLE_TELEMETRY:
+        return ua + "; telemetry/off"
+    if is_torch_available():
+        ua += f"; torch/{_torch_version}"
+    if is_flax_available():
+        ua += f"; jax/{_jax_version}"
+        ua += f"; flax/{_flax_version}"
+    if is_onnx_available():
+        ua += f"; onnxruntime/{_onnxruntime_version}"
+    # CI will set this value to True
+    if os.environ.get("DIFFUSERS_IS_CI", "").upper() in ENV_VARS_TRUE_VALUES:
+        ua += "; is_ci/true"
+    if isinstance(user_agent, dict):
+        ua += "; " + "; ".join(f"{k}/{v}" for k, v in user_agent.items())
+    elif isinstance(user_agent, str):
+        ua += "; " + user_agent
+    return ua
 
 
 def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
@@ -53,6 +91,12 @@ def init_git_repo(args, at_init: bool = False):
             Whether this function is called before any training or not. If `self.args.overwrite_output_dir` is `True`
             and `at_init` is `True`, the path to the repo (which is `self.args.output_dir`) might be wiped out.
     """
+    deprecation_message = (
+        "Please use `huggingface_hub.Repository`. "
+        "See `examples/unconditional_image_generation/train_unconditional.py` for an example."
+    )
+    deprecate("init_git_repo()", "0.10.0", deprecation_message)
+
     if hasattr(args, "local_rank") and args.local_rank not in [-1, 0]:
         return
     hub_token = args.hub_token if hasattr(args, "hub_token") else None
@@ -95,7 +139,7 @@ def init_git_repo(args, at_init: bool = False):
 
 def push_to_hub(
     args,
-    pipeline: DiffusionPipeline,
+    pipeline,
     repo: Repository,
     commit_message: Optional[str] = "End of training",
     blocking: bool = True,
@@ -114,6 +158,11 @@ def push_to_hub(
         The url of the commit of your model in the given repository if `blocking=False`, a tuple with the url of the
         commit and an object to track the progress of the commit if `blocking=True`
     """
+    deprecation_message = (
+        "Please use `huggingface_hub.Repository` and `Repository.push_to_hub()`. "
+        "See `examples/unconditional_image_generation/train_unconditional.py` for an example."
+    )
+    deprecate("push_to_hub()", "0.10.0", deprecation_message)
 
     if not hasattr(args, "hub_model_id") or args.hub_model_id is None:
         model_name = Path(args.output_dir).name
