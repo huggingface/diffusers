@@ -1,4 +1,18 @@
+import glob
+import os
 from dataclasses import dataclass
+
+import torch
+import torch.nn.functional as F
+
+from accelerate import Accelerator
+from datasets import load_dataset
+from diffusers import DDIMPipeline, DDIMScheduler, DDPMPipeline, DDPMScheduler, UNet2DModel
+from diffusers.hub_utils import init_git_repo, push_to_hub
+from diffusers.optimization import get_cosine_schedule_with_warmup
+from PIL import Image
+from torchvision import transforms
+from tqdm.auto import tqdm
 
 
 @dataclass
@@ -22,14 +36,11 @@ class TrainingConfig:
 
 
 config = TrainingConfig()
-from datasets import load_dataset
+
 
 config.dataset_name = "huggan/smithsonian_butterflies_subset"
 dataset = load_dataset(config.dataset_name, split="train")
 
-import matplotlib.pyplot as plt
-
-from torchvision import transforms
 
 preprocess = transforms.Compose(
     [
@@ -48,11 +59,8 @@ def transform(examples):
 
 dataset.set_transform(transform)
 
-import torch
 
 train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.train_batch_size, shuffle=True)
-
-from diffusers import UNet2DModel
 
 
 model = UNet2DModel(
@@ -79,7 +87,6 @@ model = UNet2DModel(
     ),
 )
 
-from diffusers import DDPMScheduler, DDIMPipeline, DDIMScheduler
 
 if config.output_dir.startswith("ddpm"):
     noise_scheduler = DDPMScheduler(
@@ -96,25 +103,15 @@ else:
         prediction_type="v",
     )
 
-import torch
-import torch.nn.functional as F
-
-from PIL import Image
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
 
-
-from diffusers.optimization import get_cosine_schedule_with_warmup
 
 lr_scheduler = get_cosine_schedule_with_warmup(
     optimizer=optimizer,
     num_warmup_steps=config.lr_warmup_steps,
     num_training_steps=(len(train_dataloader) * config.num_epochs),
 )
-
-from diffusers import DDPMPipeline
-
-import math
 
 
 def make_grid(images, rows, cols):
@@ -142,13 +139,6 @@ def evaluate(config, epoch, pipeline):
     image_grid.save(f"{test_dir}/{epoch:04d}.png")
 
 
-from accelerate import Accelerator
-from diffusers.hub_utils import init_git_repo, push_to_hub
-
-from tqdm.auto import tqdm
-import os
-
-
 def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_scheduler):
     # Initialize accelerator and tensorboard logging
     accelerator = Accelerator(
@@ -172,17 +162,9 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_s
     global_step = 0
 
     if config.output_dir.startswith("ddpm"):
-
         pipeline = DDPMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
     else:
         pipeline = DDIMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
-
-    def t_to_alpha_sigma(t):
-        """Returns the scaling factors for the clean image and for the noise, given
-        a timestep."""
-        return torch.cos(t * math.pi / 2), torch.sin(t * math.pi / 2)
-
-    alpha_sigmas = [t_to_alpha_sigma(t) for t in noise_scheduler.timesteps]
 
     evaluate(config, 0, pipeline)
 
@@ -223,7 +205,6 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_s
         # After each epoch you optionally sample some demo images with evaluate() and save the model
         if accelerator.is_main_process:
             if config.output_dir.startswith("ddpm"):
-
                 pipeline = DDPMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
             else:
                 pipeline = DDIMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
@@ -238,30 +219,9 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_s
                     pipeline.save_pretrained(config.output_dir)
 
 
-"""## Let's train!
-
-Let's launch the training (including multi-GPU training) from the notebook using Accelerate's `notebook_launcher` function:
-"""
-
-from accelerate import notebook_launcher
-
 args = (config, model, noise_scheduler, optimizer, train_dataloader, lr_scheduler)
 
 train_loop(*args)
 
-"""Let's have a look at the final image grid produced by the trained diffusion model:"""
-
-import glob
-
 sample_images = sorted(glob.glob(f"{config.output_dir}/samples/*.png"))
 Image.open(sample_images[-1])
-
-"""Not bad! There's room for improvement of course, so feel free to play with the hyperparameters, model definition and image augmentations 🤗
-
-If you've chosen to upload the model to the Hugging Face Hub, its repository should now look like so: 
-https://huggingface.co/anton-l/ddpm-butterflies-128
-
-If you want to dive deeper into the code, we also have more advanced training scripts with features like Exponential Moving Average of model weights here: 
-
-https://github.com/huggingface/diffusers/tree/main/examples
-"""

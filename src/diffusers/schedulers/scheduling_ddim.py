@@ -17,7 +17,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union, Literal
+from typing import Literal, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -42,8 +42,8 @@ def expand_to_shape(input, timesteps, shape, device):
 # Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->DDIM
 class DDIMSchedulerOutput(BaseOutput):
     """
-    Output class for the scheduler's step function output.
     Args:
+    Output class for the scheduler's step function output.
         prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
             denoising loop.
@@ -58,13 +58,12 @@ class DDIMSchedulerOutput(BaseOutput):
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> torch.Tensor:
     """
-    Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
-    (1-beta) over time from t = [0,1].
-    Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
-    to that part of the diffusion process.
     Args:
-        num_diffusion_timesteps (`int`): the number of betas to produce.
-        max_beta (`float`): the maximum beta to use; use values lower than 1 to
+    Create a beta schedule that discretizes the given alpha_t_bar function, which defines the cumulative product of
+    (1-beta) over time from t = [0,1]. Contains a function alpha_bar that takes an argument t and transforms it to the
+    cumulative product of (1-beta) up to that part of the diffusion process.
+        num_diffusion_timesteps (`int`): the number of betas to produce. max_beta (`float`): the maximum beta to use;
+        use values lower than 1 to
                      prevent singularities.
     Returns:
         betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
@@ -95,18 +94,15 @@ def t_to_alpha_sigma(num_diffusion_timesteps):
 
 class DDIMScheduler(SchedulerMixin, ConfigMixin):
     """
-    Denoising diffusion implicit models is a scheduler that extends the denoising procedure introduced in denoising
-    diffusion probabilistic models (DDPMs) with non-Markovian guidance.
-    [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
-    function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
-    [`~ConfigMixin.from_config`] functions.
-    For more details, see the original paper: https://arxiv.org/abs/2010.02502
     Args:
-        num_train_timesteps (`int`): number of diffusion steps used to train the model.
-        beta_start (`float`): the starting `beta` value of inference.
-        beta_end (`float`): the final `beta` value.
-        beta_schedule (`str`):
+    Denoising diffusion implicit models is a scheduler that extends the denoising procedure introduced in denoising
+    diffusion probabilistic models (DDPMs) with non-Markovian guidance. [`~ConfigMixin`] takes care of storing all
+    config attributes that are passed in the scheduler's `__init__` function, such as `num_train_timesteps`. They can
+    be accessed via `scheduler.config.num_train_timesteps`. [`~ConfigMixin`] also provides general loading and saving
+    functionality via the [`~ConfigMixin.save_config`] and [`~ConfigMixin.from_config`] functions. For more details,
+    see the original paper: https://arxiv.org/abs/2010.02502
+        num_train_timesteps (`int`): number of diffusion steps used to train the model. beta_start (`float`): the
+        starting `beta` value of inference. beta_end (`float`): the final `beta` value. beta_schedule (`str`):
             the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
         trained_betas (`np.ndarray`, optional):
@@ -186,11 +182,10 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
     def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
         """
+        Args:
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
-        Args:
-            sample (`torch.FloatTensor`): input sample
-            timestep (`int`, optional): current timestep
+            sample (`torch.FloatTensor`): input sample timestep (`int`, optional): current timestep
         Returns:
             `torch.FloatTensor`: scaled input sample
         """
@@ -203,7 +198,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
         if self.variance_type == "fixed":
-
             variance = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
         elif self.variance_type == "v_diffusion":
             # If eta > 0, adjust the scaling factor for the predicted noise
@@ -224,8 +218,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
-        Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
         Args:
+        Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
         """
@@ -249,24 +243,23 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         return_dict: bool = True,
     ) -> Union[DDIMSchedulerOutput, Tuple]:
         """
+        Args:
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
-        Args:
-            model_output (`torch.FloatTensor`): direct output from learned diffusion model.
-            timestep (`int`): current discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor`):
+            model_output (`torch.FloatTensor`): direct output from learned diffusion model. timestep (`int`): current
+            discrete timestep in the diffusion chain. sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
             prediction_type (`str`):
                 prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
                 process), `sample` (directly predicting the noisy sample), or `v` (see section 2.4
                 https://imagen.research.google/video/paper.pdf)
-            eta (`float`): weight of noise for added noise in diffusion step.
-            use_clipped_model_output (`bool`): if `True`, compute "corrected" `model_output` from the clipped
+            eta (`float`): weight of noise for added noise in diffusion step. use_clipped_model_output (`bool`): if
+            `True`, compute "corrected" `model_output` from the clipped
                 predicted original sample. Necessary because predicted original sample is clipped to [-1, 1] when
                 `self.config.clip_sample` is `True`. If no clipping has happened, "corrected" `model_output` would
                 coincide with the one provided as input and `use_clipped_model_output` will have not effect.
-            generator: random number generator.
-            variance_noise (`torch.FloatTensor`): instead of generating noise for the variance using `generator`, we
+            generator: random number generator. variance_noise (`torch.FloatTensor`): instead of generating noise for
+            the variance using `generator`, we
                 can directly provide the noise for the variance itself. This is useful for methods such as
                 CycleDiffusion. (https://arxiv.org/abs/2210.05559)
             return_dict (`bool`): option for returning tuple rather than DDIMSchedulerOutput class
@@ -362,10 +355,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             variance = self._get_variance(timestep, prev_timestep) ** (0.5) * eta * variance_noise
 
             prev_sample = prev_sample + variance
-
-                prev_sample = prev_sample + variance
-            else:
-                prev_sample = prev_sample + variance * noise
         if not return_dict:
             return (prev_sample,)
 
