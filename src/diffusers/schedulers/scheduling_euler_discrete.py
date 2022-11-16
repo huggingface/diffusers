@@ -65,6 +65,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             `linear` or `scaled_linear`.
         trained_betas (`np.ndarray`, optional):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
+        predict_epsilon (`bool`):
+            optional flag to use when the model predicts the noise (epsilon), or the samples instead of the noise.
 
     """
 
@@ -78,6 +80,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
         trained_betas: Optional[np.ndarray] = None,
+        predict_epsilon: bool = True,
     ):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
@@ -120,12 +123,15 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         Returns:
             `torch.FloatTensor`: scaled input sample
         """
+        self.is_scale_input_called = True
+        if not self.config.predict_epsilon:
+            return sample
+
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
         step_index = (self.timesteps == timestep).nonzero().item()
         sigma = self.sigmas[step_index]
         sample = sample / ((sigma**2 + 1) ** 0.5)
-        self.is_scale_input_called = True
         return sample
 
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
@@ -229,7 +235,10 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             sample = sample + eps * (sigma_hat**2 - sigma**2) ** 0.5
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
-        pred_original_sample = sample - sigma_hat * model_output
+        if self.config.predict_epsilon:
+            pred_original_sample = sample - sigma_hat * model_output
+        else:
+            pred_original_sample = model_output
 
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma_hat
