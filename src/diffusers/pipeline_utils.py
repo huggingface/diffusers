@@ -57,6 +57,7 @@ if is_transformers_available():
 INDEX_FILE = "diffusion_pytorch_model.bin"
 CUSTOM_PIPELINE_FILE_NAME = "pipeline.py"
 DUMMY_MODULES_FOLDER = "diffusers.utils"
+TRANSFORMERS_DUMMY_MODULES_FOLDER = "transformers.utils"
 
 
 logger = logging.get_logger(__name__)
@@ -592,7 +593,10 @@ class DiffusionPipeline(ConfigMixin):
 
                 if load_method_name is None:
                     none_module = class_obj.__module__
-                    if none_module.startswith(DUMMY_MODULES_FOLDER) and "dummy" in none_module:
+                    is_dummy_path = none_module.startswith(DUMMY_MODULES_FOLDER) or none_module.startswith(
+                        TRANSFORMERS_DUMMY_MODULES_FOLDER
+                    )
+                    if is_dummy_path and "dummy" in none_module:
                         # call class_obj for nice error message of missing requirements
                         class_obj()
 
