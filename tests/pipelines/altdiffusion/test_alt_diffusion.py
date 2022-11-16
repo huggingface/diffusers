@@ -220,8 +220,6 @@ class AltDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
-        print(image_slice.flatten())
-
         assert image.shape == (1, 128, 128, 3)
         expected_slice = np.array(
             [0.4786532, 0.45791715, 0.47507674, 0.50763345, 0.48375353, 0.515062, 0.51244247, 0.48673993, 0.47105807]
