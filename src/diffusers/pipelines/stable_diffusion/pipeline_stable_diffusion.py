@@ -516,15 +516,20 @@ class StableDiffusionPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
-        # 8. Post-processing
-        image = self.decode_latents(latents)
+        if output_type == "latents":
+            # Skip safety checking if we are returning latents
+            image = latents
+            has_nsfw_concept = None
+        else:
+            # 8. Post-processing
+            image = self.decode_latents(latents)
 
-        # 9. Run safety checker
-        image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
+            # 9. Run safety checker
+            image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
 
-        # 10. Convert to PIL
-        if output_type == "pil":
-            image = self.numpy_to_pil(image)
+            # 10. Convert to PIL
+            if output_type == "pil":
+                image = self.numpy_to_pil(image)
 
         if not return_dict:
             return (image, has_nsfw_concept)
