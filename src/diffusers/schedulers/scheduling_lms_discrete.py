@@ -128,7 +128,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.is_scale_input_called = True
         return sample
 
-    def get_lms_coefficient(self, order, t, current_order):
+    def get_lms_coefficient(self, order: int, t: int, current_order: int):
         """
         Compute a linear multistep coefficient.
 
@@ -138,12 +138,11 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             current_order (TODO):
         """
 
-        def lms_derivative(tau):
-            prod = 1.0
-            for k in range(order):
-                if current_order == k:
-                    continue
-                prod *= (tau - self.sigmas[t - k]) / (self.sigmas[t - current_order] - self.sigmas[t - k])
+        def lms_derivative(tau: float):
+            sigmas = self.sigmas[(t - torch.arange(0, order))]
+            p = (tau - sigmas) / (self.sigmas[t - current_order] - sigmas)
+            p[current_order] = 1  # mask current_order
+            prod = torch.prod(p)
             return prod
 
         integrated_coeff = integrate.quad(lms_derivative, self.sigmas[t], self.sigmas[t + 1], epsrel=1e-4)[0]
@@ -217,7 +216,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         pred_original_sample = sample - sigma * model_output
 
         # 2. Convert to an ODE derivative
-        derivative = (sample - pred_original_sample) / sigma
+        derivative = (sample - pred_original_sample) / sigma  # todo why sample - sample ?
         self.derivatives.append(derivative)
         if len(self.derivatives) > order:
             self.derivatives.pop(0)
