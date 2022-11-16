@@ -53,7 +53,8 @@ def prepare_mask_and_masked_image(image, mask):
             dimensions: ``batch x channels x height x width``.
     """
     if isinstance(image, torch.Tensor):
-        assert isinstance(mask, torch.Tensor)
+        if not isinstance(mask, torch.Tensor):
+            raise TypeError(f"`image` is a torch.Tensor but `mask` (type: {type(mask)} is not")
 
         # Batch single image
         if image.ndim == 3:
