@@ -19,14 +19,9 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import (
-    LearnedClassifierFreeSamplingEmbeddings,
-    Transformer2DModel,
-    VQDiffusionPipeline,
-    VQDiffusionScheduler,
-    VQModel,
-)
-from diffusers.utils import load_image, slow, torch_device
+from diffusers import Transformer2DModel, VQDiffusionPipeline, VQDiffusionScheduler, VQModel
+from diffusers.pipelines.vq_diffusion.pipeline_vq_diffusion import LearnedClassifierFreeSamplingEmbeddings
+from diffusers.utils import load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -209,38 +204,11 @@ class VQDiffusionPipelineIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_vq_diffusion(self):
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/vq_diffusion/teddy_bear_pool.png"
-        )
-        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
-
-        pipeline = VQDiffusionPipeline.from_pretrained("microsoft/vq-diffusion-ithq")
-        pipeline = pipeline.to(torch_device)
-        pipeline.set_progress_bar_config(disable=None)
-
-        generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = pipeline(
-            "teddy bear playing in the pool",
-            guidance_scale=1.0,
-            truncation_rate=0.86,
-            num_images_per_prompt=1,
-            generator=generator,
-            output_type="np",
-        )
-
-        image = output.images[0]
-
-        assert image.shape == (256, 256, 3)
-        assert np.abs(expected_image - image).max() < 1e-2
-
     def test_vq_diffusion_classifier_free_sampling(self):
-        expected_image = load_image(
-            "https://huggingface.co/datasets/williamberman/misc/resolve/main"
-            "/vq_diffusion/teddy_bear_pool_classifier_free_sampling.png"
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/vq_diffusion/teddy_bear_pool_classifier_free_sampling.npy"
         )
-        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
         pipeline = VQDiffusionPipeline.from_pretrained("microsoft/vq-diffusion-ithq")
         pipeline = pipeline.to(torch_device)

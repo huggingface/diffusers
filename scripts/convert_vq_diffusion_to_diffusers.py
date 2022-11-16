@@ -39,13 +39,8 @@ import torch
 
 import yaml
 from accelerate import init_empty_weights, load_checkpoint_and_dispatch
-from diffusers import (
-    LearnedClassifierFreeSamplingEmbeddings,
-    Transformer2DModel,
-    VQDiffusionPipeline,
-    VQDiffusionScheduler,
-    VQModel,
-)
+from diffusers import Transformer2DModel, VQDiffusionPipeline, VQDiffusionScheduler, VQModel
+from diffusers.pipelines.vq_diffusion.pipeline_vq_diffusion import LearnedClassifierFreeSamplingEmbeddings
 from transformers import CLIPTextModel, CLIPTokenizer
 from yaml.loader import FullLoader
 

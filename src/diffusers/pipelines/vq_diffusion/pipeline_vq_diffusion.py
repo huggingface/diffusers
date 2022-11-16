@@ -16,15 +16,39 @@ from typing import Callable, List, Optional, Tuple, Union
 
 import torch
 
-from diffusers import LearnedClassifierFreeSamplingEmbeddings, Transformer2DModel, VQModel
+from diffusers import Transformer2DModel, VQModel
 from diffusers.schedulers.scheduling_vq_diffusion import VQDiffusionScheduler
 from transformers import CLIPTextModel, CLIPTokenizer
 
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...modeling_utils import ModelMixin
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...utils import logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+class LearnedClassifierFreeSamplingEmbeddings(ModelMixin, ConfigMixin):
+    """
+    Utility class for storing learned text embeddings for classifier free sampling
+    """
+
+    @register_to_config
+    def __init__(self, learnable: bool, hidden_size: Optional[int] = None, length: Optional[int] = None):
+        super().__init__()
+
+        self.learnable = learnable
+
+        if self.learnable:
+            assert hidden_size is not None, "learnable=True requires `hidden_size` to be set"
+            assert length is not None, "learnable=True requires `length` to be set"
+
+            embeddings = torch.zeros(length, hidden_size)
+        else:
+            embeddings = None
+
+        self.embeddings = torch.nn.Parameter(embeddings)
 
 
 class VQDiffusionPipeline(DiffusionPipeline):
