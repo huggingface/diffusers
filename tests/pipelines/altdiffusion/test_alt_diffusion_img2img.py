@@ -237,7 +237,7 @@ class AltDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         )
         init_image = init_image.resize((768, 512))
         expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/fantasy_landscape.npy"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/fantasy_landscape_alt.npy"
         )
 
         model_id = "BAAI/AltDiffusion"
