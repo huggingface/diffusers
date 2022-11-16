@@ -15,10 +15,13 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | Long Prompt Weighting Stable Diffusion | **One** Stable Diffusion Pipeline without tokens length limit, and support parsing weighting in prompt.                                                                                                                                                                                                                                                                                                                                                                                                  | [Long Prompt Weighting Stable Diffusion](#long-prompt-weighting-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [SkyTNT](https://github.com/SkyTNT) |
 | Speech to Image                        | Using automatic-speech-recognition to transcribe text and Stable Diffusion to generate images                                                                                                                                                                                                                                                                                                                                                                                                            | [Speech to Image](#speech-to-image)                               | -                                                                                                                                                                                                                  | [Mikail Duzenli](https://github.com/MikailINTech)
 | Wild Card Stable Diffusion | Stable Diffusion Pipeline that supports prompts that contain wildcard terms (indicated by surrounding double underscores), with values instantiated randomly from a corresponding txt file or a dictionary of possible values                                                                                                                                                                                                                                                                                                     | [Wildcard Stable Diffusion](#wildcard-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Shyam Sudhakaran](https://github.com/shyamsn97) |
-| Composable Stable Diffusion| Stable Diffusion Pipeline that supports prompts that contain "&#124;" in prompts (as an AND condition) and weights (separated by "&#124;" as well) to positively / negatively weight prompts.                                                                                                                                                                                                                                                                                                     | [Composable Stable Diffusion](#composable-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
+| [Composable Stable Diffusion](https://energy-based-model.github.io/Compositional-Visual-Generation-with-Composable-Diffusion-Models/) | Stable Diffusion Pipeline that supports prompts that contain "&#124;" in prompts (as an AND condition) and weights (separated by "&#124;" as well) to positively / negatively weight prompts.                                                                                                                                                                                                                                                                                                     | [Composable Stable Diffusion](#composable-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
 | Seed Resizing Stable Diffusion| Stable Diffusion Pipeline that supports resizing an image and retaining the concepts of the 512 by 512 generation.                                                                                                                                                                                                                                                                                                     | [Seed Resizing](#seed-resizing)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
-
 | Imagic Stable Diffusion | Stable Diffusion Pipeline that enables writing a text prompt to edit an existing image| [Imagic Stable Diffusion](#imagic-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
+| Multilingual Stable Diffusion| Stable Diffusion Pipeline that supports prompts in 50 different languages.                                                                                                                                                                                                                                                                                                     | [Multilingual Stable Diffusion](#multilingual-stable-diffusion-pipeline)                                                                 | -                                                                                                                                                                                                                  |                        [Juan Carlos Piñeros](https://github.com/juancopi81) |
+| Image to Image Inpainting Stable Diffusion | Stable Diffusion Pipeline that enables the overlaying of two images and subsequent inpainting| [Image to Image Inpainting Stable Diffusion](#image-to-image-inpainting-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Alex McKinney](https://github.com/vvvm23) |
+| Text Based Inpainting Stable Diffusion | Stable Diffusion Inpainting Pipeline that enables passing a text prompt to generate the mask for inpainting| [Text Based Inpainting Stable Diffusion](#image-to-image-inpainting-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Dhruv Karan](https://github.com/unography) |
+
 
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
@@ -177,9 +180,20 @@ images = pipe.inpaint(prompt=prompt, init_image=init_image, mask_image=mask_imag
 As shown above this one pipeline can run all both "text-to-image", "image-to-image", and "inpainting" in one pipeline.
 
 ### Long Prompt Weighting Stable Diffusion
+Features of this custom pipeline:
+- Input a prompt without the 77 token length limit.
+- Includes tx2img, img2img. and inpainting pipelines.
+- Emphasize/weigh part of your prompt with parentheses as so: `a baby deer with (big eyes)`
+- De-emphasize part of your prompt as so: `a [baby] deer with big eyes`
+- Precisely weigh part of your prompt as so: `a baby deer with (big eyes:1.3)`
 
-The Pipeline lets you input prompt without 77 token length limit. And you can increase words weighting by using "()" or decrease words weighting by using "[]"
-The Pipeline also lets you use the main use cases of the stable diffusion pipeline in a single class.
+Prompt weighting equivalents:
+- `a baby deer with` == `(a baby deer with:1.0)`
+- `(big eyes)` == `(big eyes:1.1)`
+- `((big eyes))` == `(big eyes:1.21)`
+- `[big eyes]` == `(big eyes:0.91)`
+
+You can run this custom pipeline as so:
 
 #### pytorch
 
@@ -331,6 +345,8 @@ out = pipe(
 
 
 ### Composable Stable diffusion 
+
+[Composable Stable Diffusion](https://energy-based-model.github.io/Compositional-Visual-Generation-with-Composable-Diffusion-Models/) proposes conjunction and negation (negative prompts) operators for compositional generation with conditional diffusion models.
 
 ```python
 import torch as th
@@ -500,4 +516,140 @@ res = pipe_compare(
 
 image = res.images[0]
 image.save('./seed_resize/seed_resize_{w}_{h}_image_compare.png'.format(w=width, h=height))
+```
+
+### Multilingual Stable Diffusion Pipeline
+
+The following code can generate an images from texts in different languages using the pre-trained [mBART-50 many-to-one multilingual machine translation model](https://huggingface.co/facebook/mbart-large-50-many-to-one-mmt) and Stable Diffusion.
+
+```python
+from PIL import Image
+
+import torch
+
+from diffusers import DiffusionPipeline
+from transformers import (
+    pipeline,
+    MBart50TokenizerFast,
+    MBartForConditionalGeneration,
+)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+device_dict = {"cuda": 0, "cpu": -1}
+
+# helper function taken from: https://huggingface.co/blog/stable_diffusion
+def image_grid(imgs, rows, cols):
+    assert len(imgs) == rows*cols
+
+    w, h = imgs[0].size
+    grid = Image.new('RGB', size=(cols*w, rows*h))
+    grid_w, grid_h = grid.size
+
+    for i, img in enumerate(imgs):
+        grid.paste(img, box=(i%cols*w, i//cols*h))
+    return grid
+
+# Add language detection pipeline
+language_detection_model_ckpt = "papluca/xlm-roberta-base-language-detection"
+language_detection_pipeline = pipeline("text-classification",
+                                       model=language_detection_model_ckpt,
+                                       device=device_dict[device])
+
+# Add model for language translation
+trans_tokenizer = MBart50TokenizerFast.from_pretrained("facebook/mbart-large-50-many-to-one-mmt")
+trans_model = MBartForConditionalGeneration.from_pretrained("facebook/mbart-large-50-many-to-one-mmt").to(device)
+
+diffuser_pipeline = DiffusionPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4",
+    custom_pipeline="multilingual_stable_diffusion",
+    detection_pipeline=language_detection_pipeline,
+    translation_model=trans_model,
+    translation_tokenizer=trans_tokenizer,
+    revision="fp16",
+    torch_dtype=torch.float16,
+)
+
+diffuser_pipeline.enable_attention_slicing()
+diffuser_pipeline = diffuser_pipeline.to(device)
+
+prompt = ["a photograph of an astronaut riding a horse", 
+          "Una casa en la playa",
+          "Ein Hund, der Orange isst",
+          "Un restaurant parisien"]
+
+output = diffuser_pipeline(prompt)
+
+images = output.images
+
+grid = image_grid(images, rows=2, cols=2)
+```
+
+This example produces the following images:
+![image](https://user-images.githubusercontent.com/4313860/198328706-295824a4-9856-4ce5-8e66-278ceb42fd29.png)
+
+### Image to Image Inpainting Stable Diffusion
+
+Similar to the standard stable diffusion inpainting example, except with the addition of an `inner_image` argument.
+
+`image`, `inner_image`, and `mask` should have the same dimensions. `inner_image` should have an alpha (transparency) channel.
+
+The aim is to overlay two images, then mask out the boundary between `image` and `inner_image` to allow stable diffusion to make the connection more seamless.
+For example, this could be used to place a logo on a shirt and make it blend seamlessly.
+
+```python
+import PIL
+import torch
+
+from diffusers import StableDiffusionInpaintPipeline
+
+image_path = "./path-to-image.png"
+inner_image_path = "./path-to-inner-image.png"
+mask_path = "./path-to-mask.png"
+
+init_image = PIL.Image.open(image_path).convert("RGB").resize((512, 512))
+inner_image = PIL.Image.open(inner_image_path).convert("RGBA").resize((512, 512))
+mask_image = PIL.Image.open(mask_path).convert("RGB").resize((512, 512))
+
+pipe = StableDiffusionInpaintPipeline.from_pretrained(
+    "runwayml/stable-diffusion-inpainting",
+    revision="fp16",
+    torch_dtype=torch.float16,
+)
+pipe = pipe.to("cuda")
+
+prompt = "Your prompt here!"
+image = pipe(prompt=prompt, image=init_image, inner_image=inner_image, mask_image=mask_image).images[0]
+```
+
+### Text Based Inpainting Stable Diffusion
+
+Use a text prompt to generate the mask for the area to be inpainted.
+Currently uses the CLIPSeg model for mask generation, then calls the standard Stable Diffusion Inpainting pipeline to perform the inpainting.
+
+```python
+from transformers import CLIPSegProcessor, CLIPSegForImageSegmentation
+from diffusers import DiffusionPipeline
+
+from PIL import Image
+import requests
+from torch import autocast
+
+processor = CLIPSegProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
+model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined")
+
+pipe = DiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-inpainting",
+    custom_pipeline="text_inpainting",
+    segmentation_model=model,
+    segmentation_processor=processor
+)
+pipe = pipe.to("cuda")
+
+
+url = "https://github.com/timojl/clipseg/blob/master/example_image.jpg?raw=true"
+image = Image.open(requests.get(url, stream=True).raw).resize((512, 512))
+text = "a glass"  # will mask out this text
+prompt = "a cup"  # the masked out region will be replaced with this
+
+with autocast("cuda"):
+    image = pipe(image=image, text=text, prompt=prompt).images[0]
 ```

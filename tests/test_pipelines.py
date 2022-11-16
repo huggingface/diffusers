@@ -29,6 +29,10 @@ from diffusers import (
     DDIMScheduler,
     DDPMPipeline,
     DDPMScheduler,
+    DPMSolverMultistepScheduler,
+    EulerAncestralDiscreteScheduler,
+    EulerDiscreteScheduler,
+    LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipelineLegacy,
@@ -41,8 +45,7 @@ from diffusers import (
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, slow, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir
-from parameterized import parameterized
+from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, require_torch_gpu
 from PIL import Image
 from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -88,6 +91,84 @@ class DownloadTests(unittest.TestCase):
             # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe/blob/main/unet/diffusion_flax_model.msgpack
             assert not any(f.endswith(".msgpack") for f in files)
 
+    def test_download_no_safety_checker(self):
+        prompt = "hello"
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        pipe = pipe.to(torch_device)
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
+        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+        pipe_2 = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
+        pipe_2 = pipe_2.to(torch_device)
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
+        out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+        assert np.max(np.abs(out - out_2)) < 1e-3
+
+    def test_load_no_safety_checker_explicit_locally(self):
+        prompt = "hello"
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        pipe = pipe.to(torch_device)
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
+        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.save_pretrained(tmpdirname)
+            pipe_2 = StableDiffusionPipeline.from_pretrained(tmpdirname, safety_checker=None)
+            pipe_2 = pipe_2.to(torch_device)
+
+            if torch_device == "mps":
+                # device type MPS is not supported for torch.Generator() api.
+                generator = torch.manual_seed(0)
+            else:
+                generator = torch.Generator(device=torch_device).manual_seed(0)
+
+            out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+        assert np.max(np.abs(out - out_2)) < 1e-3
+
+    def test_load_no_safety_checker_default_locally(self):
+        prompt = "hello"
+        pipe = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
+        pipe = pipe.to(torch_device)
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
+        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.save_pretrained(tmpdirname)
+            pipe_2 = StableDiffusionPipeline.from_pretrained(tmpdirname)
+            pipe_2 = pipe_2.to(torch_device)
+
+            if torch_device == "mps":
+                # device type MPS is not supported for torch.Generator() api.
+                generator = torch.manual_seed(0)
+            else:
+                generator = torch.Generator(device=torch_device).manual_seed(0)
+
+            out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+        assert np.max(np.abs(out - out_2)) < 1e-3
+
 
 class CustomPipelineTests(unittest.TestCase):
     def test_load_custom_pipeline(self):
@@ -107,6 +188,7 @@ class CustomPipelineTests(unittest.TestCase):
         images, output_str = pipeline(num_inference_steps=2, output_type="np")
 
         assert images[0].shape == (1, 32, 32, 3)
+
         # compare output to https://huggingface.co/hf-internal-testing/diffusers-dummy-pipeline/blob/main/pipeline.py#L102
         assert output_str == "This is a test"
 
@@ -124,7 +206,7 @@ class CustomPipelineTests(unittest.TestCase):
         assert output_str == "This is a local test"
 
     @slow
-    @unittest.skipIf(torch_device == "cpu", "Stable diffusion is supposed to run on GPU")
+    @require_torch_gpu
     def test_load_pipeline_from_git(self):
         clip_model_id = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 
@@ -320,6 +402,82 @@ class PipelineFastTests(unittest.TestCase):
         assert image_img2img.shape == (1, 32, 32, 3)
         assert image_text2img.shape == (1, 128, 128, 3)
 
+    def test_set_scheduler(self):
+        unet = self.dummy_cond_unet
+        scheduler = PNDMScheduler(skip_prk_steps=True)
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        sd = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        sd.scheduler = DDIMScheduler.from_config(sd.scheduler.config)
+        assert isinstance(sd.scheduler, DDIMScheduler)
+        sd.scheduler = DDPMScheduler.from_config(sd.scheduler.config)
+        assert isinstance(sd.scheduler, DDPMScheduler)
+        sd.scheduler = PNDMScheduler.from_config(sd.scheduler.config)
+        assert isinstance(sd.scheduler, PNDMScheduler)
+        sd.scheduler = LMSDiscreteScheduler.from_config(sd.scheduler.config)
+        assert isinstance(sd.scheduler, LMSDiscreteScheduler)
+        sd.scheduler = EulerDiscreteScheduler.from_config(sd.scheduler.config)
+        assert isinstance(sd.scheduler, EulerDiscreteScheduler)
+        sd.scheduler = EulerAncestralDiscreteScheduler.from_config(sd.scheduler.config)
+        assert isinstance(sd.scheduler, EulerAncestralDiscreteScheduler)
+        sd.scheduler = DPMSolverMultistepScheduler.from_config(sd.scheduler.config)
+        assert isinstance(sd.scheduler, DPMSolverMultistepScheduler)
+
+    def test_set_scheduler_consistency(self):
+        unet = self.dummy_cond_unet
+        pndm = PNDMScheduler.from_config("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
+        ddim = DDIMScheduler.from_config("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        sd = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=pndm,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        pndm_config = sd.scheduler.config
+        sd.scheduler = DDPMScheduler.from_config(pndm_config)
+        sd.scheduler = PNDMScheduler.from_config(sd.scheduler.config)
+        pndm_config_2 = sd.scheduler.config
+        pndm_config_2 = {k: v for k, v in pndm_config_2.items() if k in pndm_config}
+
+        assert dict(pndm_config) == dict(pndm_config_2)
+
+        sd = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=ddim,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+
+        ddim_config = sd.scheduler.config
+        sd.scheduler = LMSDiscreteScheduler.from_config(ddim_config)
+        sd.scheduler = DDIMScheduler.from_config(sd.scheduler.config)
+        ddim_config_2 = sd.scheduler.config
+        ddim_config_2 = {k: v for k, v in ddim_config_2.items() if k in ddim_config}
+
+        assert dict(ddim_config) == dict(ddim_config_2)
+
 
 @slow
 class PipelineSlowTests(unittest.TestCase):
@@ -386,7 +544,7 @@ class PipelineSlowTests(unittest.TestCase):
             new_ddpm = DDPMPipeline.from_pretrained(tmpdirname)
             new_ddpm.to(torch_device)
 
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         image = ddpm(generator=generator, output_type="numpy").images
 
         generator = generator.manual_seed(0)
@@ -407,7 +565,7 @@ class PipelineSlowTests(unittest.TestCase):
         ddpm_from_hub = ddpm_from_hub.to(torch_device)
         ddpm_from_hub.set_progress_bar_config(disable=None)
 
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         image = ddpm(generator=generator, output_type="numpy").images
 
         generator = generator.manual_seed(0)
@@ -430,7 +588,7 @@ class PipelineSlowTests(unittest.TestCase):
         ddpm_from_hub = ddpm_from_hub.to(torch_device)
         ddpm_from_hub_custom_model.set_progress_bar_config(disable=None)
 
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         image = ddpm_from_hub_custom_model(generator=generator, output_type="numpy").images
 
         generator = generator.manual_seed(0)
@@ -441,59 +599,28 @@ class PipelineSlowTests(unittest.TestCase):
     def test_output_format(self):
         model_path = "google/ddpm-cifar10-32"
 
-        pipe = DDIMPipeline.from_pretrained(model_path)
+        scheduler = DDIMScheduler.from_pretrained(model_path)
+        pipe = DDIMPipeline.from_pretrained(model_path, scheduler=scheduler)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         images = pipe(generator=generator, output_type="numpy").images
         assert images.shape == (1, 32, 32, 3)
         assert isinstance(images, np.ndarray)
 
-        images = pipe(generator=generator, output_type="pil").images
+        images = pipe(generator=generator, output_type="pil", num_inference_steps=4).images
         assert isinstance(images, list)
         assert len(images) == 1
         assert isinstance(images[0], PIL.Image.Image)
 
         # use PIL by default
-        images = pipe(generator=generator).images
+        images = pipe(generator=generator, num_inference_steps=4).images
         assert isinstance(images, list)
         assert isinstance(images[0], PIL.Image.Image)
 
-    # Make sure the test passes for different values of random seed
-    @parameterized.expand([(0,), (4,)])
-    def test_ddpm_ddim_equality(self, seed):
-        model_id = "google/ddpm-cifar10-32"
-
-        unet = UNet2DModel.from_pretrained(model_id)
-        ddpm_scheduler = DDPMScheduler()
-        ddim_scheduler = DDIMScheduler()
-
-        ddpm = DDPMPipeline(unet=unet, scheduler=ddpm_scheduler)
-        ddpm.to(torch_device)
-        ddpm.set_progress_bar_config(disable=None)
-        ddim = DDIMPipeline(unet=unet, scheduler=ddim_scheduler)
-        ddim.to(torch_device)
-        ddim.set_progress_bar_config(disable=None)
-
-        generator = torch.manual_seed(seed)
-        ddpm_image = ddpm(generator=generator, output_type="numpy").images
-
-        generator = torch.manual_seed(seed)
-        ddim_image = ddim(
-            generator=generator,
-            num_inference_steps=1000,
-            eta=1.0,
-            output_type="numpy",
-            use_clipped_model_output=True,  # Need this to make DDIM match DDPM
-        ).images
-
-        # the values aren't exactly equal, but the images look the same visually
-        assert np.abs(ddpm_image - ddim_image).max() < 1e-1
-
-    # Make sure the test passes for different values of random seed
-    @parameterized.expand([(0,), (4,)])
-    def test_ddpm_ddim_equality_batched(self, seed):
+    def test_ddpm_ddim_equality_batched(self):
+        seed = 0
         model_id = "google/ddpm-cifar10-32"
 
         unet = UNet2DModel.from_pretrained(model_id)
@@ -508,12 +635,12 @@ class PipelineSlowTests(unittest.TestCase):
         ddim.to(torch_device)
         ddim.set_progress_bar_config(disable=None)
 
-        generator = torch.manual_seed(seed)
-        ddpm_images = ddpm(batch_size=4, generator=generator, output_type="numpy").images
+        generator = torch.Generator(device=torch_device).manual_seed(seed)
+        ddpm_images = ddpm(batch_size=2, generator=generator, output_type="numpy").images
 
-        generator = torch.manual_seed(seed)
+        generator = torch.Generator(device=torch_device).manual_seed(seed)
         ddim_images = ddim(
-            batch_size=4,
+            batch_size=2,
             generator=generator,
             num_inference_steps=1000,
             eta=1.0,

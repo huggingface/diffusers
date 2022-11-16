@@ -495,6 +495,8 @@ class CrossAttention(nn.Module):
             hidden_states = self._memory_efficient_attention_xformers(query, key, value)
         elif self._slice_size is None or query.shape[0] // self._slice_size == 1:
             hidden_states = self._attention(query, key, value)
+            # Some versions of xformers return output in fp32, cast it back to the dtype of the input
+            hidden_states = hidden_states.to(query.dtype)
         else:
             hidden_states = self._sliced_attention(query, key, value, sequence_length, dim)
 

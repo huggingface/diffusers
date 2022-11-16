@@ -23,7 +23,12 @@ import jax
 import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils_flax import FlaxSchedulerMixin, FlaxSchedulerOutput, broadcast_to_shape_from_left
+from .scheduling_utils_flax import (
+    _FLAX_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS,
+    FlaxSchedulerMixin,
+    FlaxSchedulerOutput,
+    broadcast_to_shape_from_left,
+)
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps: int, max_beta=0.999) -> jnp.ndarray:
@@ -87,8 +92,8 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
-    [`~ConfigMixin.from_config`] functions.
+    [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
+    [`~SchedulerMixin.from_pretrained`] functions.
 
     For more details, see the original paper: https://arxiv.org/abs/2202.09778
 
@@ -113,6 +118,8 @@ class FlaxPNDMScheduler(FlaxSchedulerMixin, ConfigMixin):
             `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
             stable diffusion.
     """
+
+    _compatibles = _FLAX_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
 
     @property
     def has_state(self):

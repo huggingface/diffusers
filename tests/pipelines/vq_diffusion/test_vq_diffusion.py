@@ -20,7 +20,8 @@ import numpy as np
 import torch
 
 from diffusers import Transformer2DModel, VQDiffusionPipeline, VQDiffusionScheduler, VQModel
-from diffusers.utils import load_image, slow, torch_device
+from diffusers.pipelines.vq_diffusion.pipeline_vq_diffusion import LearnedClassifierFreeSamplingEmbeddings
+from diffusers.utils import load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -44,6 +45,10 @@ class VQDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @property
     def num_embeds_ada_norm(self):
         return 12
+
+    @property
+    def text_embedder_hidden_size(self):
+        return 32
 
     @property
     def dummy_vqvae(self):
@@ -71,7 +76,7 @@ class VQDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         config = CLIPTextConfig(
             bos_token_id=0,
             eos_token_id=2,
-            hidden_size=32,
+            hidden_size=self.text_embedder_hidden_size,
             intermediate_size=37,
             layer_norm_eps=1e-05,
             num_attention_heads=4,
@@ -111,9 +116,15 @@ class VQDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         tokenizer = self.dummy_tokenizer
         transformer = self.dummy_transformer
         scheduler = VQDiffusionScheduler(self.num_embed)
+        learned_classifier_free_sampling_embeddings = LearnedClassifierFreeSamplingEmbeddings(learnable=False)
 
         pipe = VQDiffusionPipeline(
-            vqvae=vqvae, text_encoder=text_encoder, tokenizer=tokenizer, transformer=transformer, scheduler=scheduler
+            vqvae=vqvae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            transformer=transformer,
+            scheduler=scheduler,
+            learned_classifier_free_sampling_embeddings=learned_classifier_free_sampling_embeddings,
         )
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
@@ -139,6 +150,50 @@ class VQDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_vq_diffusion_classifier_free_sampling(self):
+        device = "cpu"
+
+        vqvae = self.dummy_vqvae
+        text_encoder = self.dummy_text_encoder
+        tokenizer = self.dummy_tokenizer
+        transformer = self.dummy_transformer
+        scheduler = VQDiffusionScheduler(self.num_embed)
+        learned_classifier_free_sampling_embeddings = LearnedClassifierFreeSamplingEmbeddings(
+            learnable=True, hidden_size=self.text_embedder_hidden_size, length=tokenizer.model_max_length
+        )
+
+        pipe = VQDiffusionPipeline(
+            vqvae=vqvae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            transformer=transformer,
+            scheduler=scheduler,
+            learned_classifier_free_sampling_embeddings=learned_classifier_free_sampling_embeddings,
+        )
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "teddy bear playing in the pool"
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        output = pipe([prompt], generator=generator, num_inference_steps=2, output_type="np")
+        image = output.images
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        image_from_tuple = pipe(
+            [prompt], generator=generator, output_type="np", return_dict=False, num_inference_steps=2
+        )[0]
+
+        image_slice = image[0, -3:, -3:, -1]
+        image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 24, 24, 3)
+
+        expected_slice = np.array([0.6647, 0.6531, 0.5303, 0.5891, 0.5726, 0.4439, 0.6304, 0.5564, 0.4912])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
+
 
 @slow
 @require_torch_gpu
@@ -149,12 +204,11 @@ class VQDiffusionPipelineIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_vq_diffusion(self):
-        expected_image = load_image(
+    def test_vq_diffusion_classifier_free_sampling(self):
+        expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/vq_diffusion/teddy_bear_pool.png"
+            "/vq_diffusion/teddy_bear_pool_classifier_free_sampling.npy"
         )
-        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
         pipeline = VQDiffusionPipeline.from_pretrained("microsoft/vq-diffusion-ithq")
         pipeline = pipeline.to(torch_device)
@@ -163,7 +217,6 @@ class VQDiffusionPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         output = pipeline(
             "teddy bear playing in the pool",
-            truncation_rate=0.86,
             num_images_per_prompt=1,
             generator=generator,
             output_type="np",

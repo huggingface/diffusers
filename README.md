@@ -152,15 +152,7 @@ it before the pipeline and pass it to `from_pretrained`.
 ```python
 from diffusers import LMSDiscreteScheduler
 
-lms = LMSDiscreteScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
-
-pipe = StableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", 
-    revision="fp16", 
-    torch_dtype=torch.float16,
-    scheduler=lms,
-)
-pipe = pipe.to("cuda")
+pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
 
 prompt = "a photo of an astronaut riding a horse on mars"
 image = pipe(prompt).images[0]  
@@ -346,14 +338,14 @@ Textual Inversion is a technique for capturing novel concepts from a small numbe
 
 - Textual Inversion. Capture novel concepts from a small set of sample images, and associate them with new "words" in the embedding space of the text encoder. Please, refer to [our training examples](https://github.com/huggingface/diffusers/tree/main/examples/textual_inversion) or [documentation](https://huggingface.co/docs/diffusers/training/text_inversion) to try for yourself.
 
-- Dreambooth. Another technique to capture new concepts in Stable Diffusion. This method fine-tunes the UNet (and, optionally, also the text encoder) of the pipeline to achieve impressive results. Please, refer to [our training examples](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth) and [training report](https://wandb.ai/psuraj/dreambooth/reports/Dreambooth-Training-Analysis--VmlldzoyNzk0NDc3) for additional details and training recommendations.
+- Dreambooth. Another technique to capture new concepts in Stable Diffusion. This method fine-tunes the UNet (and, optionally, also the text encoder) of the pipeline to achieve impressive results. Please, refer to [our training example](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth) and [training report](https://huggingface.co/blog/dreambooth) for additional details and training recommendations.
 
 - Full Stable Diffusion fine-tuning. If you have a more sizable dataset with a specific look or style, you can fine-tune Stable Diffusion so that it outputs images following those examples. This was the approach taken to create [a Pokémon Stable Diffusion model](https://huggingface.co/justinpinkney/pokemon-stable-diffusion) (by Justing Pinkney / Lambda Labs), [a Japanese specific version of Stable Diffusion](https://huggingface.co/spaces/rinna/japanese-stable-diffusion) (by [Rinna Co.](https://github.com/rinnakk/japanese-stable-diffusion/) and others. You can start at [our text-to-image fine-tuning example](https://github.com/huggingface/diffusers/tree/main/examples/text_to_image) and go from there.
 
 
 ## Stable Diffusion Community Pipelines
 
-The release of Stable Diffusion as an open source model has fostered a lot of interesting ideas and experimentation. Our [Community Examples folder](https://github.com/huggingface/diffusers/tree/main/examples/community) contains many ideas worth exploring, like interpolating to create animated videos, using CLIP Guidance for additional prompt fidelity, term weighting, and much more! Take a look and [contribute your own](https://huggingface.co/docs/diffusers/using-diffusers/custom_pipelines).
+The release of Stable Diffusion as an open source model has fostered a lot of interesting ideas and experimentation. Our [Community Examples folder](https://github.com/huggingface/diffusers/tree/main/examples/community) contains many ideas worth exploring, like interpolating to create animated videos, using CLIP Guidance for additional prompt fidelity, term weighting, and much more! [Take a look](https://huggingface.co/docs/diffusers/using-diffusers/custom_pipeline_overview) and [contribute your own](https://huggingface.co/docs/diffusers/using-diffusers/contribute_pipeline).
 
 ## Other Examples
 
@@ -428,7 +420,7 @@ If you just want to play around with some web demos, you can try out the followi
 <p>
     
 **Schedulers**: Algorithm class for both **inference** and **training**.
-The class provides functionality to compute previous image according to alpha, beta schedule as well as predict noise for training.
+The class provides functionality to compute previous image according to alpha, beta schedule as well as predict noise for training. Also known as **Samplers**.
 *Examples*: [DDPM](https://arxiv.org/abs/2006.11239), [DDIM](https://arxiv.org/abs/2010.02502), [PNDM](https://arxiv.org/abs/2202.09778), [DEIS](https://arxiv.org/abs/2204.13902)
 
 <p align="center">

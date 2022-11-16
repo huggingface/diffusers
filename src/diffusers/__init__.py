@@ -35,6 +35,7 @@ if is_torch_available():
         DDPMPipeline,
         KarrasVePipeline,
         LDMPipeline,
+        LDMSuperResolutionPipeline,
         PNDMPipeline,
         RePaintPipeline,
         ScoreSdeVePipeline,
@@ -42,6 +43,7 @@ if is_torch_available():
     from .schedulers import (
         DDIMScheduler,
         DDPMScheduler,
+        DPMSolverMultistepScheduler,
         EulerAncestralDiscreteScheduler,
         EulerDiscreteScheduler,
         IPNDMScheduler,
@@ -63,6 +65,8 @@ else:
 
 if is_torch_available() and is_transformers_available():
     from .pipelines import (
+        AltDiffusionImg2ImgPipeline,
+        AltDiffusionPipeline,
         CycleDiffusionPipeline,
         LDMTextToImagePipeline,
         StableDiffusionImg2ImgPipeline,
@@ -92,6 +96,7 @@ if is_flax_available():
     from .schedulers import (
         FlaxDDIMScheduler,
         FlaxDDPMScheduler,
+        FlaxDPMSolverMultistepScheduler,
         FlaxKarrasVeScheduler,
         FlaxLMSDiscreteScheduler,
         FlaxPNDMScheduler,

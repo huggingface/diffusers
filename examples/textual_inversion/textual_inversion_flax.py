@@ -14,7 +14,6 @@ from torch.utils.data import Dataset
 import jax
 import jax.numpy as jnp
 import optax
-import PIL
 import transformers
 from diffusers import (
     FlaxAutoencoderKL,
@@ -33,6 +32,27 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
 
+
+# TODO: remove and import from diffusers.utils when the new version of diffusers is released
+from packaging import version
+import PIL
+if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
+    PIL_INTERPOLATION = {
+        "linear": PIL.Image.Resampling.BILINEAR,
+        "bilinear": PIL.Image.Resampling.BILINEAR,
+        "bicubic": PIL.Image.Resampling.BICUBIC,
+        "lanczos": PIL.Image.Resampling.LANCZOS,
+        "nearest": PIL.Image.Resampling.NEAREST,
+    }
+else:
+    PIL_INTERPOLATION = {
+        "linear": PIL.Image.LINEAR,
+        "bilinear": PIL.Image.BILINEAR,
+        "bicubic": PIL.Image.BICUBIC,
+        "lanczos": PIL.Image.LANCZOS,
+        "nearest": PIL.Image.NEAREST,
+    }
+# ------------------------------------------------------------------------------
 
 logger = logging.getLogger(__name__)
 
@@ -246,10 +266,10 @@ class TextualInversionDataset(Dataset):
             self._length = self.num_images * repeats
 
         self.interpolation = {
-            "linear": PIL.Image.LINEAR,
-            "bilinear": PIL.Image.BILINEAR,
-            "bicubic": PIL.Image.BICUBIC,
-            "lanczos": PIL.Image.LANCZOS,
+            "linear": PIL_INTERPOLATION["linear"],
+            "bilinear": PIL_INTERPOLATION["bilinear"],
+            "bicubic": PIL_INTERPOLATION["bicubic"],
+            "lanczos": PIL_INTERPOLATION["lanczos"],
         }[interpolation]
 
         self.templates = imagenet_style_templates_small if learnable_property == "style" else imagenet_templates_small
@@ -391,7 +411,7 @@ def main():
     placeholder_token_id = tokenizer.convert_tokens_to_ids(args.placeholder_token)
 
     # Load models and create wrapper for stable diffusion
-    text_encoder = FlaxCLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
+    text_encoder = FlaxCLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder")
     vae, vae_params = FlaxAutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
     unet, unet_params = FlaxUNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
 

@@ -1,3 +1,17 @@
+# Copyright 2022 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import inspect
 from typing import Callable, List, Optional, Union
 
@@ -5,13 +19,14 @@ import numpy as np
 import torch
 
 import PIL
+from diffusers.utils import is_accelerate_available
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler
-from ...utils import deprecate, logging
+from ...utils import PIL_INTERPOLATION, deprecate, logging
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
@@ -22,14 +37,14 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 def preprocess(image):
     w, h = image.size
     w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
-    image = image.resize((w, h), resample=PIL.Image.LANCZOS)
+    image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
     image = np.array(image).astype(np.float32) / 255.0
     image = image[None].transpose(0, 3, 1, 2)
     image = torch.from_numpy(image)
     return 2.0 * image - 1.0
 
 
-def posterior_sample(scheduler, latents, timestep, clean_latents, eta):
+def posterior_sample(scheduler, latents, timestep, clean_latents, generator, eta):
     # 1. get previous step value (=t-1)
     prev_timestep = timestep - scheduler.config.num_train_timesteps // scheduler.num_inference_steps
 
@@ -48,7 +63,9 @@ def posterior_sample(scheduler, latents, timestep, clean_latents, eta):
     # direction pointing to x_t
     e_t = (latents - alpha_prod_t ** (0.5) * clean_latents) / (1 - alpha_prod_t) ** (0.5)
     dir_xt = (1.0 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * e_t
-    noise = std_dev_t * torch.randn(clean_latents.shape, dtype=clean_latents.dtype, device=clean_latents.device)
+    noise = std_dev_t * torch.randn(
+        clean_latents.shape, dtype=clean_latents.dtype, device=clean_latents.device, generator=generator
+    )
     prev_latents = alpha_prod_t_prev ** (0.5) * clean_latents + dir_xt + noise
 
     return prev_latents
@@ -107,7 +124,7 @@ class CycleDiffusionPipeline(DiffusionPipeline):
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
+            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
@@ -162,6 +179,7 @@ class CycleDiffusionPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_attention_slicing
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
         Enable sliced attention computation.
@@ -181,13 +199,277 @@ class CycleDiffusionPipeline(DiffusionPipeline):
             slice_size = self.unet.config.attention_head_dim // 2
         self.unet.set_attention_slice(slice_size)
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_attention_slicing
     def disable_attention_slicing(self):
         r"""
         Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go
         back to computing attention in one step.
         """
-        # set slice_size = `None` to disable `set_attention_slice`
+        # set slice_size = `None` to disable `attention slicing`
         self.enable_attention_slicing(None)
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
+    def enable_sequential_cpu_offload(self):
+        r"""
+        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
+        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
+        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
+        """
+        if is_accelerate_available():
+            from accelerate import cpu_offload
+        else:
+            raise ImportError("Please install accelerate via `pip install accelerate`")
+
+        device = torch.device("cuda")
+
+        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
+            if cpu_offloaded_model is not None:
+                cpu_offload(cpu_offloaded_model, device)
+
+    @property
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
+    def _execution_device(self):
+        r"""
+        Returns the device on which the pipeline's models will be executed. After calling
+        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
+        hooks.
+        """
+        if self.device != torch.device("meta") or not hasattr(self.unet, "_hf_hook"):
+            return self.device
+        for module in self.unet.modules():
+            if (
+                hasattr(module, "_hf_hook")
+                and hasattr(module._hf_hook, "execution_device")
+                and module._hf_hook.execution_device is not None
+            ):
+                return torch.device(module._hf_hook.execution_device)
+        return self.device
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_xformers_memory_efficient_attention
+    def enable_xformers_memory_efficient_attention(self):
+        r"""
+        Enable memory efficient attention as implemented in xformers.
+
+        When this option is enabled, you should observe lower GPU memory usage and a potential speed up at inference
+        time. Speed up at training time is not guaranteed.
+
+        Warning: When Memory Efficient Attention and Sliced attention are both enabled, the Memory Efficient Attention
+        is used.
+        """
+        self.unet.set_use_memory_efficient_attention_xformers(True)
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_xformers_memory_efficient_attention
+    def disable_xformers_memory_efficient_attention(self):
+        r"""
+        Disable memory efficient attention as implemented in xformers.
+        """
+        self.unet.set_use_memory_efficient_attention_xformers(False)
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
+    def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt):
+        r"""
+        Encodes the prompt into text encoder hidden states.
+
+        Args:
+            prompt (`str` or `list(int)`):
+                prompt to be encoded
+            device: (`torch.device`):
+                torch device
+            num_images_per_prompt (`int`):
+                number of images that should be generated per prompt
+            do_classifier_free_guidance (`bool`):
+                whether to use classifier free guidance or not
+            negative_prompt (`str` or `List[str]`):
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `guidance_scale` is less than `1`).
+        """
+        batch_size = len(prompt) if isinstance(prompt, list) else 1
+
+        text_inputs = self.tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=self.tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        )
+        text_input_ids = text_inputs.input_ids
+        untruncated_ids = self.tokenizer(prompt, padding="max_length", return_tensors="pt").input_ids
+
+        if not torch.equal(text_input_ids, untruncated_ids):
+            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1])
+            logger.warning(
+                "The following part of your input was truncated because CLIP can only handle sequences up to"
+                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+            )
+
+        if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+            attention_mask = text_inputs.attention_mask.to(device)
+        else:
+            attention_mask = None
+
+        text_embeddings = self.text_encoder(
+            text_input_ids.to(device),
+            attention_mask=attention_mask,
+        )
+        text_embeddings = text_embeddings[0]
+
+        # duplicate text embeddings for each generation per prompt, using mps friendly method
+        bs_embed, seq_len, _ = text_embeddings.shape
+        text_embeddings = text_embeddings.repeat(1, num_images_per_prompt, 1)
+        text_embeddings = text_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
+
+        # get unconditional embeddings for classifier free guidance
+        if do_classifier_free_guidance:
+            uncond_tokens: List[str]
+            if negative_prompt is None:
+                uncond_tokens = [""] * batch_size
+            elif type(prompt) is not type(negative_prompt):
+                raise TypeError(
+                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    f" {type(prompt)}."
+                )
+            elif isinstance(negative_prompt, str):
+                uncond_tokens = [negative_prompt]
+            elif batch_size != len(negative_prompt):
+                raise ValueError(
+                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+                    " the batch size of `prompt`."
+                )
+            else:
+                uncond_tokens = negative_prompt
+
+            max_length = text_input_ids.shape[-1]
+            uncond_input = self.tokenizer(
+                uncond_tokens,
+                padding="max_length",
+                max_length=max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+
+            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+                attention_mask = uncond_input.attention_mask.to(device)
+            else:
+                attention_mask = None
+
+            uncond_embeddings = self.text_encoder(
+                uncond_input.input_ids.to(device),
+                attention_mask=attention_mask,
+            )
+            uncond_embeddings = uncond_embeddings[0]
+
+            # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
+            seq_len = uncond_embeddings.shape[1]
+            uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
+            uncond_embeddings = uncond_embeddings.view(batch_size * num_images_per_prompt, seq_len, -1)
+
+            # For classifier free guidance, we need to do two forward passes.
+            # Here we concatenate the unconditional and text embeddings into a single batch
+            # to avoid doing two forward passes
+            text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
+
+        return text_embeddings
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.check_inputs
+    def check_inputs(self, prompt, strength, callback_steps):
+        if not isinstance(prompt, str) and not isinstance(prompt, list):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        if strength < 0 or strength > 1:
+            raise ValueError(f"The value of strength should in [1.0, 1.0] but is {strength}")
+
+        if (callback_steps is None) or (
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+        ):
+            raise ValueError(
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
+            )
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
+    def prepare_extra_step_kwargs(self, generator, eta):
+        # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
+        # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
+        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
+        # and should be between [0, 1]
+
+        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        extra_step_kwargs = {}
+        if accepts_eta:
+            extra_step_kwargs["eta"] = eta
+
+        # check if the scheduler accepts generator
+        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        if accepts_generator:
+            extra_step_kwargs["generator"] = generator
+        return extra_step_kwargs
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
+    def run_safety_checker(self, image, device, dtype):
+        if self.safety_checker is not None:
+            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
+            image, has_nsfw_concept = self.safety_checker(
+                images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
+            )
+        else:
+            has_nsfw_concept = None
+        return image, has_nsfw_concept
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
+    def decode_latents(self, latents):
+        latents = 1 / 0.18215 * latents
+        image = self.vae.decode(latents).sample
+        image = (image / 2 + 0.5).clamp(0, 1)
+        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
+        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
+        return image
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
+    def get_timesteps(self, num_inference_steps, strength, device):
+        # get the original timestep using init_timestep
+        offset = self.scheduler.config.get("steps_offset", 0)
+        init_timestep = int(num_inference_steps * strength) + offset
+        init_timestep = min(init_timestep, num_inference_steps)
+
+        t_start = max(num_inference_steps - init_timestep + offset, 0)
+        timesteps = self.scheduler.timesteps[t_start:]
+
+        return timesteps
+
+    def prepare_latents(self, init_image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
+        init_image = init_image.to(device=device, dtype=dtype)
+        init_latent_dist = self.vae.encode(init_image).latent_dist
+        init_latents = init_latent_dist.sample(generator=generator)
+        init_latents = 0.18215 * init_latents
+
+        if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
+            # expand init_latents for batch_size
+            deprecation_message = (
+                f"You have passed {batch_size} text prompts (`prompt`), but only {init_latents.shape[0]} initial"
+                " images (`init_image`). Initial images are now duplicating to match the number of text prompts. Note"
+                " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
+                " your script to pass as many init images as text prompts to suppress this warning."
+            )
+            deprecate("len(prompt) != len(init_image)", "1.0.0", deprecation_message, standard_warn=False)
+            additional_image_per_prompt = batch_size // init_latents.shape[0]
+            init_latents = torch.cat([init_latents] * additional_image_per_prompt * num_images_per_prompt, dim=0)
+        elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
+            raise ValueError(
+                f"Cannot duplicate `init_image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
+            )
+        else:
+            init_latents = torch.cat([init_latents] * num_images_per_prompt, dim=0)
+
+        # add noise to latents using the timestep
+        noise = torch.randn(init_latents.shape, generator=generator, device=device, dtype=dtype)
+
+        # get latents
+        clean_latents = init_latents
+        init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
+        latents = init_latents
+
+        return latents, clean_latents
 
     @torch.no_grad()
     def __call__(
@@ -263,184 +545,43 @@ class CycleDiffusionPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-        if isinstance(prompt, str):
-            batch_size = 1
-        elif isinstance(prompt, list):
-            batch_size = len(prompt)
-        else:
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+        # 1. Check inputs
+        self.check_inputs(prompt, strength, callback_steps)
 
-        if batch_size != 1:
-            raise ValueError(
-                "At the moment only `batch_size=1` is supported for prompts, but you seem to have passed multiple"
-                f" prompts: {prompt}. Please make sure to pass only a single prompt."
-            )
-
-        if strength < 0 or strength > 1:
-            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
-
-        if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
-        ):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
-
-        # set timesteps
-        self.scheduler.set_timesteps(num_inference_steps)
-
-        if isinstance(init_image, PIL.Image.Image):
-            init_image = preprocess(init_image)
-
-        # get prompt text embeddings
-        text_inputs = self.tokenizer(
-            prompt,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            return_tensors="pt",
-        )
-        source_text_inputs = self.tokenizer(
-            source_prompt,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            return_tensors="pt",
-        )
-        text_input_ids = text_inputs.input_ids
-        source_text_input_ids = source_text_inputs.input_ids
-
-        if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
-            removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length :])
-            logger.warning(
-                "The following part of your input was truncated because CLIP can only handle sequences up to"
-                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
-            )
-            text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
-        if source_text_input_ids.shape[-1] > self.tokenizer.model_max_length:
-            removed_text = self.tokenizer.batch_decode(source_text_input_ids[:, self.tokenizer.model_max_length :])
-            logger.warning(
-                "The following part of your input was truncated because CLIP can only handle sequences up to"
-                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
-            )
-            source_text_input_ids = source_text_input_ids[:, : self.tokenizer.model_max_length]
-        text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
-        source_text_embeddings = self.text_encoder(source_text_input_ids.to(self.device))[0]
-
-        # duplicate text embeddings for each generation per prompt
-        text_embeddings = text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
-        source_text_embeddings = source_text_embeddings.repeat_interleave(num_images_per_prompt, dim=0)
-
+        # 2. Define call parameters
+        batch_size = 1 if isinstance(prompt, str) else len(prompt)
+        device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
+        do_classifier_free_guidance = guidance_scale > 1.0
 
-        # get unconditional embeddings for classifier free guidance
-        uncond_tokens = [""]
-
-        max_length = text_input_ids.shape[-1]
-        uncond_input = self.tokenizer(
-            uncond_tokens,
-            padding="max_length",
-            max_length=max_length,
-            truncation=True,
-            return_tensors="pt",
-        )
-        uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
-
-        # duplicate unconditional embeddings for each generation per prompt
-        uncond_embeddings = uncond_embeddings.repeat_interleave(batch_size * num_images_per_prompt, dim=0)
-
-        # For classifier free guidance, we need to do two forward passes.
-        # Here we concatenate the unconditional and text embeddings into a single batch
-        # to avoid doing two forward passes
-        text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
-
-        source_uncond_tokens = [""]
-
-        max_length = source_text_input_ids.shape[-1]
-        source_uncond_input = self.tokenizer(
-            source_uncond_tokens,
-            padding="max_length",
-            max_length=max_length,
-            truncation=True,
-            return_tensors="pt",
-        )
-        source_uncond_embeddings = self.text_encoder(source_uncond_input.input_ids.to(self.device))[0]
-
-        # duplicate unconditional embeddings for each generation per prompt
-        source_uncond_embeddings = source_uncond_embeddings.repeat_interleave(
-            batch_size * num_images_per_prompt, dim=0
+        # 3. Encode input prompt
+        text_embeddings = self._encode_prompt(prompt, device, num_images_per_prompt, do_classifier_free_guidance, None)
+        source_text_embeddings = self._encode_prompt(
+            source_prompt, device, num_images_per_prompt, do_classifier_free_guidance, None
         )
 
-        # For classifier free guidance, we need to do two forward passes.
-        # Here we concatenate the unconditional and text embeddings into a single batch
-        # to avoid doing two forward passes
-        source_text_embeddings = torch.cat([source_uncond_embeddings, source_text_embeddings])
+        # 4. Preprocess image
+        if isinstance(init_image, PIL.Image.Image):
+            init_image = preprocess(init_image)
 
-        # encode the init image into latents and scale the latents
-        latents_dtype = text_embeddings.dtype
-        init_image = init_image.to(device=self.device, dtype=latents_dtype)
-        init_latent_dist = self.vae.encode(init_image).latent_dist
-        init_latents = init_latent_dist.sample(generator=generator)
-        init_latents = 0.18215 * init_latents
+        # 5. Prepare timesteps
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps = self.get_timesteps(num_inference_steps, strength, device)
+        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
-        if isinstance(prompt, str):
-            prompt = [prompt]
-        if len(prompt) > init_latents.shape[0] and len(prompt) % init_latents.shape[0] == 0:
-            # expand init_latents for batch_size
-            deprecation_message = (
-                f"You have passed {len(prompt)} text prompts (`prompt`), but only {init_latents.shape[0]} initial"
-                " images (`init_image`). Initial images are now duplicating to match the number of text prompts. Note"
-                " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
-                " your script to pass as many init images as text prompts to suppress this warning."
-            )
-            deprecate("len(prompt) != len(init_image)", "1.0.0", deprecation_message, standard_warn=False)
-            additional_image_per_prompt = len(prompt) // init_latents.shape[0]
-            init_latents = torch.cat([init_latents] * additional_image_per_prompt * num_images_per_prompt, dim=0)
-        elif len(prompt) > init_latents.shape[0] and len(prompt) % init_latents.shape[0] != 0:
-            raise ValueError(
-                f"Cannot duplicate `init_image` of batch size {init_latents.shape[0]} to {len(prompt)} text prompts."
-            )
-        else:
-            init_latents = torch.cat([init_latents] * num_images_per_prompt, dim=0)
+        # 6. Prepare latent variables
+        latents, clean_latents = self.prepare_latents(
+            init_image, latent_timestep, batch_size, num_images_per_prompt, text_embeddings.dtype, device, generator
+        )
+        source_latents = latents
 
-        # get the original timestep using init_timestep
-        offset = self.scheduler.config.get("steps_offset", 0)
-        init_timestep = int(num_inference_steps * strength) + offset
-        init_timestep = min(init_timestep, num_inference_steps)
+        # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
+        generator = extra_step_kwargs.pop("generator", None)
 
-        timesteps = self.scheduler.timesteps[-init_timestep]
-        timesteps = torch.tensor([timesteps] * batch_size * num_images_per_prompt, device=self.device)
-
-        # add noise to latents using the timesteps
-        noise = torch.randn(init_latents.shape, generator=generator, device=self.device, dtype=latents_dtype)
-        clean_latents = init_latents
-        init_latents = self.scheduler.add_noise(init_latents, noise, timesteps)
-
-        # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
-        # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
-        # and should be between [0, 1]
-        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        extra_step_kwargs = {}
-
-        if not (accepts_eta and (0 < eta <= 1)):
-            raise ValueError(
-                "Currently, only the DDIM scheduler is supported. Please make sure that `pipeline.scheduler` is of"
-                f" type {DDIMScheduler.__class__} and not {self.scheduler.__class__}."
-            )
-
-        extra_step_kwargs["eta"] = eta
-
-        latents = init_latents
-        source_latents = init_latents
-
-        t_start = max(num_inference_steps - init_timestep + offset, 0)
-
-        # Some schedulers like PNDM have timesteps as arrays
-        # It's more optimized to move all timesteps to correct device beforehand
-        timesteps = self.scheduler.timesteps[t_start:].to(self.device)
-
+        # 8. Denoising loop
         for i, t in enumerate(self.progress_bar(timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2)
@@ -485,7 +626,7 @@ class CycleDiffusionPipeline(DiffusionPipeline):
 
             # Sample source_latents from the posterior distribution.
             prev_source_latents = posterior_sample(
-                self.scheduler, source_latents, t, clean_latents, **extra_step_kwargs
+                self.scheduler, source_latents, t, clean_latents, generator=generator, **extra_step_kwargs
             )
             # Compute noise.
             noise = compute_noise(
@@ -502,22 +643,13 @@ class CycleDiffusionPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
-        latents = 1 / 0.18215 * latents
-        image = self.vae.decode(latents).sample
+        # 9. Post-processing
+        image = self.decode_latents(latents)
 
-        image = (image / 2 + 0.5).clamp(0, 1)
-        image = image.cpu().permute(0, 2, 3, 1).numpy()
+        # 10. Run safety checker
+        image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
 
-        if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(
-                self.device
-            )
-            image, has_nsfw_concept = self.safety_checker(
-                images=image, clip_input=safety_checker_input.pixel_values.to(text_embeddings.dtype)
-            )
-        else:
-            has_nsfw_concept = None
-
+        # 11. Convert to PIL
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 

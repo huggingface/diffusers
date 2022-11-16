@@ -1,3 +1,17 @@
+# Copyright 2022 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import inspect
 from typing import Callable, List, Optional, Union
 
@@ -8,10 +22,10 @@ import PIL
 from transformers import CLIPFeatureExtractor, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
-from ...onnx_utils import OnnxRuntimeModel
+from ...onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from ...utils import deprecate, logging
+from ...utils import PIL_INTERPOLATION, deprecate, logging
 from . import StableDiffusionPipelineOutput
 
 
@@ -21,7 +35,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 def preprocess(image):
     w, h = image.size
     w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
-    image = image.resize((w, h), resample=PIL.Image.LANCZOS)
+    image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
     image = np.array(image).astype(np.float32) / 255.0
     image = image[None].transpose(0, 3, 1, 2)
     return 2.0 * image - 1.0
@@ -46,7 +60,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
+            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
@@ -123,6 +137,84 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_onnx_stable_diffusion.OnnxStableDiffusionPipeline._encode_prompt
+    def _encode_prompt(self, prompt, num_images_per_prompt, do_classifier_free_guidance, negative_prompt):
+        r"""
+        Encodes the prompt into text encoder hidden states.
+
+        Args:
+            prompt (`str` or `list(int)`):
+                prompt to be encoded
+            num_images_per_prompt (`int`):
+                number of images that should be generated per prompt
+            do_classifier_free_guidance (`bool`):
+                whether to use classifier free guidance or not
+            negative_prompt (`str` or `List[str]`):
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `guidance_scale` is less than `1`).
+        """
+        batch_size = len(prompt) if isinstance(prompt, list) else 1
+
+        # get prompt text embeddings
+        text_inputs = self.tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=self.tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="np",
+        )
+        text_input_ids = text_inputs.input_ids
+        untruncated_ids = self.tokenizer(prompt, padding="max_length", return_tensors="np").input_ids
+
+        if not np.array_equal(text_input_ids, untruncated_ids):
+            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1])
+            logger.warning(
+                "The following part of your input was truncated because CLIP can only handle sequences up to"
+                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+            )
+
+        text_embeddings = self.text_encoder(input_ids=text_input_ids.astype(np.int32))[0]
+        text_embeddings = np.repeat(text_embeddings, num_images_per_prompt, axis=0)
+
+        # get unconditional embeddings for classifier free guidance
+        if do_classifier_free_guidance:
+            uncond_tokens: List[str]
+            if negative_prompt is None:
+                uncond_tokens = [""] * batch_size
+            elif type(prompt) is not type(negative_prompt):
+                raise TypeError(
+                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                    f" {type(prompt)}."
+                )
+            elif isinstance(negative_prompt, str):
+                uncond_tokens = [negative_prompt] * batch_size
+            elif batch_size != len(negative_prompt):
+                raise ValueError(
+                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+                    " the batch size of `prompt`."
+                )
+            else:
+                uncond_tokens = negative_prompt
+
+            max_length = text_input_ids.shape[-1]
+            uncond_input = self.tokenizer(
+                uncond_tokens,
+                padding="max_length",
+                max_length=max_length,
+                truncation=True,
+                return_tensors="np",
+            )
+            uncond_embeddings = self.text_encoder(input_ids=uncond_input.input_ids.astype(np.int32))[0]
+            uncond_embeddings = np.repeat(uncond_embeddings, num_images_per_prompt, axis=0)
+
+            # For classifier free guidance, we need to do two forward passes.
+            # Here we concatenate the unconditional and text embeddings into a single batch
+            # to avoid doing two forward passes
+            text_embeddings = np.concatenate([uncond_embeddings, text_embeddings])
+
+        return text_embeddings
 
     def __call__(
         self,
@@ -222,66 +314,14 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         if isinstance(init_image, PIL.Image.Image):
             init_image = preprocess(init_image)
 
-        # get prompt text embeddings
-        text_inputs = self.tokenizer(
-            prompt,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            return_tensors="np",
-        )
-        text_input_ids = text_inputs.input_ids
-
-        if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
-            removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length :])
-            logger.warning(
-                "The following part of your input was truncated because CLIP can only handle sequences up to"
-                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
-            )
-            text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
-        text_embeddings = self.text_encoder(input_ids=text_input_ids.astype(np.int32))[0]
-
-        # duplicate text embeddings for each generation per prompt
-        text_embeddings = np.repeat(text_embeddings, num_images_per_prompt, axis=0)
-
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
-        # get unconditional embeddings for classifier free guidance
-        if do_classifier_free_guidance:
-            uncond_tokens: List[str]
-            if negative_prompt is None:
-                uncond_tokens = [""]
-            elif type(prompt) is not type(negative_prompt):
-                raise TypeError(
-                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-                    f" {type(prompt)}."
-                )
-            elif isinstance(negative_prompt, str):
-                uncond_tokens = [negative_prompt] * batch_size
-            elif batch_size != len(negative_prompt):
-                raise ValueError("The length of `negative_prompt` should be equal to batch_size.")
-            else:
-                uncond_tokens = negative_prompt
 
-            max_length = text_input_ids.shape[-1]
-            uncond_input = self.tokenizer(
-                uncond_tokens,
-                padding="max_length",
-                max_length=max_length,
-                truncation=True,
-                return_tensors="np",
-            )
-            uncond_input_ids = uncond_input.input_ids
-            uncond_embeddings = self.text_encoder(input_ids=uncond_input_ids.astype(np.int32))[0]
-
-            # duplicate unconditional embeddings for each generation per prompt
-            uncond_embeddings = np.repeat(uncond_embeddings, num_images_per_prompt, axis=0)
-
-            # For classifier free guidance, we need to do two forward passes.
-            # Here we concatenate the unconditional and text embeddings into a single batch
-            # to avoid doing two forward passes
-            text_embeddings = np.concatenate([uncond_embeddings, text_embeddings])
+        text_embeddings = self._encode_prompt(
+            prompt, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+        )
 
         latents_dtype = text_embeddings.dtype
         init_image = init_image.astype(latents_dtype)
@@ -338,14 +378,21 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         t_start = max(num_inference_steps - init_timestep + offset, 0)
         timesteps = self.scheduler.timesteps[t_start:].numpy()
 
+        timestep_dtype = next(
+            (input.type for input in self.unet.model.get_inputs() if input.name == "timestep"), "tensor(float)"
+        )
+        timestep_dtype = ORT_TO_NP_TYPE[timestep_dtype]
+
         for i, t in enumerate(self.progress_bar(timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = np.concatenate([latents] * 2) if do_classifier_free_guidance else latents
-            latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+            latent_model_input = self.scheduler.scale_model_input(torch.from_numpy(latent_model_input), t)
+            latent_model_input = latent_model_input.cpu().numpy()
 
             # predict the noise residual
+            timestep = np.array([t], dtype=timestep_dtype)
             noise_pred = self.unet(
-                sample=latent_model_input, timestep=np.array([t]), encoder_hidden_states=text_embeddings
+                sample=latent_model_input, timestep=timestep, encoder_hidden_states=text_embeddings
             )[0]
 
             # perform guidance
@@ -354,7 +401,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+            latents = self.scheduler.step(noise_pred, t, torch.from_numpy(latents), **extra_step_kwargs).prev_sample
             latents = latents.numpy()
 
             # call the callback, if provided
@@ -375,7 +422,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             safety_checker_input = self.feature_extractor(
                 self.numpy_to_pil(image), return_tensors="np"
             ).pixel_values.astype(image.dtype)
-            # There will throw an error if use safety_checker batchsize>1
+            # safety_checker does not support batched inputs yet
             images, has_nsfw_concept = [], []
             for i in range(image.shape[0]):
                 image_i, has_nsfw_concept_i = self.safety_checker(

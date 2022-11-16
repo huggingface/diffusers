@@ -130,7 +130,7 @@ class ModelTesterMixin:
         expected_arg_names = ["sample", "timestep"]
         self.assertListEqual(arg_names[:2], expected_arg_names)
 
-    def test_model_from_config(self):
+    def test_model_from_pretrained(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
@@ -140,8 +140,8 @@ class ModelTesterMixin:
         # test if the model can be loaded from the config
         # and has all the expected shape
         with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_config(tmpdirname)
-            new_model = self.model_class.from_config(tmpdirname)
+            model.save_pretrained(tmpdirname)
+            new_model = self.model_class.from_pretrained(tmpdirname)
             new_model.to(torch_device)
             new_model.eval()
 

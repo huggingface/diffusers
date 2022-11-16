@@ -10,7 +10,6 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-
 # limitations under the License.
 
 
@@ -18,7 +17,9 @@ from typing import Optional, Tuple, Union
 
 import torch
 
+from ...configuration_utils import FrozenDict
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ...utils import deprecate
 
 
 class DDPMPipeline(DiffusionPipeline):
@@ -45,7 +46,6 @@ class DDPMPipeline(DiffusionPipeline):
         num_inference_steps: int = 1000,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        predict_epsilon: bool = True,
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         r"""
@@ -69,13 +69,38 @@ class DDPMPipeline(DiffusionPipeline):
             `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
             generated images.
         """
+        message = (
+            "Please make sure to instantiate your scheduler with `predict_epsilon` instead. E.g. `scheduler ="
+            " DDPMScheduler.from_pretrained(<model_id>, predict_epsilon=True)`."
+        )
+        predict_epsilon = deprecate("predict_epsilon", "0.10.0", message, take_from=kwargs)
+
+        if predict_epsilon is not None:
+            new_config = dict(self.scheduler.config)
+            new_config["predict_epsilon"] = predict_epsilon
+            self.scheduler._internal_dict = FrozenDict(new_config)
+
+        if generator is not None and generator.device.type != self.device.type and self.device.type != "mps":
+            message = (
+                f"The `generator` device is `{generator.device}` and does not match the pipeline "
+                f"device `{self.device}`, so the `generator` will be ignored. "
+                f'Please use `torch.Generator(device="{self.device}")` instead.'
+            )
+            deprecate(
+                "generator.device == 'cpu'",
+                "0.11.0",
+                message,
+            )
+            generator = None
 
         # Sample gaussian noise to begin loop
-        image = torch.randn(
-            (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size),
-            generator=generator,
-        )
-        image = image.to(self.device)
+        image_shape = (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size)
+        if self.device.type == "mps":
+            # randn does not work reproducibly on mps
+            image = torch.randn(image_shape, generator=generator)
+            image = image.to(self.device)
+        else:
+            image = torch.randn(image_shape, generator=generator, device=self.device)
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
