@@ -202,10 +202,10 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         pred_original_sample = sample - sigma * model_output
-        sigma_from = self.sigmas[step_index]
-        sigma_to = self.sigmas[step_index + 1]
-        sigma_up = (sigma_to**2 * (sigma_from**2 - sigma_to**2) / sigma_from**2) ** 0.5
-        sigma_down = (sigma_to**2 - sigma_up**2) ** 0.5
+        sigma_from = self.sigmas[step_index] ** 2
+        sigma_to = self.sigmas[step_index + 1] ** 2
+        sigma_up = (sigma_to * (sigma_from - sigma_to) / sigma_from) ** 0.5
+        sigma_down = (sigma_to - sigma_up**2) ** 0.5
 
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma
