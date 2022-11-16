@@ -81,11 +81,20 @@ model = UNet2DModel(
 
 from diffusers import DDPMScheduler, DDIMPipeline, DDIMScheduler
 
-noise_scheduler = DDIMScheduler(
-    num_train_timesteps=1000,
-    beta_schedule="squaredcos_cap_v2",
-    variance_type="v_diffusion",
-)
+if config.output_dir.startswith("ddpm"):
+    noise_scheduler = DDPMScheduler(
+        num_train_timesteps=1000,
+        beta_schedule="squaredcos_cap_v2",
+        variance_type="v_diffusion",
+        prediction_type="v",
+    )
+else:
+    noise_scheduler = DDIMScheduler(
+        num_train_timesteps=1000,
+        beta_schedule="squaredcos_cap_v2",
+        variance_type="v_diffusion",
+        prediction_type="v",
+    )
 
 import torch
 import torch.nn.functional as F
@@ -162,6 +171,21 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_s
 
     global_step = 0
 
+    if config.output_dir.startswith("ddpm"):
+
+        pipeline = DDPMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
+    else:
+        pipeline = DDIMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
+
+    def t_to_alpha_sigma(t):
+        """Returns the scaling factors for the clean image and for the noise, given
+        a timestep."""
+        return torch.cos(t * math.pi / 2), torch.sin(t * math.pi / 2)
+
+    alpha_sigmas = [t_to_alpha_sigma(t) for t in noise_scheduler.timesteps]
+
+    evaluate(config, 0, pipeline)
+
     # Now you train the model
     for epoch in range(config.num_epochs):
         progress_bar = tqdm(total=len(train_dataloader), disable=not accelerator.is_local_main_process)
@@ -198,7 +222,11 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_s
 
         # After each epoch you optionally sample some demo images with evaluate() and save the model
         if accelerator.is_main_process:
-            pipeline = DDIMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
+            if config.output_dir.startswith("ddpm"):
+
+                pipeline = DDPMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
+            else:
+                pipeline = DDIMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
 
             if (epoch + 1) % config.save_image_epochs == 0 or epoch == config.num_epochs - 1:
                 evaluate(config, epoch, pipeline)
