@@ -102,7 +102,7 @@ def prepare_mask_and_masked_image(image, mask):
         image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
         if isinstance(mask, PIL.Image.Image):
             mask = np.array(mask.convert("L"))
-        mask = mask.astype(np.float32) / 255.0
+            mask = mask.astype(np.float32) / 255.0
         mask = mask[None, None]
         mask[mask < 0.5] = 0
         mask[mask >= 0.5] = 1
