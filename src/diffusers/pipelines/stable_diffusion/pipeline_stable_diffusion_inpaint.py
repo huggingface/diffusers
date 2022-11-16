@@ -20,6 +20,37 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def prepare_mask_and_masked_image(image, mask):
+    """
+    Prepares a pair (image, mask) to be consumed by the Stable Diffusion pipeline.
+    This means that those inputs will be converted to ``torch.Tensor`` with
+    shapes ``batch x channels x height x width`` where ``channels`` is ``3`` for
+    the ``image`` and ``1`` for the ``mask``.
+
+    The ``image`` will be converted to ``torch.float32`` and normalized to be in
+    ``[-1, 1]``. The ``mask`` will be binarized (``mask > 0.5``) and cast to
+    ``torch.float32`` too.
+
+    Args:
+        image (Union[np.array, PIL.Image, torch.Tensor]): The image to inpaint.
+            It can be a ``PIL.Image``, or a ``height x width x 3`` ``np.array``
+            or a ``channels x height x width`` ``torch.Tensor`` or a
+            ``batch x channels x height x width`` ``torch.Tensor``.
+        mask (_type_): The mask to apply to the image, i.e. regions to inpaint.
+            It can be a ``PIL.Image``, or a ``height x width`` ``np.array`` or
+            a ``1 x height x width`` ``torch.Tensor`` or a
+            ``batch x 1 x height x width`` ``torch.Tensor``.
+
+
+    Raises:
+        ValueError: ``torch.Tensor`` images should be in the ``[-1, 1]`` range.
+        ValueError: ``mask`` and ``image`` should have the same spatial dimensions.
+        TypeError: ``mask`` is a ``torch.Tensor`` but ``image`` is not
+            (ot the other way around).
+
+    Returns:
+        tuple[torch.Tensor]: The pair (mask, masked_image) as ``torch.Tensor`` with 4
+            dimensions: ``batch x channels x height x width``.
+    """
     if isinstance(image, torch.Tensor):
         assert isinstance(mask, torch.Tensor)
 
@@ -355,16 +386,29 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         # for 1-to-1 results reproducibility with the CompVis implementation.
         # However this currently doesn't work in `mps`.
         num_channels_latents = self.vae.config.latent_channels
-        latents_shape = (batch_size * num_images_per_prompt, num_channels_latents, height // 8, width // 8)
+        latents_shape = (
+            batch_size * num_images_per_prompt,
+            num_channels_latents,
+            height // 8,
+            width // 8,
+        )
         latents_dtype = text_embeddings.dtype
         if latents is None:
             if self.device.type == "mps":
                 # randn does not exist on mps
-                latents = torch.randn(latents_shape, generator=generator, device="cpu", dtype=latents_dtype).to(
-                    self.device
-                )
+                latents = torch.randn(
+                    latents_shape,
+                    generator=generator,
+                    device="cpu",
+                    dtype=latents_dtype,
+                ).to(self.device)
             else:
-                latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
+                latents = torch.randn(
+                    latents_shape,
+                    generator=generator,
+                    device=self.device,
+                    dtype=latents_dtype,
+                )
         else:
             if latents.shape != latents_shape:
                 raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
@@ -459,7 +503,8 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 self.device
             )
             image, has_nsfw_concept = self.safety_checker(
-                images=image, clip_input=safety_checker_input.pixel_values.to(text_embeddings.dtype)
+                images=image,
+                clip_input=safety_checker_input.pixel_values.to(text_embeddings.dtype),
             )
         else:
             has_nsfw_concept = None
