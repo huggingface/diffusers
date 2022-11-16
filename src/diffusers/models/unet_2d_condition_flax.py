@@ -230,9 +230,9 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     ) -> Union[FlaxUNet2DConditionOutput, Tuple]:
         r"""
         Args:
-            sample (`jnp.ndarray`): (channel, height, width) noisy inputs tensor
+            sample (`jnp.ndarray`): (batch, channel, height, width) noisy inputs tensor
             timestep (`jnp.ndarray` or `float` or `int`): timesteps
-            encoder_hidden_states (`jnp.ndarray`): (channel, height, width) encoder hidden states
+            encoder_hidden_states (`jnp.ndarray`): (batch_size, sequence_length, hidden_size) encoder hidden states
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] instead of a
                 plain tuple.
