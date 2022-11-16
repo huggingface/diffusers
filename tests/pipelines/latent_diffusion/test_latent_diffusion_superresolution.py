@@ -19,9 +19,8 @@ import unittest
 import numpy as np
 import torch
 
-import PIL
 from diffusers import DDIMScheduler, LDMSuperResolutionPipeline, UNet2DModel, VQModel
-from diffusers.utils import floats_tensor, load_image, slow, torch_device
+from diffusers.utils import PIL_INTERPOLATION, floats_tensor, load_image, slow, torch_device
 from diffusers.utils.testing_utils import require_torch
 
 from ...test_pipelines_common import PipelineTesterMixin
@@ -97,7 +96,7 @@ class LDMSuperResolutionPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/vq_diffusion/teddy_bear_pool.png"
         )
-        init_image = init_image.resize((64, 64), resample=PIL.Image.LANCZOS)
+        init_image = init_image.resize((64, 64), resample=PIL_INTERPOLATION["lanczos"])
 
         ldm = LDMSuperResolutionPipeline.from_pretrained("duongna/ldm-super-resolution", device_map="auto")
         ldm.to(torch_device)
