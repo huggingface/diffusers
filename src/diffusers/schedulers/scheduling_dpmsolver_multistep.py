@@ -310,35 +310,19 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         if self.config.algorithm_type == "dpmsolver++":
             # See https://arxiv.org/abs/2211.01095 for detailed derivations
             if self.config.solver_type == "midpoint":
-                alpha_t_exp_h = (alpha_t * (torch.exp(-h) - 1.0))
-                x_t = (
-                    (sigma_t / sigma_s0) * sample
-                    - alpha_t_exp_h * D0
-                    - 0.5 * alpha_t_exp_h * D1
-                )
+                alpha_t_exp_h = alpha_t * (torch.exp(-h) - 1.0)
+                x_t = (sigma_t / sigma_s0) * sample - alpha_t_exp_h * D0 - 0.5 * alpha_t_exp_h * D1
             elif self.config.solver_type == "heun":
                 exp_h = torch.exp(-h) - 1.0
-                x_t = (
-                    (sigma_t / sigma_s0) * sample
-                    - (alpha_t * exp_h) * D0
-                    + (alpha_t * (exp_h / h + 1.0)) * D1
-                )
+                x_t = (sigma_t / sigma_s0) * sample - (alpha_t * exp_h) * D0 + (alpha_t * (exp_h / h + 1.0)) * D1
         elif self.config.algorithm_type == "dpmsolver":
             # See https://arxiv.org/abs/2206.00927 for detailed derivations
             if self.config.solver_type == "midpoint":
-                sigma_t_exp_h = (sigma_t * (torch.exp(h) - 1.0))
-                x_t = (
-                    (alpha_t / alpha_s0) * sample
-                    - sigma_t_exp_h * D0
-                    - 0.5 * sigma_t_exp_h * D1
-                )
+                sigma_t_exp_h = sigma_t * (torch.exp(h) - 1.0)
+                x_t = (alpha_t / alpha_s0) * sample - sigma_t_exp_h * D0 - 0.5 * sigma_t_exp_h * D1
             elif self.config.solver_type == "heun":
-                exp_h = (torch.exp(h) - 1.0)
-                x_t = (
-                    (alpha_t / alpha_s0) * sample
-                    - (sigma_t * exp_h) * D0
-                    - (sigma_t * (exp_h / h - 1.0)) * D1
-                )
+                exp_h = torch.exp(h) - 1.0
+                x_t = (alpha_t / alpha_s0) * sample - (sigma_t * exp_h) * D0 - (sigma_t * (exp_h / h - 1.0)) * D1
         return x_t
 
     def multistep_dpm_solver_third_order_update(
