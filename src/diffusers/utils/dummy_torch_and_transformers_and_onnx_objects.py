@@ -19,7 +19,7 @@ class OnnxStableDiffusionImg2ImgPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers", "onnx"])
 
 
-class OnnxStableDiffusionInpaintPipelineLegacy(metaclass=DummyObject):
+class OnnxStableDiffusionInpaintPipeline(metaclass=DummyObject):
     _backends = ["torch", "transformers", "onnx"]
 
     def __init__(self, *args, **kwargs):
@@ -34,7 +34,7 @@ class OnnxStableDiffusionInpaintPipelineLegacy(metaclass=DummyObject):
         requires_backends(cls, ["torch", "transformers", "onnx"])
 
 
-class OnnxStableDiffusionInpaintPipeline(metaclass=DummyObject):
+class OnnxStableDiffusionInpaintPipelineLegacy(metaclass=DummyObject):
     _backends = ["torch", "transformers", "onnx"]
 
     def __init__(self, *args, **kwargs):
