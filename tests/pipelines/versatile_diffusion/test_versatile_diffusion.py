@@ -19,7 +19,7 @@ import numpy as np
 import torch
 
 from diffusers import VersatileDiffusionPipeline
-from diffusers.utils.testing_utils import require_torch, slow, torch_device, load_image
+from diffusers.utils.testing_utils import load_image, require_torch, slow, torch_device
 
 from ...test_pipelines_common import PipelineTesterMixin
 
@@ -57,12 +57,15 @@ class VersatileDiffusionPipelineIntegrationTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         image_prompt = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/in_paint/overture-creations-5sI6fQgYIuo.png"
+            "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/benz.jpg"
         )
         generator = torch.Generator(device=torch_device).manual_seed(0)
         image = pipe(
-            image_prompt=image_prompt, generator=generator, guidance_scale=7.5, num_inference_steps=50, output_type="numpy"
+            image_prompt=image_prompt,
+            generator=generator,
+            guidance_scale=7.5,
+            num_inference_steps=50,
+            output_type="numpy",
         ).images
 
         image_slice = image[0, -3:, -3:, -1]

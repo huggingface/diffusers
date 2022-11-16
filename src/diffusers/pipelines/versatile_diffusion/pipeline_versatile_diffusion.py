@@ -13,12 +13,13 @@
 # limitations under the License.
 
 import inspect
-import PIL
 from typing import List, Optional, Tuple, Union
 
+import numpy as np
 import torch
 import torch.utils.checkpoint
 
+import PIL
 from transformers import CLIPProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModel
 
 from ...models import AutoencoderKL, UNet2DConditionModel, VQModel
@@ -29,8 +30,8 @@ from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 
 class VersatileMixedModel:
     """
-        A context managet that swaps the transformer modules between the image and text unet during inference,
-        depending on the latent type and condition type.
+    A context managet that swaps the transformer modules between the image and text unet during inference, depending on
+    the latent type and condition type.
     """
 
     def __init__(self, image_unet, text_unet, latent_type, condition_type):
@@ -126,6 +127,7 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
         """
+
         def normalize_embeddings(encoder_output):
             embeds = self.text_encoder.text_projection(encoder_output.last_hidden_state)
             embeds_pooled = encoder_output.text_embeds
@@ -161,17 +163,20 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
         """
+
         def normalize_embeddings(encoder_output):
-            embeds = self.image_encoder.visual_projection(encoder_output.last_hidden_state)
-            embeds_pooled = encoder_output.image_embeds
-            embeds = embeds / torch.norm(embeds_pooled.unsqueeze(1), dim=-1, keepdim=True)
+            embeds = self.image_encoder.vision_model.post_layernorm(encoder_output.last_hidden_state)
+            embeds = self.image_encoder.visual_projection(embeds)
+            embeds_pooled = embeds[:, 0:1]
+            embeds = embeds / torch.norm(embeds_pooled, dim=-1, keepdim=True)
             return embeds
 
         batch_size = len(prompt) if isinstance(prompt, list) else 1
 
         if do_classifier_free_guidance:
-            dummy_images = torch.zeros((batch_size, 3, 224, 224)).to(self.device)
-            uncond_embeddings = self.image_encoder(dummy_images)
+            dummy_images = [np.zeros((512, 512, 3))] * batch_size
+            dummy_images = self.image_processor(images=dummy_images, return_tensors="pt")
+            uncond_embeddings = self.image_encoder(dummy_images.pixel_values.to(self.device))
             uncond_embeddings = normalize_embeddings(uncond_embeddings)
 
         # get prompt text embeddings
