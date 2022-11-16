@@ -15,7 +15,6 @@
 
 import gc
 import random
-import time
 import unittest
 
 import numpy as np
@@ -296,7 +295,7 @@ class AltDiffusionPipelineIntegrationTests(unittest.TestCase):
 
     def test_alt_diffusion(self):
         # make sure here that pndm scheduler skips prk
-        sd_pipe = AltDiffusionPipeline.from_pretrained("BAAI/AltDiffusion")
+        sd_pipe = AltDiffusionPipeline.from_pretrained("BAAI/AltDiffusion", safety_checker=None)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -318,7 +317,7 @@ class AltDiffusionPipelineIntegrationTests(unittest.TestCase):
     def test_alt_diffusion_fast_ddim(self):
         scheduler = DDIMScheduler.from_pretrained("BAAI/AltDiffusion", subfolder="scheduler")
 
-        sd_pipe = AltDiffusionPipeline.from_pretrained("BAAI/AltDiffusion", scheduler=scheduler)
+        sd_pipe = AltDiffusionPipeline.from_pretrained("BAAI/AltDiffusion", scheduler=scheduler, safety_checker=None)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -338,7 +337,9 @@ class AltDiffusionPipelineIntegrationTests(unittest.TestCase):
     def test_alt_diffusion_text2img_pipeline_fp16(self):
         torch.cuda.reset_peak_memory_stats()
         model_id = "BAAI/AltDiffusion"
-        pipe = AltDiffusionPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16)
+        pipe = AltDiffusionPipeline.from_pretrained(
+            model_id, revision="fp16", torch_dtype=torch.float16, safety_checker=None
+        )
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
