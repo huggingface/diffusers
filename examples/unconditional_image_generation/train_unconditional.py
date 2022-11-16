@@ -264,7 +264,7 @@ def main(args):
         ),
     )
 
-    print(f"Number of parameters: {count_parameters(model)//1e6:.2f}M")
+    logger.info(f"Number of parameters: {count_parameters(model)//1e6:.2f}M")
 
     accepts_predict_epsilon = "predict_epsilon" in set(inspect.signature(DDPMScheduler.__init__).parameters.keys())
 
