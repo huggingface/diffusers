@@ -26,6 +26,7 @@ def preprocess(image):
     image = image[None].transpose(0, 3, 1, 2)
     return 2.0 * image - 1.0
 
+
 def preprocess_mask(mask):
     mask = mask.convert("L")
     w, h = mask.size
@@ -36,6 +37,7 @@ def preprocess_mask(mask):
     mask = mask[None].transpose(0, 1, 2, 3)  # what does this step do?
     mask = 1 - mask  # repaint white, keep black
     return mask
+
 
 class OnnxStableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
     r"""
@@ -166,7 +168,7 @@ class OnnxStableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                 `Image`, or tensor representing an image batch, to mask `init_image`. White pixels in the mask will be
                 replaced by noise and therefore repainted, while black pixels will be preserved. If `mask_image` is a
                 PIL image, it will be converted to a single channel (luminance) before use. If it's a tensor, it should
-                contain one color channel (L) instead of 3, so the expected shape would be `(B, H, W, 1)`.uu            
+                contain one color channel (L) instead of 3, so the expected shape would be `(B, H, W, 1)`.uu
             strength (`float`, *optional*, defaults to 0.8):
                 Conceptually, indicates how much to transform the reference `init_image`. Must be between 0 and 1.
                 `init_image` will be used as a starting point, adding more noise to it the larger the `strength`. The
@@ -306,7 +308,7 @@ class OnnxStableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         # encode the init image into latents and scale the latents
         init_latents = self.vae_encoder(sample=init_image)[0]
         init_latents = 0.18215 * init_latents
-        
+
         # Expand init_latents for batch_size and num_images_per_prompt
         init_latents = np.concatenate([init_latents] * num_images_per_prompt, axis=0)
         init_latents_orig = init_latents
@@ -371,7 +373,8 @@ class OnnxStableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             latents = latents.numpy()
 
             init_latents_proper = self.scheduler.add_noise(
-                    torch.from_numpy(init_latents_orig), torch.from_numpy(noise), torch.from_numpy(np.array([t])))
+                torch.from_numpy(init_latents_orig), torch.from_numpy(noise), torch.from_numpy(np.array([t]))
+            )
 
             init_latents_proper = init_latents_proper.numpy()
 
