@@ -19,7 +19,15 @@ import tempfile
 import unittest
 
 import diffusers
-from diffusers import DDIMScheduler, EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, PNDMScheduler, logging
+from diffusers import (
+    DDIMScheduler,
+    DDPMScheduler,
+    DPMSolverMultistepScheduler,
+    EulerAncestralDiscreteScheduler,
+    EulerDiscreteScheduler,
+    PNDMScheduler,
+    logging,
+)
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.utils.testing_utils import CaptureLogger
 
@@ -244,28 +252,30 @@ class ConfigTester(unittest.TestCase):
         logger = logging.get_logger("diffusers.configuration_utils")
 
         with CaptureLogger(logger) as cap_logger:
-            ddim = DDIMScheduler.from_config("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
+            ddim = DDIMScheduler.from_config("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
 
         assert ddim.__class__ == DDIMScheduler
         # no warning should be thrown
         assert cap_logger.out == ""
 
-    def test_load_ddim_from_euler(self):
+    def test_load_euler_from_pndm(self):
         logger = logging.get_logger("diffusers.configuration_utils")
 
         with CaptureLogger(logger) as cap_logger:
-            euler = EulerDiscreteScheduler.from_config("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
+            euler = EulerDiscreteScheduler.from_config(
+                "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler"
+            )
 
         assert euler.__class__ == EulerDiscreteScheduler
         # no warning should be thrown
         assert cap_logger.out == ""
 
-    def test_load_ddim_from_euler_ancestral(self):
+    def test_load_euler_ancestral_from_pndm(self):
         logger = logging.get_logger("diffusers.configuration_utils")
 
         with CaptureLogger(logger) as cap_logger:
             euler = EulerAncestralDiscreteScheduler.from_config(
-                "runwayml/stable-diffusion-v1-5", subfolder="scheduler"
+                "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler"
             )
 
         assert euler.__class__ == EulerAncestralDiscreteScheduler
@@ -276,8 +286,43 @@ class ConfigTester(unittest.TestCase):
         logger = logging.get_logger("diffusers.configuration_utils")
 
         with CaptureLogger(logger) as cap_logger:
-            pndm = PNDMScheduler.from_config("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
+            pndm = PNDMScheduler.from_config("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
 
         assert pndm.__class__ == PNDMScheduler
+        # no warning should be thrown
+        assert cap_logger.out == ""
+
+    def test_overwrite_config_on_load(self):
+        logger = logging.get_logger("diffusers.configuration_utils")
+
+        with CaptureLogger(logger) as cap_logger:
+            ddpm = DDPMScheduler.from_config(
+                "hf-internal-testing/tiny-stable-diffusion-torch",
+                subfolder="scheduler",
+                predict_epsilon=False,
+                beta_end=8,
+            )
+
+        with CaptureLogger(logger) as cap_logger_2:
+            ddpm_2 = DDPMScheduler.from_config("google/ddpm-celebahq-256", beta_start=88)
+
+        assert ddpm.__class__ == DDPMScheduler
+        assert ddpm.config.predict_epsilon is False
+        assert ddpm.config.beta_end == 8
+        assert ddpm_2.config.beta_start == 88
+
+        # no warning should be thrown
+        assert cap_logger.out == ""
+        assert cap_logger_2.out == ""
+
+    def test_load_dpmsolver(self):
+        logger = logging.get_logger("diffusers.configuration_utils")
+
+        with CaptureLogger(logger) as cap_logger:
+            dpm = DPMSolverMultistepScheduler.from_config(
+                "hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler"
+            )
+
+        assert dpm.__class__ == DPMSolverMultistepScheduler
         # no warning should be thrown
         assert cap_logger.out == ""

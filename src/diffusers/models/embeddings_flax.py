@@ -88,4 +88,6 @@ class FlaxTimesteps(nn.Module):
 
     @nn.compact
     def __call__(self, timesteps):
-        return get_sinusoidal_embeddings(timesteps, embedding_dim=self.dim, freq_shift=self.freq_shift)
+        return get_sinusoidal_embeddings(
+            timesteps, embedding_dim=self.dim, freq_shift=self.freq_shift, flip_sin_to_cos=True
+        )

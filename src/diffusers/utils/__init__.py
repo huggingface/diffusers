@@ -31,6 +31,7 @@ from .import_utils import (
     is_scipy_available,
     is_tf_available,
     is_torch_available,
+    is_torch_version,
     is_transformers_available,
     is_unidecode_available,
     requires_backends,
@@ -66,6 +67,7 @@ CONFIG_NAME = "config.json"
 WEIGHTS_NAME = "diffusion_pytorch_model.bin"
 FLAX_WEIGHTS_NAME = "diffusion_flax_model.msgpack"
 ONNX_WEIGHTS_NAME = "model.onnx"
+ONNX_EXTERNAL_WEIGHTS_NAME = "weights.pb"
 HUGGINGFACE_CO_RESOLVE_ENDPOINT = "https://huggingface.co"
 DIFFUSERS_CACHE = default_cache_path
 DIFFUSERS_DYNAMIC_MODULE_NAME = "diffusers_modules"

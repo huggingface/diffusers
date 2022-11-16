@@ -16,19 +16,20 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Literal, Optional, Tuple, Union
 
 import numpy as np
 import torch
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..configuration_utils import ConfigMixin, FrozenDict, register_to_config
+from ..utils import BaseOutput, deprecate
 from .scheduling_utils import SchedulerMixin
 
 
 def expand_to_shape(input, timesteps, shape, device):
     """
-    Helper indexes a 1D tensor `input` using a 1D index tensor `timesteps`, then reshapes the result to broadcast nicely with `shape`. Useful for parellizing operations over `shape[0]` number of diffusion steps at once.
+    Helper indexes a 1D tensor `input` using a 1D index tensor `timesteps`, then reshapes the result to broadcast
+    nicely with `shape`. Useful for parellizing operations over `shape[0]` number of diffusion steps at once.
     """
     out = torch.gather(input.to(device), 0, timesteps.to(device))
     reshape = [shape[0]] + [1] * (len(shape) - 1)
@@ -109,7 +110,10 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
         clip_sample (`bool`, default `True`):
             option to clip predicted sample between -1 and 1 for numerical stability.
-
+        prediction_type (`Literal["epsilon", "sample", "v"]`, optional):
+                prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
+                process), `sample` (directly predicting the noisy sample`) or `v` (see section 2.4
+                https://imagen.research.google/video/paper.pdf)
     """
 
     _compatible_classes = [
@@ -118,6 +122,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         "LMSDiscreteScheduler",
         "EulerDiscreteScheduler",
         "EulerAncestralDiscreteScheduler",
+        "DPMSolverMultistepScheduler",
     ]
 
     @register_to_config
@@ -130,6 +135,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         trained_betas: Optional[np.ndarray] = None,
         variance_type: str = "fixed_small",
         clip_sample: bool = True,
+        prediction_type: Literal["epsilon", "sample", "v"] = "epsilon",
     ):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
@@ -163,6 +169,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy())
 
         self.variance_type = variance_type
+        self.prediction_type = prediction_type
 
     def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
         """
@@ -193,14 +200,14 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         )[::-1].copy()
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
-    def _get_variance(self, t, predicted_variance=None, variance_type=None):
-        alpha_prod_t = self.alphas_cumprod[t]
-        alpha_prod_t_prev = self.alphas_cumprod[t - 1] if t > 0 else torch.tensor(1.0)
+    def _get_variance(self, timestep, predicted_variance=None, variance_type=None):
+        alpha_prod_t = self.alphas_cumprod[timestep]
+        alpha_prod_t_prev = self.alphas_cumprod[timestep - 1] if timestep > 0 else torch.tensor(1.0)
 
-        # For t > 0, compute predicted variance βt (see formula (6) and (7) from https://arxiv.org/pdf/2006.11239.pdf)
+        # For timestep > 0, compute predicted variance βt (see formula (6) and (7) from https://arxiv.org/pdf/2006.11239.pdf)
         # and sample from it to get previous sample
-        # x_{t-1} ~ N(pred_prev_sample, variance) == add variance to pred_sample
-        variance = (1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * self.betas[t]
+        # x_{timestep-1} ~ N(pred_prev_sample, variance) == add variance to pred_sample
+        variance = (1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * self.betas[timestep]
 
         if variance_type is None:
             variance_type = self.config.variance_type
@@ -212,19 +219,19 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         elif variance_type == "fixed_small_log":
             variance = torch.log(torch.clamp(variance, min=1e-20))
         elif variance_type == "fixed_large":
-            variance = self.betas[t]
+            variance = self.betas[timestep]
         elif variance_type == "fixed_large_log":
             # Glide max_log
-            variance = torch.log(self.betas[t])
+            variance = torch.log(self.betas[timestep])
         elif variance_type == "learned":
             return predicted_variance
         elif variance_type == "learned_range":
             min_log = variance
-            max_log = self.betas[t]
+            max_log = self.betas[timestep]
             frac = (predicted_variance + 1) / 2
             variance = frac * max_log + (1 - frac) * min_log
         elif variance_type == "v_diffusion":
-            variance = torch.log(self.betas[t] * (1 - alpha_prod_t_prev) / (1 - alpha_prod_t))
+            variance = torch.log(self.betas[timestep] * (1 - alpha_prod_t_prev) / (1 - alpha_prod_t))
 
         return variance
 
@@ -233,10 +240,9 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: int,
         sample: torch.FloatTensor,
-        predict_epsilon=True,
         generator=None,
         return_dict: bool = True,
-        v_prediction: bool = True,
+        **kwargs,
     ) -> Union[DDPMSchedulerOutput, Tuple]:
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
@@ -247,8 +253,6 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
-            predict_epsilon (`bool`):
-                optional flag to use when model predicts the samples directly instead of the noise, epsilon.
             generator: random number generator.
             return_dict (`bool`): option for returning tuple rather than DDPMSchedulerOutput class
 
@@ -258,7 +262,17 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             returning a tuple, the first element is the sample tensor.
 
         """
-        t = timestep
+        if self.variance_type == "v_diffusion":
+            assert self.prediction_type == "v", "Need to use v prediction with v_diffusion"
+        message = (
+            "Please make sure to instantiate your scheduler with `predict_epsilon` instead. E.g. `scheduler ="
+            " DDPMScheduler.from_config(<model_id>, predict_epsilon=True)`."
+        )
+        predict_epsilon = deprecate("predict_epsilon", "0.10.0", message, take_from=kwargs)
+        if predict_epsilon is not None and predict_epsilon != self.config.predict_epsilon:
+            new_config = dict(self.config)
+            new_config["predict_epsilon"] = predict_epsilon
+            self._internal_dict = FrozenDict(new_config)
 
         if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
             model_output, predicted_variance = torch.split(model_output, sample.shape[1], dim=1)
@@ -266,27 +280,28 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             predicted_variance = None
 
         # 1. compute alphas, betas
-        alpha_prod_t = self.alphas_cumprod[t]
-        alpha_prod_t_prev = self.alphas_cumprod[t - 1] if t > 0 else torch.tensor(1.0)
+        alpha_prod_t = self.alphas_cumprod[timestep]
+        alpha_prod_t_prev = self.alphas_cumprod[timestep - 1] if timestep > 0 else torch.tensor(1.0)
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
         # 2. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (15) from https://arxiv.org/pdf/2006.11239.pdf
-        if v_prediction:
+        if self.prediction_type == "v":
             # x_recon in p_mean_variance
             pred_original_sample = (
                 sample * self.sqrt_alphas_cumprod[timestep]
                 - model_output * self.sqrt_one_minus_alphas_cumprod[timestep]
             )
-            eps = (
-                model_output * self.sqrt_alphas_cumprod[timestep]
-                - sample * self.sqrt_one_minus_alphas_cumprod[timestep]
-            )
-        elif predict_epsilon:
+        elif self.prediction_type == "epsilon" or self.config.predict_epsilon:
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
-        else:
+
+        elif self.prediction_type == "sample":
             pred_original_sample = model_output
+        else:
+            raise ValueError(
+                f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample`, or `v`"
+            )
 
         # pred_original_sample = (
         #     sample * self.sqrt_alphas_cumprod[timestep] - model_output * self.sqrt_one_minus_alphas_cumprod[timestep]
@@ -299,8 +314,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         # 4. Compute coefficients for pred_original_sample x_0 and current sample x_t
         # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
-        pred_original_sample_coeff = (alpha_prod_t_prev ** (0.5) * self.betas[t]) / beta_prod_t
-        current_sample_coeff = self.alphas[t] ** (0.5) * beta_prod_t_prev / beta_prod_t
+        pred_original_sample_coeff = (alpha_prod_t_prev ** (0.5) * self.betas[timestep]) / beta_prod_t
+        current_sample_coeff = self.alphas[timestep] ** (0.5) * beta_prod_t_prev / beta_prod_t
 
         # 5. Compute predicted previous sample µ_t
         # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
@@ -308,16 +323,16 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         # 6. Add noise
         variance = 0
-        if t > 0:
+        if timestep > 0:
             noise = torch.randn(
                 model_output.size(), dtype=model_output.dtype, layout=model_output.layout, generator=generator
             ).to(model_output.device)
             if self.variance_type == "fixed_small_log":
-                variance = self._get_variance(t, predicted_variance=predicted_variance) * noise
+                variance = self._get_variance(timestep, predicted_variance=predicted_variance) * noise
             elif self.variance_type == "v_diffusion":
-                variance = torch.exp(0.5 * self._get_variance(t, predicted_variance)) * noise
+                variance = torch.exp(0.5 * self._get_variance(timestep, predicted_variance)) * noise
             else:
-                variance = (self._get_variance(t, predicted_variance=predicted_variance) ** 0.5) * noise
+                variance = (self._get_variance(timestep, predicted_variance=predicted_variance) ** 0.5) * noise
 
         pred_prev_sample = pred_prev_sample + variance
 
