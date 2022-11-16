@@ -116,6 +116,12 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
             name: module for name, module in text_unet.named_modules() if isinstance(module, Transformer2DModel)
         }
 
+    def _normalize_embeddings(self, encoder_output):
+        embeds = self.text_encoder.text_projection(encoder_output.last_hidden_state)
+        embeds_pooled = encoder_output.text_embeds
+        embeds = embeds / torch.norm(embeds_pooled.unsqueeze(1), dim=-1, keepdim=True)
+        return embeds
+
     def _encode_prompt(self, prompt, do_classifier_free_guidance):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -126,24 +132,17 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
         """
-
-        def _normalize_embeddings(encoder_output):
-            embeds = self.text_encoder.text_projection(encoder_output.last_hidden_state)  # sum == 19677.4570
-            embeds_pooled = encoder_output.text_embeds  # sum == 260.2655
-            embeds = embeds / torch.norm(embeds_pooled.unsqueeze(1), dim=-1, keepdim=True)
-            return embeds
-
         batch_size = len(prompt) if isinstance(prompt, list) else 1
 
         if do_classifier_free_guidance:
             uncond_input = self.tokenizer([""] * batch_size, padding="max_length", max_length=77, return_tensors="pt")
             uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))
-            uncond_embeddings = _normalize_embeddings(uncond_embeddings)
+            uncond_embeddings = self._normalize_embeddings(uncond_embeddings)
 
         # get prompt text embeddings
         text_input = self.tokenizer(prompt, padding="max_length", max_length=77, return_tensors="pt")
         text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))
-        text_embeddings = _normalize_embeddings(text_embeddings)
+        text_embeddings = self._normalize_embeddings(text_embeddings)
 
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
