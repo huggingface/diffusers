@@ -728,6 +728,10 @@ class DDIMSchedulerTest(SchedulerCommonTest):
         for schedule in ["linear", "squaredcos_cap_v2"]:
             self.check_over_configs(beta_schedule=schedule)
 
+    def test_prediction_type(self):
+        for prediction_type in ["epsilon", "sample", "v"]:
+            self.check_over_configs(prediction_type=prediction_type)
+
     def test_clip_sample(self):
         for clip_sample in [True, False]:
             self.check_over_configs(clip_sample=clip_sample)
