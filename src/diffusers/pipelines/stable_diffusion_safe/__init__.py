@@ -12,8 +12,9 @@ from ...utils import BaseOutput, is_torch_available, is_transformers_available
 @dataclass
 class StableDiffusionSafePipelineOutput(BaseOutput):
     """
+    Output class for Safe Stable Diffusion pipelines.
+
     Args:
-    Output class for Safe Latent Diffusion pipelines.
         images (`List[PIL.Image.Image]` or `np.ndarray`)
             List of denoised PIL images of length `batch_size` or numpy array of shape `(batch_size, height, width,
             num_channels)`. PIL images or numpy array present the denoised images of the diffusion pipeline.
@@ -21,7 +22,7 @@ class StableDiffusionSafePipelineOutput(BaseOutput):
             List of flags denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, or `None` if safety checking could not be performed.
         applied_safety_concept (`str`)
-            The safety concept that was applied for SLD, or `None` if SLD was disabled
+            The safety concept that was applied for safety guidance, or `None` if safety guidance was disabled
     """
 
     images: Union[List[PIL.Image.Image], np.ndarray]
