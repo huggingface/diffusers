@@ -302,6 +302,7 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         compilation_time = 0
         if compile_unet:
             self.unet_graphs_lru_cache_time += 1
+            (_, _, height, width) = latents.shape
             if (height, width) in self.unet_graphs:
                 _, unet_graph = self.unet_graphs[height, width]
                 self.unet_graphs[height, width] = (self.unet_graphs_lru_cache_time, unet_graph)
