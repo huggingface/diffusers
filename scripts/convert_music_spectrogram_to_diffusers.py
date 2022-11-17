@@ -16,7 +16,7 @@ from t5x import checkpoints
 MODEL = "base_with_context"
 
 
-def load_token_encoder(weights, model, depth_scaling=1.0):
+def load_token_encoder(weights, model):
     model.token_embedder.weight = nn.Parameter(torch.FloatTensor(weights["token_embedder"]["embedding"]))
     model.position_encoding.weight = nn.Parameter(
         torch.FloatTensor(weights["Embed_0"]["embedding"]), requires_grad=False
@@ -28,9 +28,7 @@ def load_token_encoder(weights, model, depth_scaling=1.0):
         )
 
         attention_weights = ly_weight["attention"]
-        lyr.layer[0].SelfAttention.q.weight = nn.Parameter(
-            torch.FloatTensor(attention_weights["query"]["kernel"].T * depth_scaling)
-        )
+        lyr.layer[0].SelfAttention.q.weight = nn.Parameter(torch.FloatTensor(attention_weights["query"]["kernel"].T))
         lyr.layer[0].SelfAttention.k.weight = nn.Parameter(torch.FloatTensor(attention_weights["key"]["kernel"].T))
         lyr.layer[0].SelfAttention.v.weight = nn.Parameter(torch.FloatTensor(attention_weights["value"]["kernel"].T))
         lyr.layer[0].SelfAttention.o.weight = nn.Parameter(torch.FloatTensor(attention_weights["out"]["kernel"].T))
@@ -45,7 +43,7 @@ def load_token_encoder(weights, model, depth_scaling=1.0):
     return model
 
 
-def load_continuous_encoder(weights, model, depth_scaling=1.0):
+def load_continuous_encoder(weights, model):
     model.input_proj.weight = nn.Parameter(torch.FloatTensor(weights["input_proj"]["kernel"].T))
 
     model.position_encoding.weight = nn.Parameter(
@@ -56,9 +54,7 @@ def load_continuous_encoder(weights, model, depth_scaling=1.0):
         ly_weight = weights[f"layers_{lyr_num}"]
         attention_weights = ly_weight["attention"]
 
-        lyr.layer[0].SelfAttention.q.weight = nn.Parameter(
-            torch.FloatTensor(attention_weights["query"]["kernel"].T * depth_scaling)
-        )
+        lyr.layer[0].SelfAttention.q.weight = nn.Parameter(torch.FloatTensor(attention_weights["query"]["kernel"].T))
         lyr.layer[0].SelfAttention.k.weight = nn.Parameter(torch.FloatTensor(attention_weights["key"]["kernel"].T))
         lyr.layer[0].SelfAttention.v.weight = nn.Parameter(torch.FloatTensor(attention_weights["value"]["kernel"].T))
         lyr.layer[0].SelfAttention.o.weight = nn.Parameter(torch.FloatTensor(attention_weights["out"]["kernel"].T))
@@ -76,7 +72,7 @@ def load_continuous_encoder(weights, model, depth_scaling=1.0):
     return model
 
 
-def load_decoder(weights, model, depth_scaling=1.0):
+def load_decoder(weights, model):
     model.conditioning_emb[0].weight = nn.Parameter(torch.FloatTensor(weights["time_emb_dense0"]["kernel"].T))
     model.conditioning_emb[2].weight = nn.Parameter(torch.FloatTensor(weights["time_emb_dense1"]["kernel"].T))
 
@@ -99,17 +95,13 @@ def load_decoder(weights, model, depth_scaling=1.0):
         )
 
         attention_weights = ly_weight["self_attention"]
-        lyr.layer[0].SelfAttention.q.weight = nn.Parameter(
-            torch.FloatTensor(attention_weights["query"]["kernel"].T * depth_scaling)
-        )
+        lyr.layer[0].SelfAttention.q.weight = nn.Parameter(torch.FloatTensor(attention_weights["query"]["kernel"].T))
         lyr.layer[0].SelfAttention.k.weight = nn.Parameter(torch.FloatTensor(attention_weights["key"]["kernel"].T))
         lyr.layer[0].SelfAttention.v.weight = nn.Parameter(torch.FloatTensor(attention_weights["value"]["kernel"].T))
         lyr.layer[0].SelfAttention.o.weight = nn.Parameter(torch.FloatTensor(attention_weights["out"]["kernel"].T))
 
         attention_weights = ly_weight["MultiHeadDotProductAttention_0"]
-        lyr.layer[1].EncDecAttention.q.weight = nn.Parameter(
-            torch.FloatTensor(attention_weights["query"]["kernel"].T * depth_scaling)
-        )
+        lyr.layer[1].EncDecAttention.q.weight = nn.Parameter(torch.FloatTensor(attention_weights["query"]["kernel"].T))
         lyr.layer[1].EncDecAttention.k.weight = nn.Parameter(torch.FloatTensor(attention_weights["key"]["kernel"].T))
         lyr.layer[1].EncDecAttention.v.weight = nn.Parameter(torch.FloatTensor(attention_weights["value"]["kernel"].T))
         lyr.layer[1].EncDecAttention.o.weight = nn.Parameter(torch.FloatTensor(attention_weights["out"]["kernel"].T))
@@ -135,13 +127,11 @@ def load_decoder(weights, model, depth_scaling=1.0):
     return model
 
 
-def load_checkpoint(t5_checkpoint, model, depth_scaling=1.0):
-    model.token_encoder = load_token_encoder(t5_checkpoint["token_encoder"], model.token_encoder, depth_scaling)
+def load_checkpoint(t5_checkpoint, model):
+    model.token_encoder = load_token_encoder(t5_checkpoint["token_encoder"], model.token_encoder)
 
-    model.continuous_encoder = load_continuous_encoder(
-        t5_checkpoint["continuous_encoder"], model.continuous_encoder, depth_scaling
-    )
-    model.decoder = load_decoder(t5_checkpoint["decoder"], model.decoder, depth_scaling)
+    model.continuous_encoder = load_continuous_encoder(t5_checkpoint["continuous_encoder"], model.continuous_encoder)
+    model.decoder = load_decoder(t5_checkpoint["decoder"], model.decoder)
     return model
 
 
@@ -179,22 +169,20 @@ def main(args):
         max_decoder_noise_time=synth_model.model.module.config.max_decoder_noise_time,
     )
 
-    # NOTE: T5 does not explicitly rescale the attention logits by
-    #       1/sqrt(depth_kq)!  This is folded into the initializers of the
-    #       linear transformations, which is equivalent under Adafactor.
     model = load_checkpoint(t5_checkpoint["target"], model).eval()
 
     pipe = SpectrogramDiffusionPipeline(model, scheduler=scheduler)
-    pipe.save_pretrained("kashif")
+    if args.save:
+        pipe.save_pretrained(args.output_path)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    # parser.add_argument("--model_path", default=None, type=str, required=True, help="Path to the converted model.")
-    # parser.add_argument(
-    #     "--save", default=True, type=bool, required=False, help="Whether to save the converted model or not."
-    # )
+    parser.add_argument("--model_path", default=None, type=str, required=True, help="Path to the converted model.")
+    parser.add_argument(
+        "--save", default=True, type=bool, required=False, help="Whether to save the converted model or not."
+    )
     parser.add_argument(
         "--checkpoint_path",
         default=f"{MODEL}/checkpoint_500000",
