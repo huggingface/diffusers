@@ -484,7 +484,6 @@ class DiffusionPipeline(ConfigMixin):
         # 2. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
         if custom_pipeline is not None:
-
             if custom_pipeline.endswith(".py"):
                 path = Path(custom_pipeline)
                 # decompose into folder & file
