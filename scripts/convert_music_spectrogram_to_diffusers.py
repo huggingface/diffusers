@@ -16,7 +16,7 @@ from t5x import checkpoints
 MODEL = "base_with_context"
 
 
-def load_token_encoder(weights, model):
+def load_token_encoder(weights, model, depth_scaling):
     model.token_embedder.weight = nn.Parameter(torch.FloatTensor(weights["token_embedder"]["embedding"]))
     model.position_encoding.weight = nn.Parameter(
         torch.FloatTensor(weights["Embed_0"]["embedding"]), requires_grad=False
@@ -28,7 +28,9 @@ def load_token_encoder(weights, model):
         )
 
         attention_weights = ly_weight["attention"]
-        lyr.layer[0].SelfAttention.q.weight = nn.Parameter(torch.FloatTensor(attention_weights["query"]["kernel"].T))
+        lyr.layer[0].SelfAttention.q.weight = nn.Parameter(
+            torch.FloatTensor(attention_weights["query"]["kernel"].T * depth_scaling)
+        )
         lyr.layer[0].SelfAttention.k.weight = nn.Parameter(torch.FloatTensor(attention_weights["key"]["kernel"].T))
         lyr.layer[0].SelfAttention.v.weight = nn.Parameter(torch.FloatTensor(attention_weights["value"]["kernel"].T))
         lyr.layer[0].SelfAttention.o.weight = nn.Parameter(torch.FloatTensor(attention_weights["out"]["kernel"].T))
@@ -43,7 +45,7 @@ def load_token_encoder(weights, model):
     return model
 
 
-def load_continuous_encoder(weights, model):
+def load_continuous_encoder(weights, model, depth_scaling):
     model.input_proj.weight = nn.Parameter(torch.FloatTensor(weights["input_proj"]["kernel"].T))
 
     model.position_encoding.weight = nn.Parameter(
@@ -54,7 +56,9 @@ def load_continuous_encoder(weights, model):
         ly_weight = weights[f"layers_{lyr_num}"]
         attention_weights = ly_weight["attention"]
 
-        lyr.layer[0].SelfAttention.q.weight = nn.Parameter(torch.FloatTensor(attention_weights["query"]["kernel"].T))
+        lyr.layer[0].SelfAttention.q.weight = nn.Parameter(
+            torch.FloatTensor(attention_weights["query"]["kernel"].T * depth_scaling)
+        )
         lyr.layer[0].SelfAttention.k.weight = nn.Parameter(torch.FloatTensor(attention_weights["key"]["kernel"].T))
         lyr.layer[0].SelfAttention.v.weight = nn.Parameter(torch.FloatTensor(attention_weights["value"]["kernel"].T))
         lyr.layer[0].SelfAttention.o.weight = nn.Parameter(torch.FloatTensor(attention_weights["out"]["kernel"].T))
@@ -72,7 +76,7 @@ def load_continuous_encoder(weights, model):
     return model
 
 
-def load_decoder(weights, model):
+def load_decoder(weights, model, depth_scaling):
     model.conditioning_emb[0].weight = nn.Parameter(torch.FloatTensor(weights["time_emb_dense0"]["kernel"].T))
     model.conditioning_emb[2].weight = nn.Parameter(torch.FloatTensor(weights["time_emb_dense1"]["kernel"].T))
 
@@ -95,13 +99,17 @@ def load_decoder(weights, model):
         )
 
         attention_weights = ly_weight["self_attention"]
-        lyr.layer[0].SelfAttention.q.weight = nn.Parameter(torch.FloatTensor(attention_weights["query"]["kernel"].T))
+        lyr.layer[0].SelfAttention.q.weight = nn.Parameter(
+            torch.FloatTensor(attention_weights["query"]["kernel"].T * depth_scaling)
+        )
         lyr.layer[0].SelfAttention.k.weight = nn.Parameter(torch.FloatTensor(attention_weights["key"]["kernel"].T))
         lyr.layer[0].SelfAttention.v.weight = nn.Parameter(torch.FloatTensor(attention_weights["value"]["kernel"].T))
         lyr.layer[0].SelfAttention.o.weight = nn.Parameter(torch.FloatTensor(attention_weights["out"]["kernel"].T))
 
         attention_weights = ly_weight["MultiHeadDotProductAttention_0"]
-        lyr.layer[1].EncDecAttention.q.weight = nn.Parameter(torch.FloatTensor(attention_weights["query"]["kernel"].T))
+        lyr.layer[1].EncDecAttention.q.weight = nn.Parameter(
+            torch.FloatTensor(attention_weights["query"]["kernel"].T * depth_scaling)
+        )
         lyr.layer[1].EncDecAttention.k.weight = nn.Parameter(torch.FloatTensor(attention_weights["key"]["kernel"].T))
         lyr.layer[1].EncDecAttention.v.weight = nn.Parameter(torch.FloatTensor(attention_weights["value"]["kernel"].T))
         lyr.layer[1].EncDecAttention.o.weight = nn.Parameter(torch.FloatTensor(attention_weights["out"]["kernel"].T))
@@ -127,11 +135,13 @@ def load_decoder(weights, model):
     return model
 
 
-def load_checkpoint(t5_checkpoint, model):
-    model.token_encoder = load_token_encoder(t5_checkpoint["token_encoder"], model.token_encoder)
+def load_checkpoint(t5_checkpoint, model, depth_scaling):
+    model.token_encoder = load_token_encoder(t5_checkpoint["token_encoder"], model.token_encoder, depth_scaling)
 
-    model.continuous_encoder = load_continuous_encoder(t5_checkpoint["continuous_encoder"], model.continuous_encoder)
-    model.decoder = load_decoder(t5_checkpoint["decoder"], model.decoder)
+    model.continuous_encoder = load_continuous_encoder(
+        t5_checkpoint["continuous_encoder"], model.continuous_encoder, depth_scaling
+    )
+    model.decoder = load_decoder(t5_checkpoint["decoder"], model.decoder, depth_scaling)
     return model
 
 
@@ -168,7 +178,9 @@ def main(args):
         feed_forward_proj="gated-gelu",
         max_decoder_noise_time=synth_model.model.module.config.max_decoder_noise_time,
     )
-    model = load_checkpoint(t5_checkpoint["target"], model).eval()
+    model = load_checkpoint(
+        t5_checkpoint["target"], model, depth_scaling=synth_model.model.module.config.head_dim**-0.5
+    ).eval()
 
     pipe = SpectrogramDiffusionPipeline(model, scheduler=scheduler)
     pipe.save_pretrained("kashif")
