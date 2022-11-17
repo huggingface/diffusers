@@ -66,10 +66,12 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> torch.Tensor
     Contains a function alpha_bar that takes an argument t and transforms it to the cumulative product of (1-beta) up
     to that part of the diffusion process.
 
+
     Args:
         num_diffusion_timesteps (`int`): the number of betas to produce.
         max_beta (`float`): the maximum beta to use; use values lower than 1 to
-                    prevent singularities.
+                     prevent singularities.
+
     Returns:
         betas (`np.ndarray`): the betas used by the scheduler to step the model outputs
     """
@@ -281,10 +283,12 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
                 can directly provide the noise for the variance itself. This is useful for methods such as
                 CycleDiffusion. (https://arxiv.org/abs/2210.05559)
             return_dict (`bool`): option for returning tuple rather than DDIMSchedulerOutput class
+
         Returns:
             [`~schedulers.scheduling_utils.DDIMSchedulerOutput`] or `tuple`:
             [`~schedulers.scheduling_utils.DDIMSchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is the sample tensor.
+
         """
         if self.num_inference_steps is None:
             raise ValueError(
