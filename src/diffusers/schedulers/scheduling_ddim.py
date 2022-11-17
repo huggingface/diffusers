@@ -44,6 +44,7 @@ class DDIMSchedulerOutput(BaseOutput):
     """
     Output class for the scheduler's step function output.
 
+
     Args:
         prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
@@ -106,6 +107,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
     [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
     [`~ConfigMixin.from_config`] functions.
 
+    For more details, see the original paper: https://arxiv.org/abs/2010.02502
 
     Args:
         num_train_timesteps (`int`): number of diffusion steps used to train the model.
@@ -126,6 +128,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             an offset added to the inference steps. You can use a combination of `offset=1` and
             `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
             stable diffusion.
+
     """
 
     _compatible_classes = [
@@ -262,7 +265,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output (`torch.FloatTensor`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor`): current instance of sample being created by diffusion process.
+            sample (`torch.FloatTensor`):
+                current instance of sample being created by diffusion process.
             prediction_type (`str`):
                 prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
                 process), `sample` (directly predicting the noisy sample), or `v` (see section 2.4
