@@ -147,4 +147,4 @@ accelerate launch train_unconditional_ort.py \
   --mixed_precision=fp16
   ```
 
-Please contact @microsoft/onnxruntime/onnxruntime-training-frontend with any questions
+Please contact @microsoft/onnxruntime-training-frontend with any questions
