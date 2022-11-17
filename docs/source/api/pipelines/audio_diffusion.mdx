@@ -33,6 +33,7 @@ training scripts and example notebooks.
 ## Examples:
 
 ### Audio Diffusion
+
 ```python
 import torch
 from IPython.display import Audio
@@ -48,6 +49,7 @@ display(Audio(output.audios[0], rate=mel.get_sample_rate()))
 ```
 
 ### Latent Audio Diffusion
+
 ```python
 import torch
 from IPython.display import Audio
@@ -63,6 +65,7 @@ display(Audio(output.audios[0], rate=mel.get_sample_rate()))
 ```
 
 ### Audio Diffusion with DDIM (faster)
+
 ```python
 import torch
 from IPython.display import Audio
@@ -78,6 +81,7 @@ display(Audio(output.audios[0], rate=mel.get_sample_rate()))
 ```
 
 ### Variations, in-painting, out-painting etc.
+
 ```python
 output = pipe(
     mel=mel,

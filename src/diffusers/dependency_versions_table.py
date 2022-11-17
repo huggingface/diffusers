@@ -29,4 +29,5 @@ deps = {
     "torch": "torch>=1.4",
     "torchvision": "torchvision",
     "transformers": "transformers>=4.21.0",
+    "librosa": "librosa",
 }
