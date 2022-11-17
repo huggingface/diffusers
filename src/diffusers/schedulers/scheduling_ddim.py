@@ -129,6 +129,10 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             an offset added to the inference steps. You can use a combination of `offset=1` and
             `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
             stable diffusion.
+        prediction_type (`Literal["epsilon", "sample", "v"]`, optional):
+                prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
+                process), `sample` (directly predicting the noisy sample`) or `v` (see section 2.4
+                https://imagen.research.google/video/paper.pdf)
 
     """
 
@@ -181,8 +185,12 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # For the final step, there is no previous alphas_cumprod because we are already at 0
         # `set_alpha_to_one` decides whether we set this parameter simply to one or
         # whether we use the final alpha of the "non-previous" one.
-        self.final_alpha_cumprod = torch.tensor(1.0) if set_alpha_to_one else self.alphas_cumprod[0]
-        self.final_sigma = torch.tensor(0.0) if set_alpha_to_one else self.sigmas[0]
+        if set_alpha_to_one:
+            self.final_alpha_cumprod = torch.tensor(1.0)
+            self.final_sigma = torch.tensor(0.0)  # TODO rename set_alpha_to_one for something general with sigma=0
+        else:
+            self.final_alpha_cumprod = self.alphas_cumprod[0]
+            self.final_sigma = self.sigmas[0] if prediction_type == "v" else None
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0

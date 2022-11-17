@@ -114,6 +114,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
                 prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
                 process), `sample` (directly predicting the noisy sample`) or `v` (see section 2.4
                 https://imagen.research.google/video/paper.pdf)
+        predict_epsilon (`bool`, default `True`):
+            depreciated flag (removing v0.10.0) for epsilon vs. direct sample prediction.
     """
 
     _compatible_classes = [
@@ -136,6 +138,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         variance_type: str = "fixed_small",
         clip_sample: bool = True,
         prediction_type: Literal["epsilon", "sample", "v"] = "epsilon",
+        predict_epsilon: bool = True,
     ):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
@@ -265,8 +268,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         if self.variance_type == "v_diffusion":
             assert self.prediction_type == "v", "Need to use v prediction with v_diffusion"
         message = (
-            "Please make sure to instantiate your scheduler with `predict_epsilon` instead. E.g. `scheduler ="
-            " DDPMScheduler.from_config(<model_id>, predict_epsilon=True)`."
+            "Please make sure to instantiate your scheduler with `prediction_type=epsilon` instead. E.g. `scheduler ="
+            " DDPMScheduler.from_config(<model_id>, prediction_type=epsilon)`."
         )
         predict_epsilon = deprecate("predict_epsilon", "0.10.0", message, take_from=kwargs)
         if predict_epsilon is not None and predict_epsilon != self.config.predict_epsilon:
@@ -293,11 +296,14 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
                 sample * self.sqrt_alphas_cumprod[timestep]
                 - model_output * self.sqrt_one_minus_alphas_cumprod[timestep]
             )
+
+        # not check on predict_epsilon for depreciation flag above
+        elif self.prediction_type == "sample" or not self.config.predict_epsilon:
+            pred_original_sample = model_output
+
         elif self.prediction_type == "epsilon" or self.config.predict_epsilon:
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
 
-        elif self.prediction_type == "sample":
-            pred_original_sample = model_output
         else:
             raise ValueError(
                 f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample`, or `v`"

@@ -393,9 +393,9 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         for clip_sample in [True, False]:
             self.check_over_configs(clip_sample=clip_sample)
 
-    def test_predict_epsilon(self):
-        for predict_epsilon in [True, False]:
-            self.check_over_configs(predict_epsilon=predict_epsilon)
+    def test_prediction_type(self):
+        for prediction_type in ["epsilon", "sample", "v"]:
+            self.check_over_configs(prediction_type=prediction_type)
 
     def test_deprecated_epsilon(self):
         deprecate("remove this test", "0.10.0", "remove")
@@ -407,7 +407,7 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         time_step = 4
 
         scheduler = scheduler_class(**scheduler_config)
-        scheduler_eps = scheduler_class(predict_epsilon=False, **scheduler_config)
+        scheduler_eps = scheduler_class(prediction_type="sample", **scheduler_config)
 
         kwargs = {}
         if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
