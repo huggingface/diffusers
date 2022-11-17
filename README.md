@@ -346,8 +346,6 @@ Textual Inversion is a technique for capturing novel concepts from a small numbe
 
 Quantization is one of widey-used model compression techniques to accelerate the inference performance. There are two typical approaches: 1) post-training quantization (PTQ), and 2) during-training quantization (DTQ). PTQ is an effective approach to quantizing a model without additional training steps but requires an offline calibration process using a representative dataset to determinate the quantization parameters (e.g., scale and zero point) for the model. DTQ is designed to simulate the quantization error and get recovered as much as possible during training, and quantization-aware training is a well-known approach for DTQ. Optimum Intel provides the quantization support for Transformers library and aims to accelerate end-to-end pipelines on Intel architectures. Below is the sample code for your reference and the full code is available in [Optimum Intel examples](https://github.com/huggingface/optimum-intel/tree/main/examples/neural_compressor/text-to-image).
 
-**With `pip`**
-    
 ```bash
 pip install optimum[neural-compressor]
 ```
