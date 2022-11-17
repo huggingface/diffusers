@@ -29,7 +29,7 @@ from .scheduling_utils import SchedulerMixin
 def expand_to_shape(input, timesteps, shape, device):
     """
     Helper indexes a 1D tensor `input` using a 1D index tensor `timesteps`, then reshapes the result to broadcast
-    nicely with `shape`. Useful for parellizing operations over `shape[0]` number of diffusion steps at once.
+    nicely with `shape`. Useful for parallelizing operations over `shape[0]` number of diffusion steps at once.
     """
     out = torch.gather(input.to(device), 0, timesteps.to(device))
     reshape = [shape[0]] + [1] * (len(shape) - 1)
@@ -112,7 +112,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             option to clip predicted sample between -1 and 1 for numerical stability.
         prediction_type (`Literal["epsilon", "sample", "velocity"]`, optional):
                 prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
-                process), `sample` (directly predicting the noisy sample`) or `v` (see section 2.4
+                process), `sample` (directly predicting the noisy sample`) or `velocity` (see section 2.4
                 https://imagen.research.google/video/paper.pdf)
         predict_epsilon (`bool`, default `True`):
             depreciated flag (removing v0.10.0) for epsilon vs. direct sample prediction.
@@ -300,7 +300,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         else:
             raise ValueError(
-                f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample`, or `v`"
+                f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample`, or `velocity`"
             )
 
         # 3. Clip "predicted x_0"

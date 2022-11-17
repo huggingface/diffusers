@@ -30,7 +30,7 @@ from .scheduling_utils import SchedulerMixin
 def expand_to_shape(input, timesteps, shape, device):
     """
     Helper indexes a 1D tensor `input` using a 1D index tensor `timesteps`, then reshapes the result to broadcast
-    nicely with `shape`. Useful for parellizing operations over `shape[0]` number of diffusion steps at once.
+    nicely with `shape`. Useful for parallelizing operations over `shape[0]` number of diffusion steps at once.
     """
     out = torch.gather(input.to(device), 0, timesteps.to(device))
     reshape = [shape[0]] + [1] * (len(shape) - 1)
@@ -131,7 +131,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             stable diffusion.
         prediction_type (`Literal["epsilon", "sample", "velocity"]`, optional):
                 prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
-                process), `sample` (directly predicting the noisy sample`) or `v` (see section 2.4
+                process), `sample` (directly predicting the noisy sample`) or `velocity` (see section 2.4
                 https://imagen.research.google/video/paper.pdf)
 
     """
@@ -265,10 +265,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 current instance of sample being created by diffusion process.
-            prediction_type (`str`):
-                prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
-                process), `sample` (directly predicting the noisy sample), or `v` (see section 2.4
-                https://imagen.research.google/video/paper.pdf)
             eta (`float`): weight of noise for added noise in diffusion step.
             use_clipped_model_output (`bool`): if `True`, compute "corrected" `model_output` from the clipped
                 predicted original sample. Necessary because predicted original sample is clipped to [-1, 1] when
@@ -326,7 +322,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             eps = model_output * self.alphas[timestep] + sample * self.sigmas[timestep]
         else:
             raise ValueError(
-                f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample`, or `v`"
+                f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample`, or `velocity`"
             )
 
         # 4. Clip "predicted x_0"
