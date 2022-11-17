@@ -39,6 +39,7 @@ Safe Stable Diffusion can be tested very easily with the [`StableDiffusionPipeli
 To check and edit the currently used safety concept, use the `safety_concept` property of [`StableDiffusionPipelineSafe`]
 ```python
 >>> from diffusers import StableDiffusionPipelineSafe
+
 >>> pipeline = StableDiffusionPipelineSafe.from_pretrained("AIML-TUDA/stable-diffusion-safe")
 >>> pipeline.safety_concept
 ```
@@ -57,7 +58,9 @@ To use a different scheduler, you can either change it via the [`ConfigMixin.fro
 
 >>> # or
 >>> euler_scheduler = EulerDiscreteScheduler.from_pretrained("AIML-TUDA/stable-diffusion-safe", subfolder="scheduler")
->>> pipeline = StableDiffusionPipelineSafe.from_pretrained("AIML-TUDA/stable-diffusion-safe", scheduler=euler_scheduler)
+>>> pipeline = StableDiffusionPipelineSafe.from_pretrained(
+...     "AIML-TUDA/stable-diffusion-safe", scheduler=euler_scheduler
+... )
 ```
 
 
