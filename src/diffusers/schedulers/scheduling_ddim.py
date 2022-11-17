@@ -44,7 +44,6 @@ class DDIMSchedulerOutput(BaseOutput):
     """
     Output class for the scheduler's step function output.
 
-
     Args:
         prev_sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)` for images):
             Computed sample (x_{t-1}) of previous timestep. `prev_sample` should be used as next model input in the
