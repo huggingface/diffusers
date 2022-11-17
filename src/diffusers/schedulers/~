@@ -17,6 +17,8 @@ from typing import Optional, Tuple, Union
 import numpy as np
 import torch
 
+from scipy import integrate
+
 from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
@@ -49,7 +51,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def __init__(
         self,
         num_train_timesteps: int = 1000,
-        beta_start: float = 0.00085,  # sensible defaults
+        beta_start: float = 0.00085, #sensible defaults
         beta_end: float = 0.012,
         beta_schedule: str = "linear",
         trained_betas: Optional[np.ndarray] = None,
@@ -78,10 +80,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.init_noise_sigma = None
         timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
         self.timesteps = torch.from_numpy(timesteps)
-
-        # empty dt and derivative
-        self.prev_derivative = None
-        self.dt = None
+        self.derivatives = []
 
     def scale_model_input(
         self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor], step_index: Union[int, torch.IntTensor]
@@ -118,16 +117,18 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = torch.from_numpy(sigmas)
         self.timesteps = torch.from_numpy(self.timesteps)
         self.init_noise_sigma = self.sigmas[0]
-
-        # empty dt and derivative
-        self.prev_derivative = None
-        self.dt = None
+        self.derivatives = []
 
     def step(
         self,
         model_output: Union[torch.FloatTensor, np.ndarray],
-        timestep: Union[float, torch.FloatTensor],
+        timestep: int,
+        step_index: int,
         sample: Union[torch.FloatTensor, np.ndarray],
+        s_churn: float = 0.,
+        s_tmin:  float = 0.,
+        s_tmax: float = float('inf'),
+        s_noise:  float = 1.,
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
         """
@@ -138,53 +139,43 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor` or `np.ndarray`):
                 current instance of sample being created by diffusion process.
+            s_churn (`float`)
+            s_tmin  (`float`)
+            s_tmax  (`float`)
+            s_noise (`float`)
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
         Returns:
             [`~schedulers.scheduling_utils.SchedulerOutput`] or `tuple`:
             [`~schedulers.scheduling_utils.SchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is the sample tensor.
         """
-        step_index = (self.timesteps == timestep).nonzero().item()
-
-        if self.state_in_first_order:
-            sigma = self.sigmas[step_index]
-            sigma_next = self.sigmas[step_index + 1]
-        else:
-            # 2nd order / Heun's method
-            sigma = self.sigmas[step_index - 1]
-            sigma_next = self.sigmas[step_index]
-
+        sigma = self.sigmas[step_index]
         # currently only gamma=0 is supported. This usually works best anyways.
         # We can support gamma in the future but then need to scale the timestep before
         # passing it to the model which requires a change in API
         gamma = 0
-        sigma_hat = sigma * (gamma + 1)  # Note: sigma_hat == sigma for now
+        sigma_hat = sigma * (gamma + 1) # Note: sigma_hat == sigma for now
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         pred_original_sample = sample - sigma_hat * model_output
 
-        if self.state_in_first_order:
-            # 2. Convert to an ODE derivative
-            derivative = (sample - pred_original_sample) / sigma_hat
-            # 3. 1st order derivative
-            dt = sigma_next - sigma_hat
+        # 2. Convert to an ODE derivative
+        derivative = (sample - pred_original_sample) / sigma_hat
+        self.derivatives.append(derivative)
 
-            # store for 2nd order step
-            self.prev_derivative = derivative
-            self.dt = dt
+        dt = self.sigmas[step_index + 1] - sigma_hat
+        if self.sigmas[step_index + 1] == 0:
+            # Euler method
+            sample = sample + derivative * dt
         else:
-            # 2. 2nd order / Heun's method
-            derivative = (sample - pred_original_sample) / sigma_hat
-            derivative = (self.prev_derivative + derivative) / 2
-
-            # 3. Retrieve 1st order derivative
-            dt = self.dt
-
-            # free dt and derivative
-            self.prev_derivative = None
-            self.dt = None
-
-        prev_sample = model_output + derivative * self.dt
+            # Heun's method
+            sample_2 = sample + derivative * dt
+            pred_original_sample_2 = sample_2 - self.sigmas[step_index + 1] * model_output
+            derivative_2 = (sample_2 - pred_original_sample_2) / self.sigmas[step_index + 1]
+            d_prime = (derivative + derivative_2) / 2
+            sample = sample + d_prime * dt
+        
+        prev_sample = sample
 
         if not return_dict:
             return (prev_sample,)
