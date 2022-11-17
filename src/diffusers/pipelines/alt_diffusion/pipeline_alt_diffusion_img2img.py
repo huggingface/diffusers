@@ -189,7 +189,7 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
         else:
             raise ImportError("Please install accelerate via `pip install accelerate`")
 
-        device = torch.device("cuda")
+        device = torch.device(f"cuda:{gpu_id}")
 
         for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
             if cpu_offloaded_model is not None:
