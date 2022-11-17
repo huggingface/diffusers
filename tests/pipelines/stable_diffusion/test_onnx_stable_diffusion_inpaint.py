@@ -97,7 +97,7 @@ class OnnxStableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
         )
-        lms_scheduler = LMSDiscreteScheduler.from_config(
+        lms_scheduler = LMSDiscreteScheduler.from_pretrained(
             "runwayml/stable-diffusion-inpainting", subfolder="scheduler", revision="onnx"
         )
         pipe = OnnxStableDiffusionInpaintPipeline.from_pretrained(
