@@ -31,13 +31,13 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 
 def pytest_addoption(parser):
-    from diffusers.testing_utils import pytest_addoption_shared
+    from diffusers.utils.testing_utils import pytest_addoption_shared
 
     pytest_addoption_shared(parser)
 
 
 def pytest_terminal_summary(terminalreporter):
-    from diffusers.testing_utils import pytest_terminal_summary_main
+    from diffusers.utils.testing_utils import pytest_terminal_summary_main
 
     make_reports = terminalreporter.config.getoption("--make-reports")
     if make_reports:

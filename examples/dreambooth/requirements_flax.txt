@@ -1,0 +1,9 @@
+diffusers>==0.5.1
+transformers>=4.21.0
+flax
+optax
+torch
+torchvision
+ftfy
+tensorboard
+modelcards

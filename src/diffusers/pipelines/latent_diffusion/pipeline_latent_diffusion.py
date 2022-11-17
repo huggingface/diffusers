@@ -1,5 +1,18 @@
+# Copyright 2022 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import inspect
-import warnings
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -27,13 +40,13 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         vqvae ([`VQModel`]):
             Vector-quantized (VQ) Model to encode and decode images to and from latent representations.
         bert ([`LDMBertModel`]):
-            Text-encoder model based on [BERT](ttps://huggingface.co/docs/transformers/model_doc/bert) architecture.
+            Text-encoder model based on [BERT](https://huggingface.co/docs/transformers/model_doc/bert) architecture.
         tokenizer (`transformers.BertTokenizer`):
             Tokenizer of class
             [BertTokenizer](https://huggingface.co/docs/transformers/model_doc/bert#transformers.BertTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
+            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
 
@@ -46,7 +59,6 @@ class LDMTextToImagePipeline(DiffusionPipeline):
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
     ):
         super().__init__()
-        scheduler = scheduler.set_format("pt")
         self.register_modules(vqvae=vqvae, bert=bert, tokenizer=tokenizer, unet=unet, scheduler=scheduler)
 
     @torch.no_grad()
@@ -94,17 +106,6 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
             generated images.
         """
-        if "torch_device" in kwargs:
-            device = kwargs.pop("torch_device")
-            warnings.warn(
-                "`torch_device` is deprecated as an input argument to `__call__` and will be removed in v0.3.0."
-                " Consider using `pipe.to(torch_device)` instead."
-            )
-
-            # Set device as before (to be removed in 0.3.0)
-            if device is None:
-                device = "cuda" if torch.cuda.is_available() else "cpu"
-            self.to(device)
 
         if isinstance(prompt, str):
             batch_size = 1
@@ -192,7 +193,7 @@ LDMBERT_PRETRAINED_MODEL_ARCHIVE_LIST = [
 
 
 LDMBERT_PRETRAINED_CONFIG_ARCHIVE_MAP = {
-    "ldm-bert": "https://huggingface.co/ldm-bert/resolve/main/config.json",
+    "ldm-bert": "https://huggingface.co/valhalla/ldm-bert/blob/main/config.json",
 }
 
 
@@ -397,7 +398,7 @@ class LDMBertAttention(nn.Module):
         attn_output = attn_output.transpose(1, 2)
 
         # Use the `embed_dim` from the config (stored in the class) rather than `hidden_state` because `attn_output` can be
-        # partitioned aross GPUs when using tensor-parallelism.
+        # partitioned across GPUs when using tensor-parallelism.
         attn_output = attn_output.reshape(bsz, tgt_len, self.inner_dim)
 
         attn_output = self.out_proj(attn_output)
@@ -675,6 +676,8 @@ class LDMBertEncoder(LDMBertPreTrainedModel):
 
 
 class LDMBertModel(LDMBertPreTrainedModel):
+    _no_split_modules = []
+
     def __init__(self, config: LDMBertConfig):
         super().__init__(config)
         self.model = LDMBertEncoder(config)

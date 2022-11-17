@@ -22,8 +22,8 @@ import numpy as np
 import torch
 
 from diffusers.modeling_utils import ModelMixin
-from diffusers.testing_utils import torch_device
 from diffusers.training_utils import EMAModel
+from diffusers.utils import torch_device
 
 
 class ModelTesterMixin:
@@ -130,7 +130,7 @@ class ModelTesterMixin:
         expected_arg_names = ["sample", "timestep"]
         self.assertListEqual(arg_names[:2], expected_arg_names)
 
-    def test_model_from_config(self):
+    def test_model_from_pretrained(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         model = self.model_class(**init_dict)
@@ -140,8 +140,8 @@ class ModelTesterMixin:
         # test if the model can be loaded from the config
         # and has all the expected shape
         with tempfile.TemporaryDirectory() as tmpdirname:
-            model.save_config(tmpdirname)
-            new_model = self.model_class.from_config(tmpdirname)
+            model.save_pretrained(tmpdirname)
+            new_model = self.model_class.from_pretrained(tmpdirname)
             new_model.to(torch_device)
             new_model.eval()
 
@@ -247,6 +247,7 @@ class ModelTesterMixin:
 
         recursive_check(outputs_tuple, outputs_dict)
 
+    @unittest.skipIf(torch_device == "mps", "Gradient checkpointing skipped on MPS")
     def test_enable_disable_gradient_checkpointing(self):
         if not self.model_class._supports_gradient_checkpointing:
             return  # Skip test if model does not support gradient checkpointing
