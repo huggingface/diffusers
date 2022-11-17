@@ -23,15 +23,14 @@ from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
     """
-    Implements Algorithm 2 (Heun steps) from Karras et al. (2022).
-    for discrete beta schedules. Based on the original k-diffusion implementation by
-    Katherine Crowson:
+    Args:
+    Implements Algorithm 2 (Heun steps) from Karras et al. (2022). for discrete beta schedules. Based on the original
+    k-diffusion implementation by Katherine Crowson:
     https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L90
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
     [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
     [`~ConfigMixin.from_config`] functions.
-    Args:
         num_train_timesteps (`int`): number of diffusion steps used to train the model.
         beta_start (`float`): the starting `beta` value of inference.
         beta_end (`float`): the final `beta` value.
@@ -74,22 +73,18 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = torch.from_numpy(sigmas)
 
         # setable values
-        self.num_inference_steps = None
-        self.init_noise_sigma = None
-        timesteps = np.arange(0, num_train_timesteps)[::-1].copy()
-        self.timesteps = torch.from_numpy(timesteps)
-
-        # empty dt and derivative
-        self.prev_derivative = None
-        self.dt = None
+        self.set_timesteps(num_train_timesteps, None, num_train_timesteps)
 
     def scale_model_input(
-        self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor], step_index: Union[int, torch.IntTensor]
+        self,
+        sample: torch.FloatTensor,
+        timestep: Union[float, torch.FloatTensor],
+        step_index: Union[int, torch.IntTensor],
     ) -> torch.FloatTensor:
         """
+        Args:
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
-        Args:
             sample (`torch.FloatTensor`): input sample
             timestep (`int`, optional): current timestep
         Returns:
@@ -99,25 +94,41 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sample = sample / ((sigma**2 + 1) ** 0.5)
         return sample
 
-    def set_timesteps(self, num_inference_steps: int):
+    def set_timesteps(
+        self,
+        num_inference_steps: int,
+        device: Union[str, torch.device] = None,
+        num_train_timesteps: Optional[int] = None,
+    ):
         """
         Sets the timesteps used for the diffusion chain. Supporting function to be run before inference.
+
         Args:
             num_inference_steps (`int`):
                 the number of diffusion steps used when generating samples with a pre-trained model.
+            device (`str` or `torch.device`, optional):
+                the device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         """
         self.num_inference_steps = num_inference_steps
-        self.timesteps = np.linspace(self.config.num_train_timesteps - 1, 0, num_inference_steps, dtype=float)
 
-        low_idx = np.floor(self.timesteps).astype(int)
-        high_idx = np.ceil(self.timesteps).astype(int)
-        frac = np.mod(self.timesteps, 1.0)
+        num_train_timesteps = num_train_timesteps or self.config.num_train_timesteps
+
+        timesteps = np.linspace(0, num_train_timesteps - 1, num_inference_steps, dtype=float)[::-1].copy()
+
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
-        sigmas = (1 - frac) * sigmas[low_idx] + frac * sigmas[high_idx]
+        sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
-        self.sigmas = torch.from_numpy(sigmas)
-        self.timesteps = torch.from_numpy(self.timesteps)
-        self.init_noise_sigma = self.sigmas[0]
+        sigmas = torch.from_numpy(sigmas).to(device=device)
+        self.sigmas = torch.cat([sigmas[:1], sigmas[1:-1].repeat_interleave(2), sigmas[-1:]])
+
+        timesteps = torch.from_numpy(timesteps)
+        timesteps = torch.cat([timesteps[:1], timesteps[1:].repeat_interleave(2), timesteps[-1:]])
+
+        if str(device).startswith("mps"):
+            # mps does not support float64
+            self.timesteps = timesteps.to(device, dtype=torch.float32)
+        else:
+            self.timesteps = timesteps.to(device=device)
 
         # empty dt and derivative
         self.prev_derivative = None
@@ -131,9 +142,9 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
         """
+        Args:
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
-        Args:
             model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
             timestep (`int`): current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor` or `np.ndarray`):
