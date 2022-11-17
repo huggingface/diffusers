@@ -75,7 +75,7 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_inference_ddim(self):
-        ddim_scheduler = DDIMScheduler.from_config(
+        ddim_scheduler = DDIMScheduler.from_pretrained(
             "runwayml/stable-diffusion-v1-5", subfolder="scheduler", revision="onnx"
         )
         sd_pipe = OnnxStableDiffusionPipeline.from_pretrained(
@@ -98,7 +98,7 @@ class OnnxStableDiffusionPipelineIntegrationTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_inference_k_lms(self):
-        lms_scheduler = LMSDiscreteScheduler.from_config(
+        lms_scheduler = LMSDiscreteScheduler.from_pretrained(
             "runwayml/stable-diffusion-v1-5", subfolder="scheduler", revision="onnx"
         )
         sd_pipe = OnnxStableDiffusionPipeline.from_pretrained(

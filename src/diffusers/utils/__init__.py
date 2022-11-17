@@ -38,6 +38,7 @@ from .import_utils import (
 )
 from .logging import get_logger
 from .outputs import BaseOutput
+from .pil_utils import PIL_INTERPOLATION
 
 
 if is_torch_available():
@@ -72,3 +73,13 @@ HUGGINGFACE_CO_RESOLVE_ENDPOINT = "https://huggingface.co"
 DIFFUSERS_CACHE = default_cache_path
 DIFFUSERS_DYNAMIC_MODULE_NAME = "diffusers_modules"
 HF_MODULES_CACHE = os.getenv("HF_MODULES_CACHE", os.path.join(hf_cache_home, "modules"))
+
+_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS = [
+    "DDIMScheduler",
+    "DDPMScheduler",
+    "PNDMScheduler",
+    "LMSDiscreteScheduler",
+    "EulerDiscreteScheduler",
+    "EulerAncestralDiscreteScheduler",
+    "DPMSolverMultistepScheduler",
+]
