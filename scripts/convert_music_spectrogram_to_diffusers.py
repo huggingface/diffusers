@@ -182,9 +182,7 @@ def main(args):
     # NOTE: T5 does not explicitly rescale the attention logits by
     #       1/sqrt(depth_kq)!  This is folded into the initializers of the
     #       linear transformations, which is equivalent under Adafactor.
-    model = load_checkpoint(
-        t5_checkpoint["target"], model, depth_scaling=synth_model.model.module.config.head_dim**-0.5
-    ).eval()
+    model = load_checkpoint(t5_checkpoint["target"], model).eval()
 
     pipe = SpectrogramDiffusionPipeline(model, scheduler=scheduler)
     pipe.save_pretrained("kashif")
