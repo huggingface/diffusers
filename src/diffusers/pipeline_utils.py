@@ -78,6 +78,9 @@ LOADABLE_CLASSES = {
         "ProcessorMixin": ["save_pretrained", "from_pretrained"],
         "ImageProcessingMixin": ["save_pretrained", "from_pretrained"],
     },
+    "onnxruntime.training": {
+        "ORTModule": ["save_pretrained", "from_pretrained"],
+    },
 }
 
 ALL_IMPORTABLE_CLASSES = {}
