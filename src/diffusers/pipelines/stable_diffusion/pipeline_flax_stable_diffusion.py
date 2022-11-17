@@ -165,7 +165,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         guidance_scale: float = 7.5,
         latents: Optional[jnp.array] = None,
         debug: bool = False,
-        neg_prompt_ids: jnp.array = [""]
+        neg_prompt_ids: jnp.array = None
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -178,6 +178,9 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         batch_size = prompt_ids.shape[0]
 
         max_length = prompt_ids.shape[-1]
+
+        if neg_prompt_ids is None:
+            neg_prompt_ids = [""] * batch_size
         uncond_input = self.tokenizer(
             neg_prompt_ids * batch_size, padding="max_length", max_length=max_length, return_tensors="np"
         )
@@ -252,7 +255,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         return_dict: bool = True,
         jit: bool = False,
         debug: bool = False,
-        neg_prompt_ids: jnp.array = [""],
+        neg_prompt_ids: jnp.array = None,
         **kwargs,
     ):
         r"""
