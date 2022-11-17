@@ -12,6 +12,8 @@ from transformers.models.t5.modeling_t5 import (
     T5LayerFF,
     T5LayerNorm,
 )
+from transformers.modeling_utils import ModuleUtilsMixin
+
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...modeling_utils import ModelMixin
@@ -71,10 +73,11 @@ class T5LayerSelfAttentionCond(nn.Module):
         return outputs
 
 
-class DecoderLayer(nn.Module):
+class DecoderLayer(nn.Module, ModuleUtilsMixin):
     def __init__(self, config, has_relative_attention_bias=False):
         super().__init__()
         self.layer = nn.ModuleList()
+        self.config = config
 
         # cond self attention: layer 0
         self.layer.append(T5LayerSelfAttentionCond(config, has_relative_attention_bias=has_relative_attention_bias))
@@ -122,10 +125,16 @@ class DecoderLayer(nn.Module):
         else:
             self_attn_past_key_value, cross_attn_past_key_value = None, None
 
+        input_shape = (hidden_states.shape[0], hidden_states.shape[1])
+        if attention_mask is None:
+            attention_mask = torch.ones(input_shape[0], input_shape[1], device=hidden_states.device)
+
+        extended_attention_mask = self.get_extended_attention_mask(attention_mask, input_shape)
+
         self_attention_outputs = self.layer[0](
             hidden_states,
             conditioning_emb=conditioning_emb,
-            attention_mask=attention_mask,
+            attention_mask=extended_attention_mask,
             position_bias=position_bias,
             layer_head_mask=layer_head_mask,
             past_key_value=self_attn_past_key_value,
@@ -148,10 +157,13 @@ class DecoderLayer(nn.Module):
             else:
                 query_length = None
 
+            input_shape = (encoder_hidden_states.shape[0], encoder_hidden_states.shape[1])
+            extended_attention_mask = self.get_extended_attention_mask(encoder_attention_mask, input_shape)
+
             cross_attention_outputs = self.layer[1](
                 hidden_states,
                 key_value_states=encoder_hidden_states,
-                attention_mask=encoder_attention_mask,
+                attention_mask=extended_attention_mask,
                 position_bias=encoder_decoder_position_bias,
                 layer_head_mask=cross_attn_layer_head_mask,
                 past_key_value=cross_attn_past_key_value,
@@ -198,7 +210,7 @@ class DecoderLayer(nn.Module):
         return outputs  # hidden-states, present_key_value_states, (self-attention position bias), (self-attention weights), (cross-attention position bias), (cross-attention weights)
 
 
-class TokenEncoder(ModelMixin, ConfigMixin):
+class TokenEncoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
     @register_to_config
     def __init__(
         self,
@@ -211,6 +223,7 @@ class TokenEncoder(ModelMixin, ConfigMixin):
         d_kv: int,
         d_ff: int,
         feed_forward_proj: str,
+        is_decoder: bool = False,
     ):
         super().__init__()
 
@@ -229,7 +242,7 @@ class TokenEncoder(ModelMixin, ConfigMixin):
             d_ff=d_ff,
             dropout_rate=dropout_rate,
             feed_forward_proj=feed_forward_proj,
-            is_decoder=False,
+            is_decoder=is_decoder,
             is_encoder_decoder=False,
         )
 
@@ -250,14 +263,18 @@ class TokenEncoder(ModelMixin, ConfigMixin):
 
         x = self.dropout_pre(x)
 
+        # inverted the attention mask
+        input_shape = encoder_input_tokens.size()
+        extended_attention_mask = self.get_extended_attention_mask(encoder_inputs_mask, input_shape)
+
         for lyr in self.encoders:
-            x = lyr(x, encoder_inputs_mask)[0]
+            x = lyr(x, extended_attention_mask)[0]
         x = self.layer_norm(x)
 
         return self.dropout_post(x), encoder_inputs_mask
 
 
-class ContinuousEncoder(ModelMixin, ConfigMixin):
+class ContinuousEncoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
     @register_to_config
     def __init__(
         self,
@@ -270,6 +287,7 @@ class ContinuousEncoder(ModelMixin, ConfigMixin):
         d_kv: int,
         d_ff: int,
         feed_forward_proj: str,
+        is_decoder: bool = False,
     ):
         super().__init__()
 
@@ -287,7 +305,7 @@ class ContinuousEncoder(ModelMixin, ConfigMixin):
             d_ff=d_ff,
             feed_forward_proj=feed_forward_proj,
             dropout_rate=dropout_rate,
-            is_decoder=False,
+            is_decoder=is_decoder,
             is_encoder_decoder=False,
         )
         self.encoders = nn.ModuleList()
@@ -311,8 +329,12 @@ class ContinuousEncoder(ModelMixin, ConfigMixin):
 
         x = self.dropout_pre(x)
 
+        # inverted the attention mask
+        input_shape = encoder_inputs.size()
+        extended_attention_mask = self.get_extended_attention_mask(encoder_inputs_mask, input_shape)
+
         for lyr in self.encoders:
-            x = lyr(x, encoder_inputs_mask)[0]
+            x = lyr(x, extended_attention_mask)[0]
         x = self.layer_norm(x)
 
         return self.dropout_post(x), encoder_inputs_mask
