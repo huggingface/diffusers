@@ -201,7 +201,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         Args:
             sample (`torch.FloatTensor`): input sample
             timestep (`int`, optional): current timestep
-            
         Returns:
             `torch.FloatTensor`: scaled input sample
         """
