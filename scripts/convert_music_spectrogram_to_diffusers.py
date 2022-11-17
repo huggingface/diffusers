@@ -16,7 +16,7 @@ from t5x import checkpoints
 MODEL = "base_with_context"
 
 
-def load_token_encoder(weights, model, depth_scaling):
+def load_token_encoder(weights, model, depth_scaling=1.0):
     model.token_embedder.weight = nn.Parameter(torch.FloatTensor(weights["token_embedder"]["embedding"]))
     model.position_encoding.weight = nn.Parameter(
         torch.FloatTensor(weights["Embed_0"]["embedding"]), requires_grad=False
@@ -45,7 +45,7 @@ def load_token_encoder(weights, model, depth_scaling):
     return model
 
 
-def load_continuous_encoder(weights, model, depth_scaling):
+def load_continuous_encoder(weights, model, depth_scaling=1.0):
     model.input_proj.weight = nn.Parameter(torch.FloatTensor(weights["input_proj"]["kernel"].T))
 
     model.position_encoding.weight = nn.Parameter(
@@ -76,7 +76,7 @@ def load_continuous_encoder(weights, model, depth_scaling):
     return model
 
 
-def load_decoder(weights, model, depth_scaling):
+def load_decoder(weights, model, depth_scaling=1.0):
     model.conditioning_emb[0].weight = nn.Parameter(torch.FloatTensor(weights["time_emb_dense0"]["kernel"].T))
     model.conditioning_emb[2].weight = nn.Parameter(torch.FloatTensor(weights["time_emb_dense1"]["kernel"].T))
 
@@ -135,7 +135,7 @@ def load_decoder(weights, model, depth_scaling):
     return model
 
 
-def load_checkpoint(t5_checkpoint, model, depth_scaling):
+def load_checkpoint(t5_checkpoint, model, depth_scaling=1.0):
     model.token_encoder = load_token_encoder(t5_checkpoint["token_encoder"], model.token_encoder, depth_scaling)
 
     model.continuous_encoder = load_continuous_encoder(
@@ -178,6 +178,10 @@ def main(args):
         feed_forward_proj="gated-gelu",
         max_decoder_noise_time=synth_model.model.module.config.max_decoder_noise_time,
     )
+
+    # NOTE: T5 does not explicitly rescale the attention logits by
+    #       1/sqrt(depth_kq)!  This is folded into the initializers of the
+    #       linear transformations, which is equivalent under Adafactor.
     model = load_checkpoint(
         t5_checkpoint["target"], model, depth_scaling=synth_model.model.module.config.head_dim**-0.5
     ).eval()
