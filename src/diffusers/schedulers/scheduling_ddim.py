@@ -129,7 +129,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             an offset added to the inference steps. You can use a combination of `offset=1` and
             `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
             stable diffusion.
-        prediction_type (`Literal["epsilon", "sample", "v"]`, optional):
+        prediction_type (`Literal["epsilon", "sample", "velocity"]`, optional):
                 prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
                 process), `sample` (directly predicting the noisy sample`) or `v` (see section 2.4
                 https://imagen.research.google/video/paper.pdf)
@@ -150,7 +150,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         set_alpha_to_one: bool = True,
         variance_type: str = "fixed",
         steps_offset: int = 0,
-        prediction_type: Literal["epsilon", "sample", "v"] = "epsilon",
+        prediction_type: Literal["epsilon", "sample", "velocity"] = "epsilon",
         **kwargs,
     ):
         if trained_betas is not None:
@@ -171,7 +171,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         self.variance_type = variance_type
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
-        if prediction_type == "v":
+        if prediction_type == "velocity":
             self.alphas, self.sigmas = t_to_alpha_sigma(num_train_timesteps)
 
         # At every step in ddim, we are looking into the previous alphas_cumprod
@@ -183,7 +183,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             self.final_sigma = torch.tensor(0.0)  # TODO rename set_alpha_to_one for something general with sigma=0
         else:
             self.final_alpha_cumprod = self.alphas_cumprod[0]
-            self.final_sigma = self.sigmas[0] if prediction_type == "v" else None
+            self.final_sigma = self.sigmas[0] if prediction_type == "velocity" else None
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
@@ -319,7 +319,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         elif self.prediction_type == "sample":
             pred_original_sample = model_output
             eps = torch.tensor(1)
-        elif self.prediction_type == "v":
+        elif self.prediction_type == "velocity":
             # v_t = alpha_t * epsilon - sigma_t * x
             # need to merge the PRs for sigma to be available in DDPM
             pred_original_sample = sample * self.alphas[timestep] - model_output * self.sigmas[timestep]

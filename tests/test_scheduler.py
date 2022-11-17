@@ -600,7 +600,7 @@ class DDPMSchedulerTest(SchedulerCommonTest):
             self.check_over_configs(clip_sample=clip_sample)
 
     def test_prediction_type(self):
-        for prediction_type in ["epsilon", "sample", "v"]:
+        for prediction_type in ["epsilon", "sample", "velocity"]:
             self.check_over_configs(prediction_type=prediction_type)
 
     def test_deprecated_epsilon(self):
@@ -729,7 +729,7 @@ class DDIMSchedulerTest(SchedulerCommonTest):
             self.check_over_configs(beta_schedule=schedule)
 
     def test_prediction_type(self):
-        for prediction_type in ["epsilon", "sample", "v"]:
+        for prediction_type in ["epsilon", "sample", "velocity"]:
             self.check_over_configs(prediction_type=prediction_type)
 
     def test_clip_sample(self):

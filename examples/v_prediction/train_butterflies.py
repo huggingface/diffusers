@@ -93,14 +93,14 @@ if config.output_dir.startswith("ddpm"):
         num_train_timesteps=1000,
         beta_schedule="squaredcos_cap_v2",
         variance_type="v_diffusion",
-        prediction_type="v",
+        prediction_type="velocity",
     )
 else:
     noise_scheduler = DDIMScheduler(
         num_train_timesteps=1000,
         beta_schedule="squaredcos_cap_v2",
         variance_type="v_diffusion",
-        prediction_type="v",
+        prediction_type="velocity",
     )
 
 

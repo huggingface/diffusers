@@ -110,7 +110,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
         clip_sample (`bool`, default `True`):
             option to clip predicted sample between -1 and 1 for numerical stability.
-        prediction_type (`Literal["epsilon", "sample", "v"]`, optional):
+        prediction_type (`Literal["epsilon", "sample", "velocity"]`, optional):
                 prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
                 process), `sample` (directly predicting the noisy sample`) or `v` (see section 2.4
                 https://imagen.research.google/video/paper.pdf)
@@ -130,7 +130,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         trained_betas: Optional[np.ndarray] = None,
         variance_type: str = "fixed_small",
         clip_sample: bool = True,
-        prediction_type: Literal["epsilon", "sample", "v"] = "epsilon",
+        prediction_type: Literal["epsilon", "sample", "velocity"] = "epsilon",
         predict_epsilon: bool = True,
     ):
         if trained_betas is not None:
@@ -260,7 +260,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         """
         if self.variance_type == "v_diffusion":
-            assert self.prediction_type == "v", "Need to use v prediction with v_diffusion"
+            assert self.prediction_type == "velocity", "Need to use v prediction with v_diffusion"
         message = (
             "Please make sure to instantiate your scheduler with `prediction_type=epsilon` instead. E.g. `scheduler ="
             " DDPMScheduler.from_config(<model_id>, prediction_type=epsilon)`."
@@ -284,7 +284,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         # 2. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (15) from https://arxiv.org/pdf/2006.11239.pdf
-        if self.prediction_type == "v":
+        if self.prediction_type == "velocity":
             # x_recon in p_mean_variance
             pred_original_sample = (
                 sample * self.sqrt_alphas_cumprod[timestep]
