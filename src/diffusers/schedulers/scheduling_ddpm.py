@@ -22,7 +22,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, FrozenDict, register_to_config
-from ..utils import BaseOutput, deprecate
+from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput, deprecate
 from .scheduling_utils import SchedulerMixin
 
 
@@ -91,8 +91,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
-    [`~ConfigMixin.from_config`] functions.
+    [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
+    [`~SchedulerMixin.from_pretrained`] functions.
 
     For more details, see the original paper: https://arxiv.org/abs/2006.11239
 
@@ -118,14 +118,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             depreciated flag (removing v0.10.0) for epsilon vs. direct sample prediction.
     """
 
-    _compatible_classes = [
-        "DDIMScheduler",
-        "PNDMScheduler",
-        "LMSDiscreteScheduler",
-        "EulerDiscreteScheduler",
-        "EulerAncestralDiscreteScheduler",
-        "DPMSolverMultistepScheduler",
-    ]
+    _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
 
     @register_to_config
     def __init__(
@@ -221,6 +214,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         # for rl-diffuser https://arxiv.org/abs/2205.09991
         elif variance_type == "fixed_small_log":
             variance = torch.log(torch.clamp(variance, min=1e-20))
+            variance = torch.exp(0.5 * variance)
         elif variance_type == "fixed_large":
             variance = self.betas[timestep]
         elif variance_type == "fixed_large_log":
@@ -325,15 +319,21 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         # 6. Add noise
         variance = 0
         if timestep > 0:
-            noise = torch.randn(
-                model_output.size(), dtype=model_output.dtype, layout=model_output.layout, generator=generator
-            ).to(model_output.device)
-            if self.variance_type == "fixed_small_log":
-                variance = self._get_variance(timestep, predicted_variance=predicted_variance) * noise
-            elif self.variance_type == "v_diffusion":
-                variance = torch.exp(0.5 * self._get_variance(timestep, predicted_variance)) * noise
+            device = model_output.device
+            if device.type == "mps":
+                # randn does not work reproducibly on mps
+                variance_noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator)
+                variance_noise = variance_noise.to(device)
             else:
-                variance = (self._get_variance(timestep, predicted_variance=predicted_variance) ** 0.5) * noise
+                variance_noise = torch.randn(
+                    model_output.shape, generator=generator, device=device, dtype=model_output.dtype
+                )
+            if self.variance_type == "fixed_small_log":
+                variance = self._get_variance(timestep, predicted_variance=predicted_variance) * variance_noise
+            elif self.variance_type == "v_diffusion":
+                variance = torch.exp(0.5 * self._get_variance(timestep, predicted_variance)) * variance_noise
+            else:
+                variance = (self._get_variance(timestep, predicted_variance=predicted_variance) ** 0.5) * variance_noise
 
         pred_prev_sample = pred_prev_sample + variance
 

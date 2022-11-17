@@ -19,9 +19,8 @@ import unittest
 import numpy as np
 import torch
 
-import PIL
 from diffusers import DDIMScheduler, LDMSuperResolutionPipeline, UNet2DModel, VQModel
-from diffusers.utils import floats_tensor, load_image, slow, torch_device
+from diffusers.utils import PIL_INTERPOLATION, floats_tensor, load_image, slow, torch_device
 from diffusers.utils.testing_utils import require_torch
 
 from ...test_pipelines_common import PipelineTesterMixin
@@ -68,30 +67,25 @@ class LDMSuperResolutionPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         return model
 
     def test_inference_superresolution(self):
+        device = "cpu"
         unet = self.dummy_uncond_unet
         scheduler = DDIMScheduler()
         vqvae = self.dummy_vq_model
 
         ldm = LDMSuperResolutionPipeline(unet=unet, vqvae=vqvae, scheduler=scheduler)
-        ldm.to(torch_device)
+        ldm.to(device)
         ldm.set_progress_bar_config(disable=None)
 
-        init_image = self.dummy_image.to(torch_device)
+        init_image = self.dummy_image.to(device)
 
-        # Warmup pass when using mps (see #372)
-        if torch_device == "mps":
-            generator = torch.manual_seed(0)
-            _ = ldm(init_image, generator=generator, num_inference_steps=1, output_type="numpy").images
-
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=device).manual_seed(0)
         image = ldm(init_image, generator=generator, num_inference_steps=2, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.8634, 0.8186, 0.6416, 0.6846, 0.4427, 0.5676, 0.4679, 0.6247, 0.5176])
-        tolerance = 1e-2 if torch_device != "mps" else 3e-2
-        assert np.abs(image_slice.flatten() - expected_slice).max() < tolerance
+        expected_slice = np.array([0.8678, 0.8245, 0.6381, 0.6830, 0.4385, 0.5599, 0.4641, 0.6201, 0.5150])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
 @slow
@@ -102,7 +96,7 @@ class LDMSuperResolutionPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/vq_diffusion/teddy_bear_pool.png"
         )
-        init_image = init_image.resize((64, 64), resample=PIL.Image.LANCZOS)
+        init_image = init_image.resize((64, 64), resample=PIL_INTERPOLATION["lanczos"])
 
         ldm = LDMSuperResolutionPipeline.from_pretrained("duongna/ldm-super-resolution", device_map="auto")
         ldm.to(torch_device)
