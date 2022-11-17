@@ -31,10 +31,8 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
     [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
     [`~ConfigMixin.from_config`] functions.
-        num_train_timesteps (`int`): number of diffusion steps used to train the model.
-        beta_start (`float`): the starting `beta` value of inference.
-        beta_end (`float`): the final `beta` value.
-        beta_schedule (`str`):
+        num_train_timesteps (`int`): number of diffusion steps used to train the model. beta_start (`float`): the
+        starting `beta` value of inference. beta_end (`float`): the final `beta` value. beta_schedule (`str`):
             the beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
             `linear` or `scaled_linear`.
         trained_betas (`np.ndarray`, optional):
@@ -68,11 +66,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
 
-        sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
-        sigmas = np.concatenate([sigmas[::-1], [0.0]]).astype(np.float32)
-        self.sigmas = torch.from_numpy(sigmas)
-
-        # setable values
+        #  set all values
         self.set_timesteps(num_train_timesteps, None, num_train_timesteps)
 
     def scale_model_input(
@@ -85,8 +79,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         Args:
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
-            sample (`torch.FloatTensor`): input sample
-            timestep (`int`, optional): current timestep
+            sample (`torch.FloatTensor`): input sample timestep (`int`, optional): current timestep
         Returns:
             `torch.FloatTensor`: scaled input sample
         """
@@ -134,6 +127,10 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.prev_derivative = None
         self.dt = None
 
+    @property
+    def state_in_first_order(self):
+        return self.dt is None
+
     def step(
         self,
         model_output: Union[torch.FloatTensor, np.ndarray],
@@ -145,9 +142,8 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         Args:
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
-            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model.
-            timestep (`int`): current discrete timestep in the diffusion chain.
-            sample (`torch.FloatTensor` or `np.ndarray`):
+            model_output (`torch.FloatTensor` or `np.ndarray`): direct output from learned diffusion model. timestep
+            (`int`): current discrete timestep in the diffusion chain. sample (`torch.FloatTensor` or `np.ndarray`):
                 current instance of sample being created by diffusion process.
             return_dict (`bool`): option for returning tuple rather than SchedulerOutput class
         Returns:
@@ -192,6 +188,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             dt = self.dt
 
             # free dt and derivative
+            # Note, this puts the scheduler in "first order mode"
             self.prev_derivative = None
             self.dt = None
 
