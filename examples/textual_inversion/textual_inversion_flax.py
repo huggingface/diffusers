@@ -14,6 +14,7 @@ from torch.utils.data import Dataset
 import jax
 import jax.numpy as jnp
 import optax
+import PIL
 import transformers
 from diffusers import (
     FlaxAutoencoderKL,
@@ -27,15 +28,15 @@ from flax import jax_utils
 from flax.training import train_state
 from flax.training.common_utils import shard
 from huggingface_hub import HfFolder, Repository, whoami
+
+# TODO: remove and import from diffusers.utils when the new version of diffusers is released
+from packaging import version
 from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTokenizer, FlaxCLIPTextModel, set_seed
 
 
-# TODO: remove and import from diffusers.utils when the new version of diffusers is released
-from packaging import version
-import PIL
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
     PIL_INTERPOLATION = {
         "linear": PIL.Image.Resampling.BILINEAR,

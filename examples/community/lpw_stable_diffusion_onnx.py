@@ -11,10 +11,12 @@ from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from diffusers.utils import logging
-from transformers import CLIPFeatureExtractor, CLIPTokenizer
 
 # TODO: remove and import from diffusers.utils when the new version of diffusers is released
 from packaging import version
+from transformers import CLIPFeatureExtractor, CLIPTokenizer
+
+
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
     PIL_INTERPOLATION = {
         "linear": PIL.Image.Resampling.BILINEAR,
