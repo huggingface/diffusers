@@ -333,7 +333,9 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             elif self.variance_type == "v_diffusion":
                 variance = torch.exp(0.5 * self._get_variance(timestep, predicted_variance)) * variance_noise
             else:
-                variance = (self._get_variance(timestep, predicted_variance=predicted_variance) ** 0.5) * variance_noise
+                variance = (
+                    self._get_variance(timestep, predicted_variance=predicted_variance) ** 0.5
+                ) * variance_noise
 
         pred_prev_sample = pred_prev_sample + variance
 
