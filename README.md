@@ -383,8 +383,7 @@ images = pipe('sample prompt',
              num_images_per_prompt=1,
              ).images
                    
-images[0].save("promot.png")
-```
+images[0].save("prompt.png")
 
 ## Stable Diffusion Community Pipelines
 
