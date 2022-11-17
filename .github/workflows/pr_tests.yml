@@ -58,7 +58,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        apt-get libsndfile1-dev -y
+        apt-get update && apt-get install libsndfile1-dev -y
         python -m pip install -e .[quality,test]
         python -m pip install git+https://github.com/huggingface/accelerate
 
