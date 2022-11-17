@@ -41,8 +41,8 @@ def preprocess_mask(mask):
 
 class OnnxStableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
     r"""
-    Pipeline for text-guided image inpainting using Stable Diffusion. This is a *legacy feature* for Onnx pipelines
-    to provide compatibility with StableDiffusionInpaintPipelineLegacy and may be removed in the future.
+    Pipeline for text-guided image inpainting using Stable Diffusion. This is a *legacy feature* for Onnx pipelines to
+    provide compatibility with StableDiffusionInpaintPipelineLegacy and may be removed in the future.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
