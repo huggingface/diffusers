@@ -17,7 +17,7 @@ import unittest
 
 import numpy as np
 
-from diffusers import LMSDiscreteScheduler, OnnxStableDiffusionInpaintPipelineLegacy
+from diffusers import OnnxStableDiffusionInpaintPipelineLegacy
 from diffusers.utils.testing_utils import (
     is_onnx_available,
     load_image,
@@ -26,8 +26,6 @@ from diffusers.utils.testing_utils import (
     require_torch_gpu,
     slow,
 )
-
-from ...test_pipelines_onnx_common import OnnxPipelineTesterMixin
 
 
 if is_onnx_available():
@@ -91,7 +89,6 @@ class StableDiffusionOnnxInpaintLegacyPipelineIntegrationTests(unittest.TestCase
             output_type="np",
         )
 
-        images = output.images
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
