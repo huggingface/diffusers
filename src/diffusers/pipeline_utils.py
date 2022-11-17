@@ -80,7 +80,7 @@ LOADABLE_CLASSES = {
     },
     "onnxruntime.training": {
         "ORTModule": ["save_pretrained", "from_pretrained"],
-    }
+    },
 }
 
 ALL_IMPORTABLE_CLASSES = {}

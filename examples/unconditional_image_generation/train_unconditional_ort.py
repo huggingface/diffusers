@@ -12,6 +12,7 @@ from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel
 from diffusers.hub_utils import init_git_repo, push_to_hub
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
+from onnxruntime.training.ortmodule import ORTModule
 from torchvision.transforms import (
     CenterCrop,
     Compose,
@@ -22,7 +23,6 @@ from torchvision.transforms import (
     ToTensor,
 )
 from tqdm.auto import tqdm
-from onnxruntime.training.ortmodule import ORTModule
 
 
 logger = get_logger(__name__)
