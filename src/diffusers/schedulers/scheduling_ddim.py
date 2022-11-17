@@ -198,10 +198,10 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
 
-
         Args:
             sample (`torch.FloatTensor`): input sample
             timestep (`int`, optional): current timestep
+            
         Returns:
             `torch.FloatTensor`: scaled input sample
         """
@@ -218,7 +218,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         elif self.variance_type == "v_diffusion":
             # If eta > 0, adjust the scaling factor for the predicted noise
             # downward according to the amount of additional noise to add
-            # variance = torch.log(self.betas[timestep] * (1 - alpha_prod_t_prev) / (1 - alpha_prod_t))
             alpha_prev = self.alphas[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
             sigma_prev = self.sigmas[prev_timestep] if prev_timestep >= 0 else self.final_sigma
             if eta:
@@ -233,7 +232,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
-
 
         Args:
             num_inference_steps (`int`):
@@ -261,7 +259,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         """
         Predict the sample at the previous timestep by reversing the SDE. Core function to propagate the diffusion
         process from the learned model outputs (most often the predicted noise).
-
 
         Args:
             model_output (`torch.FloatTensor`): direct output from learned diffusion model.
