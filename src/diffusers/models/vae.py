@@ -597,8 +597,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
 
     def disable_slicing(self):
         r"""
-        Disable sliced VAE decoding. If `enable_slicing` was previously invoked, this method will go back to
-        computing decoding in one step.
+        Disable sliced VAE decoding. If `enable_slicing` was previously invoked, this method will go back to computing
+        decoding in one step.
         """
         self.use_slicing = False
 
