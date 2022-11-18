@@ -186,7 +186,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         steps. This is useful to save some memory and allow larger batch sizes.
         """
         self.vae.enable_slicing()
-    
+
     def disable_vae_slicing(self):
         r"""
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously invoked, this method will go back to

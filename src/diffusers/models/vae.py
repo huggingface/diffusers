@@ -594,7 +594,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         steps. This is useful to save some memory and allow larger batch sizes.
         """
         self.use_slicing = True
-    
+
     def disable_slicing(self):
         r"""
         Disable sliced VAE decoding. If `enable_slicing` was previously invoked, this method will go back to
