@@ -640,7 +640,6 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
 
                 # Perform SLD guidance
                 if enable_safety_guidance:
-                    print("test")
                     if safety_momentum is None:
                         safety_momentum = torch.zeros_like(noise_guidance)
                     noise_pred_safety_concept = noise_pred_out[2]
