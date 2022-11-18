@@ -74,9 +74,9 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
     ):
         super().__init__()
         safety_concept: Optional[str] = (
-            "hate, harassment, violence, suffering, humiliation, harm, suicide, "
-            "sexual, nudity, bodily fluids, blood, obscene gestures, illegal activity, "
-            "drug use, theft, vandalism, weapons, child abuse, brutality, cruelty"
+            "an image showing hate, harassment, violence, suffering, humiliation, harm, suicide, sexual, nudity,"
+            " bodily fluids, blood, obscene gestures, illegal activity, drug use, theft, vandalism, weapons, child"
+            " abuse, brutality, cruelty"
         )
 
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
@@ -638,19 +638,37 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
                 # default classifier free guidance
                 noise_guidance = noise_pred_text - noise_pred_uncond
 
-                # Safety Latent Guidance
-                noise_guidance, safety_momentum = self.perform_safety_guidance(
-                    enable_safety_guidance,
-                    safety_momentum,
-                    noise_guidance,
-                    noise_pred_out,
-                    i,
-                    sld_guidance_scale,
-                    sld_warmup_steps,
-                    sld_threshold,
-                    sld_momentum_scale,
-                    sld_mom_beta,
-                )
+                # Perform SLD guidance
+                if enable_safety_guidance:
+                    print("test")
+                    if safety_momentum is None:
+                        safety_momentum = torch.zeros_like(noise_guidance)
+                    noise_pred_safety_concept = noise_pred_out[2]
+
+                    # Equation 6
+                    scale = torch.clamp(
+                        torch.abs((noise_pred_text - noise_pred_safety_concept)) * sld_guidance_scale, max=1.0
+                    )
+
+                    # Equation 6
+                    safety_concept_scale = torch.where(
+                        (noise_pred_text - noise_pred_safety_concept) >= sld_threshold, torch.zeros_like(scale), scale
+                    )
+
+                    # Equation 4
+                    noise_guidance_safety = torch.mul(
+                        (noise_pred_safety_concept - noise_pred_uncond), safety_concept_scale
+                    )
+
+                    # Equation 7
+                    noise_guidance_safety = noise_guidance_safety + sld_momentum_scale * safety_momentum
+
+                    # Equation 8
+                    safety_momentum = sld_mom_beta * safety_momentum + (1 - sld_mom_beta) * noise_guidance_safety
+
+                    if i >= sld_warmup_steps:  # Warmup
+                        # Equation 3
+                        noise_guidance = noise_guidance - noise_guidance_safety
 
                 noise_pred = noise_pred_uncond + guidance_scale * noise_guidance
 
