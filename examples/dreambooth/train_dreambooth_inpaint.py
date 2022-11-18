@@ -16,7 +16,13 @@ from torch.utils.data import Dataset
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
-from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers import (
+    AutoencoderKL,
+    DDPMScheduler,
+    StableDiffusionInpaintPipeline,
+    StableDiffusionPipeline,
+    UNet2DConditionModel,
+)
 from diffusers.optimization import get_scheduler
 from huggingface_hub import HfFolder, Repository, whoami
 from PIL import Image, ImageDraw
@@ -49,32 +55,28 @@ def prepare_mask_and_masked_image(image, mask):
 def random_mask(im_shape, ratio=1, mask_full_image=False):
     mask = Image.new("L", im_shape, 0)
     draw = ImageDraw.Draw(mask)
-    size = (
-        random.randint(0, int(im_shape[0] * ratio)),
-        random.randint(0, int(im_shape[1] * ratio)),
-    )
+    size = (random.randint(0, int(im_shape[0] * ratio)), random.randint(0, int(im_shape[1] * ratio)))
     # use this to always mask the whole image
     if mask_full_image:
         size = (int(im_shape[0] * ratio), int(im_shape[1] * ratio))
     limits = (im_shape[0] - size[0] // 2, im_shape[1] - size[1] // 2)
-    center = (
-        random.randint(size[0] // 2, limits[0]),
-        random.randint(size[1] // 2, limits[1]),
-    )
-    draw.rectangle(
-        (
-            center[0] - size[0] // 2,
-            center[1] - size[1] // 2,
-            center[0] + size[0] // 2,
-            center[1] + size[1] // 2,
-        ),
-        fill=255,
-    )
+    center = (random.randint(size[0] // 2, limits[0]), random.randint(size[1] // 2, limits[1]))
+    draw_type = random.randint(0, 1)
+    if draw_type == 0 or mask_full_image:
+        draw.rectangle(
+            (center[0] - size[0] // 2, center[1] - size[1] // 2, center[0] + size[0] // 2, center[1] + size[1] // 2),
+            fill=255,
+        )
+    else:
+        draw.ellipse(
+            (center[0] - size[0] // 2, center[1] - size[1] // 2, center[0] + size[0] // 2, center[1] + size[1] // 2),
+            fill=255,
+        )
 
     return mask
 
 
-def parse_args(input_args=None):
+def parse_args():
     parser = argparse.ArgumentParser(description="Simple example of a training script.")
     parser.add_argument(
         "--pretrained_model_name_or_path",
@@ -82,13 +84,6 @@ def parse_args(input_args=None):
         default=None,
         required=True,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
-    )
-    parser.add_argument(
-        "--revision",
-        type=str,
-        default=None,
-        required=False,
-        help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
         "--tokenizer_name",
@@ -244,11 +239,7 @@ def parse_args(input_args=None):
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
 
-    if input_args is not None:
-        args = parser.parse_args(input_args)
-    else:
-        args = parser.parse_args()
-
+    args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
@@ -321,8 +312,10 @@ class DreamBoothDataset(Dataset):
         instance_image = Image.open(self.instance_images_path[index % self.num_instance_images])
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
+
         example["PIL_images"] = instance_image
         example["instance_images"] = self.image_transforms(instance_image)
+
         example["instance_prompt_ids"] = self.tokenizer(
             self.instance_prompt,
             padding="do_not_pad",
@@ -335,6 +328,7 @@ class DreamBoothDataset(Dataset):
             if not class_image.mode == "RGB":
                 class_image = class_image.convert("RGB")
             example["class_images"] = self.image_transforms(class_image)
+            example["class_PIL_images"] = class_image
             example["class_prompt_ids"] = self.tokenizer(
                 self.class_prompt,
                 padding="do_not_pad",
@@ -372,7 +366,8 @@ def get_full_repo_name(model_id: str, organization: Optional[str] = None, token:
         return f"{organization}/{model_id}"
 
 
-def main(args):
+def main():
+    args = parse_args()
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator = Accelerator(
@@ -402,11 +397,8 @@ def main(args):
 
         if cur_class_images < args.num_class_images:
             torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
-            pipeline = StableDiffusionPipeline.from_pretrained(
-                args.pretrained_model_name_or_path,
-                torch_dtype=torch_dtype,
-                safety_checker=None,
-                revision=args.revision,
+            pipeline = StableDiffusionInpaintPipeline.from_pretrained(
+                args.pretrained_model_name_or_path, torch_dtype=torch_dtype, safety_checker=None
             )
             pipeline.set_progress_bar_config(disable=True)
 
@@ -414,15 +406,24 @@ def main(args):
             logger.info(f"Number of class images to sample: {num_new_images}.")
 
             sample_dataset = PromptDataset(args.class_prompt, num_new_images)
-            sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=args.sample_batch_size)
+            sample_dataloader = torch.utils.data.DataLoader(
+                sample_dataset, batch_size=args.sample_batch_size, num_workers=1
+            )
 
             sample_dataloader = accelerator.prepare(sample_dataloader)
             pipeline.to(accelerator.device)
-
+            transform_to_pil = transforms.ToPILImage()
             for example in tqdm(
                 sample_dataloader, desc="Generating class images", disable=not accelerator.is_local_main_process
             ):
-                images = pipeline(example["prompt"]).images
+                bsz = len(example["prompt"])
+                fake_images = torch.rand((3, args.resolution, args.resolution))
+                transform_to_pil = transforms.ToPILImage()
+                fake_pil_images = transform_to_pil(fake_images)
+
+                fake_mask = random_mask((args.resolution, args.resolution), ratio=1, mask_full_image=True)
+
+                images = pipeline(prompt=example["prompt"], mask_image=fake_mask, image=fake_pil_images).images
 
                 for i, image in enumerate(images):
                     hash_image = hashlib.sha1(image.tobytes()).hexdigest()
@@ -452,33 +453,14 @@ def main(args):
 
     # Load the tokenizer
     if args.tokenizer_name:
-        tokenizer = CLIPTokenizer.from_pretrained(
-            args.tokenizer_name,
-            revision=args.revision,
-        )
+        tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_name)
     elif args.pretrained_model_name_or_path:
-        tokenizer = CLIPTokenizer.from_pretrained(
-            args.pretrained_model_name_or_path,
-            subfolder="tokenizer",
-            revision=args.revision,
-        )
+        tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer")
 
     # Load models and create wrapper for stable diffusion
-    text_encoder = CLIPTextModel.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="text_encoder",
-        revision=args.revision,
-    )
-    vae = AutoencoderKL.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="vae",
-        revision=args.revision,
-    )
-    unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="unet",
-        revision=args.revision,
-    )
+    text_encoder = CLIPTextModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="text_encoder")
+    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae")
+    unet = UNet2DConditionModel.from_pretrained(args.pretrained_model_name_or_path, subfolder="unet")
 
     vae.requires_grad_(False)
     if not args.train_text_encoder:
@@ -518,7 +500,9 @@ def main(args):
         eps=args.adam_epsilon,
     )
 
-    noise_scheduler = DDPMScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
+    noise_scheduler = DDPMScheduler(
+        beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000
+    )
 
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
@@ -531,23 +515,28 @@ def main(args):
     )
 
     def collate_fn(examples):
-        input_ids = [example["instance_prompt_ids"] for example in examples]
-        pixel_values = [example["instance_images"] for example in examples]
-
-        masks = []
-        masked_images = []
-
         image_transforms = transforms.Compose(
             [
                 transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
                 transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
             ]
         )
+        input_ids = [example["instance_prompt_ids"] for example in examples]
+        pixel_values = [example["instance_images"] for example in examples]
 
+        # Concat class and instance examples for prior preservation.
+        # We do this to avoid doing two forward passes.
+        if args.with_prior_preservation:
+            input_ids += [example["class_prompt_ids"] for example in examples]
+            pixel_values += [example["class_images"] for example in examples]
+            pior_pil = [example["class_PIL_images"] for example in examples]
+
+        masks = []
+        masked_images = []
         for example in examples:
             pil_image = example["PIL_images"]
             # generate a random mask
-            mask = random_mask(pil_image.size)
+            mask = random_mask(pil_image.size, 1, False)
             # apply transforms
             mask = image_transforms(mask)
             pil_image = image_transforms(pil_image)
@@ -557,30 +546,30 @@ def main(args):
             masks.append(mask)
             masked_images.append(masked_image)
 
-        # Concat class and instance examples for prior preservation.
-        # We do this to avoid doing two forward passes.
         if args.with_prior_preservation:
-            input_ids += [example["class_prompt_ids"] for example in examples]
-            pixel_values += [example["class_images"] for example in examples]
+            for pil_image in pior_pil:
+                # generate a random mask
+                mask = random_mask(pil_image.size, 1, False)
+                # apply transforms
+                mask = image_transforms(mask)
+                pil_image = image_transforms(pil_image)
+                # prepare mask and masked image
+                mask, masked_image = prepare_mask_and_masked_image(pil_image, mask)
+
+                masks.append(mask)
+                masked_images.append(masked_image)
 
         pixel_values = torch.stack(pixel_values)
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
         input_ids = tokenizer.pad({"input_ids": input_ids}, padding=True, return_tensors="pt").input_ids
-
         masks = torch.stack(masks)
         masked_images = torch.stack(masked_images)
-
-        batch = {
-            "input_ids": input_ids,
-            "pixel_values": pixel_values,
-            "masks": masks,
-            "masked_images": masked_images,
-        }
+        batch = {"input_ids": input_ids, "pixel_values": pixel_values, "masks": masks, "masked_images": masked_images}
         return batch
 
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn, num_workers=1
+        train_dataset, batch_size=args.train_batch_size, shuffle=True, collate_fn=collate_fn
     )
 
     # Scheduler and math around the number of training steps.
@@ -649,11 +638,10 @@ def main(args):
 
     for epoch in range(args.num_train_epochs):
         unet.train()
-        if args.train_text_encoder:
-            text_encoder.train()
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Convert images to latent space
+
                 latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
                 latents = latents * 0.18215
 
@@ -741,7 +729,6 @@ def main(args):
             args.pretrained_model_name_or_path,
             unet=accelerator.unwrap_model(unet),
             text_encoder=accelerator.unwrap_model(text_encoder),
-            revision=args.revision,
         )
         pipeline.save_pretrained(args.output_dir)
 
@@ -752,5 +739,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    main(args)
+    main()
