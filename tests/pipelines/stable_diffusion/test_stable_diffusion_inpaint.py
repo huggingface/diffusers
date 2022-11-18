@@ -22,6 +22,7 @@ import torch
 
 from diffusers import (
     AutoencoderKL,
+    LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionInpaintPipeline,
     UNet2DConditionModel,
@@ -403,6 +404,45 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         pndm = PNDMScheduler.from_pretrained(model_id, subfolder="scheduler")
         pipe = StableDiffusionInpaintPipeline.from_pretrained(model_id, safety_checker=None, scheduler=pndm)
         pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        output = pipe(
+            prompt=prompt,
+            image=init_image,
+            mask_image=mask_image,
+            generator=generator,
+            output_type="np",
+        )
+        image = output.images[0]
+
+        assert image.shape == (512, 512, 3)
+        assert np.abs(expected_image - image).max() < 1e-2
+
+    def test_stable_diffusion_inpaint_pipeline_k_lms(self):
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/overture-creations-5sI6fQgYIuo.png"
+        )
+        mask_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/in_paint/overture-creations-5sI6fQgYIuo_mask.png"
+        )
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/in_paint"
+            "/yellow_cat_sitting_on_a_park_bench_k_lms.npy"
+        )
+
+        model_id = "runwayml/stable-diffusion-inpainting"
+        pipe = StableDiffusionInpaintPipeline.from_pretrained(model_id, safety_checker=None)
+        pipe.to(torch_device)
+
+        # switch to LMS
+        pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
+
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 

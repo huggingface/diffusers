@@ -586,9 +586,8 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
             # concat latents, mask, masked_image_latents in the channel dimension
-            latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
-
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+            latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
 
             # predict the noise residual
             noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
