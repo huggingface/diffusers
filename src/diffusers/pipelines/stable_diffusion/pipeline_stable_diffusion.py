@@ -158,6 +158,22 @@ class StableDiffusionPipeline(DiffusionPipeline):
         # set slice_size = `None` to disable `attention slicing`
         self.enable_attention_slicing(None)
 
+    def enable_sliced_vae_decode(self):
+        r"""
+        Enable sliced VAE decoding.
+
+        When this option is enabled, the VAE will split the input tensor in slices, to compute decoding in several
+        steps. This is useful to save some memory and allow larger batch sizes.
+        """
+        self.vae.enable_sliced_decode()
+    
+    def disable_sliced_vae_decode(self):
+        r"""
+        Disable sliced VAE decoding. If `enable_sliced_decode` was previously invoked, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_sliced_decode()
+
     def enable_sequential_cpu_offload(self):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
@@ -399,7 +415,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 callback(i, t, latents)
 
         latents = 1 / 0.18215 * latents
-        image = torch.cat([self.vae.decode(latent).sample for latent in latents.split(1)])
+        image = self.vae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
 
