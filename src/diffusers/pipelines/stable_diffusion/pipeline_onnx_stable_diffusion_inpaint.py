@@ -408,8 +408,8 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = np.concatenate([latents] * 2) if do_classifier_free_guidance else latents
             # concat latents, mask, masked_image_latnets in the channel dimension
-            latent_model_input = np.concatenate([latent_model_input, mask, masked_image_latents], axis=1)
             latent_model_input = self.scheduler.scale_model_input(torch.from_numpy(latent_model_input), t)
+            latent_model_input = np.concatenate([latent_model_input, mask, masked_image_latents], axis=1)
             latent_model_input = latent_model_input.cpu().numpy()
 
             # predict the noise residual
