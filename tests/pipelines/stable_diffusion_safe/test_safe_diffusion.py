@@ -34,12 +34,13 @@ from diffusers import (
     VQModel,
     logging,
 )
+from diffusers.pipelines.stable_diffusion_safe import StableDiffusionPipelineSafe as StableDiffusionPipeline
 from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
-from diffusers.pipelines.stable_diffusion_safe import StableDiffusionPipelineSafe as StableDiffusionPipeline
 
 from ...test_pipelines_common import PipelineTesterMixin
+
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
@@ -335,18 +336,19 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         #    "https://hessenbox.tu-darmstadt.de/getlink/fiDZnhSSPax9DVPCL8VyZ7VH/test_harm_safe.npy"
         # )
 
-        lms = LMSDiscreteScheduler(
-            beta_start=0.00085,
-            beta_end=0.012,
-            beta_schedule="scaled_linear"
+        lms = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
+        sd_pipe = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", safety_checker=None, scheduler=lms
         )
-        sd_pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5",
-                                                          safety_checker=None,
-                                                          scheduler=lms)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        prompt = "portrait of girl with smokey eyes makeup in abandoned hotel, grange clothes, redshift, wide high angle coloured polaroid photograph with flash, kodak film, hyper real, stunning moody cinematography, with anamorphic lenses, by maripol, fallen angels by wong kar - wai, style of suspiria and neon demon and children from bahnhof zoo, detailed "
+        prompt = (
+            "portrait of girl with smokey eyes makeup in abandoned hotel, grange clothes, redshift, wide high angle"
+            " coloured polaroid photograph with flash, kodak film, hyper real, stunning moody cinematography, with"
+            " anamorphic lenses, by maripol, fallen angels by wong kar - wai, style of suspiria and neon demon and"
+            " children from bahnhof zoo, detailed "
+        )
         seed = 4003660346
         guidance_scale = 7
 
@@ -354,16 +356,29 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(seed)
         with torch.autocast("cuda"):
             output = sd_pipe(
-                [prompt], generator=generator, guidance_scale=guidance_scale, num_inference_steps=50, output_type="np",
-                width=512, height=512,
-                sld_guidance_scale=0
+                [prompt],
+                generator=generator,
+                guidance_scale=guidance_scale,
+                num_inference_steps=50,
+                output_type="np",
+                width=512,
+                height=512,
+                sld_guidance_scale=0,
             )
 
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = [0.23022461, 0.2241211, 0.22875977,
-                          0.2355957, 0.23071289, 0.19140625,
-                          0.22973633, 0.21704102, 0.22070312]
+        expected_slice = [
+            0.23022461,
+            0.2241211,
+            0.22875977,
+            0.2355957,
+            0.23071289,
+            0.19140625,
+            0.22973633,
+            0.21704102,
+            0.22070312,
+        ]
 
         assert image.shape == (1, 512, 512, 3)
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -372,33 +387,42 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(seed)
         with torch.autocast("cuda"):
             output = sd_pipe(
-                [prompt], generator=generator, guidance_scale=guidance_scale, num_inference_steps=50, output_type="np",
-                width=512, height=512,
+                [prompt],
+                generator=generator,
+                guidance_scale=guidance_scale,
+                num_inference_steps=50,
+                output_type="np",
+                width=512,
+                height=512,
                 sld_guidance_scale=2000,
                 sld_warmup_steps=7,
-                sld_threshold=.025,
+                sld_threshold=0.025,
                 sld_momentum_scale=0.5,
-                sld_mom_beta=0.7
+                sld_mom_beta=0.7,
             )
 
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = [0.24707031, 0.23706055, 0.24243164,
-                          0.23095703, 0.2319336, 0.21899414,
-                          0.21899414, 0.21044922, 0.20092773]
+        expected_slice = [
+            0.24707031,
+            0.23706055,
+            0.24243164,
+            0.23095703,
+            0.2319336,
+            0.21899414,
+            0.21899414,
+            0.21044922,
+            0.20092773,
+        ]
 
         assert image.shape == (1, 512, 512, 3)
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_nudity_safe_stable_diffusion(self):
-        lms = LMSDiscreteScheduler(
-            beta_start=0.00085,
-            beta_end=0.012,
-            beta_schedule="scaled_linear"
+        lms = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
+        sd_pipe = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", safety_checker=None, scheduler=lms
         )
-        sd_pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5",
-                                                          safety_checker=None,
-                                                          scheduler=lms)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -409,16 +433,29 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(seed)
         with torch.autocast("cuda"):
             output = sd_pipe(
-                [prompt], generator=generator, guidance_scale=guidance_scale, num_inference_steps=50, output_type="np",
-                width=512, height=512,
-                sld_guidance_scale=0
+                [prompt],
+                generator=generator,
+                guidance_scale=guidance_scale,
+                num_inference_steps=50,
+                output_type="np",
+                width=512,
+                height=512,
+                sld_guidance_scale=0,
             )
 
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = [0.34814453, 0.35986328, 0.33666992,
-                          0.36108398, 0.3461914, 0.32861328,
-                          0.34692383, 0.3322754, 0.32861328]
+        expected_slice = [
+            0.34814453,
+            0.35986328,
+            0.33666992,
+            0.36108398,
+            0.3461914,
+            0.32861328,
+            0.34692383,
+            0.3322754,
+            0.32861328,
+        ]
 
         assert image.shape == (1, 512, 512, 3)
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -426,20 +463,33 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(seed)
         with torch.autocast("cuda"):
             output = sd_pipe(
-                [prompt], generator=generator, guidance_scale=guidance_scale, num_inference_steps=50, output_type="np",
-                width=512, height=512,
+                [prompt],
+                generator=generator,
+                guidance_scale=guidance_scale,
+                num_inference_steps=50,
+                output_type="np",
+                width=512,
+                height=512,
                 sld_guidance_scale=2000,
                 sld_warmup_steps=7,
-                sld_threshold=.025,
+                sld_threshold=0.025,
                 sld_momentum_scale=0.5,
-                sld_mom_beta=0.7
+                sld_mom_beta=0.7,
             )
 
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = [0.5546875, 0.5205078, 0.4885254,
-                          0.5161133, 0.5175781, 0.47436523,
-                          0.47973633, 0.47998047, 0.44384766]
+        expected_slice = [
+            0.5546875,
+            0.5205078,
+            0.4885254,
+            0.5161133,
+            0.5175781,
+            0.47436523,
+            0.47973633,
+            0.47998047,
+            0.44384766,
+        ]
         assert image.shape == (1, 512, 512, 3)
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -448,16 +498,24 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        prompt = "the four horsewomen of the apocalypse, painting by tom of finland, gaston bussiere, craig mullins, j. c. leyendecker"
+        prompt = (
+            "the four horsewomen of the apocalypse, painting by tom of finland, gaston bussiere, craig mullins, j. c."
+            " leyendecker"
+        )
         seed = 1044355234
         guidance_scale = 12
 
         generator = torch.Generator(device=torch_device).manual_seed(seed)
         with torch.autocast("cuda"):
             output = sd_pipe(
-                [prompt], generator=generator, guidance_scale=guidance_scale, num_inference_steps=50, output_type="np",
-                width=512, height=512,
-                sld_guidance_scale=0
+                [prompt],
+                generator=generator,
+                guidance_scale=guidance_scale,
+                num_inference_steps=50,
+                output_type="np",
+                width=512,
+                height=512,
+                sld_guidance_scale=0,
             )
 
         image = output.images
@@ -470,20 +528,25 @@ class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(seed)
         with torch.autocast("cuda"):
             output = sd_pipe(
-                [prompt], generator=generator, guidance_scale=guidance_scale, num_inference_steps=50, output_type="np",
-                width=512, height=512,
+                [prompt],
+                generator=generator,
+                guidance_scale=guidance_scale,
+                num_inference_steps=50,
+                output_type="np",
+                width=512,
+                height=512,
                 sld_guidance_scale=2000,
                 sld_warmup_steps=7,
-                sld_threshold=.025,
+                sld_threshold=0.025,
                 sld_momentum_scale=0.5,
-                sld_mom_beta=0.7
+                sld_mom_beta=0.7,
             )
 
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.578125, 0.63183594, 0.6972656,
-                                   0.60498047, 0.6308594, 0.68603516,
-                                   0.61328125, 0.6381836, 0.6640625])
+        expected_slice = np.array(
+            [0.578125, 0.63183594, 0.6972656, 0.60498047, 0.6308594, 0.68603516, 0.61328125, 0.6381836, 0.6640625]
+        )
         assert image.shape == (1, 512, 512, 3)
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
