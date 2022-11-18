@@ -61,10 +61,10 @@ If you want to use all possible use cases in a single `DiffusionPipeline` we rec
 ...     AltDiffusionImg2ImgPipeline,
 ... )
 
->>> img2text = AltDiffusionPipeline.from_pretrained("BAAI/AltDiffusion")
->>> img2img = AltDiffusionImg2ImgPipeline(**img2text.components)
+>>> text2img = AltDiffusionPipeline.from_pretrained("BAAI/AltDiffusion")
+>>> img2img = AltDiffusionImg2ImgPipeline(**text2img.components)
 
->>> # now you can use img2text(...) and img2img(...) just like the call methods of each respective pipeline
+>>> # now you can use text2img(...) and img2img(...) just like the call methods of each respective pipeline
 ```
 
 ## AltDiffusionPipelineOutput
