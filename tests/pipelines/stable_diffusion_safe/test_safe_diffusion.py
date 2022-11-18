@@ -16,7 +16,6 @@
 import gc
 import random
 import tempfile
-import time
 import unittest
 
 import numpy as np
@@ -25,18 +24,15 @@ import torch
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
-    EulerAncestralDiscreteScheduler,
-    EulerDiscreteScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
     UNet2DConditionModel,
     UNet2DModel,
     VQModel,
-    logging,
 )
 from diffusers.pipelines.stable_diffusion_safe import StableDiffusionPipelineSafe as StableDiffusionPipeline
-from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
-from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
+from diffusers.utils import floats_tensor, slow, torch_device
+from diffusers.utils.testing_utils import require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from ...test_pipelines_common import PipelineTesterMixin
@@ -313,9 +309,6 @@ class SafeDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image = sd_pipe([prompt], generator=generator, num_inference_steps=2, output_type="np").images
 
         assert image.shape == (1, 128, 128, 3)
-
-
-from matplotlib import pyplot as plt
 
 
 @slow
