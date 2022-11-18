@@ -10,7 +10,7 @@ from diffusers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionImg2ImgPipeline,
-    StableDiffusionInpaintPipeline,
+    StableDiffusionInpaintPipelineLegacy,
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
@@ -42,11 +42,11 @@ class StableDiffusionMegaPipeline(DiffusionPipeline):
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
+            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionMegaSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please, refer to the [model card](https://huggingface.co/CompVis/stable-diffusion-v1-4) for details.
+            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
@@ -136,7 +136,7 @@ class StableDiffusionMegaPipeline(DiffusionPipeline):
         callback_steps: Optional[int] = 1,
     ):
         # For more information on how this function works, please see: https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion#diffusers.StableDiffusionImg2ImgPipeline
-        return StableDiffusionInpaintPipeline(**self.components)(
+        return StableDiffusionInpaintPipelineLegacy(**self.components)(
             prompt=prompt,
             init_image=init_image,
             mask_image=mask_image,

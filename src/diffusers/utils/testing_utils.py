@@ -1,18 +1,23 @@
 import inspect
+import logging
 import os
 import random
 import re
 import unittest
+import urllib.parse
 from distutils.util import strtobool
+from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Union
+
+import numpy as np
 
 import PIL.Image
 import PIL.ImageOps
 import requests
 from packaging import version
 
-from .import_utils import is_flax_available, is_torch_available
+from .import_utils import is_flax_available, is_onnx_available, is_torch_available
 
 
 global_rng = random.Random()
@@ -27,7 +32,17 @@ if is_torch_available():
     )
 
     if is_torch_higher_equal_than_1_12:
-        torch_device = "mps" if torch.backends.mps.is_available() else torch_device
+        # Some builds of torch 1.12 don't have the mps backend registered. See #892 for more details
+        mps_backend_registered = hasattr(torch.backends, "mps")
+        torch_device = "mps" if (mps_backend_registered and torch.backends.mps.is_available()) else torch_device
+
+
+def torch_all_close(a, b, *args, **kwargs):
+    if not is_torch_available():
+        raise ValueError("PyTorch needs to be installed to use this function.")
+    if not torch.allclose(a, b, *args, **kwargs):
+        assert False, f"Max diff is absolute {(a - b).abs().max()}. Diff tensor is {(a - b).abs()}."
+    return True
 
 
 def get_tests_dir(append_path=None):
@@ -96,11 +111,55 @@ def slow(test_case):
     return unittest.skipUnless(_run_slow_tests, "test is slow")(test_case)
 
 
+def require_torch(test_case):
+    """
+    Decorator marking a test that requires PyTorch. These tests are skipped when PyTorch isn't installed.
+    """
+    return unittest.skipUnless(is_torch_available(), "test requires PyTorch")(test_case)
+
+
+def require_torch_gpu(test_case):
+    """Decorator marking a test that requires CUDA and PyTorch."""
+    return unittest.skipUnless(is_torch_available() and torch_device == "cuda", "test requires PyTorch+CUDA")(
+        test_case
+    )
+
+
 def require_flax(test_case):
     """
     Decorator marking a test that requires JAX & Flax. These tests are skipped when one / both are not installed
     """
     return unittest.skipUnless(is_flax_available(), "test requires JAX & Flax")(test_case)
+
+
+def require_onnxruntime(test_case):
+    """
+    Decorator marking a test that requires onnxruntime. These tests are skipped when onnxruntime isn't installed.
+    """
+    return unittest.skipUnless(is_onnx_available(), "test requires onnxruntime")(test_case)
+
+
+def load_numpy(arry: Union[str, np.ndarray]) -> np.ndarray:
+    if isinstance(arry, str):
+        if arry.startswith("http://") or arry.startswith("https://"):
+            response = requests.get(arry)
+            response.raise_for_status()
+            arry = np.load(BytesIO(response.content))
+        elif os.path.isfile(arry):
+            arry = np.load(arry)
+        else:
+            raise ValueError(
+                f"Incorrect path or url, URLs must start with `http://` or `https://`, and {arry} is not a valid path"
+            )
+    elif isinstance(arry, np.ndarray):
+        pass
+    else:
+        raise ValueError(
+            "Incorrect format used for numpy ndarray. Should be an url linking to an image, a local path, or a"
+            " ndarray."
+        )
+
+    return arry
 
 
 def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
@@ -130,6 +189,15 @@ def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
     image = PIL.ImageOps.exif_transpose(image)
     image = image.convert("RGB")
     return image
+
+
+def load_hf_numpy(path) -> np.ndarray:
+    if not path.startswith("http://") or path.startswith("https://"):
+        path = os.path.join(
+            "https://huggingface.co/datasets/fusing/diffusers-testing/resolve/main", urllib.parse.quote(path)
+        )
+
+    return load_numpy(path)
 
 
 # --- pytest conf functions --- #
@@ -284,3 +352,42 @@ def pytest_terminal_summary_main(tr, id):
     tr._tw = orig_writer
     tr.reportchars = orig_reportchars
     config.option.tbstyle = orig_tbstyle
+
+
+class CaptureLogger:
+    """
+    Args:
+    Context manager to capture `logging` streams
+        logger: 'logging` logger object
+    Returns:
+        The captured output is available via `self.out`
+    Example:
+    ```python
+    >>> from diffusers import logging
+    >>> from diffusers.testing_utils import CaptureLogger
+
+    >>> msg = "Testing 1, 2, 3"
+    >>> logging.set_verbosity_info()
+    >>> logger = logging.get_logger("diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.py")
+    >>> with CaptureLogger(logger) as cl:
+    ...     logger.info(msg)
+    >>> assert cl.out, msg + "\n"
+    ```
+    """
+
+    def __init__(self, logger):
+        self.logger = logger
+        self.io = StringIO()
+        self.sh = logging.StreamHandler(self.io)
+        self.out = ""
+
+    def __enter__(self):
+        self.logger.addHandler(self.sh)
+        return self
+
+    def __exit__(self, *exc):
+        self.logger.removeHandler(self.sh)
+        self.out = self.io.getvalue()
+
+    def __repr__(self):
+        return f"captured: {self.out}\n"

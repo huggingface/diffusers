@@ -22,7 +22,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput, logging
 from .embeddings import TimestepEmbedding, Timesteps
-from .unet_blocks import (
+from .unet_2d_blocks import (
     CrossAttnDownBlock2D,
     CrossAttnUpBlock2D,
     DownBlock2D,
@@ -60,7 +60,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         in_channels (`int`, *optional*, defaults to 4): The number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 4): The number of channels in the output.
         center_input_sample (`bool`, *optional*, defaults to `False`): Whether to center the input sample.
-        flip_sin_to_cos (`bool`, *optional*, defaults to `False`):
+        flip_sin_to_cos (`bool`, *optional*, defaults to `True`):
             Whether to flip the sin to cos in the time embedding.
         freq_shift (`int`, *optional*, defaults to 0): The frequency shift to apply to the time embedding.
         down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
@@ -225,6 +225,17 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             if hasattr(block, "attentions") and block.attentions is not None:
                 block.set_attention_slice(slice_size)
 
+    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
+        for block in self.down_blocks:
+            if hasattr(block, "attentions") and block.attentions is not None:
+                block.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
+
+        self.mid_block.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
+
+        for block in self.up_blocks:
+            if hasattr(block, "attentions") and block.attentions is not None:
+                block.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
+
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D, CrossAttnUpBlock2D, UpBlock2D)):
             module.gradient_checkpointing = value
@@ -240,7 +251,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         Args:
             sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
             timestep (`torch.FloatTensor` or `float` or `int`): (batch) timesteps
-            encoder_hidden_states (`torch.FloatTensor`): (batch, channel, height, width) encoder hidden states
+            encoder_hidden_states (`torch.FloatTensor`):
+                (batch_size, sequence_length, hidden_size) encoder hidden states
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
 

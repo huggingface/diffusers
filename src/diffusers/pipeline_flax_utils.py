@@ -29,6 +29,7 @@ from PIL import Image
 from tqdm.auto import tqdm
 
 from .configuration_utils import ConfigMixin
+from .hub_utils import http_user_agent
 from .modeling_flax_utils import FLAX_WEIGHTS_NAME, FlaxModelMixin
 from .schedulers.scheduling_utils_flax import SCHEDULER_CONFIG_NAME, FlaxSchedulerMixin
 from .utils import CONFIG_NAME, DIFFUSERS_CACHE, BaseOutput, is_transformers_available, logging
@@ -46,7 +47,7 @@ logger = logging.get_logger(__name__)
 LOADABLE_CLASSES = {
     "diffusers": {
         "FlaxModelMixin": ["save_pretrained", "from_pretrained"],
-        "FlaxSchedulerMixin": ["save_config", "from_config"],
+        "FlaxSchedulerMixin": ["save_pretrained", "from_pretrained"],
         "FlaxDiffusionPipeline": ["save_pretrained", "from_pretrained"],
     },
     "transformers": {
@@ -54,6 +55,8 @@ LOADABLE_CLASSES = {
         "PreTrainedTokenizerFast": ["save_pretrained", "from_pretrained"],
         "FlaxPreTrainedModel": ["save_pretrained", "from_pretrained"],
         "FeatureExtractionMixin": ["save_pretrained", "from_pretrained"],
+        "ProcessorMixin": ["save_pretrained", "from_pretrained"],
+        "ImageProcessingMixin": ["save_pretrained", "from_pretrained"],
     },
 }
 
@@ -160,6 +163,10 @@ class FlaxDiffusionPipeline(ConfigMixin):
 
         for pipeline_component_name in model_index_dict.keys():
             sub_model = getattr(self, pipeline_component_name)
+            if sub_model is None:
+                # edge case for saving a pipeline with safety_checker=None
+                continue
+
             model_cls = sub_model.__class__
 
             save_method_name = None
@@ -167,8 +174,8 @@ class FlaxDiffusionPipeline(ConfigMixin):
             for library_name, library_classes in LOADABLE_CLASSES.items():
                 library = importlib.import_module(library_name)
                 for base_class, save_load_methods in library_classes.items():
-                    class_candidate = getattr(library, base_class)
-                    if issubclass(model_cls, class_candidate):
+                    class_candidate = getattr(library, base_class, None)
+                    if class_candidate is not None and issubclass(model_cls, class_candidate):
                         # if we found a suitable base class in LOADABLE_CLASSES then grab its save method
                         save_method_name = save_load_methods[0]
                         break
@@ -244,7 +251,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
         <Tip>
 
          It is required to be logged in (`huggingface-cli login`) when you want to use private or [gated
-         models](https://huggingface.co/docs/hub/models-gated#gated-models), *e.g.* `"CompVis/stable-diffusion-v1-4"`
+         models](https://huggingface.co/docs/hub/models-gated#gated-models), *e.g.* `"runwayml/stable-diffusion-v1-5"`
 
         </Tip>
 
@@ -261,18 +268,27 @@ class FlaxDiffusionPipeline(ConfigMixin):
         >>> from diffusers import FlaxDiffusionPipeline
 
         >>> # Download pipeline from huggingface.co and cache.
-        >>> pipeline = FlaxDiffusionPipeline.from_pretrained("CompVis/ldm-text2im-large-256")
+        >>> # Requires to be logged in to Hugging Face hub,
+        >>> # see more in [the documentation](https://huggingface.co/docs/hub/security-tokens)
+        >>> pipeline, params = FlaxDiffusionPipeline.from_pretrained(
+        ...     "runwayml/stable-diffusion-v1-5",
+        ...     revision="bf16",
+        ...     dtype=jnp.bfloat16,
+        ... )
 
-        >>> # Download pipeline that requires an authorization token
-        >>> # For more information on access tokens, please refer to this section
-        >>> # of the documentation](https://huggingface.co/docs/hub/security-tokens)
-        >>> pipeline = FlaxDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+        >>> # Download pipeline, but use a different scheduler
+        >>> from diffusers import FlaxDPMSolverMultistepScheduler
 
-        >>> # Download pipeline, but overwrite scheduler
-        >>> from diffusers import LMSDiscreteScheduler
+        >>> model_id = "runwayml/stable-diffusion-v1-5"
+        >>> sched, sched_state = FlaxDPMSolverMultistepScheduler.from_pretrained(
+        ...     model_id,
+        ...     subfolder="scheduler",
+        ... )
 
-        >>> scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
-        >>> pipeline = FlaxDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler)
+        >>> dpm_pipe, dpm_params = FlaxStableDiffusionPipeline.from_pretrained(
+        ...     model_id, revision="bf16", dtype=jnp.bfloat16, scheduler=dpmpp
+        ... )
+        >>> dpm_params["scheduler"] = dpmpp_state
         ```
         """
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
@@ -287,7 +303,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
         if not os.path.isdir(pretrained_model_name_or_path):
-            config_dict = cls.get_config_dict(
+            config_dict = cls.load_config(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
                 resume_download=resume_download,
@@ -301,6 +317,22 @@ class FlaxDiffusionPipeline(ConfigMixin):
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
             allow_patterns += [FLAX_WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, cls.config_name]
 
+            # make sure we don't download PyTorch weights
+            ignore_patterns = "*.bin"
+
+            if cls != FlaxDiffusionPipeline:
+                requested_pipeline_class = cls.__name__
+            else:
+                requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
+                requested_pipeline_class = (
+                    requested_pipeline_class
+                    if requested_pipeline_class.startswith("Flax")
+                    else "Flax" + requested_pipeline_class
+                )
+
+            user_agent = {"pipeline_class": requested_pipeline_class}
+            user_agent = http_user_agent(user_agent)
+
             # download all allow_patterns
             cached_folder = snapshot_download(
                 pretrained_model_name_or_path,
@@ -311,11 +343,13 @@ class FlaxDiffusionPipeline(ConfigMixin):
                 use_auth_token=use_auth_token,
                 revision=revision,
                 allow_patterns=allow_patterns,
+                ignore_patterns=ignore_patterns,
+                user_agent=user_agent,
             )
         else:
             cached_folder = pretrained_model_name_or_path
 
-        config_dict = cls.get_config_dict(cached_folder)
+        config_dict = cls.load_config(cached_folder)
 
         # 2. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
@@ -328,7 +362,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
                 if config_dict["_class_name"].startswith("Flax")
                 else "Flax" + config_dict["_class_name"]
             )
-            pipeline_class = getattr(diffusers_module, config_dict["_class_name"])
+            pipeline_class = getattr(diffusers_module, class_name)
 
         # some modules can be passed directly to the init
         # in this case they are already instantiated in `kwargs`
@@ -336,7 +370,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
         expected_modules = set(inspect.signature(pipeline_class.__init__).parameters.keys())
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
 
-        init_dict, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
+        init_dict, _, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
         init_kwargs = {}
 
@@ -348,6 +382,11 @@ class FlaxDiffusionPipeline(ConfigMixin):
 
         # 3. Load each module in the pipeline
         for name, (library_name, class_name) in init_dict.items():
+            if class_name is None:
+                # edge case for when the pipeline was saved with safety_checker=None
+                init_kwargs[name] = None
+                continue
+
             is_pipeline_module = hasattr(pipelines, library_name)
             loaded_sub_model = None
             sub_model_should_be_defined = True
@@ -359,11 +398,11 @@ class FlaxDiffusionPipeline(ConfigMixin):
                     library = importlib.import_module(library_name)
                     class_obj = getattr(library, class_name)
                     importable_classes = LOADABLE_CLASSES[library_name]
-                    class_candidates = {c: getattr(library, c) for c in importable_classes.keys()}
+                    class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
 
                     expected_class_obj = None
                     for class_name, class_candidate in class_candidates.items():
-                        if issubclass(class_obj, class_candidate):
+                        if class_candidate is not None and issubclass(class_obj, class_candidate):
                             expected_class_obj = class_candidate
 
                     if not issubclass(passed_class_obj[name].__class__, expected_class_obj):
@@ -397,12 +436,12 @@ class FlaxDiffusionPipeline(ConfigMixin):
                 class_obj = import_flax_or_no_model(library, class_name)
 
                 importable_classes = LOADABLE_CLASSES[library_name]
-                class_candidates = {c: getattr(library, c) for c in importable_classes.keys()}
+                class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
 
             if loaded_sub_model is None and sub_model_should_be_defined:
                 load_method_name = None
                 for class_name, class_candidate in class_candidates.items():
-                    if issubclass(class_obj, class_candidate):
+                    if class_candidate is not None and issubclass(class_obj, class_candidate):
                         load_method_name = importable_classes[class_name][1]
 
                 load_method = getattr(class_obj, load_method_name)
@@ -444,7 +483,11 @@ class FlaxDiffusionPipeline(ConfigMixin):
         if images.ndim == 3:
             images = images[None, ...]
         images = (images * 255).round().astype("uint8")
-        pil_images = [Image.fromarray(image) for image in images]
+        if images.shape[-1] == 1:
+            # special case for grayscale (single channel) images
+            pil_images = [Image.fromarray(image.squeeze(), mode="L") for image in images]
+        else:
+            pil_images = [Image.fromarray(image) for image in images]
 
         return pil_images
 
