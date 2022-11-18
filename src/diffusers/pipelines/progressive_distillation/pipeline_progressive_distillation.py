@@ -11,7 +11,9 @@ from accelerate import Accelerator
 from diffusers import DiffusionPipeline
 from diffusers.optimization import get_scheduler
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
+from diffusers.schedulers.scheduling_ddim import DDIMScheduler
 from diffusers.pipelines.ddpm import DDPMPipeline
+from diffusers.pipelines.ddim import DDIMPipeline
 from diffusers.training_utils import EMAModel
 
 
@@ -60,15 +62,17 @@ class DistillationPipeline(DiffusionPipeline):
         train_dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
 
         # Setup the noise schedulers for the teacher and student
-        teacher_scheduler = DDPMScheduler(
+        teacher_scheduler = DDIMScheduler(
             num_train_timesteps=n_teacher_trainsteps,
             beta_schedule="squaredcos_cap_v2",
             variance_type="v_diffusion",
+            prediction_type="v",
         )
-        student_scheduler = DDPMScheduler(
+        student_scheduler = DDIMScheduler(
             num_train_timesteps=n_teacher_trainsteps // 2,
             beta_schedule="squaredcos_cap_v2",
             variance_type="v_diffusion",
+            prediction_type="v",
         )
 
         # Initialize the student model as a direct copy of the teacher
@@ -116,19 +120,18 @@ class DistillationPipeline(DiffusionPipeline):
         global_step = 0
 
         # run pipeline in inference (sample random noise and denoise) on our teacher model as a baseline
-        # pipeline = DDPMPipeline(
-        #     unet=teacher,
-        #     scheduler=teacher_scheduler,
-        # )
+        pipeline = DDIMPipeline(
+            unet=teacher,
+            scheduler=teacher_scheduler,
+        )
 
-        # images = pipeline(batch_size=4, output_type="numpy", generator=torch.manual_seed(0)).images
+        images = pipeline(batch_size=4, generator=torch.manual_seed(0)).images
 
-        # # denormalize the images and save to tensorboard
+        # denormalize the images and save to tensorboard
         # images_processed = (images * 255).round().astype("uint8")
-        # for sample_number, img in enumerate(images_processed):
-        #     img = Image.fromarray(img)
+        for sample_number, img in enumerate(images):
 
-        #     img.save(os.path.join(sample_path, f"{n_teacher_trainsteps}", f"baseline_sample_{sample_number}.png"))
+            img.save(os.path.join(sample_path, f"{n_teacher_trainsteps}", f"baseline_sample_{sample_number}.png"))
 
         # Train the student
         for epoch in range(epochs):
@@ -142,50 +145,57 @@ class DistillationPipeline(DiffusionPipeline):
                     noise = torch.randn(batch.shape, generator=generator).to(accelerator.device)
                     bsz = batch.shape[0]
                     # Sample a random timestep for each image
-                    timesteps = (
-                        torch.randint(
-                            0,
-                            student_scheduler.config.num_train_timesteps,
-                            (bsz,),
-                            device=batch.device,
-                            generator=generator,
-                        ).long()
-                        * 2
-                    )
+
+                    timesteps = torch.randint(
+                        1,
+                        n_teacher_trainsteps - 1,
+                        (bsz,),
+                        device=batch.device,
+                        generator=generator,
+                    ).long()
                     with torch.no_grad():
                         # Add noise to the image based on noise scheduler a t=timesteps
                         alpha_t, sigma_t = teacher_scheduler.get_alpha_sigma(batch, timesteps + 1, accelerator.device)
                         z_t = alpha_t * batch + sigma_t * noise
 
                         # Take the first diffusion step with the teacher
-                        noise_pred_t = teacher(z_t.permute(*permute_samples), timesteps + 1).sample.permute(
+                        v_pred_t = teacher(z_t.permute(*permute_samples), timesteps + 1).sample.permute(
                             *permute_samples
                         )
-                        x_teacher_z_t = (alpha_t * z_t - sigma_t * noise_pred_t).clip(-1, 1)
+
+                        # reconstruct the image at timesteps using v diffusion
+                        x_teacher_z_t = (alpha_t * z_t - sigma_t * v_pred_t).clip(-1, 1)
+                        # eps = (z - alpha*x)/sigma.
+                        eps_pred = (z_t - alpha_t * x_teacher_z_t) / sigma_t
 
                         # Add noise to the image based on noise scheduler a t=timesteps-1, to prepare for the next diffusion step
                         alpha_t_prime, sigma_t_prime = teacher_scheduler.get_alpha_sigma(
                             batch, timesteps, accelerator.device
                         )
-                        z_t_prime = alpha_t_prime * x_teacher_z_t + (sigma_t_prime / sigma_t) * (
-                            z_t - alpha_t * x_teacher_z_t
-                        )
+                        z_t_prime = alpha_t_prime * x_teacher_z_t + sigma_t_prime * eps_pred
                         # Take the second diffusion step with the teacher
-                        noise_pred_t_prime = teacher(z_t_prime.permute(*permute_samples), timesteps).sample.permute(
+                        v_pred_t_prime = teacher(z_t_prime.permute(*permute_samples), timesteps).sample.permute(
                             *permute_samples
                         )
-                        rec_t_prime = (alpha_t_prime * z_t_prime - sigma_t_prime * noise_pred_t_prime).clip(-1, 1)
+                        rec_t_prime = (alpha_t_prime * z_t_prime - sigma_t_prime * v_pred_t_prime).clip(-1, 1)
 
+                        eps_pred = (z_t_prime - alpha_t_prime * rec_t_prime) / sigma_t_prime
                         # V prediction per Appendix D
-                        alpha_t_prime2, sigma_t_prime2 = student_scheduler.get_alpha_sigma(
-                            batch, timesteps // 2, accelerator.device
+                        alpha_t_prime2, sigma_t_prime2 = teacher_scheduler.get_alpha_sigma(
+                            batch, (timesteps - 1), accelerator.device
                         )
-                        x_teacher_z_t_prime = (z_t - alpha_t_prime2 * rec_t_prime) / sigma_t_prime2
-                        z_t_prime_2 = alpha_t_prime2 * x_teacher_z_t_prime - sigma_t_prime2 * rec_t_prime
+                        z_teacher = alpha_t_prime2 * rec_t_prime + sigma_t_prime2 * eps_pred
+                        sigma_frac = sigma_t_prime / sigma_t
 
-                    noise_pred = student(z_t.permute(*permute_samples), timesteps).sample.permute(*permute_samples)
+                        x_target = (z_teacher - sigma_frac * z_t) / (alpha_t_prime2 - sigma_frac * alpha_t)
+                        eps_target = (z_teacher - alpha_t_prime2 * x_target) / sigma_t_prime2
+                        v_target = alpha_t * eps_target - sigma_t * x_target
+
+                    noise_pred = student(z_t.permute(*permute_samples), timesteps // 2).sample.permute(
+                        *permute_samples
+                    )
                     w = torch.pow(1 + alpha_t_prime2 / sigma_t_prime2, gamma)
-                    loss = F.mse_loss(noise_pred * w, z_t_prime_2 * w)
+                    loss = F.mse_loss(noise_pred * w, v_target * w)
                     accelerator.backward(loss)
 
                     if accelerator.sync_gradients:
@@ -209,24 +219,26 @@ class DistillationPipeline(DiffusionPipeline):
             progress_bar.close()
             if sample_every is not None:
                 if (epoch + 1) % sample_every == 0:
-                    new_scheduler = DDPMScheduler(
+                    new_scheduler = DDIMScheduler(
                         num_train_timesteps=n_teacher_trainsteps // 2,
                         beta_schedule="squaredcos_cap_v2",
                         variance_type="v_diffusion",
+                        prediction_type="v",
                     )
-                    pipeline = DDPMPipeline(
+                    pipeline = DDIMPipeline(
                         unet=accelerator.unwrap_model(ema_model.averaged_model if use_ema else student),
                         scheduler=new_scheduler,
                     )
 
                     # run pipeline in inference (sample random noise and denoise)
-                    images = pipeline(batch_size=4, output_type="numpy", generator=torch.manual_seed(0)).images
+                    images = pipeline(
+                        batch_size=4,
+                        generator=torch.manual_seed(0),
+                        num_inference_steps=n_teacher_trainsteps // 2,
+                    ).images
 
                     # denormalize the images and save to tensorboard
-                    images_processed = (images * 255).round().astype("uint8")
-                    for sample_number, img in enumerate(images_processed):
-                        img = Image.fromarray(img)
-
+                    for sample_number, img in enumerate(images):
                         img.save(
                             os.path.join(
                                 sample_path, f"{n_teacher_trainsteps}", f"epoch_{epoch}_sample_{sample_number}.png"

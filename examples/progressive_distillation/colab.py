@@ -48,10 +48,11 @@ dataset.set_transform(transform)
 import torch
 import os
 
-from diffusers import UNet2DModel, DistillationPipeline, DDPMPipeline, DDPMScheduler
+from diffusers import UNet2DModel, DistillationPipeline, DDPMPipeline, DDPMScheduler, DDIMPipeline, DDIMScheduler
 from accelerate import Accelerator
 
-teacher = UNet2DModel.from_pretrained("bglick13/ddpm-butterflies-128", subfolder="unet")
+
+teacher = UNet2DModel.from_pretrained("bglick13/ddim-butterflies-128-v-diffusion", subfolder="unet")
 
 # accelerator = Accelerator(
 #     mixed_precision=config.mixed_precision,
@@ -67,14 +68,16 @@ new_teacher, distilled_ema, distill_accelrator = distiller(
     n_teacher_trainsteps,
     dataset,
     epochs=100,
-    batch_size=1,
+    batch_size=32,
     mixed_precision="fp16",
     sample_every=1,
     gamma=0.0,
-    lr=0.3 * 5e-5,
+    lr=1e-4,
 )
-new_scheduler = DDPMScheduler(num_train_timesteps=500, beta_schedule="squaredcos_cap_v2")
-pipeline = DDPMPipeline(
+new_scheduler = DDIMScheduler(
+    num_train_timesteps=500, beta_schedule="squaredcos_cap_v2", variance_type="v_diffusion", prediction_type="v"
+)
+pipeline = DDIMPipeline(
     unet=distill_accelrator.unwrap_model(distilled_ema.averaged_model),
     scheduler=new_scheduler,
 )
