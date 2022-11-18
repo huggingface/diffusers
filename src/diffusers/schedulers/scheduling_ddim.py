@@ -23,7 +23,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput
 from .scheduling_utils import SchedulerMixin
 
 
@@ -82,8 +82,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
-    [`~ConfigMixin.from_config`] functions.
+    [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
+    [`~SchedulerMixin.from_pretrained`] functions.
 
     For more details, see the original paper: https://arxiv.org/abs/2010.02502
 
@@ -109,13 +109,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
     """
 
-    _compatible_classes = [
-        "PNDMScheduler",
-        "DDPMScheduler",
-        "LMSDiscreteScheduler",
-        "EulerDiscreteScheduler",
-        "EulerAncestralDiscreteScheduler",
-    ]
+    _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
 
     @register_to_config
     def __init__(
@@ -287,7 +281,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
         if eta > 0:
             # randn_like does not support generator https://github.com/pytorch/pytorch/issues/27072
-            device = model_output.device if torch.is_tensor(model_output) else "cpu"
+            device = model_output.device
             if variance_noise is not None and generator is not None:
                 raise ValueError(
                     "Cannot pass both generator and variance_noise. Please make sure that either `generator` or"
@@ -295,9 +289,14 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
                 )
 
             if variance_noise is None:
-                variance_noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator).to(
-                    device
-                )
+                if device.type == "mps":
+                    # randn does not work reproducibly on mps
+                    variance_noise = torch.randn(model_output.shape, dtype=model_output.dtype, generator=generator)
+                    variance_noise = variance_noise.to(device)
+                else:
+                    variance_noise = torch.randn(
+                        model_output.shape, generator=generator, device=device, dtype=model_output.dtype
+                    )
             variance = self._get_variance(timestep, prev_timestep) ** (0.5) * eta * variance_noise
 
             prev_sample = prev_sample + variance

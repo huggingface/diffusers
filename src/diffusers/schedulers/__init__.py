@@ -19,6 +19,7 @@ from ..utils import is_flax_available, is_scipy_available, is_torch_available
 if is_torch_available():
     from .scheduling_ddim import DDIMScheduler
     from .scheduling_ddpm import DDPMScheduler
+    from .scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler
     from .scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler
     from .scheduling_euler_discrete import EulerDiscreteScheduler
     from .scheduling_ipndm import IPNDMScheduler
@@ -35,6 +36,7 @@ else:
 if is_flax_available():
     from .scheduling_ddim_flax import FlaxDDIMScheduler
     from .scheduling_ddpm_flax import FlaxDDPMScheduler
+    from .scheduling_dpmsolver_multistep_flax import FlaxDPMSolverMultistepScheduler
     from .scheduling_karras_ve_flax import FlaxKarrasVeScheduler
     from .scheduling_lms_discrete_flax import FlaxLMSDiscreteScheduler
     from .scheduling_pndm_flax import FlaxPNDMScheduler

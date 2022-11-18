@@ -492,6 +492,8 @@ class CrossAttention(nn.Module):
         # attention, what we cannot get enough of
         if self._use_memory_efficient_attention_xformers:
             hidden_states = self._memory_efficient_attention_xformers(query, key, value)
+            # Some versions of xformers return output in fp32, cast it back to the dtype of the input
+            hidden_states = hidden_states.to(query.dtype)
         else:
             if self._slice_size is None or query.shape[0] // self._slice_size == 1:
                 hidden_states = self._attention(query, key, value)
@@ -555,6 +557,9 @@ class CrossAttention(nn.Module):
         return hidden_states
 
     def _memory_efficient_attention_xformers(self, query, key, value):
+        query = query.contiguous()
+        key = key.contiguous()
+        value = value.contiguous()
         hidden_states = xformers.ops.memory_efficient_attention(query, key, value, attn_bias=None)
         hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
         return hidden_states

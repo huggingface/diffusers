@@ -5,6 +5,7 @@ if is_torch_available():
     from .dance_diffusion import DanceDiffusionPipeline
     from .ddim import DDIMPipeline
     from .ddpm import DDPMPipeline
+    from .latent_diffusion import LDMSuperResolutionPipeline
     from .latent_diffusion_uncond import LDMPipeline
     from .pndm import PNDMPipeline
     from .repaint import RePaintPipeline
@@ -14,6 +15,7 @@ else:
     from ..utils.dummy_pt_objects import *  # noqa F403
 
 if is_torch_available() and is_transformers_available():
+    from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline
     from .latent_diffusion import LDMTextToImagePipeline
     from .stable_diffusion import (
         CycleDiffusionPipeline,

@@ -456,6 +456,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
+    @require_torch_gpu
     def test_compvis_sd_v1_4(self, seed, timestep, expected_slice):
         model = self.get_unet_model(model_id="CompVis/stable-diffusion-v1-4")
         latents = self.get_latents(seed)
@@ -507,6 +508,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
+    @require_torch_gpu
     def test_compvis_sd_v1_5(self, seed, timestep, expected_slice):
         model = self.get_unet_model(model_id="runwayml/stable-diffusion-v1-5")
         latents = self.get_latents(seed)
@@ -558,6 +560,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
+    @require_torch_gpu
     def test_compvis_sd_inpaint(self, seed, timestep, expected_slice):
         model = self.get_unet_model(model_id="runwayml/stable-diffusion-inpainting")
         latents = self.get_latents(seed, shape=(4, 9, 64, 64))
