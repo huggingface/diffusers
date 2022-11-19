@@ -190,6 +190,7 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
 
         timesteps = np.array(timesteps) * (self.config.num_train_timesteps // self.num_inference_steps)
         self.timesteps = torch.from_numpy(timesteps).to(device)
+        self.timesteps += self.config.steps_offset
 
     def _get_variance(self, t):
         prev_timestep = t - self.config.num_train_timesteps // self.num_inference_steps
@@ -303,7 +304,7 @@ class RePaintScheduler(SchedulerMixin, ConfigMixin):
 
         for i in range(n):
             beta = self.betas[timestep + i]
-            noise = torch.randn(sample.shape, generator=generator, device=sample.device)
+            noise = torch.randn(sample.shape, generator=generator, device=sample.device, dtype=sample.dtype)
 
             # 10. Algorithm 1 Line 10 https://arxiv.org/pdf/2201.09865.pdf
             sample = (1 - beta) ** 0.5 * sample + beta**0.5 * noise
