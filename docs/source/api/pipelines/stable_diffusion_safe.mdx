@@ -54,8 +54,7 @@ You may use the 4 configurations defined in the [Safe Latent Diffusion paper](ht
 >>> from diffusers.pipelines.stable_diffusion_safe import SafetyConfig
 
 >>> pipeline = StableDiffusionPipelineSafe.from_pretrained("AIML-TUDA/stable-diffusion-safe")
->>> prompt = "the four horsewomen of the apocalypse,
-...     painting by tom of finland, gaston bussiere, craig mullins, j. c. leyendecker"
+>>> prompt = "the four horsewomen of the apocalypse, painting by tom of finland, gaston bussiere, craig mullins, j. c. leyendecker"
 >>> out = pipeline(prompt=prompt, **SafetyConfig.MAX)
 ```
 
