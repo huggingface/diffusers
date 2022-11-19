@@ -80,15 +80,26 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999) -> torch.Tensor
     return torch.tensor(betas)
 
 
+def _logsnr_schedule_cosine(t, logsnr_min=-20, logsnr_max=20):
+    logsnr_min = torch.tensor(logsnr_min, dtype=torch.float32)
+    logsnr_max = torch.tensor(logsnr_max, dtype=torch.float32)
+    b = torch.arctan(torch.exp(-0.5 * logsnr_max))
+    a = torch.arctan(torch.exp(-0.5 * logsnr_min)) - b
+    return -2.0 * torch.log(torch.tan(a * t + b))
+
+
 def t_to_alpha_sigma(num_diffusion_timesteps):
     """Returns the scaling factors for the clean image and for the noise, given
     a timestep."""
-    alphas = torch.cos(
-        torch.tensor([(t / num_diffusion_timesteps) * math.pi / 2 for t in range(num_diffusion_timesteps)])
-    )
-    sigmas = torch.sin(
-        torch.tensor([(t / num_diffusion_timesteps) * math.pi / 2 for t in range(num_diffusion_timesteps)])
-    )
+    out = torch.FloatTensor([_logsnr_schedule_cosine(t) for t in torch.linspace(0, 1, 1000)])
+    alphas = torch.sqrt(torch.sigmoid(out))
+    sigmas = torch.sqrt(torch.sigmoid(-out))
+    # alphas = torch.cos(
+    #     torch.tensor([(t / num_diffusion_timesteps) * math.pi / 2 for t in range(num_diffusion_timesteps)])
+    # )
+    # sigmas = torch.sin(
+    #     torch.tensor([(t / num_diffusion_timesteps) * math.pi / 2 for t in range(num_diffusion_timesteps)])
+    # )
     return alphas, sigmas
 
 
@@ -393,4 +404,9 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
     def get_alpha_sigma(self, sample, timesteps, device):
         alpha = expand_to_shape(self.alphas, timesteps, sample.shape, device)
         sigma = expand_to_shape(self.sigmas, timesteps, sample.shape, device)
+        return alpha, sigma
+
+    def get_alpha_sigma_from_logsnr(self, sample, logsnr, device):
+        alpha = expand_to_shape(self.alphas, logsnr, sample.shape, device)
+        sigma = expand_to_shape(self.sigmas, logsnr, sample.shape, device)
         return alpha, sigma

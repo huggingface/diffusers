@@ -17,6 +17,31 @@ from diffusers.pipelines.ddim import DDIMPipeline
 from diffusers.training_utils import EMAModel
 
 
+def logsnr_schedule(t, logsnr_min=-20, logsnr_max=20):
+    logsnr_min = torch.tensor(logsnr_min, dtype=torch.float32)
+    logsnr_max = torch.tensor(logsnr_max, dtype=torch.float32)
+    b = torch.arctan(torch.exp(-0.5 * logsnr_max))
+    a = torch.arctan(torch.exp(-0.5 * logsnr_min)) - b
+    return -2.0 * torch.log(torch.tan(a * t + b))
+
+
+def continuous_to_discrete_time(u, num_timesteps):
+    return (u * (num_timesteps - 1)).float().round().long()
+
+
+def predict_x_from_v(*, z, v, logsnr):
+    logsnr = utils.broadcast_from_left(logsnr, z.shape)
+    alpha_t = torch.sqrt(F.sigmoid(logsnr))
+    sigma_t = torch.sqrt(F.sigmoid(-logsnr))
+    return alpha_t * z - sigma_t * v
+
+
+def alpha_sigma_from_logsnr(logsnr):
+    alpha_t = torch.sqrt(F.sigmoid(logsnr))
+    sigma_t = torch.sqrt(F.sigmoid(-logsnr))
+    return alpha_t, sigma_t
+
+
 class DistillationPipeline(DiffusionPipeline):
     def __init__(self):
         pass
@@ -109,8 +134,10 @@ class DistillationPipeline(DiffusionPipeline):
         ) = accelerator.prepare(
             teacher, student, optimizer, lr_scheduler, train_data, teacher_scheduler, student_scheduler
         )
-        if generator:
-            generator = accelerator.prepare(generator)
+        if not generator:
+            generator = torch.Generator().manual_seed(0)
+
+        # generator = accelerator.prepare(generator)
         ema_model = EMAModel(
             student,
             inv_gamma=ema_inv_gamma,
@@ -146,54 +173,55 @@ class DistillationPipeline(DiffusionPipeline):
                     bsz = batch.shape[0]
                     # Sample a random timestep for each image
 
-                    timesteps = torch.randint(
-                        1,
-                        n_teacher_trainsteps - 1,
-                        (bsz,),
-                        device=batch.device,
-                        generator=generator,
-                    ).long()
+                    u = torch.rand(size=(bsz,), generator=generator).to(accelerator.device)
+                    u_1 = u - (0.5 / (n_teacher_trainsteps // 2))
+                    u_2 = u - (1 / (n_teacher_trainsteps // 2))
+                    # logsnr = logsnr_schedule(u)
+                    # alpha_t, sigma_t = alpha_sigma_from_logsnr(logsnr)
                     with torch.no_grad():
                         # Add noise to the image based on noise scheduler a t=timesteps
-                        alpha_t, sigma_t = teacher_scheduler.get_alpha_sigma(batch, timesteps + 1, accelerator.device)
+                        timesteps = continuous_to_discrete_time(u, n_teacher_trainsteps)
+                        alpha_t, sigma_t = teacher_scheduler.get_alpha_sigma(batch, timesteps, accelerator.device)
                         z_t = alpha_t * batch + sigma_t * noise
+                        # z_t = batch * torch.sqrt(F.sigmoid(logsnr)) + noise * torch.sqrt(F.sigmoid(-logsnr))
 
+                        # teach_out_start = teacher(z_t, continuous_to_discrete_time(u, n_teacher_trainsteps))
+                        # x_pred = predict_x_from_v(teach_out_start)
                         # Take the first diffusion step with the teacher
-                        v_pred_t = teacher(z_t.permute(*permute_samples), timesteps + 1).sample.permute(
-                            *permute_samples
-                        )
+                        v_pred_t = teacher(z_t.permute(*permute_samples), timesteps).sample.permute(*permute_samples)
 
                         # reconstruct the image at timesteps using v diffusion
-                        x_teacher_z_t = (alpha_t * z_t - sigma_t * v_pred_t).clip(-1, 1)
+                        x_teacher_z_t = alpha_t * z_t - sigma_t * v_pred_t
                         # eps = (z - alpha*x)/sigma.
                         eps_pred = (z_t - alpha_t * x_teacher_z_t) / sigma_t
 
                         # Add noise to the image based on noise scheduler a t=timesteps-1, to prepare for the next diffusion step
+                        timesteps = continuous_to_discrete_time(u_1, n_teacher_trainsteps)
                         alpha_t_prime, sigma_t_prime = teacher_scheduler.get_alpha_sigma(
                             batch, timesteps, accelerator.device
                         )
-                        z_t_prime = alpha_t_prime * x_teacher_z_t + sigma_t_prime * eps_pred
+                        z_mid = alpha_t_prime * x_teacher_z_t + sigma_t_prime * eps_pred
                         # Take the second diffusion step with the teacher
-                        v_pred_t_prime = teacher(z_t_prime.permute(*permute_samples), timesteps).sample.permute(
+                        v_pred_mid = teacher(z_mid.permute(*permute_samples), timesteps).sample.permute(
                             *permute_samples
                         )
-                        rec_t_prime = (alpha_t_prime * z_t_prime - sigma_t_prime * v_pred_t_prime).clip(-1, 1)
+                        x_pred_mid = alpha_t_prime * z_mid - sigma_t_prime * v_pred_mid
 
-                        eps_pred = (z_t_prime - alpha_t_prime * rec_t_prime) / sigma_t_prime
-                        # V prediction per Appendix D
+                        eps_pred = (z_mid - alpha_t_prime * x_pred_mid) / sigma_t_prime
+
+                        timesteps = continuous_to_discrete_time(u_2, n_teacher_trainsteps)
                         alpha_t_prime2, sigma_t_prime2 = teacher_scheduler.get_alpha_sigma(
-                            batch, (timesteps - 1), accelerator.device
+                            batch, timesteps, accelerator.device
                         )
-                        z_teacher = alpha_t_prime2 * rec_t_prime + sigma_t_prime2 * eps_pred
-                        sigma_frac = sigma_t_prime / sigma_t
+                        z_teacher = alpha_t_prime2 * x_pred_mid + sigma_t_prime2 * eps_pred
+                        sigma_frac = sigma_t / sigma_t_prime2
 
                         x_target = (z_teacher - sigma_frac * z_t) / (alpha_t_prime2 - sigma_frac * alpha_t)
                         eps_target = (z_teacher - alpha_t_prime2 * x_target) / sigma_t_prime2
                         v_target = alpha_t * eps_target - sigma_t * x_target
 
-                    noise_pred = student(z_t.permute(*permute_samples), timesteps // 2).sample.permute(
-                        *permute_samples
-                    )
+                    timesteps = continuous_to_discrete_time(u_2, n_teacher_trainsteps // 2)
+                    noise_pred = student(z_t.permute(*permute_samples), timesteps).sample.permute(*permute_samples)
                     w = torch.pow(1 + alpha_t_prime2 / sigma_t_prime2, gamma)
                     loss = F.mse_loss(noise_pred * w, v_target * w)
                     accelerator.backward(loss)
