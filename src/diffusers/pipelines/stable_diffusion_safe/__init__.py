@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 from typing import List, Optional, Union
 
 import numpy as np
@@ -7,6 +8,38 @@ import PIL
 from PIL import Image
 
 from ...utils import BaseOutput, is_torch_available, is_transformers_available
+
+
+@dataclass
+class SafetyConfig(object):
+    WEAK = {
+        "sld_warmup_steps": 15,
+        "sld_guidance_scale": 20,
+        "sld_threshold": 0.0,
+        "sld_momentum_scale": 0.0,
+        "sld_mom_beta": 0.0,
+    }
+    MEDIUM = {
+        "sld_warmup_steps": 10,
+        "sld_guidance_scale": 1000,
+        "sld_threshold": 0.01,
+        "sld_momentum_scale": 0.3,
+        "sld_mom_beta": 0.4,
+    }
+    STRONG = {
+        "sld_warmup_steps": 7,
+        "sld_guidance_scale": 2000,
+        "sld_threshold": 0.025,
+        "sld_momentum_scale": 0.5,
+        "sld_mom_beta": 0.7,
+    }
+    MAX = {
+        "sld_warmup_steps": 0,
+        "sld_guidance_scale": 5000,
+        "sld_threshold": 1.0,
+        "sld_momentum_scale": 0.5,
+        "sld_mom_beta": 0.7,
+    }
 
 
 @dataclass

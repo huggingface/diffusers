@@ -45,6 +45,22 @@ To check and edit the currently used safety concept, use the `safety_concept` pr
 ```
 For each image generation the active concept is also contained in [`StableDiffusionSafePipelineOutput`].
 
+### Using pre-defined safety configurations
+
+You may use the 4 configurations defined in the [Safe Latent Diffusion paper](https://arxiv.org/abs/2211.05105) as follows:
+
+```python
+>>> from diffusers import StableDiffusionPipelineSafe
+>>> from diffusers.pipelines.stable_diffusion_safe import SafetyConfig
+
+>>> pipeline = StableDiffusionPipelineSafe.from_pretrained("AIML-TUDA/stable-diffusion-safe")
+>>> prompt = "the four horsewomen of the apocalypse,
+...     painting by tom of finland, gaston bussiere, craig mullins, j. c. leyendecker"
+>>> out = pipeline(prompt=prompt, **SafetyConfig.MAX)
+```
+
+The following configurations are available: `SafetyConfig.WEAK`, `SafetyConfig.MEDIUM`, `SafetyConfig.STRONg`, and `SafetyConfig.MAX`.
+
 ### How to load and use different schedulers.
 
 The safe stable diffusion pipeline uses [`PNDMScheduler`] scheduler by default. But `diffusers` provides many other schedulers that can be used with the stable diffusion pipeline such as [`DDIMScheduler`], [`LMSDiscreteScheduler`], [`EulerDiscreteScheduler`], [`EulerAncestralDiscreteScheduler`] etc.
