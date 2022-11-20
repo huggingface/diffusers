@@ -36,30 +36,25 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 def prepare_mask_and_masked_image(image, mask):
     """
-    Prepares a pair (image, mask) to be consumed by the Stable Diffusion pipeline.
-    This means that those inputs will be converted to ``torch.Tensor`` with
-    shapes ``batch x channels x height x width`` where ``channels`` is ``3`` for
-    the ``image`` and ``1`` for the ``mask``.
+    Prepares a pair (image, mask) to be consumed by the Stable Diffusion pipeline. This means that those inputs will be
+    converted to ``torch.Tensor`` with shapes ``batch x channels x height x width`` where ``channels`` is ``3`` for the
+    ``image`` and ``1`` for the ``mask``.
 
-    The ``image`` will be converted to ``torch.float32`` and normalized to be in
-    ``[-1, 1]``. The ``mask`` will be binarized (``mask > 0.5``) and cast to
-    ``torch.float32`` too.
+    The ``image`` will be converted to ``torch.float32`` and normalized to be in ``[-1, 1]``. The ``mask`` will be
+    binarized (``mask > 0.5``) and cast to ``torch.float32`` too.
 
     Args:
         image (Union[np.array, PIL.Image, torch.Tensor]): The image to inpaint.
-            It can be a ``PIL.Image``, or a ``height x width x 3`` ``np.array``
-            or a ``channels x height x width`` ``torch.Tensor`` or a
-            ``batch x channels x height x width`` ``torch.Tensor``.
+            It can be a ``PIL.Image``, or a ``height x width x 3`` ``np.array`` or a ``channels x height x width``
+            ``torch.Tensor`` or a ``batch x channels x height x width`` ``torch.Tensor``.
         mask (_type_): The mask to apply to the image, i.e. regions to inpaint.
-            It can be a ``PIL.Image``, or a ``height x width`` ``np.array`` or
-            a ``1 x height x width`` ``torch.Tensor`` or a
-            ``batch x 1 x height x width`` ``torch.Tensor``.
+            It can be a ``PIL.Image``, or a ``height x width`` ``np.array`` or a ``1 x height x width``
+            ``torch.Tensor`` or a ``batch x 1 x height x width`` ``torch.Tensor``.
 
 
     Raises:
-        ValueError: ``torch.Tensor`` images should be in the ``[-1, 1]`` range.
-        ValueError: ``torch.Tensor`` mask should be in the ``[0, 1]`` range.
-        ValueError: ``mask`` and ``image`` should have the same spatial dimensions.
+        ValueError: ``torch.Tensor`` images should be in the ``[-1, 1]`` range. ValueError: ``torch.Tensor`` mask
+        should be in the ``[0, 1]`` range. ValueError: ``mask`` and ``image`` should have the same spatial dimensions.
         TypeError: ``mask`` is a ``torch.Tensor`` but ``image`` is not
             (ot the other way around).
 

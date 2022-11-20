@@ -29,10 +29,8 @@ from diffusers import (
     UNet2DModel,
     VQModel,
 )
-
-from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint import prepare_mask_and_masked_image
-
+from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
@@ -509,6 +507,7 @@ class StableDiffusionInpaintPipelineIntegrationTests(unittest.TestCase):
         mem_bytes = torch.cuda.max_memory_allocated()
         # make sure that less than 2.2 GB is allocated
         assert mem_bytes < 2.2 * 10**9
+
 
 class StableDiffusionInpaintingPrepareMaskAndMaskedImageTests(unittest.TestCase):
     def test_pil_inputs(self):
