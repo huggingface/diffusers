@@ -16,7 +16,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Literal, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -135,7 +135,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         trained_betas: Optional[np.ndarray] = None,
         variance_type: str = "fixed_small",
         clip_sample: bool = True,
-        prediction_type: Literal["epsilon", "sample", "v"] = "epsilon",
+        prediction_type: str = "epsilon",
     ):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)

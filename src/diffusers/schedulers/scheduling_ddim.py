@@ -17,7 +17,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Literal, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -151,7 +151,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         set_alpha_to_one: bool = True,
         variance_type: str = "fixed",
         steps_offset: int = 0,
-        prediction_type: Literal["epsilon", "sample", "v"] = "epsilon",
+        prediction_type: str = "epsilon",
         **kwargs,
     ):
         if trained_betas is not None:
