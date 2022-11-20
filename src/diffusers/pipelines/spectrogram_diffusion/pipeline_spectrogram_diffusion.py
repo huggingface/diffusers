@@ -125,16 +125,10 @@ class DecoderLayer(nn.Module, ModuleUtilsMixin):
         else:
             self_attn_past_key_value, cross_attn_past_key_value = None, None
 
-        input_shape = (hidden_states.shape[0], hidden_states.shape[1])
-        if attention_mask is None:
-            attention_mask = torch.ones(input_shape[0], input_shape[1], device=hidden_states.device)
-
-        extended_attention_mask = self.get_extended_attention_mask(attention_mask, input_shape)
-
         self_attention_outputs = self.layer[0](
             hidden_states,
             conditioning_emb=conditioning_emb,
-            attention_mask=extended_attention_mask,
+            attention_mask=attention_mask,
             position_bias=position_bias,
             layer_head_mask=layer_head_mask,
             past_key_value=self_attn_past_key_value,
@@ -157,13 +151,13 @@ class DecoderLayer(nn.Module, ModuleUtilsMixin):
             else:
                 query_length = None
 
-            input_shape = (encoder_hidden_states.shape[0], encoder_hidden_states.shape[1])
-            extended_attention_mask = self.get_extended_attention_mask(encoder_attention_mask, input_shape)
-
-            cross_attention_outputs = self.layer[1](
+        input_shape = (encoder_hidden_states.shape[0], encoder_hidden_states.shape[1])
+        extended_attention_mask = self.get_extended_attention_mask(encoder_attention_mask, input_shape)
+        
+        cross_attention_outputs = self.layer[1](
                 hidden_states,
                 key_value_states=encoder_hidden_states,
-                attention_mask=extended_attention_mask,
+                attention_mask=encoder_attention_mask,
                 position_bias=encoder_decoder_position_bias,
                 layer_head_mask=cross_attn_layer_head_mask,
                 past_key_value=cross_attn_past_key_value,
@@ -434,9 +428,24 @@ class Decoder(ModelMixin, ConfigMixin):
 
         y = self.dropout(inputs)
 
+        import pdb
+
+        pdb.set_trace()
+
         # cross attend style: concat encodings
         encoded = torch.cat([x[0] for x in encodings_and_encdec_masks], dim=1)
         encoder_decoder_mask = torch.cat([x[1] for x in encodings_and_encdec_masks], dim=-1)
+
+        # import pdb
+
+        # pdb.set_trace()
+
+        # # inverted the attention mask
+        # input_shape = encoded.size()
+        # extended_attention_mask = self.get_extended_attention_mask(encoder_decoder_mask, input_shape)
+
+        encoder_decoder_mask = torch.where(encoder_decoder_mask > 0, 0, -1e10)
+
         for lyr in self.decoders:
             y = lyr(
                 y,
