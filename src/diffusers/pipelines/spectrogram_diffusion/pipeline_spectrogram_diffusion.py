@@ -151,13 +151,13 @@ class DecoderLayer(nn.Module, ModuleUtilsMixin):
             else:
                 query_length = None
 
-        input_shape = (encoder_hidden_states.shape[0], encoder_hidden_states.shape[1])
-        extended_attention_mask = self.get_extended_attention_mask(encoder_attention_mask, input_shape)
-        
-        cross_attention_outputs = self.layer[1](
+            input_shape = (encoder_hidden_states.shape[0], encoder_hidden_states.shape[1])
+            extended_attention_mask = self.get_extended_attention_mask(encoder_attention_mask, input_shape)
+
+            cross_attention_outputs = self.layer[1](
                 hidden_states,
                 key_value_states=encoder_hidden_states,
-                attention_mask=encoder_attention_mask,
+                attention_mask=extended_attention_mask,
                 position_bias=encoder_decoder_position_bias,
                 layer_head_mask=cross_attn_layer_head_mask,
                 past_key_value=cross_attn_past_key_value,
@@ -421,30 +421,13 @@ class Decoder(ModelMixin, ConfigMixin):
 
         # Translate encoding masks to encoder-decoder masks.
         encodings_and_encdec_masks = [(x, self.encoder_decoder_mask(decoder_mask, y)) for x, y in encodings_and_masks]
-
         inputs = self.continuous_inputs_projection(decoder_input_tokens)
-
         inputs += position_encodings
-
         y = self.dropout(inputs)
-
-        import pdb
-
-        pdb.set_trace()
 
         # cross attend style: concat encodings
         encoded = torch.cat([x[0] for x in encodings_and_encdec_masks], dim=1)
         encoder_decoder_mask = torch.cat([x[1] for x in encodings_and_encdec_masks], dim=-1)
-
-        # import pdb
-
-        # pdb.set_trace()
-
-        # # inverted the attention mask
-        # input_shape = encoded.size()
-        # extended_attention_mask = self.get_extended_attention_mask(encoder_decoder_mask, input_shape)
-
-        encoder_decoder_mask = torch.where(encoder_decoder_mask > 0, 0, -1e10)
 
         for lyr in self.decoders:
             y = lyr(
