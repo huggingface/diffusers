@@ -30,6 +30,7 @@ if is_transformers_available() and is_onnx_available():
     from .stable_diffusion import (
         OnnxStableDiffusionImg2ImgPipeline,
         OnnxStableDiffusionInpaintPipeline,
+        OnnxStableDiffusionInpaintPipelineLegacy,
         OnnxStableDiffusionPipeline,
         StableDiffusionOnnxPipeline,
     )
