@@ -11,8 +11,29 @@ from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from diffusers.utils import logging
+
+# TODO: remove and import from diffusers.utils when the new version of diffusers is released
+from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTokenizer
 
+
+if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
+    PIL_INTERPOLATION = {
+        "linear": PIL.Image.Resampling.BILINEAR,
+        "bilinear": PIL.Image.Resampling.BILINEAR,
+        "bicubic": PIL.Image.Resampling.BICUBIC,
+        "lanczos": PIL.Image.Resampling.LANCZOS,
+        "nearest": PIL.Image.Resampling.NEAREST,
+    }
+else:
+    PIL_INTERPOLATION = {
+        "linear": PIL.Image.LINEAR,
+        "bilinear": PIL.Image.BILINEAR,
+        "bicubic": PIL.Image.BICUBIC,
+        "lanczos": PIL.Image.LANCZOS,
+        "nearest": PIL.Image.NEAREST,
+    }
+# ------------------------------------------------------------------------------
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -365,7 +386,7 @@ def get_weighted_text_embeddings(
 def preprocess_image(image):
     w, h = image.size
     w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
-    image = image.resize((w, h), resample=PIL.Image.LANCZOS)
+    image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
     image = np.array(image).astype(np.float32) / 255.0
     image = image[None].transpose(0, 3, 1, 2)
     return 2.0 * image - 1.0
@@ -375,7 +396,7 @@ def preprocess_mask(mask):
     mask = mask.convert("L")
     w, h = mask.size
     w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
-    mask = mask.resize((w // 8, h // 8), resample=PIL.Image.NEAREST)
+    mask = mask.resize((w // 8, h // 8), resample=PIL_INTERPOLATION["nearest"])
     mask = np.array(mask).astype(np.float32) / 255.0
     mask = np.tile(mask, (4, 1, 1))
     mask = mask[None].transpose(0, 1, 2, 3)  # what does this step do?
@@ -435,6 +456,7 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, np.ndarray], None]] = None,
+        is_cancelled_callback: Optional[Callable[[], bool]] = None,
         callback_steps: Optional[int] = 1,
         **kwargs,
     ):
@@ -496,11 +518,15 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(DiffusionPipeline):
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
                 called with the following arguments: `callback(step: int, timestep: int, latents: np.ndarray)`.
+            is_cancelled_callback (`Callable`, *optional*):
+                A function that will be called every `callback_steps` steps during inference. If the function returns
+                `True`, the inference will be cancelled.
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
 
         Returns:
+            `None` if cancelled by `is_cancelled_callback`,
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
             When returning a tuple, the first element is a list with the generated images, and the second element is a
@@ -668,8 +694,11 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(DiffusionPipeline):
                 latents = (init_latents_proper * mask) + (latents * (1 - mask))
 
             # call the callback, if provided
-            if callback is not None and i % callback_steps == 0:
-                callback(i, t, latents)
+            if i % callback_steps == 0:
+                if callback is not None:
+                    callback(i, t, latents)
+                if is_cancelled_callback is not None and is_cancelled_callback():
+                    return None
 
         latents = 1 / 0.18215 * latents
         # image = self.vae_decoder(latent_sample=latents)[0]
@@ -693,7 +722,7 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(DiffusionPipeline):
                     clip_input=safety_checker_input[i : i + 1], images=image[i : i + 1]
                 )
                 images.append(image_i)
-                has_nsfw_concept.append(has_nsfw_concept_i)
+                has_nsfw_concept.append(has_nsfw_concept_i[0])
             image = np.concatenate(images)
         else:
             has_nsfw_concept = None
