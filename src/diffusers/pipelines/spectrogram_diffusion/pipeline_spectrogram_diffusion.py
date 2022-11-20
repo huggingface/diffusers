@@ -151,13 +151,12 @@ class DecoderLayer(nn.Module, ModuleUtilsMixin):
             else:
                 query_length = None
 
-            input_shape = (encoder_hidden_states.shape[0], encoder_hidden_states.shape[1])
-            extended_attention_mask = self.get_extended_attention_mask(encoder_attention_mask, input_shape)
+            encoder_extended_attention_mask = torch.where(encoder_attention_mask > 0, 0, -1e10)
 
             cross_attention_outputs = self.layer[1](
                 hidden_states,
                 key_value_states=encoder_hidden_states,
-                attention_mask=extended_attention_mask,
+                attention_mask=encoder_extended_attention_mask,
                 position_bias=encoder_decoder_position_bias,
                 layer_head_mask=cross_attn_layer_head_mask,
                 past_key_value=cross_attn_past_key_value,
