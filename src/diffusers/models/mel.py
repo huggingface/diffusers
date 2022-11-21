@@ -17,7 +17,7 @@ import os
 import warnings
 from typing import Any, Dict, Optional, Union
 
-from ..configuration_utils import ConfigMixin
+from ..configuration_utils import ConfigMixin, register_to_config
 
 
 warnings.filterwarnings("ignore")
@@ -31,6 +31,7 @@ from PIL import Image  # noqa: E402
 class Mel(ConfigMixin):
     config_name = "mel_config.json"
 
+    @register_to_config
     def __init__(
         self,
         x_res: int = 256,
