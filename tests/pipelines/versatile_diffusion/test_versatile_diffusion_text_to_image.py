@@ -19,7 +19,7 @@ import numpy as np
 import torch
 
 from diffusers import VersatileDiffusionTextToImagePipeline
-from diffusers.utils.testing_utils import load_image, require_torch, slow, torch_device
+from diffusers.utils.testing_utils import require_torch_gpu, slow, torch_device
 
 from ...test_pipelines_common import PipelineTesterMixin
 
@@ -32,7 +32,7 @@ class VersatileDiffusionTextToImagePipelineFastTests(PipelineTesterMixin, unitte
 
 
 @slow
-@require_torch
+@require_torch_gpu
 class VersatileDiffusionTextToImagePipelineIntegrationTests(unittest.TestCase):
     def test_inference_text2img(self):
         pipe = VersatileDiffusionTextToImagePipeline.from_pretrained("diffusers/vd-official-test")
@@ -45,8 +45,8 @@ class VersatileDiffusionTextToImagePipelineIntegrationTests(unittest.TestCase):
             prompt=prompt, generator=generator, guidance_scale=7.5, num_inference_steps=50, output_type="numpy"
         ).images
 
-        image_slice = image[0, -3:, -3:, -1]
+        image_slice = image[0, 253:256, 253:256, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.9256, 0.9340, 0.8933, 0.9361, 0.9113, 0.8727, 0.9122, 0.8745, 0.8099])
+        expected_slice = np.array([0.0657, 0.0529, 0.0455, 0.0802, 0.0570, 0.0179, 0.0267, 0.0483, 0.0769])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
