@@ -41,8 +41,7 @@ from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-
-class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
+class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
 
@@ -207,10 +206,11 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
 
         # Create init_latents
         init_latent_dist = self.vae.apply({"params": params["vae"]}, init_image, method=self.vae.encode).latent_dist
-        init_latents = init_latent_dist.sample(key=prng_seed)
+        init_latents = init_latent_dist.sample(key=prng_seed).transpose((0,3,1,2))
         init_latents = 0.18215 * init_latents
         latents_shape = (batch_size, self.unet.in_channels, height // 8, width // 8)
         noise = jax.random.normal(prng_seed, shape=latents_shape, dtype=self.dtype)
+
         def loop_body(step, args):
             latents, scheduler_state = args
             # For classifier free guidance, we need to do two forward passes.
@@ -355,7 +355,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
 
 
 # TODO: maybe use a config dict instead of so many static argnums
-@partial(jax.pmap, static_broadcasted_argnums=(0, 5, 6, 7,8, 9, 10))
+@partial(jax.pmap, static_broadcasted_argnums=(0, 5, 6, 7, 8, 9, 10))
 def _p_generate(
     pipe, prompt_ids, init_images, params, prng_seed, strength, num_inference_steps, height, width, guidance_scale, debug
 ):
