@@ -21,6 +21,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | Multilingual Stable Diffusion| Stable Diffusion Pipeline that supports prompts in 50 different languages.                                                                                                                                                                                                                                                                                                     | [Multilingual Stable Diffusion](#multilingual-stable-diffusion-pipeline)                                                                 | -                                                                                                                                                                                                                  |                        [Juan Carlos Piñeros](https://github.com/juancopi81) |
 | Image to Image Inpainting Stable Diffusion | Stable Diffusion Pipeline that enables the overlaying of two images and subsequent inpainting| [Image to Image Inpainting Stable Diffusion](#image-to-image-inpainting-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Alex McKinney](https://github.com/vvvm23) |
 | Text Based Inpainting Stable Diffusion | Stable Diffusion Inpainting Pipeline that enables passing a text prompt to generate the mask for inpainting| [Text Based Inpainting Stable Diffusion](#image-to-image-inpainting-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Dhruv Karan](https://github.com/unography) |
+| Bit Diffusion | Diffusion on discrete data | [Bit Diffusion](#bit-diffusion) | -  |[Stuti R.](https://github.com/kingstut) |
 
 
 
@@ -343,7 +344,6 @@ out = pipe(
 )
 ```
 
-
 ### Composable Stable diffusion 
 
 [Composable Stable Diffusion](https://energy-based-model.github.io/Compositional-Visual-Generation-with-Composable-Diffusion-Models/) proposes conjunction and negation (negative prompts) operators for compositional generation with conditional diffusion models.
@@ -370,7 +370,7 @@ def dummy(images, **kwargs):
 pipe.safety_checker = dummy
 
 images = []
-generator = th.Generator("cuda").manual_seed(0)
+generator = torch.Generator("cuda").manual_seed(0)
 
 seed = 0
 prompt = "a forest | a camel"
@@ -399,6 +399,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 import torch
+import os
 from diffusers import DiffusionPipeline, DDIMScheduler
 has_cuda = torch.cuda.is_available()
 device = torch.device('cpu' if not has_cuda else 'cuda')
@@ -423,6 +424,7 @@ res = pipe.train(
     num_inference_steps=50,
     generator=generator)
 res = pipe(alpha=1)
+os.makedirs("imagic", exist_ok=True)
 image = res.images[0]
 image.save('./imagic/imagic_image_alpha_1.png')
 res = pipe(alpha=1.5)
@@ -652,4 +654,13 @@ prompt = "a cup"  # the masked out region will be replaced with this
 
 with autocast("cuda"):
     image = pipe(image=image, text=text, prompt=prompt).images[0]
+```
+
+### Bit Diffusion 
+Based https://arxiv.org/abs/2208.04202, this is used for diffusion on discrete data - eg, discreate image data, DNA sequence data. An unconditional discreate image can be generated like this: 
+
+```python
+from diffusers import DiffusionPipeline
+pipe = DiffusionPipeline.from_pretrained("google/ddpm-cifar10-32", custom_pipeline="bit_diffusion")
+image = pipe().images[0]
 ```

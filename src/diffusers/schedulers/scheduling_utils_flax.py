@@ -118,7 +118,10 @@ class FlaxSchedulerMixin:
 
         """
         config, kwargs = cls.load_config(
-            pretrained_model_name_or_path=pretrained_model_name_or_path, return_unused_kwargs=True, **kwargs
+            pretrained_model_name_or_path=pretrained_model_name_or_path,
+            subfolder=subfolder,
+            return_unused_kwargs=True,
+            **kwargs,
         )
         scheduler, unused_kwargs = cls.from_config(config, return_unused_kwargs=True, **kwargs)
 

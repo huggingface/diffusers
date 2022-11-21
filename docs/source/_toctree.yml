@@ -31,6 +31,14 @@
     - local: using-diffusers/contribute_pipeline
       title: "How to contribute a Pipeline"
     title: "Pipelines for Inference"
+  - sections:
+    - local: using-diffusers/rl
+      title: "Reinforcement Learning"
+    - local: using-diffusers/audio
+      title: "Audio"
+    - local: using-diffusers/other-modalities
+      title: "Other Modalities"
+    title: "Taking Diffusers Beyond Images"
   title: "Using Diffusers"
 - sections:
   - local: optimization/fp16
@@ -107,4 +115,8 @@
     - local: api/pipelines/repaint
       title: "RePaint"
     title: "Pipelines"
+  - sections:
+    - local: api/experimental/rl
+      title: "RL Planning"
+    title: "Experimental Features"
   title: "API"
