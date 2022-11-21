@@ -388,10 +388,6 @@ class LinearMultiDim(nn.Linear):
         return y
 
 
-class DownBlockMultiDim(nn.Module):
-    pass
-
-
 class UNetMidBlockMultiDimCrossAttn(nn.Module):
     pass
 

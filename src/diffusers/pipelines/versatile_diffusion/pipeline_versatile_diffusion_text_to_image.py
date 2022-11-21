@@ -13,13 +13,12 @@
 # limitations under the License.
 
 import inspect
-import logging
 from typing import Callable, List, Optional, Union
 
 import torch
 import torch.utils.checkpoint
 
-from transformers import CLIPProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModel
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel, VQModel
 from ...models.attention import Transformer2DModel
@@ -50,9 +49,8 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
     tokenizer: CLIPTokenizer
-    image_processor: CLIPProcessor
+    image_feature_extractor: CLIPFeatureExtractor
     text_encoder: CLIPTextModel
-    image_encoder: CLIPVisionModel
     image_unet: UNet2DConditionModel
     text_unet: UNet2DConditionModel
     vae: Union[VQModel, AutoencoderKL]
@@ -61,7 +59,6 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
     def __init__(
         self,
         tokenizer: CLIPTokenizer,
-        image_processor: CLIPProcessor,
         text_encoder: CLIPTextModel,
         image_unet: UNet2DConditionModel,
         text_unet: UNet2DConditionModel,
@@ -71,7 +68,6 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
         super().__init__()
         self.register_modules(
             tokenizer=tokenizer,
-            image_processor=image_processor,
             text_encoder=text_encoder,
             image_unet=image_unet,
             text_unet=text_unet,

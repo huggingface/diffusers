@@ -1,2 +1,3 @@
+from .pipeline_versatile_diffusion import VersatileDiffusionPipeline
 from .pipeline_versatile_diffusion_image_variation import VersatileDiffusionImageVariationPipeline
 from .pipeline_versatile_diffusion_text_to_image import VersatileDiffusionTextToImagePipeline
