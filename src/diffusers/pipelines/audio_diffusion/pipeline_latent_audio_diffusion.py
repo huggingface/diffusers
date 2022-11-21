@@ -29,7 +29,7 @@ class LatentAudioDiffusionPipeline(AudioDiffusionPipeline):
         vqae ([`AutoencoderKL`]): Variational AutoEncoder
         unet ([`UNet2DConditionModel`]): UNET model
         mel ([`Mel`]): transform audio <-> spectrogram
-        scheduler ([`Scheduler`]): de-noising scheduler
+        scheduler ([`DDIMScheduler` or `DDPMScheduler`]): de-noising scheduler
     """
 
     def __init__(

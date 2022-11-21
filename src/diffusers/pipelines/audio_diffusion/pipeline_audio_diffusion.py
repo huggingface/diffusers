@@ -34,7 +34,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
     Parameters:
         unet ([`UNet2DConditionModel`]): UNET model
         mel ([`Mel`]): transform audio <-> spectrogram
-        scheduler ([`Scheduler`]): de-noising scheduler
+        scheduler ([`DDIMScheduler` or `DDPMScheduler`]): de-noising scheduler
     """
 
     def __init__(self, unet: UNet2DConditionModel, mel: Mel, scheduler: Union[DDIMScheduler, DDPMScheduler]):
