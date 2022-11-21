@@ -72,7 +72,7 @@ class OnnxStableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         generator = np.random.RandomState(0)
         output = pipe(
             prompt=prompt,
-            init_image=init_image,
+            image=init_image,
             strength=0.75,
             guidance_scale=7.5,
             num_inference_steps=10,
@@ -110,7 +110,7 @@ class OnnxStableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         generator = np.random.RandomState(0)
         output = pipe(
             prompt=prompt,
-            init_image=init_image,
+            image=init_image,
             strength=0.75,
             guidance_scale=7.5,
             num_inference_steps=10,

@@ -411,7 +411,7 @@ class PipelineFastTests(unittest.TestCase):
             generator=generator,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
         ).images
         image_img2img = img2img(
@@ -419,7 +419,7 @@ class PipelineFastTests(unittest.TestCase):
             generator=generator,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
         ).images
         image_text2img = text2img(
             [prompt],
