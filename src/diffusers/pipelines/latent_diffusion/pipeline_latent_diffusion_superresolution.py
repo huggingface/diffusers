@@ -108,9 +108,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
         elif isinstance(image, torch.Tensor):
             batch_size = image.shape[0]
         else:
-            raise ValueError(
-                f"`image` has to be of type `PIL.Image.Image` or `torch.Tensor` but is {type(image)}"
-            )
+            raise ValueError(f"`image` has to be of type `PIL.Image.Image` or `torch.Tensor` but is {type(image)}")
 
         if isinstance(image, PIL.Image.Image):
             image = preprocess(image)
