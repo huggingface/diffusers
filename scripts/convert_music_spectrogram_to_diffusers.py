@@ -179,7 +179,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--model_path", default=None, type=str, required=True, help="Path to the converted model.")
+    parser.add_argument("--output_path", default=None, type=str, required=True, help="Path to the converted model.")
     parser.add_argument(
         "--save", default=True, type=bool, required=False, help="Whether to save the converted model or not."
     )

@@ -25,7 +25,7 @@ from ...schedulers import DDPMScheduler
 class FiLMLayer(nn.Module):
     def __init__(self, in_features, out_features):
         super().__init__()
-        self.scale_bias = nn.Linear(in_features, out_features * 2)
+        self.scale_bias = nn.Linear(in_features, out_features * 2, bias=False)
 
     def forward(self, x, conditioning_emb):
         scale_bias = self.scale_bias(conditioning_emb)
@@ -360,7 +360,7 @@ class Decoder(ModelMixin, ConfigMixin):
         self.position_encoding = nn.Embedding(targets_length, d_model)
         self.position_encoding.weight.requires_grad = False
 
-        self.continuous_inputs_projection = nn.Linear(input_dims, d_model)
+        self.continuous_inputs_projection = nn.Linear(input_dims, d_model, bias=False)
 
         self.dropout = nn.Dropout(p=dropout_rate)
 
@@ -393,16 +393,19 @@ class Decoder(ModelMixin, ConfigMixin):
         batch, _, _ = decoder_input_tokens.shape
         assert decoder_noise_time.shape == (batch,)
 
+        # TODO remove:
+        # decoder_input_tokens = torch.ones_like(decoder_input_tokens)
+
         # decoder_noise_time is in [0, 1), so rescale to expected timing range.
-        conditioning_emb = get_timestep_embedding(
+        time_steps = get_timestep_embedding(
             decoder_noise_time * self.config.max_decoder_noise_time,
             embedding_dim=self.config.d_model,
             max_period=self.config.max_decoder_noise_time,
         )
 
-        conditioning_emb = self.conditioning_emb(conditioning_emb)
+        conditioning_emb = self.conditioning_emb(time_steps).unsqueeze(1)
 
-        assert conditioning_emb.shape == (batch, self.config.d_model * 4)
+        assert conditioning_emb.shape == (batch, 1, self.config.d_model * 4)
 
         seq_length = decoder_input_tokens.shape[1]
 
@@ -415,14 +418,15 @@ class Decoder(ModelMixin, ConfigMixin):
 
         position_encodings = self.position_encoding(decoder_positions)
 
+        inputs = self.continuous_inputs_projection(decoder_input_tokens)
+        inputs += position_encodings
+        y = self.dropout(inputs)
+
         # decoder: No padding present.
         decoder_mask = torch.ones(decoder_input_tokens.shape[:2], device=decoder_input_tokens.device)
 
         # Translate encoding masks to encoder-decoder masks.
         encodings_and_encdec_masks = [(x, self.encoder_decoder_mask(decoder_mask, y)) for x, y in encodings_and_masks]
-        inputs = self.continuous_inputs_projection(decoder_input_tokens)
-        inputs += position_encodings
-        y = self.dropout(inputs)
 
         # cross attend style: concat encodings
         encoded = torch.cat([x[0] for x in encodings_and_encdec_masks], dim=1)
@@ -614,7 +618,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
             output = self.cont_context_trans.decode(
                 encodings_and_masks=encodings_and_masks,
                 input_tokens=x,
-                noise_time=t,
+                noise_time=t / num_inference_steps,  # rescale to [0, 1)
             )
 
             # 2. compute previous output: x_t -> x_t-1
