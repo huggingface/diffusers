@@ -37,6 +37,7 @@ from transformers import (
     CLIPTokenizer,
     CLIPVisionModelWithProjection,
 )
+from diffusers.pipelines.versatile_diffusion.modeling_text_unet import UNetMultiDimConditionModel
 
 
 SCHEDULER_CONFIG = Namespace(
@@ -256,9 +257,9 @@ def conv_attn_to_linear(checkpoint):
                 checkpoint[key] = checkpoint[key][:, :, 0]
 
 
-def create_unet_diffusers_config(unet_params):
+def create_image_unet_diffusers_config(unet_params):
     """
-    Creates a config for the diffusers based on the config of the LDM model.
+    Creates a config for the diffusers based on the config of the VD model.
     """
 
     block_out_channels = [unet_params.model_channels * mult for mult in unet_params.channel_mult]
@@ -274,6 +275,45 @@ def create_unet_diffusers_config(unet_params):
     up_block_types = []
     for i in range(len(block_out_channels)):
         block_type = "CrossAttnUpBlock2D" if unet_params.with_attn[-i - 1] else "UpBlock2D"
+        up_block_types.append(block_type)
+        resolution //= 2
+
+    if not all(n == unet_params.num_noattn_blocks[0] for n in unet_params.num_noattn_blocks):
+        raise ValueError("Not all num_res_blocks are equal, which is not supported in this script.")
+
+    config = dict(
+        sample_size=None,
+        in_channels=unet_params.input_channels,
+        out_channels=unet_params.output_channels,
+        down_block_types=tuple(down_block_types),
+        up_block_types=tuple(up_block_types),
+        block_out_channels=tuple(block_out_channels),
+        layers_per_block=unet_params.num_noattn_blocks[0],
+        cross_attention_dim=unet_params.context_dim,
+        attention_head_dim=unet_params.num_heads,
+    )
+
+    return config
+
+
+def create_text_unet_diffusers_config(unet_params):
+    """
+    Creates a config for the diffusers based on the config of the VD model.
+    """
+
+    block_out_channels = [unet_params.model_channels * mult for mult in unet_params.channel_mult]
+
+    down_block_types = []
+    resolution = 1
+    for i in range(len(block_out_channels)):
+        block_type = "CrossAttnDownBlockMultiDim" if unet_params.with_attn[i] else "DownBlockMultiDim"
+        down_block_types.append(block_type)
+        if i != len(block_out_channels) - 1:
+            resolution *= 2
+
+    up_block_types = []
+    for i in range(len(block_out_channels)):
+        block_type = "CrossAttnUpBlockMultiDim" if unet_params.with_attn[-i - 1] else "UpBlockMultiDim"
         up_block_types.append(block_type)
         resolution //= 2
 
@@ -674,7 +714,7 @@ if __name__ == "__main__":
     # Convert the UNet2DConditionModel models.
     if args.unet_checkpoint_path is not None:
         # image UNet
-        image_unet_config = create_unet_diffusers_config(IMAGE_UNET_CONFIG)
+        image_unet_config = create_image_unet_diffusers_config(IMAGE_UNET_CONFIG)
         checkpoint = torch.load(args.unet_checkpoint_path)
         converted_image_unet_checkpoint = convert_vd_unet_checkpoint(
             checkpoint, image_unet_config, unet_key="model.diffusion_model.unet_image.", extract_ema=args.extract_ema
@@ -683,28 +723,12 @@ if __name__ == "__main__":
         image_unet.load_state_dict(converted_image_unet_checkpoint)
 
         # text UNet
-        text_unet_config = create_unet_diffusers_config(TEXT_UNET_CONFIG)
+        text_unet_config = create_text_unet_diffusers_config(TEXT_UNET_CONFIG)
         converted_text_unet_checkpoint = convert_vd_unet_checkpoint(
             checkpoint, text_unet_config, unet_key="model.diffusion_model.unet_text.", extract_ema=args.extract_ema
         )
-        text_unet = UNet2DConditionModel(**text_unet_config)
-        # TEMP hack to skip converting the 1x1 blocks for the text unet
-        del converted_text_unet_checkpoint["conv_in.weight"]
-        del converted_text_unet_checkpoint["conv_in.bias"]
-        del converted_text_unet_checkpoint["conv_out.weight"]
-        for block in ["down_blocks", "mid_block", "up_blocks"]:
-            for i in range(4):
-                for j in range(3):
-                    for module in ["time_emb_proj", "conv1", "norm1", "conv2", "norm2", "conv_shortcut"]:
-                        for type in ["weight", "bias"]:
-                            if block == "mid_block":
-                                key = f"{block}.resnets.{j}.{module}.{type}"
-                            else:
-                                key = f"{block}.{i}.resnets.{j}.{module}.{type}"
-                            if key in converted_text_unet_checkpoint:
-                                del converted_text_unet_checkpoint[key]
-        # END TEMP hack
-        text_unet.load_state_dict(converted_text_unet_checkpoint, strict=False)
+        text_unet = UNetMultiDimConditionModel(**text_unet_config)
+        text_unet.load_state_dict(converted_text_unet_checkpoint)
 
     # Convert the VAE model.
     if args.vae_checkpoint_path is not None:
