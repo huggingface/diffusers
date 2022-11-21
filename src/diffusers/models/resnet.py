@@ -419,6 +419,8 @@ class ResnetBlock2D(nn.Module):
             self.nonlinearity = Mish()
         elif non_linearity == "silu":
             self.nonlinearity = nn.SiLU()
+        elif non_linearity == "gelu":
+            self.nonlinearity = nn.GELU()
 
         self.upsample = self.downsample = None
         if self.up:
