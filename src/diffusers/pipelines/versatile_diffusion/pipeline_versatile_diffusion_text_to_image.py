@@ -20,7 +20,8 @@ import torch.utils.checkpoint
 
 from transformers import CLIPFeatureExtractor, CLIPTextModelWithProjection, CLIPTokenizer
 
-from ...models import AutoencoderKL, UNet2DConditionModel, VQModel
+from .modeling_text_unet import UNetFlatConditionModel
+from ...models import UNet2DConditionModel, AutoencoderKL
 from ...models.attention import Transformer2DModel
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
@@ -52,7 +53,7 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
     image_feature_extractor: CLIPFeatureExtractor
     text_encoder: CLIPTextModelWithProjection
     image_unet: UNet2DConditionModel
-    text_unet: UNet2DConditionModel
+    text_unet: UNetFlatConditionModel
     vae: AutoencoderKL
     scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler]
 
@@ -61,8 +62,8 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModelWithProjection,
         image_unet: UNet2DConditionModel,
-        text_unet: UNet2DConditionModel,
-        vae: Union[VQModel, AutoencoderKL],
+        text_unet: UNetFlatConditionModel,
+        vae: AutoencoderKL,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
     ):
         super().__init__()

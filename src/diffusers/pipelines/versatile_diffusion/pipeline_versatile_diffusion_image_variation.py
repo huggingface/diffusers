@@ -22,8 +22,7 @@ import torch.utils.checkpoint
 import PIL
 from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
 
-from ...models import AutoencoderKL, UNet2DConditionModel, VQModel
-from ...models.attention import Transformer2DModel
+from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import is_accelerate_available, logging
@@ -72,16 +71,6 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
             vae=vae,
             scheduler=scheduler,
         )
-
-    def swap_unet_attention_blocks(self):
-        for name, module in self.image_unet.named_modules():
-            if isinstance(module, Transformer2DModel):
-                parent_name, index = name.rsplit(".", 1)
-                index = int(index)
-                self.image_unet.get_submodule(parent_name)[index], self.text_unet.get_submodule(parent_name)[index] = (
-                    self.text_unet.get_submodule(parent_name)[index],
-                    self.image_unet.get_submodule(parent_name)[index],
-                )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_xformers_memory_efficient_attention with unet->image_unet
     def enable_xformers_memory_efficient_attention(self):

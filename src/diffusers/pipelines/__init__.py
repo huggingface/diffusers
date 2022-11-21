@@ -28,6 +28,7 @@ if is_torch_available() and is_transformers_available():
         VersatileDiffusionImageVariationPipeline,
         VersatileDiffusionPipeline,
         VersatileDiffusionTextToImagePipeline,
+        VersatileDiffusionImageToTextPipeline,
     )
     from .vq_diffusion import VQDiffusionPipeline
 

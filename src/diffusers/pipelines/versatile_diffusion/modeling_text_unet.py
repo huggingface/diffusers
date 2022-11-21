@@ -6,8 +6,8 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...modeling_utils import ModelMixin
-from ...models.embeddings import TimestepEmbedding, Timesteps
 from ...models.attention import Transformer2DModel
+from ...models.embeddings import TimestepEmbedding, Timesteps
 from ...models.unet_2d_condition import UNet2DConditionOutput
 from ...utils import logging
 
@@ -15,7 +15,7 @@ from ...utils import logging
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def get_down_block_multi_dim(
+def get_down_block(
     down_block_type,
     num_layers,
     in_channels,
@@ -23,38 +23,45 @@ def get_down_block_multi_dim(
     temb_channels,
     add_downsample,
     resnet_eps,
+    resnet_act_fn,
     attn_num_head_channels,
     resnet_groups=None,
     cross_attention_dim=None,
+    downsample_padding=None,
 ):
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
-    if down_block_type == "DownBlockMultiDim":
-        return DownBlockMultiDim(
+    if down_block_type == "DownBlockFlat":
+        return DownBlockFlat(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
             temb_channels=temb_channels,
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
+            resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
+            downsample_padding=downsample_padding,
         )
-    elif down_block_type == "CrossAttnDownBlockMultiDim":
+    elif down_block_type == "CrossAttnDownBlockFlat":
         if cross_attention_dim is None:
-            raise ValueError("cross_attention_dim must be specified for CrossAttnDownBlockMultiDim")
-        return CrossAttnDownBlockMultiDim(
+            raise ValueError("cross_attention_dim must be specified for CrossAttnDownBlockFlat")
+        return CrossAttnDownBlockFlat(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
             temb_channels=temb_channels,
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
+            resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
+            downsample_padding=downsample_padding,
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
         )
     raise ValueError(f"{down_block_type} is not supported.")
 
-def get_up_block_multi_dim(
+
+def get_up_block(
     up_block_type,
     num_layers,
     in_channels,
@@ -63,13 +70,14 @@ def get_up_block_multi_dim(
     temb_channels,
     add_upsample,
     resnet_eps,
+    resnet_act_fn,
     attn_num_head_channels,
     resnet_groups=None,
     cross_attention_dim=None,
 ):
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
-    if up_block_type == "UpBlockMultiDim":
-        return UpBlockMultiDim(
+    if up_block_type == "UpBlockFlat":
+        return UpBlockFlat(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
@@ -77,12 +85,13 @@ def get_up_block_multi_dim(
             temb_channels=temb_channels,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
+            resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
         )
-    elif up_block_type == "CrossAttnUpBlockMultiDim":
+    elif up_block_type == "CrossAttnUpBlockFlat":
         if cross_attention_dim is None:
-            raise ValueError("cross_attention_dim must be specified for CrossAttnUpBlockMultiDim")
-        return CrossAttnUpBlockMultiDim(
+            raise ValueError("cross_attention_dim must be specified for CrossAttnUpBlockFlat")
+        return CrossAttnUpBlockFlat(
             num_layers=num_layers,
             in_channels=in_channels,
             out_channels=out_channels,
@@ -90,6 +99,7 @@ def get_up_block_multi_dim(
             temb_channels=temb_channels,
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
+            resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
@@ -97,11 +107,11 @@ def get_up_block_multi_dim(
     raise ValueError(f"{up_block_type} is not supported.")
 
 
-# Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->LMSDiscrete
-class UNetMultiDimConditionModel(ModelMixin, ConfigMixin):
+# Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel with UNet2DConditionModel->UNetFlatConditionModel, nn.Conv2d->LinearMultiDim, Block2D->BlockFlat
+class UNetFlatConditionModel(ModelMixin, ConfigMixin):
     r"""
-    UNet2DConditionModel is a conditional 2D UNet model that takes in a noisy sample, conditional state, and a timestep
-    and returns sample shaped output.
+    UNetFlatConditionModel is a conditional 2D UNet model that takes in a noisy sample, conditional state, and a
+    timestep and returns sample shaped output.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for the generic methods the library
     implements for all the models (such as downloading or saving, etc.)
@@ -114,9 +124,9 @@ class UNetMultiDimConditionModel(ModelMixin, ConfigMixin):
         flip_sin_to_cos (`bool`, *optional*, defaults to `True`):
             Whether to flip the sin to cos in the time embedding.
         freq_shift (`int`, *optional*, defaults to 0): The frequency shift to apply to the time embedding.
-        down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
+        down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlockFlat", "CrossAttnDownBlockFlat", "CrossAttnDownBlockFlat", "DownBlockFlat")`):
             The tuple of downsample blocks to use.
-        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D",)`):
+        up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlockFlat", "CrossAttnUpBlockFlat", "CrossAttnUpBlockFlat", "CrossAttnUpBlockFlat",)`):
             The tuple of upsample blocks to use.
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
@@ -142,19 +152,18 @@ class UNetMultiDimConditionModel(ModelMixin, ConfigMixin):
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
         down_block_types: Tuple[str] = (
-            "CrossAttnDownBlockMultiDim",
-            "CrossAttnDownBlockMultiDim",
-            "CrossAttnDownBlockMultiDim",
-            "DownBlockMultiDim",
+            "CrossAttnDownBlockFlat",
+            "CrossAttnDownBlockFlat",
+            "CrossAttnDownBlockFlat",
+            "DownBlockFlat",
         ),
         up_block_types: Tuple[str] = (
-            "UpBlockMultiDim",
-            "CrossAttnUpBlockMultiDim",
-            "CrossAttnUpBlockMultiDim",
-            "CrossAttnUpBlockMultiDim",
+            "UpBlockFlat",
+            "CrossAttnUpBlockFlat",
+            "CrossAttnUpBlockFlat",
+            "CrossAttnUpBlockFlat",
         ),
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
-        block_second_dim: Tuple[int] = (4, 4, 4, 4),
         layers_per_block: int = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
@@ -170,7 +179,7 @@ class UNetMultiDimConditionModel(ModelMixin, ConfigMixin):
         time_embed_dim = block_out_channels[0] * 4
 
         # input
-        self.conv_in = LinearMultiDim([in_channels, 1, 1], [block_out_channels[0], block_second_dim[0], 1])
+        self.conv_in = LinearMultiDim(in_channels, block_out_channels[0], kernel_size=3, padding=(1, 1))
 
         # time
         self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos, freq_shift)
@@ -187,25 +196,26 @@ class UNetMultiDimConditionModel(ModelMixin, ConfigMixin):
         for i, down_block_type in enumerate(down_block_types):
             input_channel = output_channel
             output_channel = block_out_channels[i]
-            second_dim = block_second_dim[i]
             is_final_block = i == len(block_out_channels) - 1
 
-            down_block = get_down_block_multi_dim(
+            down_block = get_down_block(
                 down_block_type,
                 num_layers=layers_per_block,
                 in_channels=input_channel,
-                out_channels=[output_channel, second_dim, 1],
+                out_channels=output_channel,
                 temb_channels=time_embed_dim,
                 add_downsample=not is_final_block,
                 resnet_eps=norm_eps,
+                resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=attention_head_dim,
+                downsample_padding=downsample_padding,
             )
             self.down_blocks.append(down_block)
 
         # mid
-        self.mid_block = UNetMidBlockMultiDimCrossAttn(
+        self.mid_block = UNetMidBlockFlatCrossAttn(
             in_channels=block_out_channels[-1],
             temb_channels=time_embed_dim,
             resnet_eps=norm_eps,
@@ -237,7 +247,7 @@ class UNetMultiDimConditionModel(ModelMixin, ConfigMixin):
             else:
                 add_upsample = False
 
-            up_block = get_up_block_multi_dim(
+            up_block = get_up_block(
                 up_block_type,
                 num_layers=layers_per_block + 1,
                 in_channels=input_channel,
@@ -246,6 +256,7 @@ class UNetMultiDimConditionModel(ModelMixin, ConfigMixin):
                 temb_channels=time_embed_dim,
                 add_upsample=add_upsample,
                 resnet_eps=norm_eps,
+                resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=attention_head_dim,
@@ -256,7 +267,7 @@ class UNetMultiDimConditionModel(ModelMixin, ConfigMixin):
         # out
         self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps)
         self.conv_act = nn.SiLU()
-        self.conv_out = LinearMultiDim(block_out_channels[0], [out_channels, 1, 1])
+        self.conv_out = LinearMultiDim(block_out_channels[0], out_channels, kernel_size=3, padding=1)
 
     def set_attention_slice(self, slice_size):
         if slice_size is not None and self.config.attention_head_dim % slice_size != 0:
@@ -292,9 +303,7 @@ class UNetMultiDimConditionModel(ModelMixin, ConfigMixin):
                 block.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
 
     def _set_gradient_checkpointing(self, module, value=False):
-        if isinstance(
-            module, (CrossAttnDownBlockMultiDim, DownBlockMultiDim, CrossAttnUpBlockMultiDim, UpBlockMultiDim)
-        ):
+        if isinstance(module, (CrossAttnDownBlockFlat, DownBlockFlat, CrossAttnUpBlockFlat, UpBlockFlat)):
             module.gradient_checkpointing = value
 
     def forward(
@@ -308,7 +317,8 @@ class UNetMultiDimConditionModel(ModelMixin, ConfigMixin):
         Args:
             sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
             timestep (`torch.FloatTensor` or `float` or `int`): (batch) timesteps
-            encoder_hidden_states (`torch.FloatTensor`): (batch, channel, height, width) encoder hidden states
+            encoder_hidden_states (`torch.FloatTensor`):
+                (batch_size, sequence_length, hidden_size) encoder hidden states
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
 
@@ -410,23 +420,25 @@ class UNetMultiDimConditionModel(ModelMixin, ConfigMixin):
 
 
 class LinearMultiDim(nn.Linear):
-    def __init__(self, in_features, out_features, second_dim=4, *args, **kwargs):
+    def __init__(self, in_features, out_features=None, second_dim=4, *args, **kwargs):
         in_features = [in_features, second_dim, 1] if isinstance(in_features, int) else list(in_features)
+        if out_features is None:
+            out_features = in_features
         out_features = [out_features, second_dim, 1] if isinstance(out_features, int) else list(out_features)
         self.in_features_multidim = in_features
         self.out_features_multidim = out_features
         super().__init__(np.array(in_features).prod(), np.array(out_features).prod())
 
-    def forward(self, x):
-        shape = x.shape
-        n = len(self.in_features_multidim)
-        x = x.view(*shape[0:-n], self.in_features)
-        y = super().forward(x)
-        y = y.view(*shape[0:-n], *self.out_features_multidim)
-        return y
+    def forward(self, input_tensor, *args, **kwargs):
+        shape = input_tensor.shape
+        n_dim = len(self.in_features_multidim)
+        input_tensor = input_tensor.reshape(*shape[0:-n_dim], self.in_features)
+        output_tensor = super().forward(input_tensor)
+        output_tensor = output_tensor.view(*shape[0:-n_dim], *self.out_features_multidim)
+        return output_tensor
 
 
-class ResnetBlockMultiDim(nn.Module):
+class ResnetBlockFlat(nn.Module):
     def __init__(
         self,
         *,
@@ -440,29 +452,31 @@ class ResnetBlockMultiDim(nn.Module):
         eps=1e-6,
         time_embedding_norm="default",
         use_in_shortcut=None,
+        second_dim=4,
+        **kwargs,
     ):
         super().__init__()
         self.pre_norm = pre_norm
         self.pre_norm = True
 
-        in_channels = [in_channels] if isinstance(in_channels, int) else list(in_channels)
-        in_channels_prod = np.array(in_channels).prod()
+        in_channels = [in_channels, second_dim, 1] if isinstance(in_channels, int) else list(in_channels)
+        self.in_channels_prod = np.array(in_channels).prod()
         self.channels_multidim = in_channels
 
         if out_channels is not None:
-            out_channels = [out_channels] if isinstance(out_channels, int) else list(out_channels)
+            out_channels = [out_channels, second_dim, 1] if isinstance(out_channels, int) else list(out_channels)
             out_channels_prod = np.array(out_channels).prod()
             self.out_channels_multidim = out_channels
         else:
-            out_channels_prod = in_channels_prod
+            out_channels_prod = self.in_channels_prod
             self.out_channels_multidim = self.channels_multidim
         self.time_embedding_norm = time_embedding_norm
 
         if groups_out is None:
             groups_out = groups
 
-        self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels_prod, eps=eps, affine=True)
-        self.conv1 = torch.nn.Conv2d(in_channels_prod, out_channels_prod, kernel_size=1, padding=0)
+        self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=self.in_channels_prod, eps=eps, affine=True)
+        self.conv1 = torch.nn.Conv2d(self.in_channels_prod, out_channels_prod, kernel_size=1, padding=0)
 
         if temb_channels is not None:
             self.time_emb_proj = torch.nn.Linear(temb_channels, out_channels_prod)
@@ -475,15 +489,20 @@ class ResnetBlockMultiDim(nn.Module):
 
         self.nonlinearity = nn.SiLU()
 
-        self.use_in_shortcut = in_channels_prod != out_channels_prod if use_in_shortcut is None else use_in_shortcut
+        self.use_in_shortcut = self.in_channels_prod != out_channels_prod if use_in_shortcut is None else use_in_shortcut
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
             self.conv_shortcut = torch.nn.Conv2d(
-                in_channels_prod, out_channels_prod, kernel_size=1, stride=1, padding=0
+                self.in_channels_prod, out_channels_prod, kernel_size=1, stride=1, padding=0
             )
 
     def forward(self, input_tensor, temb):
+        shape = input_tensor.shape
+        n_dim = len(self.channels_multidim)
+        input_tensor = input_tensor.reshape(*shape[0:-n_dim], self.in_channels_prod, 1, 1)
+        input_tensor = input_tensor.view(-1, self.in_channels_prod, 1, 1)
+
         hidden_states = input_tensor
 
         hidden_states = self.norm1(hidden_states)
@@ -505,10 +524,15 @@ class ResnetBlockMultiDim(nn.Module):
 
         output_tensor = input_tensor + hidden_states
 
+        output_tensor = output_tensor.view(*shape[0:-n_dim], -1)
+        output_tensor = output_tensor.view(*shape[0:-n_dim], *self.out_channels_multidim)
+
+        print("resblock.output_tensor", output_tensor.abs().sum())
         return output_tensor
 
 
-class DownBlockMultiDim(nn.Module):
+# Copied from diffusers.models.unet_2d_blocks.DownBlock2D with DownBlock2D->DownBlockFlat, ResnetBlock2D->ResnetBlockFlat, Downsample2D->LinearMultiDim
+class DownBlockFlat(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -518,9 +542,12 @@ class DownBlockMultiDim(nn.Module):
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
+        resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
+        output_scale_factor=1.0,
         add_downsample=True,
+        downsample_padding=1,
     ):
         super().__init__()
         resnets = []
@@ -528,7 +555,7 @@ class DownBlockMultiDim(nn.Module):
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
             resnets.append(
-                ResnetBlockMultiDim(
+                ResnetBlockFlat(
                     in_channels=in_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
@@ -536,6 +563,8 @@ class DownBlockMultiDim(nn.Module):
                     groups=resnet_groups,
                     dropout=dropout,
                     time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
                 )
             )
@@ -543,7 +572,13 @@ class DownBlockMultiDim(nn.Module):
         self.resnets = nn.ModuleList(resnets)
 
         if add_downsample:
-            self.downsamplers = nn.ModuleList([LinearMultiDim(out_channels, out_channels)])
+            self.downsamplers = nn.ModuleList(
+                [
+                    LinearMultiDim(
+                        out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                    )
+                ]
+            )
         else:
             self.downsamplers = None
 
@@ -576,7 +611,8 @@ class DownBlockMultiDim(nn.Module):
         return hidden_states, output_states
 
 
-class CrossAttnDownBlockMultiDim(nn.Module):
+# Copied from diffusers.models.unet_2d_blocks.CrossAttnDownBlock2D with CrossAttnDownBlock2D->CrossAttnDownBlockFlat, ResnetBlock2D->ResnetBlockFlat, Downsample2D->LinearMultiDim
+class CrossAttnDownBlockFlat(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -586,11 +622,14 @@ class CrossAttnDownBlockMultiDim(nn.Module):
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
+        resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         attn_num_head_channels=1,
         cross_attention_dim=1280,
         attention_type="default",
+        output_scale_factor=1.0,
+        downsample_padding=1,
         add_downsample=True,
     ):
         super().__init__()
@@ -603,7 +642,7 @@ class CrossAttnDownBlockMultiDim(nn.Module):
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
             resnets.append(
-                ResnetBlockMultiDim(
+                ResnetBlockFlat(
                     in_channels=in_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
@@ -611,14 +650,16 @@ class CrossAttnDownBlockMultiDim(nn.Module):
                     groups=resnet_groups,
                     dropout=dropout,
                     time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
                 )
             )
             attentions.append(
                 Transformer2DModel(
                     attn_num_head_channels,
-                    out_channels[0] // attn_num_head_channels,
-                    in_channels=out_channels[0],
+                    out_channels // attn_num_head_channels,
+                    in_channels=out_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
@@ -628,7 +669,13 @@ class CrossAttnDownBlockMultiDim(nn.Module):
         self.resnets = nn.ModuleList(resnets)
 
         if add_downsample:
-            self.downsamplers = nn.ModuleList([LinearMultiDim(out_channels, out_channels)])
+            self.downsamplers = nn.ModuleList(
+                [
+                    LinearMultiDim(
+                        out_channels, use_conv=True, out_channels=out_channels, padding=downsample_padding, name="op"
+                    )
+                ]
+            )
         else:
             self.downsamplers = None
 
@@ -687,7 +734,8 @@ class CrossAttnDownBlockMultiDim(nn.Module):
         return hidden_states, output_states
 
 
-class UpBlockMultiDim(nn.Module):
+# Copied from diffusers.models.unet_2d_blocks.UpBlock2D with UpBlock2D->UpBlockFlat, ResnetBlock2D->ResnetBlockFlat, Upsample2D->LinearMultiDim
+class UpBlockFlat(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -698,8 +746,10 @@ class UpBlockMultiDim(nn.Module):
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
+        resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
+        output_scale_factor=1.0,
         add_upsample=True,
     ):
         super().__init__()
@@ -710,7 +760,7 @@ class UpBlockMultiDim(nn.Module):
             resnet_in_channels = prev_output_channel if i == 0 else out_channels
 
             resnets.append(
-                ResnetBlockMultiDim(
+                ResnetBlockFlat(
                     in_channels=resnet_in_channels + res_skip_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
@@ -718,6 +768,8 @@ class UpBlockMultiDim(nn.Module):
                     groups=resnet_groups,
                     dropout=dropout,
                     time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
                 )
             )
@@ -725,7 +777,7 @@ class UpBlockMultiDim(nn.Module):
         self.resnets = nn.ModuleList(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([LinearMultiDim(out_channels, out_channels)])
+            self.upsamplers = nn.ModuleList([LinearMultiDim(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -757,7 +809,8 @@ class UpBlockMultiDim(nn.Module):
         return hidden_states
 
 
-class CrossAttnUpBlockMultiDim(nn.Module):
+# Copied from diffusers.models.unet_2d_blocks.CrossAttnUpBlock2D with CrossAttnUpBlock2D->CrossAttnUpBlockFlat, ResnetBlock2D->ResnetBlockFlat, Upsample2D->LinearMultiDim
+class CrossAttnUpBlockFlat(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -768,11 +821,13 @@ class CrossAttnUpBlockMultiDim(nn.Module):
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
+        resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         attn_num_head_channels=1,
         cross_attention_dim=1280,
         attention_type="default",
+        output_scale_factor=1.0,
         add_upsample=True,
     ):
         super().__init__()
@@ -787,7 +842,7 @@ class CrossAttnUpBlockMultiDim(nn.Module):
             resnet_in_channels = prev_output_channel if i == 0 else out_channels
 
             resnets.append(
-                ResnetBlockMultiDim(
+                ResnetBlockFlat(
                     in_channels=resnet_in_channels + res_skip_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
@@ -795,6 +850,8 @@ class CrossAttnUpBlockMultiDim(nn.Module):
                     groups=resnet_groups,
                     dropout=dropout,
                     time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
                 )
             )
@@ -812,7 +869,7 @@ class CrossAttnUpBlockMultiDim(nn.Module):
         self.resnets = nn.ModuleList(resnets)
 
         if add_upsample:
-            self.upsamplers = nn.ModuleList([LinearMultiDim(out_channels, out_channels)])
+            self.upsamplers = nn.ModuleList([LinearMultiDim(out_channels, use_conv=True, out_channels=out_channels)])
         else:
             self.upsamplers = None
 
@@ -879,7 +936,8 @@ class CrossAttnUpBlockMultiDim(nn.Module):
         return hidden_states
 
 
-class UNetMidBlockMultiDimCrossAttn(nn.Module):
+# Copied from diffusers.models.unet_2d_blocks.UNetMidBlock2DCrossAttn with UNetMidBlock2DCrossAttn->UNetMidBlockFlatCrossAttn, ResnetBlock2D->ResnetBlockFlat
+class UNetMidBlockFlatCrossAttn(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -888,10 +946,12 @@ class UNetMidBlockMultiDimCrossAttn(nn.Module):
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
+        resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         attn_num_head_channels=1,
         attention_type="default",
+        output_scale_factor=1.0,
         cross_attention_dim=1280,
         **kwargs,
     ):
@@ -903,7 +963,7 @@ class UNetMidBlockMultiDimCrossAttn(nn.Module):
 
         # there is always at least one resnet
         resnets = [
-            ResnetBlockMultiDim(
+            ResnetBlockFlat(
                 in_channels=in_channels,
                 out_channels=in_channels,
                 temb_channels=temb_channels,
@@ -911,6 +971,8 @@ class UNetMidBlockMultiDimCrossAttn(nn.Module):
                 groups=resnet_groups,
                 dropout=dropout,
                 time_embedding_norm=resnet_time_scale_shift,
+                non_linearity=resnet_act_fn,
+                output_scale_factor=output_scale_factor,
                 pre_norm=resnet_pre_norm,
             )
         ]
@@ -928,7 +990,7 @@ class UNetMidBlockMultiDimCrossAttn(nn.Module):
                 )
             )
             resnets.append(
-                ResnetBlockMultiDim(
+                ResnetBlockFlat(
                     in_channels=in_channels,
                     out_channels=in_channels,
                     temb_channels=temb_channels,
@@ -936,6 +998,8 @@ class UNetMidBlockMultiDimCrossAttn(nn.Module):
                     groups=resnet_groups,
                     dropout=dropout,
                     time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
                     pre_norm=resnet_pre_norm,
                 )
             )

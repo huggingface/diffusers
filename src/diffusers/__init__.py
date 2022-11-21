@@ -76,6 +76,7 @@ if is_torch_available() and is_transformers_available():
         VersatileDiffusionImageVariationPipeline,
         VersatileDiffusionPipeline,
         VersatileDiffusionTextToImagePipeline,
+        VersatileDiffusionImageToTextPipeline,
         VQDiffusionPipeline,
     )
 else:

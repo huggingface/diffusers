@@ -31,13 +31,14 @@ from diffusers import (
     UNet2DConditionModel,
     VersatileDiffusionPipeline,
 )
+from diffusers.pipelines.versatile_diffusion.modeling_text_unet import UNetFlatConditionModel
+from diffusers.pipelines.versatile_diffusion.modeling_gpt2_optimus import GPT2OptimusForLatentConnector
 from transformers import (
     CLIPFeatureExtractor,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
     CLIPVisionModelWithProjection,
 )
-from diffusers.pipelines.versatile_diffusion.modeling_text_unet import UNetMultiDimConditionModel
 
 
 SCHEDULER_CONFIG = Namespace(
@@ -241,7 +242,7 @@ def assign_to_checkpoint(
         # proj_attn.weight has to be converted from conv 1D to linear
         if "proj_attn.weight" in new_path:
             checkpoint[new_path] = old_checkpoint[path["old"]][:, :, 0]
-        else:
+        elif path["old"] in old_checkpoint:
             checkpoint[new_path] = old_checkpoint[path["old"]]
 
 
@@ -306,14 +307,14 @@ def create_text_unet_diffusers_config(unet_params):
     down_block_types = []
     resolution = 1
     for i in range(len(block_out_channels)):
-        block_type = "CrossAttnDownBlockMultiDim" if unet_params.with_attn[i] else "DownBlockMultiDim"
+        block_type = "CrossAttnDownBlockFlat" if unet_params.with_attn[i] else "DownBlockFlat"
         down_block_types.append(block_type)
         if i != len(block_out_channels) - 1:
             resolution *= 2
 
     up_block_types = []
     for i in range(len(block_out_channels)):
-        block_type = "CrossAttnUpBlockMultiDim" if unet_params.with_attn[-i - 1] else "UpBlockMultiDim"
+        block_type = "CrossAttnUpBlockFlat" if unet_params.with_attn[-i - 1] else "UpBlockFlat"
         up_block_types.append(block_type)
         resolution //= 2
 
@@ -322,8 +323,8 @@ def create_text_unet_diffusers_config(unet_params):
 
     config = dict(
         sample_size=None,
-        in_channels=unet_params.input_channels,
-        out_channels=unet_params.output_channels,
+        in_channels=(unet_params.input_channels, 1, 1),
+        out_channels=(unet_params.output_channels, 1, 1),
         down_block_types=tuple(down_block_types),
         up_block_types=tuple(up_block_types),
         block_out_channels=tuple(block_out_channels),
@@ -450,6 +451,17 @@ def convert_vd_unet_checkpoint(checkpoint, config, unet_key, extract_ema=False):
             new_checkpoint[f"down_blocks.{block_id}.downsamplers.0.conv.bias"] = unet_state_dict.pop(
                 f"input_blocks.{i}.0.op.bias"
             )
+        elif f"input_blocks.{i}.0.weight" in unet_state_dict:
+            # text_unet uses linear layers in place of downsamplers
+            shape = unet_state_dict[f"input_blocks.{i}.0.weight"].shape
+            if shape[0] != shape[1]:
+                continue
+            new_checkpoint[f"down_blocks.{block_id}.downsamplers.0.weight"] = unet_state_dict.pop(
+                f"input_blocks.{i}.0.weight"
+            )
+            new_checkpoint[f"down_blocks.{block_id}.downsamplers.0.bias"] = unet_state_dict.pop(
+                f"input_blocks.{i}.0.bias"
+            )
 
         paths = renew_resnet_paths(resnets)
         meta_path = {"old": f"input_blocks.{i}.0", "new": f"down_blocks.{block_id}.resnets.{layer_in_block_id}"}
@@ -512,10 +524,34 @@ def convert_vd_unet_checkpoint(checkpoint, config, unet_key, extract_ema=False):
                 new_checkpoint[f"up_blocks.{block_id}.upsamplers.0.conv.bias"] = unet_state_dict[
                     f"output_blocks.{i}.{index}.conv.bias"
                 ]
-
                 # Clear attentions as they have been attributed above.
                 if len(attentions) == 2:
                     attentions = []
+            elif f"output_blocks.{i}.1.weight" in unet_state_dict:
+                # text_unet uses linear layers in place of upsamplers
+                shape = unet_state_dict[f"output_blocks.{i}.1.weight"].shape
+                if shape[0] != shape[1]:
+                    continue
+                new_checkpoint[f"up_blocks.{block_id}.upsamplers.0.weight"] = unet_state_dict.pop(
+                    f"output_blocks.{i}.1.weight"
+                )
+                new_checkpoint[f"up_blocks.{block_id}.upsamplers.0.bias"] = unet_state_dict.pop(
+                    f"output_blocks.{i}.1.bias"
+                )
+                # Clear attentions as they have been attributed above.
+                if len(attentions) == 2:
+                    attentions = []
+            elif f"output_blocks.{i}.2.weight" in unet_state_dict:
+                # text_unet uses linear layers in place of upsamplers
+                shape = unet_state_dict[f"output_blocks.{i}.2.weight"].shape
+                if shape[0] != shape[1]:
+                    continue
+                new_checkpoint[f"up_blocks.{block_id}.upsamplers.0.weight"] = unet_state_dict.pop(
+                    f"output_blocks.{i}.2.weight"
+                )
+                new_checkpoint[f"up_blocks.{block_id}.upsamplers.0.bias"] = unet_state_dict.pop(
+                    f"output_blocks.{i}.2.bias"
+                )
 
             if len(attentions):
                 paths = renew_attention_paths(attentions)
@@ -727,7 +763,7 @@ if __name__ == "__main__":
         converted_text_unet_checkpoint = convert_vd_unet_checkpoint(
             checkpoint, text_unet_config, unet_key="model.diffusion_model.unet_text.", extract_ema=args.extract_ema
         )
-        text_unet = UNetMultiDimConditionModel(**text_unet_config)
+        text_unet = UNetFlatConditionModel(**text_unet_config)
         text_unet.load_state_dict(converted_text_unet_checkpoint)
 
     # Convert the VAE model.
