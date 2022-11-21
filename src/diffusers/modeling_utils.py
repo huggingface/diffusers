@@ -30,11 +30,11 @@ from .utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
-    WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
+    WEIGHTS_NAME,
     is_accelerate_available,
-    is_torch_version,
     is_safetensors_available,
+    is_torch_version,
     logging,
 )
 
@@ -725,7 +725,7 @@ def _get_model_file(
             )
         except HTTPError as err:
             raise EnvironmentError(
-                "There was a specific connection error when trying to load" f" {pretrained_model_name_or_path}:\n{err}"
+                f"There was a specific connection error when trying to load {pretrained_model_name_or_path}:\n{err}"
             )
         except ValueError:
             raise EnvironmentError(
