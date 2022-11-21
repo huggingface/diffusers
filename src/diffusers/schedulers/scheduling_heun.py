@@ -69,11 +69,18 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         #  set all values
         self.set_timesteps(num_train_timesteps, None, num_train_timesteps)
 
+    def index_for_timestep(self, timestep):
+        indices = (self.timesteps == timestep).nonzero()
+        if self.state_in_first_order:
+            pos = 0 if indices.shape[0] < 2 else 1
+        else:
+            pos = 0
+        return indices[pos].item()
+
     def scale_model_input(
         self,
         sample: torch.FloatTensor,
         timestep: Union[float, torch.FloatTensor],
-        step_index: Union[int, torch.IntTensor],
     ) -> torch.FloatTensor:
         """
         Args:
@@ -83,6 +90,8 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         Returns:
             `torch.FloatTensor`: scaled input sample
         """
+        step_index = self.index_for_timestep(timestep)
+
         sigma = self.sigmas[step_index]
         sample = sample / ((sigma**2 + 1) ** 0.5)
         return sample
@@ -113,6 +122,9 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         sigmas = torch.from_numpy(sigmas).to(device=device)
         self.sigmas = torch.cat([sigmas[:1], sigmas[1:-1].repeat_interleave(2), sigmas[-1:]])
+
+        # standard deviation of the initial noise distribution
+        self.init_noise_sigma = self.sigmas.max()
 
         timesteps = torch.from_numpy(timesteps)
         timesteps = torch.cat([timesteps[:1], timesteps[1:].repeat_interleave(2), timesteps[-1:]])
@@ -151,7 +163,8 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             [`~schedulers.scheduling_utils.SchedulerOutput`] if `return_dict` is True, otherwise a `tuple`. When
             returning a tuple, the first element is the sample tensor.
         """
-        step_index = (self.timesteps == timestep).nonzero().item()
+        step_index = self.index_for_timestep(timestep)
+        print(step_index)
 
         if self.state_in_first_order:
             sigma = self.sigmas[step_index]
@@ -179,6 +192,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             # store for 2nd order step
             self.prev_derivative = derivative
             self.dt = dt
+            self.sample = sample
         else:
             # 2. 2nd order / Heun's method
             derivative = (sample - pred_original_sample) / sigma_hat
@@ -186,13 +200,15 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
             # 3. Retrieve 1st order derivative
             dt = self.dt
+            sample = self.sample
 
             # free dt and derivative
             # Note, this puts the scheduler in "first order mode"
             self.prev_derivative = None
             self.dt = None
+            self.sample = None
 
-        prev_sample = model_output + derivative * self.dt
+        prev_sample = sample + derivative * dt
 
         if not return_dict:
             return (prev_sample,)
