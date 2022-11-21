@@ -158,7 +158,7 @@ class Mel(ConfigMixin):
         **kwargs,
     ):
         r"""
-        Instantiate a Scheduler class from a pre-defined JSON configuration file inside a directory or Hub repo.
+        Instantiate a Mel class from a pre-defined JSON configuration file inside a directory or Hub repo.
 
         Parameters:
             pretrained_model_name_or_path (`str` or `os.PathLike`, *optional*):
@@ -166,8 +166,8 @@ class Mel(ConfigMixin):
 
                     - A string, the *model id* of a model repo on huggingface.co. Valid model ids should have an
                       organization name, like `google/ddpm-celebahq-256`.
-                    - A path to a *directory* containing the schedluer configurations saved using
-                      [`~SchedulerMixin.save_pretrained`], e.g., `./my_model_directory/`.
+                    - A path to a *directory* containing the mel configurations saved using
+                      [`~Mel.save_pretrained`], e.g., `./my_model_directory/`.
             subfolder (`str`, *optional*):
                 In case the relevant files are located inside a subfolder of the model repo (either remote in
                 huggingface.co or downloaded locally), you can specify the folder name here.
@@ -222,8 +222,8 @@ class Mel(ConfigMixin):
 
     def save_pretrained(self, save_directory: Union[str, os.PathLike], push_to_hub: bool = False, **kwargs):
         """
-        Save a scheduler configuration object to the directory `save_directory`, so that it can be re-loaded using the
-        [`~SchedulerMixin.from_pretrained`] class method.
+        Save a mel configuration object to the directory `save_directory`, so that it can be re-loaded using the
+        [`~Mel.from_pretrained`] class method.
 
         Args:
             save_directory (`str` or `os.PathLike`):
