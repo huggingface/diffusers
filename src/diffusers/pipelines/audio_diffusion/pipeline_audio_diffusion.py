@@ -1,4 +1,17 @@
-# For training scripts and notebooks see https://github.com/teticio/audio-diffusion
+# Copyright 2022 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 
 from math import acos, sin
 from typing import List, Tuple, Union
@@ -8,16 +21,22 @@ import torch
 
 from PIL import Image
 
-from ...models import UNet2DConditionModel
+from ...models import Mel, UNet2DConditionModel
 from ...pipeline_utils import AudioPipelineOutput, BaseOutput, DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler, DDPMScheduler
-from .mel import Mel
 
 
 class AudioDiffusionPipeline(DiffusionPipeline):
-    def __init__(self, unet: UNet2DConditionModel, scheduler: Union[DDIMScheduler, DDPMScheduler]):
+    def __init__(self, unet: UNet2DConditionModel, mel: Mel, scheduler: Union[DDIMScheduler, DDPMScheduler]):
+        """Audio Diffusion pipeline.
+
+        Args:
+            unet (UNet2DConditionModel): UNET model
+            mel (Mel): transform audio <-> spectrogram
+            scheduler (Scheduler): de-noising scheduler
+        """
         super().__init__()
-        self.register_modules(unet=unet, scheduler=scheduler)
+        self.register_modules(unet=unet, scheduler=scheduler, mel=mel)
 
     def get_input_dims(self) -> Tuple:
         """Returns dimension of input image
@@ -45,7 +64,6 @@ class AudioDiffusionPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        mel: Mel,
         batch_size: int = 1,
         audio_file: str = None,
         raw_audio: np.ndarray = None,
@@ -65,7 +83,6 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         """Generate random mel spectrogram from audio input and convert to audio.
 
         Args:
-            mel (Mel): instance of Mel class to perform image <-> audio
             batch_size (int): number of samples to generate
             audio_file (str): must be a file on disk due to Librosa limitation or
             raw_audio (np.ndarray): audio as numpy array
@@ -91,7 +108,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         if type(self.unet.sample_size) == int:
             self.unet.sample_size = (self.unet.sample_size, self.unet.sample_size)
         input_dims = self.get_input_dims()
-        mel.set_resolution(x_res=input_dims[1], y_res=input_dims[0])
+        self.mel.set_resolution(x_res=input_dims[1], y_res=input_dims[0])
         if noise is None:
             noise = torch.randn(
                 (batch_size, self.unet.in_channels, self.unet.sample_size[0], self.unet.sample_size[1]),
@@ -102,8 +119,8 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         mask = None
 
         if audio_file is not None or raw_audio is not None:
-            mel.load_audio(audio_file, raw_audio)
-            input_image = mel.audio_slice_to_image(slice)
+            self.mel.load_audio(audio_file, raw_audio)
+            input_image = self.mel.audio_slice_to_image(slice)
             input_image = np.frombuffer(input_image.tobytes(), dtype="uint8").reshape(
                 (input_image.height, input_image.width)
             )
@@ -119,7 +136,9 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             if start_step > 0:
                 images[0, 0] = self.scheduler.add_noise(input_images, noise, self.scheduler.timesteps[start_step - 1])
 
-            pixels_per_second = self.unet.sample_size[1] * mel.get_sample_rate() / mel.x_res / mel.hop_length
+            pixels_per_second = (
+                self.unet.sample_size[1] * self.mel.get_sample_rate() / self.mel.x_res / self.mel.hop_length
+            )
             mask_start = int(mask_start_secs * pixels_per_second)
             mask_end = int(mask_end_secs * pixels_per_second)
             mask = self.scheduler.add_noise(input_images, noise, torch.tensor(self.scheduler.timesteps[start_step:]))
@@ -156,9 +175,9 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             else map(lambda _: Image.fromarray(_, mode="RGB").convert("L"), images)
         )
 
-        audios = list(map(lambda _: mel.image_to_audio(_), images))
+        audios = list(map(lambda _: self.mel.image_to_audio(_), images))
         if not return_dict:
-            return images, (mel.get_sample_rate(), audios)
+            return images, (self.mel.get_sample_rate(), audios)
 
         return BaseOutput(**AudioPipelineOutput(np.array(audios)[:, np.newaxis, :]), **ImagePipelineOutput(images))
 

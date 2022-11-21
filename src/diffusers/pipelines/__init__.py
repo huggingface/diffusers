@@ -1,8 +1,13 @@
-from ..utils import is_flax_available, is_onnx_available, is_torch_available, is_transformers_available
+from ..utils import (
+    is_flax_available,
+    is_librosa_available,
+    is_onnx_available,
+    is_torch_available,
+    is_transformers_available,
+)
 
 
 if is_torch_available():
-    from .audio_diffusion import AudioDiffusionPipeline, LatentAudioDiffusionPipeline, Mel
     from .dance_diffusion import DanceDiffusionPipeline
     from .ddim import DDIMPipeline
     from .ddpm import DDPMPipeline
@@ -14,6 +19,14 @@ if is_torch_available():
     from .stochastic_karras_ve import KarrasVePipeline
 else:
     from ..utils.dummy_pt_objects import *  # noqa F403
+
+if is_torch_available() and is_librosa_available():
+    from .audio_diffusion import AudioDiffusionPipeline, LatentAudioDiffusionPipeline
+else:
+    from ..utils.dummy_torch_and_librosa_objects import (  # noqa F403
+        AudioDiffusionPipeline,
+        LatentAudioDiffusionPipeline,
+    )
 
 if is_torch_available() and is_transformers_available():
     from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline

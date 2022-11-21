@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ..utils import is_flax_available, is_torch_available
+from ..utils import is_flax_available, is_librosa_available, is_torch_available
 
 
 if is_torch_available():
@@ -25,3 +25,8 @@ if is_torch_available():
 if is_flax_available():
     from .unet_2d_condition_flax import FlaxUNet2DConditionModel
     from .vae_flax import FlaxAutoencoderKL
+
+if is_torch_available() and is_librosa_available():
+    from .mel import Mel
+else:
+    from ..utils.dummy_torch_and_librosa_objects import Mel  # noqa F403

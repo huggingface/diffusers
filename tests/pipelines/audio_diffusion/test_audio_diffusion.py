@@ -86,17 +86,17 @@ class PipelineFastTests(unittest.TestCase):
         mel = Mel()
 
         scheduler = DDPMScheduler()
-        pipe = AudioDiffusionPipeline(unet=self.dummy_unet, scheduler=scheduler)
+        pipe = AudioDiffusionPipeline(unet=self.dummy_unet, mel=mel, scheduler=scheduler)
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=device).manual_seed(42)
-        output = pipe(mel=mel, generator=generator, steps=4)
+        output = pipe(generator=generator, steps=4)
         audio = output.audios[0]
         image = output.images[0]
 
         generator = torch.Generator(device=device).manual_seed(42)
-        output = pipe(mel=mel, generator=generator, steps=4, return_dict=False)
+        output = pipe(generator=generator, steps=4, return_dict=False)
         image_from_tuple = output[0][0]
 
         assert audio.shape == (1, (self.dummy_unet.sample_size[1] - 1) * mel.hop_length)
@@ -110,7 +110,7 @@ class PipelineFastTests(unittest.TestCase):
         scheduler = DDIMScheduler()
         dummy_vqvae_and_unet = self.dummy_vqvae_and_unet
         pipe = LatentAudioDiffusionPipeline(
-            vqvae=self.dummy_vqvae_and_unet[0], unet=dummy_vqvae_and_unet[1], scheduler=scheduler
+            vqvae=self.dummy_vqvae_and_unet[0], unet=dummy_vqvae_and_unet[1], mel=mel, scheduler=scheduler
         )
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
@@ -118,7 +118,7 @@ class PipelineFastTests(unittest.TestCase):
         np.random.seed(0)
         raw_audio = np.random.uniform(-1, 1, ((dummy_vqvae_and_unet[0].sample_size[1] - 1) * mel.hop_length,))
         generator = torch.Generator(device=device).manual_seed(42)
-        output = pipe(mel=mel, raw_audio=raw_audio, generator=generator, start_step=5, steps=10)
+        output = pipe(raw_audio=raw_audio, generator=generator, start_step=5, steps=10)
         image = output.images[0]
 
         assert (

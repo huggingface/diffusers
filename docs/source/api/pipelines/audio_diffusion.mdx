@@ -37,13 +37,12 @@ training scripts and example notebooks.
 ```python
 import torch
 from IPython.display import Audio
-from diffusers import DiffusionPipeline, Mel
+from diffusers import DiffusionPipeline
 
-mel = Mel()
 device = "cuda" if torch.cuda.is_available() else "cpu"
 pipe = DiffusionPipeline.from_pretrained("teticio/audio-diffusion-256").to(device)
 
-output = pipe(mel=mel)
+output = pipe()
 display(output.images[0])
 display(Audio(output.audios[0], rate=mel.get_sample_rate()))
 ```
@@ -53,15 +52,14 @@ display(Audio(output.audios[0], rate=mel.get_sample_rate()))
 ```python
 import torch
 from IPython.display import Audio
-from diffusers import DiffusionPipeline, Mel
+from diffusers import DiffusionPipeline
 
-mel = Mel()
 device = "cuda" if torch.cuda.is_available() else "cpu"
 pipe = DiffusionPipeline.from_pretrained("teticio/latent-audio-diffusion-256").to(device)
 
-output = pipe(mel=mel)
+output = pipe()
 display(output.images[0])
-display(Audio(output.audios[0], rate=mel.get_sample_rate()))
+display(Audio(output.audios[0], rate=pipe.mel.get_sample_rate()))
 ```
 
 ### Audio Diffusion with DDIM (faster)
@@ -69,29 +67,27 @@ display(Audio(output.audios[0], rate=mel.get_sample_rate()))
 ```python
 import torch
 from IPython.display import Audio
-from diffusers import DiffusionPipeline, Mel
+from diffusers import DiffusionPipeline
 
-mel = Mel()
 device = "cuda" if torch.cuda.is_available() else "cpu"
 pipe = DiffusionPipeline.from_pretrained("teticio/audio-diffusion-ddim-256").to(device)
 
-output = pipe(mel=mel)
+output = pipe()
 display(output.images[0])
-display(Audio(output.audios[0], rate=mel.get_sample_rate()))
+display(Audio(output.audios[0], rate=pipe.mel.get_sample_rate()))
 ```
 
 ### Variations, in-painting, out-painting etc.
 
 ```python
 output = pipe(
-    mel=mel,
     raw_audio=output.audios[0, 0],
     start_step=int(pipe.get_default_steps() / 2),
     mask_start_secs=1,
     mask_end_secs=1,
 )
 display(output.images[0])
-display(Audio(output.audios[0], rate=mel.get_sample_rate()))
+display(Audio(output.audios[0], rate=pipe.mel.get_sample_rate()))
 ```
 
 ## AudioDiffusionPipeline

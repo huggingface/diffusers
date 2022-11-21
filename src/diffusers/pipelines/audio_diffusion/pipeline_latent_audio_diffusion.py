@@ -1,17 +1,42 @@
-# For training scripts and notebooks see https://github.com/teticio/audio-diffusion
+# Copyright 2022 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 
 from typing import Union
 
-from ...models import AutoencoderKL, UNet2DConditionModel
+from ...models import AutoencoderKL, Mel, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, DDPMScheduler
 from .pipeline_audio_diffusion import AudioDiffusionPipeline
 
 
 class LatentAudioDiffusionPipeline(AudioDiffusionPipeline):
     def __init__(
-        self, unet: UNet2DConditionModel, scheduler: Union[DDIMScheduler, DDPMScheduler], vqvae: AutoencoderKL
+        self,
+        vqvae: AutoencoderKL,
+        unet: UNet2DConditionModel,
+        mel: Mel,
+        scheduler: Union[DDIMScheduler, DDPMScheduler],
     ):
-        super().__init__(unet=unet, scheduler=scheduler)
+        """Latent Audio Diffusion pipeline.
+
+        Args:
+            vqae (AutoencoderKL): Variational AutoEncoder
+            unet (UNet2DConditionModel): UNET model
+            mel (Mel): transform audio <-> spectrogram
+            scheduler (Scheduler): de-noising scheduler
+        """
+        super().__init__(unet=unet, mel=mel, scheduler=scheduler)
         self.register_modules(vqvae=vqvae)
 
     def __call__(self, *args, **kwargs):
