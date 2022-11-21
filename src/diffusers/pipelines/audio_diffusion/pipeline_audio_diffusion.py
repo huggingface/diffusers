@@ -32,9 +32,9 @@ class AudioDiffusionPipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Parameters:
-        unet (UNet2DConditionModel): UNET model
-        mel (Mel): transform audio <-> spectrogram
-        scheduler (Scheduler): de-noising scheduler
+        unet ([`UNet2DConditionModel`]): UNET model
+        mel ([`Mel`]): transform audio <-> spectrogram
+        scheduler ([`Scheduler`]): de-noising scheduler
     """
 
     def __init__(self, unet: UNet2DConditionModel, mel: Mel, scheduler: Union[DDIMScheduler, DDPMScheduler]):
@@ -45,7 +45,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         """Returns dimension of input image
 
         Returns:
-            Tuple: (height, width)
+            `Tuple`: (height, width)
         """
         input_module = self.vqvae if hasattr(self, "vqvae") else self.unet
         # For backwards compatibility
@@ -60,7 +60,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         """Returns default number of steps recommended for inference
 
         Returns:
-            int: number of steps
+            `int`: number of steps
         """
         return 50 if isinstance(self.scheduler, DDIMScheduler) else 1000
 
@@ -86,22 +86,22 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         """Generate random mel spectrogram from audio input and convert to audio.
 
         Args:
-            batch_size (int): number of samples to generate
-            audio_file (str): must be a file on disk due to Librosa limitation or
-            raw_audio (np.ndarray): audio as numpy array
-            slice (int): slice number of audio to convert
+            batch_size (`int`): number of samples to generate
+            audio_file (`str`): must be a file on disk due to Librosa limitation or
+            raw_audio (`np.ndarray`): audio as numpy array
+            slice (`int`): slice number of audio to convert
             start_step (int): step to start from
-            steps (int): number of de-noising steps (defaults to 50 for DDIM, 1000 for DDPM)
-            generator (torch.Generator): random number generator or None
-            mask_start_secs (float): number of seconds of audio to mask (not generate) at start
-            mask_end_secs (float): number of seconds of audio to mask (not generate) at end
-            step_generator (torch.Generator): random number generator used to de-noise or None
-            eta (float): parameter between 0 and 1 used with DDIM scheduler
-            noise (torch.Tensor): noise tensor of shape (batch_size, 1, height, width) or None
-            return_dict (bool): if True return AudioPipelineOutput, ImagePipelineOutput else Tuple
+            steps (`int`): number of de-noising steps (defaults to 50 for DDIM, 1000 for DDPM)
+            generator (`torch.Generator`): random number generator or None
+            mask_start_secs (`float`): number of seconds of audio to mask (not generate) at start
+            mask_end_secs (`float`): number of seconds of audio to mask (not generate) at end
+            step_generator (`torch.Generator`): random number generator used to de-noise or None
+            eta (`float`): parameter between 0 and 1 used with DDIM scheduler
+            noise (`torch.Tensor`): noise tensor of shape (batch_size, 1, height, width) or None
+            return_dict (`bool`): if True return AudioPipelineOutput, ImagePipelineOutput else Tuple
 
         Returns:
-            List[PIL Image]: mel spectrograms (float, List[np.ndarray]): sample rate and raw audios
+            `List[PIL Image]`: mel spectrograms (`float`, `List[np.ndarray]`): sample rate and raw audios
         """
 
         steps = steps or self.get_default_steps()
@@ -189,11 +189,11 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         """Reverse step process: recover noisy image from generated image.
 
         Args:
-            images (List[PIL Image]): list of images to encode
-            steps (int): number of encoding steps to perform (defaults to 50)
+            images (`List[PIL Image]`): list of images to encode
+            steps (`int`): number of encoding steps to perform (defaults to 50)
 
         Returns:
-            np.ndarray: noise tensor of shape (batch_size, 1, height, width)
+            `np.ndarray`: noise tensor of shape (batch_size, 1, height, width)
         """
 
         # Only works with DDIM as this method is deterministic
@@ -226,12 +226,12 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         """Spherical Linear intERPolation
 
         Args:
-            x0 (torch.Tensor): first tensor to interpolate between
-            x1 (torch.Tensor): seconds tensor to interpolate between
-            alpha (float): interpolation between 0 and 1
+            x0 (`torch.Tensor`): first tensor to interpolate between
+            x1 (`torch.Tensor`): seconds tensor to interpolate between
+            alpha (`float`): interpolation between 0 and 1
 
         Returns:
-            torch.Tensor: interpolated tensor
+            `torch.Tensor`: interpolated tensor
         """
 
         theta = acos(torch.dot(torch.flatten(x0), torch.flatten(x1)) / torch.norm(x0) / torch.norm(x1))

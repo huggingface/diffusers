@@ -26,10 +26,10 @@ class LatentAudioDiffusionPipeline(AudioDiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Parameters:
-        vqae (AutoencoderKL): Variational AutoEncoder
-        unet (UNet2DConditionModel): UNET model
-        mel (Mel): transform audio <-> spectrogram
-        scheduler (Scheduler): de-noising scheduler
+        vqae ([`AutoencoderKL`]): Variational AutoEncoder
+        unet ([`UNet2DConditionModel`]): UNET model
+        mel ([`Mel`]): transform audio <-> spectrogram
+        scheduler ([`Scheduler`]): de-noising scheduler
     """
 
     def __init__(
