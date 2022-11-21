@@ -408,9 +408,9 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = np.concatenate([latents] * 2) if do_classifier_free_guidance else latents
             # concat latents, mask, masked_image_latnets in the channel dimension
-            latent_model_input = np.concatenate([latent_model_input, mask, masked_image_latents], axis=1)
             latent_model_input = self.scheduler.scale_model_input(torch.from_numpy(latent_model_input), t)
             latent_model_input = latent_model_input.cpu().numpy()
+            latent_model_input = np.concatenate([latent_model_input, mask, masked_image_latents], axis=1)
 
             # predict the noise residual
             timestep = np.array([t], dtype=timestep_dtype)
@@ -424,8 +424,10 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, torch.from_numpy(latents), **extra_step_kwargs).prev_sample
-            latents = latents.numpy()
+            scheduler_output = self.scheduler.step(
+                torch.from_numpy(noise_pred), t, torch.from_numpy(latents), **extra_step_kwargs
+            )
+            latents = scheduler_output.prev_sample.numpy()
 
             # call the callback, if provided
             if callback is not None and i % callback_steps == 0:
