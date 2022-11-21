@@ -18,7 +18,7 @@ from typing import Callable, List, Optional, Union
 import torch
 import torch.utils.checkpoint
 
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPFeatureExtractor, CLIPTextModelWithProjection, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel, VQModel
 from ...models.attention import Transformer2DModel
@@ -50,16 +50,16 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
     """
     tokenizer: CLIPTokenizer
     image_feature_extractor: CLIPFeatureExtractor
-    text_encoder: CLIPTextModel
+    text_encoder: CLIPTextModelWithProjection
     image_unet: UNet2DConditionModel
     text_unet: UNet2DConditionModel
-    vae: Union[VQModel, AutoencoderKL]
+    vae: AutoencoderKL
     scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler]
 
     def __init__(
         self,
         tokenizer: CLIPTokenizer,
-        text_encoder: CLIPTextModel,
+        text_encoder: CLIPTextModelWithProjection,
         image_unet: UNet2DConditionModel,
         text_unet: UNet2DConditionModel,
         vae: Union[VQModel, AutoencoderKL],

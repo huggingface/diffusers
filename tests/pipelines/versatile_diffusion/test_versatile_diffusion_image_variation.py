@@ -19,7 +19,7 @@ import numpy as np
 import torch
 
 from diffusers import VersatileDiffusionImageVariationPipeline
-from diffusers.utils.testing_utils import load_image, require_torch, slow, torch_device
+from diffusers.utils.testing_utils import load_image, require_torch_gpu, slow, torch_device
 
 from ...test_pipelines_common import PipelineTesterMixin
 
@@ -32,7 +32,7 @@ class VersatileDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, uni
 
 
 @slow
-@require_torch
+@require_torch_gpu
 class VersatileDiffusionImageVariationPipelineIntegrationTests(unittest.TestCase):
     def test_inference_image_variations(self):
         pipe = VersatileDiffusionImageVariationPipeline.from_pretrained("diffusers/vd-official-test")
@@ -51,8 +51,8 @@ class VersatileDiffusionImageVariationPipelineIntegrationTests(unittest.TestCase
             output_type="numpy",
         ).images
 
-        image_slice = image[0, -3:, -3:, -1]
+        image_slice = image[0, 253:256, 253:256, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.9256, 0.9340, 0.8933, 0.9361, 0.9113, 0.8727, 0.9122, 0.8745, 0.8099])
+        expected_slice = np.array([0.1811, 0.0430, 0.0433, 0.1082, 0.0144, 0.0306, 0.0683, 0.0248, 0.0876])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
