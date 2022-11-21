@@ -1,17 +1,3 @@
-# Copyright 2022 The HuggingFace Team. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import inspect
 from typing import Callable, List, Optional, Union
 
@@ -22,10 +8,10 @@ import PIL
 from transformers import CLIPFeatureExtractor, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
-from ...onnx_utils import ORT_TO_NP_TYPE, OnnxRuntimeModel
+from ...onnx_utils import OnnxRuntimeModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from ...utils import PIL_INTERPOLATION, deprecate, logging
+from ...utils import deprecate, logging
 from . import StableDiffusionPipelineOutput
 
 
@@ -35,15 +21,28 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 def preprocess(image):
     w, h = image.size
     w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
-    image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
+    image = image.resize((w, h), resample=PIL.Image.LANCZOS)
     image = np.array(image).astype(np.float32) / 255.0
     image = image[None].transpose(0, 3, 1, 2)
     return 2.0 * image - 1.0
 
 
-class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
+def preprocess_mask(mask):
+    mask = mask.convert("L")
+    w, h = mask.size
+    w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+    mask = mask.resize((w // 8, h // 8), resample=PIL.Image.NEAREST)
+    mask = np.array(mask).astype(np.float32) / 255.0
+    mask = np.tile(mask, (4, 1, 1))
+    mask = mask[None].transpose(0, 1, 2, 3)  # what does this step do?
+    mask = 1 - mask  # repaint white, keep black
+    return mask
+
+
+class OnnxStableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
     r"""
-    Pipeline for text-guided image to image generation using Stable Diffusion.
+    Pipeline for text-guided image inpainting using Stable Diffusion. This is a *legacy feature* for Onnx pipelines to
+    provide compatibility with StableDiffusionInpaintPipelineLegacy and may be removed in the future.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -220,6 +219,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]],
         init_image: Union[np.ndarray, PIL.Image.Image],
+        mask_image: Union[np.ndarray, PIL.Image.Image],
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
@@ -239,9 +239,14 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
-            init_image (`np.ndarray` or `PIL.Image.Image`):
+            init_image (`nd.ndarray` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
-                process.
+                process. This is the image whose masked region will be inpainted.
+            mask_image (`nd.ndarray` or `PIL.Image.Image`):
+                `Image`, or tensor representing an image batch, to mask `init_image`. White pixels in the mask will be
+                replaced by noise and therefore repainted, while black pixels will be preserved. If `mask_image` is a
+                PIL image, it will be converted to a single channel (luminance) before use. If it's a tensor, it should
+                contain one color channel (L) instead of 3, so the expected shape would be `(B, H, W, 1)`.uu
             strength (`float`, *optional*, defaults to 0.8):
                 Conceptually, indicates how much to transform the reference `init_image`. Must be between 0 and 1.
                 `init_image` will be used as a starting point, adding more noise to it the larger the `strength`. The
@@ -263,7 +268,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
+                Corresponds to parameter eta (?) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
                 [`schedulers.DDIMScheduler`], will be ignored for others.
             generator (`np.random.RandomState`, *optional*):
                 A np.random.RandomState to make generation deterministic.
@@ -325,29 +330,24 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         latents_dtype = text_embeddings.dtype
         init_image = init_image.astype(latents_dtype)
+
         # encode the init image into latents and scale the latents
         init_latents = self.vae_encoder(sample=init_image)[0]
         init_latents = 0.18215 * init_latents
 
-        if isinstance(prompt, str):
-            prompt = [prompt]
-        if len(prompt) > init_latents.shape[0] and len(prompt) % init_latents.shape[0] == 0:
-            # expand init_latents for batch_size
-            deprecation_message = (
-                f"You have passed {len(prompt)} text prompts (`prompt`), but only {init_latents.shape[0]} initial"
-                " images (`init_image`). Initial images are now duplicating to match the number of text prompts. Note"
-                " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
-                " your script to pass as many init images as text prompts to suppress this warning."
-            )
-            deprecate("len(prompt) != len(init_image)", "1.0.0", deprecation_message, standard_warn=False)
-            additional_image_per_prompt = len(prompt) // init_latents.shape[0]
-            init_latents = np.concatenate([init_latents] * additional_image_per_prompt * num_images_per_prompt, axis=0)
-        elif len(prompt) > init_latents.shape[0] and len(prompt) % init_latents.shape[0] != 0:
-            raise ValueError(
-                f"Cannot duplicate `init_image` of batch size {init_latents.shape[0]} to {len(prompt)} text prompts."
-            )
-        else:
-            init_latents = np.concatenate([init_latents] * num_images_per_prompt, axis=0)
+        # Expand init_latents for batch_size and num_images_per_prompt
+        init_latents = np.concatenate([init_latents] * num_images_per_prompt, axis=0)
+        init_latents_orig = init_latents
+
+        # preprocess mask
+        if not isinstance(mask_image, np.ndarray):
+            mask_image = preprocess_mask(mask_image)
+        mask_image = mask_image.astype(latents_dtype)
+        mask = np.concatenate([mask_image] * num_images_per_prompt, axis=0)
+
+        # check sizes
+        if not mask.shape == init_latents.shape:
+            raise ValueError("The mask and init_image should be the same size!")
 
         # get the original timestep using init_timestep
         offset = self.scheduler.config.get("steps_offset", 0)
@@ -365,8 +365,8 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         init_latents = init_latents.numpy()
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
-        # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
+        # eta (?) is only used with the DDIMScheduler, it will be ignored for other schedulers.
+        # eta corresponds to ? in DDIM paper: https://arxiv.org/abs/2010.02502
         # and should be between [0, 1]
         accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
         extra_step_kwargs = {}
@@ -378,21 +378,14 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         t_start = max(num_inference_steps - init_timestep + offset, 0)
         timesteps = self.scheduler.timesteps[t_start:].numpy()
 
-        timestep_dtype = next(
-            (input.type for input in self.unet.model.get_inputs() if input.name == "timestep"), "tensor(float)"
-        )
-        timestep_dtype = ORT_TO_NP_TYPE[timestep_dtype]
-
         for i, t in enumerate(self.progress_bar(timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = np.concatenate([latents] * 2) if do_classifier_free_guidance else latents
-            latent_model_input = self.scheduler.scale_model_input(torch.from_numpy(latent_model_input), t)
-            latent_model_input = latent_model_input.cpu().numpy()
+            latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
             # predict the noise residual
-            timestep = np.array([t], dtype=timestep_dtype)
             noise_pred = self.unet(
-                sample=latent_model_input, timestep=timestep, encoder_hidden_states=text_embeddings
+                sample=latent_model_input, timestep=np.array([t]), encoder_hidden_states=text_embeddings
             )[0]
 
             # perform guidance
@@ -401,10 +394,19 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            scheduler_output = self.scheduler.step(
+            latents = self.scheduler.step(
                 torch.from_numpy(noise_pred), t, torch.from_numpy(latents), **extra_step_kwargs
+            ).prev_sample
+
+            latents = latents.numpy()
+
+            init_latents_proper = self.scheduler.add_noise(
+                torch.from_numpy(init_latents_orig), torch.from_numpy(noise), torch.from_numpy(np.array([t]))
             )
-            latents = scheduler_output.prev_sample.numpy()
+
+            init_latents_proper = init_latents_proper.numpy()
+
+            latents = (init_latents_proper * mask) + (latents * (1 - mask))
 
             # call the callback, if provided
             if callback is not None and i % callback_steps == 0:
@@ -424,7 +426,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             safety_checker_input = self.feature_extractor(
                 self.numpy_to_pil(image), return_tensors="np"
             ).pixel_values.astype(image.dtype)
-            # safety_checker does not support batched inputs yet
+            # There will throw an error if use safety_checker batchsize>1
             images, has_nsfw_concept = [], []
             for i in range(image.shape[0]):
                 image_i, has_nsfw_concept_i = self.safety_checker(
