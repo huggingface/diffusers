@@ -164,7 +164,6 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             returning a tuple, the first element is the sample tensor.
         """
         step_index = self.index_for_timestep(timestep)
-        print(step_index)
 
         if self.state_in_first_order:
             sigma = self.sigmas[step_index]
