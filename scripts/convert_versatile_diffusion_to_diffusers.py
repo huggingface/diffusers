@@ -31,8 +31,12 @@ from diffusers import (
     UNet2DConditionModel,
     VersatileDiffusionPipeline,
 )
-from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
-from transformers import CLIPProcessor, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
+from transformers import (
+    CLIPFeatureExtractor,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+)
 
 
 SCHEDULER_CONFIG = Namespace(
@@ -334,7 +338,7 @@ def convert_vd_unet_checkpoint(checkpoint, config, unet_key, extract_ema=False):
 
     # at least a 100 parameters have to start with `model_ema` in order for the checkpoint to be EMA
     if sum(k.startswith("model_ema") for k in keys) > 100:
-        print(f"Checkpoint has both EMA and non-EMA weights.")
+        print("Checkpoint has both EMA and non-EMA weights.")
         if extract_ema:
             print(
                 "In this conversion only the EMA weights are extracted. If you want to instead extract the non-EMA"
@@ -610,13 +614,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--optimus_checkpoint_path", default=None, type=str, required=False, help="Path to the checkpoint to convert."
     )
-    # !wget https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml
-    parser.add_argument(
-        "--original_config_file",
-        default=None,
-        type=str,
-        help="The YAML config file corresponding to the original architecture.",
-    )
     parser.add_argument(
         "--scheduler_type",
         default="pndm",
@@ -719,14 +716,14 @@ if __name__ == "__main__":
         vae.load_state_dict(converted_vae_checkpoint)
 
     tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
-    image_processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
+    image_feature_extractor = CLIPFeatureExtractor.from_pretrained("openai/clip-vit-large-patch14")
     text_encoder = CLIPTextModelWithProjection.from_pretrained("openai/clip-vit-large-patch14")
     image_encoder = CLIPVisionModelWithProjection.from_pretrained("openai/clip-vit-large-patch14")
 
     pipe = VersatileDiffusionPipeline(
         scheduler=scheduler,
         tokenizer=tokenizer,
-        image_processor=image_processor,
+        image_feature_extractor=image_feature_extractor,
         text_encoder=text_encoder,
         image_encoder=image_encoder,
         image_unet=image_unet,
