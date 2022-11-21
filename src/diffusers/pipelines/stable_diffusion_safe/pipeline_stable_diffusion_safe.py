@@ -2,6 +2,7 @@ import inspect
 import warnings
 from typing import Callable, List, Optional, Union
 
+import numpy as np
 import torch
 
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
@@ -9,7 +10,6 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
-from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ...schedulers import (
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -20,6 +20,7 @@ from ...schedulers import (
 )
 from ...utils import deprecate, is_accelerate_available, logging
 from . import StableDiffusionSafePipelineOutput
+from .safety_checker import SafeStableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -69,7 +70,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
             LMSDiscreteScheduler,
             PNDMScheduler,
         ],
-        safety_checker: StableDiffusionSafetyChecker,
+        safety_checker: SafeStableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
@@ -364,16 +365,28 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
 
         return text_embeddings
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
-    def run_safety_checker(self, image, device, dtype):
+    def run_safety_checker(self, image, device, dtype, enable_safety_guidance):
         if self.safety_checker is not None:
             safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
             image, has_nsfw_concept = self.safety_checker(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
+            flagged_images = None
+            if any(has_nsfw_concept):
+                logger.warning(
+                    "Potential NSFW content was detected in one or more images. A black image will be returned"
+                    " instead."
+                    f" {'You may look at this images in the `unsafe_images` variable of the output at your own discretion.' if enable_safety_guidance else 'Try again with a different prompt and/or seed.'} "
+                )
+                flagged_images = np.zeros((2, *image.shape[1:]))
+                for idx, has_nsfw_concept in enumerate(has_nsfw_concept):
+                    if has_nsfw_concept:
+                        flagged_images[idx] = image[idx]
+                        image[idx] = np.zeros(image[idx].shape)  # black image
         else:
             has_nsfw_concept = None
-        return image, has_nsfw_concept
+            flagged_images = None
+        return image, has_nsfw_concept, flagged_images
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
@@ -682,17 +695,27 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
         image = self.decode_latents(latents)
 
         # 9. Run safety checker
-        image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
+        image, has_nsfw_concept, flagged_images = self.run_safety_checker(
+            image, device, text_embeddings.dtype, enable_safety_guidance
+        )
 
         # 10. Convert to PIL
         if output_type == "pil":
             image = self.numpy_to_pil(image)
+            if flagged_images is not None:
+                flagged_images = self.numpy_to_pil(flagged_images)
 
         if not return_dict:
-            return (image, has_nsfw_concept)
+            return (
+                image,
+                has_nsfw_concept,
+                self._safety_text_concept if enable_safety_guidance else None,
+                flagged_images,
+            )
 
         return StableDiffusionSafePipelineOutput(
             images=image,
             nsfw_content_detected=has_nsfw_concept,
             applied_safety_concept=self._safety_text_concept if enable_safety_guidance else None,
+            unsafe_images=flagged_images,
         )
