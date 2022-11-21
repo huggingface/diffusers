@@ -166,8 +166,8 @@ class Mel(ConfigMixin):
 
                     - A string, the *model id* of a model repo on huggingface.co. Valid model ids should have an
                       organization name, like `google/ddpm-celebahq-256`.
-                    - A path to a *directory* containing the mel configurations saved using
-                      [`~Mel.save_pretrained`], e.g., `./my_model_directory/`.
+                    - A path to a *directory* containing the mel configurations saved using [`~Mel.save_pretrained`],
+                      e.g., `./my_model_directory/`.
             subfolder (`str`, *optional*):
                 In case the relevant files are located inside a subfolder of the model repo (either remote in
                 huggingface.co or downloaded locally), you can specify the folder name here.
