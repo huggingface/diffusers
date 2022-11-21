@@ -185,6 +185,13 @@ def parse_args():
             "and an Nvidia Ampere GPU."
         ),
     )
+    parser.add_argument(
+        "--amp_data_type",
+        type=str,
+        default="fp32",
+        choices=["fp32", "bf16"],
+        help="Whether to use amp bf16",
+    )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
 
     args = parser.parse_args()
@@ -532,9 +539,14 @@ def main():
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
                 # Predict the noise residual
-                noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                if args.amp_data_type == "bf16":
+                    with torch.autocast(device_type=str(accelerator.device), dtype=torch.bfloat16):
+                        noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                        loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
+                else:
+                    noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                    loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
 
-                loss = F.mse_loss(noise_pred, noise, reduction="none").mean([1, 2, 3]).mean()
                 accelerator.backward(loss)
 
                 # Zero out the gradients for all token embeddings except the newly added
