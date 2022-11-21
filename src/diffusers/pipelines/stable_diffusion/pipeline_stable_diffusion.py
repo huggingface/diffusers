@@ -477,7 +477,6 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
         num_channels_latents = self.unet.in_channels
@@ -496,7 +495,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 7. Denoising loop
-        for i, t in enumerate(self.progress_bar(timesteps)):
+        i = 0
+        t = self.scheduler.timesteps[0]
+        while t > 0:
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
@@ -510,11 +511,13 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+            latents, t, pred_original_sample = self.scheduler.step(noise_pred, t, latents, return_dict=False, **extra_step_kwargs)
 
             # call the callback, if provided
             if callback is not None and i % callback_steps == 0:
-                callback(i, t, latents)
+                callback(i, t, latents, pred_original_sample)
+
+            i += 1
 
         # 8. Post-processing
         image = self.decode_latents(latents)

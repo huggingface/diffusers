@@ -36,6 +36,8 @@ class SchedulerOutput(BaseOutput):
     """
 
     prev_sample: torch.FloatTensor
+    timestep: Union[float, torch.FloatTensor]
+
 
 
 class SchedulerMixin:
