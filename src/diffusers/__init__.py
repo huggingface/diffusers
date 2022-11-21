@@ -9,7 +9,7 @@ from .utils import (
 )
 
 
-__version__ = "0.7.0.dev0"
+__version__ = "0.8.0.dev0"
 
 from .configuration_utils import ConfigMixin
 from .onnx_utils import OnnxRuntimeModel
@@ -18,7 +18,7 @@ from .utils import logging
 
 if is_torch_available():
     from .modeling_utils import ModelMixin
-    from .models import AutoencoderKL, UNet2DConditionModel, UNet2DModel, VQModel
+    from .models import AutoencoderKL, Transformer2DModel, UNet1DModel, UNet2DConditionModel, UNet2DModel, VQModel
     from .optimization import (
         get_constant_schedule,
         get_constant_schedule_with_warmup,
@@ -29,14 +29,30 @@ if is_torch_available():
         get_scheduler,
     )
     from .pipeline_utils import DiffusionPipeline
-    from .pipelines import DDIMPipeline, DDPMPipeline, KarrasVePipeline, LDMPipeline, PNDMPipeline, ScoreSdeVePipeline
+    from .pipelines import (
+        DanceDiffusionPipeline,
+        DDIMPipeline,
+        DDPMPipeline,
+        KarrasVePipeline,
+        LDMPipeline,
+        LDMSuperResolutionPipeline,
+        PNDMPipeline,
+        RePaintPipeline,
+        ScoreSdeVePipeline,
+    )
     from .schedulers import (
         DDIMScheduler,
         DDPMScheduler,
+        DPMSolverMultistepScheduler,
+        EulerAncestralDiscreteScheduler,
+        EulerDiscreteScheduler,
+        IPNDMScheduler,
         KarrasVeScheduler,
         PNDMScheduler,
+        RePaintScheduler,
         SchedulerMixin,
         ScoreSdeVeScheduler,
+        VQDiffusionScheduler,
     )
     from .training_utils import EMAModel
 else:
@@ -49,11 +65,15 @@ else:
 
 if is_torch_available() and is_transformers_available():
     from .pipelines import (
+        AltDiffusionImg2ImgPipeline,
+        AltDiffusionPipeline,
+        CycleDiffusionPipeline,
         LDMTextToImagePipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
         StableDiffusionInpaintPipelineLegacy,
         StableDiffusionPipeline,
+        VQDiffusionPipeline,
     )
 else:
     from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
@@ -62,6 +82,7 @@ if is_torch_available() and is_transformers_available() and is_onnx_available():
     from .pipelines import (
         OnnxStableDiffusionImg2ImgPipeline,
         OnnxStableDiffusionInpaintPipeline,
+        OnnxStableDiffusionInpaintPipelineLegacy,
         OnnxStableDiffusionPipeline,
         StableDiffusionOnnxPipeline,
     )
@@ -76,6 +97,7 @@ if is_flax_available():
     from .schedulers import (
         FlaxDDIMScheduler,
         FlaxDDPMScheduler,
+        FlaxDPMSolverMultistepScheduler,
         FlaxKarrasVeScheduler,
         FlaxLMSDiscreteScheduler,
         FlaxPNDMScheduler,

@@ -18,6 +18,7 @@ import importlib
 import inspect
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
@@ -30,9 +31,10 @@ from packaging import version
 from PIL import Image
 from tqdm.auto import tqdm
 
-from . import __version__
 from .configuration_utils import ConfigMixin
 from .dynamic_modules_utils import get_class_from_dynamic_module
+from .hub_utils import http_user_agent
+from .modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from .schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from .utils import (
     CONFIG_NAME,
@@ -41,6 +43,8 @@ from .utils import (
     WEIGHTS_NAME,
     BaseOutput,
     deprecate,
+    is_accelerate_available,
+    is_torch_version,
     is_transformers_available,
     logging,
 )
@@ -54,6 +58,7 @@ if is_transformers_available():
 INDEX_FILE = "diffusion_pytorch_model.bin"
 CUSTOM_PIPELINE_FILE_NAME = "pipeline.py"
 DUMMY_MODULES_FOLDER = "diffusers.utils"
+TRANSFORMERS_DUMMY_MODULES_FOLDER = "transformers.utils"
 
 
 logger = logging.get_logger(__name__)
@@ -62,7 +67,7 @@ logger = logging.get_logger(__name__)
 LOADABLE_CLASSES = {
     "diffusers": {
         "ModelMixin": ["save_pretrained", "from_pretrained"],
-        "SchedulerMixin": ["save_config", "from_config"],
+        "SchedulerMixin": ["save_pretrained", "from_pretrained"],
         "DiffusionPipeline": ["save_pretrained", "from_pretrained"],
         "OnnxRuntimeModel": ["save_pretrained", "from_pretrained"],
     },
@@ -71,6 +76,11 @@ LOADABLE_CLASSES = {
         "PreTrainedTokenizerFast": ["save_pretrained", "from_pretrained"],
         "PreTrainedModel": ["save_pretrained", "from_pretrained"],
         "FeatureExtractionMixin": ["save_pretrained", "from_pretrained"],
+        "ProcessorMixin": ["save_pretrained", "from_pretrained"],
+        "ImageProcessingMixin": ["save_pretrained", "from_pretrained"],
+    },
+    "onnxruntime.training": {
+        "ORTModule": ["save_pretrained", "from_pretrained"],
     },
 }
 
@@ -91,6 +101,20 @@ class ImagePipelineOutput(BaseOutput):
     """
 
     images: Union[List[PIL.Image.Image], np.ndarray]
+
+
+@dataclass
+class AudioPipelineOutput(BaseOutput):
+    """
+    Output class for audio pipelines.
+
+    Args:
+        audios (`np.ndarray`)
+            List of denoised samples of shape `(batch_size, num_channels, sample_rate)`. Numpy array present the
+            denoised audio samples of the diffusion pipeline.
+    """
+
+    audios: np.ndarray
 
 
 class DiffusionPipeline(ConfigMixin):
@@ -162,6 +186,10 @@ class DiffusionPipeline(ConfigMixin):
 
         for pipeline_component_name in model_index_dict.keys():
             sub_model = getattr(self, pipeline_component_name)
+            if sub_model is None:
+                # edge case for saving a pipeline with safety_checker=None
+                continue
+
             model_cls = sub_model.__class__
 
             save_method_name = None
@@ -169,8 +197,8 @@ class DiffusionPipeline(ConfigMixin):
             for library_name, library_classes in LOADABLE_CLASSES.items():
                 library = importlib.import_module(library_name)
                 for base_class, save_load_methods in library_classes.items():
-                    class_candidate = getattr(library, base_class)
-                    if issubclass(model_cls, class_candidate):
+                    class_candidate = getattr(library, base_class, None)
+                    if class_candidate is not None and issubclass(model_cls, class_candidate):
                         # if we found a suitable base class in LOADABLE_CLASSES then grab its save method
                         save_method_name = save_load_methods[0]
                         break
@@ -184,17 +212,17 @@ class DiffusionPipeline(ConfigMixin):
         if torch_device is None:
             return self
 
-        module_names, _ = self.extract_init_dict(dict(self.config))
+        module_names, _, _ = self.extract_init_dict(dict(self.config))
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
-                if module.dtype == torch.float16 and str(torch_device) in ["cpu", "mps"]:
+                if module.dtype == torch.float16 and str(torch_device) in ["cpu"]:
                     logger.warning(
-                        "Pipelines loaded with `torch_dtype=torch.float16` cannot run with `cpu` or `mps` device. It"
-                        " is not recommended to move them to `cpu` or `mps` as running them will fail. Please make"
-                        " sure to use a `cuda` device to run the pipeline in inference. due to the lack of support for"
-                        " `float16` operations on those devices in PyTorch. Please remove the"
-                        " `torch_dtype=torch.float16` argument, or use a `cuda` device to run inference."
+                        "Pipelines loaded with `torch_dtype=torch.float16` cannot run with `cpu` device. It"
+                        " is not recommended to move them to `cpu` as running them will fail. Please make"
+                        " sure to use an accelerator to run the pipeline in inference, due to the lack of"
+                        " support for`float16` operations on this device in PyTorch. Please, remove the"
+                        " `torch_dtype=torch.float16` argument, or use another device for inference."
                     )
                 module.to(torch_device)
         return self
@@ -205,7 +233,7 @@ class DiffusionPipeline(ConfigMixin):
         Returns:
             `torch.device`: The torch device on which the pipeline is located.
         """
-        module_names, _ = self.extract_init_dict(dict(self.config))
+        module_names, _, _ = self.extract_init_dict(dict(self.config))
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
@@ -280,8 +308,8 @@ class DiffusionPipeline(ConfigMixin):
                         </Tip>
 
                 For more information on how to load and create custom pipelines, please have a look at [Loading and
-                Creating Custom
-                Pipelines](https://huggingface.co/docs/diffusers/main/en/using-diffusers/custom_pipelines)
+                Adding Custom
+                Pipelines](https://huggingface.co/docs/diffusers/using-diffusers/custom_pipeline_overview)
 
             torch_dtype (`str` or `torch.dtype`, *optional*):
             force_download (`bool`, *optional*, defaults to `False`):
@@ -308,6 +336,19 @@ class DiffusionPipeline(ConfigMixin):
                 Mirror source to accelerate downloads in China. If you are from China and have an accessibility
                 problem, you can set this option to resolve it. Note that we do not guarantee the timeliness or safety.
                 Please refer to the mirror site for more information. specify the folder name here.
+            device_map (`str` or `Dict[str, Union[int, str, torch.device]]`, *optional*):
+                A map that specifies where each submodule should go. It doesn't need to be refined to each
+                parameter/buffer name, once a given module name is inside, every submodule of it will be sent to the
+                same device.
+
+                To have Accelerate compute the most optimized `device_map` automatically, set `device_map="auto"`. For
+                more information about each option see [designing a device
+                map](https://hf.co/docs/accelerate/main/en/usage_guides/big_modeling#designing-a-device-map).
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading by not initializing the weights and only loading the pre-trained weights. This
+                also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
+                model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
+                setting this argument to `True` will raise an error.
 
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
@@ -341,11 +382,11 @@ class DiffusionPipeline(ConfigMixin):
         >>> # of the documentation](https://huggingface.co/docs/hub/security-tokens)
         >>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 
-        >>> # Download pipeline, but overwrite scheduler
+        >>> # Use a different scheduler
         >>> from diffusers import LMSDiscreteScheduler
 
-        >>> scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
-        >>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", scheduler=scheduler)
+        >>> scheduler = LMSDiscreteScheduler.from_config(pipeline.scheduler.config)
+        >>> pipeline.scheduler = scheduler
         ```
         """
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
@@ -360,11 +401,39 @@ class DiffusionPipeline(ConfigMixin):
         provider = kwargs.pop("provider", None)
         sess_options = kwargs.pop("sess_options", None)
         device_map = kwargs.pop("device_map", None)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
+
+        if low_cpu_mem_usage and not is_accelerate_available():
+            low_cpu_mem_usage = False
+            logger.warn(
+                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                " install accelerate\n```\n."
+            )
+
+        if device_map is not None and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `device_map=None`."
+            )
+
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
+            )
+
+        if low_cpu_mem_usage is False and device_map is not None:
+            raise ValueError(
+                f"You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
+                " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
+            )
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
         if not os.path.isdir(pretrained_model_name_or_path):
-            config_dict = cls.get_config_dict(
+            config_dict = cls.load_config(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
                 resume_download=resume_download,
@@ -379,13 +448,20 @@ class DiffusionPipeline(ConfigMixin):
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
             allow_patterns += [WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, ONNX_WEIGHTS_NAME, cls.config_name]
 
+            # make sure we don't download flax weights
+            ignore_patterns = "*.msgpack"
+
             if custom_pipeline is not None:
                 allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
 
-            requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
-            user_agent = {"diffusers": __version__, "pipeline_class": requested_pipeline_class}
+            if cls != DiffusionPipeline:
+                requested_pipeline_class = cls.__name__
+            else:
+                requested_pipeline_class = config_dict.get("_class_name", cls.__name__)
+            user_agent = {"pipeline_class": requested_pipeline_class}
             if custom_pipeline is not None:
                 user_agent["custom_pipeline"] = custom_pipeline
+            user_agent = http_user_agent(user_agent)
 
             # download all allow_patterns
             cached_folder = snapshot_download(
@@ -397,18 +473,27 @@ class DiffusionPipeline(ConfigMixin):
                 use_auth_token=use_auth_token,
                 revision=revision,
                 allow_patterns=allow_patterns,
+                ignore_patterns=ignore_patterns,
                 user_agent=user_agent,
             )
         else:
             cached_folder = pretrained_model_name_or_path
 
-        config_dict = cls.get_config_dict(cached_folder)
+        config_dict = cls.load_config(cached_folder)
 
         # 2. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
         if custom_pipeline is not None:
+            if custom_pipeline.endswith(".py"):
+                path = Path(custom_pipeline)
+                # decompose into folder & file
+                file_name = path.name
+                custom_pipeline = path.parent.absolute()
+            else:
+                file_name = CUSTOM_PIPELINE_FILE_NAME
+
             pipeline_class = get_class_from_dynamic_module(
-                custom_pipeline, module_file=CUSTOM_PIPELINE_FILE_NAME, cache_dir=custom_pipeline
+                custom_pipeline, module_file=file_name, cache_dir=custom_pipeline
             )
         elif cls != DiffusionPipeline:
             pipeline_class = cls
@@ -441,7 +526,7 @@ class DiffusionPipeline(ConfigMixin):
         expected_modules = set(inspect.signature(pipeline_class.__init__).parameters.keys()) - set(["self"])
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
 
-        init_dict, unused_kwargs = pipeline_class.extract_init_dict(config_dict, **kwargs)
+        init_dict, unused_kwargs, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
         if len(unused_kwargs) > 0:
             logger.warning(f"Keyword arguments {unused_kwargs} not recognized.")
@@ -453,6 +538,11 @@ class DiffusionPipeline(ConfigMixin):
 
         # 3. Load each module in the pipeline
         for name, (library_name, class_name) in init_dict.items():
+            if class_name is None:
+                # edge case for when the pipeline was saved with safety_checker=None
+                init_kwargs[name] = None
+                continue
+
             # 3.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             if class_name.startswith("Flax"):
                 class_name = class_name[4:]
@@ -464,15 +554,15 @@ class DiffusionPipeline(ConfigMixin):
             # if the model is in a pipeline module, then we load it from the pipeline
             if name in passed_class_obj:
                 # 1. check that passed_class_obj has correct parent class
-                if not is_pipeline_module:
+                if not is_pipeline_module and passed_class_obj[name] is not None:
                     library = importlib.import_module(library_name)
                     class_obj = getattr(library, class_name)
                     importable_classes = LOADABLE_CLASSES[library_name]
-                    class_candidates = {c: getattr(library, c) for c in importable_classes.keys()}
+                    class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
 
                     expected_class_obj = None
                     for class_name, class_candidate in class_candidates.items():
-                        if issubclass(class_obj, class_candidate):
+                        if class_candidate is not None and issubclass(class_obj, class_candidate):
                             expected_class_obj = class_candidate
 
                     if not issubclass(passed_class_obj[name].__class__, expected_class_obj):
@@ -502,19 +592,23 @@ class DiffusionPipeline(ConfigMixin):
             else:
                 # else we just import it from the library.
                 library = importlib.import_module(library_name)
+
                 class_obj = getattr(library, class_name)
                 importable_classes = LOADABLE_CLASSES[library_name]
-                class_candidates = {c: getattr(library, c) for c in importable_classes.keys()}
+                class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
 
             if loaded_sub_model is None and sub_model_should_be_defined:
                 load_method_name = None
                 for class_name, class_candidate in class_candidates.items():
-                    if issubclass(class_obj, class_candidate):
+                    if class_candidate is not None and issubclass(class_obj, class_candidate):
                         load_method_name = importable_classes[class_name][1]
 
                 if load_method_name is None:
                     none_module = class_obj.__module__
-                    if none_module.startswith(DUMMY_MODULES_FOLDER) and "dummy" in none_module:
+                    is_dummy_path = none_module.startswith(DUMMY_MODULES_FOLDER) or none_module.startswith(
+                        TRANSFORMERS_DUMMY_MODULES_FOLDER
+                    )
+                    if is_dummy_path and "dummy" in none_module:
                         # call class_obj for nice error message of missing requirements
                         class_obj()
 
@@ -539,8 +633,12 @@ class DiffusionPipeline(ConfigMixin):
                     and version.parse(version.parse(transformers.__version__).base_version) >= version.parse("4.20.0")
                 )
 
+                # When loading a transformers model, if the device_map is None, the weights will be initialized as opposed to diffusers.
+                # To make default loading faster we set the `low_cpu_mem_usage=low_cpu_mem_usage` flag which is `True` by default.
+                # This makes sure that the weights won't be initialized which significantly speeds up loading.
                 if is_diffusers_model or is_transformers_model:
                     loading_kwargs["device_map"] = device_map
+                    loading_kwargs["low_cpu_mem_usage"] = low_cpu_mem_usage
 
                 # check if the module is in a subdirectory
                 if os.path.isdir(os.path.join(cached_folder, name)):
@@ -570,7 +668,7 @@ class DiffusionPipeline(ConfigMixin):
     def components(self) -> Dict[str, Any]:
         r"""
 
-        The `self.compenents` property can be useful to run different pipelines with the same weights and
+        The `self.components` property can be useful to run different pipelines with the same weights and
         configurations to not have to re-allocate memory.
 
         Examples:
@@ -582,13 +680,13 @@ class DiffusionPipeline(ConfigMixin):
         ...     StableDiffusionInpaintPipeline,
         ... )
 
-        >>> img2text = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
-        >>> img2img = StableDiffusionImg2ImgPipeline(**img2text.components)
-        >>> inpaint = StableDiffusionInpaintPipeline(**img2text.components)
+        >>> text2img = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> img2img = StableDiffusionImg2ImgPipeline(**text2img.components)
+        >>> inpaint = StableDiffusionInpaintPipeline(**text2img.components)
         ```
 
         Returns:
-            A dictionaly containing all the modules needed to initialize the pipleline.
+            A dictionaly containing all the modules needed to initialize the pipeline.
         """
         components = {k: getattr(self, k) for k in self.config.keys() if not k.startswith("_")}
         expected_modules = set(inspect.signature(self.__init__).parameters.keys()) - set(["self"])
@@ -609,7 +707,11 @@ class DiffusionPipeline(ConfigMixin):
         if images.ndim == 3:
             images = images[None, ...]
         images = (images * 255).round().astype("uint8")
-        pil_images = [Image.fromarray(image) for image in images]
+        if images.shape[-1] == 1:
+            # special case for grayscale (single channel) images
+            pil_images = [Image.fromarray(image.squeeze(), mode="L") for image in images]
+        else:
+            pil_images = [Image.fromarray(image) for image in images]
 
         return pil_images
 

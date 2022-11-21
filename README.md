@@ -27,16 +27,26 @@ More precisely, 🤗 Diffusers offers:
 
 ## Installation
 
+### For PyTorch
+
 **With `pip`**
     
 ```bash
-pip install --upgrade diffusers
+pip install --upgrade diffusers[torch]
 ```
 
 **With `conda`**
 
 ```sh
 conda install -c conda-forge diffusers
+```
+
+### For Flax
+
+**With `pip`**
+
+```bash
+pip install --upgrade diffusers[flax]
 ```
 
 **Apple Silicon (M1/M2) support**
@@ -88,9 +98,10 @@ We recommend using the model in [half-precision (`fp16`)](https://pytorch.org/bl
 precision while being roughly twice as fast and requiring half the amount of GPU RAM.
 
 ```python
+import torch
 from diffusers import StableDiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_type=torch.float16, revision="fp16")
+pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, revision="fp16")
 pipe = pipe.to("cuda")
 
 prompt = "a photo of an astronaut riding a horse on mars"
@@ -141,19 +152,7 @@ it before the pipeline and pass it to `from_pretrained`.
 ```python
 from diffusers import LMSDiscreteScheduler
 
-lms = LMSDiscreteScheduler(
-    beta_start=0.00085, 
-    beta_end=0.012, 
-    beta_schedule="scaled_linear"
-)
-
-pipe = StableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", 
-    revision="fp16", 
-    torch_dtype=torch.float16,
-    scheduler=lms,
-)
-pipe = pipe.to("cuda")
+pipe.scheduler = LMSDiscreteScheduler.from_config(pipe.scheduler.config)
 
 prompt = "a photo of an astronaut riding a horse on mars"
 image = pipe(prompt).images[0]  
@@ -181,9 +180,9 @@ image.save("astronaut_rides_horse.png")
 
 ### JAX/Flax
 
-To use StableDiffusion on TPUs and GPUs for faster inference you can leverage JAX/Flax.
+Diffusers offers a JAX / Flax implementation of Stable Diffusion for very fast inference. JAX shines specially on TPU hardware because each TPU server has 8 accelerators working in parallel, but it runs great on GPUs too.
 
-Running the pipeline with default PNDMScheduler
+Running the pipeline with the default PNDMScheduler:
 
 ```python
 import jax
@@ -330,8 +329,26 @@ You can generate your own latents to reproduce results, or tweak your prompt on 
 
 For more details, check out [the Stable Diffusion notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/stable_diffusion.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/stable_diffusion.ipynb)
 and have a look into the [release notes](https://github.com/huggingface/diffusers/releases/tag/v0.2.0).
-  
-## Examples
+
+## Fine-Tuning Stable Diffusion
+
+Fine-tuning techniques make it possible to adapt Stable Diffusion to your own dataset, or add new subjects to it. These are some of the techniques supported in `diffusers`:
+
+Textual Inversion is a technique for capturing novel concepts from a small number of example images in a way that can later be used to control text-to-image pipelines. It does so by learning new 'words' in the embedding space of the pipeline's text encoder. These special words can then be used within text prompts to achieve very fine-grained control of the resulting images. 
+
+- Textual Inversion. Capture novel concepts from a small set of sample images, and associate them with new "words" in the embedding space of the text encoder. Please, refer to [our training examples](https://github.com/huggingface/diffusers/tree/main/examples/textual_inversion) or [documentation](https://huggingface.co/docs/diffusers/training/text_inversion) to try for yourself.
+
+- Dreambooth. Another technique to capture new concepts in Stable Diffusion. This method fine-tunes the UNet (and, optionally, also the text encoder) of the pipeline to achieve impressive results. Please, refer to [our training example](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth) and [training report](https://huggingface.co/blog/dreambooth) for additional details and training recommendations.
+
+- Full Stable Diffusion fine-tuning. If you have a more sizable dataset with a specific look or style, you can fine-tune Stable Diffusion so that it outputs images following those examples. This was the approach taken to create [a Pokémon Stable Diffusion model](https://huggingface.co/justinpinkney/pokemon-stable-diffusion) (by Justing Pinkney / Lambda Labs), [a Japanese specific version of Stable Diffusion](https://huggingface.co/spaces/rinna/japanese-stable-diffusion) (by [Rinna Co.](https://github.com/rinnakk/japanese-stable-diffusion/) and others. You can start at [our text-to-image fine-tuning example](https://github.com/huggingface/diffusers/tree/main/examples/text_to_image) and go from there.
+
+
+## Stable Diffusion Community Pipelines
+
+The release of Stable Diffusion as an open source model has fostered a lot of interesting ideas and experimentation. 
+Our [Community Examples folder](https://github.com/huggingface/diffusers/tree/main/examples/community) contains many ideas worth exploring, like interpolating to create animated videos, using CLIP Guidance for additional prompt fidelity, term weighting, and much more! [Take a look](https://huggingface.co/docs/diffusers/using-diffusers/custom_pipeline_overview) and [contribute your own](https://huggingface.co/docs/diffusers/using-diffusers/contribute_pipeline).
+
+## Other Examples
 
 There are many ways to try running Diffusers! Here we outline code-focused tools (primarily using `DiffusionPipeline`s and Google Colab) and interactive web-tools.
 
@@ -340,7 +357,7 @@ There are many ways to try running Diffusers! Here we outline code-focused tools
 If you want to run the code yourself 💻, you can try out:
 - [Text-to-Image Latent Diffusion](https://huggingface.co/CompVis/ldm-text2im-large-256)
 ```python
-# !pip install diffusers transformers
+# !pip install diffusers["torch"] transformers
 from diffusers import DiffusionPipeline
 
 device = "cuda"
@@ -359,7 +376,7 @@ image.save("squirrel.png")
 ```
 - [Unconditional Diffusion with discrete scheduler](https://huggingface.co/google/ddpm-celebahq-256)
 ```python
-# !pip install diffusers
+# !pip install diffusers["torch"]
 from diffusers import DDPMPipeline, DDIMPipeline, PNDMPipeline
 
 model_id = "google/ddpm-celebahq-256"
@@ -378,9 +395,13 @@ image.save("ddpm_generated_image.png")
 - [Unconditional Latent Diffusion](https://huggingface.co/CompVis/ldm-celebahq-256)
 - [Unconditional Diffusion with continuous scheduler](https://huggingface.co/google/ncsnpp-ffhq-1024)
 
-**Other Notebooks**:
+**Other Image Notebooks**:
 * [image-to-image generation with Stable Diffusion](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/image_2_image_using_diffusers.ipynb) ![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg),
 * [tweak images via repeated Stable Diffusion seeds](https://colab.research.google.com/github/pcuenca/diffusers-examples/blob/main/notebooks/stable-diffusion-seeds.ipynb) ![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg),
+
+**Diffusers for Other Modalities**:
+* [Molecule conformation generation](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/geodiff_molecule_conformation.ipynb) ![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg),
+* [Model-based reinforcement learning](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/reinforcement_learning_with_diffusers.ipynb) ![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg),
 
 ### Web Demos
 If you just want to play around with some web demos, you can try out the following 🚀 Spaces:
@@ -404,7 +425,7 @@ If you just want to play around with some web demos, you can try out the followi
 <p>
     
 **Schedulers**: Algorithm class for both **inference** and **training**.
-The class provides functionality to compute previous image according to alpha, beta schedule as well as predict noise for training.
+The class provides functionality to compute previous image according to alpha, beta schedule as well as predict noise for training. Also known as **Samplers**.
 *Examples*: [DDPM](https://arxiv.org/abs/2006.11239), [DDIM](https://arxiv.org/abs/2010.02502), [PNDM](https://arxiv.org/abs/2202.09778), [DEIS](https://arxiv.org/abs/2204.13902)
 
 <p align="center">
