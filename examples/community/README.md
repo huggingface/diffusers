@@ -370,7 +370,7 @@ def dummy(images, **kwargs):
 pipe.safety_checker = dummy
 
 images = []
-generator = th.Generator("cuda").manual_seed(0)
+generator = torch.Generator("cuda").manual_seed(0)
 
 seed = 0
 prompt = "a forest | a camel"
@@ -399,6 +399,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 import torch
+import os
 from diffusers import DiffusionPipeline, DDIMScheduler
 has_cuda = torch.cuda.is_available()
 device = torch.device('cpu' if not has_cuda else 'cuda')
@@ -423,6 +424,7 @@ res = pipe.train(
     num_inference_steps=50,
     generator=generator)
 res = pipe(alpha=1)
+os.makedirs("imagic", exist_ok=True)
 image = res.images[0]
 image.save('./imagic/imagic_image_alpha_1.png')
 res = pipe(alpha=1.5)
