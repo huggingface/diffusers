@@ -14,24 +14,21 @@
 
 import importlib
 from typing import Callable, List, Optional, Union
-from k_diffusion.external import CompVisDenoiser
-import k_diffusion
 
 import torch
 
-from diffusers.utils import is_accelerate_available
-
+import k_diffusion
 from diffusers import LMSDiscreteScheduler
 from diffusers.pipeline_utils import DiffusionPipeline
-from diffusers.utils import logging
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
+from diffusers.utils import is_accelerate_available, logging
+from k_diffusion.external import CompVisDenoiser
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class ModelWrapper:
-
     def __init__(self, model, alphas_cumprod):
         self.model = model
         self.alphas_cumprod = alphas_cumprod
