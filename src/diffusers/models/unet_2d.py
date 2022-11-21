@@ -21,7 +21,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..modeling_utils import ModelMixin
 from ..utils import BaseOutput
 from .embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
-from .unet_blocks import UNetMidBlock2D, get_down_block, get_up_block
+from .unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block
 
 
 @dataclass
@@ -51,7 +51,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         time_embedding_type (`str`, *optional*, defaults to `"positional"`): Type of time embedding to use.
         freq_shift (`int`, *optional*, defaults to 0): Frequency shift for fourier time embedding.
         flip_sin_to_cos (`bool`, *optional*, defaults to :
-            obj:`False`): Whether to flip sin to cos for fourier time embedding.
+            obj:`True`): Whether to flip sin to cos for fourier time embedding.
         down_block_types (`Tuple[str]`, *optional*, defaults to :
             obj:`("DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D")`): Tuple of downsample block
             types.
