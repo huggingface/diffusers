@@ -213,7 +213,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             logits = logits.permute(0, 2, 1)
 
             # log(p(x_0))
-            output = F.log_softmax(logits.double(), dim=1).float()
+            output = F.log_softmax(logits, dim=1, dtype=torch.double).float()
 
         if not return_dict:
             return (output,)
@@ -288,55 +288,43 @@ class AttentionBlock(nn.Module):
 
         # get scores
         if self.num_heads > 1:
-            query_states = self.transpose_for_scores(query_proj)
-            key_states = self.transpose_for_scores(key_proj)
-            value_states = self.transpose_for_scores(value_proj)
-
-            # TODO: is there a way to perform batched matmul (e.g. baddbmm) on 4D tensors?
-            #       or reformulate this into a 3D problem?
-            # TODO: measure whether on MPS device it would be faster to do this matmul via einsum
-            #       as some matmuls can be 1.94x slower than an equivalent einsum on MPS
-            #       https://gist.github.com/Birch-san/cba16789ec27bb20996a4b4831b13ce0
-            attention_scores = torch.matmul(query_states, key_states.transpose(-1, -2)) * scale
+            query_states = self.transpose_for_scores(query_proj).contiguous().view(batch * self.num_heads, height * width, self.num_head_size)
+            key_states = self.transpose_for_scores(key_proj).transpose(3,2).contiguous().view(batch * self.num_heads, self.num_head_size, height * width)
+            value_states = self.transpose_for_scores(value_proj).contiguous().view(batch * self.num_heads, height * width, self.num_head_size)
         else:
             query_states, key_states, value_states = query_proj, key_proj, value_proj
 
-            attention_scores = torch.baddbmm(
-                torch.empty(
-                    query_states.shape[0],
-                    query_states.shape[1],
-                    key_states.shape[1],
-                    dtype=query_states.dtype,
-                    device=query_states.device,
-                ),
-                query_states,
-                key_states.transpose(-1, -2),
-                beta=0,
-                alpha=scale,
-            )
+        attention_scores = torch.baddbmm(
+            torch.empty(
+                query_states.shape[0],
+                query_states.shape[1],
+                key_states.shape[1],
+                dtype=query_states.dtype,
+                device=query_states.device,
+            ),
+            query_states,
+            key_states.transpose(-1, -2),
+            beta=0,
+            alpha=scale,
+        )
 
-        attention_probs = torch.softmax(attention_scores.float(), dim=-1).type(attention_scores.dtype)
+        attention_probs = torch.softmax(attention_scores, dim=-1, dtype=torch.float).type(attention_scores.dtype)
 
         # compute attention output
+        hidden_states = torch.bmm(attention_probs, value_states)
         if self.num_heads > 1:
-            # TODO: is there a way to perform batched matmul (e.g. bmm) on 4D tensors?
-            #       or reformulate this into a 3D problem?
-            # TODO: measure whether on MPS device it would be faster to do this matmul via einsum
-            #       as some matmuls can be 1.94x slower than an equivalent einsum on MPS
-            #       https://gist.github.com/Birch-san/cba16789ec27bb20996a4b4831b13ce0
-            hidden_states = torch.matmul(attention_probs, value_states)
-            hidden_states = hidden_states.permute(0, 2, 1, 3).contiguous()
+            hidden_states = hidden_states.view(batch, self.num_heads, height * width, self.num_head_size).permute(0, 2, 1, 3).contiguous()
             new_hidden_states_shape = hidden_states.size()[:-2] + (self.channels,)
             hidden_states = hidden_states.view(new_hidden_states_shape)
-        else:
-            hidden_states = torch.bmm(attention_probs, value_states)
 
         # compute next hidden_states
         hidden_states = self.proj_attn(hidden_states)
         hidden_states = hidden_states.transpose(-1, -2).reshape(batch, channel, height, width)
 
         # res connect and rescale
-        hidden_states = (hidden_states + residual) / self.rescale_output_factor
+        hidden_states = (hidden_states + residual)
+        if self.rescale_output_factor != 1.0:
+            hidden_states = hidden_states / self.rescale_output_factor
         return hidden_states
 
 

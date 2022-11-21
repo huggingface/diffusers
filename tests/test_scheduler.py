@@ -1831,7 +1831,7 @@ class VQDiffusionSchedulerTest(SchedulerCommonTest):
         def model(sample, t, *args):
             batch_size, num_latent_pixels = sample.shape
             logits = torch.rand((batch_size, num_vec_classes - 1, num_latent_pixels))
-            return_value = F.log_softmax(logits.double(), dim=1).float()
+            return_value = F.log_softmax(logits, dim=1, dtype=torch.double).float()
             return return_value
 
         return model

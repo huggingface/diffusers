@@ -1054,10 +1054,7 @@ class AttnUpBlock2D(nn.Module):
             self.upsamplers = None
 
     def forward(self, hidden_states, res_hidden_states_tuple, temb=None):
-        for resnet, attn in zip(self.resnets, self.attentions):
-            # pop res hidden states
-            res_hidden_states = res_hidden_states_tuple[-1]
-            res_hidden_states_tuple = res_hidden_states_tuple[:-1]
+        for resnet, attn, res_hidden_states in zip(self.resnets, self.attentions, reversed(res_hidden_states_tuple)):
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
             hidden_states = resnet(hidden_states, temb)

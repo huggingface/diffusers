@@ -53,9 +53,9 @@ def index_to_log_onehot(x: torch.LongTensor, num_classes: int) -> torch.FloatTen
         `torch.FloatTensor` of shape `(batch size, num classes, vector length)`:
             Log onehot vectors
     """
-    x_onehot = F.one_hot(x, num_classes)
-    x_onehot = x_onehot.permute(0, 2, 1)
-    log_x = torch.log(x_onehot.float().clamp(min=1e-30))
+    batch_size, vector_length = x.shape
+    log_x = torch.FloatTensor((batch_size, num_classes, vector_length), fill_value=1e-30, device=x.device)
+    log_x.scatter_(index=x[:, None, :], src=0, dim=1)
     return log_x
 
 

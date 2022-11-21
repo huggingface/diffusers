@@ -49,11 +49,14 @@ def get_timestep_embedding(
     emb = scale * emb
 
     # concat sine and cosine embeddings
-    emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=-1)
+    sin = torch.sin(emb)
+    cos = torch.cos(emb)
 
     # flip sine and cosine embeddings
     if flip_sin_to_cos:
-        emb = torch.cat([emb[:, half_dim:], emb[:, :half_dim]], dim=-1)
+        emb = torch.cat([cos, sin], dim=-1)
+    else:
+        emb = torch.cat([sin, cos], dim=-1)
 
     # zero pad
     if embedding_dim % 2 == 1:
@@ -126,7 +129,7 @@ class GaussianFourierProjection(nn.Module):
         if self.log:
             x = torch.log(x)
 
-        x_proj = x[:, None] * self.weight[None, :] * 2 * np.pi
+        x_proj = x[:, None] * self.weight[None, :] * (2 * np.pi)
 
         if self.flip_sin_to_cos:
             out = torch.cat([torch.cos(x_proj), torch.sin(x_proj)], dim=-1)
