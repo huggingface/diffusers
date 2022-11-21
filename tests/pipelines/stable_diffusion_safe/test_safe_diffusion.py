@@ -21,15 +21,7 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import (
-    AutoencoderKL,
-    DDIMScheduler,
-    LMSDiscreteScheduler,
-    PNDMScheduler,
-    UNet2DConditionModel,
-    UNet2DModel,
-    VQModel,
-)
+from diffusers import AutoencoderKL, DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion_safe import StableDiffusionPipelineSafe as StableDiffusionPipeline
 from diffusers.utils import floats_tensor, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
