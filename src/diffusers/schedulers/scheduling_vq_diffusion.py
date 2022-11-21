@@ -17,7 +17,6 @@ from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
