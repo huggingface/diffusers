@@ -17,6 +17,8 @@ import os
 import warnings
 from typing import Any, Dict, Optional, Union
 
+from ..configuration_utils import ConfigMixin
+
 
 warnings.filterwarnings("ignore")
 
@@ -24,8 +26,6 @@ import numpy as np  # noqa: E402
 
 import librosa  # noqa: E402
 from PIL import Image  # noqa: E402
-
-from ..configuration_utils import ConfigMixin, register_to_config
 
 
 class Mel(ConfigMixin):
