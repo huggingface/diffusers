@@ -42,7 +42,7 @@ To use a different scheduler, you can either change it via the [`ConfigMixin.fro
 ```python
 >>> from diffusers import AltDiffusionPipeline, EulerDiscreteScheduler
 
->>> pipeline = AltDiffusionPipeline.from_pretrained("BAAI/AltDiffusion")
+>>> pipeline = AltDiffusionPipeline.from_pretrained("BAAI/AltDiffusion-m9")
 >>> pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
 
 >>> # or
