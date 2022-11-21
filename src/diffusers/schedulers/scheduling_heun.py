@@ -194,7 +194,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         print(f"step_index: {step_index}, state_in_first_order: {self.state_in_first_order}, sigma: {sigma}, sigma_next: {sigma_next}, sigma_hat: {sigma_hat}, dt: {dt}")
 
         if not return_dict:
-            return (prev_sample, self.timesteps[step_index], pred_original_sample)
+            return (prev_sample, self.timesteps[step_index])
 
         return SchedulerOutput(prev_sample=prev_sample, timestep=self.timesteps[step_index])
 

@@ -511,11 +511,11 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents, t, pred_original_sample = self.scheduler.step(noise_pred, t, latents, return_dict=False, **extra_step_kwargs)
+            latents, t = self.scheduler.step(noise_pred, t, latents, return_dict=False, **extra_step_kwargs)
 
             # call the callback, if provided
             if callback is not None and i % callback_steps == 0:
-                callback(i, t, latents, pred_original_sample)
+                callback(i, t, latents)
 
             i += 1
 
