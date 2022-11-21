@@ -31,8 +31,10 @@ from .utils import (
     DIFFUSERS_CACHE,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     WEIGHTS_NAME,
+    SAFETENSORS_WEIGHTS_NAME,
     is_accelerate_available,
     is_torch_version,
+    is_safetensors_available,
     logging,
 )
 
@@ -50,6 +52,9 @@ if is_accelerate_available():
     import accelerate
     from accelerate.utils import set_module_tensor_to_device
     from accelerate.utils.versions import is_torch_version
+
+if is_safetensors_available():
+    from safetensors.torch import load_file
 
 
 def get_parameter_device(parameter: torch.nn.Module):
@@ -82,12 +87,16 @@ def get_parameter_dtype(parameter: torch.nn.Module):
         return first_tuple[1].dtype
 
 
-def load_state_dict(checkpoint_file: Union[str, os.PathLike]):
+def load_state_dict(checkpoint_file: Union[str, os.PathLike], is_pytorch: bool):
     """
     Reads a PyTorch checkpoint file, returning properly formatted errors if they arise.
     """
     try:
-        return torch.load(checkpoint_file, map_location="cpu")
+        if is_pytorch:
+            return torch.load(checkpoint_file, map_location="cpu")
+        else:
+            return load_file(checkpoint_file, map_location="cpu")
+
     except Exception as e:
         try:
             with open(checkpoint_file) as f:
@@ -375,75 +384,19 @@ class ModelMixin(torch.nn.Module):
 
         # This variable will flag if we're loading a sharded checkpoint. In this case the archive file is just the
         # Load model
-        pretrained_model_name_or_path = str(pretrained_model_name_or_path)
-        if os.path.isdir(pretrained_model_name_or_path):
-            if os.path.isfile(os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)):
-                # Load from a PyTorch checkpoint
-                model_file = os.path.join(pretrained_model_name_or_path, WEIGHTS_NAME)
-            elif subfolder is not None and os.path.isfile(
-                os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)
-            ):
-                model_file = os.path.join(pretrained_model_name_or_path, subfolder, WEIGHTS_NAME)
-            else:
-                raise EnvironmentError(
-                    f"Error no file named {WEIGHTS_NAME} found in directory {pretrained_model_name_or_path}."
-                )
-        else:
-            try:
-                # Load from URL or cache if already cached
-                model_file = hf_hub_download(
-                    pretrained_model_name_or_path,
-                    filename=WEIGHTS_NAME,
-                    cache_dir=cache_dir,
-                    force_download=force_download,
-                    proxies=proxies,
-                    resume_download=resume_download,
-                    local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
-                    user_agent=user_agent,
-                    subfolder=subfolder,
-                    revision=revision,
-                )
 
-            except RepositoryNotFoundError:
-                raise EnvironmentError(
-                    f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier "
-                    "listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a "
-                    "token having permission to this repo with `use_auth_token` or log in with `huggingface-cli "
-                    "login`."
-                )
-            except RevisionNotFoundError:
-                raise EnvironmentError(
-                    f"{revision} is not a valid git identifier (branch name, tag name or commit id) that exists for "
-                    "this model name. Check the model page at "
-                    f"'https://huggingface.co/{pretrained_model_name_or_path}' for available revisions."
-                )
-            except EntryNotFoundError:
-                raise EnvironmentError(
-                    f"{pretrained_model_name_or_path} does not appear to have a file named {WEIGHTS_NAME}."
-                )
-            except HTTPError as err:
-                raise EnvironmentError(
-                    "There was a specific connection error when trying to load"
-                    f" {pretrained_model_name_or_path}:\n{err}"
-                )
-            except ValueError:
-                raise EnvironmentError(
-                    f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load this model, couldn't find it"
-                    f" in the cached files and it looks like {pretrained_model_name_or_path} is not the path to a"
-                    f" directory containing a file named {WEIGHTS_NAME} or"
-                    " \nCheckout your internet connection or see how to run the library in"
-                    " offline mode at 'https://huggingface.co/docs/diffusers/installation#offline-mode'."
-                )
-            except EnvironmentError:
-                raise EnvironmentError(
-                    f"Can't load the model for '{pretrained_model_name_or_path}'. If you were trying to load it from "
-                    "'https://huggingface.co/models', make sure you don't have a local directory with the same name. "
-                    f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
-                    f"containing a file named {WEIGHTS_NAME}"
-                )
-
-            # restore default dtype
+        model_file, is_pytorch = get_model_file(
+            pretrained_model_name_or_path,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            resume_download=resume_download,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            use_auth_token=use_auth_token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+        )
 
         if low_cpu_mem_usage:
             # Instantiate model with empty weights
@@ -467,7 +420,7 @@ class ModelMixin(torch.nn.Module):
             # if device_map is Non,e load the state dict on move the params from meta device to the cpu
             if device_map is None:
                 param_device = "cpu"
-                state_dict = load_state_dict(model_file)
+                state_dict = load_state_dict(model_file, is_pytorch)
                 # move the parms from meta device to cpu
                 for param_name, param in state_dict.items():
                     set_module_tensor_to_device(model, param_name, param_device, value=param)
@@ -499,7 +452,7 @@ class ModelMixin(torch.nn.Module):
             )
             model = cls.from_config(config, **unused_kwargs)
 
-            state_dict = load_state_dict(model_file)
+            state_dict = load_state_dict(model_file, is_pytorch)
             model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
                 model,
                 state_dict,
@@ -691,3 +644,101 @@ def unwrap_model(model: torch.nn.Module) -> torch.nn.Module:
         return unwrap_model(model.module)
     else:
         return model
+
+
+def get_model_file(pretrained_model_name_or_path, **kwargs) -> Tuple[str, bool]:
+    if is_safetensors_available():
+        try:
+            model_file = _get_model_file(
+                pretrained_model_name_or_path, weights_name=SAFETENSORS_WEIGHTS_NAME, **kwargs
+            )
+            return model_file, False
+        except:
+            pass
+    model_file = _get_model_file(pretrained_model_name_or_path, weights_name=WEIGHTS_NAME, **kwargs)
+    return model_file, True
+
+
+def _get_model_file(
+    pretrained_model_name_or_path,
+    *,
+    weights_name,
+    subfolder,
+    cache_dir,
+    force_download,
+    proxies,
+    resume_download,
+    local_files_only,
+    use_auth_token,
+    user_agent,
+    revision,
+):
+    pretrained_model_name_or_path = str(pretrained_model_name_or_path)
+    if os.path.isdir(pretrained_model_name_or_path):
+        if os.path.isfile(os.path.join(pretrained_model_name_or_path, weights_name)):
+            # Load from a PyTorch checkpoint
+            model_file = os.path.join(pretrained_model_name_or_path, weights_name)
+            return model_file
+        elif subfolder is not None and os.path.isfile(
+            os.path.join(pretrained_model_name_or_path, subfolder, weights_name)
+        ):
+            model_file = os.path.join(pretrained_model_name_or_path, subfolder, weights_name)
+            return model_file
+        else:
+            raise EnvironmentError(
+                f"Error no file named {weights_name} found in directory {pretrained_model_name_or_path}."
+            )
+    else:
+        try:
+            # Load from URL or cache if already cached
+            model_file = hf_hub_download(
+                pretrained_model_name_or_path,
+                filename=weights_name,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                proxies=proxies,
+                resume_download=resume_download,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                user_agent=user_agent,
+                subfolder=subfolder,
+                revision=revision,
+            )
+            return model_file
+
+        except RepositoryNotFoundError:
+            raise EnvironmentError(
+                f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier "
+                "listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a "
+                "token having permission to this repo with `use_auth_token` or log in with `huggingface-cli "
+                "login`."
+            )
+        except RevisionNotFoundError:
+            raise EnvironmentError(
+                f"{revision} is not a valid git identifier (branch name, tag name or commit id) that exists for "
+                "this model name. Check the model page at "
+                f"'https://huggingface.co/{pretrained_model_name_or_path}' for available revisions."
+            )
+        except EntryNotFoundError:
+            raise EnvironmentError(
+                f"{pretrained_model_name_or_path} does not appear to have a file named {weights_name}."
+            )
+        except HTTPError as err:
+            raise EnvironmentError(
+                "There was a specific connection error when trying to load" f" {pretrained_model_name_or_path}:\n{err}"
+            )
+        except ValueError:
+            raise EnvironmentError(
+                f"We couldn't connect to '{HUGGINGFACE_CO_RESOLVE_ENDPOINT}' to load this model, couldn't find it"
+                f" in the cached files and it looks like {pretrained_model_name_or_path} is not the path to a"
+                f" directory containing a file named {weights_name} or"
+                " \nCheckout your internet connection or see how to run the library in"
+                " offline mode at 'https://huggingface.co/docs/diffusers/installation#offline-mode'."
+            )
+        except EnvironmentError:
+            raise EnvironmentError(
+                f"Can't load the model for '{pretrained_model_name_or_path}'. If you were trying to load it from "
+                "'https://huggingface.co/models', make sure you don't have a local directory with the same name. "
+                f"Otherwise, make sure '{pretrained_model_name_or_path}' is the correct path to a directory "
+                f"containing a file named {weights_name}"
+            )
