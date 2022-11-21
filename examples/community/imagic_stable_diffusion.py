@@ -133,7 +133,7 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline):
     def train(
         self,
         prompt: Union[str, List[str]],
-        init_image: Union[torch.FloatTensor, PIL.Image.Image],
+        image: Union[torch.FloatTensor, PIL.Image.Image],
         height: Optional[int] = 512,
         width: Optional[int] = 512,
         generator: Optional[torch.Generator] = None,
@@ -241,14 +241,14 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline):
             lr=embedding_learning_rate,
         )
 
-        if isinstance(init_image, PIL.Image.Image):
-            init_image = preprocess(init_image)
+        if isinstance(image, PIL.Image.Image):
+            image = preprocess(image)
 
         latents_dtype = text_embeddings.dtype
-        init_image = init_image.to(device=self.device, dtype=latents_dtype)
-        init_latent_image_dist = self.vae.encode(init_image).latent_dist
-        init_image_latents = init_latent_image_dist.sample(generator=generator)
-        init_image_latents = 0.18215 * init_image_latents
+        image = image.to(device=self.device, dtype=latents_dtype)
+        init_latent_image_dist = self.vae.encode(image).latent_dist
+        image_latents = init_latent_image_dist.sample(generator=generator)
+        image_latents = 0.18215 * image_latents
 
         progress_bar = tqdm(range(text_embedding_optimization_steps), disable=not accelerator.is_local_main_process)
         progress_bar.set_description("Steps")
@@ -259,12 +259,12 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline):
         for _ in range(text_embedding_optimization_steps):
             with accelerator.accumulate(text_embeddings):
                 # Sample noise that we'll add to the latents
-                noise = torch.randn(init_image_latents.shape).to(init_image_latents.device)
-                timesteps = torch.randint(1000, (1,), device=init_image_latents.device)
+                noise = torch.randn(image_latents.shape).to(image_latents.device)
+                timesteps = torch.randint(1000, (1,), device=image_latents.device)
 
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                noisy_latents = self.scheduler.add_noise(init_image_latents, noise, timesteps)
+                noisy_latents = self.scheduler.add_noise(image_latents, noise, timesteps)
 
                 # Predict the noise residual
                 noise_pred = self.unet(noisy_latents, timesteps, text_embeddings).sample
@@ -301,12 +301,12 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline):
         for _ in range(model_fine_tuning_optimization_steps):
             with accelerator.accumulate(self.unet.parameters()):
                 # Sample noise that we'll add to the latents
-                noise = torch.randn(init_image_latents.shape).to(init_image_latents.device)
-                timesteps = torch.randint(1000, (1,), device=init_image_latents.device)
+                noise = torch.randn(image_latents.shape).to(image_latents.device)
+                timesteps = torch.randint(1000, (1,), device=image_latents.device)
 
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                noisy_latents = self.scheduler.add_noise(init_image_latents, noise, timesteps)
+                noisy_latents = self.scheduler.add_noise(image_latents, noise, timesteps)
 
                 # Predict the noise residual
                 noise_pred = self.unet(noisy_latents, timesteps, text_embeddings).sample
