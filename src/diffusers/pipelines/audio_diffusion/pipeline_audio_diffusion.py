@@ -27,14 +27,17 @@ from ...schedulers import DDIMScheduler, DDPMScheduler
 
 
 class AudioDiffusionPipeline(DiffusionPipeline):
-    def __init__(self, unet: UNet2DConditionModel, mel: Mel, scheduler: Union[DDIMScheduler, DDPMScheduler]):
-        """Audio Diffusion pipeline.
+    """
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
-        Args:
-            unet (UNet2DConditionModel): UNET model
-            mel (Mel): transform audio <-> spectrogram
-            scheduler (Scheduler): de-noising scheduler
-        """
+    Parameters:
+        unet (UNet2DConditionModel): UNET model
+        mel (Mel): transform audio <-> spectrogram
+        scheduler (Scheduler): de-noising scheduler
+    """
+
+    def __init__(self, unet: UNet2DConditionModel, mel: Mel, scheduler: Union[DDIMScheduler, DDPMScheduler]):
         super().__init__()
         self.register_modules(unet=unet, scheduler=scheduler, mel=mel)
 

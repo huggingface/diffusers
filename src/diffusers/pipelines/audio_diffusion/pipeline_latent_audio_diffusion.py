@@ -21,6 +21,17 @@ from .pipeline_audio_diffusion import AudioDiffusionPipeline
 
 
 class LatentAudioDiffusionPipeline(AudioDiffusionPipeline):
+    """
+    This pipeline inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
+
+    Parameters:
+        vqae (AutoencoderKL): Variational AutoEncoder
+        unet (UNet2DConditionModel): UNET model
+        mel (Mel): transform audio <-> spectrogram
+        scheduler (Scheduler): de-noising scheduler
+    """
+
     def __init__(
         self,
         vqvae: AutoencoderKL,
@@ -28,14 +39,6 @@ class LatentAudioDiffusionPipeline(AudioDiffusionPipeline):
         mel: Mel,
         scheduler: Union[DDIMScheduler, DDPMScheduler],
     ):
-        """Latent Audio Diffusion pipeline.
-
-        Args:
-            vqae (AutoencoderKL): Variational AutoEncoder
-            unet (UNet2DConditionModel): UNET model
-            mel (Mel): transform audio <-> spectrogram
-            scheduler (Scheduler): de-noising scheduler
-        """
         super().__init__(unet=unet, mel=mel, scheduler=scheduler)
         self.register_modules(vqvae=vqvae)
 
