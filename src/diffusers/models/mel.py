@@ -29,6 +29,17 @@ from PIL import Image  # noqa: E402
 
 
 class Mel(ConfigMixin):
+    """
+    Parameters:
+        x_res (int): x resolution of spectrogram (time)
+        y_res (int): y resolution of spectrogram (frequency bins)
+        sample_rate (int): sample rate of audio
+        n_fft (int): number of Fast Fourier Transforms
+        hop_length (int): hop length (a higher number is recommended for lower than 256 y_res)
+        top_db (int): loudest in decibels
+        n_iter (int): number of iterations for Griffin Linn mel inversion
+    """
+
     config_name = "mel_config.json"
 
     @register_to_config
@@ -42,17 +53,6 @@ class Mel(ConfigMixin):
         top_db: int = 80,
         n_iter: int = 32,
     ):
-        """Class to convert audio to mel spectrograms and vice versa.
-
-        Args:
-            x_res (int): x resolution of spectrogram (time)
-            y_res (int): y resolution of spectrogram (frequency bins)
-            sample_rate (int): sample rate of audio
-            n_fft (int): number of Fast Fourier Transforms
-            hop_length (int): hop length (a higher number is recommended for lower than 256 y_res)
-            top_db (int): loudest in decibels
-            n_iter (int): number of iterations for Griffin Linn mel inversion
-        """
         self.hop_length = hop_length
         self.sr = sample_rate
         self.n_fft = n_fft
