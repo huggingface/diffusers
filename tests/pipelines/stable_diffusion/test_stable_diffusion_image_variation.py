@@ -22,7 +22,6 @@ import torch
 
 from diffusers import (
     AutoencoderKL,
-    DDIMScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionImageVariationPipeline,
