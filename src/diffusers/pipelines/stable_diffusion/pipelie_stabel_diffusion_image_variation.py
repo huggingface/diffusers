@@ -19,7 +19,7 @@ import torch
 
 import PIL
 from diffusers.utils import is_accelerate_available
-from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTokenizer
+from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
 
 from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
@@ -50,13 +50,10 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`CLIPTextModel`]):
-            Frozen text-encoder. Stable Diffusion uses the text portion of
-            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
-            the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
-        tokenizer (`CLIPTokenizer`):
-            Tokenizer of class
-            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
+        image_encoder ([`CLIPVisionModelWithProjection`]):
+            Frozen CLIP image-encoder. Stable Diffusion Image Variation uses the vision portion of
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPVisionModelWithProjection),
+            specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
@@ -71,7 +68,7 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
     def __init__(
         self,
         vae: AutoencoderKL,
-        image_encoder: CLIPModel,
+        image_encoder: CLIPVisionModelWithProjection,
         unet: UNet2DConditionModel,
         scheduler: Union[
             DDIMScheduler,
@@ -416,12 +413,11 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        input_image: Union[torch.FloatTensor, PIL.Image.Image, List[PIL.Image.Image]],
+        input_image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.FloatTensor],
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[torch.Generator] = None,
@@ -451,9 +447,6 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
-            negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
-                if `guidance_scale` is less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
@@ -503,10 +496,7 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        # 3. Encode input prompt
-        # text_embeddings = self._encode_prompt(
-        #     prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
-        # )
+        # 3. Encode input image
         image_embeddings = self._encode_image(input_image, device, num_images_per_prompt, do_classifier_free_guidance)
 
         # 4. Prepare timesteps
