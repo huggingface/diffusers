@@ -217,7 +217,7 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
     def _encode_image(self, image, device, num_images_per_prompt, do_classifier_free_guidance):
         dtype = next(self.image_encoder.parameters()).dtype
 
-        if not isinstance(image, torch.FloatTensor):
+        if not isinstance(image, torch.Tensor):
             image = self.feature_extractor(images=image, return_tensors="pt").pixel_values
 
         image = image.to(device=device, dtype=dtype)
@@ -279,7 +279,7 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
 
     def check_inputs(self, image, height, width, callback_steps):
         if (
-            not isinstance(image, torch.FloatTensor)
+            not isinstance(image, torch.Tensor)
             and not isinstance(image, PIL.Image.Image)
             and not isinstance(image, list)
         ):
