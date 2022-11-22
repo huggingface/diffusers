@@ -79,30 +79,6 @@ def make_upscaler_model(config_path, model_path, pooler_dim=768, train=False, de
 
 # <<<<<< To be removed when we migrate upscaler model to diffusers
 
-class CFGUpscaler(nn.Module):
-    def __init__(self, model, uc, cond_scale):
-        super().__init__()
-        self.inner_model = model
-        self.uc = uc
-        self.cond_scale = cond_scale
-
-    def forward(self, x, sigma, low_res, low_res_sigma, c):
-        if self.cond_scale in (0.0, 1.0):
-            # Shortcut for when we don't need to run both.
-            if self.cond_scale == 0.0:
-                c_in = self.uc
-            elif self.cond_scale == 1.0:
-                c_in = c
-            return self.inner_model(x, sigma, low_res=low_res, low_res_sigma=low_res_sigma, c=c_in)
-          
-        x_in = torch.cat([x] * 2)
-        sigma_in = torch.cat([sigma] * 2)
-        low_res_in = torch.cat([low_res] * 2)
-        low_res_sigma_in = torch.cat([low_res_sigma] * 2)
-        c_in = [torch.cat([uc_item, c_item]) for uc_item, c_item in zip(self.uc, c)]
-        uncond, cond = self.inner_model(x_in, sigma_in, low_res=low_res_in, low_res_sigma=low_res_sigma_in, c=c_in).chunk(2)
-        return uncond + (cond - uncond) * self.cond_scale
-
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -301,10 +277,14 @@ class StableDiffusionUpscalerPipeline(DiffusionPipeline):
 
             return hidden_states, cross_cond_padding.to(dtype=hidden_states.dtype), pooler_output
 
-        prompt_conditioning = get_conditioning(prompt)                   # c
-        uncond_conditioning = get_conditioning(batch_size * [""])        # u
+        prompt_conditioning = get_conditioning(prompt)
+        conditioning = prompt_conditioning
 
-        return uncond_conditioning, prompt_conditioning
+        if do_classifier_free_guidance:
+            uncond_conditioning = get_conditioning(batch_size * [""])
+            conditioning = [torch.cat([uc_item, c_item]) for uc_item, c_item in zip(uncond_conditioning, prompt_conditioning)]
+
+        return conditioning
 
 
     def run_safety_checker(self, image, device, dtype):
@@ -429,17 +409,23 @@ class StableDiffusionUpscalerPipeline(DiffusionPipeline):
         # extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 5. Prepare conditioning
-        uc, c = self._get_text_conditioning(prompt, device, do_classifier_free_guidance)
+        conditioning = self._get_text_conditioning(prompt, device, do_classifier_free_guidance)
 
         # 6. Create initial noise
         x_shape = [batch_size, channels, 2*height, 2*width]
         noisy_latents = torch.randn(x_shape, generator=generator, device=device, dtype=sigmas.dtype)
 
         # Disabled; according to the notebook it doesn't seem to work well
+        # TODO: remove in final implementation
         low_res_sigma = torch.full([batch_size], 0, device=device, dtype=sigmas.dtype)
 
-        # 7. Denoising loop
-        model_wrap = CFGUpscaler(self.upscaler, uc, cond_scale=guidance_scale)
+        # 7. Prepare inputs for CFG
+        low_res = latents
+        if do_classifier_free_guidance:
+            low_res = torch.cat([low_res] * 2)
+            low_res_sigma = torch.cat([low_res_sigma] * 2)
+
+        # 8. Denoising loop
         noisy_latents = noisy_latents * sigma_max
         for i, t in enumerate(self.progress_bar(self.scheduler.timesteps)):
             sigma = sigmas[i]
@@ -448,25 +434,34 @@ class StableDiffusionUpscalerPipeline(DiffusionPipeline):
             latent_model_input = noisy_latents
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
+            if do_classifier_free_guidance:
+                latent_model_input = torch.cat([latent_model_input] * 2)
+                sigma = torch.cat([sigma] * 2)
+
             # predict the next denoised latent
-            denoised = model_wrap(
-                latent_model_input, 
+            denoised = self.upscaler(
+                latent_model_input,
                 sigma,
-                low_res=latents,
+                low_res=low_res,
                 low_res_sigma=low_res_sigma,
-                c=c,
+                c=conditioning,
             )
             
+            # perform guidance
+            if do_classifier_free_guidance:
+                uncond, cond = denoised.chunk(2)
+                denoised = uncond + guidance_scale * (cond - uncond)
+
             # compute the previous noisy sample x_t -> x_t-1
             noisy_latents = self.scheduler.step(denoised, t, noisy_latents).prev_sample
 
-        # 8. Post-processing
+        # 9. Post-processing
         image = self.decode_latents(noisy_latents)
 
-        # 9. Run safety checker
+        # 10. Run safety checker
         image, has_nsfw_concept = self.run_safety_checker(image, device, sigmas.dtype)
 
-        # 10. Convert to PIL
+        # 11. Convert to PIL
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
