@@ -41,6 +41,7 @@ from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+
 class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
@@ -109,7 +110,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
     def prepare_inputs(self, prompt: Union[str, List[str]], init_image: Union[Image.Image, List[Image.Image]]):
         if not isinstance(prompt, (str, list)):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
-        
+
         if not isinstance(init_image, (Image.Image, list)):
             raise ValueError(f"init_image has to be of type `PIL.Image.Image` or list but is {type(init_image)}")
 
@@ -168,7 +169,6 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         offset = self.scheduler.config.get("steps_offset", 0)
         init_timestep = int(num_inference_steps * strength) + offset
         init_timestep = min(init_timestep, num_inference_steps)
-
         t_start = max(num_inference_steps - init_timestep + offset, 0)
         timesteps = scheduler_state.timesteps[t_start:]
 
@@ -206,7 +206,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
 
         # Create init_latents
         init_latent_dist = self.vae.apply({"params": params["vae"]}, init_image, method=self.vae.encode).latent_dist
-        init_latents = init_latent_dist.sample(key=prng_seed).transpose((0,3,1,2))
+        init_latents = init_latent_dist.sample(key=prng_seed).transpose((0, 3, 1, 2))
         init_latents = 0.18215 * init_latents
         latents_shape = (batch_size, self.unet.in_channels, height // 8, width // 8)
         noise = jax.random.normal(prng_seed, shape=latents_shape, dtype=self.dtype)
@@ -241,7 +241,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         scheduler_state = self.scheduler.set_timesteps(
             params["scheduler"], num_inference_steps=num_inference_steps, shape=latents_shape
         )
-        
+
         timesteps = self.get_timesteps(num_inference_steps, strength, scheduler_state)
         latent_timestep = timesteps[:1].repeat(batch_size)
         init_latents = self.scheduler.add_noise(init_latents, noise, latent_timestep)
@@ -322,11 +322,30 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         """
         if jit:
             images = _p_generate(
-                self, prompt_ids, init_images, params, prng_seed, strength, num_inference_steps, height, width, guidance_scale, debug
+                self,
+                prompt_ids,
+                init_images,
+                params,
+                prng_seed,
+                strength,
+                num_inference_steps,
+                height,
+                width,
+                guidance_scale,
+                debug,
             )
         else:
             images = self._generate(
-                prompt_ids, init_images, params, prng_seed, strength, num_inference_steps, height, width, guidance_scale, debug
+                prompt_ids,
+                init_images,
+                params,
+                prng_seed,
+                strength,
+                num_inference_steps,
+                height,
+                width,
+                guidance_scale,
+                debug,
             )
 
         if self.safety_checker is not None:
@@ -357,7 +376,17 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
 # TODO: maybe use a config dict instead of so many static argnums
 @partial(jax.pmap, static_broadcasted_argnums=(0, 5, 6, 7, 8, 9, 10))
 def _p_generate(
-    pipe, prompt_ids, init_images, params, prng_seed, strength, num_inference_steps, height, width, guidance_scale, debug
+    pipe,
+    prompt_ids,
+    init_images,
+    params,
+    prng_seed,
+    strength,
+    num_inference_steps,
+    height,
+    width,
+    guidance_scale,
+    debug,
 ):
     return pipe._generate(
         prompt_ids, init_images, params, prng_seed, strength, num_inference_steps, height, width, guidance_scale, debug
@@ -375,7 +404,8 @@ def unshard(x: jnp.ndarray):
     rest = x.shape[2:]
     return x.reshape(num_devices * batch_size, *rest)
 
-def preprocess(image,dtype):
+
+def preprocess(image, dtype):
     w, h = image.size
     w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
     image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
