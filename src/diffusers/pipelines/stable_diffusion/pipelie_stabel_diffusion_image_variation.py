@@ -218,9 +218,11 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
     def _encode_image(self, image, device, num_images_per_prompt, do_classifier_free_guidance):
         dtype = next(self.image_encoder.parameters()).dtype
 
-        pixel_values = self.feature_extractor(images=image, return_tensors="pt").pixel_values
-        pixel_values = pixel_values.to(device=self.device, dtype=dtype)
-        image_embeddings = self.image_encoder(pixel_values).image_embeds
+        if not isinstance(image, torch.FloatTensor):
+            image = self.feature_extractor(images=image, return_tensors="pt").pixel_values
+
+        image = image.to(device=device, dtype=dtype)
+        image_embeddings = self.image_encoder(image).image_embeds
         image_embeddings = image_embeddings.unsqueeze(1)
 
         # duplicate image embeddings for each generation per prompt, using mps friendly method
