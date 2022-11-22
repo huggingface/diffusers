@@ -283,7 +283,7 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
         vae = self.dummy_vae
         image_encoder = self.dummy_image_encoder
 
-        init_image = self.dummy_image.to(torch_device)
+        init_image = self.dummy_image.to(torch_device).float()
 
         # put models in fp16
         unet = unet.half()
@@ -331,7 +331,7 @@ class StableDiffusionImageVariationPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/vermeer.npy"
         )
 
-        model_id = "lambdalabs/sd-image-variations-diffusers"
+        model_id = "fusing/sd-image-variations-diffusers"
         pipe = StableDiffusionImageVariationPipeline.from_pretrained(
             model_id,
             safety_checker=None,
@@ -382,7 +382,7 @@ class StableDiffusionImageVariationPipelineIntegrationTests(unittest.TestCase):
         init_image = init_image.resize((512, 512))
 
         pipe = StableDiffusionImageVariationPipeline.from_pretrained(
-            "lambdalabs/sd-image-variations-diffusers",
+            "fusing/sd-image-variations-diffusers",
             torch_dtype=torch.float16,
         )
         pipe.to(torch_device)
@@ -413,7 +413,7 @@ class StableDiffusionImageVariationPipelineIntegrationTests(unittest.TestCase):
         )
         init_image = init_image.resize((512, 512))
 
-        model_id = "lambdalabs/sd-image-variations-diffusers"
+        model_id = "fusing/sd-image-variations-diffusers"
         lms = LMSDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
         pipe = StableDiffusionImageVariationPipeline.from_pretrained(
             model_id, scheduler=lms, safety_checker=None, device_map="auto", torch_dtype=torch.float16
