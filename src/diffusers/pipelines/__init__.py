@@ -25,6 +25,7 @@ if is_torch_available() and is_transformers_available():
         StableDiffusionPipeline,
     )
     from .versatile_diffusion import (
+        VersatileDiffusionDualGuidedPipeline,
         VersatileDiffusionImageToTextPipeline,
         VersatileDiffusionImageVariationPipeline,
         VersatileDiffusionPipeline,

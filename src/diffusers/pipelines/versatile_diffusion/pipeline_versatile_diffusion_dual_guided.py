@@ -17,21 +17,29 @@ from typing import Callable, List, Optional, Union
 
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.utils.checkpoint
 
 import PIL
-from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
+from transformers import (
+    CLIPFeatureExtractor,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+)
 
 from ...models import AutoencoderKL, UNet2DConditionModel
+from ...models.attention import Transformer2DModel, Transformer2DModelOutput
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import is_accelerate_available, logging
+from .modeling_text_unet import UNetFlatConditionModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
+class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
     r"""
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -49,28 +57,57 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
+    tokenizer: CLIPTokenizer
     image_feature_extractor: CLIPFeatureExtractor
+    text_encoder: CLIPTextModelWithProjection
     image_encoder: CLIPVisionModelWithProjection
     image_unet: UNet2DConditionModel
+    text_unet: UNetFlatConditionModel
     vae: AutoencoderKL
     scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler]
 
     def __init__(
         self,
+        tokenizer: CLIPTokenizer,
         image_feature_extractor: CLIPFeatureExtractor,
+        text_encoder: CLIPTextModelWithProjection,
         image_encoder: CLIPVisionModelWithProjection,
         image_unet: UNet2DConditionModel,
+        text_unet: UNetFlatConditionModel,
         vae: AutoencoderKL,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
     ):
         super().__init__()
         self.register_modules(
+            tokenizer=tokenizer,
             image_feature_extractor=image_feature_extractor,
+            text_encoder=text_encoder,
             image_encoder=image_encoder,
             image_unet=image_unet,
+            text_unet=text_unet,
             vae=vae,
             scheduler=scheduler,
         )
+
+    def convert_to_dual_attention(self, mix_ratio=0.5, condition_types=("image", "text")):
+        for name, module in self.image_unet.named_modules():
+            if isinstance(module, Transformer2DModel):
+                parent_name, index = name.rsplit(".", 1)
+                index = int(index)
+                image_transformer = self.image_unet.get_submodule(parent_name)[index]
+                text_transformer = self.text_unet.get_submodule(parent_name)[index]
+
+                dual_transformer = DualTransformer2DModel(
+                    image_transformer, text_transformer, mix_ratio=mix_ratio, condition_types=condition_types
+                )
+                self.image_unet.get_submodule(parent_name)[index] = dual_transformer
+
+    def remove_dual_attention(self):
+        for name, module in self.image_unet.named_modules():
+            if isinstance(module, DualTransformer2DModel):
+                parent_name, index = name.rsplit(".", 1)
+                index = int(index)
+                self.image_unet.get_submodule(parent_name)[index] = module.image_transformer
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_xformers_memory_efficient_attention with unet->image_unet
     def enable_xformers_memory_efficient_attention(self):
@@ -157,7 +194,7 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
-    def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt):
+    def _encode_text_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance):
         r"""
         Encodes the prompt into text encoder hidden states.
 
@@ -170,9 +207,97 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
                 number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
-            negative_prompt (`str` or `List[str]`):
-                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
-                if `guidance_scale` is less than `1`).
+        """
+
+        def normalize_embeddings(encoder_output):
+            embeds = self.text_encoder.text_projection(encoder_output.last_hidden_state)
+            embeds_pooled = encoder_output.text_embeds
+            embeds = embeds / torch.norm(embeds_pooled.unsqueeze(1), dim=-1, keepdim=True)
+            return embeds
+
+        batch_size = len(prompt)
+
+        text_inputs = self.tokenizer(
+            prompt,
+            padding="max_length",
+            max_length=self.tokenizer.model_max_length,
+            truncation=True,
+            return_tensors="pt",
+        )
+        text_input_ids = text_inputs.input_ids
+        untruncated_ids = self.tokenizer(prompt, padding="max_length", return_tensors="pt").input_ids
+
+        if not torch.equal(text_input_ids, untruncated_ids):
+            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1])
+            logger.warning(
+                "The following part of your input was truncated because CLIP can only handle sequences up to"
+                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
+            )
+
+        if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+            attention_mask = text_inputs.attention_mask.to(device)
+        else:
+            attention_mask = None
+
+        text_embeddings = self.text_encoder(
+            text_input_ids.to(device),
+            attention_mask=attention_mask,
+        )
+        text_embeddings = normalize_embeddings(text_embeddings)
+
+        # duplicate text embeddings for each generation per prompt, using mps friendly method
+        bs_embed, seq_len, _ = text_embeddings.shape
+        text_embeddings = text_embeddings.repeat(1, num_images_per_prompt, 1)
+        text_embeddings = text_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
+
+        # get unconditional embeddings for classifier free guidance
+        if do_classifier_free_guidance:
+            uncond_tokens = [""] * batch_size
+            max_length = text_input_ids.shape[-1]
+            uncond_input = self.tokenizer(
+                uncond_tokens,
+                padding="max_length",
+                max_length=max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+
+            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+                attention_mask = uncond_input.attention_mask.to(device)
+            else:
+                attention_mask = None
+
+            uncond_embeddings = self.text_encoder(
+                uncond_input.input_ids.to(device),
+                attention_mask=attention_mask,
+            )
+            uncond_embeddings = normalize_embeddings(uncond_embeddings)
+
+            # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
+            seq_len = uncond_embeddings.shape[1]
+            uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
+            uncond_embeddings = uncond_embeddings.view(batch_size * num_images_per_prompt, seq_len, -1)
+
+            # For classifier free guidance, we need to do two forward passes.
+            # Here we concatenate the unconditional and text embeddings into a single batch
+            # to avoid doing two forward passes
+            text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
+
+        return text_embeddings
+
+    def _encode_image_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance):
+        r"""
+        Encodes the prompt into text encoder hidden states.
+
+        Args:
+            prompt (`str` or `list(int)`):
+                prompt to be encoded
+            device: (`torch.device`):
+                torch device
+            num_images_per_prompt (`int`):
+                number of images that should be generated per prompt
+            do_classifier_free_guidance (`bool`):
+                whether to use classifier free guidance or not
         """
 
         def normalize_embeddings(encoder_output):
@@ -196,25 +321,7 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
-            uncond_images: List[str]
-            if negative_prompt is None:
-                uncond_images = [np.zeros((512, 512, 3))] * batch_size
-            elif type(prompt) is not type(negative_prompt):
-                raise TypeError(
-                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-                    f" {type(prompt)}."
-                )
-            elif isinstance(negative_prompt, PIL.Image.Image):
-                uncond_images = [negative_prompt]
-            elif batch_size != len(negative_prompt):
-                raise ValueError(
-                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
-                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
-                    " the batch size of `prompt`."
-                )
-            else:
-                uncond_images = negative_prompt
-
+            uncond_images = [np.zeros((512, 512, 3))] * batch_size
             uncond_images = self.image_feature_extractor(images=uncond_images, return_tensors="pt")
             uncond_embeddings = self.image_encoder(uncond_images.pixel_values.to(device))
             uncond_embeddings = normalize_embeddings(uncond_embeddings)
@@ -258,9 +365,23 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    def check_inputs(self, image, height, width, callback_steps):
-        if not isinstance(image, PIL.Image.Image) and not isinstance(image, torch.Tensor):
-            raise ValueError(f"`image` has to be of type `PIL.Image.Image` or `torch.Tensor` but is {type(image)}")
+    def check_inputs(self, first_prompt, second_prompt, height, width, callback_steps):
+        if (
+            not isinstance(first_prompt, str)
+            and not isinstance(first_prompt, PIL.Image.Image)
+            and not isinstance(first_prompt, list)
+        ):
+            raise ValueError(
+                f"`first_prompt` has to be of type `str` `PIL.Image` or `list` but is {type(first_prompt)}"
+            )
+        if (
+            not isinstance(second_prompt, str)
+            and not isinstance(second_prompt, PIL.Image.Image)
+            and not isinstance(second_prompt, list)
+        ):
+            raise ValueError(
+                f"`second_prompt` has to be of type `str` `PIL.Image` or `list` but is {type(second_prompt)}"
+            )
 
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -294,12 +415,13 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.Tensor],
+        first_prompt: Union[str, List[str], PIL.Image.Image, List[PIL.Image.Image]],
+        second_prompt: Union[str, List[str], PIL.Image.Image, List[PIL.Image.Image]],
+        prompt_mix_ratio: float = 0.5,
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[torch.Generator] = None,
@@ -314,8 +436,8 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            image (`PIL.Image.Image`, `List[PIL.Image.Image]` or `torch.Tensor`):
-                The image prompt or prompts to guide the image generation.
+            prompt (`str` or `List[str]`):
+                The prompt or prompts to guide the image generation.
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 512):
@@ -366,20 +488,34 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
         """
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(image, height, width, callback_steps)
+        self.check_inputs(first_prompt, second_prompt, height, width, callback_steps)
 
         # 2. Define call parameters
-        batch_size = 1 if isinstance(image, PIL.Image.Image) else len(image)
+        first_prompt = [first_prompt] if not isinstance(first_prompt, list) else first_prompt
+        second_prompt = [second_prompt] if not isinstance(second_prompt, list) else second_prompt
+        batch_size = len(first_prompt)
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        # 3. Encode input prompt
-        image_embeddings = self._encode_prompt(
-            image, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
-        )
+        # 3. Encode input prompts
+        dual_prompt_embeddings = []
+        prompt_types = []
+        for prompt in [first_prompt, second_prompt]:
+            if isinstance(prompt[0], str):
+                embeddings = self._encode_text_prompt(
+                    prompt, device, num_images_per_prompt, do_classifier_free_guidance
+                )
+                prompt_types.append("text")
+            else:
+                embeddings = self._encode_image_prompt(
+                    prompt, device, num_images_per_prompt, do_classifier_free_guidance
+                )
+                prompt_types.append("image")
+            dual_prompt_embeddings.append(embeddings)
+        dual_prompt_embeddings = torch.cat(dual_prompt_embeddings, dim=1)
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -392,7 +528,7 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
             num_channels_latents,
             height,
             width,
-            image_embeddings.dtype,
+            dual_prompt_embeddings.dtype,
             device,
             generator,
             latents,
@@ -401,14 +537,17 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
         # 6. Prepare extra step kwargs.
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7. Denoising loop
+        # 7. Combine the attention blocks of the image and text UNets
+        self.convert_to_dual_attention(prompt_mix_ratio, prompt_types)
+
+        # 8. Denoising loop
         for i, t in enumerate(self.progress_bar(timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
             # predict the noise residual
-            noise_pred = self.image_unet(latent_model_input, t, encoder_hidden_states=image_embeddings).sample
+            noise_pred = self.image_unet(latent_model_input, t, encoder_hidden_states=dual_prompt_embeddings).sample
 
             # perform guidance
             if do_classifier_free_guidance:
@@ -422,10 +561,13 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
-        # 8. Post-processing
+        # 9. Return the image unet to its original state
+        self.remove_dual_attention()
+
+        # 10. Post-processing
         image = self.decode_latents(latents)
 
-        # 9. Convert to PIL
+        # 11. Convert to PIL
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
@@ -433,3 +575,33 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
             return (image,)
 
         return ImagePipelineOutput(images=image)
+
+
+class DualTransformer2DModel(nn.Module):
+    def __init__(self, image_transformer, text_transformer, mix_ratio=0.5, condition_types=("text", "image")):
+        super().__init__()
+        self.image_transformer = image_transformer
+        self.text_transformer = text_transformer
+        self.mix_ratio = mix_ratio
+        self.condition_types = condition_types
+
+    def forward(self, input_states, encoder_hidden_states, timestep=None, return_dict: bool = True):
+        condition_states = encoder_hidden_states.chunk(2, dim=1)
+
+        encoded_states = []
+        for i in range(2):
+            if self.condition_types[i] == "image":
+                image_output = self.image_transformer(input_states, condition_states[i], timestep, return_dict)
+                encoded_states.append(image_output[0])
+            else:
+                text_output = self.text_transformer(input_states, condition_states[i], timestep, return_dict)
+                encoded_states.append(text_output[0])
+            encoded_states[i] = encoded_states[i] - input_states
+
+        output_states = encoded_states[0] * self.mix_ratio + encoded_states[1] * (1 - self.mix_ratio)
+        output_states = output_states + input_states
+
+        if not return_dict:
+            return (output_states,)
+
+        return Transformer2DModelOutput(sample=output_states)
