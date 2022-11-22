@@ -25,7 +25,7 @@ from diffusers import (
     DDIMScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
-    StableDiffusionImg2ImgPipeline,
+    StableDiffusionImageVariationPipeline,
     UNet2DConditionModel,
 )
 from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
@@ -38,7 +38,7 @@ from ...test_pipelines_common import PipelineTesterMixin
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -91,7 +91,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             layer_norm_eps=1e-05,
             num_attention_heads=4,
             num_hidden_layers=5,
-            image_size=(32, 32),
+            image_size=32,
             patch_size=4,
         )
         return CLIPVisionModelWithProjection(config)
@@ -121,7 +121,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         init_image = self.dummy_image.to(device)
 
         # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionImg2ImgPipeline(
+        sd_pipe = StableDiffusionImageVariationPipeline(
             unet=unet,
             scheduler=scheduler,
             vae=vae,
@@ -175,7 +175,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         init_image = self.dummy_image.to(device).repeat(2, 1, 1, 1)
 
         # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionImg2ImgPipeline(
+        sd_pipe = StableDiffusionImageVariationPipeline(
             unet=unet,
             scheduler=scheduler,
             vae=vae,
@@ -215,7 +215,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         init_image = self.dummy_image.to(device)
 
         # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionImg2ImgPipeline(
+        sd_pipe = StableDiffusionImageVariationPipeline(
             unet=unet,
             scheduler=scheduler,
             vae=vae,
@@ -291,7 +291,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
         image_encoder = image_encoder.half()
 
         # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionImg2ImgPipeline(
+        sd_pipe = StableDiffusionImageVariationPipeline(
             unet=unet,
             scheduler=scheduler,
             vae=vae,
@@ -317,7 +317,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
 
 @slow
 @require_torch_gpu
-class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
+class StableDiffusionImageVariationPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -335,7 +335,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         )
 
         model_id = "lambdalabs/sd-image-variations-diffusers"
-        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
+        pipe = StableDiffusionImageVariationPipeline.from_pretrained(
             model_id,
             safety_checker=None,
         )
@@ -384,7 +384,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         )
         init_image = init_image.resize((512, 512))
 
-        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
+        pipe = StableDiffusionImageVariationPipeline.from_pretrained(
             "lambdalabs/sd-image-variations-diffusers",
             torch_dtype=torch.float16,
         )
@@ -418,7 +418,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
         model_id = "lambdalabs/sd-image-variations-diffusers"
         lms = LMSDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
-        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
+        pipe = StableDiffusionImageVariationPipeline.from_pretrained(
             model_id, scheduler=lms, safety_checker=None, device_map="auto", torch_dtype=torch.float16
         )
         pipe.to(torch_device)
