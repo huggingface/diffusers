@@ -311,7 +311,7 @@ class AttentionBlock(nn.Module):
             torch.empty(
                 query_states.shape[0],
                 query_states.shape[1],
-                key_states.shape[1],
+                key_states.shape[2],
                 dtype=query_states.dtype,
                 device=query_states.device,
             ),
