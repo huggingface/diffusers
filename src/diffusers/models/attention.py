@@ -373,7 +373,7 @@ class BasicTransformerBlock(nn.Module):
                 self._set_use_memory_efficient_attention_xformers(True)
             except Exception as e:
                 warnings.warn(
-                    "Could not enable memory efficient attention by default. Make sure xformers is installed"
+                    "Could not enable memory efficient attention. Make sure xformers is installed"
                     f" correctly and a GPU is available: {e}"
                 )
 
