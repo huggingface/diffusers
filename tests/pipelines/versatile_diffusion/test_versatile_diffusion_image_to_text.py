@@ -27,15 +27,15 @@ from ...test_pipelines_common import PipelineTesterMixin
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class VersatileDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class VersatileDiffusionImageToTextPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pass
 
 
 @slow
 @require_torch_gpu
-class VersatileDiffusionImageVariationPipelineIntegrationTests(unittest.TestCase):
+class VersatileDiffusionImageToTextPipelineIntegrationTests(unittest.TestCase):
     def test_inference_image_to_text(self):
-        pipe = VersatileDiffusionImageToTextPipeline.from_pretrained("scripts/vd_official")
+        pipe = VersatileDiffusionImageToTextPipeline.from_pretrained("diffusers/vd-official-test")
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -53,4 +53,4 @@ class VersatileDiffusionImageVariationPipelineIntegrationTests(unittest.TestCase
 
         assert tokens.shape == (1, 30)
         expected_tokens = np.array([0, 1, 2, 3, 4, 5, 6, 7])
-        assert self.assertItemsEqual(tokens[0] , expected_tokens)
+        assert self.assertItemsEqual(tokens[0], expected_tokens)

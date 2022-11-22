@@ -23,13 +23,13 @@ import torch.utils.checkpoint
 import PIL
 from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection, GPT2Tokenizer
 
-from .modeling_text_unet import UNetFlatConditionModel
-from .modeling_gpt2_optimus import GPT2OptimusForLatentConnector
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention import Transformer2DModel
-from ...pipeline_utils import DiffusionPipeline, BaseOutput
+from ...pipeline_utils import BaseOutput, DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import is_accelerate_available, logging
+from .modeling_gpt2_optimus import GPT2OptimusForLatentConnector
+from .modeling_text_unet import UNetFlatConditionModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -42,7 +42,8 @@ class TextPipelineOutput(BaseOutput):
 
     Args:
         text (`List[str]` or `np.ndarray`)
-            List of generated text of length `batch_size` or a numpy array of tokens of shape `(batch_size, num_tokens)`.
+            List of generated text of length `batch_size` or a numpy array of tokens of shape `(batch_size,
+            num_tokens)`.
     """
 
     text: Union[List[str], np.ndarray]

@@ -20,12 +20,12 @@ import torch.utils.checkpoint
 
 from transformers import CLIPFeatureExtractor, CLIPTextModelWithProjection, CLIPTokenizer
 
-from .modeling_text_unet import UNetFlatConditionModel
-from ...models import UNet2DConditionModel, AutoencoderKL
+from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention import Transformer2DModel
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import is_accelerate_available, logging
+from .modeling_text_unet import UNetFlatConditionModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

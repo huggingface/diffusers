@@ -9,8 +9,8 @@ from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import logging
-from .pipeline_versatile_diffusion_text_to_image import VersatileDiffusionTextToImagePipeline
 from .pipeline_versatile_diffusion_image_variation import VersatileDiffusionImageVariationPipeline
+from .pipeline_versatile_diffusion_text_to_image import VersatileDiffusionTextToImagePipeline
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

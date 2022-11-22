@@ -73,10 +73,10 @@ if is_torch_available() and is_transformers_available():
         StableDiffusionInpaintPipeline,
         StableDiffusionInpaintPipelineLegacy,
         StableDiffusionPipeline,
+        VersatileDiffusionImageToTextPipeline,
         VersatileDiffusionImageVariationPipeline,
         VersatileDiffusionPipeline,
         VersatileDiffusionTextToImagePipeline,
-        VersatileDiffusionImageToTextPipeline,
         VQDiffusionPipeline,
     )
 else:

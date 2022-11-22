@@ -25,10 +25,10 @@ if is_torch_available() and is_transformers_available():
         StableDiffusionPipeline,
     )
     from .versatile_diffusion import (
+        VersatileDiffusionImageToTextPipeline,
         VersatileDiffusionImageVariationPipeline,
         VersatileDiffusionPipeline,
         VersatileDiffusionTextToImagePipeline,
-        VersatileDiffusionImageToTextPipeline,
     )
     from .vq_diffusion import VQDiffusionPipeline
 

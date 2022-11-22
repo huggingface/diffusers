@@ -15,7 +15,6 @@
 """ Conversion script for the Versatile Stable Diffusion checkpoints. """
 
 import argparse
-import os
 from argparse import Namespace
 
 import torch
@@ -32,7 +31,6 @@ from diffusers import (
     VersatileDiffusionPipeline,
 )
 from diffusers.pipelines.versatile_diffusion.modeling_text_unet import UNetFlatConditionModel
-from diffusers.pipelines.versatile_diffusion.modeling_gpt2_optimus import GPT2OptimusForLatentConnector
 from transformers import (
     CLIPFeatureExtractor,
     CLIPTextModelWithProjection,

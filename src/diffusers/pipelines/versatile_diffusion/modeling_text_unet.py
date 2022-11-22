@@ -489,7 +489,9 @@ class ResnetBlockFlat(nn.Module):
 
         self.nonlinearity = nn.SiLU()
 
-        self.use_in_shortcut = self.in_channels_prod != out_channels_prod if use_in_shortcut is None else use_in_shortcut
+        self.use_in_shortcut = (
+            self.in_channels_prod != out_channels_prod if use_in_shortcut is None else use_in_shortcut
+        )
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
@@ -527,7 +529,6 @@ class ResnetBlockFlat(nn.Module):
         output_tensor = output_tensor.view(*shape[0:-n_dim], -1)
         output_tensor = output_tensor.view(*shape[0:-n_dim], *self.out_channels_multidim)
 
-        print("resblock.output_tensor", output_tensor.abs().sum())
         return output_tensor
 
 
