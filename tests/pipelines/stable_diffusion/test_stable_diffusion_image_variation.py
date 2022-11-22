@@ -364,13 +364,13 @@ class StableDiffusionImageVariationPipelineIntegrationTests(unittest.TestCase):
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([0.9052, -0.0184, 0.4810, 0.2898, 0.5851, 1.4920, 0.5362, 1.9838, 0.0530])
+                expected_slice = np.array([1.83, 1.293, -0.09705, 1.256, -2.293, 1.091, -0.0809, -0.65, -2.953])
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
             elif step == 37:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
-                expected_slice = np.array([0.7071, 0.7831, 0.8300, 1.8140, 1.7840, 1.9402, 1.3651, 1.6590, 1.2828])
+                expected_slice = np.array([2.285, 2.703, 1.969, 0.696, -1.323, 0.9253, -0.5464, -1.521, -2.537])
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
 
         test_callback_fn.has_been_called = False
@@ -433,5 +433,5 @@ class StableDiffusionImageVariationPipelineIntegrationTests(unittest.TestCase):
         )
 
         mem_bytes = torch.cuda.max_memory_allocated()
-        # make sure that less than 2.2 GB is allocated
-        assert mem_bytes < 2.2 * 10**9
+        # make sure that less than 2.6 GB is allocated
+        assert mem_bytes < 2.6 * 10**9
