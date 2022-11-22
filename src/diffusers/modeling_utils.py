@@ -95,7 +95,7 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike], is_pytorch: bool):
         if is_pytorch:
             return torch.load(checkpoint_file, map_location="cpu")
         else:
-            return load_file(checkpoint_file, map_location="cpu")
+            return load_file(checkpoint_file, device="cpu")
 
     except Exception as e:
         try:
