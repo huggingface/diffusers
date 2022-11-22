@@ -43,14 +43,12 @@ class VersatileDiffusionImageToTextPipelineIntegrationTests(unittest.TestCase):
             "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/benz.jpg"
         )
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        tokens = pipe(
+        text = pipe(
             image=image_prompt,
             generator=generator,
             guidance_scale=7.5,
             num_inference_steps=50,
-            output_type="numpy",
+            output_type="str",
         ).text
 
-        assert tokens.shape == (1, 30)
-        expected_tokens = np.array([0, 1, 2, 3, 4, 5, 6, 7])
-        assert self.assertItemsEqual(tokens[0], expected_tokens)
+        assert text == "Corret me"
