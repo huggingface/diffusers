@@ -79,36 +79,6 @@ def make_upscaler_model(config_path, model_path, pooler_dim=768, train=False, de
 
 # <<<<<< To be removed when we migrate upscaler model to diffusers
 
-# To be removed soon
-
-class CLIPEmbedder(nn.Module):
-    def __init__(self, clip_text_model, device="cuda"):
-        super().__init__()
-        self.transformer = clip_text_model
-        self.transformer = self.transformer.eval().requires_grad_(False).to(device)
-
-    @property
-    def device(self):
-        return self.transformer.device
-
-    def forward(self, tok_out):
-        input_ids, cross_cond_padding = tok_out
-        clip_out = self.transformer(input_ids=input_ids.to(self.device), output_hidden_states=True)
-        return clip_out.hidden_states[-1], cross_cond_padding.to(self.device), clip_out.pooler_output
-
-class CLIPTokenizerTransform:
-    def __init__(self, tokenizer):
-        self.tokenizer = tokenizer
-
-    def __call__(self, text):
-        indexer = 0 if isinstance(text, str) else ...
-        tok_out = self.tokenizer(text, truncation=True, max_length=self.tokenizer.model_max_length,
-                                 return_length=True, return_overflowing_tokens=False,
-                                 padding='max_length', return_tensors='pt')
-        input_ids = tok_out['input_ids'][indexer]
-        attention_mask = 1 - tok_out['attention_mask'][indexer]
-        return input_ids, attention_mask
-
 class CFGUpscaler(nn.Module):
     def __init__(self, model, uc, cond_scale):
         super().__init__()
@@ -307,6 +277,36 @@ class StableDiffusionUpscalerPipeline(DiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
+    def _get_text_conditioning(self, prompt, device, do_classifier_free_guidance):
+        batch_size = len(prompt) if isinstance(prompt, list) else 1
+
+        def get_conditioning(text):
+            text_inputs = self.tokenizer(
+                text,
+                padding="max_length",
+                max_length=self.tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+            text_input_ids = text_inputs.input_ids.to(device)
+            attention_mask = text_inputs.attention_mask.to(device)
+            cross_cond_padding = 1 - attention_mask
+
+            # I believe the attention mask should be provided here, but the original notebook does not do it
+            # TODO: test it out
+            # clip_output = self.text_encoder(input_ids=text_input_ids, attention_mask=attention_mask, output_hidden_states=True)
+            clip_output = self.text_encoder(input_ids=text_input_ids, output_hidden_states=True)
+            hidden_states = clip_output.hidden_states[-1]
+            pooler_output = clip_output.pooler_output
+
+            return hidden_states, cross_cond_padding.to(dtype=hidden_states.dtype), pooler_output
+
+        prompt_conditioning = get_conditioning(prompt)                   # c
+        uncond_conditioning = get_conditioning(batch_size * [""])        # u
+
+        return uncond_conditioning, prompt_conditioning
+
+
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is not None:
             safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
@@ -429,18 +429,10 @@ class StableDiffusionUpscalerPipeline(DiffusionPipeline):
         # extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 5. Prepare conditioning
-        # TODO: _encode_prompt similar to stable diffusion
-        [batch_size, C, H, W] = latents.shape
-        tokenizer = CLIPTokenizerTransform(self.tokenizer)
-        text_encoder = CLIPEmbedder(self.text_encoder, device=device)
-        uc = text_encoder(tokenizer(batch_size * [""]))
-        c = text_encoder(tokenizer(prompt))
-
-        uc = tuple(x.float() for x in uc)
-        c = tuple(x.float() for x in c)
+        uc, c = self._get_text_conditioning(prompt, device, do_classifier_free_guidance)
 
         # 6. Create initial noise
-        x_shape = [batch_size, C, 2*H, 2*W]
+        x_shape = [batch_size, channels, 2*height, 2*width]
         noisy_latents = torch.randn(x_shape, generator=generator, device=device, dtype=sigmas.dtype)
 
         # Disabled; according to the notebook it doesn't seem to work well
