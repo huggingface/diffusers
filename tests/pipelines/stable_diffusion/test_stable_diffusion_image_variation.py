@@ -399,7 +399,7 @@ class StableDiffusionImageVariationPipelineIntegrationTests(unittest.TestCase):
                 callback_steps=1,
             )
         assert test_callback_fn.has_been_called
-        assert number_of_steps == 38
+        assert number_of_steps == 51
 
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
@@ -415,7 +415,7 @@ class StableDiffusionImageVariationPipelineIntegrationTests(unittest.TestCase):
         model_id = "fusing/sd-image-variations-diffusers"
         lms = LMSDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
         pipe = StableDiffusionImageVariationPipeline.from_pretrained(
-            model_id, scheduler=lms, safety_checker=None, device_map="auto", torch_dtype=torch.float16
+            model_id, scheduler=lms, safety_checker=None, torch_dtype=torch.float16
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
