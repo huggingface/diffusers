@@ -73,6 +73,7 @@ if is_torch_available() and is_transformers_available():
         StableDiffusionInpaintPipeline,
         StableDiffusionInpaintPipelineLegacy,
         StableDiffusionPipeline,
+        StableDiffusionPipelineSafe,
         VQDiffusionPipeline,
     )
 else:
