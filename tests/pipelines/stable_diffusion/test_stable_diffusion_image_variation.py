@@ -334,7 +334,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/fantasy_landscape.npy"
         )
 
-        model_id = "CompVis/stable-diffusion-v1-4"
+        model_id = "lambdalabs/sd-image-variations-diffusers"
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
             model_id,
             safety_checker=None,
@@ -385,8 +385,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         init_image = init_image.resize((512, 512))
 
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4",
-            revision="fp16",
+            "lambdalabs/sd-image-variations-diffusers",
             torch_dtype=torch.float16,
         )
         pipe.to(torch_device)
@@ -417,10 +416,10 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         )
         init_image = init_image.resize((512, 512))
 
-        model_id = "CompVis/stable-diffusion-v1-4"
+        model_id = "lambdalabs/sd-image-variations-diffusers"
         lms = LMSDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-            model_id, scheduler=lms, safety_checker=None, device_map="auto", revision="fp16", torch_dtype=torch.float16
+            model_id, scheduler=lms, safety_checker=None, device_map="auto", torch_dtype=torch.float16
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
