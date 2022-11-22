@@ -277,7 +277,7 @@ class AttentionBlock(nn.Module):
         # norm
         hidden_states = self.group_norm(hidden_states)
 
-        hidden_states = hidden_states.view(batch, channel, height * width).transpose(1, 2)
+        hidden_states = hidden_states.view(batch, channel, height * width).transpose(1, 2).contiguous()
 
         # proj to q, k, v
         query_proj = self.query(hidden_states)
