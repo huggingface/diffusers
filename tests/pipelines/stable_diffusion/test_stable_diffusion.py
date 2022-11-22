@@ -523,12 +523,16 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_count = 4
 
         generator = torch.Generator(device=device).manual_seed(0)
-        output_1 = sd_pipe([prompt] * image_count, generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
+        output_1 = sd_pipe(
+            [prompt] * image_count, generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np"
+        )
 
         # make sure sliced vae decode yields the same result
         sd_pipe.enable_vae_slicing()
         generator = torch.Generator(device=device).manual_seed(0)
-        output_2 = sd_pipe([prompt] * image_count, generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
+        output_2 = sd_pipe(
+            [prompt] * image_count, generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np"
+        )
 
         # there is a small discrepancy at image borders vs. full batch decode
         assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 3e-3
