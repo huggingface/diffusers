@@ -28,6 +28,7 @@ class StableDiffusionPipelineOutput(BaseOutput):
 
 
 if is_transformers_available() and is_torch_available():
+    from .pipelie_stabel_diffusion_image_variation import StableDiffusionImageVariationPipeline
     from .pipeline_cycle_diffusion import CycleDiffusionPipeline
     from .pipeline_stable_diffusion import StableDiffusionPipeline
     from .pipeline_stable_diffusion_img2img import StableDiffusionImg2ImgPipeline
