@@ -43,7 +43,7 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
         second_prompt = load_image(
             "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/benz.jpg"
         )
-        generator = torch.Generator(device=torch_device).manual_seed(22)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         image = pipe(
             first_prompt=first_prompt,
             second_prompt=second_prompt,

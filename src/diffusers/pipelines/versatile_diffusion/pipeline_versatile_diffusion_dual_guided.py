@@ -586,16 +586,19 @@ class DualTransformer2DModel(nn.Module):
         self.condition_types = condition_types
 
     def forward(self, input_states, encoder_hidden_states, timestep=None, return_dict: bool = True):
-        condition_states = encoder_hidden_states.chunk(2, dim=1)
+        if self.condition_types[0] == "text":
+            condition_states = [encoder_hidden_states[:, :77], encoder_hidden_states[:, 77:]]
+        else:
+            condition_states = [encoder_hidden_states[:, :257], encoder_hidden_states[:, 257:]]
 
         encoded_states = []
         for i in range(2):
-            if self.condition_types[i] == "image":
-                image_output = self.image_transformer(input_states, condition_states[i], timestep, return_dict)
-                encoded_states.append(image_output[0])
-            else:
+            if self.condition_types[i] == "text":
                 text_output = self.text_transformer(input_states, condition_states[i], timestep, return_dict)
                 encoded_states.append(text_output[0])
+            else:
+                image_output = self.image_transformer(input_states, condition_states[i], timestep, return_dict)
+                encoded_states.append(image_output[0])
             encoded_states[i] = encoded_states[i] - input_states
 
         output_states = encoded_states[0] * self.mix_ratio + encoded_states[1] * (1 - self.mix_ratio)
