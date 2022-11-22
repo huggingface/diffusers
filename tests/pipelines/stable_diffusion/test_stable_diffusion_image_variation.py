@@ -362,13 +362,13 @@ class StableDiffusionImageVariationPipelineIntegrationTests(unittest.TestCase):
             number_of_steps += 1
             if step == 0:
                 latents = latents.detach().cpu().numpy()
-                assert latents.shape == (1, 4, 64, 96)
+                assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([0.9052, -0.0184, 0.4810, 0.2898, 0.5851, 1.4920, 0.5362, 1.9838, 0.0530])
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
             elif step == 37:
                 latents = latents.detach().cpu().numpy()
-                assert latents.shape == (1, 4, 64, 96)
+                assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([0.7071, 0.7831, 0.8300, 1.8140, 1.7840, 1.9402, 1.3651, 1.6590, 1.2828])
                 assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
