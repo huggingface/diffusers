@@ -324,12 +324,11 @@ class StableDiffusionImageVariationPipelineIntegrationTests(unittest.TestCase):
 
     def test_stable_diffusion_img_variation_pipeline_default(self):
         init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/img2img/sketch-mountains-input.jpg"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/vermeer.jpg"
         )
         init_image = init_image.resize((512, 512))
         expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/fantasy_landscape.npy"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/vermeer.npy"
         )
 
         model_id = "lambdalabs/sd-image-variations-diffusers"
