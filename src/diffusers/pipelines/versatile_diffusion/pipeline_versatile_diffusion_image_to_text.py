@@ -265,9 +265,8 @@ class VersatileDiffusionImageToTextPipeline(DiffusionPipeline):
 
         return image_embeddings
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
-        latents = latents.reshape(latents.shape[:-2]).unsqueeze(1)
+        latents = latents.reshape(latents.shape[:-2])
         self.text_vae_decoder = self.text_vae_decoder.to(self._execution_device)
         bos_token = self.text_vae_tokenizer.bos_token_id
         output = self.text_vae_decoder.generate(bos_token_id=bos_token, past=latents)
@@ -454,7 +453,7 @@ class VersatileDiffusionImageToTextPipeline(DiffusionPipeline):
 
         # 11. Convert to strings
         if output_type == "str":
-            text = self.text_vae_tokenizer.decode(text)
+            text = self.text_vae_tokenizer.batch_decode(text)
 
         if not return_dict:
             return (text,)
