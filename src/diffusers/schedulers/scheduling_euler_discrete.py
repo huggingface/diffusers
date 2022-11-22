@@ -20,7 +20,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput, logging
-from .scheduling_utils import SchedulerMixin
+from .scheduling_utils import SchedulerMixin, betas_from_loglinear_sigmas
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -91,6 +91,11 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.betas = (
                 torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
             )
+        elif beta_schedule == "loglinear_sigmas":
+            # This scheduler is specific to k-diffusion latent upscaler
+            # We use a helper function because the computation is a bit involved
+            # Alternative: create from a list of `trained_betas` (but see https://github.com/huggingface/diffusers/issues/1367)
+            self.betas = betas_from_loglinear_sigmas(beta_start, beta_end, num_train_timesteps)
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
