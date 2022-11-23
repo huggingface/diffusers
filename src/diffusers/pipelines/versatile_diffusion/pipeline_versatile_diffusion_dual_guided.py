@@ -89,12 +89,14 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
 
-        if "dual_cross_attention" not in self.image_unet.config or not self.image_unet.config.dual_cross_attention:
+        if self.text_unet is not None and (
+            "dual_cross_attention" not in self.image_unet.config or not self.image_unet.config.dual_cross_attention
+        ):
             # if loading from a universal checkpoint rather than a saved dual-guided pipeline
             self._convert_to_dual_attention()
-        if self.text_unet is not None:
-            # release the memory taken up by `text_unet`
-            self.register_modules(text_unet=None)
+
+    def remove_unused_weights(self):
+        self.register_modules(text_unet=None)
 
     def _convert_to_dual_attention(self):
         """
@@ -139,7 +141,6 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
                 parent_name, index = name.rsplit(".", 1)
                 index = int(index)
                 self.image_unet.get_submodule(parent_name)[index] = module.transformers[0]
-        self.image_unet.config.dual_cross_attention = False
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_xformers_memory_efficient_attention with unet->image_unet
     def enable_xformers_memory_efficient_attention(self):
@@ -354,7 +355,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
-            uncond_images = [np.zeros((512, 512, 3))] * batch_size
+            uncond_images = [np.zeros((512, 512, 3)) + 0.5] * batch_size
             uncond_images = self.image_feature_extractor(images=uncond_images, return_tensors="pt")
             pixel_values = uncond_images.pixel_values.to(device).to(self.image_encoder.dtype)
             uncond_embeddings = self.image_encoder(pixel_values)

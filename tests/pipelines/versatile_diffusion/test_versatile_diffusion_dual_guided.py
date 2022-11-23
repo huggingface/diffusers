@@ -42,8 +42,10 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_from_pretrained_save_pretrained(self):
+    def test_remove_unused_weights_save_load(self):
         pipe = VersatileDiffusionDualGuidedPipeline.from_pretrained("diffusers/vd-official-test")
+        # remove text_unet
+        pipe.remove_unused_weights()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -100,5 +102,5 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.5727, 0.5625, 0.5617, 0.5703, 0.5530, 0.5620, 0.5864, 0.5742, 0.5665])
+        expected_slice = np.array([0.0607, 0.0695, 0.0750, 0.0650, 0.0703, 0.0796, 0.0726, 0.0768, 0.0858])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

@@ -164,7 +164,8 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
     ):
         expected_components = inspect.signature(VersatileDiffusionTextToImagePipeline.__init__).parameters.keys()
         components = {name: component for name, component in self.components.items() if name in expected_components}
-        return VersatileDiffusionTextToImagePipeline(**components)(
+        temp_pipeline = VersatileDiffusionTextToImagePipeline(**components)
+        output = temp_pipeline(
             prompt=prompt,
             height=height,
             width=width,
@@ -180,6 +181,10 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
             callback=callback,
             callback_steps=callback_steps,
         )
+        # swap the attention blocks back to the original state
+        temp_pipeline._swap_unet_attention_blocks()
+
+        return output
 
     @torch.no_grad()
     def dual_guided(

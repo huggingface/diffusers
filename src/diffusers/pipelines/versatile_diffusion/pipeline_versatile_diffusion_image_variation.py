@@ -199,7 +199,7 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
         if do_classifier_free_guidance:
             uncond_images: List[str]
             if negative_prompt is None:
-                uncond_images = [np.zeros((512, 512, 3))] * batch_size
+                uncond_images = [np.zeros((512, 512, 3)) + 0.5] * batch_size
             elif type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="

@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
+import tempfile
 import unittest
 
 import numpy as np
@@ -34,6 +36,38 @@ class VersatileDiffusionTextToImagePipelineFastTests(PipelineTesterMixin, unitte
 @slow
 @require_torch_gpu
 class VersatileDiffusionTextToImagePipelineIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_remove_unused_weights_save_load(self):
+        pipe = VersatileDiffusionTextToImagePipeline.from_pretrained("diffusers/vd-official-test")
+        # remove text_unet
+        pipe.remove_unused_weights()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A painting of a squirrel eating a burger "
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image = pipe(
+            prompt=prompt, generator=generator, guidance_scale=7.5, num_inference_steps=2, output_type="numpy"
+        ).images
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.save_pretrained(tmpdirname)
+            pipe = VersatileDiffusionTextToImagePipeline.from_pretrained(tmpdirname)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = generator.manual_seed(0)
+        new_image = pipe(
+            prompt=prompt, generator=generator, guidance_scale=7.5, num_inference_steps=2, output_type="numpy"
+        ).images
+
+        assert np.abs(image - new_image).sum() < 1e-5, "Models don't have the same forward pass"
+
     def test_inference_text2img(self):
         pipe = VersatileDiffusionTextToImagePipeline.from_pretrained("diffusers/vd-official-test")
         pipe.to(torch_device)
