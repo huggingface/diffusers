@@ -68,6 +68,8 @@ class LDMSuperResolutionPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         return model
 
     def test_inference_superresolution(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
         unet = self.dummy_uncond_unet
         scheduler = DDIMScheduler()
         vqvae = self.dummy_vq_model
@@ -83,7 +85,7 @@ class LDMSuperResolutionPipelineFastTests(PipelineTesterMixin, unittest.TestCase
             generator = torch.manual_seed(0)
             _ = ldm(init_image, generator=generator, num_inference_steps=1, output_type="numpy").images
 
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=device).manual_seed(0)
         image = ldm(init_image, generator=generator, num_inference_steps=2, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
