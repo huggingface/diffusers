@@ -1,5 +1,5 @@
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import torch
 
@@ -189,9 +189,9 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
     @torch.no_grad()
     def dual_guided(
         self,
-        first_prompt: Union[str, List[str], PIL.Image.Image, List[PIL.Image.Image]],
-        second_prompt: Union[str, List[str], PIL.Image.Image, List[PIL.Image.Image]],
-        prompt_mix_ratio: float = 0.5,
+        prompt: Union[PIL.Image.Image, List[PIL.Image.Image]],
+        image: Union[str, List[str]],
+        text_to_image_strength: float = 0.5,
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 50,
@@ -209,9 +209,9 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
         components = {name: component for name, component in self.components.items() if name in expected_components}
         temp_pipeline = VersatileDiffusionDualGuidedPipeline(**components)
         output = temp_pipeline(
-            first_prompt=first_prompt,
-            second_prompt=second_prompt,
-            prompt_mix_ratio=prompt_mix_ratio,
+            prompt=prompt,
+            image=image,
+            text_to_image_strength=text_to_image_strength,
             height=height,
             width=width,
             num_inference_steps=num_inference_steps,

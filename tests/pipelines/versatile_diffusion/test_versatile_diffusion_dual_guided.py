@@ -53,7 +53,7 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
         image = pipe(
             first_prompt="first prompt",
             second_prompt="second prompt",
-            prompt_mix_ratio=0.75,
+            text_to_image_strength=0.75,
             generator=generator,
             guidance_scale=7.5,
             num_inference_steps=2,
@@ -70,7 +70,7 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
         new_image = pipe(
             first_prompt="first prompt",
             second_prompt="second prompt",
-            prompt_mix_ratio=0.75,
+            text_to_image_strength=0.75,
             generator=generator,
             guidance_scale=7.5,
             num_inference_steps=2,
