@@ -463,8 +463,8 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        image: Union[str, List[str]],
         prompt: Union[PIL.Image.Image, List[PIL.Image.Image]],
+        image: Union[str, List[str]],
         text_to_image_strength: float = 0.5,
         height: int = 512,
         width: int = 512,
@@ -542,22 +542,20 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         >>> text = "a painting, mosaic style"
 
         >>> pipe = VersatileDiffusionImageVariationPipeline.from_pretrained("diffusers/vd-official-test", torch_dtype=torch.float16)
-        >>> # pipe.remove_unused_weights()
+        >>> pipe.remove_unused_weights()
         >>> pipe = pipe.to("cuda")
 
         >>> generator = torch.Generator(device="cuda").manual_seed(0)
-        >>> text_to_image_strength = 0.5
+        >>> text_to_image_strength = 0.75
 
-        >>> image = pipe(image=image, text=text, text_to_image_strength=text_to_image_strength, generator=generator).images[0]
+        >>> image = pipe(prompt=text, image=image, text_to_image_strength=text_to_image_strength, generator=generator).images[0]
         >>> image.save("./car_variation.png")
         ```
 
         Returns:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
-            When returning a tuple, the first element is a list with the generated images, and the second element is a
-            list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
-            (nsfw) content, according to the `safety_checker`.
+            [`~pipelines.stable_diffusion.ImagePipelineOutput`] or `tuple`:
+            [`~pipelines.stable_diffusion.ImagePipelineOutput`] if `return_dict` is True, otherwise a `tuple.
+            When returning a tuple, the first element is a list with the generated images.
         """
 
         # 1. Check inputs. Raise error if not correct
@@ -574,18 +572,14 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompts
-        dual_prompt_embeddings = []
-        prompt_types = []
-        embeddings = self._encode_text_prompt(
+        text_embeddings = self._encode_text_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance
         )
-        prompt_types.append("text")
-        embeddings = self._encode_image_prompt(
+        image_embeddings = self._encode_image_prompt(
             image, device, num_images_per_prompt, do_classifier_free_guidance
         )
-        prompt_types.append("image")
-        dual_prompt_embeddings.append(embeddings)
-        dual_prompt_embeddings = torch.cat(dual_prompt_embeddings, dim=1)
+        dual_prompt_embeddings = torch.cat([text_embeddings, image_embeddings], dim=1)
+        prompt_types = ("text", "image")
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)

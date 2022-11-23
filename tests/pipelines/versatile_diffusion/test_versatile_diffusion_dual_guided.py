@@ -90,9 +90,9 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
         )
         generator = torch.Generator(device=torch_device).manual_seed(0)
         image = pipe(
-            first_prompt=first_prompt,
-            second_prompt=second_prompt,
-            prompt_mix_ratio=0.75,
+            prompt=first_prompt,
+            image=second_prompt,
+            text_to_image_strength=0.75,
             generator=generator,
             guidance_scale=7.5,
             num_inference_steps=50,
