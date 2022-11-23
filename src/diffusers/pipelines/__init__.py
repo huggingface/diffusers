@@ -1,4 +1,10 @@
-from ..utils import is_flax_available, is_onnx_available, is_torch_available, is_transformers_available
+from ..utils import (
+    is_flax_available,
+    is_onnx_available,
+    is_torch_available,
+    is_transformers_available,
+    is_transformers_version,
+)
 
 
 if is_torch_available():
@@ -19,20 +25,22 @@ if is_torch_available() and is_transformers_available():
     from .latent_diffusion import LDMTextToImagePipeline
     from .stable_diffusion import (
         CycleDiffusionPipeline,
-        StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
         StableDiffusionInpaintPipelineLegacy,
         StableDiffusionPipeline,
     )
     from .stable_diffusion_safe import StableDiffusionPipelineSafe
-    from .versatile_diffusion import (
-        VersatileDiffusionDualGuidedPipeline,
-        VersatileDiffusionImageVariationPipeline,
-        VersatileDiffusionPipeline,
-        VersatileDiffusionTextToImagePipeline,
-    )
     from .vq_diffusion import VQDiffusionPipeline
+
+    if is_transformers_version(">=", "4.25.0"):
+        from .stable_diffusion import StableDiffusionImageVariationPipeline
+        from .versatile_diffusion import (
+            VersatileDiffusionDualGuidedPipeline,
+            VersatileDiffusionImageVariationPipeline,
+            VersatileDiffusionPipeline,
+            VersatileDiffusionTextToImagePipeline,
+        )
 
 if is_transformers_available() and is_onnx_available():
     from .stable_diffusion import (

@@ -5,6 +5,7 @@ from .utils import (
     is_scipy_available,
     is_torch_available,
     is_transformers_available,
+    is_transformers_version,
     is_unidecode_available,
 )
 
@@ -69,18 +70,23 @@ if is_torch_available() and is_transformers_available():
         AltDiffusionPipeline,
         CycleDiffusionPipeline,
         LDMTextToImagePipeline,
-        StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
         StableDiffusionInpaintPipelineLegacy,
         StableDiffusionPipeline,
         StableDiffusionPipelineSafe,
-        VersatileDiffusionDualGuidedPipeline,
-        VersatileDiffusionImageVariationPipeline,
-        VersatileDiffusionPipeline,
-        VersatileDiffusionTextToImagePipeline,
         VQDiffusionPipeline,
     )
+
+    if is_transformers_version(">=", "4.25.0"):
+        from .pipelines import (
+            StableDiffusionImageVariationPipeline,
+            VersatileDiffusionDualGuidedPipeline,
+            VersatileDiffusionImageVariationPipeline,
+            VersatileDiffusionPipeline,
+            VersatileDiffusionTextToImagePipeline,
+        )
+
 else:
     from .utils.dummy_torch_and_transformers_objects import *  # noqa F403
 
