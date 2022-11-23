@@ -75,10 +75,10 @@ class LDMSuperResolutionPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         vqvae = self.dummy_vq_model
 
         ldm = LDMSuperResolutionPipeline(unet=unet, vqvae=vqvae, scheduler=scheduler)
-        ldm.to(torch_device)
+        ldm.to(device)
         ldm.set_progress_bar_config(disable=None)
 
-        init_image = self.dummy_image.to(torch_device)
+        init_image = self.dummy_image.to(device)
 
         # Warmup pass when using mps (see #372)
         if torch_device == "mps":
