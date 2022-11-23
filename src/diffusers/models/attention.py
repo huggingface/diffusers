@@ -99,8 +99,10 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         num_vector_embeds: Optional[int] = None,
         activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
+        use_linear_proj: bool = False,
     ):
         super().__init__()
+        self.use_linear_proj = use_linear_proj
         self.num_attention_heads = num_attention_heads
         self.attention_head_dim = attention_head_dim
         inner_dim = num_attention_heads * attention_head_dim
@@ -126,8 +128,10 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.in_channels = in_channels
 
             self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
-            # self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
-            self.proj_in = nn.Linear(in_channels, inner_dim)
+            if use_linear_proj:
+                self.proj_in = nn.Linear(in_channels, inner_dim)
+            else:
+                self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
         elif self.is_input_vectorized:
             assert sample_size is not None, "Transformer2DModel over discrete input must provide sample_size"
             assert num_vector_embeds is not None, "Transformer2DModel over discrete input must provide num_embed"
@@ -160,8 +164,10 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 4. Define output layers
         if self.is_input_continuous:
-            # self.proj_out = nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
-            self.proj_out = nn.Linear(in_channels, inner_dim)
+            if use_linear_proj:
+                self.proj_out = nn.Linear(in_channels, inner_dim)
+            else:
+                self.proj_out = nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
         elif self.is_input_vectorized:
             self.norm_out = nn.LayerNorm(inner_dim)
             self.out = nn.Linear(inner_dim, self.num_vector_embeds - 1)
@@ -191,18 +197,20 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         """
         # 1. Input
         if self.is_input_continuous:
-            # batch, channel, height, weight = hidden_states.shape
-            # residual = hidden_states
-            # hidden_states = self.norm(hidden_states)
-            # hidden_states = self.proj_in(hidden_states)
-            # inner_dim = hidden_states.shape[1]
-            # hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * weight, inner_dim)
             batch, channel, height, weight = hidden_states.shape
             residual = hidden_states
+
             hidden_states = self.norm(hidden_states)
-            inner_dim = hidden_states.shape[1]
-            hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * weight, inner_dim)
-            hidden_states = self.proj_in(hidden_states)
+
+            if not self.use_linear_proj:
+                hidden_states = self.proj_in(hidden_states)
+                inner_dim = hidden_states.shape[1]
+                hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * weight, inner_dim)
+            else:
+                hidden_states = self.norm(hidden_states)
+                inner_dim = hidden_states.shape[1]
+                hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * weight, inner_dim)
+                hidden_states = self.proj_in(hidden_states)
         elif self.is_input_vectorized:
             hidden_states = self.latent_image_embedding(hidden_states)
 
@@ -212,12 +220,14 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 3. Output
         if self.is_input_continuous:
-            # hidden_states = hidden_states.reshape(batch, height, weight, inner_dim).permute(0, 3, 1, 2)
-            # hidden_states = self.proj_out(hidden_states)
-            # output = hidden_states + residual
 
-            hidden_states = self.proj_out(hidden_states)
-            hidden_states = hidden_states.reshape(batch, height, weight, inner_dim).permute(0, 3, 1, 2)
+            if not self.use_linear_proj:
+                hidden_states = hidden_states.reshape(batch, height, weight, inner_dim).permute(0, 3, 1, 2)
+                hidden_states = self.proj_out(hidden_states)
+            else:
+                hidden_states = self.proj_out(hidden_states)
+                hidden_states = hidden_states.reshape(batch, height, weight, inner_dim).permute(0, 3, 1, 2)
+
             output = hidden_states + residual
         elif self.is_input_vectorized:
             hidden_states = self.norm_out(hidden_states)
