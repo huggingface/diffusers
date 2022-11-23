@@ -160,6 +160,13 @@ accelerate launch train_dreambooth.py \
   --max_train_steps=800 \
   --mixed_precision=fp16
 ```
+Altdiffusion also support dreambooth now, the runing comman is basically the same as abouve, all you need to do is replace the `MODEL_NAME` like this:
+```
+export MODEL_NAME="CompVis/stable-diffusion-v1-4" --> export MODEL_NAME="BAAI/AltDiffusion-m9"
+or
+export MODEL_NAME="CompVis/stable-diffusion-v1-4" --> export MODEL_NAME="BAAI/AltDiffusion"
+```
+
 
 ### Fine-tune text encoder with the UNet.
 
