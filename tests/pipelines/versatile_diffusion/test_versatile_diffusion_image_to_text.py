@@ -18,7 +18,7 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import VersatileDiffusionImageToTextPipeline
+from diffusers import VersatileDiffusionImageToTextPipeline, DDIMScheduler
 from diffusers.utils.testing_utils import load_image, require_torch_gpu, slow, torch_device
 
 from ...test_pipelines_common import PipelineTesterMixin
@@ -42,10 +42,13 @@ class VersatileDiffusionImageToTextPipelineIntegrationTests(unittest.TestCase):
         image_prompt = load_image(
             "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/boy_and_girl.jpg"
         )
-        generator = torch.Generator(device=torch_device).manual_seed(0)
+        # generator = torch.Generator(device=torch_device).manual_seed(0)
+        np.random.seed(8)
+        torch.manual_seed(108)
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         text = pipe(
             image=image_prompt,
-            generator=generator,
+            # generator=generator,
             guidance_scale=7.5,
             num_inference_steps=50,
             output_type="str",
