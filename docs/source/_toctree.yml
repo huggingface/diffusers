@@ -106,6 +106,8 @@
       title: "Score SDE VE"
     - local: api/pipelines/stable_diffusion
       title: "Stable Diffusion"
+    - local: api/pipelines/stable_diffusion_safe
+      title: "Safe Stable Diffusion"
     - local: api/pipelines/stochastic_karras_ve
       title: "Stochastic Karras VE"
     - local: api/pipelines/dance_diffusion

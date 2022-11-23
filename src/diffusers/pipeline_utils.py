@@ -405,7 +405,7 @@ class DiffusionPipeline(ConfigMixin):
 
         if low_cpu_mem_usage and not is_accelerate_available():
             low_cpu_mem_usage = False
-            logger.warn(
+            logger.warning(
                 "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
                 " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
                 " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
@@ -571,13 +571,13 @@ class DiffusionPipeline(ConfigMixin):
                             f" {expected_class_obj}"
                         )
                 elif passed_class_obj[name] is None:
-                    logger.warn(
+                    logger.warning(
                         f"You have passed `None` for {name} to disable its functionality in {pipeline_class}. Note"
                         f" that this might lead to problems when using {pipeline_class} and is not recommended."
                     )
                     sub_model_should_be_defined = False
                 else:
-                    logger.warn(
+                    logger.warning(
                         f"You have passed a non-standard module {passed_class_obj[name]}. We cannot verify whether it"
                         " has the correct type"
                     )

@@ -6,7 +6,7 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...modeling_utils import ModelMixin
-from ...models.attention import Transformer2DModel
+from ...models.attention import DualTransformer2DModel, Transformer2DModel
 from ...models.embeddings import TimestepEmbedding, Timesteps
 from ...models.unet_2d_condition import UNet2DConditionOutput
 from ...utils import logging
@@ -117,7 +117,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
     implements for all the models (such as downloading or saving, etc.)
 
     Parameters:
-        sample_size (`int`, *optional*): The size of the input sample.
+        sample_size (`int` or `Tuple[int, int]`, *optional*, defaults to `None`):
+            Height and width of input/output sample.
         in_channels (`int`, *optional*, defaults to 4): The number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 4): The number of channels in the output.
         center_input_sample (`bool`, *optional*, defaults to `False`): Whether to center the input sample.
@@ -172,6 +173,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1280,
         attention_head_dim: int = 8,
+        dual_cross_attention: bool = False,
     ):
         super().__init__()
 
@@ -211,6 +213,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=attention_head_dim,
                 downsample_padding=downsample_padding,
+                dual_cross_attention=dual_cross_attention,
             )
             self.down_blocks.append(down_block)
 
@@ -225,6 +228,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attention_head_dim,
             resnet_groups=norm_num_groups,
+            dual_cross_attention=dual_cross_attention,
         )
 
         # count how many layers upsample the images
@@ -260,6 +264,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=attention_head_dim,
+                dual_cross_attention=dual_cross_attention,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -632,6 +637,7 @@ class CrossAttnDownBlockFlat(nn.Module):
         output_scale_factor=1.0,
         downsample_padding=1,
         add_downsample=True,
+        dual_cross_attention=False,
     ):
         super().__init__()
         resnets = []
@@ -656,16 +662,28 @@ class CrossAttnDownBlockFlat(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-            attentions.append(
-                Transformer2DModel(
-                    attn_num_head_channels,
-                    out_channels // attn_num_head_channels,
-                    in_channels=out_channels,
-                    num_layers=1,
-                    cross_attention_dim=cross_attention_dim,
-                    norm_num_groups=resnet_groups,
+            if not dual_cross_attention:
+                attentions.append(
+                    Transformer2DModel(
+                        attn_num_head_channels,
+                        out_channels // attn_num_head_channels,
+                        in_channels=out_channels,
+                        num_layers=1,
+                        cross_attention_dim=cross_attention_dim,
+                        norm_num_groups=resnet_groups,
+                    )
                 )
-            )
+            else:
+                attentions.append(
+                    DualTransformer2DModel(
+                        attn_num_head_channels,
+                        out_channels // attn_num_head_channels,
+                        in_channels=out_channels,
+                        num_layers=1,
+                        cross_attention_dim=cross_attention_dim,
+                        norm_num_groups=resnet_groups,
+                    )
+                )
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
@@ -830,6 +848,7 @@ class CrossAttnUpBlockFlat(nn.Module):
         attention_type="default",
         output_scale_factor=1.0,
         add_upsample=True,
+        dual_cross_attention=False,
     ):
         super().__init__()
         resnets = []
@@ -856,16 +875,28 @@ class CrossAttnUpBlockFlat(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-            attentions.append(
-                Transformer2DModel(
-                    attn_num_head_channels,
-                    out_channels // attn_num_head_channels,
-                    in_channels=out_channels,
-                    num_layers=1,
-                    cross_attention_dim=cross_attention_dim,
-                    norm_num_groups=resnet_groups,
+            if not dual_cross_attention:
+                attentions.append(
+                    Transformer2DModel(
+                        attn_num_head_channels,
+                        out_channels // attn_num_head_channels,
+                        in_channels=out_channels,
+                        num_layers=1,
+                        cross_attention_dim=cross_attention_dim,
+                        norm_num_groups=resnet_groups,
+                    )
                 )
-            )
+            else:
+                attentions.append(
+                    DualTransformer2DModel(
+                        attn_num_head_channels,
+                        out_channels // attn_num_head_channels,
+                        in_channels=out_channels,
+                        num_layers=1,
+                        cross_attention_dim=cross_attention_dim,
+                        norm_num_groups=resnet_groups,
+                    )
+                )
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
@@ -954,6 +985,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         attention_type="default",
         output_scale_factor=1.0,
         cross_attention_dim=1280,
+        dual_cross_attention=False,
         **kwargs,
     ):
         super().__init__()
@@ -980,16 +1012,28 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         attentions = []
 
         for _ in range(num_layers):
-            attentions.append(
-                Transformer2DModel(
-                    attn_num_head_channels,
-                    in_channels // attn_num_head_channels,
-                    in_channels=in_channels,
-                    num_layers=1,
-                    cross_attention_dim=cross_attention_dim,
-                    norm_num_groups=resnet_groups,
+            if not dual_cross_attention:
+                attentions.append(
+                    Transformer2DModel(
+                        attn_num_head_channels,
+                        in_channels // attn_num_head_channels,
+                        in_channels=in_channels,
+                        num_layers=1,
+                        cross_attention_dim=cross_attention_dim,
+                        norm_num_groups=resnet_groups,
+                    )
                 )
-            )
+            else:
+                attentions.append(
+                    DualTransformer2DModel(
+                        attn_num_head_channels,
+                        in_channels // attn_num_head_channels,
+                        in_channels=in_channels,
+                        num_layers=1,
+                        cross_attention_dim=cross_attention_dim,
+                        norm_num_groups=resnet_groups,
+                    )
+                )
             resnets.append(
                 ResnetBlockFlat(
                     in_channels=in_channels,
