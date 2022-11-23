@@ -141,7 +141,7 @@ export INSTANCE_DIR="path-to-instance-images"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
-accelerate launch train_dreambooth.py \
+accelerate launch --mixed_precision="fp16" train_dreambooth.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --instance_data_dir=$INSTANCE_DIR \
   --class_data_dir=$CLASS_DIR \
@@ -157,8 +157,7 @@ accelerate launch train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800 \
-  --mixed_precision=fp16
+  --max_train_steps=800
 ```
 
 ### Fine-tune text encoder with the UNet.
