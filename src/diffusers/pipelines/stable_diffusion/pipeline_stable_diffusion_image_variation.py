@@ -21,7 +21,6 @@ import PIL
 from diffusers.utils import is_accelerate_available
 from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
 
-from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import (
@@ -32,7 +31,7 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import deprecate, logging
+from ...utils import logging
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
