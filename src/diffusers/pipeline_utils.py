@@ -18,6 +18,7 @@ import importlib
 import inspect
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
@@ -57,6 +58,7 @@ if is_transformers_available():
 INDEX_FILE = "diffusion_pytorch_model.bin"
 CUSTOM_PIPELINE_FILE_NAME = "pipeline.py"
 DUMMY_MODULES_FOLDER = "diffusers.utils"
+TRANSFORMERS_DUMMY_MODULES_FOLDER = "transformers.utils"
 
 
 logger = logging.get_logger(__name__)
@@ -65,7 +67,7 @@ logger = logging.get_logger(__name__)
 LOADABLE_CLASSES = {
     "diffusers": {
         "ModelMixin": ["save_pretrained", "from_pretrained"],
-        "SchedulerMixin": ["save_config", "from_config"],
+        "SchedulerMixin": ["save_pretrained", "from_pretrained"],
         "DiffusionPipeline": ["save_pretrained", "from_pretrained"],
         "OnnxRuntimeModel": ["save_pretrained", "from_pretrained"],
     },
@@ -76,6 +78,9 @@ LOADABLE_CLASSES = {
         "FeatureExtractionMixin": ["save_pretrained", "from_pretrained"],
         "ProcessorMixin": ["save_pretrained", "from_pretrained"],
         "ImageProcessingMixin": ["save_pretrained", "from_pretrained"],
+    },
+    "onnxruntime.training": {
+        "ORTModule": ["save_pretrained", "from_pretrained"],
     },
 }
 
@@ -207,7 +212,7 @@ class DiffusionPipeline(ConfigMixin):
         if torch_device is None:
             return self
 
-        module_names, _ = self.extract_init_dict(dict(self.config))
+        module_names, _, _ = self.extract_init_dict(dict(self.config))
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
@@ -228,7 +233,7 @@ class DiffusionPipeline(ConfigMixin):
         Returns:
             `torch.device`: The torch device on which the pipeline is located.
         """
-        module_names, _ = self.extract_init_dict(dict(self.config))
+        module_names, _, _ = self.extract_init_dict(dict(self.config))
         for name in module_names.keys():
             module = getattr(self, name)
             if isinstance(module, torch.nn.Module):
@@ -377,11 +382,11 @@ class DiffusionPipeline(ConfigMixin):
         >>> # of the documentation](https://huggingface.co/docs/hub/security-tokens)
         >>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 
-        >>> # Download pipeline, but overwrite scheduler
+        >>> # Use a different scheduler
         >>> from diffusers import LMSDiscreteScheduler
 
-        >>> scheduler = LMSDiscreteScheduler.from_config("runwayml/stable-diffusion-v1-5", subfolder="scheduler")
-        >>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", scheduler=scheduler)
+        >>> scheduler = LMSDiscreteScheduler.from_config(pipeline.scheduler.config)
+        >>> pipeline.scheduler = scheduler
         ```
         """
         cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
@@ -400,7 +405,7 @@ class DiffusionPipeline(ConfigMixin):
 
         if low_cpu_mem_usage and not is_accelerate_available():
             low_cpu_mem_usage = False
-            logger.warn(
+            logger.warning(
                 "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
                 " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
                 " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
@@ -428,7 +433,7 @@ class DiffusionPipeline(ConfigMixin):
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
         if not os.path.isdir(pretrained_model_name_or_path):
-            config_dict = cls.get_config_dict(
+            config_dict = cls.load_config(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
                 resume_download=resume_download,
@@ -474,13 +479,21 @@ class DiffusionPipeline(ConfigMixin):
         else:
             cached_folder = pretrained_model_name_or_path
 
-        config_dict = cls.get_config_dict(cached_folder)
+        config_dict = cls.load_config(cached_folder)
 
         # 2. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
         if custom_pipeline is not None:
+            if custom_pipeline.endswith(".py"):
+                path = Path(custom_pipeline)
+                # decompose into folder & file
+                file_name = path.name
+                custom_pipeline = path.parent.absolute()
+            else:
+                file_name = CUSTOM_PIPELINE_FILE_NAME
+
             pipeline_class = get_class_from_dynamic_module(
-                custom_pipeline, module_file=CUSTOM_PIPELINE_FILE_NAME, cache_dir=custom_pipeline
+                custom_pipeline, module_file=file_name, cache_dir=custom_pipeline
             )
         elif cls != DiffusionPipeline:
             pipeline_class = cls
@@ -513,7 +526,7 @@ class DiffusionPipeline(ConfigMixin):
         expected_modules = set(inspect.signature(pipeline_class.__init__).parameters.keys()) - set(["self"])
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
 
-        init_dict, unused_kwargs = pipeline_class.extract_init_dict(config_dict, **kwargs)
+        init_dict, unused_kwargs, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
         if len(unused_kwargs) > 0:
             logger.warning(f"Keyword arguments {unused_kwargs} not recognized.")
@@ -558,13 +571,13 @@ class DiffusionPipeline(ConfigMixin):
                             f" {expected_class_obj}"
                         )
                 elif passed_class_obj[name] is None:
-                    logger.warn(
+                    logger.warning(
                         f"You have passed `None` for {name} to disable its functionality in {pipeline_class}. Note"
                         f" that this might lead to problems when using {pipeline_class} and is not recommended."
                     )
                     sub_model_should_be_defined = False
                 else:
-                    logger.warn(
+                    logger.warning(
                         f"You have passed a non-standard module {passed_class_obj[name]}. We cannot verify whether it"
                         " has the correct type"
                     )
@@ -592,7 +605,10 @@ class DiffusionPipeline(ConfigMixin):
 
                 if load_method_name is None:
                     none_module = class_obj.__module__
-                    if none_module.startswith(DUMMY_MODULES_FOLDER) and "dummy" in none_module:
+                    is_dummy_path = none_module.startswith(DUMMY_MODULES_FOLDER) or none_module.startswith(
+                        TRANSFORMERS_DUMMY_MODULES_FOLDER
+                    )
+                    if is_dummy_path and "dummy" in none_module:
                         # call class_obj for nice error message of missing requirements
                         class_obj()
 
@@ -664,9 +680,9 @@ class DiffusionPipeline(ConfigMixin):
         ...     StableDiffusionInpaintPipeline,
         ... )
 
-        >>> img2text = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
-        >>> img2img = StableDiffusionImg2ImgPipeline(**img2text.components)
-        >>> inpaint = StableDiffusionInpaintPipeline(**img2text.components)
+        >>> text2img = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> img2img = StableDiffusionImg2ImgPipeline(**text2img.components)
+        >>> inpaint = StableDiffusionInpaintPipeline(**text2img.components)
         ```
 
         Returns:

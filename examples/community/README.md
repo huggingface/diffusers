@@ -15,11 +15,14 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | Long Prompt Weighting Stable Diffusion | **One** Stable Diffusion Pipeline without tokens length limit, and support parsing weighting in prompt.                                                                                                                                                                                                                                                                                                                                                                                                  | [Long Prompt Weighting Stable Diffusion](#long-prompt-weighting-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [SkyTNT](https://github.com/SkyTNT) |
 | Speech to Image                        | Using automatic-speech-recognition to transcribe text and Stable Diffusion to generate images                                                                                                                                                                                                                                                                                                                                                                                                            | [Speech to Image](#speech-to-image)                               | -                                                                                                                                                                                                                  | [Mikail Duzenli](https://github.com/MikailINTech)
 | Wild Card Stable Diffusion | Stable Diffusion Pipeline that supports prompts that contain wildcard terms (indicated by surrounding double underscores), with values instantiated randomly from a corresponding txt file or a dictionary of possible values                                                                                                                                                                                                                                                                                                     | [Wildcard Stable Diffusion](#wildcard-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Shyam Sudhakaran](https://github.com/shyamsn97) |
-| Composable Stable Diffusion| Stable Diffusion Pipeline that supports prompts that contain "&#124;" in prompts (as an AND condition) and weights (separated by "&#124;" as well) to positively / negatively weight prompts.                                                                                                                                                                                                                                                                                                     | [Composable Stable Diffusion](#composable-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
+| [Composable Stable Diffusion](https://energy-based-model.github.io/Compositional-Visual-Generation-with-Composable-Diffusion-Models/) | Stable Diffusion Pipeline that supports prompts that contain "&#124;" in prompts (as an AND condition) and weights (separated by "&#124;" as well) to positively / negatively weight prompts.                                                                                                                                                                                                                                                                                                     | [Composable Stable Diffusion](#composable-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
 | Seed Resizing Stable Diffusion| Stable Diffusion Pipeline that supports resizing an image and retaining the concepts of the 512 by 512 generation.                                                                                                                                                                                                                                                                                                     | [Seed Resizing](#seed-resizing)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
 | Imagic Stable Diffusion | Stable Diffusion Pipeline that enables writing a text prompt to edit an existing image| [Imagic Stable Diffusion](#imagic-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Mark Rich](https://github.com/MarkRich) |
 | Multilingual Stable Diffusion| Stable Diffusion Pipeline that supports prompts in 50 different languages.                                                                                                                                                                                                                                                                                                     | [Multilingual Stable Diffusion](#multilingual-stable-diffusion-pipeline)                                                                 | -                                                                                                                                                                                                                  |                        [Juan Carlos Piñeros](https://github.com/juancopi81) |
 | Image to Image Inpainting Stable Diffusion | Stable Diffusion Pipeline that enables the overlaying of two images and subsequent inpainting| [Image to Image Inpainting Stable Diffusion](#image-to-image-inpainting-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Alex McKinney](https://github.com/vvvm23) |
+| Text Based Inpainting Stable Diffusion | Stable Diffusion Inpainting Pipeline that enables passing a text prompt to generate the mask for inpainting| [Text Based Inpainting Stable Diffusion](#image-to-image-inpainting-stable-diffusion)                                                                 | -                                                                                                                                                                                                                  |                        [Dhruv Karan](https://github.com/unography) |
+| Bit Diffusion | Diffusion on discrete data | [Bit Diffusion](#bit-diffusion) | -  |[Stuti R.](https://github.com/kingstut) |
+| K-Diffusion Stable Diffusion | Run Stable Diffusion with any of [K-Diffusion's samplers](https://github.com/crowsonkb/k-diffusion/blob/master/k_diffusion/sampling.py) | [Stable Diffusion with K Diffusion](#stable-diffusion-with-k-diffusion) | -  | [Patrick von Platen](https://github.com/patrickvonplaten/) |
 
 
 
@@ -179,9 +182,20 @@ images = pipe.inpaint(prompt=prompt, init_image=init_image, mask_image=mask_imag
 As shown above this one pipeline can run all both "text-to-image", "image-to-image", and "inpainting" in one pipeline.
 
 ### Long Prompt Weighting Stable Diffusion
+Features of this custom pipeline:
+- Input a prompt without the 77 token length limit.
+- Includes tx2img, img2img. and inpainting pipelines.
+- Emphasize/weigh part of your prompt with parentheses as so: `a baby deer with (big eyes)`
+- De-emphasize part of your prompt as so: `a [baby] deer with big eyes`
+- Precisely weigh part of your prompt as so: `a baby deer with (big eyes:1.3)`
 
-The Pipeline lets you input prompt without 77 token length limit. And you can increase words weighting by using "()" or decrease words weighting by using "[]"
-The Pipeline also lets you use the main use cases of the stable diffusion pipeline in a single class.
+Prompt weighting equivalents:
+- `a baby deer with` == `(a baby deer with:1.0)`
+- `(big eyes)` == `(big eyes:1.1)`
+- `((big eyes))` == `(big eyes:1.21)`
+- `[big eyes]` == `(big eyes:0.91)`
+
+You can run this custom pipeline as so:
 
 #### pytorch
 
@@ -331,8 +345,9 @@ out = pipe(
 )
 ```
 
-
 ### Composable Stable diffusion 
+
+[Composable Stable Diffusion](https://energy-based-model.github.io/Compositional-Visual-Generation-with-Composable-Diffusion-Models/) proposes conjunction and negation (negative prompts) operators for compositional generation with conditional diffusion models.
 
 ```python
 import torch as th
@@ -356,7 +371,7 @@ def dummy(images, **kwargs):
 pipe.safety_checker = dummy
 
 images = []
-generator = th.Generator("cuda").manual_seed(0)
+generator = torch.Generator("cuda").manual_seed(0)
 
 seed = 0
 prompt = "a forest | a camel"
@@ -385,6 +400,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 import torch
+import os
 from diffusers import DiffusionPipeline, DDIMScheduler
 has_cuda = torch.cuda.is_available()
 device = torch.device('cpu' if not has_cuda else 'cuda')
@@ -409,6 +425,7 @@ res = pipe.train(
     num_inference_steps=50,
     generator=generator)
 res = pipe(alpha=1)
+os.makedirs("imagic", exist_ok=True)
 image = res.images[0]
 image.save('./imagic/imagic_image_alpha_1.png')
 res = pipe(alpha=1.5)
@@ -605,3 +622,107 @@ pipe = pipe.to("cuda")
 prompt = "Your prompt here!"
 image = pipe(prompt=prompt, image=init_image, inner_image=inner_image, mask_image=mask_image).images[0]
 ```
+
+### Text Based Inpainting Stable Diffusion
+
+Use a text prompt to generate the mask for the area to be inpainted.
+Currently uses the CLIPSeg model for mask generation, then calls the standard Stable Diffusion Inpainting pipeline to perform the inpainting.
+
+```python
+from transformers import CLIPSegProcessor, CLIPSegForImageSegmentation
+from diffusers import DiffusionPipeline
+
+from PIL import Image
+import requests
+from torch import autocast
+
+processor = CLIPSegProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
+model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined")
+
+pipe = DiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-inpainting",
+    custom_pipeline="text_inpainting",
+    segmentation_model=model,
+    segmentation_processor=processor
+)
+pipe = pipe.to("cuda")
+
+
+url = "https://github.com/timojl/clipseg/blob/master/example_image.jpg?raw=true"
+image = Image.open(requests.get(url, stream=True).raw).resize((512, 512))
+text = "a glass"  # will mask out this text
+prompt = "a cup"  # the masked out region will be replaced with this
+
+with autocast("cuda"):
+    image = pipe(image=image, text=text, prompt=prompt).images[0]
+```
+
+### Bit Diffusion 
+Based https://arxiv.org/abs/2208.04202, this is used for diffusion on discrete data - eg, discreate image data, DNA sequence data. An unconditional discreate image can be generated like this: 
+
+```python
+from diffusers import DiffusionPipeline
+pipe = DiffusionPipeline.from_pretrained("google/ddpm-cifar10-32", custom_pipeline="bit_diffusion")
+image = pipe().images[0]
+
+```
+
+### Stable Diffusion with K Diffusion
+
+Make sure you have @crowsonkb's https://github.com/crowsonkb/k-diffusion installed:
+
+```
+pip install k-diffusion
+```
+
+You can use the community pipeline as follows:
+
+```python
+from diffusers import DiffusionPipeline
+
+pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", custom_pipeline="sd_text2img_k_diffusion")
+pipe = pipe.to("cuda")
+
+prompt = "an astronaut riding a horse on mars"
+pipe.set_sampler("sample_heun")
+generator = torch.Generator(device="cuda").manual_seed(seed)
+image = pipe(prompt, generator=generator, num_inference_steps=20).images[0]
+
+image.save("./astronaut_heun_k_diffusion.png")
+```
+
+To make sure that K Diffusion and `diffusers` yield the same results:
+
+**Diffusers**:
+```python
+from diffusers import DiffusionPipeline, EulerDiscreteScheduler
+
+seed = 33
+
+pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
+pipe = pipe.to("cuda")
+
+generator = torch.Generator(device="cuda").manual_seed(seed)
+image = pipe(prompt, generator=generator, num_inference_steps=50).images[0]
+```
+
+![diffusers_euler](https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/k_diffusion/astronaut_euler.png)
+
+**K Diffusion**:
+```python
+from diffusers import DiffusionPipeline, EulerDiscreteScheduler
+
+seed = 33
+
+pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", custom_pipeline="sd_text2img_k_diffusion")
+pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
+pipe = pipe.to("cuda")
+
+pipe.set_sampler("sample_euler")
+generator = torch.Generator(device="cuda").manual_seed(seed)
+image = pipe(prompt, generator=generator, num_inference_steps=50).images[0]
+```
+
+![diffusers_euler](https://huggingface.co/datasets/patrickvonplaten/images/resolve/main/k_diffusion/astronaut_euler_k_diffusion.png)
+

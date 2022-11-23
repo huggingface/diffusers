@@ -21,7 +21,7 @@ import torch
 from scipy import integrate
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput
+from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput
 from .scheduling_utils import SchedulerMixin
 
 
@@ -52,8 +52,8 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
-    [`~ConfigMixin.from_config`] functions.
+    [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
+    [`~SchedulerMixin.from_pretrained`] functions.
 
     Args:
         num_train_timesteps (`int`): number of diffusion steps used to train the model.
@@ -67,14 +67,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     """
 
-    _compatible_classes = [
-        "DDIMScheduler",
-        "DDPMScheduler",
-        "PNDMScheduler",
-        "EulerDiscreteScheduler",
-        "EulerAncestralDiscreteScheduler",
-        "DPMSolverMultistepScheduler",
-    ]
+    _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
 
     @register_to_config
     def __init__(
@@ -250,19 +243,18 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timesteps: torch.FloatTensor,
     ) -> torch.FloatTensor:
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
-        self.sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
+        sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
         if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
             # mps does not support float64
-            self.timesteps = self.timesteps.to(original_samples.device, dtype=torch.float32)
+            schedule_timesteps = self.timesteps.to(original_samples.device, dtype=torch.float32)
             timesteps = timesteps.to(original_samples.device, dtype=torch.float32)
         else:
-            self.timesteps = self.timesteps.to(original_samples.device)
+            schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
 
-        schedule_timesteps = self.timesteps
         step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
 
-        sigma = self.sigmas[step_indices].flatten()
+        sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):
             sigma = sigma.unsqueeze(-1)
 

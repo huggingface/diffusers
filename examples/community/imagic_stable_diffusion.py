@@ -18,9 +18,30 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from diffusers.utils import logging
+
+# TODO: remove and import from diffusers.utils when the new version of diffusers is released
+from packaging import version
 from tqdm.auto import tqdm
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
+
+if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
+    PIL_INTERPOLATION = {
+        "linear": PIL.Image.Resampling.BILINEAR,
+        "bilinear": PIL.Image.Resampling.BILINEAR,
+        "bicubic": PIL.Image.Resampling.BICUBIC,
+        "lanczos": PIL.Image.Resampling.LANCZOS,
+        "nearest": PIL.Image.Resampling.NEAREST,
+    }
+else:
+    PIL_INTERPOLATION = {
+        "linear": PIL.Image.LINEAR,
+        "bilinear": PIL.Image.BILINEAR,
+        "bicubic": PIL.Image.BICUBIC,
+        "lanczos": PIL.Image.LANCZOS,
+        "nearest": PIL.Image.NEAREST,
+    }
+# ------------------------------------------------------------------------------
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -28,7 +49,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 def preprocess(image):
     w, h = image.size
     w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
-    image = image.resize((w, h), resample=PIL.Image.LANCZOS)
+    image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
     image = np.array(image).astype(np.float32) / 255.0
     image = image[None].transpose(0, 3, 1, 2)
     image = torch.from_numpy(image)

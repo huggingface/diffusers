@@ -15,6 +15,7 @@ else:
     from ..utils.dummy_pt_objects import *  # noqa F403
 
 if is_torch_available() and is_transformers_available():
+    from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline
     from .latent_diffusion import LDMTextToImagePipeline
     from .stable_diffusion import (
         CycleDiffusionPipeline,
@@ -23,12 +24,14 @@ if is_torch_available() and is_transformers_available():
         StableDiffusionInpaintPipelineLegacy,
         StableDiffusionPipeline,
     )
+    from .stable_diffusion_safe import StableDiffusionPipelineSafe
     from .vq_diffusion import VQDiffusionPipeline
 
 if is_transformers_available() and is_onnx_available():
     from .stable_diffusion import (
         OnnxStableDiffusionImg2ImgPipeline,
         OnnxStableDiffusionInpaintPipeline,
+        OnnxStableDiffusionInpaintPipelineLegacy,
         OnnxStableDiffusionPipeline,
         StableDiffusionOnnxPipeline,
     )

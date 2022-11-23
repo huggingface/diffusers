@@ -65,12 +65,15 @@ else:
 
 if is_torch_available() and is_transformers_available():
     from .pipelines import (
+        AltDiffusionImg2ImgPipeline,
+        AltDiffusionPipeline,
         CycleDiffusionPipeline,
         LDMTextToImagePipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
         StableDiffusionInpaintPipelineLegacy,
         StableDiffusionPipeline,
+        StableDiffusionPipelineSafe,
         VQDiffusionPipeline,
     )
 else:
@@ -80,6 +83,7 @@ if is_torch_available() and is_transformers_available() and is_onnx_available():
     from .pipelines import (
         OnnxStableDiffusionImg2ImgPipeline,
         OnnxStableDiffusionInpaintPipeline,
+        OnnxStableDiffusionInpaintPipelineLegacy,
         OnnxStableDiffusionPipeline,
         StableDiffusionOnnxPipeline,
     )
