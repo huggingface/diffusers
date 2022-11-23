@@ -43,7 +43,7 @@ class VersatileDiffusionTextToImagePipelineIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_remove_unused_weights_save_load(self):
-        pipe = VersatileDiffusionTextToImagePipeline.from_pretrained("diffusers/vd-official-test")
+        pipe = VersatileDiffusionTextToImagePipeline.from_pretrained("shi-labs/versatile-diffusion")
         # remove text_unet
         pipe.remove_unused_weights()
         pipe.to(torch_device)
@@ -69,7 +69,7 @@ class VersatileDiffusionTextToImagePipelineIntegrationTests(unittest.TestCase):
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't have the same forward pass"
 
     def test_inference_text2img(self):
-        pipe = VersatileDiffusionTextToImagePipeline.from_pretrained("diffusers/vd-official-test")
+        pipe = VersatileDiffusionTextToImagePipeline.from_pretrained("shi-labs/versatile-diffusion")
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 

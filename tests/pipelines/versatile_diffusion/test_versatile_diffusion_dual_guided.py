@@ -43,7 +43,7 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_remove_unused_weights_save_load(self):
-        pipe = VersatileDiffusionDualGuidedPipeline.from_pretrained("diffusers/vd-official-test")
+        pipe = VersatileDiffusionDualGuidedPipeline.from_pretrained("shi-labs/versatile-diffusion")
         # remove text_unet
         pipe.remove_unused_weights()
         pipe.to(torch_device)
@@ -85,7 +85,7 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't have the same forward pass"
 
     def test_inference_dual_guided(self):
-        pipe = VersatileDiffusionDualGuidedPipeline.from_pretrained("diffusers/vd-official-test")
+        pipe = VersatileDiffusionDualGuidedPipeline.from_pretrained("shi-labs/versatile-diffusion")
         pipe.remove_unused_weights()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)

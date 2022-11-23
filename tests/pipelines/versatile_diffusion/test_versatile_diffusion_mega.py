@@ -43,7 +43,7 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_from_pretrained_save_pretrained(self):
-        pipe = VersatileDiffusionPipeline.from_pretrained("diffusers/vd-official-test")
+        pipe = VersatileDiffusionPipeline.from_pretrained("shi-labs/versatile-diffusion", torch_dtype=torch.float16)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -64,7 +64,7 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             pipe.save_pretrained(tmpdirname)
-            pipe = VersatileDiffusionPipeline.from_pretrained(tmpdirname)
+            pipe = VersatileDiffusionPipeline.from_pretrained(tmpdirname, torch_dtype=torch.float16)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -82,18 +82,18 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't have the same forward pass"
 
     def test_inference_dual_guided_then_text_to_image(self):
-        pipe = VersatileDiffusionPipeline.from_pretrained("diffusers/vd-official-test")
+        pipe = VersatileDiffusionPipeline.from_pretrained("shi-labs/versatile-diffusion", torch_dtype=torch.float16)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "cyberpunk 2077"
-        image = load_image(
+        init_image = load_image(
             "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/benz.jpg"
         )
         generator = torch.Generator(device=torch_device).manual_seed(0)
         image = pipe.dual_guided(
-            text=prompt,
-            image=image,
+            prompt=prompt,
+            image=init_image,
             text_to_image_strength=0.75,
             generator=generator,
             guidance_scale=7.5,
@@ -118,3 +118,13 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.0657, 0.0529, 0.0455, 0.0802, 0.0570, 0.0179, 0.0267, 0.0483, 0.0769])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+        pipe = VersatileDiffusionPipeline.from_pretrained("shi-labs/versatile-diffusion", torch_dtype=torch.float16)
+        image = pipe.image_variation(init_image, generator=generator, output_type="numpy").images[0]
+
+        image_slice = image[0, 253:256, 253:256, -1]
+
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.0657, 0.0529, 0.0455, 0.0802, 0.0570, 0.0179, 0.0267, 0.0483, 0.0769])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+

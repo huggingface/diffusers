@@ -531,7 +531,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         >>> text = "a painting, mosaic style"
 
         >>> pipe = VersatileDiffusionImageVariationPipeline.from_pretrained(
-        ...     "diffusers/vd-official-test", torch_dtype=torch.float16
+        ...     "shi-labs/versatile-diffusion", torch_dtype=torch.float16
         ... )
         >>> pipe.remove_unused_weights()
         >>> pipe = pipe.to("cuda")

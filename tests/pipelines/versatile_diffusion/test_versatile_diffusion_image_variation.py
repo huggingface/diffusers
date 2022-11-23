@@ -35,7 +35,7 @@ class VersatileDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, uni
 @require_torch_gpu
 class VersatileDiffusionImageVariationPipelineIntegrationTests(unittest.TestCase):
     def test_inference_image_variations(self):
-        pipe = VersatileDiffusionImageVariationPipeline.from_pretrained("diffusers/vd-official-test")
+        pipe = VersatileDiffusionImageVariationPipeline.from_pretrained("shi-labs/versatile-diffusion")
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
