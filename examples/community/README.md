@@ -624,6 +624,8 @@ prompt = "Your prompt here!"
 image = pipe(prompt=prompt, image=init_image, inner_image=inner_image, mask_image=mask_image).images[0]
 ```
 
+![2 by 2 grid demonstrating image to image inpainting.](https://user-images.githubusercontent.com/44398246/203506577-ec303be4-887e-4ebd-a773-c83fcb3dd01a.png)
+
 ### Text Based Inpainting Stable Diffusion
 
 Use a text prompt to generate the mask for the area to be inpainted.
