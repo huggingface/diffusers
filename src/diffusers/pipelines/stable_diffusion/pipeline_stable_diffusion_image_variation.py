@@ -19,7 +19,7 @@ import torch
 
 import PIL
 from diffusers.utils import is_accelerate_available
-from transformers import CLIPFeatureExtractor
+from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline

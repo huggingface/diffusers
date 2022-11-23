@@ -43,7 +43,7 @@ if is_transformers_available() and is_torch_available():
     from .safety_checker import StableDiffusionSafetyChecker
 
     if is_transformers_version(">=", "4.25.0"):
-        from .pipeline_stable_diffusion_img2img import StableDiffusionImageVariationPipeline
+        from .pipeline_stable_diffusion_image_variation import StableDiffusionImageVariationPipeline
 
 if is_transformers_available() and is_onnx_available():
     from .pipeline_onnx_stable_diffusion import OnnxStableDiffusionPipeline, StableDiffusionOnnxPipeline
