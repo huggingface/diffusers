@@ -465,7 +465,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         self,
         image: Union[str, List[str]],
         prompt: Union[PIL.Image.Image, List[PIL.Image.Image]],
-        prompt_mix_ratio: float = 0.5,
+        text_to_image_strength: float = 0.5,
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 50,
@@ -527,6 +527,31 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
 
+        ```py
+        >>> from diffusers import VersatileDiffusionImageVariationPipeline
+        >>> import torch
+        >>> import requests
+        >>> from io import BytesIO
+        >>> from PIL import Image
+
+        >>> # let's download an initial image
+        >>> url = "https://huggingface.co/datasets/diffusers/images/resolve/main/benz.jpg"
+
+        >>> response = requests.get(url)
+        >>> image = Image.open(BytesIO(response.content)).convert("RGB")
+        >>> text = "a painting, mosaic style"
+
+        >>> pipe = VersatileDiffusionImageVariationPipeline.from_pretrained("diffusers/vd-official-test", torch_dtype=torch.float16)
+        >>> # pipe.remove_unused_weights()
+        >>> pipe = pipe.to("cuda")
+
+        >>> generator = torch.Generator(device="cuda").manual_seed(0)
+        >>> text_to_image_strength = 0.5
+
+        >>> image = pipe(image=image, text=text, text_to_image_strength=text_to_image_strength, generator=generator).images[0]
+        >>> image.save("./car_variation.png")
+        ```
+
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
@@ -583,7 +608,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 7. Combine the attention blocks of the image and text UNets
-        self.set_transformer_params(prompt_mix_ratio, prompt_types)
+        self.set_transformer_params(text_to_image_strength, prompt_types)
 
         # 8. Denoising loop
         for i, t in enumerate(self.progress_bar(timesteps)):
