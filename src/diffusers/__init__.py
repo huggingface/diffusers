@@ -74,7 +74,6 @@ if is_torch_available() and is_transformers_available():
         StableDiffusionInpaintPipelineLegacy,
         StableDiffusionPipeline,
         VersatileDiffusionDualGuidedPipeline,
-        VersatileDiffusionImageToTextPipeline,
         VersatileDiffusionImageVariationPipeline,
         VersatileDiffusionPipeline,
         VersatileDiffusionTextToImagePipeline,
