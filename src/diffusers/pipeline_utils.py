@@ -26,7 +26,7 @@ import torch
 
 import diffusers
 import PIL
-from huggingface_hub import snapshot_download
+from huggingface_hub import model_info, snapshot_download
 from packaging import version
 from PIL import Image
 from tqdm.auto import tqdm
@@ -459,7 +459,7 @@ class DiffusionPipeline(ConfigMixin):
             allow_patterns += [WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, ONNX_WEIGHTS_NAME, cls.config_name]
 
             # make sure we don't download flax weights
-            ignore_patterns = "*.msgpack"
+            ignore_patterns = ["*.msgpack"]
 
             if custom_pipeline is not None:
                 allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
@@ -472,6 +472,19 @@ class DiffusionPipeline(ConfigMixin):
             if custom_pipeline is not None:
                 user_agent["custom_pipeline"] = custom_pipeline
             user_agent = http_user_agent(user_agent)
+
+            info = model_info(
+                pretrained_model_name_or_path,
+                use_auth_token=use_auth_token,
+                revision=revision,
+            )
+            filenames = set(sibling.rfilename for sibling in info.siblings)
+            safetensors_filenames = set(filename for filename in filenames if filename.endswith(".safetensors"))
+            is_safetensors_compatible = all(
+                filename.replace(".safetensors", ".bin") for filename in safetensors_filenames
+            )
+            if is_safetensors_compatible:
+                ignore_patterns.append("*.bin")
 
             # download all allow_patterns
             cached_folder = snapshot_download(
