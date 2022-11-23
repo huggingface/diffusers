@@ -339,8 +339,10 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
 
         Args:
             image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.FloatTensor`):
-                The image or images to guide the image generation. If you provide a tensor,
-                it needs to comply with the configuration of this `CLIPFeatureExtractor`
+                The image or images to guide the image generation. If you provide a tensor, it needs to comply with the
+                configuration of
+                [this](https://huggingface.co/lambdalabs/sd-image-variations-diffusers/blob/main/feature_extractor/preprocessor_config.json)
+                `CLIPFeatureExtractor`
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 512):
@@ -391,12 +393,12 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
         self.check_inputs(image, height, width, callback_steps)
 
         # 2. Define call parameters
-        if isinstance(input_image, PIL.Image.Image):
+        if isinstance(image, PIL.Image.Image):
             batch_size = 1
-        elif isinstance(input_image, list):
-            batch_size = len(input_image)
+        elif isinstance(image, list):
+            batch_size = len(image)
         else:
-            batch_size = input_image.shape[0]
+            batch_size = image.shape[0]
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -404,7 +406,7 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input image
-        image_embeddings = self._encode_image(input_image, device, num_images_per_prompt, do_classifier_free_guidance)
+        image_embeddings = self._encode_image(image, device, num_images_per_prompt, do_classifier_free_guidance)
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
