@@ -142,17 +142,16 @@ class PipelineIntegrationTests(unittest.TestCase):
     def test_audio_diffusion(self):
         device = torch_device
 
-        mel = Mel()
         pipe = DiffusionPipeline.from_pretrained("teticio/audio-diffusion-ddim-256")
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=device).manual_seed(42)
-        output = pipe(mel=mel, generator=generator)
+        output = pipe(generator=generator)
         audio = output.audios[0]
         image = output.images[0]
 
-        assert audio.shape == (1, (pipe.unet.sample_size[1] - 1) * mel.hop_length)
+        assert audio.shape == (1, (pipe.unet.sample_size[1] - 1) * pipe.mel.hop_length)
         assert image.height == pipe.unet.sample_size[0] and image.width == pipe.unet.sample_size[1]
         image_slice = np.frombuffer(image.tobytes(), dtype="uint8")[:10]
         expected_slice = np.array([151, 167, 154, 144, 122, 134, 121, 105, 70, 26])
