@@ -107,7 +107,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1280,
         attention_head_dim: Union[int, Tuple[int]] = 8,
-        attention_head_dim: int = 8,
         dual_cross_attention: bool = False,
     ):
         super().__init__()
