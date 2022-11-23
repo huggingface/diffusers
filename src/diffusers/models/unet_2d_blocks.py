@@ -15,7 +15,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from .attention import AttentionBlock, Transformer2DModel
+from .attention import AttentionBlock, DualTransformer2DModel, Transformer2DModel
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, ResnetBlock2D, Upsample2D
 
 
@@ -32,6 +32,7 @@ def get_down_block(
     resnet_groups=None,
     cross_attention_dim=None,
     downsample_padding=None,
+    dual_cross_attention=False,
 ):
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
     if down_block_type == "DownBlock2D":
@@ -74,6 +75,7 @@ def get_down_block(
             downsample_padding=downsample_padding,
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
+            dual_cross_attention=dual_cross_attention,
         )
     elif down_block_type == "SkipDownBlock2D":
         return SkipDownBlock2D(
@@ -137,6 +139,7 @@ def get_up_block(
     attn_num_head_channels,
     resnet_groups=None,
     cross_attention_dim=None,
+    dual_cross_attention=False,
 ):
     up_block_type = up_block_type[7:] if up_block_type.startswith("UNetRes") else up_block_type
     if up_block_type == "UpBlock2D":
@@ -166,6 +169,7 @@ def get_up_block(
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attn_num_head_channels,
+            dual_cross_attention=dual_cross_attention,
         )
     elif up_block_type == "AttnUpBlock2D":
         return AttnUpBlock2D(
@@ -322,6 +326,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         attention_type="default",
         output_scale_factor=1.0,
         cross_attention_dim=1280,
+        dual_cross_attention=False,
         **kwargs,
     ):
         super().__init__()
@@ -348,16 +353,28 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         attentions = []
 
         for _ in range(num_layers):
-            attentions.append(
-                Transformer2DModel(
-                    attn_num_head_channels,
-                    in_channels // attn_num_head_channels,
-                    in_channels=in_channels,
-                    num_layers=1,
-                    cross_attention_dim=cross_attention_dim,
-                    norm_num_groups=resnet_groups,
+            if not dual_cross_attention:
+                attentions.append(
+                    Transformer2DModel(
+                        attn_num_head_channels,
+                        in_channels // attn_num_head_channels,
+                        in_channels=in_channels,
+                        num_layers=1,
+                        cross_attention_dim=cross_attention_dim,
+                        norm_num_groups=resnet_groups,
+                    )
                 )
-            )
+            else:
+                attentions.append(
+                    DualTransformer2DModel(
+                        attn_num_head_channels,
+                        in_channels // attn_num_head_channels,
+                        in_channels=in_channels,
+                        num_layers=1,
+                        cross_attention_dim=cross_attention_dim,
+                        norm_num_groups=resnet_groups,
+                    )
+                )
             resnets.append(
                 ResnetBlock2D(
                     in_channels=in_channels,
@@ -505,6 +522,7 @@ class CrossAttnDownBlock2D(nn.Module):
         output_scale_factor=1.0,
         downsample_padding=1,
         add_downsample=True,
+        dual_cross_attention=False,
     ):
         super().__init__()
         resnets = []
@@ -529,16 +547,28 @@ class CrossAttnDownBlock2D(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-            attentions.append(
-                Transformer2DModel(
-                    attn_num_head_channels,
-                    out_channels // attn_num_head_channels,
-                    in_channels=out_channels,
-                    num_layers=1,
-                    cross_attention_dim=cross_attention_dim,
-                    norm_num_groups=resnet_groups,
+            if not dual_cross_attention:
+                attentions.append(
+                    Transformer2DModel(
+                        attn_num_head_channels,
+                        out_channels // attn_num_head_channels,
+                        in_channels=out_channels,
+                        num_layers=1,
+                        cross_attention_dim=cross_attention_dim,
+                        norm_num_groups=resnet_groups,
+                    )
                 )
-            )
+            else:
+                attentions.append(
+                    DualTransformer2DModel(
+                        attn_num_head_channels,
+                        out_channels // attn_num_head_channels,
+                        in_channels=out_channels,
+                        num_layers=1,
+                        cross_attention_dim=cross_attention_dim,
+                        norm_num_groups=resnet_groups,
+                    )
+                )
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
@@ -1089,6 +1119,7 @@ class CrossAttnUpBlock2D(nn.Module):
         attention_type="default",
         output_scale_factor=1.0,
         add_upsample=True,
+        dual_cross_attention=False,
     ):
         super().__init__()
         resnets = []
@@ -1115,16 +1146,28 @@ class CrossAttnUpBlock2D(nn.Module):
                     pre_norm=resnet_pre_norm,
                 )
             )
-            attentions.append(
-                Transformer2DModel(
-                    attn_num_head_channels,
-                    out_channels // attn_num_head_channels,
-                    in_channels=out_channels,
-                    num_layers=1,
-                    cross_attention_dim=cross_attention_dim,
-                    norm_num_groups=resnet_groups,
+            if not dual_cross_attention:
+                attentions.append(
+                    Transformer2DModel(
+                        attn_num_head_channels,
+                        out_channels // attn_num_head_channels,
+                        in_channels=out_channels,
+                        num_layers=1,
+                        cross_attention_dim=cross_attention_dim,
+                        norm_num_groups=resnet_groups,
+                    )
                 )
-            )
+            else:
+                attentions.append(
+                    DualTransformer2DModel(
+                        attn_num_head_channels,
+                        out_channels // attn_num_head_channels,
+                        in_channels=out_channels,
+                        num_layers=1,
+                        cross_attention_dim=cross_attention_dim,
+                        norm_num_groups=resnet_groups,
+                    )
+                )
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
