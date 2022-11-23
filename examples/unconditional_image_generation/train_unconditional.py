@@ -194,16 +194,28 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--predict_epsilon",
-        action="store_true",
-        default=True,
-        help="Whether the model should predict the 'epsilon'/noise error or directly the reconstructed image 'x0'.",
+        "--prediction_type",
+        type=str,
+        default="epsilon",
+        help=(
+            "Whether the model should predict the 'epsilon'/noise error, directly the reconstructed image 'x0', or the"
+            " velocity of the ODE 'velocity'."
+        ),
     )
 
     parser.add_argument("--ddpm_num_steps", type=int, default=1000)
     parser.add_argument("--ddpm_beta_schedule", type=str, default="linear")
 
     args = parser.parse_args()
+
+    message = (
+        "Please make sure to instantiate your training with `--prediction_type=epsilon` instead. E.g. `scheduler ="
+        " DDPMScheduler.from_config(<model_id>, prediction_type=epsilon)`."
+    )
+    predict_epsilon = deprecate("predict_epsilon", "0.10.0", message, take_from=args)
+    if predict_epsilon:
+        args.prediction_type = "epsilon"
+
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
@@ -256,13 +268,13 @@ def main(args):
             "UpBlock2D",
         ),
     )
-    accepts_predict_epsilon = "predict_epsilon" in set(inspect.signature(DDPMScheduler.__init__).parameters.keys())
+    accepts_prediction_type = "prediction_type" in set(inspect.signature(DDPMScheduler.__init__).parameters.keys())
 
-    if accepts_predict_epsilon:
+    if accepts_prediction_type:
         noise_scheduler = DDPMScheduler(
             num_train_timesteps=args.ddpm_num_steps,
             beta_schedule=args.ddpm_beta_schedule,
-            predict_epsilon=args.predict_epsilon,
+            prediction_type=args.prediction_type,
         )
     else:
         noise_scheduler = DDPMScheduler(num_train_timesteps=args.ddpm_num_steps, beta_schedule=args.ddpm_beta_schedule)
@@ -365,7 +377,7 @@ def main(args):
                 # Predict the noise residual
                 model_output = model(noisy_images, timesteps).sample
 
-                if args.predict_epsilon:
+                if args.prediction_type == "epsilon":
                     loss = F.mse_loss(model_output, noise)  # this could have different weights!
                 else:
                     alpha_t = _extract_into_tensor(

@@ -21,7 +21,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS
+from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, deprecate
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
@@ -88,9 +88,13 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             the order of DPM-Solver; can be `1` or `2` or `3`. We recommend to use `solver_order=2` for guided
             sampling, and `solver_order=3` for unconditional sampling.
         predict_epsilon (`bool`, default `True`):
-            we currently support both the noise prediction model and the data prediction model. If the model predicts
-            the noise / epsilon, set `predict_epsilon` to `True`. If the model predicts the data / x0 directly, set
-            `predict_epsilon` to `False`.
+            deprecated flag (removing v0.10.0); we currently support both the noise prediction model and the data
+            prediction model. If the model predicts the noise / epsilon, set `predict_epsilon` to `True`. If the model
+            predicts the data / x0 directly, set `predict_epsilon` to `False`.
+        prediction_type (`str`, default `epsilon`, optional):
+            prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
+            process), `sample` (directly predicting the noisy sample`) or `velocity` (see section 2.4
+            https://imagen.research.google/video/paper.pdf)
         thresholding (`bool`, default `False`):
             whether to use the "dynamic thresholding" method (introduced by Imagen, https://arxiv.org/abs/2205.11487).
             For pixel-space diffusion models, you can set both `algorithm_type=dpmsolver++` and `thresholding=True` to
@@ -128,6 +132,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule: str = "linear",
         trained_betas: Optional[np.ndarray] = None,
         solver_order: int = 2,
+        prediction_type: str = "epsilon",
         predict_epsilon: bool = True,
         thresholding: bool = False,
         dynamic_thresholding_ratio: float = 0.995,
@@ -173,6 +178,17 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(timesteps)
         self.model_outputs = [None] * solver_order
         self.lower_order_nums = 0
+
+        if prediction_type not in ["epsilon", "sample"]:
+            raise ValueError(
+                f"Prediction type {self.config.prediction_type} not supported by DPMSolverMultistepScheduler"
+            )
+
+        message = (
+            "Please make sure to instantiate your scheduler with `prediction_type=epsilon` instead. E.g. `scheduler ="
+            " DDPMScheduler.from_config(<model_id>, prediction_type='epsilon')`."
+        )
+        deprecate("predict_epsilon", "0.10.0", message)
 
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
@@ -221,11 +237,15 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
         # DPM-Solver++ needs to solve an integral of the data prediction model.
         if self.config.algorithm_type == "dpmsolver++":
-            if self.config.predict_epsilon:
+            if self.config.prediction_type == "epsilon":
                 alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
                 x0_pred = (sample - sigma_t * model_output) / alpha_t
-            else:
+            elif self.config.prediction_type == "sample":
                 x0_pred = model_output
+            else:
+                raise ValueError(
+                    f"Prediction type {self.config.prediction_type} not supported by DPMSolverMultistepScheduler"
+                )
             if self.config.thresholding:
                 # Dynamic thresholding in https://arxiv.org/abs/2205.11487
                 dynamic_max_val = torch.quantile(

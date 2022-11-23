@@ -16,7 +16,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Literal, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -99,7 +99,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
         clip_sample (`bool`, default `True`):
             option to clip predicted sample between -1 and 1 for numerical stability.
-        prediction_type (`Literal["epsilon", "sample", "velocity"]`, optional):
+        prediction_type (`str`, default `epsilon`, optional):
                 prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
                 process), `sample` (directly predicting the noisy sample`) or `velocity` (see section 2.4
                 https://imagen.research.google/video/paper.pdf)
@@ -119,7 +119,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         trained_betas: Optional[np.ndarray] = None,
         variance_type: str = "fixed_small",
         clip_sample: bool = True,
-        prediction_type: Literal["epsilon", "sample", "velocity"] = "epsilon",
+        prediction_type: str = "epsilon",
         predict_epsilon: bool = True,
     ):
         if trained_betas is not None:
@@ -155,6 +155,12 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         self.variance_type = variance_type
         self.prediction_type = prediction_type
+
+        message = (
+            "Please make sure to instantiate your scheduler with `prediction_type=epsilon` instead. E.g. `scheduler ="
+            " DDPMScheduler.from_config(<model_id>, prediction_type='epsilon')`."
+        )
+        deprecate("predict_epsilon", "0.10.0", message)
 
     def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
         """

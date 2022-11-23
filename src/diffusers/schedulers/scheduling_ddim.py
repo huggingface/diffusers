@@ -17,7 +17,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Literal, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -118,10 +118,10 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             an offset added to the inference steps. You can use a combination of `offset=1` and
             `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
             stable diffusion.
-        prediction_type (`Literal["epsilon", "sample", "velocity"]`, optional):
-                prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
-                process), `sample` (directly predicting the noisy sample`) or `velocity` (see section 2.4
-                https://imagen.research.google/video/paper.pdf)
+        prediction_type (`str`, default `epsilon`, optional):
+            prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
+            process), `sample` (directly predicting the noisy sample`) or `velocity` (see section 2.4
+            https://imagen.research.google/video/paper.pdf)
 
     """
 
@@ -139,7 +139,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         set_alpha_to_one: bool = True,
         variance_type: str = "fixed",
         steps_offset: int = 0,
-        prediction_type: Literal["epsilon", "sample", "velocity"] = "epsilon",
+        prediction_type: str = "epsilon",
         **kwargs,
     ):
         if trained_betas is not None:
