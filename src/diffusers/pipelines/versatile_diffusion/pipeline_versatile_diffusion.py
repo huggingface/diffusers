@@ -1,3 +1,4 @@
+import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
@@ -9,6 +10,7 @@ from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import logging
+from .pipeline_versatile_diffusion_dual_guided import VersatileDiffusionDualGuidedPipeline
 from .pipeline_versatile_diffusion_image_variation import VersatileDiffusionImageVariationPipeline
 from .pipeline_versatile_diffusion_text_to_image import VersatileDiffusionTextToImagePipeline
 
@@ -77,10 +79,6 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
 
-    @property
-    def components(self) -> Dict[str, Any]:
-        return {k: getattr(self, k) for k in self.config.keys() if not k.startswith("_")}
-
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
         Enable sliced attention computation.
@@ -127,7 +125,9 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
     ):
-        return VersatileDiffusionImageVariationPipeline(**self.components)(
+        expected_components = inspect.signature(VersatileDiffusionImageVariationPipeline.__init__).parameters.keys()
+        components = {name: component for name, component in self.components.items() if name in expected_components}
+        return VersatileDiffusionImageVariationPipeline(**components)(
             image=image,
             height=height,
             width=width,
@@ -162,7 +162,9 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
     ):
-        return VersatileDiffusionTextToImagePipeline(**self.components)(
+        expected_components = inspect.signature(VersatileDiffusionTextToImagePipeline.__init__).parameters.keys()
+        components = {name: component for name, component in self.components.items() if name in expected_components}
+        return VersatileDiffusionTextToImagePipeline(**components)(
             prompt=prompt,
             height=height,
             width=width,
@@ -178,3 +180,46 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
             callback=callback,
             callback_steps=callback_steps,
         )
+
+    @torch.no_grad()
+    def dual_guided(
+        self,
+        first_prompt: Union[str, List[str], PIL.Image.Image, List[PIL.Image.Image]],
+        second_prompt: Union[str, List[str], PIL.Image.Image, List[PIL.Image.Image]],
+        prompt_mix_ratio: float = 0.5,
+        height: int = 512,
+        width: int = 512,
+        num_inference_steps: int = 50,
+        guidance_scale: float = 7.5,
+        num_images_per_prompt: Optional[int] = 1,
+        eta: float = 0.0,
+        generator: Optional[torch.Generator] = None,
+        latents: Optional[torch.FloatTensor] = None,
+        output_type: Optional[str] = "pil",
+        return_dict: bool = True,
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: Optional[int] = 1,
+    ):
+        expected_components = inspect.signature(VersatileDiffusionDualGuidedPipeline.__init__).parameters.keys()
+        components = {name: component for name, component in self.components.items() if name in expected_components}
+        temp_pipeline = VersatileDiffusionDualGuidedPipeline(**components)
+        output = temp_pipeline(
+            first_prompt=first_prompt,
+            second_prompt=second_prompt,
+            prompt_mix_ratio=prompt_mix_ratio,
+            height=height,
+            width=width,
+            num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale,
+            num_images_per_prompt=num_images_per_prompt,
+            eta=eta,
+            generator=generator,
+            latents=latents,
+            output_type=output_type,
+            return_dict=return_dict,
+            callback=callback,
+            callback_steps=callback_steps,
+        )
+        temp_pipeline._revert_dual_attention()
+
+        return output
