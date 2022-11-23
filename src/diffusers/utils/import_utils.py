@@ -358,4 +358,6 @@ def is_transformers_version(operation: str, version: str):
         version (`str`):
             A string version of PyTorch
     """
+    if not _transformers_available:
+        return False
     return compare_versions(parse(_transformers_version), operation, version)
