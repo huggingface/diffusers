@@ -17,10 +17,10 @@ from typing import Callable, List, Optional, Union
 
 import torch
 
+import PIL
 from diffusers.utils import is_accelerate_available
-from transformers import CLIPFeatureExtractor, XLMRobertaTokenizer
+from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
 
-from ...configuration_utils import FrozenDict
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import (
@@ -31,18 +31,17 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import deprecate, logging
-from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-from . import AltDiffusionPipelineOutput, RobertaSeriesModelWithTransformation
+from ...utils import logging
+from . import StableDiffusionPipelineOutput
+from .safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline with Stable->Alt, CLIPTextModel->RobertaSeriesModelWithTransformation, CLIPTokenizer->XLMRobertaTokenizer, AltDiffusionSafetyChecker->StableDiffusionSafetyChecker
-class AltDiffusionPipeline(DiffusionPipeline):
+class StableDiffusionImageVariationPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation using Alt Diffusion.
+    Pipeline to generate variations from an input image using Stable Diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -50,13 +49,10 @@ class AltDiffusionPipeline(DiffusionPipeline):
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`RobertaSeriesModelWithTransformation`]):
-            Frozen text-encoder. Alt Diffusion uses the text portion of
-            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.RobertaSeriesModelWithTransformation),
+        image_encoder ([`CLIPVisionModelWithProjection`]):
+            Frozen CLIP image-encoder. Stable Diffusion Image Variation uses the vision portion of
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPVisionModelWithProjection),
             specifically the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
-        tokenizer (`XLMRobertaTokenizer`):
-            Tokenizer of class
-            [XLMRobertaTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.XLMRobertaTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
@@ -71,8 +67,7 @@ class AltDiffusionPipeline(DiffusionPipeline):
     def __init__(
         self,
         vae: AutoencoderKL,
-        text_encoder: RobertaSeriesModelWithTransformation,
-        tokenizer: XLMRobertaTokenizer,
+        image_encoder: CLIPVisionModelWithProjection,
         unet: UNet2DConditionModel,
         scheduler: Union[
             DDIMScheduler,
@@ -87,37 +82,10 @@ class AltDiffusionPipeline(DiffusionPipeline):
     ):
         super().__init__()
 
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
-            deprecation_message = (
-                f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
-                f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
-                "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
-                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
-                " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
-                " file"
-            )
-            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(scheduler.config)
-            new_config["steps_offset"] = 1
-            scheduler._internal_dict = FrozenDict(new_config)
-
-        if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
-            deprecation_message = (
-                f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."
-                " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
-                " config accordingly as not setting `clip_sample` in the config might lead to incorrect results in"
-                " future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very"
-                " nice if you could open a Pull request for the `scheduler/scheduler_config.json` file"
-            )
-            deprecate("clip_sample not set", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(scheduler.config)
-            new_config["clip_sample"] = False
-            scheduler._internal_dict = FrozenDict(new_config)
-
         if safety_checker is None:
-            logger.warning(
+            logger.warn(
                 f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
-                " that you abide to the conditions of the Alt Diffusion license and do not expose unfiltered"
+                " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
                 " results in services or applications open to the public. Both the diffusers team and Hugging Face"
                 " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
                 " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
@@ -126,14 +94,14 @@ class AltDiffusionPipeline(DiffusionPipeline):
 
         self.register_modules(
             vae=vae,
-            text_encoder=text_encoder,
-            tokenizer=tokenizer,
+            image_encoder=image_encoder,
             unet=unet,
             scheduler=scheduler,
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_xformers_memory_efficient_attention
     def enable_xformers_memory_efficient_attention(self):
         r"""
         Enable memory efficient attention as implemented in xformers.
@@ -146,12 +114,14 @@ class AltDiffusionPipeline(DiffusionPipeline):
         """
         self.unet.set_use_memory_efficient_attention_xformers(True)
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_xformers_memory_efficient_attention
     def disable_xformers_memory_efficient_attention(self):
         r"""
         Disable memory efficient attention as implemented in xformers.
         """
         self.unet.set_use_memory_efficient_attention_xformers(False)
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_attention_slicing
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
         Enable sliced attention computation.
@@ -171,6 +141,7 @@ class AltDiffusionPipeline(DiffusionPipeline):
             slice_size = self.unet.config.attention_head_dim // 2
         self.unet.set_attention_slice(slice_size)
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_attention_slicing
     def disable_attention_slicing(self):
         r"""
         Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go
@@ -192,11 +163,12 @@ class AltDiffusionPipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
+        for cpu_offloaded_model in [self.unet, self.image_encoder, self.vae, self.safety_checker]:
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
 
     @property
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
     def _execution_device(self):
         r"""
         Returns the device on which the pipeline's models will be executed. After calling
@@ -214,111 +186,32 @@ class AltDiffusionPipeline(DiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
-    def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt):
-        r"""
-        Encodes the prompt into text encoder hidden states.
+    def _encode_image(self, image, device, num_images_per_prompt, do_classifier_free_guidance):
+        dtype = next(self.image_encoder.parameters()).dtype
 
-        Args:
-            prompt (`str` or `list(int)`):
-                prompt to be encoded
-            device: (`torch.device`):
-                torch device
-            num_images_per_prompt (`int`):
-                number of images that should be generated per prompt
-            do_classifier_free_guidance (`bool`):
-                whether to use classifier free guidance or not
-            negative_prompt (`str` or `List[str]`):
-                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
-                if `guidance_scale` is less than `1`).
-        """
-        batch_size = len(prompt) if isinstance(prompt, list) else 1
+        if not isinstance(image, torch.Tensor):
+            image = self.feature_extractor(images=image, return_tensors="pt").pixel_values
 
-        text_inputs = self.tokenizer(
-            prompt,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            truncation=True,
-            return_tensors="pt",
-        )
-        text_input_ids = text_inputs.input_ids
-        untruncated_ids = self.tokenizer(prompt, padding="max_length", return_tensors="pt").input_ids
+        image = image.to(device=device, dtype=dtype)
+        image_embeddings = self.image_encoder(image).image_embeds
+        image_embeddings = image_embeddings.unsqueeze(1)
 
-        if not torch.equal(text_input_ids, untruncated_ids):
-            removed_text = self.tokenizer.batch_decode(untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1])
-            logger.warning(
-                "The following part of your input was truncated because CLIP can only handle sequences up to"
-                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
-            )
+        # duplicate image embeddings for each generation per prompt, using mps friendly method
+        bs_embed, seq_len, _ = image_embeddings.shape
+        image_embeddings = image_embeddings.repeat(1, num_images_per_prompt, 1)
+        image_embeddings = image_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
-        if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-            attention_mask = text_inputs.attention_mask.to(device)
-        else:
-            attention_mask = None
-
-        text_embeddings = self.text_encoder(
-            text_input_ids.to(device),
-            attention_mask=attention_mask,
-        )
-        text_embeddings = text_embeddings[0]
-
-        # duplicate text embeddings for each generation per prompt, using mps friendly method
-        bs_embed, seq_len, _ = text_embeddings.shape
-        text_embeddings = text_embeddings.repeat(1, num_images_per_prompt, 1)
-        text_embeddings = text_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
-
-        # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
-            uncond_tokens: List[str]
-            if negative_prompt is None:
-                uncond_tokens = [""] * batch_size
-            elif type(prompt) is not type(negative_prompt):
-                raise TypeError(
-                    f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-                    f" {type(prompt)}."
-                )
-            elif isinstance(negative_prompt, str):
-                uncond_tokens = [negative_prompt]
-            elif batch_size != len(negative_prompt):
-                raise ValueError(
-                    f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
-                    f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
-                    " the batch size of `prompt`."
-                )
-            else:
-                uncond_tokens = negative_prompt
-
-            max_length = text_input_ids.shape[-1]
-            uncond_input = self.tokenizer(
-                uncond_tokens,
-                padding="max_length",
-                max_length=max_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-
-            if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
-                attention_mask = uncond_input.attention_mask.to(device)
-            else:
-                attention_mask = None
-
-            uncond_embeddings = self.text_encoder(
-                uncond_input.input_ids.to(device),
-                attention_mask=attention_mask,
-            )
-            uncond_embeddings = uncond_embeddings[0]
-
-            # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            seq_len = uncond_embeddings.shape[1]
-            uncond_embeddings = uncond_embeddings.repeat(1, num_images_per_prompt, 1)
-            uncond_embeddings = uncond_embeddings.view(batch_size * num_images_per_prompt, seq_len, -1)
+            uncond_embeddings = torch.zeros_like(image_embeddings)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
+            image_embeddings = torch.cat([uncond_embeddings, image_embeddings])
 
-        return text_embeddings
+        return image_embeddings
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is not None:
             safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
@@ -329,6 +222,7 @@ class AltDiffusionPipeline(DiffusionPipeline):
             has_nsfw_concept = None
         return image, has_nsfw_concept
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
         latents = 1 / 0.18215 * latents
         image = self.vae.decode(latents).sample
@@ -337,6 +231,7 @@ class AltDiffusionPipeline(DiffusionPipeline):
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -354,9 +249,15 @@ class AltDiffusionPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    def check_inputs(self, prompt, height, width, callback_steps):
-        if not isinstance(prompt, str) and not isinstance(prompt, list):
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+    def check_inputs(self, image, height, width, callback_steps):
+        if (
+            not isinstance(image, torch.Tensor)
+            and not isinstance(image, PIL.Image.Image)
+            and not isinstance(image, list)
+        ):
+            raise ValueError(
+                f"`image` has to be of type `torch.FloatTensor` or `PIL.Image.Image` or `list` but is {type(image)}"
+            )
 
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -369,6 +270,7 @@ class AltDiffusionPipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height // 8, width // 8)
         if latents is None:
@@ -389,12 +291,11 @@ class AltDiffusionPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]],
+        image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.FloatTensor],
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[torch.Generator] = None,
@@ -409,8 +310,11 @@ class AltDiffusionPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`):
-                The prompt or prompts to guide the image generation.
+            image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.FloatTensor`):
+                The image or images to guide the image generation. If you provide a tensor, it needs to comply with the
+                configuration of
+                [this](https://huggingface.co/lambdalabs/sd-image-variations-diffusers/blob/main/feature_extractor/preprocessor_config.json)
+                `CLIPFeatureExtractor`
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 512):
@@ -424,9 +328,6 @@ class AltDiffusionPipeline(DiffusionPipeline):
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
-            negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
-                if `guidance_scale` is less than `1`).
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
@@ -443,7 +344,7 @@ class AltDiffusionPipeline(DiffusionPipeline):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion.AltDiffusionPipelineOutput`] instead of a
+                Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
             callback (`Callable`, *optional*):
                 A function that will be called every `callback_steps` steps during inference. The function will be
@@ -453,28 +354,31 @@ class AltDiffusionPipeline(DiffusionPipeline):
                 called at every step.
 
         Returns:
-            [`~pipelines.stable_diffusion.AltDiffusionPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.AltDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
+            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
+            [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.
             When returning a tuple, the first element is a list with the generated images, and the second element is a
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(prompt, height, width, callback_steps)
+        self.check_inputs(image, height, width, callback_steps)
 
         # 2. Define call parameters
-        batch_size = 1 if isinstance(prompt, str) else len(prompt)
+        if isinstance(image, PIL.Image.Image):
+            batch_size = 1
+        elif isinstance(image, list):
+            batch_size = len(image)
+        else:
+            batch_size = image.shape[0]
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        # 3. Encode input prompt
-        text_embeddings = self._encode_prompt(
-            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
-        )
+        # 3. Encode input image
+        image_embeddings = self._encode_image(image, device, num_images_per_prompt, do_classifier_free_guidance)
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -487,7 +391,7 @@ class AltDiffusionPipeline(DiffusionPipeline):
             num_channels_latents,
             height,
             width,
-            text_embeddings.dtype,
+            image_embeddings.dtype,
             device,
             generator,
             latents,
@@ -503,7 +407,7 @@ class AltDiffusionPipeline(DiffusionPipeline):
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
             # predict the noise residual
-            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=image_embeddings).sample
 
             # perform guidance
             if do_classifier_free_guidance:
@@ -521,7 +425,7 @@ class AltDiffusionPipeline(DiffusionPipeline):
         image = self.decode_latents(latents)
 
         # 9. Run safety checker
-        image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
+        image, has_nsfw_concept = self.run_safety_checker(image, device, image_embeddings.dtype)
 
         # 10. Convert to PIL
         if output_type == "pil":
@@ -530,4 +434,4 @@ class AltDiffusionPipeline(DiffusionPipeline):
         if not return_dict:
             return (image, has_nsfw_concept)
 
-        return AltDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)

@@ -12,61 +12,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
+import importlib
 from typing import Callable, List, Optional, Union
 
-import numpy as np
 import torch
 
-import PIL
-from diffusers.utils import is_accelerate_available
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
-
-from ...configuration_utils import FrozenDict
-from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipeline_utils import DiffusionPipeline
-from ...schedulers import (
-    DDIMScheduler,
-    DPMSolverMultistepScheduler,
-    EulerAncestralDiscreteScheduler,
-    EulerDiscreteScheduler,
-    LMSDiscreteScheduler,
-    PNDMScheduler,
-)
-from ...utils import PIL_INTERPOLATION, deprecate, logging
-from . import StableDiffusionPipelineOutput
-from .safety_checker import StableDiffusionSafetyChecker
+from diffusers import LMSDiscreteScheduler
+from diffusers.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
+from diffusers.utils import is_accelerate_available, logging
+from k_diffusion.external import CompVisDenoiser
 
 
-logger = logging.get_logger(__name__)
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def preprocess_image(image):
-    w, h = image.size
-    w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
-    image = image.resize((w, h), resample=PIL_INTERPOLATION["lanczos"])
-    image = np.array(image).astype(np.float32) / 255.0
-    image = image[None].transpose(0, 3, 1, 2)
-    image = torch.from_numpy(image)
-    return 2.0 * image - 1.0
+class ModelWrapper:
+    def __init__(self, model, alphas_cumprod):
+        self.model = model
+        self.alphas_cumprod = alphas_cumprod
+
+    def apply_model(self, *args, **kwargs):
+        return self.model(*args, **kwargs).sample
 
 
-def preprocess_mask(mask):
-    mask = mask.convert("L")
-    w, h = mask.size
-    w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
-    mask = mask.resize((w // 8, h // 8), resample=PIL_INTERPOLATION["nearest"])
-    mask = np.array(mask).astype(np.float32) / 255.0
-    mask = np.tile(mask, (4, 1, 1))
-    mask = mask[None].transpose(0, 1, 2, 3)  # what does this step do?
-    mask = 1 - mask  # repaint white, keep black
-    mask = torch.from_numpy(mask)
-    return mask
-
-
-class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
+class StableDiffusionPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-guided image inpainting using Stable Diffusion. *This is an experimental feature*.
+    Pipeline for text-to-image generation using Stable Diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -92,52 +64,17 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.__init__
     def __init__(
         self,
-        vae: AutoencoderKL,
-        text_encoder: CLIPTextModel,
-        tokenizer: CLIPTokenizer,
-        unet: UNet2DConditionModel,
-        scheduler: Union[
-            DDIMScheduler,
-            PNDMScheduler,
-            LMSDiscreteScheduler,
-            EulerDiscreteScheduler,
-            EulerAncestralDiscreteScheduler,
-            DPMSolverMultistepScheduler,
-        ],
-        safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
+        vae,
+        text_encoder,
+        tokenizer,
+        unet,
+        scheduler,
+        safety_checker,
+        feature_extractor,
     ):
         super().__init__()
-
-        if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
-            deprecation_message = (
-                f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
-                f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
-                "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
-                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
-                " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
-                " file"
-            )
-            deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(scheduler.config)
-            new_config["steps_offset"] = 1
-            scheduler._internal_dict = FrozenDict(new_config)
-
-        if hasattr(scheduler.config, "clip_sample") and scheduler.config.clip_sample is True:
-            deprecation_message = (
-                f"The configuration file of this scheduler: {scheduler} has not set the configuration `clip_sample`."
-                " `clip_sample` should be set to False in the configuration file. Please make sure to update the"
-                " config accordingly as not setting `clip_sample` in the config might lead to incorrect results in"
-                " future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it would be very"
-                " nice if you could open a Pull request for the `scheduler/scheduler_config.json` file"
-            )
-            deprecate("clip_sample not set", "1.0.0", deprecation_message, standard_warn=False)
-            new_config = dict(scheduler.config)
-            new_config["clip_sample"] = False
-            scheduler._internal_dict = FrozenDict(new_config)
 
         if safety_checker is None:
             logger.warning(
@@ -149,6 +86,8 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                 " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
             )
 
+        # get correct sigmas from LMS
+        scheduler = LMSDiscreteScheduler.from_config(scheduler.config)
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -159,7 +98,32 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_attention_slicing
+        model = ModelWrapper(unet, scheduler.alphas_cumprod)
+        self.k_diffusion_model = CompVisDenoiser(model)
+
+    def set_sampler(self, scheduler_type: str):
+        library = importlib.import_module("k_diffusion")
+        sampling = getattr(library, "sampling")
+        self.sampler = getattr(sampling, scheduler_type)
+
+    def enable_xformers_memory_efficient_attention(self):
+        r"""
+        Enable memory efficient attention as implemented in xformers.
+
+        When this option is enabled, you should observe lower GPU memory usage and a potential speed up at inference
+        time. Speed up at training time is not guaranteed.
+
+        Warning: When Memory Efficient Attention and Sliced attention are both enabled, the Memory Efficient Attention
+        is used.
+        """
+        self.unet.set_use_memory_efficient_attention_xformers(True)
+
+    def disable_xformers_memory_efficient_attention(self):
+        r"""
+        Disable memory efficient attention as implemented in xformers.
+        """
+        self.unet.set_use_memory_efficient_attention_xformers(False)
+
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
         Enable sliced attention computation.
@@ -179,7 +143,6 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             slice_size = self.unet.config.attention_head_dim // 2
         self.unet.set_attention_slice(slice_size)
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_attention_slicing
     def disable_attention_slicing(self):
         r"""
         Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go
@@ -188,7 +151,6 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         # set slice_size = `None` to disable `attention slicing`
         self.enable_attention_slicing(None)
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
     def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
@@ -206,28 +168,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_xformers_memory_efficient_attention
-    def enable_xformers_memory_efficient_attention(self):
-        r"""
-        Enable memory efficient attention as implemented in xformers.
-
-        When this option is enabled, you should observe lower GPU memory usage and a potential speed up at inference
-        time. Speed up at training time is not guaranteed.
-
-        Warning: When Memory Efficient Attention and Sliced attention are both enabled, the Memory Efficient Attention
-        is used.
-        """
-        self.unet.set_use_memory_efficient_attention_xformers(True)
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_xformers_memory_efficient_attention
-    def disable_xformers_memory_efficient_attention(self):
-        r"""
-        Disable memory efficient attention as implemented in xformers.
-        """
-        self.unet.set_use_memory_efficient_attention_xformers(False)
-
     @property
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
     def _execution_device(self):
         r"""
         Returns the device on which the pipeline's models will be executed. After calling
@@ -245,7 +186,6 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -351,7 +291,6 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
 
         return text_embeddings
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is not None:
             safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
@@ -362,7 +301,6 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             has_nsfw_concept = None
         return image, has_nsfw_concept
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
         latents = 1 / 0.18215 * latents
         image = self.vae.decode(latents).sample
@@ -371,31 +309,12 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
-    def prepare_extra_step_kwargs(self, generator, eta):
-        # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
-        # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
-        # and should be between [0, 1]
-
-        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        extra_step_kwargs = {}
-        if accepts_eta:
-            extra_step_kwargs["eta"] = eta
-
-        # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        if accepts_generator:
-            extra_step_kwargs["generator"] = generator
-        return extra_step_kwargs
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.check_inputs
-    def check_inputs(self, prompt, strength, callback_steps):
+    def check_inputs(self, prompt, height, width, callback_steps):
         if not isinstance(prompt, str) and not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
-        if strength < 0 or strength > 1:
-            raise ValueError(f"The value of strength should in [1.0, 1.0] but is {strength}")
+        if height % 8 != 0 or width % 8 != 0:
+            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
@@ -405,47 +324,35 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
-    def get_timesteps(self, num_inference_steps, strength, device):
-        # get the original timestep using init_timestep
-        offset = self.scheduler.config.get("steps_offset", 0)
-        init_timestep = int(num_inference_steps * strength) + offset
-        init_timestep = min(init_timestep, num_inference_steps)
+    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+        shape = (batch_size, num_channels_latents, height // 8, width // 8)
+        if latents is None:
+            if device.type == "mps":
+                # randn does not work reproducibly on mps
+                latents = torch.randn(shape, generator=generator, device="cpu", dtype=dtype).to(device)
+            else:
+                latents = torch.randn(shape, generator=generator, device=device, dtype=dtype)
+        else:
+            if latents.shape != shape:
+                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
+            latents = latents.to(device)
 
-        t_start = max(num_inference_steps - init_timestep + offset, 0)
-        timesteps = self.scheduler.timesteps[t_start:]
-
-        return timesteps
-
-    def prepare_latents(self, init_image, timestep, batch_size, num_images_per_prompt, dtype, device, generator):
-        init_image = init_image.to(device=self.device, dtype=dtype)
-        init_latent_dist = self.vae.encode(init_image).latent_dist
-        init_latents = init_latent_dist.sample(generator=generator)
-        init_latents = 0.18215 * init_latents
-
-        # Expand init_latents for batch_size and num_images_per_prompt
-        init_latents = torch.cat([init_latents] * batch_size * num_images_per_prompt, dim=0)
-        init_latents_orig = init_latents
-
-        # add noise to latents using the timesteps
-        noise = torch.randn(init_latents.shape, generator=generator, device=self.device, dtype=dtype)
-        init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
-        latents = init_latents
-        return latents, init_latents_orig, noise
+        # scale the initial noise by the standard deviation required by the scheduler
+        return latents
 
     @torch.no_grad()
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        init_image: Union[torch.FloatTensor, PIL.Image.Image],
-        mask_image: Union[torch.FloatTensor, PIL.Image.Image],
-        strength: float = 0.8,
-        num_inference_steps: Optional[int] = 50,
-        guidance_scale: Optional[float] = 7.5,
+        height: int = 512,
+        width: int = 512,
+        num_inference_steps: int = 50,
+        guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
-        eta: Optional[float] = 0.0,
+        eta: float = 0.0,
         generator: Optional[torch.Generator] = None,
+        latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
@@ -458,22 +365,13 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
-            init_image (`torch.FloatTensor` or `PIL.Image.Image`):
-                `Image`, or tensor representing an image batch, that will be used as the starting point for the
-                process. This is the image whose masked region will be inpainted.
-            mask_image (`torch.FloatTensor` or `PIL.Image.Image`):
-                `Image`, or tensor representing an image batch, to mask `init_image`. White pixels in the mask will be
-                replaced by noise and therefore repainted, while black pixels will be preserved. If `mask_image` is a
-                PIL image, it will be converted to a single channel (luminance) before use. If it's a tensor, it should
-                contain one color channel (L) instead of 3, so the expected shape would be `(B, H, W, 1)`.
-            strength (`float`, *optional*, defaults to 0.8):
-                Conceptually, indicates how much to inpaint the masked area. Must be between 0 and 1. When `strength`
-                is 1, the denoising process will be run on the masked area for the full number of iterations specified
-                in `num_inference_steps`. `init_image` will be used as a reference for the masked area, adding more
-                noise to that region the larger the `strength`. If `strength` is 0, no inpainting will occur.
+            height (`int`, *optional*, defaults to 512):
+                The height in pixels of the generated image.
+            width (`int`, *optional*, defaults to 512):
+                The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
-                The reference number of denoising steps. More denoising steps usually lead to a higher quality image at
-                the expense of slower inference. This parameter will be modulated by `strength`, as explained above.
+                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                expense of slower inference.
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -491,6 +389,10 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             generator (`torch.Generator`, *optional*):
                 A [torch generator](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make generation
                 deterministic.
+            latents (`torch.FloatTensor`, *optional*):
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
+                tensor will ge generated by sampling using the supplied random `generator`.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -511,8 +413,9 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
-        # 1. Check inputs
-        self.check_inputs(prompt, strength, callback_steps)
+
+        # 1. Check inputs. Raise error if not correct
+        self.check_inputs(prompt, height, width, callback_steps)
 
         # 2. Define call parameters
         batch_size = 1 if isinstance(prompt, str) else len(prompt)
@@ -520,70 +423,53 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = guidance_scale > 1.0
+        do_classifier_free_guidance = True
+        if guidance_scale <= 1.0:
+            raise ValueError("has to use guidance_scale")
 
         # 3. Encode input prompt
         text_embeddings = self._encode_prompt(
             prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
         )
 
-        # 4. Preprocess image and mask
-        if not isinstance(init_image, torch.FloatTensor):
-            init_image = preprocess_image(init_image)
+        # 4. Prepare timesteps
+        self.scheduler.set_timesteps(num_inference_steps, device=text_embeddings.device)
+        sigmas = self.scheduler.sigmas
 
-        if not isinstance(mask_image, torch.FloatTensor):
-            mask_image = preprocess_mask(mask_image)
-
-        # 5. set timesteps
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps = self.get_timesteps(num_inference_steps, strength, device)
-        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
-
-        # 6. Prepare latent variables
-        # encode the init image into latents and scale the latents
-        latents, init_latents_orig, noise = self.prepare_latents(
-            init_image, latent_timestep, batch_size, num_images_per_prompt, text_embeddings.dtype, device, generator
+        # 5. Prepare latent variables
+        num_channels_latents = self.unet.in_channels
+        latents = self.prepare_latents(
+            batch_size * num_images_per_prompt,
+            num_channels_latents,
+            height,
+            width,
+            text_embeddings.dtype,
+            device,
+            generator,
+            latents,
         )
+        latents = latents * sigmas[0]
+        self.k_diffusion_model.sigmas = self.k_diffusion_model.sigmas.to(latents.device)
+        self.k_diffusion_model.log_sigmas = self.k_diffusion_model.log_sigmas.to(latents.device)
 
-        # 7. Prepare mask latent
-        mask = mask_image.to(device=self.device, dtype=latents.dtype)
-        mask = torch.cat([mask] * batch_size * num_images_per_prompt)
+        def model_fn(x, t):
+            latent_model_input = torch.cat([x] * 2)
 
-        # 8. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
+            noise_pred = self.k_diffusion_model(latent_model_input, t, encoder_hidden_states=text_embeddings)
 
-        # 9. Denoising loop
-        for i, t in enumerate(self.progress_bar(timesteps)):
-            # expand the latents if we are doing classifier free guidance
-            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-            latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+            return noise_pred
 
-            # predict the noise residual
-            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+        latents = self.sampler(model_fn, latents, sigmas)
 
-            # perform guidance
-            if do_classifier_free_guidance:
-                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-
-            # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
-            # masking
-            init_latents_proper = self.scheduler.add_noise(init_latents_orig, noise, torch.tensor([t]))
-
-            latents = (init_latents_proper * mask) + (latents * (1 - mask))
-
-            # call the callback, if provided
-            if callback is not None and i % callback_steps == 0:
-                callback(i, t, latents)
-
-        # 10. Post-processing
+        # 8. Post-processing
         image = self.decode_latents(latents)
 
-        # 11. Run safety checker
+        # 9. Run safety checker
         image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
 
-        # 12. Convert to PIL
+        # 10. Convert to PIL
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 

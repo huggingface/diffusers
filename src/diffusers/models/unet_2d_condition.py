@@ -56,7 +56,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
     implements for all the models (such as downloading or saving, etc.)
 
     Parameters:
-        sample_size (`int`, *optional*): The size of the input sample.
+        sample_size (`int` or `Tuple[int, int]`, *optional*, defaults to `None`):
+            Height and width of input/output sample.
         in_channels (`int`, *optional*, defaults to 4): The number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 4): The number of channels in the output.
         center_input_sample (`bool`, *optional*, defaults to `False`): Whether to center the input sample.

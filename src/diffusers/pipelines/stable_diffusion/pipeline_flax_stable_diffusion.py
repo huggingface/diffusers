@@ -88,7 +88,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         self.dtype = dtype
 
         if safety_checker is None:
-            logger.warn(
+            logger.warning(
                 f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
                 " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
                 " results in services or applications open to the public. Both the diffusers team and Hugging Face"
