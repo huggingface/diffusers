@@ -115,7 +115,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
                 process), `sample` (directly predicting the noisy sample`) or `velocity` (see section 2.4
                 https://imagen.research.google/video/paper.pdf)
         predict_epsilon (`bool`, default `True`):
-            depreciated flag (removing v0.10.0) for epsilon vs. direct sample prediction.
+            deprecated flag (removing v0.10.0) for epsilon vs. direct sample prediction.
     """
 
     _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
