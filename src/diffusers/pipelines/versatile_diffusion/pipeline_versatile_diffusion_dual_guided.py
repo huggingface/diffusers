@@ -29,7 +29,6 @@ from transformers import (
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention import DualTransformer2DModel, Transformer2DModel
-from ...models.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, UNetMidBlock2DCrossAttn
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import is_accelerate_available, logging
