@@ -40,7 +40,7 @@ class VersatileDiffusionImageToTextPipelineIntegrationTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         image_prompt = load_image(
-            "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/benz.jpg"
+            "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/boy_and_girl.jpg"
         )
         generator = torch.Generator(device=torch_device).manual_seed(0)
         text = pipe(

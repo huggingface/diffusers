@@ -106,6 +106,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1280,
         attention_head_dim: int = 8,
+        dual_cross_attention: bool = False,
     ):
         super().__init__()
 
@@ -145,6 +146,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=attention_head_dim,
                 downsample_padding=downsample_padding,
+                dual_cross_attention=dual_cross_attention,
             )
             self.down_blocks.append(down_block)
 
@@ -159,6 +161,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attention_head_dim,
             resnet_groups=norm_num_groups,
+            dual_cross_attention=dual_cross_attention,
         )
 
         # count how many layers upsample the images
@@ -194,6 +197,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=attention_head_dim,
+                dual_cross_attention=dual_cross_attention,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
