@@ -47,14 +47,14 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        image = load_image(
+        prompt_image = load_image(
             "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/benz.jpg"
         )
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
         image = pipe.dual_guided(
             prompt="first prompt",
-            image=image,
+            image=prompt_image,
             text_to_image_strength=0.75,
             generator=generator,
             guidance_scale=7.5,
@@ -71,7 +71,7 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         generator = generator.manual_seed(0)
         new_image = pipe.dual_guided(
             prompt="first prompt",
-            image=image,
+            image=prompt_image,
             text_to_image_strength=0.75,
             generator=generator,
             guidance_scale=7.5,
@@ -104,7 +104,7 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.5727, 0.5625, 0.5617, 0.5703, 0.5530, 0.5620, 0.5864, 0.5742, 0.5665])
+        expected_slice = np.array([0.014, 0.0112, 0.0136, 0.0145, 0.0107, 0.0113, 0.0272, 0.0215, 0.0216])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
         prompt = "A painting of a squirrel eating a burger "
@@ -116,7 +116,7 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.0657, 0.0529, 0.0455, 0.0802, 0.0570, 0.0179, 0.0267, 0.0483, 0.0769])
+        expected_slice = np.array([0.0408, 0.0181, 0.0, 0.0388, 0.0046, 0.0461, 0.0411, 0.0, 0.0222])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
         pipe = VersatileDiffusionPipeline.from_pretrained("shi-labs/versatile-diffusion", torch_dtype=torch.float16)
@@ -127,4 +127,3 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.0657, 0.0529, 0.0455, 0.0802, 0.0570, 0.0179, 0.0267, 0.0483, 0.0769])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
-

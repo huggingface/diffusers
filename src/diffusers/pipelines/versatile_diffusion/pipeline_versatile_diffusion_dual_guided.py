@@ -29,7 +29,6 @@ from transformers import (
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention import DualTransformer2DModel, Transformer2DModel
-from ...models.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, UNetMidBlock2DCrossAttn
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import is_accelerate_available, logging
@@ -516,8 +515,10 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
 
+        Examples:
+
         ```py
-        >>> from diffusers import VersatileDiffusionImageVariationPipeline
+        >>> from diffusers import VersatileDiffusionDualGuidedPipeline
         >>> import torch
         >>> import requests
         >>> from io import BytesIO
@@ -528,9 +529,9 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
 
         >>> response = requests.get(url)
         >>> image = Image.open(BytesIO(response.content)).convert("RGB")
-        >>> text = "a painting, mosaic style"
+        >>> text = "a red car in the sun"
 
-        >>> pipe = VersatileDiffusionImageVariationPipeline.from_pretrained(
+        >>> pipe = VersatileDiffusionDualGuidedPipeline.from_pretrained(
         ...     "shi-labs/versatile-diffusion", torch_dtype=torch.float16
         ... )
         >>> pipe.remove_unused_weights()
