@@ -61,7 +61,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         in_channels (`int`, *optional*, defaults to 4): The number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 4): The number of channels in the output.
         center_input_sample (`bool`, *optional*, defaults to `False`): Whether to center the input sample.
-        flip_sin_to_cos (`bool`, *optional*, defaults to `True`):
+        flip_sin_to_cos (`bool`, *optional*, defaults to `False`):
             Whether to flip the sin to cos in the time embedding.
         freq_shift (`int`, *optional*, defaults to 0): The frequency shift to apply to the time embedding.
         down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
@@ -106,8 +106,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         norm_num_groups: int = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1280,
-        attention_head_dim: int = 8,
+        attention_head_dim: Union[int, Tuple[int]] = 8,
         dual_cross_attention: bool = False,
+        use_linear_projection: bool = False,
     ):
         super().__init__()
 
@@ -127,6 +128,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         self.mid_block = None
         self.up_blocks = nn.ModuleList([])
 
+        if isinstance(attention_head_dim, int):
+            attention_head_dim = (attention_head_dim,) * len(down_block_types)
+
         # down
         output_channel = block_out_channels[0]
         for i, down_block_type in enumerate(down_block_types):
@@ -145,9 +149,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
-                attn_num_head_channels=attention_head_dim,
+                attn_num_head_channels=attention_head_dim[i],
                 downsample_padding=downsample_padding,
                 dual_cross_attention=dual_cross_attention,
+                use_linear_projection=use_linear_projection,
             )
             self.down_blocks.append(down_block)
 
@@ -160,9 +165,10 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             output_scale_factor=mid_block_scale_factor,
             resnet_time_scale_shift="default",
             cross_attention_dim=cross_attention_dim,
-            attn_num_head_channels=attention_head_dim,
+            attn_num_head_channels=attention_head_dim[-1],
             resnet_groups=norm_num_groups,
             dual_cross_attention=dual_cross_attention,
+            use_linear_projection=use_linear_projection,
         )
 
         # count how many layers upsample the images
@@ -170,6 +176,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
 
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
+        reversed_attention_head_dim = list(reversed(attention_head_dim))
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
             is_final_block = i == len(block_out_channels) - 1
@@ -197,8 +204,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
-                attn_num_head_channels=attention_head_dim,
+                attn_num_head_channels=reversed_attention_head_dim[i],
                 dual_cross_attention=dual_cross_attention,
+                use_linear_projection=use_linear_projection,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -256,8 +264,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         Args:
             sample (`torch.FloatTensor`): (batch, channel, height, width) noisy inputs tensor
             timestep (`torch.FloatTensor` or `float` or `int`): (batch) timesteps
-            encoder_hidden_states (`torch.FloatTensor`):
-                (batch_size, sequence_length, hidden_size) encoder hidden states
+            encoder_hidden_states (`torch.FloatTensor`): (batch, channel, height, width) encoder hidden states
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
 
