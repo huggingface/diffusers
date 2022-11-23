@@ -303,6 +303,17 @@ def requires_backends(obj, backends):
     if failed:
         raise ImportError("".join(failed))
 
+    if name in [
+        "VersatileDiffusionTextToImagePipeline",
+        "VersatileDiffusionPipeline",
+        "VersatileDiffusionDualGuidedPipeline",
+        "StableDiffusionImageVariationPipeline",
+    ] and is_transformers_version("<", "4.25.0"):
+        raise ImportError(
+            f"You need to install `transformers` from 'main' in order to use {name}: \n```\n pip install"
+            " git+https://github.com/huggingface/transformers \n```"
+        )
+
 
 class DummyObject(type):
     """

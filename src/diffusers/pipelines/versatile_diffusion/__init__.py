@@ -8,4 +8,9 @@ if is_transformers_available() and is_torch_available() and is_transformers_vers
     from .pipeline_versatile_diffusion_image_variation import VersatileDiffusionImageVariationPipeline
     from .pipeline_versatile_diffusion_text_to_image import VersatileDiffusionTextToImagePipeline
 else:
-    from ...utils.dummy_torch_and_transformers_objects import VersatileDiffusionPipeline, VersatileDiffusionDualGuidedPipeline, VersatileDiffusionImageVariationPipeline, VersatileDiffusionTextToImagePipeline
+    from ...utils.dummy_torch_and_transformers_objects import (
+        VersatileDiffusionDualGuidedPipeline,
+        VersatileDiffusionImageVariationPipeline,
+        VersatileDiffusionPipeline,
+        VersatileDiffusionTextToImagePipeline,
+    )
