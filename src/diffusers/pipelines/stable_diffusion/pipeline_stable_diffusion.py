@@ -1,3 +1,4 @@
+import os
 import inspect
 from typing import Callable, List, Optional, Union
 import random
@@ -108,6 +109,110 @@ class StableDiffusionPipeline(DiffusionPipeline):
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
+        
+        self.compile_dir = None
+        self.in_channels = self.unet.in_channels
+        
+        
+    def compile_models(self, compile_dir, width=512, height=512):
+        self.compile_dir = compile_dir
+        if self.compile_dir is not None:
+            if not os.path.exists(self.compile_dir) or not os.path.exists(os.path.join(self.compile_dir, "UNet2DConditionModel")):
+                from .compile import compile_diffusers
+                compile_diffusers("", width, height, 77, 1, save_path=compile_dir, pipe=self)
+                                                                          
+            try:
+                self.clip_ait_exe = self.init_ait_module(
+                    model_name="CLIPTextModel", workdir=self.compile_dir
+                )
+                self.unet_ait_exe = self.init_ait_module(
+                    model_name="UNet2DConditionModel", workdir=self.compile_dir
+                )
+                self.vae_ait_exe = self.init_ait_module(
+                    model_name="AutoencoderKL", workdir=self.compile_dir
+                )
+            except OSError as e:
+                print("Compiling models as they could not be loaded correctly...")
+                from .compile import compile_diffusers
+                compile_diffusers("", width, height, 77, 1, save_path=compile_dir)
+                
+                self.clip_ait_exe = self.init_ait_module(
+                    model_name="CLIPTextModel", workdir=self.compile_dir
+                )
+                self.unet_ait_exe = self.init_ait_module(
+                    model_name="UNet2DConditionModel", workdir=self.compile_dir
+                )
+                self.vae_ait_exe = self.init_ait_module(
+                    model_name="AutoencoderKL", workdir=self.compile_dir
+                )
+            
+    def del_pt_models(self):
+        # delete models. keep vae for encoding
+        self.unet.to("cpu")
+        self.text_encoder.to("cpu")
+        self.vae.decoder.to("cpu")
+        del self.unet
+        del self.text_encoder
+        del self.vae.decoder
+            
+    def init_ait_module(
+        self,
+        model_name,
+        workdir,
+    ):
+        from aitemplate.compiler import Model
+        
+        mod = Model(os.path.join(workdir, model_name, "test.so"))
+        return mod
+
+    def unet_inference(self, latent_model_input, timesteps, encoder_hidden_states):
+        exe_module = self.unet_ait_exe
+        timesteps_pt = timesteps.expand(latent_model_input.shape[0])
+        inputs = {
+            "input0": latent_model_input.permute((0, 2, 3, 1))
+            .contiguous()
+            .cuda()
+            .half(),
+            "input1": timesteps_pt.cuda().half(),
+            "input2": encoder_hidden_states.cuda().half(),
+        }
+        ys = []
+        num_ouputs = len(exe_module.get_output_name_to_index_map())
+        for i in range(num_ouputs):
+            shape = exe_module.get_output_maximum_shape(i)
+            ys.append(torch.empty(shape).cuda().half())
+        exe_module.run_with_tensors(inputs, ys, graph_mode=False)
+        noise_pred = ys[0].permute((0, 3, 1, 2)).float()
+        return noise_pred
+
+    def clip_inference(self, input_ids, seqlen=77):
+        exe_module = self.clip_ait_exe
+        bs = input_ids.shape[0]
+        position_ids = torch.arange(seqlen).expand((bs, -1)).cuda()
+        inputs = {
+            "input0": input_ids,
+            "input1": position_ids,
+        }
+        ys = []
+        num_ouputs = len(exe_module.get_output_name_to_index_map())
+        for i in range(num_ouputs):
+            shape = exe_module.get_output_maximum_shape(i)
+            ys.append(torch.empty(shape).cuda().half())
+        exe_module.run_with_tensors(inputs, ys, graph_mode=False)
+        return ys[0].float()
+
+    def vae_inference(self, vae_input):
+        exe_module = self.vae_ait_exe
+        inputs = [torch.permute(vae_input, (0, 2, 3, 1)).contiguous().cuda().half()]
+        ys = []
+        num_ouputs = len(exe_module.get_output_name_to_index_map())
+        for i in range(num_ouputs):
+            shape = exe_module.get_output_maximum_shape(i)
+            ys.append(torch.empty(shape).cuda().half())
+        exe_module.run_with_tensors(inputs, ys, graph_mode=False)
+        vae_out = ys[0].permute((0, 3, 1, 2)).float()
+        return vae_out        
+    
 
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
@@ -225,6 +330,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
+        
+        
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # set seed 
         if seed is not None:
@@ -247,7 +355,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         # get prompt text embeddings if not given already
         if text_embeddings is None:
-            text_embeddings = self.embed_prompts(prompt, weights=weights)
+            text_embeddings = self.embed_prompts(prompt, weights=weights, device=device)
 
         # duplicate text embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = text_embeddings.shape
@@ -275,7 +383,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             else:
                 uncond_tokens = negative_prompt
 
-            uncond_embeddings = self.embed_prompts(uncond_tokens)
+            uncond_embeddings = self.embed_prompts(uncond_tokens, device=device)
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = uncond_embeddings.shape[1]
@@ -299,7 +407,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         offset = self.scheduler.config.get("steps_offset", 0)
         # create starting image/noise
         if noise is None:
-            noise = self.sample_noise(width, height, batch_size=batch_size, generator=generator, dtype=text_embeddings.dtype)
+            noise = self.sample_noise(width, height, batch_size=batch_size, generator=generator, dtype=text_embeddings.dtype, device=device)
             
         if latents is None:
             if start_img is None:
@@ -332,7 +440,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
                     t_start = num_inference_steps - init_timestep
                     
                     timesteps = self.scheduler.timesteps[t_start]
-                    timesteps = torch.tensor([timesteps] * batch_size * num_images_per_prompt, device=self.device)
+                    timesteps = torch.tensor([timesteps] * batch_size * num_images_per_prompt, device=device)
                     # add noise to latents using the timesteps       
                     latents = self.scheduler.add_noise(latents, noise, timesteps)
                     
@@ -343,7 +451,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         # Some schedulers like PNDM have timesteps as arrays
         # It's more optimized to move all timesteps to correct device beforehand
-        timesteps_tensor = self.scheduler.timesteps[t_start:].to(self.device)
+        timesteps_tensor = self.scheduler.timesteps[t_start:].to(device)
 
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -361,8 +469,15 @@ class StableDiffusionPipeline(DiffusionPipeline):
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
             # predict the noise residual
-            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+            if self.compile_dir is None:
+                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+            else:
+                # predict the noise residual
+                noise_pred = self.unet_inference(
+                    latent_model_input, t, encoder_hidden_states=text_embeddings
+                )
 
+            
             # perform guidance
             if do_classifier_free_guidance:
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
@@ -430,13 +545,12 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 
 
         # scale and decode the image latents with vae
-        image = self.decode_image(latents, output_type=output_type)
-
+        image = self.decode_image(latents, output_type=output_type, device=device)
 
         if output_type == "pil" and use_safety:
             # run safety checker
             check_img = self.numpy_to_pil(image.permute(0, 2, 3, 1).numpy())
-            safety_checker_input = self.feature_extractor(check_img, return_tensors="pt").to(self.device)
+            safety_checker_input = self.feature_extractor(check_img, return_tensors="pt").to(device)
             image, has_nsfw_concept = self.safety_checker(images=image, clip_input=safety_checker_input.pixel_values)
         else:
             has_nsfw_concept = False
@@ -446,13 +560,13 @@ class StableDiffusionPipeline(DiffusionPipeline):
 
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
 
-    def sample_noise(self, width=512, height=512, batch_size=1, generator=None, dtype=None):
-        latents = torch.randn(batch_size, self.unet.in_channels,
-                                  height // 8, width // 8, generator=generator, device=self.device, dtype=dtype)
+    def sample_noise(self, width=512, height=512, batch_size=1, generator=None, dtype=None, device="cpu"):
+        latents = torch.randn(batch_size, self.in_channels,
+                                  height // 8, width // 8, generator=generator, device=device, dtype=dtype)
         return latents
     
     @torch.no_grad()
-    def embed_prompts(self, prompts, weights=None):
+    def embed_prompts(self, prompts, weights=None, device="cpu"):
         if not isinstance(prompts, list):
             prompts = [prompts]
         text_embeddings = []
@@ -473,8 +587,11 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 )
                 text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
             
-            
-            text_embedding = self.text_encoder(text_input_ids.to(self.device))[0]
+            if self.compile_dir is None:
+                text_embedding = self.text_encoder(text_input_ids.to(device))[0]
+            else:
+                #text_embeddings = self.clip_inference(text_input.input_ids.to(self.device))
+                text_embedding = self.clip_inference(text_input_ids.to(device))
             
             text_embeddings.append(text_embedding)
         if weights is None:
@@ -518,11 +635,14 @@ class StableDiffusionPipeline(DiffusionPipeline):
     
     def decode_image(self, latents, output_type="pil", device=None):
         if device is None:
-            device = self.device
+            device = "cpu"
         if output_type == "latent":
             return latents.detach().cpu()
         latents = latents / 0.18215
-        image = self.vae.decode(latents.to(device))["sample"]
+        if self.compile_dir is None:
+            image = self.vae.decode(latents.to(device))["sample"]
+        else:
+            image = self.vae_inference(latents.to(device))
         image = (image / 2 + 0.5).float().clamp(0, 1)
         image = image.cpu()
         
