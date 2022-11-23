@@ -44,10 +44,10 @@ class VersatileDiffusionTextToImagePipelineIntegrationTests(unittest.TestCase):
 
     def test_remove_unused_weights_save_load(self):
         pipe = VersatileDiffusionTextToImagePipeline.from_pretrained("diffusers/vd-official-test")
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
         # remove text_unet
         pipe.remove_unused_weights()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
         prompt = "A painting of a squirrel eating a burger "
         generator = torch.Generator(device=torch_device).manual_seed(0)
