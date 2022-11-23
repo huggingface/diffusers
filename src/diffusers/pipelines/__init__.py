@@ -26,6 +26,12 @@ if is_torch_available() and is_transformers_available():
         StableDiffusionPipeline,
     )
     from .stable_diffusion_safe import StableDiffusionPipelineSafe
+    from .versatile_diffusion import (
+        VersatileDiffusionDualGuidedPipeline,
+        VersatileDiffusionImageVariationPipeline,
+        VersatileDiffusionPipeline,
+        VersatileDiffusionTextToImagePipeline,
+    )
     from .vq_diffusion import VQDiffusionPipeline
 
 if is_transformers_available() and is_onnx_available():

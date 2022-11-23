@@ -107,6 +107,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         norm_eps: float = 1e-5,
         cross_attention_dim: int = 1280,
         attention_head_dim: int = 8,
+        dual_cross_attention: bool = False,
     ):
         super().__init__()
 
@@ -146,6 +147,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=attention_head_dim,
                 downsample_padding=downsample_padding,
+                dual_cross_attention=dual_cross_attention,
             )
             self.down_blocks.append(down_block)
 
@@ -160,6 +162,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             cross_attention_dim=cross_attention_dim,
             attn_num_head_channels=attention_head_dim,
             resnet_groups=norm_num_groups,
+            dual_cross_attention=dual_cross_attention,
         )
 
         # count how many layers upsample the images
@@ -195,6 +198,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=attention_head_dim,
+                dual_cross_attention=dual_cross_attention,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -202,7 +206,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         # out
         self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps)
         self.conv_act = nn.SiLU()
-        self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, 3, padding=1)
+        self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, kernel_size=3, padding=1)
 
     def set_attention_slice(self, slice_size):
         if slice_size is not None and self.config.attention_head_dim % slice_size != 0:
