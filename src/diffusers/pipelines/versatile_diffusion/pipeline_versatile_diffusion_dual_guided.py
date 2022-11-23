@@ -353,7 +353,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance:
-            uncond_images = [np.zeros((512, 512, 3))] * batch_size
+            uncond_images = [np.zeros((512, 512, 3)) + 0.5] * batch_size
             uncond_images = self.image_feature_extractor(images=uncond_images, return_tensors="pt")
             uncond_embeddings = self.image_encoder(uncond_images.pixel_values.to(device))
             uncond_embeddings = normalize_embeddings(uncond_embeddings)

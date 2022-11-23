@@ -76,7 +76,13 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
 
-    def swap_unet_attention_blocks(self):
+        if self.text_unet is not None:
+            self._swap_unet_attention_blocks()
+
+    def _swap_unet_attention_blocks(self):
+        """
+        Swap the `Transformer2DModel` blocks between the image and text UNets
+        """
         for name, module in self.image_unet.named_modules():
             if isinstance(module, Transformer2DModel):
                 parent_name, index = name.rsplit(".", 1)
@@ -85,6 +91,9 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
                     self.text_unet.get_submodule(parent_name)[index],
                     self.image_unet.get_submodule(parent_name)[index],
                 )
+
+    def remove_unused_weights(self):
+        self.register_modules(text_unet=None)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_xformers_memory_efficient_attention with unet->image_unet
     def enable_xformers_memory_efficient_attention(self):
@@ -454,10 +463,7 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
         # 6. Prepare extra step kwargs.
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7. Swap the attention blocks between the image and text UNets
-        self.swap_unet_attention_blocks()
-
-        # 8. Denoising loop
+        # 7. Denoising loop
         for i, t in enumerate(self.progress_bar(timesteps)):
             # expand the latents if we are doing classifier free guidance
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
@@ -478,13 +484,10 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
-        # 9. Swap the attention blocks backs in case the UNets are reused in another pipeline
-        self.swap_unet_attention_blocks()
-
-        # 10. Post-processing
+        # 9. Post-processing
         image = self.decode_latents(latents)
 
-        # 11. Convert to PIL
+        # 10. Convert to PIL
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
