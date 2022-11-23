@@ -668,7 +668,7 @@ class AdaLayerNorm(nn.Module):
         return x
 
 
-class DualTransformer2DModel(nn.Module, ConfigMixin):
+class DualTransformer2DModel(nn.Module):
     """
     Dual transformer wrapper that combines two `Transformer2DModel`s for mixed inference.
 
@@ -695,9 +695,6 @@ class DualTransformer2DModel(nn.Module, ConfigMixin):
             Configure if the TransformerBlocks' attention should contain a bias parameter.
     """
 
-    config_name = CONFIG_NAME
-
-    @register_to_config
     def __init__(
         self,
         num_attention_heads: int = 16,
