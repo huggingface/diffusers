@@ -20,7 +20,7 @@ import unittest
 import numpy as np
 import torch
 
-from diffusers import VersatileDiffusionDualGuidedPipeline
+from diffusers import VersatileDiffusionPipeline
 from diffusers.utils.testing_utils import load_image, require_torch_gpu, slow, torch_device
 
 from ...test_pipelines_common import PipelineTesterMixin
@@ -29,13 +29,13 @@ from ...test_pipelines_common import PipelineTesterMixin
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
-class VersatileDiffusionDualGuidedPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class VersatileDiffusionMegaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pass
 
 
 @slow
 @require_torch_gpu
-class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
+class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -43,12 +43,12 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_from_pretrained_save_pretrained(self):
-        pipe = VersatileDiffusionDualGuidedPipeline.from_pretrained("diffusers/vd-official-test")
+        pipe = VersatileDiffusionPipeline.from_pretrained("diffusers/vd-official-test")
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = pipe(
+        image = pipe.dual_guided(
             first_prompt="first prompt",
             second_prompt="second prompt",
             prompt_mix_ratio=0.75,
@@ -60,12 +60,12 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             pipe.save_pretrained(tmpdirname)
-            pipe = VersatileDiffusionDualGuidedPipeline.from_pretrained(tmpdirname)
+            pipe = VersatileDiffusionPipeline.from_pretrained(tmpdirname)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = generator.manual_seed(0)
-        new_image = pipe(
+        new_image = pipe.dual_guided(
             first_prompt="first prompt",
             second_prompt="second prompt",
             prompt_mix_ratio=0.75,
@@ -77,8 +77,8 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
 
         assert np.abs(image - new_image).sum() < 1e-5, "Models don't have the same forward pass"
 
-    def test_inference_dual_guided(self):
-        pipe = VersatileDiffusionDualGuidedPipeline.from_pretrained("diffusers/vd-official-test")
+    def test_inference_dual_guided_then_text_to_image(self):
+        pipe = VersatileDiffusionPipeline.from_pretrained("diffusers/vd-official-test")
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -87,7 +87,7 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
             "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/benz.jpg"
         )
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = pipe(
+        image = pipe.dual_guided(
             first_prompt=first_prompt,
             second_prompt=second_prompt,
             prompt_mix_ratio=0.75,
@@ -101,4 +101,16 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.5727, 0.5625, 0.5617, 0.5703, 0.5530, 0.5620, 0.5864, 0.5742, 0.5665])
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+        prompt = "A painting of a squirrel eating a burger "
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image = pipe.text_to_image(
+            prompt=prompt, generator=generator, guidance_scale=7.5, num_inference_steps=50, output_type="numpy"
+        ).images
+
+        image_slice = image[0, 253:256, 253:256, -1]
+
+        assert image.shape == (1, 512, 512, 3)
+        expected_slice = np.array([0.0657, 0.0529, 0.0455, 0.0802, 0.0570, 0.0179, 0.0267, 0.0483, 0.0769])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

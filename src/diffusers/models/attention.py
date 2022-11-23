@@ -731,12 +731,18 @@ class DualTransformer2DModel(nn.Module):
             ]
         )
 
+        # Variables that can be set by a pipeline:
+
         # The ratio of transformer1 to transformer2's output states to be combined during inference
         self.mix_ratio = 0.5
 
         # The shape of `encoder_hidden_states` is expected to be
-        # `(batch_size, num_condition_tokens[0]+num_condition_tokens[1], num_features)`
-        self.num_condition_tokens = (77, 257)
+        # `(batch_size, condition_lengths[0]+condition_lengths[1], num_features)`
+        self.condition_lengths = [77, 257]
+
+        # Which transformer to use to encode which condition.
+        # E.g. `(1, 0)` means that we'll use `transformers[1](conditions[0])` and `transformers[0](conditions[1])`
+        self.transformer_index_for_condition = [1, 0]
 
     def forward(self, hidden_states, encoder_hidden_states, timestep=None, return_dict: bool = True):
         """
@@ -763,10 +769,13 @@ class DualTransformer2DModel(nn.Module):
         tokens_start = 0
         for i in range(2):
             # for each of the two transformers, pass the corresponding condition tokens
-            condition_state = encoder_hidden_states[:, tokens_start : tokens_start + self.num_condition_tokens[i]]
-            encoded_state = self.transformers[i](input_states, condition_state, timestep, return_dict)[0]
+            condition_state = encoder_hidden_states[:, tokens_start : tokens_start + self.condition_lengths[i]]
+            transformer_index = self.transformer_index_for_condition[i]
+            encoded_state = self.transformers[transformer_index](input_states, condition_state, timestep, return_dict)[
+                0
+            ]
             encoded_states.append(encoded_state - input_states)
-            tokens_start += self.num_condition_tokens[i]
+            tokens_start += self.condition_lengths[i]
 
         output_states = encoded_states[0] * self.mix_ratio + encoded_states[1] * (1 - self.mix_ratio)
         output_states = output_states + input_states

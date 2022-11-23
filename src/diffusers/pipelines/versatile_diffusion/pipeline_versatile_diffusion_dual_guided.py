@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -29,6 +29,7 @@ from transformers import (
 
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention import DualTransformer2DModel, Transformer2DModel
+from ...models.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, UNetMidBlock2DCrossAttn
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import is_accelerate_available, logging
@@ -88,7 +89,18 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
             scheduler=scheduler,
         )
 
-    def convert_to_dual_attention(self, mix_ratio=0.5, condition_types=("image", "text")):
+        if "dual_cross_attention" not in self.image_unet.config or not self.image_unet.config.dual_cross_attention:
+            # if loading from a universal checkpoint rather than a saved dual-guided pipeline
+            self._convert_to_dual_attention()
+        if self.text_unet is not None:
+            # release the memory taken up by `text_unet`
+            self.register_modules(text_unet=None)
+
+    def _convert_to_dual_attention(self):
+        """
+        Replace image_unet's `Transformer2DModel` blocks with `DualTransformer2DModel` that contains transformer blocks
+        from both `image_unet` and `text_unet`
+        """
         for name, module in self.image_unet.named_modules():
             if isinstance(module, Transformer2DModel):
                 parent_name, index = name.rsplit(".", 1)
@@ -112,21 +124,22 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
                     activation_fn=config.activation_fn,
                     num_embeds_ada_norm=config.num_embeds_ada_norm,
                 )
-                for i, type in enumerate(condition_types):
-                    if type == "image":
-                        dual_transformer.transformers[i] = image_transformer
-                    else:
-                        dual_transformer.transformers[i] = text_transformer
+                dual_transformer.transformers[0] = image_transformer
+                dual_transformer.transformers[1] = text_transformer
 
-                dual_transformer.mix_ratio = mix_ratio
                 self.image_unet.get_submodule(parent_name)[index] = dual_transformer
 
-    def remove_dual_attention(self):
+    def _revert_dual_attention(self):
+        """
+        Revert the image_unet `DualTransformer2DModel` blocks back to `Transformer2DModel` with image_unet weights Call
+        this function if you reuse `image_unet` in another pipeline, e.g. `VersatileDiffusionPipeline`
+        """
         for name, module in self.image_unet.named_modules():
             if isinstance(module, DualTransformer2DModel):
                 parent_name, index = name.rsplit(".", 1)
                 index = int(index)
                 self.image_unet.get_submodule(parent_name)[index] = module.transformers[0]
+        self.image_unet.config.dual_cross_attention = False
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_xformers_memory_efficient_attention with unet->image_unet
     def enable_xformers_memory_efficient_attention(self):
@@ -431,10 +444,18 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def set_mix_ratio(self, mix_ratio):
+    def set_transformer_params(self, mix_ratio: float = 0.5, condition_types: Tuple = ("text", "image")):
         for name, module in self.image_unet.named_modules():
             if isinstance(module, DualTransformer2DModel):
                 module.mix_ratio = mix_ratio
+
+                for i, type in enumerate(condition_types):
+                    if type == "text":
+                        module.condition_lengths[i] = self.text_encoder.config.max_position_embeddings
+                        module.transformer_index_for_condition[i] = 1  # use the second (text) transformer
+                    else:
+                        module.condition_lengths[i] = 257
+                        module.transformer_index_for_condition[i] = 0  # use the first (image) transformer
 
     @torch.no_grad()
     def __call__(
@@ -562,8 +583,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 7. Combine the attention blocks of the image and text UNets
-        self.convert_to_dual_attention(prompt_mix_ratio, prompt_types)
-        self.set_mix_ratio(prompt_mix_ratio)
+        self.set_transformer_params(prompt_mix_ratio, prompt_types)
 
         # 8. Denoising loop
         for i, t in enumerate(self.progress_bar(timesteps)):
@@ -586,13 +606,10 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
             if callback is not None and i % callback_steps == 0:
                 callback(i, t, latents)
 
-        # 9. Return the image unet to its original state
-        self.remove_dual_attention()
-
-        # 10. Post-processing
+        # 9. Post-processing
         image = self.decode_latents(latents)
 
-        # 11. Convert to PIL
+        # 10. Convert to PIL
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
