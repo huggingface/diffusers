@@ -109,7 +109,7 @@ class LDMSuperResolutionPipelineFastTests(PipelineTesterMixin, unittest.TestCase
 
         init_image = self.dummy_image.to(torch_device)
 
-        generator = torch.manual_seed(0)
+        generator = torch.Generator(device=torch_device).manual_seed(0)
         image = ldm(init_image, generator=generator, num_inference_steps=2, output_type="numpy").images
 
         assert image.shape == (1, 64, 64, 3)
