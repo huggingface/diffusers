@@ -35,6 +35,7 @@ from .import_utils import (
     is_transformers_available,
     is_unidecode_available,
     requires_backends,
+    is_transformers_version,
 )
 from .logging import get_logger
 from .outputs import BaseOutput
