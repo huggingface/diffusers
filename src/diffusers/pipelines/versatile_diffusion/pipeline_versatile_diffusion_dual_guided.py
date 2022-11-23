@@ -17,7 +17,6 @@ from typing import Callable, List, Optional, Union
 
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.utils.checkpoint
 
 import PIL
@@ -29,7 +28,7 @@ from transformers import (
 )
 
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.attention import Transformer2DModel, Transformer2DModelOutput
+from ...models.attention import DualTransformer2DModel, Transformer2DModel
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import is_accelerate_available, logging
@@ -94,12 +93,32 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
             if isinstance(module, Transformer2DModel):
                 parent_name, index = name.rsplit(".", 1)
                 index = int(index)
+
                 image_transformer = self.image_unet.get_submodule(parent_name)[index]
                 text_transformer = self.text_unet.get_submodule(parent_name)[index]
 
+                config = image_transformer.config
                 dual_transformer = DualTransformer2DModel(
-                    image_transformer, text_transformer, mix_ratio=mix_ratio, condition_types=condition_types
+                    num_attention_heads=config.num_attention_heads,
+                    attention_head_dim=config.attention_head_dim,
+                    in_channels=config.in_channels,
+                    num_layers=config.num_layers,
+                    dropout=config.dropout,
+                    norm_num_groups=config.norm_num_groups,
+                    cross_attention_dim=config.cross_attention_dim,
+                    attention_bias=config.attention_bias,
+                    sample_size=config.sample_size,
+                    num_vector_embeds=config.num_vector_embeds,
+                    activation_fn=config.activation_fn,
+                    num_embeds_ada_norm=config.num_embeds_ada_norm,
                 )
+                for i, type in enumerate(condition_types):
+                    if type == "image":
+                        dual_transformer.transformers[i] = image_transformer
+                    else:
+                        dual_transformer.transformers[i] = text_transformer
+
+                dual_transformer.mix_ratio = mix_ratio
                 self.image_unet.get_submodule(parent_name)[index] = dual_transformer
 
     def remove_dual_attention(self):
@@ -107,7 +126,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
             if isinstance(module, DualTransformer2DModel):
                 parent_name, index = name.rsplit(".", 1)
                 index = int(index)
-                self.image_unet.get_submodule(parent_name)[index] = module.image_transformer
+                self.image_unet.get_submodule(parent_name)[index] = module.transformers[0]
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_xformers_memory_efficient_attention with unet->image_unet
     def enable_xformers_memory_efficient_attention(self):
@@ -412,6 +431,11 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    def set_mix_ratio(self, mix_ratio):
+        for name, module in self.image_unet.named_modules():
+            if isinstance(module, DualTransformer2DModel):
+                module.mix_ratio = mix_ratio
+
     @torch.no_grad()
     def __call__(
         self,
@@ -539,6 +563,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
 
         # 7. Combine the attention blocks of the image and text UNets
         self.convert_to_dual_attention(prompt_mix_ratio, prompt_types)
+        self.set_mix_ratio(prompt_mix_ratio)
 
         # 8. Denoising loop
         for i, t in enumerate(self.progress_bar(timesteps)):
@@ -575,36 +600,3 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
             return (image,)
 
         return ImagePipelineOutput(images=image)
-
-
-class DualTransformer2DModel(nn.Module):
-    def __init__(self, image_transformer, text_transformer, mix_ratio=0.5, condition_types=("text", "image")):
-        super().__init__()
-        self.image_transformer = image_transformer
-        self.text_transformer = text_transformer
-        self.mix_ratio = mix_ratio
-        self.condition_types = condition_types
-
-    def forward(self, input_states, encoder_hidden_states, timestep=None, return_dict: bool = True):
-        if self.condition_types[0] == "text":
-            condition_states = [encoder_hidden_states[:, :77], encoder_hidden_states[:, 77:]]
-        else:
-            condition_states = [encoder_hidden_states[:, :257], encoder_hidden_states[:, 257:]]
-
-        encoded_states = []
-        for i in range(2):
-            if self.condition_types[i] == "text":
-                text_output = self.text_transformer(input_states, condition_states[i], timestep, return_dict)
-                encoded_states.append(text_output[0])
-            else:
-                image_output = self.image_transformer(input_states, condition_states[i], timestep, return_dict)
-                encoded_states.append(image_output[0])
-            encoded_states[i] = encoded_states[i] - input_states
-
-        output_states = encoded_states[0] * self.mix_ratio + encoded_states[1] * (1 - self.mix_ratio)
-        output_states = output_states + input_states
-
-        if not return_dict:
-            return (output_states,)
-
-        return Transformer2DModelOutput(sample=output_states)

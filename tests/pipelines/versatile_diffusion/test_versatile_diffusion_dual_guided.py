@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
+import tempfile
 import unittest
 
 import numpy as np
@@ -34,6 +36,47 @@ class VersatileDiffusionDualGuidedPipelineFastTests(PipelineTesterMixin, unittes
 @slow
 @require_torch_gpu
 class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_from_pretrained_save_pretrained(self):
+        pipe = VersatileDiffusionDualGuidedPipeline.from_pretrained("diffusers/vd-official-test")
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image = pipe(
+            first_prompt="first prompt",
+            second_prompt="second prompt",
+            prompt_mix_ratio=0.75,
+            generator=generator,
+            guidance_scale=7.5,
+            num_inference_steps=2,
+            output_type="numpy",
+        ).images
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.save_pretrained(tmpdirname)
+            pipe = VersatileDiffusionDualGuidedPipeline.from_pretrained(tmpdirname)
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = generator.manual_seed(0)
+        new_image = pipe(
+            first_prompt="first prompt",
+            second_prompt="second prompt",
+            prompt_mix_ratio=0.75,
+            generator=generator,
+            guidance_scale=7.5,
+            num_inference_steps=2,
+            output_type="numpy",
+        ).images
+
+        assert np.abs(image - new_image).sum() < 1e-5, "Models don't have the same forward pass"
+
     def test_inference_image_variations(self):
         pipe = VersatileDiffusionDualGuidedPipeline.from_pretrained("diffusers/vd-official-test")
         pipe.to(torch_device)
