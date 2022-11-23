@@ -9,8 +9,9 @@ from transformers.models.t5.modeling_t5 import (
     T5Block,
     T5Config,
     T5LayerCrossAttention,
-    T5LayerFF,
     T5LayerNorm,
+    T5DenseGatedActDense,
+    T5DenseActDense,
 )
 from transformers.modeling_utils import ModuleUtilsMixin
 
@@ -31,6 +32,28 @@ class FiLMLayer(nn.Module):
         scale_bias = self.scale_bias(conditioning_emb)
         scale, bias = torch.chunk(scale_bias, 2, -1)
         return x * (scale + 1.0) + bias
+
+
+class T5LayerFFCond(nn.Module):
+    def __init__(self, config: T5Config):
+        super().__init__()
+        if config.is_gated_act:
+            self.DenseReluDense = T5DenseGatedActDense(config)
+        else:
+            self.DenseReluDense = T5DenseActDense(config)
+
+        self.film = FiLMLayer(in_features=config.d_model * 4, out_features=config.d_model)
+        self.layer_norm = T5LayerNorm(config.d_model, eps=config.layer_norm_epsilon)
+        self.dropout = nn.Dropout(config.dropout_rate)
+
+    def forward(self, hidden_states, conditioning_emb=None):
+        forwarded_states = self.layer_norm(hidden_states)
+        if conditioning_emb is not None:
+            forwarded_states = self.film(forwarded_states, conditioning_emb)
+
+        forwarded_states = self.DenseReluDense(forwarded_states)
+        hidden_states = hidden_states + self.dropout(forwarded_states)
+        return hidden_states
 
 
 class T5LayerSelfAttentionCond(nn.Module):
@@ -85,14 +108,8 @@ class DecoderLayer(nn.Module, ModuleUtilsMixin):
         # cross attention: layer 1
         self.layer.append(T5LayerCrossAttention(config))
 
-        # pre_mlp_layer_norm: layer 2
-        self.layer.append(T5LayerNorm(hidden_size=config.d_model))
-
-        # FiLM layer: 3
-        self.layer.append(FiLMLayer(in_features=config.d_model * 4, out_features=config.d_model))
-
-        # MLP + dropout: last layer
-        self.layer.append(T5LayerFF(config))
+        # Film Cond MLP + dropout: last layer
+        self.layer.append(T5LayerFFCond(config))
 
     def forward(
         self,
@@ -178,15 +195,8 @@ class DecoderLayer(nn.Module, ModuleUtilsMixin):
             # Keep cross-attention outputs and relative position weights
             attention_outputs = attention_outputs + cross_attention_outputs[2:]
 
-        # Apply LayerNorm
-        hidden_states = self.layer[2](hidden_states)
-
-        # FiLM
-        if conditioning_emb is not None:
-            hidden_states = self.layer[3](hidden_states, conditioning_emb)
-
-        # Apply Feed Forward layer
-        hidden_states = self.layer[-1](hidden_states)
+        # Apply Film Conditional Feed Forward layer
+        hidden_states = self.layer[-1](hidden_states, conditioning_emb)
 
         # clamp inf values to enable fp16 training
         if hidden_states.dtype == torch.float16 and torch.isinf(hidden_states).any():
@@ -392,9 +402,6 @@ class Decoder(ModelMixin, ConfigMixin):
     def forward(self, encodings_and_masks, decoder_input_tokens, decoder_noise_time):
         batch, _, _ = decoder_input_tokens.shape
         assert decoder_noise_time.shape == (batch,)
-
-        # TODO remove:
-        # decoder_input_tokens = torch.ones_like(decoder_input_tokens)
 
         # decoder_noise_time is in [0, 1), so rescale to expected timing range.
         time_steps = get_timestep_embedding(
