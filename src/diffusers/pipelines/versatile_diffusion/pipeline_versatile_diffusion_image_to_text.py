@@ -219,6 +219,7 @@ class VersatileDiffusionImageToTextPipeline(DiffusionPipeline):
         batch_size = len(prompt) if isinstance(prompt, list) else 1
 
         # get prompt text embeddings
+        # prompt = [(np.asarray(prompt) / 255)]
         image_input = self.image_feature_extractor(images=prompt, return_tensors="pt")
         image_embeddings = self.image_encoder(image_input.pixel_values.to(self.device))
         image_embeddings = normalize_embeddings(image_embeddings)
@@ -232,7 +233,7 @@ class VersatileDiffusionImageToTextPipeline(DiffusionPipeline):
         if do_classifier_free_guidance:
             uncond_images: List[str]
             if negative_prompt is None:
-                uncond_images = [np.zeros((512, 512, 3))] * batch_size
+                uncond_images = [np.zeros((512, 512, 3)) + 0.5] * batch_size
             elif type(prompt) is not type(negative_prompt):
                 raise TypeError(
                     f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
@@ -430,16 +431,22 @@ class VersatileDiffusionImageToTextPipeline(DiffusionPipeline):
             latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
             latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
+            print("latent_model_input", latent_model_input.abs().sum())
+            print("timestep", t)
+
             # predict the noise residual
             noise_pred = self.text_unet(latent_model_input, t, encoder_hidden_states=image_embeddings).sample
-
             # perform guidance
             if do_classifier_free_guidance:
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
+            print("e_t", noise_pred.abs().sum())
+            print("e_t[3,3]", noise_pred[0, :5, 0, 0])
+
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+            print("latents", latents.abs().sum())
 
             # call the callback, if provided
             if callback is not None and i % callback_steps == 0:
