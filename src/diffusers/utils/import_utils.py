@@ -303,6 +303,17 @@ def requires_backends(obj, backends):
     if failed:
         raise ImportError("".join(failed))
 
+    if name in [
+        "VersatileDiffusionTextToImagePipeline",
+        "VersatileDiffusionPipeline",
+        "VersatileDiffusionDualGuidedPipeline",
+        "StableDiffusionImageVariationPipeline",
+    ] and is_transformers_version("<", "4.25.0"):
+        raise ImportError(
+            f"You need to install `transformers` from 'main' in order to use {name}: \n```\n pip install"
+            " git+https://github.com/huggingface/transformers \n```"
+        )
+
 
 class DummyObject(type):
     """
@@ -347,3 +358,17 @@ def is_torch_version(operation: str, version: str):
             A string version of PyTorch
     """
     return compare_versions(parse(_torch_version), operation, version)
+
+
+def is_transformers_version(operation: str, version: str):
+    """
+    Args:
+    Compares the current Transformers version to a given reference with an operation.
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A string version of PyTorch
+    """
+    if not _transformers_available:
+        return False
+    return compare_versions(parse(_transformers_version), operation, version)
