@@ -15,7 +15,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from .attention import AttentionBlock, Transformer2DModel
+from .attention import AttentionBlock, Transformer2DModel, DualTransformer2DModel
 from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, ResnetBlock2D, Upsample2D
 
 
