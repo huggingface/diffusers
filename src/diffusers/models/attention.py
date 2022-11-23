@@ -220,7 +220,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 3. Output
         if self.is_input_continuous:
-
             if not self.use_linear_proj:
                 hidden_states = hidden_states.reshape(batch, height, weight, inner_dim).permute(0, 3, 1, 2)
                 hidden_states = self.proj_out(hidden_states)
