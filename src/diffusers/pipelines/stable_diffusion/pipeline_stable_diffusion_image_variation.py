@@ -42,7 +42,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 class StableDiffusionImageVariationPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation using Stable Diffusion.
+    Pipeline to generate variations from an input image using Stable Diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -319,7 +319,7 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        input_image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.FloatTensor],
+        image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.FloatTensor],
         height: int = 512,
         width: int = 512,
         num_inference_steps: int = 50,
@@ -338,8 +338,9 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`):
-                The prompt or prompts to guide the image generation.
+            image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.FloatTensor`):
+                The image or images to guide the image generation. If you provide a tensor,
+                it needs to comply with the configuration of this `CLIPFeatureExtractor`
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 512):
@@ -387,7 +388,7 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
         """
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(input_image, height, width, callback_steps)
+        self.check_inputs(image, height, width, callback_steps)
 
         # 2. Define call parameters
         if isinstance(input_image, PIL.Image.Image):
