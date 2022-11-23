@@ -99,10 +99,10 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         num_vector_embeds: Optional[int] = None,
         activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
-        use_linear_proj: bool = False,
+        use_linear_projection: bool = False,
     ):
         super().__init__()
-        self.use_linear_proj = use_linear_proj
+        self.use_linear_projection = use_linear_projection
         self.num_attention_heads = num_attention_heads
         self.attention_head_dim = attention_head_dim
         inner_dim = num_attention_heads * attention_head_dim
@@ -128,7 +128,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.in_channels = in_channels
 
             self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
-            if use_linear_proj:
+            if use_linear_projection:
                 self.proj_in = nn.Linear(in_channels, inner_dim)
             else:
                 self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
@@ -164,7 +164,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 4. Define output layers
         if self.is_input_continuous:
-            if use_linear_proj:
+            if use_linear_projection:
                 self.proj_out = nn.Linear(in_channels, inner_dim)
             else:
                 self.proj_out = nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
@@ -202,7 +202,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
             hidden_states = self.norm(hidden_states)
 
-            if not self.use_linear_proj:
+            if not self.use_linear_projection:
                 hidden_states = self.proj_in(hidden_states)
                 inner_dim = hidden_states.shape[1]
                 hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * weight, inner_dim)
@@ -220,7 +220,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 3. Output
         if self.is_input_continuous:
-            if not self.use_linear_proj:
+            if not self.use_linear_projection:
                 hidden_states = hidden_states.reshape(batch, height, weight, inner_dim).permute(0, 3, 1, 2)
                 hidden_states = self.proj_out(hidden_states)
             else:

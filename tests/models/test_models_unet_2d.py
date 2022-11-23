@@ -315,10 +315,10 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         expected_shape = inputs_dict["sample"].shape
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
-    def test_model_with_use_linear_proj(self):
+    def test_model_with_use_linear_projection(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
-        init_dict["use_linear_proj"] = True
+        init_dict["use_linear_projection"] = True
 
         model = self.model_class(**init_dict)
         model.to(torch_device)

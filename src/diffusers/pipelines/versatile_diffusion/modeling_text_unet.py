@@ -176,7 +176,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         cross_attention_dim: int = 1280,
         attention_head_dim: Union[int, Tuple[int]] = 8,
         dual_cross_attention: bool = False,
-        use_linear_proj: bool = False,
+        use_linear_projection: bool = False,
     ):
         super().__init__()
 
@@ -220,7 +220,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 attn_num_head_channels=attention_head_dim[i],
                 downsample_padding=downsample_padding,
                 dual_cross_attention=dual_cross_attention,
-                use_linear_proj=use_linear_proj,
+                use_linear_projection=use_linear_projection,
             )
             self.down_blocks.append(down_block)
 
@@ -236,7 +236,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             attn_num_head_channels=attention_head_dim[-1],
             resnet_groups=norm_num_groups,
             dual_cross_attention=dual_cross_attention,
-            use_linear_proj=use_linear_proj,
+            use_linear_projection=use_linear_projection,
         )
 
         # count how many layers upsample the images
@@ -274,7 +274,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 cross_attention_dim=cross_attention_dim,
                 attn_num_head_channels=reversed_attention_head_dim[i],
                 dual_cross_attention=dual_cross_attention,
-                use_linear_proj=use_linear_proj,
+                use_linear_projection=use_linear_projection,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -647,7 +647,7 @@ class CrossAttnDownBlockFlat(nn.Module):
         downsample_padding=1,
         add_downsample=True,
         dual_cross_attention=False,
-        use_linear_proj=False,
+        use_linear_projection=False,
     ):
         super().__init__()
         resnets = []
@@ -681,7 +681,7 @@ class CrossAttnDownBlockFlat(nn.Module):
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
-                        use_linear_proj=use_linear_proj,
+                        use_linear_projection=use_linear_projection,
                     )
                 )
             else:
@@ -860,7 +860,7 @@ class CrossAttnUpBlockFlat(nn.Module):
         output_scale_factor=1.0,
         add_upsample=True,
         dual_cross_attention=False,
-        use_linear_proj=False,
+        use_linear_projection=False,
     ):
         super().__init__()
         resnets = []
@@ -896,7 +896,7 @@ class CrossAttnUpBlockFlat(nn.Module):
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
-                        use_linear_proj=use_linear_proj,
+                        use_linear_projection=use_linear_projection,
                     )
                 )
             else:
@@ -999,7 +999,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         output_scale_factor=1.0,
         cross_attention_dim=1280,
         dual_cross_attention=False,
-        use_linear_proj=False,
+        use_linear_projection=False,
         **kwargs,
     ):
         super().__init__()
@@ -1035,7 +1035,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
-                        use_linear_proj=use_linear_proj,
+                        use_linear_projection=use_linear_projection,
                     )
                 )
             else:
