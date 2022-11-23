@@ -410,6 +410,21 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
 
+        Examples:
+
+        ```py
+        >>> from diffusers import VersatileDiffusionTextToImagePipeline
+        >>> import torch
+
+        >>> pipe = VersatileDiffusionTextToImagePipeline.from_pretrained("diffusers/vd-official-test", torch_dtype=torch.float16)
+        >>> # pipe.remove_unused_weights()
+        >>> pipe = pipe.to("cuda")
+
+        >>> generator = torch.Generator(device="cuda").manual_seed(0)
+        >>> image = pipe("an astronaut riding on a horse on mars", generator=generator).images[0]
+        >>> image.save("./astronaut.png")
+        ```
+
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] if `return_dict` is True, otherwise a `tuple.

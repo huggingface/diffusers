@@ -186,7 +186,8 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
 
         # get prompt text embeddings
         image_input = self.image_feature_extractor(images=prompt, return_tensors="pt")
-        image_embeddings = self.image_encoder(image_input.pixel_values.to(device))
+        pixel_values = image_input.pixel_values.to(device).to(self.image_encoder.dtype)
+        image_embeddings = self.image_encoder(pixel_values)
         image_embeddings = normalize_embeddings(image_embeddings)
 
         # duplicate image embeddings for each generation per prompt, using mps friendly method
@@ -216,7 +217,8 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
                 uncond_images = negative_prompt
 
             uncond_images = self.image_feature_extractor(images=uncond_images, return_tensors="pt")
-            uncond_embeddings = self.image_encoder(uncond_images.pixel_values.to(device))
+            pixel_values = uncond_images.pixel_values.to(device).to(self.image_encoder.dtype)
+            uncond_embeddings = self.image_encoder(pixel_values)
             uncond_embeddings = normalize_embeddings(uncond_embeddings)
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
@@ -356,6 +358,30 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
             callback_steps (`int`, *optional*, defaults to 1):
                 The frequency at which the `callback` function will be called. If not specified, the callback will be
                 called at every step.
+
+        Examples:
+
+        ```py
+        >>> from diffusers import VersatileDiffusionImageVariationPipeline
+        >>> import torch
+        >>> import requests
+        >>> from io import BytesIO
+        >>> from PIL import Image
+
+        >>> # let's download an initial image
+        >>> url = "https://huggingface.co/datasets/diffusers/images/resolve/main/benz.jpg"
+
+        >>> response = requests.get(url)
+        >>> image = Image.open(BytesIO(response.content)).convert("RGB")
+
+        >>> pipe = VersatileDiffusionImageVariationPipeline.from_pretrained("diffusers/vd-official-test", torch_dtype=torch.float16)
+        >>> # pipe.remove_unused_weights()
+        >>> pipe = pipe.to("cuda")
+
+        >>> generator = torch.Generator(device="cuda").manual_seed(0)
+        >>> image = pipe(image, generator=generator).images[0]
+        >>> image.save("./car_variation.png")
+        ```
 
         Returns:
             [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] or `tuple`:

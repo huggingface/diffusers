@@ -343,7 +343,8 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
 
         # get prompt text embeddings
         image_input = self.image_feature_extractor(images=prompt, return_tensors="pt")
-        image_embeddings = self.image_encoder(image_input.pixel_values.to(device))
+        pixel_values = image_input.pixel_values.to(device).to(self.image_encoder.dtype)
+        image_embeddings = self.image_encoder(pixel_values)
         image_embeddings = normalize_embeddings(image_embeddings)
 
         # duplicate image embeddings for each generation per prompt, using mps friendly method
@@ -355,7 +356,8 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         if do_classifier_free_guidance:
             uncond_images = [np.zeros((512, 512, 3))] * batch_size
             uncond_images = self.image_feature_extractor(images=uncond_images, return_tensors="pt")
-            uncond_embeddings = self.image_encoder(uncond_images.pixel_values.to(device))
+            pixel_values = uncond_images.pixel_values.to(device).to(self.image_encoder.dtype)
+            uncond_embeddings = self.image_encoder(pixel_values)
             uncond_embeddings = normalize_embeddings(uncond_embeddings)
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
@@ -397,22 +399,22 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    def check_inputs(self, first_prompt, second_prompt, height, width, callback_steps):
+    def check_inputs(self, prompt, image, height, width, callback_steps):
         if (
-            not isinstance(first_prompt, str)
-            and not isinstance(first_prompt, PIL.Image.Image)
-            and not isinstance(first_prompt, list)
+            not isinstance(prompt, str)
+            and not isinstance(prompt, PIL.Image.Image)
+            and not isinstance(prompt, list)
         ):
             raise ValueError(
-                f"`first_prompt` has to be of type `str` `PIL.Image` or `list` but is {type(first_prompt)}"
+                f"`prompt` has to be of type `str` `PIL.Image` or `list` but is {type(prompt)}"
             )
         if (
-            not isinstance(second_prompt, str)
-            and not isinstance(second_prompt, PIL.Image.Image)
-            and not isinstance(second_prompt, list)
+            not isinstance(image, str)
+            and not isinstance(image, PIL.Image.Image)
+            and not isinstance(image, list)
         ):
             raise ValueError(
-                f"`second_prompt` has to be of type `str` `PIL.Image` or `list` but is {type(second_prompt)}"
+                f"`image` has to be of type `str` `PIL.Image` or `list` but is {type(image)}"
             )
 
         if height % 8 != 0 or width % 8 != 0:
@@ -460,8 +462,8 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        first_prompt: Union[str, List[str], PIL.Image.Image, List[PIL.Image.Image]],
-        second_prompt: Union[str, List[str], PIL.Image.Image, List[PIL.Image.Image]],
+        image: Union[str, List[str]],
+        prompt: Union[PIL.Image.Image, List[PIL.Image.Image]],
         prompt_mix_ratio: float = 0.5,
         height: int = 512,
         width: int = 512,
@@ -533,12 +535,12 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         """
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(first_prompt, second_prompt, height, width, callback_steps)
+        self.check_inputs(prompt, image, height, width, callback_steps)
 
         # 2. Define call parameters
-        first_prompt = [first_prompt] if not isinstance(first_prompt, list) else first_prompt
-        second_prompt = [second_prompt] if not isinstance(second_prompt, list) else second_prompt
-        batch_size = len(first_prompt)
+        prompt = [prompt] if not isinstance(prompt, list) else prompt
+        image = [image] if not isinstance(image, list) else image
+        batch_size = len(prompt)
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -548,18 +550,15 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         # 3. Encode input prompts
         dual_prompt_embeddings = []
         prompt_types = []
-        for prompt in [first_prompt, second_prompt]:
-            if isinstance(prompt[0], str):
-                embeddings = self._encode_text_prompt(
-                    prompt, device, num_images_per_prompt, do_classifier_free_guidance
-                )
-                prompt_types.append("text")
-            else:
-                embeddings = self._encode_image_prompt(
-                    prompt, device, num_images_per_prompt, do_classifier_free_guidance
-                )
-                prompt_types.append("image")
-            dual_prompt_embeddings.append(embeddings)
+        embeddings = self._encode_text_prompt(
+            prompt, device, num_images_per_prompt, do_classifier_free_guidance
+        )
+        prompt_types.append("text")
+        embeddings = self._encode_image_prompt(
+            image, device, num_images_per_prompt, do_classifier_free_guidance
+        )
+        prompt_types.append("image")
+        dual_prompt_embeddings.append(embeddings)
         dual_prompt_embeddings = torch.cat(dual_prompt_embeddings, dim=1)
 
         # 4. Prepare timesteps
