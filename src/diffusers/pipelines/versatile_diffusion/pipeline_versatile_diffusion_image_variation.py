@@ -374,7 +374,9 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
         >>> response = requests.get(url)
         >>> image = Image.open(BytesIO(response.content)).convert("RGB")
 
-        >>> pipe = VersatileDiffusionImageVariationPipeline.from_pretrained("diffusers/vd-official-test", torch_dtype=torch.float16)
+        >>> pipe = VersatileDiffusionImageVariationPipeline.from_pretrained(
+        ...     "diffusers/vd-official-test", torch_dtype=torch.float16
+        ... )
         >>> pipe = pipe.to("cuda")
 
         >>> generator = torch.Generator(device="cuda").manual_seed(0)

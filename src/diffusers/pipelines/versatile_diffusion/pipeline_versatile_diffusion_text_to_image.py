@@ -425,7 +425,9 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
         >>> from diffusers import VersatileDiffusionTextToImagePipeline
         >>> import torch
 
-        >>> pipe = VersatileDiffusionTextToImagePipeline.from_pretrained("diffusers/vd-official-test", torch_dtype=torch.float16)
+        >>> pipe = VersatileDiffusionTextToImagePipeline.from_pretrained(
+        ...     "diffusers/vd-official-test", torch_dtype=torch.float16
+        ... )
         >>> pipe.remove_unused_weights()
         >>> pipe = pipe.to("cuda")
 

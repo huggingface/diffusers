@@ -130,6 +130,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
                 dual_transformer.transformers[1] = text_transformer
 
                 self.image_unet.get_submodule(parent_name)[index] = dual_transformer
+                self.image_unet.register_to_config(dual_cross_attention=True)
 
     def _revert_dual_attention(self):
         """
@@ -401,22 +402,10 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         return extra_step_kwargs
 
     def check_inputs(self, prompt, image, height, width, callback_steps):
-        if (
-            not isinstance(prompt, str)
-            and not isinstance(prompt, PIL.Image.Image)
-            and not isinstance(prompt, list)
-        ):
-            raise ValueError(
-                f"`prompt` has to be of type `str` `PIL.Image` or `list` but is {type(prompt)}"
-            )
-        if (
-            not isinstance(image, str)
-            and not isinstance(image, PIL.Image.Image)
-            and not isinstance(image, list)
-        ):
-            raise ValueError(
-                f"`image` has to be of type `str` `PIL.Image` or `list` but is {type(image)}"
-            )
+        if not isinstance(prompt, str) and not isinstance(prompt, PIL.Image.Image) and not isinstance(prompt, list):
+            raise ValueError(f"`prompt` has to be of type `str` `PIL.Image` or `list` but is {type(prompt)}")
+        if not isinstance(image, str) and not isinstance(image, PIL.Image.Image) and not isinstance(image, list):
+            raise ValueError(f"`image` has to be of type `str` `PIL.Image` or `list` but is {type(image)}")
 
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -541,21 +530,25 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         >>> image = Image.open(BytesIO(response.content)).convert("RGB")
         >>> text = "a painting, mosaic style"
 
-        >>> pipe = VersatileDiffusionImageVariationPipeline.from_pretrained("diffusers/vd-official-test", torch_dtype=torch.float16)
+        >>> pipe = VersatileDiffusionImageVariationPipeline.from_pretrained(
+        ...     "diffusers/vd-official-test", torch_dtype=torch.float16
+        ... )
         >>> pipe.remove_unused_weights()
         >>> pipe = pipe.to("cuda")
 
         >>> generator = torch.Generator(device="cuda").manual_seed(0)
         >>> text_to_image_strength = 0.75
 
-        >>> image = pipe(prompt=text, image=image, text_to_image_strength=text_to_image_strength, generator=generator).images[0]
+        >>> image = pipe(
+        ...     prompt=text, image=image, text_to_image_strength=text_to_image_strength, generator=generator
+        ... ).images[0]
         >>> image.save("./car_variation.png")
         ```
 
         Returns:
             [`~pipelines.stable_diffusion.ImagePipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.ImagePipelineOutput`] if `return_dict` is True, otherwise a `tuple.
-            When returning a tuple, the first element is a list with the generated images.
+            [`~pipelines.stable_diffusion.ImagePipelineOutput`] if `return_dict` is True, otherwise a `tuple. When
+            returning a tuple, the first element is a list with the generated images.
         """
 
         # 1. Check inputs. Raise error if not correct
@@ -572,12 +565,8 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompts
-        text_embeddings = self._encode_text_prompt(
-            prompt, device, num_images_per_prompt, do_classifier_free_guidance
-        )
-        image_embeddings = self._encode_image_prompt(
-            image, device, num_images_per_prompt, do_classifier_free_guidance
-        )
+        text_embeddings = self._encode_text_prompt(prompt, device, num_images_per_prompt, do_classifier_free_guidance)
+        image_embeddings = self._encode_image_prompt(image, device, num_images_per_prompt, do_classifier_free_guidance)
         dual_prompt_embeddings = torch.cat([text_embeddings, image_embeddings], dim=1)
         prompt_types = ("text", "image")
 

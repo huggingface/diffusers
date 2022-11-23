@@ -49,10 +49,14 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
+        second_prompt = load_image(
+            "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/benz.jpg"
+        )
+
         generator = torch.Generator(device=torch_device).manual_seed(0)
         image = pipe(
-            first_prompt="first prompt",
-            second_prompt="second prompt",
+            prompt="first prompt",
+            image=second_prompt,
             text_to_image_strength=0.75,
             generator=generator,
             guidance_scale=7.5,
@@ -63,13 +67,14 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdirname:
             pipe.save_pretrained(tmpdirname)
             pipe = VersatileDiffusionDualGuidedPipeline.from_pretrained(tmpdirname)
+
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         generator = generator.manual_seed(0)
         new_image = pipe(
-            first_prompt="first prompt",
-            second_prompt="second prompt",
+            prompt="first prompt",
+            image=second_prompt,
             text_to_image_strength=0.75,
             generator=generator,
             guidance_scale=7.5,
@@ -81,6 +86,7 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
 
     def test_inference_dual_guided(self):
         pipe = VersatileDiffusionDualGuidedPipeline.from_pretrained("diffusers/vd-official-test")
+        pipe.remove_unused_weights()
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -102,5 +108,5 @@ class VersatileDiffusionDualGuidedPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.0607, 0.0695, 0.0750, 0.0650, 0.0703, 0.0796, 0.0726, 0.0768, 0.0858])
+        expected_slice = np.array([0.014 , 0.0112, 0.0136, 0.0145, 0.0107, 0.0113, 0.0272, 0.0215, 0.0216])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

@@ -47,14 +47,14 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        second_prompt = load_image(
+        image = load_image(
             "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/benz.jpg"
         )
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
         image = pipe.dual_guided(
-            first_prompt="first prompt",
-            second_prompt=second_prompt,
+            prompt="first prompt",
+            image=image,
             text_to_image_strength=0.75,
             generator=generator,
             guidance_scale=7.5,
@@ -70,8 +70,8 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
 
         generator = generator.manual_seed(0)
         new_image = pipe.dual_guided(
-            first_prompt="first prompt",
-            second_prompt=second_prompt,
+            prompt="first prompt",
+            image=image,
             text_to_image_strength=0.75,
             generator=generator,
             guidance_scale=7.5,
@@ -86,14 +86,14 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        first_prompt = "cyberpunk 2077"
-        second_prompt = load_image(
+        prompt = "cyberpunk 2077"
+        image = load_image(
             "https://raw.githubusercontent.com/SHI-Labs/Versatile-Diffusion/master/assets/benz.jpg"
         )
         generator = torch.Generator(device=torch_device).manual_seed(0)
         image = pipe.dual_guided(
-            text=first_prompt,
-            image=second_prompt,
+            text=prompt,
+            image=image,
             text_to_image_strength=0.75,
             generator=generator,
             guidance_scale=7.5,
