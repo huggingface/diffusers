@@ -19,6 +19,7 @@ if is_torch_available() and is_transformers_available():
     from .latent_diffusion import LDMTextToImagePipeline
     from .stable_diffusion import (
         CycleDiffusionPipeline,
+        StableDiffusionImageVariationPipeline,
         StableDiffusionImg2ImgPipeline,
         StableDiffusionInpaintPipeline,
         StableDiffusionInpaintPipelineLegacy,
