@@ -93,6 +93,27 @@ class LDMSuperResolutionPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         tolerance = 1e-2 if torch_device != "mps" else 3e-2
         assert np.abs(image_slice.flatten() - expected_slice).max() < tolerance
 
+    @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
+    def test_inference_superresolution_fp16(self):
+        unet = self.dummy_uncond_unet
+        scheduler = DDIMScheduler()
+        vqvae = self.dummy_vq_model
+
+        # put models in fp16
+        unet = unet.half()
+        vqvae = vqvae.half()
+
+        ldm = LDMSuperResolutionPipeline(unet=unet, vqvae=vqvae, scheduler=scheduler)
+        ldm.to(torch_device)
+        ldm.set_progress_bar_config(disable=None)
+
+        init_image = self.dummy_image.to(torch_device)
+
+        generator = torch.manual_seed(0)
+        image = ldm(init_image, generator=generator, num_inference_steps=2, output_type="numpy").images
+
+        assert image.shape == (1, 64, 64, 3)
+
 
 @slow
 @require_torch
