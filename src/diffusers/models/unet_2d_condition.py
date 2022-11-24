@@ -320,7 +320,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         t_emb = t_emb.to(dtype=self.dtype)
         emb = self.time_embedding(t_emb)
 
-        if self.config.num_classes > 0:
+        if self.config.num_classes is not None:
             if class_labels is None:
                 raise ValueError("class_labels should be provided when num_classes > 0")
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
