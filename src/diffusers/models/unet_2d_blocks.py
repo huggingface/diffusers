@@ -404,7 +404,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         self.resnets = nn.ModuleList(resnets)
 
     def set_attention_slice(self, slice_size):
-        head_dims = self.config.attention_head_dim
+        head_dims = self.attn_num_head_channels
         head_dims = [head_dims] if isinstance(head_dims, int) else head_dims
         if slice_size is not None and any(dim % slice_size != 0 for dim in head_dims):
             raise ValueError(
@@ -602,7 +602,7 @@ class CrossAttnDownBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def set_attention_slice(self, slice_size):
-        head_dims = self.config.attention_head_dim
+        head_dims = self.attn_num_head_channels
         head_dims = [head_dims] if isinstance(head_dims, int) else head_dims
         if slice_size is not None and any(dim % slice_size != 0 for dim in head_dims):
             raise ValueError(
@@ -1201,7 +1201,7 @@ class CrossAttnUpBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def set_attention_slice(self, slice_size):
-        head_dims = self.config.attention_head_dim
+        head_dims = self.attn_num_head_channels
         head_dims = [head_dims] if isinstance(head_dims, int) else head_dims
         if slice_size is not None and any(dim % slice_size != 0 for dim in head_dims):
             raise ValueError(
