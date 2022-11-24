@@ -131,8 +131,8 @@ class DiffusionPipeline(ConfigMixin):
 
         - **config_name** (`str`) -- name of the config file that will store the class and module names of all
           components of the diffusion pipeline.
-        - **_optional_components** (List[`str`]) -- lists of all components that are optional so which don't have to be
-          passed for the pipeline to function (should be overridden by parent class).
+        - **_optional_components** (List[`str`]) -- list of all components that are optional so they don't have to be
+          passed for the pipeline to function (should be overridden by subclasses).
     """
     config_name = "model_index.json"
     _optional_components = []
