@@ -129,10 +129,12 @@ class DiffusionPipeline(ConfigMixin):
 
     Class attributes:
 
-        - **config_name** ([`str`]) -- name of the config file that will store the class and module names of all
+        - **config_name** (`str`) -- name of the config file that will store the class and module names of all
           components of the diffusion pipeline.
+        - **optional_components** (List[`str`]) -- lists of all components that are optional so which don't have to be passed for the pipeline to function (should be overridden by parent class).
     """
     config_name = "model_index.json"
+    optional_components = []
 
     def register_modules(self, **kwargs):
         # import it here to avoid circular import

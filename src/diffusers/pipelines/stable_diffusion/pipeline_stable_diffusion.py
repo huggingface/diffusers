@@ -66,6 +66,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
+    optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
         self,
@@ -122,6 +123,9 @@ class StableDiffusionPipeline(DiffusionPipeline):
                 " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
                 " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
             )
+
+        if self.safety_checker is not None and self.feature_extractor is None:
+            raise ValueError("Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead.")
 
         self.register_modules(
             vae=vae,
