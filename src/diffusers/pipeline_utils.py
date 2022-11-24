@@ -136,7 +136,6 @@ class DiffusionPipeline(ConfigMixin):
     """
     config_name = "model_index.json"
     _optional_components = []
-    _pipeline_kwargs = []
 
     def register_modules(self, **kwargs):
         # import it here to avoid circular import
@@ -188,8 +187,10 @@ class DiffusionPipeline(ConfigMixin):
         model_index_dict.pop("_diffusers_version")
         model_index_dict.pop("_module", None)
 
+        expected_modules, optional_kwargs = self._get_signature_keys(self)
+
         def is_saveable_module(name, value):
-            if not isinstance(value, (list, tuple)):
+            if name not in expected_modules:
                 # modules have to be saved in list format
                 return False
             if name in self._optional_components and value[0] is None:
@@ -709,8 +710,10 @@ class DiffusionPipeline(ConfigMixin):
         Returns:
             A dictionaly containing all the modules needed to initialize the pipeline.
         """
-        components = {k: getattr(self, k) for k, v in self.config.items() if not k.startswith("_") and isinstance(v, (list, tuple))}
-        expected_modules, _ = self._get_signature_keys(self)
+        expected_modules, optional_parameters = self._get_signature_keys(self)
+        components = {
+            k: getattr(self, k) for k in self.config.keys() if not k.startswith("_") and k not in optional_parameters
+        }
 
         if set(components.keys()) != expected_modules:
             raise ValueError(
