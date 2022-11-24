@@ -6,25 +6,23 @@ import os
 from pathlib import Path
 from typing import Optional
 
+import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
+from torch.utils.data import Dataset
+
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
-from diffusers import AltDiffusionPipeline
-from diffusers import AutoencoderKL
-from diffusers import DDPMScheduler
-from diffusers import UNet2DConditionModel
+from diffusers import AltDiffusionPipeline, AutoencoderKL, DDPMScheduler, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.pipelines.alt_diffusion.modeling_roberta_series import RobertaSeriesModelWithTransformation
-from huggingface_hub import HfFolder
-from huggingface_hub import Repository
-from huggingface_hub import whoami
+from huggingface_hub import HfFolder, Repository, whoami
 from PIL import Image
-from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import XLMRobertaTokenizer
+
 
 logger = get_logger(__name__)
 
