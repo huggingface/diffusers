@@ -91,6 +91,7 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
     def _encode_prompt(self, prompt, num_images_per_prompt, do_classifier_free_guidance, negative_prompt):
         r"""
@@ -188,8 +189,8 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
         **kwargs,
     ):
         # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * 8
-        width = width or self.unet.config.sample_size * 8
+        height = height or self.unet.config.sample_size * self.vae_scale_factor
+        width = width or self.unet.config.sample_size * self.vae_scale_factor
 
         if isinstance(prompt, str):
             batch_size = 1

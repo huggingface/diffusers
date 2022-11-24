@@ -78,6 +78,7 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
             vae=vae,
             scheduler=scheduler,
         )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
@@ -131,9 +132,9 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
         Args:
             image (`PIL.Image.Image`, `List[PIL.Image.Image]` or `torch.Tensor`):
                 The image prompt or prompts to guide the image generation.
-            height (`int`, *optional*, defaults to self.image_unet.config.sample_size * 8):
+            height (`int`, *optional*, defaults to self.image_unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to self.image_unet.config.sample_size * 8):
+            width (`int`, *optional*, defaults to self.image_unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
@@ -247,9 +248,9 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
-            height (`int`, *optional*, defaults to self.image_unet.config.sample_size * 8):
+            height (`int`, *optional*, defaults to self.image_unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to self.image_unet.config.sample_size * 8):
+            width (`int`, *optional*, defaults to self.image_unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
@@ -360,9 +361,9 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
-            height (`int`, *optional*, defaults to self.image_unet.config.sample_size * 8):
+            height (`int`, *optional*, defaults to self.image_unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to self.image_unet.config.sample_size * 8):
+            width (`int`, *optional*, defaults to self.image_unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
