@@ -100,6 +100,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
         use_linear_projection: bool = False,
+        only_cross_attention: bool = False,
     ):
         super().__init__()
         self.use_linear_projection = use_linear_projection
@@ -157,6 +158,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     activation_fn=activation_fn,
                     num_embeds_ada_norm=num_embeds_ada_norm,
                     attention_bias=attention_bias,
+                    only_cross_attention=only_cross_attention,
                 )
                 for d in range(num_layers)
             ]
@@ -387,14 +389,17 @@ class BasicTransformerBlock(nn.Module):
         activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
         attention_bias: bool = False,
+        only_cross_attention: bool = False,
     ):
         super().__init__()
+        self.only_cross_attention = only_cross_attention
         self.attn1 = CrossAttention(
             query_dim=dim,
             heads=num_attention_heads,
             dim_head=attention_head_dim,
             dropout=dropout,
             bias=attention_bias,
+            cross_attention_dim=cross_attention_dim if only_cross_attention else None,
         )  # is a self-attention
         self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn)
         self.attn2 = CrossAttention(
@@ -461,7 +466,11 @@ class BasicTransformerBlock(nn.Module):
         norm_hidden_states = (
             self.norm1(hidden_states, timestep) if self.use_ada_layer_norm else self.norm1(hidden_states)
         )
-        hidden_states = self.attn1(norm_hidden_states) + hidden_states
+
+        if self.only_cross_attention:
+            hidden_states = self.attn1(norm_hidden_states, context) + hidden_states
+        else:
+            hidden_states = self.attn1(norm_hidden_states) + hidden_states
 
         # 2. Cross-Attention
         norm_hidden_states = (

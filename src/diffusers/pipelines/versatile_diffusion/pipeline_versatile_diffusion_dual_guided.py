@@ -87,6 +87,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
             vae=vae,
             scheduler=scheduler,
         )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
         if self.text_unet is not None and (
             "dual_cross_attention" not in self.image_unet.config or not self.image_unet.config.dual_cross_attention
@@ -419,7 +420,7 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // 8, width // 8)
+        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if latents is None:
             if device.type == "mps":
                 # randn does not work reproducibly on mps
@@ -454,8 +455,8 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         prompt: Union[PIL.Image.Image, List[PIL.Image.Image]],
         image: Union[str, List[str]],
         text_to_image_strength: float = 0.5,
-        height: int = 512,
-        width: int = 512,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         num_images_per_prompt: Optional[int] = 1,
@@ -474,9 +475,9 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
-            height (`int`, *optional*, defaults to 512):
+            height (`int`, *optional*, defaults to self.image_unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to 512):
+            width (`int`, *optional*, defaults to self.image_unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
@@ -551,6 +552,9 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
             [`~pipelines.stable_diffusion.ImagePipelineOutput`] if `return_dict` is True, otherwise a `tuple. When
             returning a tuple, the first element is a list with the generated images.
         """
+        # 0. Default height and width to unet
+        height = height or self.image_unet.config.sample_size * self.vae_scale_factor
+        width = width or self.image_unet.config.sample_size * self.vae_scale_factor
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(prompt, image, height, width, callback_steps)
