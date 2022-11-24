@@ -32,7 +32,7 @@ The abstract of the paper is the following:
 
 - *Run AltDiffusion*
 
-AltDiffusion can be tested very easily with the [`AltDiffusionPipeline`], [`AltDiffusionImg2ImgPipeline`] and the `"BAAI/AltDiffusion"` checkpoint exactly in the same way it is shown in the [Conditional Image Generation Guide](./using-diffusers/conditional_image_generation) and the [Image-to-Image Generation Guide](./using-diffusers/img2img).
+AltDiffusion can be tested very easily with the [`AltDiffusionPipeline`], [`AltDiffusionImg2ImgPipeline`] and the `"BAAI/AltDiffusion-m9"` checkpoint exactly in the same way it is shown in the [Conditional Image Generation Guide](./using-diffusers/conditional_image_generation) and the [Image-to-Image Generation Guide](./using-diffusers/img2img).
 
 - *How to load and use different schedulers.*
 
@@ -42,12 +42,12 @@ To use a different scheduler, you can either change it via the [`ConfigMixin.fro
 ```python
 >>> from diffusers import AltDiffusionPipeline, EulerDiscreteScheduler
 
->>> pipeline = AltDiffusionPipeline.from_pretrained("BAAI/AltDiffusion")
+>>> pipeline = AltDiffusionPipeline.from_pretrained("BAAI/AltDiffusion-m9")
 >>> pipeline.scheduler = EulerDiscreteScheduler.from_config(pipeline.scheduler.config)
 
 >>> # or
->>> euler_scheduler = EulerDiscreteScheduler.from_pretrained("BAAI/AltDiffusion", subfolder="scheduler")
->>> pipeline = AltDiffusionPipeline.from_pretrained("BAAI/AltDiffusion", scheduler=euler_scheduler)
+>>> euler_scheduler = EulerDiscreteScheduler.from_pretrained("BAAI/AltDiffusion-m9", subfolder="scheduler")
+>>> pipeline = AltDiffusionPipeline.from_pretrained("BAAI/AltDiffusion-m9", scheduler=euler_scheduler)
 ```
 
 
@@ -61,7 +61,7 @@ If you want to use all possible use cases in a single `DiffusionPipeline` we rec
 ...     AltDiffusionImg2ImgPipeline,
 ... )
 
->>> text2img = AltDiffusionPipeline.from_pretrained("BAAI/AltDiffusion")
+>>> text2img = AltDiffusionPipeline.from_pretrained("BAAI/AltDiffusion-m9")
 >>> img2img = AltDiffusionImg2ImgPipeline(**text2img.components)
 
 >>> # now you can use text2img(...) and img2img(...) just like the call methods of each respective pipeline
