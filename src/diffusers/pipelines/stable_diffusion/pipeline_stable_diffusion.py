@@ -140,6 +140,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
+        self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     def enable_xformers_memory_efficient_attention(self):
         r"""

@@ -188,12 +188,18 @@ class DiffusionPipeline(ConfigMixin):
         model_index_dict.pop("_diffusers_version")
         model_index_dict.pop("_module", None)
 
+        def is_saveable_module(name, value):
+            if not isinstance(value, (list, tuple)):
+                # modules have to be saved in list format
+                return False
+            if name in self._optional_components and value[0] is None:
+                return False
+            return True
+
+        model_index_dict = {k: v for k, v in model_index_dict.items() if is_saveable_module(k, v)}
+
         for pipeline_component_name in model_index_dict.keys():
             sub_model = getattr(self, pipeline_component_name)
-            if sub_model is None:
-                # edge case for saving a pipeline with safety_checker=None
-                continue
-
             model_cls = sub_model.__class__
 
             save_method_name = None
@@ -668,9 +674,6 @@ class DiffusionPipeline(ConfigMixin):
             )
 
         # 5. Instantiate the pipeline
-        import ipdb
-
-        ipdb.set_trace()
         model = pipeline_class(**init_kwargs)
         return model
 
