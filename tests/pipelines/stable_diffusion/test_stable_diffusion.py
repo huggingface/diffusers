@@ -262,18 +262,17 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             [prompt],
             generator=generator,
             guidance_scale=6.0,
-            height=536,
-            width=536,
+            height=136,
+            width=136,
             num_inference_steps=2,
             output_type="np",
         )
-        sd_pipe.enable_attention_slicing()
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 536, 536, 3)
-        expected_slice = np.array([0.5445, 0.8108, 0.6242, 0.4863, 0.5779, 0.5423, 0.4749, 0.4589, 0.4616])
+        assert image.shape == (1, 136, 136, 3)
+        expected_slice = np.array([0.5524, 0.5626, 0.6069, 0.4727, 0.386, 0.3995, 0.4613, 0.4328, 0.4269])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -766,18 +765,18 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         prompt = "hey"
 
-        output = sd_pipe(prompt, number_of_steps=2, output_type="np")
+        output = sd_pipe(prompt, number_of_steps=1, output_type="np")
         image_shape = output.images[0].shape[:2]
         assert image_shape == (64, 64)
 
-        output = sd_pipe(prompt, number_of_steps=2, height=96, width=96, output_type="np")
+        output = sd_pipe(prompt, number_of_steps=1, height=96, width=96, output_type="np")
         image_shape = output.images[0].shape[:2]
         assert image_shape == (96, 96)
 
         config = dict(sd_pipe.unet.config)
         config["sample_size"] = 96
         sd_pipe.unet = UNet2DConditionModel.from_config(config).to(torch_device)
-        output = sd_pipe(prompt, number_of_steps=2, output_type="np")
+        output = sd_pipe(prompt, number_of_steps=1, output_type="np")
         image_shape = output.images[0].shape[:2]
         assert image_shape == (192, 192)
 
