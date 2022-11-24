@@ -87,10 +87,9 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         solver_order (`int`, default `2`):
             the order of DPM-Solver; can be `1` or `2` or `3`. We recommend to use `solver_order=2` for guided
             sampling, and `solver_order=3` for unconditional sampling.
-        predict_epsilon (`bool`, default `True`):
-            we currently support both the noise prediction model and the data prediction model. If the model predicts
-            the noise / epsilon, set `predict_epsilon` to `True`. If the model predicts the data / x0 directly, set
-            `predict_epsilon` to `False`.
+        prediction_type (`str`, default `epsilon`):
+            indicates whether the model predicts the noise (epsilon), or the data / `x0`.
+            One of `epsilon`, `sample`. `v-prediction` is not supported for this scheduler.
         thresholding (`bool`, default `False`):
             whether to use the "dynamic thresholding" method (introduced by Imagen, https://arxiv.org/abs/2205.11487).
             For pixel-space diffusion models, you can set both `algorithm_type=dpmsolver++` and `thresholding=True` to
@@ -128,7 +127,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule: str = "linear",
         trained_betas: Optional[np.ndarray] = None,
         solver_order: int = 2,
-        predict_epsilon: bool = True,
+        prediction_type: str = "epsilon",
         thresholding: bool = False,
         dynamic_thresholding_ratio: float = 0.995,
         sample_max_value: float = 1.0,
@@ -221,11 +220,17 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
         # DPM-Solver++ needs to solve an integral of the data prediction model.
         if self.config.algorithm_type == "dpmsolver++":
-            if self.config.predict_epsilon:
+            if self.config.prediction_type == "epsilon":
                 alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
                 x0_pred = (sample - sigma_t * model_output) / alpha_t
-            else:
+            elif self.config.prediction_type == "sample":
                 x0_pred = model_output
+            else:
+                raise ValueError(
+                    f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample` "
+                    " for the DPMSolverMultistepScheduler."
+                )
+
             if self.config.thresholding:
                 # Dynamic thresholding in https://arxiv.org/abs/2205.11487
                 dynamic_max_val = torch.quantile(
@@ -239,12 +244,17 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             return x0_pred
         # DPM-Solver needs to solve an integral of the noise prediction model.
         elif self.config.algorithm_type == "dpmsolver":
-            if self.config.predict_epsilon:
+            if self.config.prediction_type == "epsilon":
                 return model_output
-            else:
+            elif self.config.prediction_type == "sample":
                 alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
                 epsilon = (sample - alpha_t * model_output) / sigma_t
                 return epsilon
+            else:
+                raise ValueError(
+                    f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample` "
+                    " for the DPMSolverMultistepScheduler."
+                )
 
     def dpm_solver_first_order_update(
         self,
