@@ -191,7 +191,6 @@ class DiffusionPipeline(ConfigMixin):
 
         def is_saveable_module(name, value):
             if name not in expected_modules:
-                # modules have to be saved in list format
                 return False
             if name in self._optional_components and value[0] is None:
                 return False
