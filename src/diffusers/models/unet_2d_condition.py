@@ -98,6 +98,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             "DownBlock2D",
         ),
         up_block_types: Tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
+        do_self_attention: Tuple[bool] = (True, True, True, True),
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
         downsample_padding: int = 1,
@@ -153,6 +154,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 downsample_padding=downsample_padding,
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
+                do_self_attention=do_self_attention[i],
             )
             self.down_blocks.append(down_block)
 
@@ -177,6 +179,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
         reversed_attention_head_dim = list(reversed(attention_head_dim))
+        do_self_attention = list(reversed(do_self_attention))
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
             is_final_block = i == len(block_out_channels) - 1
@@ -207,6 +210,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 attn_num_head_channels=reversed_attention_head_dim[i],
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
+                do_self_attention=do_self_attention[i],
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -258,6 +262,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         sample: torch.FloatTensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
+        class_labels: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
         r"""
