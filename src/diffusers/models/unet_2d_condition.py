@@ -98,7 +98,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             "DownBlock2D",
         ),
         up_block_types: Tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"),
-        do_self_attention: Tuple[bool] = (True, True, True, True),
+        only_cross_attention: Union[bool, Tuple[bool]] = False,
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
         downsample_padding: int = 1,
@@ -134,6 +134,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         self.mid_block = None
         self.up_blocks = nn.ModuleList([])
 
+        if isinstance(only_cross_attention, bool):
+            only_cross_attention = [only_cross_attention] * len(down_block_types)
+
         if isinstance(attention_head_dim, int):
             attention_head_dim = (attention_head_dim,) * len(down_block_types)
 
@@ -159,7 +162,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 downsample_padding=downsample_padding,
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
-                do_self_attention=do_self_attention[i],
+                only_cross_attention=only_cross_attention[i],
             )
             self.down_blocks.append(down_block)
 
@@ -184,7 +187,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
         reversed_attention_head_dim = list(reversed(attention_head_dim))
-        do_self_attention = list(reversed(do_self_attention))
+        only_cross_attention = list(reversed(only_cross_attention))
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
             is_final_block = i == len(block_out_channels) - 1
@@ -215,7 +218,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 attn_num_head_channels=reversed_attention_head_dim[i],
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
-                do_self_attention=do_self_attention[i],
+                only_cross_attention=only_cross_attention[i],
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
