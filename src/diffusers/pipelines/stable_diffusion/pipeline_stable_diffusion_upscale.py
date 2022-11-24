@@ -308,7 +308,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
-        latents = 1 / 0.18215 * latents
+        latents = 1 / 0.08333 * latents
         image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloa16
@@ -331,9 +331,8 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
                 f" {type(callback_steps)}."
             )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
-        shape = (batch_size, num_channels_latents, height // 8, width // 8)
+        shape = (batch_size, num_channels_latents, height, width)
         if latents is None:
             if device.type == "mps":
                 # randn does not work reproducibly on mps
@@ -454,6 +453,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
             image = np.array(image.convert("RGB"))
             image = image[None].transpose(0, 3, 1, 2)
             image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
+            image = image.to(dtype=text_embeddings.dtype, device=device)
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -467,6 +467,8 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         else:
             noise = torch.randn(image.shape, generator=generator, device=device, dtype=text_embeddings.dtype)
         image = self.low_res_scheduler.add_noise(image, noise, noise_level)
+        image = torch.cat([image] * 2) if do_classifier_free_guidance else image
+        noise_level = torch.cat([noise_level] * 2) if do_classifier_free_guidance else noise_level
 
         # 6. Prepare latent variables
         num_channels_latents = self.vae.config.latent_channels
@@ -480,6 +482,8 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
             generator,
             latents,
         )
+        
+        print(image.shape, latents.shape)
 
         # 7. Check that sizes of image and latents match
         num_channels_image = image.shape[1]
