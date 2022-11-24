@@ -20,7 +20,6 @@ import random
 import shutil
 import tempfile
 import unittest
-from functools import partial
 
 import numpy as np
 import torch
