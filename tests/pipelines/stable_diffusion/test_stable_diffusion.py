@@ -209,7 +209,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 128, 128, 3)
+        assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5112, 0.4692, 0.4715, 0.5206, 0.4894, 0.5114, 0.5096, 0.4932, 0.4755])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -304,7 +304,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 128, 128, 3)
+        assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.4937, 0.4649, 0.4716, 0.5145, 0.4889, 0.513, 0.513, 0.4905, 0.4738])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
@@ -370,7 +370,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 128, 128, 3)
+        assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5067, 0.4689, 0.4614, 0.5233, 0.4903, 0.5112, 0.524, 0.5069, 0.4785])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
@@ -415,7 +415,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 128, 128, 3)
+        assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5067, 0.4689, 0.4614, 0.5233, 0.4903, 0.5112, 0.524, 0.5069, 0.4785])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
@@ -460,7 +460,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 128, 128, 3)
+        assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.5067, 0.4689, 0.4614, 0.5233, 0.4903, 0.5112, 0.524, 0.5069, 0.4785])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
@@ -533,7 +533,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 128, 128, 3)
+        assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.4851, 0.4617, 0.4765, 0.5127, 0.4845, 0.5153, 0.5141, 0.4886, 0.4719])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -563,13 +563,13 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # test num_images_per_prompt=1 (default)
         images = sd_pipe(prompt, num_inference_steps=2, output_type="np").images
 
-        assert images.shape == (1, 128, 128, 3)
+        assert images.shape == (1, 64, 64, 3)
 
         # test num_images_per_prompt=1 (default) for batch of prompts
         batch_size = 2
         images = sd_pipe([prompt] * batch_size, num_inference_steps=2, output_type="np").images
 
-        assert images.shape == (batch_size, 128, 128, 3)
+        assert images.shape == (batch_size, 64, 64, 3)
 
         # test num_images_per_prompt for single prompt
         num_images_per_prompt = 2
@@ -577,7 +577,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             prompt, num_inference_steps=2, output_type="np", num_images_per_prompt=num_images_per_prompt
         ).images
 
-        assert images.shape == (num_images_per_prompt, 128, 128, 3)
+        assert images.shape == (num_images_per_prompt, 64, 64, 3)
 
         # test num_images_per_prompt for batch of prompts
         batch_size = 2
@@ -585,7 +585,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             [prompt] * batch_size, num_inference_steps=2, output_type="np", num_images_per_prompt=num_images_per_prompt
         ).images
 
-        assert images.shape == (batch_size * num_images_per_prompt, 128, 128, 3)
+        assert images.shape == (batch_size * num_images_per_prompt, 64, 64, 3)
 
     @unittest.skipIf(torch_device != "cuda", "This test requires a GPU")
     def test_stable_diffusion_fp16(self):
@@ -618,7 +618,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         image = sd_pipe([prompt], generator=generator, num_inference_steps=2, output_type="np").images
 
-        assert image.shape == (1, 128, 128, 3)
+        assert image.shape == (1, 64, 64, 3)
 
     def test_stable_diffusion_long_prompt(self):
         unet = self.dummy_cond_unet

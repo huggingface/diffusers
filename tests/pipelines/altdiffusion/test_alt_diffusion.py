@@ -171,7 +171,7 @@ class AltDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 128, 128, 3)
+        assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array(
             [0.49249017, 0.46064827, 0.4790093, 0.50883967, 0.4811985, 0.51540506, 0.5084924, 0.4860553, 0.47318557]
         )
@@ -220,7 +220,7 @@ class AltDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 128, 128, 3)
+        assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array(
             [0.4786532, 0.45791715, 0.47507674, 0.50763345, 0.48375353, 0.515062, 0.51244247, 0.48673993, 0.47105807]
         )
@@ -259,7 +259,7 @@ class AltDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         image = alt_pipe([prompt], generator=generator, num_inference_steps=2, output_type="np").images
 
-        assert image.shape == (1, 128, 128, 3)
+        assert image.shape == (1, 64, 64, 3)
 
 
 @slow
