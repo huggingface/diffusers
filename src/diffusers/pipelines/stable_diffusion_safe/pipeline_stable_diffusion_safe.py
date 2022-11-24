@@ -74,6 +74,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
         ],
         safety_checker: SafeStableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
+        requires_safety_checker: bool = True,
     ):
         super().__init__()
         safety_concept: Optional[str] = (
@@ -135,6 +136,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
         self._safety_text_concept = safety_concept
+        self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     @property
     def safety_concept(self):
