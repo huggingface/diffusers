@@ -582,7 +582,7 @@ class DiffusionPipeline(ConfigMixin):
                             f"{passed_class_obj[name]} is of type: {type(passed_class_obj[name])}, but should be"
                             f" {expected_class_obj}"
                         )
-                elif passed_class_obj[name] is None:
+                elif passed_class_obj[name] is None and name not in pipeline_class._optional_components:
                     logger.warning(
                         f"You have passed `None` for {name} to disable its functionality in {pipeline_class}. Note"
                         f" that this might lead to problems when using {pipeline_class} and is not recommended."
