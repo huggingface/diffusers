@@ -35,7 +35,7 @@ from ...schedulers import (
     FlaxLMSDiscreteScheduler,
     FlaxPNDMScheduler,
 )
-from ...utils import logging
+from ...utils import deprecate, logging
 from . import FlaxStableDiffusionPipelineOutput
 from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
 

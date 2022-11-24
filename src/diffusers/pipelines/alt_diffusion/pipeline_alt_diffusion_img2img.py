@@ -20,6 +20,7 @@ import torch
 
 import PIL
 from diffusers.utils import is_accelerate_available
+from packaging import version
 from transformers import CLIPFeatureExtractor, XLMRobertaTokenizer
 
 from ...configuration_utils import FrozenDict
