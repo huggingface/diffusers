@@ -351,7 +351,12 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
         )
 
         num_channels_latents = NUM_LATENT_CHANNELS
-        latents_shape = (batch_size * num_images_per_prompt, num_channels_latents, height // 8, width // 8)
+        latents_shape = (
+            batch_size * num_images_per_prompt,
+            num_channels_latents,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         latents_dtype = text_embeddings.dtype
         if latents is None:
             latents = generator.randn(*latents_shape).astype(latents_dtype)

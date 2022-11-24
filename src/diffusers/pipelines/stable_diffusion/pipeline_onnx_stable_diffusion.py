@@ -224,7 +224,12 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
 
         # get the initial random noise unless the user supplied it
         latents_dtype = text_embeddings.dtype
-        latents_shape = (batch_size * num_images_per_prompt, 4, height // 8, width // 8)
+        latents_shape = (
+            batch_size * num_images_per_prompt,
+            4,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
         if latents is None:
             latents = generator.randn(*latents_shape).astype(latents_dtype)
         elif latents.shape != latents_shape:
