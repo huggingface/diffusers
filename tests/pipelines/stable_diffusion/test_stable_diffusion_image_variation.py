@@ -154,11 +154,10 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
         )[0]
 
         image_slice = image[0, -3:, -3:, -1]
-        print(image_slice.flatten())
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4935, 0.4784, 0.4802, 0.5027, 0.4805, 0.5149, 0.5143, 0.4879, 0.4731])
+        expected_slice = np.array([0.5093, 0.5717, 0.4806, 0.4891, 0.5552, 0.4594, 0.5177, 0.4894, 0.4904])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-3
 
@@ -197,7 +196,7 @@ class StableDiffusionImageVariationPipelineFastTests(PipelineTesterMixin, unitte
         image_slice = image[-1, -3:, -3:, -1]
 
         assert image.shape == (2, 64, 64, 3)
-        expected_slice = np.array([0.4939, 0.4627, 0.4831, 0.5710, 0.5387, 0.4428, 0.5230, 0.5545, 0.4586])
+        expected_slice = np.array([0.6427, 0.5452, 0.5602, 0.5478, 0.5968, 0.6211, 0.5538, 0.5514, 0.5281])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_stable_diffusion_img_variation_num_images_per_prompt(self):
