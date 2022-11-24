@@ -207,7 +207,6 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )[0]
 
         image_slice = image[0, -3:, -3:, -1]
-        print("np.array([" + ", ".join(str(round(i, 4)) for i in image_slice.flatten().tolist()) + "])")
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)

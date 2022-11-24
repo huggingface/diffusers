@@ -60,7 +60,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
     ):
         super().__init__()
         self.register_modules(vqvae=vqvae, bert=bert, tokenizer=tokenizer, unet=unet, scheduler=scheduler)
-        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.vae_scale_factor = 2 ** (len(self.vqvae.config.block_out_channels) - 1)
 
     @torch.no_grad()
     def __call__(
