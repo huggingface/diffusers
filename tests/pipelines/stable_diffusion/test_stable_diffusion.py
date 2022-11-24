@@ -268,6 +268,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_inference_steps=2,
             output_type="np",
         )
+        sd_pipe.enable_attention_slicing()
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
@@ -776,7 +777,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         config = dict(sd_pipe.unet.config)
         config["sample_size"] = 96
-        sd_pipe.unet = UNet2DConditionModel.from_config(config)
+        sd_pipe.unet = UNet2DConditionModel.from_config(config).to(torch_device)
         output = sd_pipe(prompt, number_of_steps=2, output_type="np")
         image_shape = output.images[0].shape[:2]
         assert image_shape == (192, 192)

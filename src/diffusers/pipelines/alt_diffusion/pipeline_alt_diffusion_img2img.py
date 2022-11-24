@@ -146,6 +146,7 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
