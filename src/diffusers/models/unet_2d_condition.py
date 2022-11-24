@@ -110,7 +110,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         attention_head_dim: Union[int, Tuple[int]] = 8,
         dual_cross_attention: bool = False,
         use_linear_projection: bool = False,
-        num_classes: Optional[int] = None,
+        num_class_embeds: Optional[int] = None,
     ):
         super().__init__()
 
@@ -127,8 +127,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         self.time_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
 
         # class embedding
-        if num_classes is not None:
-            self.class_embedding = nn.Embedding(num_classes, time_embed_dim)
+        if num_class_embeds is not None:
+            self.class_embedding = nn.Embedding(num_class_embeds, time_embed_dim)
 
         self.down_blocks = nn.ModuleList([])
         self.mid_block = None
@@ -323,9 +323,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         t_emb = t_emb.to(dtype=self.dtype)
         emb = self.time_embedding(t_emb)
 
-        if self.config.num_classes is not None:
+        if self.config.num_class_embeds is not None:
             if class_labels is None:
-                raise ValueError("class_labels should be provided when num_classes > 0")
+                raise ValueError("class_labels should be provided when num_class_embeds > 0")
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
             emb = emb + class_emb
 
