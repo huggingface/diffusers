@@ -207,11 +207,22 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )[0]
 
         image_slice = image[0, -3:, -3:, -1]
-        print(", ".join(image_slice.flatten().tolist()))
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5112, 0.4692, 0.4715, 0.5206, 0.4894, 0.5114, 0.5096, 0.4932, 0.4755])
+        expected_slice = np.array(
+            [
+                0.5643956661224365,
+                0.6017904281616211,
+                0.4799129366874695,
+                0.5267305374145508,
+                0.5584856271743774,
+                0.46413588523864746,
+                0.5159522294998169,
+                0.4963662028312683,
+                0.47919973731040955,
+            ]
+        )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
@@ -256,12 +267,13 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             num_inference_steps=2,
             output_type="np",
         )
+        sd_pipe.enable_attention_slicing()
         image = output.images
 
         image_slice = image[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 134, 134, 3)
-        expected_slice = np.array([0.7834, 0.5488, 0.5781, 0.46, 0.3609, 0.5369, 0.542, 0.4855, 0.5557])
+        assert image.shape == (1, 536, 536, 3)
+        expected_slice = np.array([0.5445, 0.8108, 0.6242, 0.4863, 0.5779, 0.5423, 0.4749, 0.4589, 0.4616])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -303,11 +315,22 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )[0]
 
         image_slice = image[0, -3:, -3:, -1]
-        print(", ".join(image_slice.flatten().tolist()))
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4937, 0.4649, 0.4716, 0.5145, 0.4889, 0.513, 0.513, 0.4905, 0.4738])
+        expected_slice = np.array(
+            [
+                0.5094760060310364,
+                0.5674174427986145,
+                0.46675148606300354,
+                0.5125715136528015,
+                0.5696930289268494,
+                0.4674668312072754,
+                0.5277683734893799,
+                0.4964486062526703,
+                0.494540274143219,
+            ]
+        )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -370,11 +393,22 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )[0]
 
         image_slice = image[0, -3:, -3:, -1]
-        print(", ".join(image_slice.flatten().tolist()))
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5067, 0.4689, 0.4614, 0.5233, 0.4903, 0.5112, 0.524, 0.5069, 0.4785])
+        expected_slice = np.array(
+            [
+                0.47082293033599854,
+                0.5371589064598083,
+                0.4562119245529175,
+                0.5220914483070374,
+                0.5733777284622192,
+                0.4795039892196655,
+                0.5465868711471558,
+                0.5074326395988464,
+                0.5042197108268738,
+            ]
+        )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -416,11 +450,22 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )[0]
 
         image_slice = image[0, -3:, -3:, -1]
-        print(", ".join(image_slice.flatten().tolist()))
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5067, 0.4689, 0.4614, 0.5233, 0.4903, 0.5112, 0.524, 0.5069, 0.4785])
+        expected_slice = np.array(
+            [
+                0.4707113206386566,
+                0.5372191071510315,
+                0.4563021957874298,
+                0.5220003724098206,
+                0.5734264850616455,
+                0.4794946610927582,
+                0.5463782548904419,
+                0.5074145197868347,
+                0.504422664642334,
+            ]
+        )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -462,11 +507,22 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )[0]
 
         image_slice = image[0, -3:, -3:, -1]
-        print(", ".join(image_slice.flatten().tolist()))
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.5067, 0.4689, 0.4614, 0.5233, 0.4903, 0.5112, 0.524, 0.5069, 0.4785])
+        expected_slice = np.array(
+            [
+                0.47082313895225525,
+                0.5371587872505188,
+                0.4562119245529175,
+                0.5220913887023926,
+                0.5733776688575745,
+                0.47950395941734314,
+                0.546586811542511,
+                0.5074326992034912,
+                0.5042197108268738,
+            ]
+        )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -539,7 +595,19 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array([0.4851, 0.4617, 0.4765, 0.5127, 0.4845, 0.5153, 0.5141, 0.4886, 0.4719])
+        expected_slice = np.array(
+            [
+                0.5108221173286438,
+                0.5688379406929016,
+                0.4685141146183014,
+                0.5098261833190918,
+                0.5657756328582764,
+                0.4631010890007019,
+                0.5226285457611084,
+                0.49129390716552734,
+                0.4899061322212219,
+            ]
+        )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_num_images_per_prompt(self):
@@ -700,18 +768,18 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         output = sd_pipe(prompt, number_of_steps=2, output_type="np")
         image_shape = output.images[0].shape[:2]
-        assert image_shape == [32, 32]
+        assert image_shape == (64, 64)
 
-        output = sd_pipe(prompt, number_of_steps=2, height=64, width=64, output_type="np")
+        output = sd_pipe(prompt, number_of_steps=2, height=96, width=96, output_type="np")
         image_shape = output.images[0].shape[:2]
-        assert image_shape == [64, 64]
+        assert image_shape == (96, 96)
 
         config = dict(sd_pipe.unet.config)
         config["sample_size"] = 96
-        sd_pipe.unet = UNet2DConditionModel.from_config(config)
+        sd_pipe.unet = UNet2DConditionModel.from_config(config).to(torch_device)
         output = sd_pipe(prompt, number_of_steps=2, output_type="np")
         image_shape = output.images[0].shape[:2]
-        assert image_shape == [96, 96]
+        assert image_shape == (192, 192)
 
 
 @slow

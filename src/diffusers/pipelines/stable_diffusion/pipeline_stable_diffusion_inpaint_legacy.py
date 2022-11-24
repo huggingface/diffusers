@@ -51,11 +51,11 @@ def preprocess_image(image):
     return 2.0 * image - 1.0
 
 
-def preprocess_mask(mask):
+def preprocess_mask(mask, scale_factor=8):
     mask = mask.convert("L")
     w, h = mask.size
     w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
-    mask = mask.resize((w // 8, h // 8), resample=PIL_INTERPOLATION["nearest"])
+    mask = mask.resize((w // scale_factor, h // scale_factor), resample=PIL_INTERPOLATION["nearest"])
     mask = np.array(mask).astype(np.float32) / 255.0
     mask = np.tile(mask, (4, 1, 1))
     mask = mask[None].transpose(0, 1, 2, 3)  # what does this step do?
@@ -166,6 +166,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_attention_slicing
@@ -541,7 +542,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             init_image = preprocess_image(init_image)
 
         if not isinstance(mask_image, torch.FloatTensor):
-            mask_image = preprocess_mask(mask_image)
+            mask_image = preprocess_mask(mask_image, self.vae_scale_factor)
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)

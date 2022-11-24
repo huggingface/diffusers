@@ -544,7 +544,14 @@ class DiffusionPipeline(ConfigMixin):
         init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
 
         # remove `null` components
-        init_dict = {k: v for k, v in init_dict.items() if v[0] is not None}
+        def load_module(name, value):
+            if value[0] is None:
+                return False
+            if name in passed_class_obj and passed_class_obj[name] is None:
+                return False
+            return True
+
+        init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
 
         if len(unused_kwargs) > 0:
             logger.warning(f"Keyword arguments {unused_kwargs} not recognized.")
@@ -560,12 +567,11 @@ class DiffusionPipeline(ConfigMixin):
 
             is_pipeline_module = hasattr(pipelines, library_name)
             loaded_sub_model = None
-            sub_model_should_be_defined = True
 
             # if the model is in a pipeline module, then we load it from the pipeline
             if name in passed_class_obj:
                 # 1. check that passed_class_obj has correct parent class
-                if not is_pipeline_module and passed_class_obj[name] is not None:
+                if not is_pipeline_module:
                     library = importlib.import_module(library_name)
                     class_obj = getattr(library, class_name)
                     importable_classes = LOADABLE_CLASSES[library_name]
@@ -581,12 +587,6 @@ class DiffusionPipeline(ConfigMixin):
                             f"{passed_class_obj[name]} is of type: {type(passed_class_obj[name])}, but should be"
                             f" {expected_class_obj}"
                         )
-                elif passed_class_obj[name] is None and name not in pipeline_class._optional_components:
-                    logger.warning(
-                        f"You have passed `None` for {name} to disable its functionality in {pipeline_class}. Note"
-                        f" that this might lead to problems when using {pipeline_class} and is not recommended."
-                    )
-                    sub_model_should_be_defined = False
                 else:
                     logger.warning(
                         f"You have passed a non-standard module {passed_class_obj[name]}. We cannot verify whether it"
@@ -608,7 +608,7 @@ class DiffusionPipeline(ConfigMixin):
                 importable_classes = LOADABLE_CLASSES[library_name]
                 class_candidates = {c: getattr(library, c, None) for c in importable_classes.keys()}
 
-            if loaded_sub_model is None and sub_model_should_be_defined:
+            if loaded_sub_model is None:
                 load_method_name = None
                 for class_name, class_candidate in class_candidates.items():
                     if class_candidate is not None and issubclass(class_obj, class_candidate):

@@ -27,11 +27,11 @@ def preprocess(image):
     return 2.0 * image - 1.0
 
 
-def preprocess_mask(mask):
+def preprocess_mask(mask, scale_factor=8):
     mask = mask.convert("L")
     w, h = mask.size
     w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
-    mask = mask.resize((w // 8, h // 8), resample=PIL.Image.NEAREST)
+    mask = mask.resize((w // scale_factor, h // scale_factor), resample=PIL.Image.NEAREST)
     mask = np.array(mask).astype(np.float32) / 255.0
     mask = np.tile(mask, (4, 1, 1))
     mask = mask[None].transpose(0, 1, 2, 3)  # what does this step do?
@@ -143,6 +143,7 @@ class OnnxStableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_onnx_stable_diffusion.OnnxStableDiffusionPipeline._encode_prompt
@@ -349,7 +350,7 @@ class OnnxStableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
 
         # preprocess mask
         if not isinstance(mask_image, np.ndarray):
-            mask_image = preprocess_mask(mask_image)
+            mask_image = preprocess_mask(mask_image, self.vae_scale_factor)
         mask_image = mask_image.astype(latents_dtype)
         mask = np.concatenate([mask_image] * num_images_per_prompt, axis=0)
 

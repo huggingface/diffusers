@@ -367,7 +367,7 @@ class PipelineFastTests(unittest.TestCase):
 
         image = self.dummy_image().cpu().permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB")
-        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((128, 128))
+        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((32, 32))
 
         # make sure here that pndm scheduler skips prk
         inpaint = StableDiffusionInpaintPipelineLegacy(
