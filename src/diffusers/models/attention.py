@@ -100,7 +100,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
         use_linear_projection: bool = False,
-        only_cross_attention: bool = True,
+        only_cross_attention: bool = False,
     ):
         super().__init__()
         self.use_linear_projection = use_linear_projection
@@ -389,7 +389,7 @@ class BasicTransformerBlock(nn.Module):
         activation_fn: str = "geglu",
         num_embeds_ada_norm: Optional[int] = None,
         attention_bias: bool = False,
-        only_cross_attention: bool = True,
+        only_cross_attention: bool = False,
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention

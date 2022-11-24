@@ -667,7 +667,7 @@ class CrossAttnDownBlockFlat(nn.Module):
         add_downsample=True,
         dual_cross_attention=False,
         use_linear_projection=False,
-        only_cross_attention=True,
+        only_cross_attention=False,
     ):
         super().__init__()
         resnets = []
@@ -882,7 +882,7 @@ class CrossAttnUpBlockFlat(nn.Module):
         add_upsample=True,
         dual_cross_attention=False,
         use_linear_projection=False,
-        only_cross_attention=True,
+        only_cross_attention=False,
     ):
         super().__init__()
         resnets = []
