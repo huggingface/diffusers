@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import gc
-import random
 import tempfile
 import time
 import unittest
@@ -33,7 +32,7 @@ from diffusers import (
     UNet2DConditionModel,
     logging,
 )
-from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
+from diffusers.utils import load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
 from transformers import CLIPFeatureExtractor, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -513,7 +512,7 @@ class StableDiffusion2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert cap_logger_3.out == ""
 
 
-# @slow
+@slow
 @require_torch_gpu
 class StableDiffusion2PipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
