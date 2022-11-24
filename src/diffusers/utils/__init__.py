@@ -33,6 +33,7 @@ from .import_utils import (
     is_torch_available,
     is_torch_version,
     is_transformers_available,
+    is_transformers_version,
     is_unidecode_available,
     requires_backends,
 )
