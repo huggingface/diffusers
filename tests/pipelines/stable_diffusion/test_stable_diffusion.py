@@ -245,24 +245,20 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         prompt = "A painting of a squirrel eating a burger"
 
-        generator = torch.Generator(device=device).manual_seed(0)
-        output = sd_pipe(
-            [prompt],
-            generator=generator,
-            guidance_scale=6.0,
-            height=536,
-            width=536,
-            num_inference_steps=2,
-            output_type="np",
-        )
-        image = output.images
+        output = sd_pipe(prompt, number_of_steps=2, output_type="np")
+        image_shape = output.images[0].shape[:2]
+        assert image_shape == [32, 32]
 
-        image_slice = image[0, -3:, -3:, -1]
+        output = sd_pipe(prompt, number_of_steps=2, height=64, width=64, output_type="np")
+        image_shape = output.images[0].shape[:2]
+        assert image_shape == [64, 64]
 
-        assert image.shape == (1, 134, 134, 3)
-        expected_slice = np.array([0.7834, 0.5488, 0.5781, 0.46, 0.3609, 0.5369, 0.542, 0.4855, 0.5557])
-
-        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+        config = dict(sd_pipe.unet.config)
+        config["sample_size"] = 96
+        sd_pipe.unet = UNet2DConditionModel.from_config(config)
+        output = sd_pipe(prompt, number_of_steps=2, output_type="np")
+        image_shape = output.images[0].shape[:2]
+        assert image_shape == [96, 96]
 
     def test_stable_diffusion_pndm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -670,6 +666,43 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         # 100 - 77 + 1 (BOS token) + 1 (EOS token) = 25
         assert cap_logger.out.count("@") == 25
         assert cap_logger_3.out == ""
+
+    def test_stable_diffusion_height_width_opt(self):
+        unet = self.dummy_cond_unet
+        scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        # make sure here that pndm scheduler skips prk
+        sd_pipe = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=scheduler,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=None,
+            feature_extractor=self.dummy_extractor,
+        )
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "hey"
+
+        output = sd_pipe(prompt, number_of_steps=2, output_type="np")
+        image_shape = output.images[0].shape[:2]
+        assert image_shape == [32, 32]
+
+        output = sd_pipe(prompt, number_of_steps=2, height=64, width=64, output_type="np")
+        image_shape = output.images[0].shape[:2]
+        assert image_shape == [64, 64]
+
+        config = dict(sd_pipe.unet.config)
+        config["sample_size"] = 96
+        sd_pipe.unet = UNet2DConditionModel.from_config(config)
+        output = sd_pipe(prompt, number_of_steps=2, output_type="np")
+        image_shape = output.images[0].shape[:2]
+        assert image_shape == [96, 96]
 
 
 @slow
