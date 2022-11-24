@@ -126,7 +126,16 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         variance_type: str = "fixed_small",
         clip_sample: bool = True,
         prediction_type: str = "epsilon",
+        **kwargs,
     ):
+        message = (
+            "Please make sure to instantiate your scheduler with `prediction_type` instead. E.g. `scheduler ="
+            " FlaxDDPMScheduler.from_pretrained(<model_id>, prediction_type='epsilon')`."
+        )
+        predict_epsilon = deprecate("predict_epsilon", "0.10.0", message, take_from=kwargs)
+        if predict_epsilon is not None:
+            prediction_type = "epsilon" if predict_epsilon else "sample"
+
         if trained_betas is not None:
             self.betas = jnp.asarray(trained_betas)
         elif beta_schedule == "linear":

@@ -102,7 +102,6 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         prediction_type (`str`, default `epsilon`):
             indicates whether the model predicts the noise (epsilon), or the samples.
             One of `epsilon`, `sample`. `v-prediction` is not supported for this scheduler.
-
     """
 
     _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
@@ -118,7 +117,16 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         variance_type: str = "fixed_small",
         clip_sample: bool = True,
         prediction_type: str = "epsilon",
+        **kwargs,
     ):
+        message = (
+            "Please make sure to instantiate your scheduler with `prediction_type` instead. E.g. `scheduler ="
+            " DDPMScheduler.from_pretrained(<model_id>, prediction_type='epsilon')`."
+        )
+        predict_epsilon = deprecate("predict_epsilon", "0.10.0", message, take_from=kwargs)
+        if predict_epsilon is not None:
+            prediction_type = "epsilon" if predict_epsilon else "sample"
+
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
         elif beta_schedule == "linear":
