@@ -263,16 +263,16 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
         if self.prediction_type == "epsilon":
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
-            eps = torch.tensor(1)
         elif self.prediction_type == "sample":
             pred_original_sample = model_output
-            eps = torch.tensor(1)
         elif self.prediction_type == "v-prediction":
-            eps = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
             pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
+            # predict V
+            model_output = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
         else:
             raise ValueError(
-                f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample`, or `v-prediction`"
+                f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample`, or"
+                " `v-prediction`"
             )
 
         # 4. Clip "predicted x_0"
@@ -289,14 +289,7 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             model_output = (sample - alpha_prod_t ** (0.5) * pred_original_sample) / beta_prod_t ** (0.5)
 
         # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        if self.prediction_type == "epsilon":
-            pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * model_output
-
-            # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-            prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + eps * pred_sample_direction
-        else:
-            pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * eps
-            prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
+        pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * model_output
 
         # 7. compute x_t without "random noise" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
         prev_sample = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
