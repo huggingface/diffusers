@@ -106,7 +106,6 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         prediction_type (`str`, default `epsilon`):
             indicates whether the model predicts the noise (epsilon), or the samples.
             One of `epsilon`, `sample`. `v-prediction` is not supported for this scheduler.
-
     """
 
     _compatibles = _FLAX_COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
@@ -135,7 +134,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         predict_epsilon = deprecate("predict_epsilon", "0.10.0", message, take_from=kwargs)
         if predict_epsilon is not None:
             prediction_type = "epsilon" if predict_epsilon else "sample"
-
+        
         if trained_betas is not None:
             self.betas = jnp.asarray(trained_betas)
         elif beta_schedule == "linear":
@@ -149,6 +148,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
+        self.prediction_type = prediction_type
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = jnp.cumprod(self.alphas, axis=0)
         self.one = jnp.array(1.0)
@@ -260,9 +260,9 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         # 2. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (15) from https://arxiv.org/pdf/2006.11239.pdf
-        if self.config.prediction_type == "epsilon":
+        if self.prediction_type == "epsilon":
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
-        elif self.config.prediction_type == "sample":
+        elif self.prediction_type == "sample":
             pred_original_sample = model_output
         else:
             raise ValueError(

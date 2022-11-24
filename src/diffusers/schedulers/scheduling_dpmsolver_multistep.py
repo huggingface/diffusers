@@ -158,6 +158,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
+        self.prediction_type = prediction_type
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
         # Currently we only support VP-type noise schedule
@@ -228,10 +229,10 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
         # DPM-Solver++ needs to solve an integral of the data prediction model.
         if self.config.algorithm_type == "dpmsolver++":
-            if self.config.prediction_type == "epsilon":
+            if self.prediction_type == "epsilon":
                 alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
                 x0_pred = (sample - sigma_t * model_output) / alpha_t
-            elif self.config.prediction_type == "sample":
+            elif self.prediction_type == "sample":
                 x0_pred = model_output
             else:
                 raise ValueError(
@@ -252,9 +253,9 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             return x0_pred
         # DPM-Solver needs to solve an integral of the noise prediction model.
         elif self.config.algorithm_type == "dpmsolver":
-            if self.config.prediction_type == "epsilon":
+            if self.prediction_type == "epsilon":
                 return model_output
-            elif self.config.prediction_type == "sample":
+            elif self.prediction_type == "sample":
                 alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
                 epsilon = (sample - alpha_t * model_output) / sigma_t
                 return epsilon
