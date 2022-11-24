@@ -474,9 +474,9 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
-            height (`int`, *optional*, defaults to self.unet.config.sample_size * 8):
+            height (`int`, *optional*, defaults to self.image_unet.config.sample_size * 8):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to self.unet.config.sample_size * 8):
+            width (`int`, *optional*, defaults to self.image_unet.config.sample_size * 8):
                 The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
@@ -552,8 +552,8 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
             returning a tuple, the first element is a list with the generated images.
         """
         # 0. Default height and width to unet
-        height = height or self.unet.config.sample_size * 8
-        width = width or self.unet.config.sample_size * 8
+        height = height or self.image_unet.config.sample_size * 8
+        width = width or self.image_unet.config.sample_size * 8
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(prompt, image, height, width, callback_steps)
