@@ -245,20 +245,24 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         prompt = "A painting of a squirrel eating a burger"
 
-        output = sd_pipe(prompt, number_of_steps=2, output_type="np")
-        image_shape = output.images[0].shape[:2]
-        assert image_shape == [32, 32]
+        generator = torch.Generator(device=device).manual_seed(0)
+        output = sd_pipe(
+            [prompt],
+            generator=generator,
+            guidance_scale=6.0,
+            height=536,
+            width=536,
+            num_inference_steps=2,
+            output_type="np",
+        )
+        image = output.images
 
-        output = sd_pipe(prompt, number_of_steps=2, height=64, width=64, output_type="np")
-        image_shape = output.images[0].shape[:2]
-        assert image_shape == [64, 64]
+        image_slice = image[0, -3:, -3:, -1]
 
-        config = dict(sd_pipe.unet.config)
-        config["sample_size"] = 96
-        sd_pipe.unet = UNet2DConditionModel.from_config(config)
-        output = sd_pipe(prompt, number_of_steps=2, output_type="np")
-        image_shape = output.images[0].shape[:2]
-        assert image_shape == [96, 96]
+        assert image.shape == (1, 134, 134, 3)
+        expected_slice = np.array([0.7834, 0.5488, 0.5781, 0.46, 0.3609, 0.5369, 0.542, 0.4855, 0.5557])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_stable_diffusion_pndm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
