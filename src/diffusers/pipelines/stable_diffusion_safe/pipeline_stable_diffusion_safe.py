@@ -127,6 +127,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
         self._safety_text_concept = safety_concept
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
 
     @property
     def safety_concept(self):
