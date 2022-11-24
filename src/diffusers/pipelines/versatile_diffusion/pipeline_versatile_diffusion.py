@@ -111,8 +111,8 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
     def image_variation(
         self,
         image: Union[torch.FloatTensor, PIL.Image.Image],
-        height: int = 512,
-        width: int = 512,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -131,9 +131,9 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
         Args:
             image (`PIL.Image.Image`, `List[PIL.Image.Image]` or `torch.Tensor`):
                 The image prompt or prompts to guide the image generation.
-            height (`int`, *optional*, defaults to 512):
+            height (`int`, *optional*, defaults to self.image_unet.config.sample_size * 8):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to 512):
+            width (`int`, *optional*, defaults to self.image_unet.config.sample_size * 8):
                 The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
@@ -193,7 +193,7 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
         >>> pipe = pipe.to("cuda")
 
         >>> generator = torch.Generator(device="cuda").manual_seed(0)
-        >>> image = pipe(image, generator=generator).images[0]
+        >>> image = pipe.image_variation(image, generator=generator).images[0]
         >>> image.save("./car_variation.png")
         ```
 
@@ -227,8 +227,8 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
     def text_to_image(
         self,
         prompt: Union[str, List[str]],
-        height: int = 512,
-        width: int = 512,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -247,9 +247,9 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
-            height (`int`, *optional*, defaults to 512):
+            height (`int`, *optional*, defaults to self.image_unet.config.sample_size * 8):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to 512):
+            width (`int`, *optional*, defaults to self.image_unet.config.sample_size * 8):
                 The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
@@ -341,8 +341,8 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
         prompt: Union[PIL.Image.Image, List[PIL.Image.Image]],
         image: Union[str, List[str]],
         text_to_image_strength: float = 0.5,
-        height: int = 512,
-        width: int = 512,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         num_images_per_prompt: Optional[int] = 1,
@@ -360,9 +360,9 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
-            height (`int`, *optional*, defaults to 512):
+            height (`int`, *optional*, defaults to self.image_unet.config.sample_size * 8):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to 512):
+            width (`int`, *optional*, defaults to self.image_unet.config.sample_size * 8):
                 The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the

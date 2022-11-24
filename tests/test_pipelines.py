@@ -436,7 +436,7 @@ class PipelineFastTests(unittest.TestCase):
 
         assert image_inpaint.shape == (1, 32, 32, 3)
         assert image_img2img.shape == (1, 32, 32, 3)
-        assert image_text2img.shape == (1, 128, 128, 3)
+        assert image_text2img.shape == (1, 64, 64, 3)
 
     def test_set_scheduler(self):
         unet = self.dummy_cond_unet

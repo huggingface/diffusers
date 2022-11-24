@@ -172,8 +172,8 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        height: Optional[int] = 512,
-        width: Optional[int] = 512,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -187,6 +187,10 @@ class OnnxStableDiffusionPipeline(DiffusionPipeline):
         callback_steps: Optional[int] = 1,
         **kwargs,
     ):
+        # 0. Default height and width to unet
+        height = height or self.unet.config.sample_size * 8
+        width = width or self.unet.config.sample_size * 8
+
         if isinstance(prompt, str):
             batch_size = 1
         elif isinstance(prompt, list):
