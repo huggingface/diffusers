@@ -146,7 +146,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             )
 
         is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
-            version.parse(self.unet.config._diffusers_version).base_version
+            version.parse(unet.config._diffusers_version).base_version
         ) < version.parse("0.9.0.dev0")
         is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
         if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
