@@ -267,12 +267,12 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         elif self.prediction_type == "sample":
             pred_original_sample = model_output
             eps = torch.tensor(1)
-        elif self.prediction_type == "velocity":
+        elif self.prediction_type == "v-prediction":
             eps = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
             pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
         else:
             raise ValueError(
-                f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample`, or `velocity`"
+                f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample`, or `v-prediction`"
             )
 
         # 4. Clip "predicted x_0"
