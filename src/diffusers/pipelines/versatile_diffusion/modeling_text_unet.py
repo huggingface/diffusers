@@ -166,7 +166,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             "CrossAttnUpBlockFlat",
             "CrossAttnUpBlockFlat",
         ),
-        only_cross_attention: Tuple[bool] = (True, True, True, True),
+        only_cross_attention: Union[bool, Tuple[bool]] = False,
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
         downsample_padding: int = 1,
@@ -201,6 +201,9 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         self.down_blocks = nn.ModuleList([])
         self.mid_block = None
         self.up_blocks = nn.ModuleList([])
+
+        if isinstance(only_cross_attention, bool):
+            only_cross_attention = [only_cross_attention] * len(down_block_types)
 
         if isinstance(attention_head_dim, int):
             attention_head_dim = (attention_head_dim,) * len(down_block_types)
