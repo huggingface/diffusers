@@ -709,7 +709,7 @@ class DiffusionPipeline(ConfigMixin):
         Returns:
             A dictionaly containing all the modules needed to initialize the pipeline.
         """
-        components = {k: getattr(self, k) for k in self.config.keys() if not k.startswith("_")}
+        components = {k: getattr(self, k) for k, v in self.config.items() if not k.startswith("_") and isinstance(v, (list, tuple))}
         expected_modules, _ = self._get_signature_keys(self)
 
         if set(components.keys()) != expected_modules:
