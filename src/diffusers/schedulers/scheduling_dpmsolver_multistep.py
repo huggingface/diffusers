@@ -134,6 +134,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         algorithm_type: str = "dpmsolver++",
         solver_type: str = "midpoint",
         lower_order_final: bool = True,
+        **kwargs,
     ):
         message = (
             "Please make sure to instantiate your scheduler with `prediction_type` instead. E.g. `scheduler ="
