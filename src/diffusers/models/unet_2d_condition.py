@@ -229,15 +229,17 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, kernel_size=3, padding=1)
 
     def set_attention_slice(self, slice_size):
-        if slice_size is not None and self.config.attention_head_dim % slice_size != 0:
+        head_dims = self.config.attention_head_dim
+        head_dims = [head_dims] if isinstance(head_dims, int) else head_dims
+        if slice_size is not None and any(dim % slice_size != 0 for dim in head_dims):
             raise ValueError(
-                f"Make sure slice_size {slice_size} is a divisor of "
-                f"the number of heads used in cross_attention {self.config.attention_head_dim}"
+                f"Make sure slice_size {slice_size} is a common divisor of "
+                f"the number of heads used in cross_attention: {head_dims}"
             )
-        if slice_size is not None and slice_size > self.config.attention_head_dim:
+        if slice_size is not None and slice_size > min(head_dims):
             raise ValueError(
-                f"Chunk_size {slice_size} has to be smaller or equal to "
-                f"the number of heads used in cross_attention {self.config.attention_head_dim}"
+                f"slice_size {slice_size} has to be smaller or equal to "
+                f"the lowest number of heads used in cross_attention: min({head_dims}) = {min(head_dims)}"
             )
 
         for block in self.down_blocks:

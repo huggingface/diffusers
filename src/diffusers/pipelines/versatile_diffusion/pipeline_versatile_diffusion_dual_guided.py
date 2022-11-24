@@ -178,9 +178,14 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
                 `attention_head_dim` must be a multiple of `slice_size`.
         """
         if slice_size == "auto":
-            # half the attention head size is usually a good trade-off between
-            # speed and memory
-            slice_size = self.image_unet.config.attention_head_dim // 2
+            if isinstance(self.image_unet.config.attention_head_dim, int):
+                # half the attention head size is usually a good trade-off between
+                # speed and memory
+                slice_size = self.image_unet.config.attention_head_dim // 2
+            else:
+                # if `attention_head_dim` is a list, take the smallest head size
+                slice_size = min(self.image_unet.config.attention_head_dim)
+
         self.image_unet.set_attention_slice(slice_size)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_attention_slicing
