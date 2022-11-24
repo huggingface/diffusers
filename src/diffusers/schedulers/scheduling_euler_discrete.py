@@ -239,7 +239,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             pred_original_sample = model_output * (-sigma / (sigma**2 + 1) ** 0.5) + (sample / (sigma**2 + 1))
         else:
             raise ValueError(
-                f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample`, or"
+                f"prediction_type given as {self.prediction_type} must be one of `epsilon`, or"
                 " `v_prediction`"
             )
 
