@@ -128,7 +128,6 @@ class DDPMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert np.abs(image_slice.flatten() - image_eps_slice.flatten()).max() < tolerance
 
 
-
 @slow
 @require_torch_gpu
 class DDPMPipelineIntegrationTests(unittest.TestCase):

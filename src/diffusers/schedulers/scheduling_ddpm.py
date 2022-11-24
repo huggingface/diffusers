@@ -100,8 +100,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         clip_sample (`bool`, default `True`):
             option to clip predicted sample between -1 and 1 for numerical stability.
         prediction_type (`str`, default `epsilon`):
-            indicates whether the model predicts the noise (epsilon), or the samples.
-            One of `epsilon`, `sample`. `v-prediction` is not supported for this scheduler.
+            indicates whether the model predicts the noise (epsilon), or the samples. One of `epsilon`, `sample`.
+            `v-prediction` is not supported for this scheduler.
     """
 
     _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()

@@ -107,8 +107,8 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
             `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
             stable diffusion.
         prediction_type (`str`, default `epsilon`):
-            indicates whether the model predicts the noise (epsilon), or the samples.
-            One of `epsilon`, `sample`. `v-prediction` is not supported for this scheduler.
+            indicates whether the model predicts the noise (epsilon), or the samples. One of `epsilon`, `sample`.
+            `v-prediction` is not supported for this scheduler.
 
     """
 

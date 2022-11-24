@@ -110,8 +110,8 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
             `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
             stable diffusion.
         prediction_type (`str`, default `epsilon`):
-            indicates whether the model predicts the noise (epsilon), or the samples.
-            One of `epsilon`, `sample`. `v-prediction` is not supported for this scheduler.
+            indicates whether the model predicts the noise (epsilon), or the samples. One of `epsilon`, `sample`.
+            `v-prediction` is not supported for this scheduler.
 
     """
 
@@ -140,7 +140,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         predict_epsilon = deprecate("predict_epsilon", "0.10.0", message, take_from=kwargs)
         if predict_epsilon is not None:
             prediction_type = "epsilon" if predict_epsilon else "sample"
-            
+
         self.prediction_type = prediction_type
 
         if beta_schedule == "linear":

@@ -88,8 +88,8 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             the order of DPM-Solver; can be `1` or `2` or `3`. We recommend to use `solver_order=2` for guided
             sampling, and `solver_order=3` for unconditional sampling.
         prediction_type (`str`, default `epsilon`):
-            indicates whether the model predicts the noise (epsilon), or the data / `x0`.
-            One of `epsilon`, `sample`. `v-prediction` is not supported for this scheduler.
+            indicates whether the model predicts the noise (epsilon), or the data / `x0`. One of `epsilon`, `sample`.
+            `v-prediction` is not supported for this scheduler.
         thresholding (`bool`, default `False`):
             whether to use the "dynamic thresholding" method (introduced by Imagen, https://arxiv.org/abs/2205.11487).
             For pixel-space diffusion models, you can set both `algorithm_type=dpmsolver++` and `thresholding=True` to
