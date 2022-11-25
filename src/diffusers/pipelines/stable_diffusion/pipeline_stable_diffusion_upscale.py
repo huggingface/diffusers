@@ -34,6 +34,12 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def preprocess(image):
+    # resize to multiple of 64
+    width, height = image.size
+    width = width - width % 64
+    height = height - height % 64
+    image = image.resize((width, height))
+
     image = np.array(image.convert("RGB"))
     image = image[None].transpose(0, 3, 1, 2)
     image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
@@ -350,15 +356,6 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
                     f"`prompt` has batch size {batch_size} and `image` has batch size {image_batch_size}."
                     " Please make sure that passed `prompt` matches the batch size of `image`."
                 )
-
-        # get height and width of image
-        if isinstance(image, PIL.Image.Image):
-            width, height = image.size
-        elif isinstance(image, torch.Tensor):
-            width, height = image.shape[-2:]
-
-        if height % 8 != 0 or width % 8 != 0:
-            raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
