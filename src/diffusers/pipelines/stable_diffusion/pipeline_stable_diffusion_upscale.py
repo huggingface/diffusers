@@ -33,6 +33,13 @@ from .safety_checker import StableDiffusionSafetyChecker
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+def preprocess(image):
+    image = np.array(image.convert("RGB"))
+    image = image[None].transpose(0, 3, 1, 2)
+    image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
+    return image
+
+
 class StableDiffusionUpscalePipeline(DiffusionPipeline):
     r"""
     Pipeline for text-guided image inpainting using Stable Diffusion. *This is an experimental feature*.
@@ -67,7 +74,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        low_res_scheduler: Union[DDPMScheduler, DDIMScheduler],
+        low_res_scheduler: DDPMScheduler,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
@@ -315,10 +322,40 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
-    def check_inputs(self, prompt, height, width, callback_steps):
+    def check_inputs(self, prompt, image, callback_steps):
         if not isinstance(prompt, str) and not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        if (
+            not isinstance(image, torch.Tensor)
+            and not isinstance(image, PIL.Image.Image)
+            and not isinstance(image, list)
+        ):
+            raise ValueError(
+                f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or `list` but is {type(image)}"
+            )
+
+        # verify batch size of prompt and image are same if image is a list or tensor
+        if isinstance(image, list) or isinstance(image, torch.Tensor):
+            if isinstance(prompt, str):
+                batch_size = 1
+            else:
+                batch_size = len(prompt)
+            if isinstance(image, list):
+                image_batch_size = len(image)
+            else:
+                image_batch_size = image.shape[0]
+            if batch_size != image_batch_size:
+                raise ValueError(
+                    f"`prompt` has batch size {batch_size} and `image` has batch size {image_batch_size}."
+                    " Please make sure that passed `prompt` matches the batch size of `image`."
+                )
+
+        # get height and width of image
+        if isinstance(image, PIL.Image.Image):
+            width, height = image.size
+        elif isinstance(image, torch.Tensor):
+            width, height = image.shape[-2:]
 
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -352,9 +389,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        image: Union[torch.FloatTensor, PIL.Image.Image],
-        height: int = 512,
-        width: int = 512,
+        image: Union[torch.FloatTensor, PIL.Image.Image, List[PIL.Image.Image]],
         num_inference_steps: int = 75,
         guidance_scale: float = 9.0,
         noise_level: int = 20,
@@ -376,13 +411,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
             image (`PIL.Image.Image`):
-                `Image`, or tensor representing an image batch which will be inpainted, *i.e.* parts of the image will
-                be masked out with `mask_image` and repainted according to `prompt`.
-            mask_image (`PIL.Image.Image`):
-                `Image`, or tensor representing an image batch, to mask `image`. White pixels in the mask will be
-                repainted, while black pixels will be preserved. If `mask_image` is a PIL image, it will be converted
-                to a single channel (luminance) before use. If it's a tensor, it should contain one color channel (L)
-                instead of 3, so the expected shape would be `(B, H, W, 1)`.
+                `Image`, or tensor representing an image batch which will be upscaled. *
             height (`int`, *optional*, defaults to 512):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to 512):
@@ -433,7 +462,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         """
 
         # 1. Check inputs
-        self.check_inputs(prompt, height, width, callback_steps)
+        self.check_inputs(prompt, image, callback_steps)
 
         # 2. Define call parameters
         batch_size = 1 if isinstance(prompt, str) else len(prompt)
@@ -449,11 +478,11 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         )
 
         # 4. Preprocess image
-        if isinstance(image, PIL.Image.Image):
-            image = np.array(image.convert("RGB"))
-            image = image[None].transpose(0, 3, 1, 2)
-            image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
-            image = image.to(dtype=text_embeddings.dtype, device=device)
+        image = [image] if isinstance(image, PIL.Image.Image) else image
+        if isinstance(image, list):
+            image = [preprocess(img) for img in image]
+            image = torch.stack(image, dim=0)
+        image = image.to(dtype=text_embeddings.dtype, device=device)
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -471,6 +500,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         noise_level = torch.cat([noise_level] * 2) if do_classifier_free_guidance else noise_level
 
         # 6. Prepare latent variables
+        height, width = image.shape[2:]
         num_channels_latents = self.vae.config.latent_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
@@ -482,8 +512,6 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
             generator,
             latents,
         )
-        
-        print(image.shape, latents.shape)
 
         # 7. Check that sizes of image and latents match
         num_channels_image = image.shape[1]
