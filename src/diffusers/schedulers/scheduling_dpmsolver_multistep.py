@@ -236,7 +236,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 x0_pred = model_output
             else:
                 raise ValueError(
-                    f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample` "
+                    f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample` "
                     " for the DPMSolverMultistepScheduler."
                 )
 
@@ -261,7 +261,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 return epsilon
             else:
                 raise ValueError(
-                    f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample` "
+                    f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample` "
                     " for the DPMSolverMultistepScheduler."
                 )
 

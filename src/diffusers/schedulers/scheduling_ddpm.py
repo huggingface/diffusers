@@ -146,7 +146,6 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
-        self.prediction_type = prediction_type
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
         self.one = torch.tensor(1.0)
@@ -275,13 +274,13 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         # 2. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (15) from https://arxiv.org/pdf/2006.11239.pdf
-        if self.prediction_type == "epsilon":
+        if self.config.prediction_type == "epsilon":
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
-        elif self.prediction_type == "sample":
+        elif self.config.prediction_type == "sample":
             pred_original_sample = model_output
         else:
             raise ValueError(
-                f"prediction_type given as {self.prediction_type} must be one of `epsilon`, `sample` "
+                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample` "
                 " for the DDPMScheduler."
             )
 

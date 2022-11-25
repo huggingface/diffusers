@@ -92,8 +92,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
 
-        self.prediction_type = prediction_type
-
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
 
@@ -232,14 +230,14 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             sample = sample + eps * (sigma_hat**2 - sigma**2) ** 0.5
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
-        if self.prediction_type == "epsilon":
+        if self.config.prediction_type == "epsilon":
             pred_original_sample = sample - sigma_hat * model_output
-        elif self.prediction_type == "v_prediction":
+        elif self.config.prediction_type == "v_prediction":
             # * c_out + input * c_skip
             pred_original_sample = model_output * (-sigma / (sigma**2 + 1) ** 0.5) + (sample / (sigma**2 + 1))
         else:
             raise ValueError(
-                f"prediction_type given as {self.prediction_type} must be one of `epsilon`, or `v_prediction`"
+                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
             )
 
         # 2. Convert to an ODE derivative
