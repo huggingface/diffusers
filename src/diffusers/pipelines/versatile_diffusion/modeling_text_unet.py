@@ -1039,7 +1039,6 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         cross_attention_dim=1280,
         dual_cross_attention=False,
         use_linear_projection=False,
-        **kwargs,
     ):
         super().__init__()
 
