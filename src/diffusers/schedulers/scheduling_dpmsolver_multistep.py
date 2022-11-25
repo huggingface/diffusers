@@ -237,7 +237,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 x0_pred = model_output
             elif self.config.prediction_type == "v_prediction":
                 alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
-                x0_pred = alpha_t * sample + sigma_t * model_output
+                x0_pred = alpha_t * sample - sigma_t * model_output
             else:
                 raise ValueError(
                     f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
