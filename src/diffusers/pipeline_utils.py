@@ -554,7 +554,9 @@ class DiffusionPipeline(ConfigMixin):
         init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
 
         if len(unused_kwargs) > 0:
-            logger.warning(f"Keyword arguments {unused_kwargs} not recognized.")
+            logger.warning(
+                f"Keyword arguments {unused_kwargs} are not expected by {pipeline_class.__name__} and will be ignored."
+            )
 
         # import it here to avoid circular import
         from diffusers import pipelines
@@ -680,8 +682,8 @@ class DiffusionPipeline(ConfigMixin):
     @staticmethod
     def _get_signature_keys(obj):
         parameters = inspect.signature(obj.__init__).parameters
-        required_parameters = {k: v for k, v in parameters.items() if v.default is not True}
-        optional_parameters = set({k for k, v in parameters.items() if v.default is True})
+        required_parameters = {k: v for k, v in parameters.items() if v.default == inspect._empty}
+        optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
         expected_modules = set(required_parameters.keys()) - set(["self"])
         return expected_modules, optional_parameters
 
