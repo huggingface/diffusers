@@ -125,7 +125,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         """
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
-        step_index = self.timesteps.tolist().index(timestep)
+        step_index = (self.timesteps == timestep).nonzero().item()
         sigma = self.sigmas[step_index]
         sample = sample / ((sigma**2 + 1) ** 0.5)
         self.is_scale_input_called = True
@@ -209,7 +209,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
 
-        step_index = self.timesteps.tolist().index(timestep)
+        step_index = (self.timesteps == timestep).nonzero().item()
         sigma = self.sigmas[step_index]
 
         gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
