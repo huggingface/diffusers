@@ -20,7 +20,6 @@ import random
 import shutil
 import tempfile
 import unittest
-from functools import partial
 
 import numpy as np
 import torch
@@ -332,14 +331,13 @@ class PipelineFastTests(unittest.TestCase):
     @parameterized.expand(
         [
             [DDIMScheduler, DDIMPipeline, 32],
-            [partial(DDPMScheduler, predict_epsilon=True), DDPMPipeline, 32],
+            [DDPMScheduler, DDPMPipeline, 32],
             [DDIMScheduler, DDIMPipeline, (32, 64)],
-            [partial(DDPMScheduler, predict_epsilon=True), DDPMPipeline, (64, 32)],
+            [DDPMScheduler, DDPMPipeline, (64, 32)],
         ]
     )
     def test_uncond_unet_components(self, scheduler_fn=DDPMScheduler, pipeline_fn=DDPMPipeline, sample_size=32):
         unet = self.dummy_uncond_unet(sample_size)
-        # DDIM doesn't take `predict_epsilon`, and DDPM requires it -- so using partial in parameterized decorator
         scheduler = scheduler_fn()
         pipeline = pipeline_fn(unet, scheduler).to(torch_device)
 
