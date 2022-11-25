@@ -141,7 +141,6 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         if predict_epsilon is not None:
             prediction_type = "epsilon" if predict_epsilon else "sample"
 
-        self.prediction_type = prediction_type
 
         if beta_schedule == "linear":
             self.betas = jnp.linspace(beta_start, beta_end, num_train_timesteps, dtype=jnp.float32)
@@ -276,9 +275,9 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
 
         # 3. compute predicted original sample from predicted noise also called
         # "predicted x_0" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-        if self.prediction_type == "epsilon":
+        if self.config.prediction_type == "epsilon":
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
-        elif self.prediction_type == "sample":
+        elif self.config.prediction_type == "sample":
             pred_original_sample = model_output
         elif self.prediction_type == "v_prediction":
             pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
