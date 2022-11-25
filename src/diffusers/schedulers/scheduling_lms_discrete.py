@@ -122,7 +122,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         """
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
-        step_index = (self.timesteps == timestep).nonzero().item()
+        step_index = self.timesteps.tolist().index(timestep)
         sigma = self.sigmas[step_index]
         sample = sample / ((sigma**2 + 1) ** 0.5)
         self.is_scale_input_called = True
@@ -210,7 +210,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
-        step_index = (self.timesteps == timestep).nonzero().item()
+        step_index = self.timesteps.tolist().index(timestep)
         sigma = self.sigmas[step_index]
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise

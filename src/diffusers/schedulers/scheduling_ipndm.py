@@ -101,7 +101,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
             )
 
-        timestep_index = (self.timesteps == timestep).nonzero().item()
+        timestep_index = self.timesteps.tolist().index(timestep)
         prev_timestep_index = timestep_index + 1
 
         ets = sample * self.betas[timestep_index] + model_output * self.alphas[timestep_index]
