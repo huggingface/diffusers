@@ -199,6 +199,7 @@ class ConfigMixin:
         if "dtype" in unused_kwargs:
             init_dict["dtype"] = unused_kwargs.pop("dtype")
 
+        # add possible deprecated kwargs
         for deprecated_kwarg in cls._deprecated_kwargs:
             if deprecated_kwarg in unused_kwargs:
                 init_dict[deprecated_kwarg] = unused_kwargs.pop(deprecated_kwarg)
