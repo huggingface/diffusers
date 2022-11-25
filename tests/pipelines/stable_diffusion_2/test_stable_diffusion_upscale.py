@@ -204,7 +204,7 @@ class StableDiffusionUpscalePipelineFastTests(PipelineTesterMixin, unittest.Test
         assert image.shape == (1, expected_height_width, expected_height_width, 3)
 
 
-# @slow
+@slow
 @require_torch_gpu
 class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
@@ -214,31 +214,27 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_stable_diffusion_upscale_pipeline(self):
-        init_image = load_image(
+        image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/sd2-upscale/init_image.png"
-        )
-        mask_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd2-upscale/mask.png"
+            "/sd2-upscale/low_res_cat.png"
         )
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd2-upscale"
-            "/yellow_cat_sitting_on_a_park_bench.npy"
+            "/upsampled_cat.npy"
         )
 
-        model_id = "stabilityai/stable-diffusion-2-upscaleing"
-        pipe = StableDiffusionUpscalePipeline.from_pretrained(model_id, safety_checker=None)
+        model_id = "stabilityai/stable-diffusion-x4-upscaler"
+        pipe = StableDiffusionUpscalePipeline.from_pretrained(model_id)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
+        prompt = "a cat sitting on a park bench"
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
         output = pipe(
             prompt=prompt,
-            image=init_image,
-            mask_image=mask_image,
+            image=image,
             generator=generator,
             output_type="np",
         )
@@ -248,19 +244,16 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
         assert np.abs(expected_image - image).max() < 1e-3
 
     def test_stable_diffusion_upscale_pipeline_fp16(self):
-        init_image = load_image(
+        image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/sd2-upscale/init_image.png"
-        )
-        mask_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd2-upscale/mask.png"
+            "/sd2-upscale/low_res_cat.png"
         )
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd2-upscale"
-            "/yellow_cat_sitting_on_a_park_bench_fp16.npy"
+            "/upsampled_cat_fp16.npy"
         )
 
-        model_id = "stabilityai/stable-diffusion-2-upscaleing"
+        model_id = "stabilityai/stable-diffusion-x4-upscaler"
         pipe = StableDiffusionUpscalePipeline.from_pretrained(
             model_id,
             revision="fp16",
@@ -271,13 +264,12 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
 
-        prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
+        prompt = "a cat sitting on a park bench"
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
         output = pipe(
             prompt=prompt,
-            image=init_image,
-            mask_image=mask_image,
+            image=image,
             generator=generator,
             output_type="np",
         )
@@ -291,15 +283,12 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
 
-        init_image = load_image(
+        image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/sd2-upscale/init_image.png"
-        )
-        mask_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd2-upscale/mask.png"
+            "/sd2-upscale/low_res_cat.png"
         )
 
-        model_id = "stabilityai/stable-diffusion-2-upscaleing"
+        model_id = "stabilityai/stable-diffusion-x4-upscaler"
         pipe = StableDiffusionUpscalePipeline.from_pretrained(
             model_id,
             safety_checker=None,
@@ -311,13 +300,12 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
         pipe.enable_attention_slicing(1)
         pipe.enable_sequential_cpu_offload()
 
-        prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
+        prompt = "a cat sitting on a park bench"
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
         _ = pipe(
             prompt=prompt,
-            image=init_image,
-            mask_image=mask_image,
+            image=image,
             generator=generator,
             num_inference_steps=5,
             output_type="np",
