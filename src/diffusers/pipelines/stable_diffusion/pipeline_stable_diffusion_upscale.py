@@ -481,7 +481,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         image = [image] if isinstance(image, PIL.Image.Image) else image
         if isinstance(image, list):
             image = [preprocess(img) for img in image]
-            image = torch.stack(image, dim=0)
+            image = torch.cat(image, dim=0)
         image = image.to(dtype=text_embeddings.dtype, device=device)
 
         # 5. set timesteps
