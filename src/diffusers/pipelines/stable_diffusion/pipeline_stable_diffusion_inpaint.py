@@ -238,7 +238,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
             unet=unet,
             scheduler=scheduler,
             safety_checker=None, #safety_checker,
-            feature_extractor=feature_extractor,
+            feature_extractor=None, #feature_extractor,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
