@@ -26,7 +26,7 @@ class DeprecateTester(unittest.TestCase):
     def test_deprecate_function_arg(self):
         kwargs = {"deprecated_arg": 4}
 
-        with self.assertWarns(DeprecationWarning) as warning:
+        with self.assertWarns(FutureWarning) as warning:
             output = deprecate("deprecated_arg", self.higher_version, "message", take_from=kwargs)
 
         assert output == 4
@@ -39,7 +39,7 @@ class DeprecateTester(unittest.TestCase):
     def test_deprecate_function_arg_tuple(self):
         kwargs = {"deprecated_arg": 4}
 
-        with self.assertWarns(DeprecationWarning) as warning:
+        with self.assertWarns(FutureWarning) as warning:
             output = deprecate(("deprecated_arg", self.higher_version, "message"), take_from=kwargs)
 
         assert output == 4
@@ -51,7 +51,7 @@ class DeprecateTester(unittest.TestCase):
 
     def test_deprecate_function_args(self):
         kwargs = {"deprecated_arg_1": 4, "deprecated_arg_2": 8}
-        with self.assertWarns(DeprecationWarning) as warning:
+        with self.assertWarns(FutureWarning) as warning:
             output_1, output_2 = deprecate(
                 ("deprecated_arg_1", self.higher_version, "Hey"),
                 ("deprecated_arg_2", self.higher_version, "Hey"),
@@ -81,7 +81,7 @@ class DeprecateTester(unittest.TestCase):
         assert "got an unexpected keyword argument `deprecated_arg`" in str(error.exception)
 
     def test_deprecate_arg_no_kwarg(self):
-        with self.assertWarns(DeprecationWarning) as warning:
+        with self.assertWarns(FutureWarning) as warning:
             deprecate(("deprecated_arg", self.higher_version, "message"))
 
         assert (
@@ -90,7 +90,7 @@ class DeprecateTester(unittest.TestCase):
         )
 
     def test_deprecate_args_no_kwarg(self):
-        with self.assertWarns(DeprecationWarning) as warning:
+        with self.assertWarns(FutureWarning) as warning:
             deprecate(
                 ("deprecated_arg_1", self.higher_version, "Hey"),
                 ("deprecated_arg_2", self.higher_version, "Hey"),
@@ -108,7 +108,7 @@ class DeprecateTester(unittest.TestCase):
         class Args:
             arg = 5
 
-        with self.assertWarns(DeprecationWarning) as warning:
+        with self.assertWarns(FutureWarning) as warning:
             arg = deprecate(("arg", self.higher_version, "message"), take_from=Args())
 
         assert arg == 5
@@ -122,7 +122,7 @@ class DeprecateTester(unittest.TestCase):
             arg = 5
             foo = 7
 
-        with self.assertWarns(DeprecationWarning) as warning:
+        with self.assertWarns(FutureWarning) as warning:
             arg_1, arg_2 = deprecate(
                 ("arg", self.higher_version, "message"),
                 ("foo", self.higher_version, "message"),
@@ -158,7 +158,7 @@ class DeprecateTester(unittest.TestCase):
         )
 
     def test_deprecate_incorrect_no_standard_warn(self):
-        with self.assertWarns(DeprecationWarning) as warning:
+        with self.assertWarns(FutureWarning) as warning:
             deprecate(("deprecated_arg", self.higher_version, "This message is better!!!"), standard_warn=False)
 
         assert str(warning.warning) == "This message is better!!!"
