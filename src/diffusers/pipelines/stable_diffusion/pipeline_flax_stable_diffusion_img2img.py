@@ -212,13 +212,13 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
         noise = jax.random.normal(prng_seed, shape=latents_shape, dtype=self.dtype)
 
         def loop_body(step, args):
-            latents, scheduler_state = args
+            latents, timesteps, scheduler_state = args
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             latents_input = jnp.concatenate([latents] * 2)
 
-            t = jnp.array(scheduler_state.timesteps, dtype=jnp.int32)[step]
+            t = jnp.array(timesteps, dtype=jnp.int32)[step]
             timestep = jnp.broadcast_to(t, latents_input.shape[0])
 
             latents_input = self.scheduler.scale_model_input(scheduler_state, latents_input, t)
@@ -236,7 +236,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
 
             # compute the previous noisy sample x_t -> x_t-1
             latents, scheduler_state = self.scheduler.step(scheduler_state, noise_pred, t, latents).to_tuple()
-            return latents, scheduler_state
+            return latents, timestep,scheduler_state
 
         scheduler_state = self.scheduler.set_timesteps(
             params["scheduler"], num_inference_steps=num_inference_steps, shape=latents_shape
@@ -249,10 +249,10 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
 
         if debug:
             # run with python for loop
-            for i in range(num_inference_steps):
-                latents, scheduler_state = loop_body(i, (latents, scheduler_state))
+            for i in range(len(timesteps)):
+                latents, timesteps, scheduler_state = loop_body(i, (latents, timesteps, scheduler_state))
         else:
-            latents, _ = jax.lax.fori_loop(0, num_inference_steps, loop_body, (latents, scheduler_state))
+            latents, _, _ = jax.lax.fori_loop(0, len(timesteps), loop_body, (latents, timesteps, scheduler_state))
 
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
