@@ -254,7 +254,6 @@ class UNetMidBlock2D(nn.Module):
         attn_num_head_channels=1,
         attention_type="default",
         output_scale_factor=1.0,
-        **kwargs,
     ):
         super().__init__()
 
@@ -336,7 +335,6 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         cross_attention_dim=1280,
         dual_cross_attention=False,
         use_linear_projection=False,
-        **kwargs,
     ):
         super().__init__()
 
