@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import inspect
 import tempfile
 import unittest
 from typing import Dict, List, Tuple
@@ -227,6 +228,27 @@ class FlaxSchedulerCommonTest(unittest.TestCase):
             outputs_tuple = scheduler.step(state, residual, 0, sample, key, return_dict=False, **kwargs)
 
             recursive_check(outputs_tuple[0], outputs_dict.prev_sample)
+
+    def test_deprecated_kwargs(self):
+        for scheduler_class in self.scheduler_classes:
+            has_kwarg_in_model_class = "kwargs" in inspect.signature(scheduler_class.__init__).parameters
+            has_deprecated_kwarg = len(scheduler_class._deprecated_kwargs) > 0
+
+            if has_kwarg_in_model_class and not has_deprecated_kwarg:
+                raise ValueError(
+                    f"{scheduler_class} has `**kwargs` in its __init__ method but has not defined any deprecated"
+                    " kwargs under the `_deprecated_kwargs` class attribute. Make sure to either remove `**kwargs` if"
+                    " there are no deprecated arguments or add the deprecated argument with `_deprecated_kwargs ="
+                    " [<deprecated_argument>]`"
+                )
+
+            if not has_kwarg_in_model_class and has_deprecated_kwarg:
+                raise ValueError(
+                    f"{scheduler_class} doesn't have `**kwargs` in its __init__ method but has defined deprecated"
+                    " kwargs under the `_deprecated_kwargs` class attribute. Make sure to either add the `**kwargs`"
+                    f" argument to {self.model_class}.__init__ if there are deprecated arguments or remove the"
+                    " deprecated argument from `_deprecated_kwargs = [<deprecated_argument>]`"
+                )
 
 
 @require_flax
