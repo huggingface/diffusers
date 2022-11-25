@@ -75,6 +75,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         unet: UNet2DConditionModel,
         low_res_scheduler: DDPMScheduler,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
+        max_noise_level: int,
     ):
         super().__init__()
 
@@ -86,6 +87,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
             low_res_scheduler=low_res_scheduler,
             scheduler=scheduler,
         )
+        self.register_to_config(max_noise_level=max_noise_level)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_attention_slicing
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
@@ -306,7 +308,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
-    def check_inputs(self, prompt, image, callback_steps):
+    def check_inputs(self, prompt, image, noise_level, callback_steps):
         if not isinstance(prompt, str) and not isinstance(prompt, list):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
@@ -334,6 +336,10 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
                     f"`prompt` has batch size {batch_size} and `image` has batch size {image_batch_size}."
                     " Please make sure that passed `prompt` matches the batch size of `image`."
                 )
+
+        # check noise level
+        if noise_level > self.config.max_noise_level:
+            raise ValueError(f"`noise_level` has to be <= {self.config.max_noise_level} but is {noise_level}")
 
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
@@ -433,7 +439,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         """
 
         # 1. Check inputs
-        self.check_inputs(prompt, image, callback_steps)
+        self.check_inputs(prompt, image, noise_level, callback_steps)
 
         # 2. Define call parameters
         batch_size = 1 if isinstance(prompt, str) else len(prompt)
