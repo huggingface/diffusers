@@ -57,6 +57,8 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
     vae: AutoencoderKL
     scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler]
 
+    _optional_components = ["text_unet"]
+
     def __init__(
         self,
         tokenizer: CLIPTokenizer,

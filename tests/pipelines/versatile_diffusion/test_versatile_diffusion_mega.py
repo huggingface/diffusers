@@ -104,7 +104,7 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.014, 0.0112, 0.0136, 0.0145, 0.0107, 0.0113, 0.0272, 0.0215, 0.0216])
+        expected_slice = np.array([0.0081, 0.0032, 0.0002, 0.0056, 0.0027, 0.0000, 0.0051, 0.0020, 0.0007])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
         prompt = "A painting of a squirrel eating a burger "
@@ -119,11 +119,10 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         expected_slice = np.array([0.0408, 0.0181, 0.0, 0.0388, 0.0046, 0.0461, 0.0411, 0.0, 0.0222])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-        pipe = VersatileDiffusionPipeline.from_pretrained("shi-labs/versatile-diffusion", torch_dtype=torch.float16)
-        image = pipe.image_variation(init_image, generator=generator, output_type="numpy").images[0]
+        image = pipe.image_variation(init_image, generator=generator, output_type="numpy").images
 
         image_slice = image[0, 253:256, 253:256, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.0657, 0.0529, 0.0455, 0.0802, 0.0570, 0.0179, 0.0267, 0.0483, 0.0769])
+        expected_slice = np.array([0.3479, 0.1943, 0.1060, 0.3894, 0.2537, 0.1394, 0.3989, 0.3191, 0.1987])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
