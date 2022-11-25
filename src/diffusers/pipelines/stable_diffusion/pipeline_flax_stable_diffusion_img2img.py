@@ -236,7 +236,7 @@ class FlaxStableDiffusionImg2ImgPipeline(FlaxDiffusionPipeline):
 
             # compute the previous noisy sample x_t -> x_t-1
             latents, scheduler_state = self.scheduler.step(scheduler_state, noise_pred, t, latents).to_tuple()
-            return latents, timestep,scheduler_state
+            return latents, timestep, scheduler_state
 
         scheduler_state = self.scheduler.set_timesteps(
             params["scheduler"], num_inference_steps=num_inference_steps, shape=latents_shape
