@@ -1255,6 +1255,7 @@ class CrossAttnUpBlock2D(nn.Module):
             else:
                 hidden_states = resnet(hidden_states, temb)
                 hidden_states = attn(hidden_states, encoder_hidden_states=encoder_hidden_states).sample
+                hidden_states = hidden_states.contiguous() if hidden_states.device.type == 'mps' else hidden_states
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
