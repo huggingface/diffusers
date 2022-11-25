@@ -65,6 +65,8 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
     vae: AutoencoderKL
     scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler]
 
+    _optional_components = ["text_unet"]
+
     def __init__(
         self,
         tokenizer: CLIPTokenizer,
@@ -142,6 +144,8 @@ class VersatileDiffusionDualGuidedPipeline(DiffusionPipeline):
                 parent_name, index = name.rsplit(".", 1)
                 index = int(index)
                 self.image_unet.get_submodule(parent_name)[index] = module.transformers[0]
+
+        self.image_unet.register_to_config(dual_cross_attention=False)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_xformers_memory_efficient_attention with unet->image_unet
     def enable_xformers_memory_efficient_attention(self):

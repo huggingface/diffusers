@@ -948,7 +948,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
                 expected_slice = np.array(
                     [1.8285, 1.2857, -0.1024, 1.2406, -2.3068, 1.0747, -0.0818, -0.6520, -2.9506]
                 )
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-3
             elif step == 50:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)
