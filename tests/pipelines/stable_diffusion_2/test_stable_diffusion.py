@@ -628,9 +628,7 @@ class StableDiffusion2PipelineIntegrationTests(unittest.TestCase):
         pipe = StableDiffusionPipeline.from_pretrained(model_id)
         pipe = pipe.to(torch_device)
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = pipe(
-            [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
-        )
+        output = pipe([prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy")
         image = output.images
 
         # Make sure results are close enough
