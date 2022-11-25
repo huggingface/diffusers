@@ -14,7 +14,7 @@
 
 import warnings
 from functools import partial
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Union
 
 import numpy as np
 
@@ -34,7 +34,7 @@ from ...schedulers import (
     FlaxLMSDiscreteScheduler,
     FlaxPNDMScheduler,
 )
-from ...utils import logging, PIL_INTERPOLATION
+from ...utils import PIL_INTERPOLATION, logging
 from . import FlaxStableDiffusionPipelineOutput
 from .safety_checker_flax import FlaxStableDiffusionSafetyChecker
 
