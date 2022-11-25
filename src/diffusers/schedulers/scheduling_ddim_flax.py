@@ -141,7 +141,6 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         if predict_epsilon is not None:
             prediction_type = "epsilon" if predict_epsilon else "sample"
 
-
         if beta_schedule == "linear":
             self.betas = jnp.linspace(beta_start, beta_end, num_train_timesteps, dtype=jnp.float32)
         elif beta_schedule == "scaled_linear":

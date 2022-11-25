@@ -619,6 +619,7 @@ class FlaxDDIMSchedulerTest(FlaxSchedulerCommonTest):
             scheduler = scheduler_class.from_config(scheduler_config)
             assert scheduler.prediction_type == "sample"
 
+
 @require_flax
 class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
     scheduler_classes = (FlaxPNDMScheduler,)
