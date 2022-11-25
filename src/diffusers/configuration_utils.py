@@ -195,6 +195,11 @@ class ConfigMixin:
         if "dtype" in unused_kwargs:
             init_dict["dtype"] = unused_kwargs.pop("dtype")
 
+        if "predict_epsilon" in unused_kwargs and "prediction_type" not in init_dict:
+            deprecate("remove this", "0.10.0", "remove")
+            predict_epsilon = unused_kwargs.pop("predict_epsilon")
+            init_dict["prediction_type"] = "epsilon" if predict_epsilon else "sample"
+
         # Return model and optionally state and/or unused_kwargs
         model = cls(**init_dict)
 

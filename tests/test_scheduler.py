@@ -599,7 +599,12 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         for clip_sample in [True, False]:
             self.check_over_configs(clip_sample=clip_sample)
 
-    def test_predict_epsilon(self):
+    def test_prediction_type(self):
+        for prediction_type in ["epsilon", "sample"]:
+            self.check_over_configs(prediction_type=prediction_type)
+
+    def test_deprecated_predict_epsilon(self):
+        deprecate("remove this test", "0.10.0", "remove")
         for predict_epsilon in [True, False]:
             self.check_over_configs(predict_epsilon=predict_epsilon)
 
@@ -795,7 +800,7 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
             "beta_end": 0.02,
             "beta_schedule": "linear",
             "solver_order": 2,
-            "predict_epsilon": True,
+            "prediction_type": "epsilon",
             "thresholding": False,
             "sample_max_value": 1.0,
             "algorithm_type": "dpmsolver++",
@@ -921,10 +926,10 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         for order in [1, 2, 3]:
             for solver_type in ["midpoint", "heun"]:
                 for threshold in [0.5, 1.0, 2.0]:
-                    for predict_epsilon in [True, False]:
+                    for prediction_type in ["epsilon", "sample"]:
                         self.check_over_configs(
                             thresholding=True,
-                            predict_epsilon=predict_epsilon,
+                            prediction_type=prediction_type,
                             sample_max_value=threshold,
                             algorithm_type="dpmsolver++",
                             solver_order=order,
@@ -935,17 +940,17 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         for algorithm_type in ["dpmsolver", "dpmsolver++"]:
             for solver_type in ["midpoint", "heun"]:
                 for order in [1, 2, 3]:
-                    for predict_epsilon in [True, False]:
+                    for prediction_type in ["epsilon", "sample"]:
                         self.check_over_configs(
                             solver_order=order,
                             solver_type=solver_type,
-                            predict_epsilon=predict_epsilon,
+                            prediction_type=prediction_type,
                             algorithm_type=algorithm_type,
                         )
                         sample = self.full_loop(
                             solver_order=order,
                             solver_type=solver_type,
-                            predict_epsilon=predict_epsilon,
+                            prediction_type=prediction_type,
                             algorithm_type=algorithm_type,
                         )
                         assert not torch.isnan(sample).any(), "Samples have nan numbers"
