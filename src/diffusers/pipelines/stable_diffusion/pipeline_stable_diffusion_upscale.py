@@ -546,6 +546,6 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
             image = self.numpy_to_pil(image)
 
         if not return_dict:
-            return image
+            return (image,)
 
         return ImagePipelineOutput(images=image)

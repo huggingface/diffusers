@@ -21,7 +21,7 @@ import numpy as np
 import torch
 
 from diffusers import AutoencoderKL, DDIMScheduler, DDPMScheduler, StableDiffusionUpscalePipeline, UNet2DConditionModel
-from diffusers.utils import floats_tensor, load_image, load_numpy, torch_device
+from diffusers.utils import floats_tensor, load_image, load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 from PIL import Image
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
@@ -52,10 +52,10 @@ class StableDiffusionUpscalePipelineFastTests(PipelineTesterMixin, unittest.Test
     def dummy_cond_unet_upscale(self):
         torch.manual_seed(0)
         model = UNet2DConditionModel(
-            block_out_channels=(32, 64),
+            block_out_channels=(32, 32, 64),
             layers_per_block=2,
             sample_size=32,
-            in_channels=9,
+            in_channels=7,
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "UpBlock2D"),
@@ -72,7 +72,7 @@ class StableDiffusionUpscalePipelineFastTests(PipelineTesterMixin, unittest.Test
     def dummy_vae(self):
         torch.manual_seed(0)
         model = AutoencoderKL(
-            block_out_channels=[32, 64],
+            block_out_channels=[32, 32, 64],
             in_channels=3,
             out_channels=3,
             down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D", "DownEncoderBlock2D"],
@@ -129,7 +129,7 @@ class StableDiffusionUpscalePipelineFastTests(PipelineTesterMixin, unittest.Test
         generator = torch.Generator(device=device).manual_seed(0)
         output = sd_pipe(
             [prompt],
-            image=image,
+            image=low_res_image,
             generator=generator,
             guidance_scale=6.0,
             noise_level=20,
@@ -142,6 +142,7 @@ class StableDiffusionUpscalePipelineFastTests(PipelineTesterMixin, unittest.Test
         generator = torch.Generator(device=device).manual_seed(0)
         image_from_tuple = sd_pipe(
             [prompt],
+            image=low_res_image,
             generator=generator,
             guidance_scale=6.0,
             noise_level=20,
@@ -153,9 +154,9 @@ class StableDiffusionUpscalePipelineFastTests(PipelineTesterMixin, unittest.Test
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
 
-        expected_height_width = low_res_image.shape[0] * 4
+        expected_height_width = low_res_image.size[0] * 4
         assert image.shape == (1, expected_height_width, expected_height_width, 3)
-        expected_slice = np.array([0.4727, 0.5735, 0.3941, 0.5446, 0.5926, 0.4394, 0.5062, 0.4654, 0.4476])
+        expected_slice = np.array([0.2562, 0.3606, 0.4204, 0.4469, 0.4822, 0.4647, 0.5315, 0.5748, 0.5606])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2

@@ -554,7 +554,9 @@ class DiffusionPipeline(ConfigMixin):
         init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
 
         if len(unused_kwargs) > 0:
-            logger.warning(f"Keyword arguments {unused_kwargs} are not expected by {pipeline_class.__name__} and will be ignored.")
+            logger.warning(
+                f"Keyword arguments {unused_kwargs} are not expected by {pipeline_class.__name__} and will be ignored."
+            )
 
         # import it here to avoid circular import
         from diffusers import pipelines
