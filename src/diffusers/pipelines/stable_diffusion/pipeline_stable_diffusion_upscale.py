@@ -412,10 +412,6 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
                 The prompt or prompts to guide the image generation.
             image (`PIL.Image.Image`):
                 `Image`, or tensor representing an image batch which will be upscaled. *
-            height (`int`, *optional*, defaults to 512):
-                The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to 512):
-                The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
