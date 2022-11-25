@@ -609,11 +609,12 @@ class StableDiffusion2PipelineIntegrationTests(unittest.TestCase):
         assert mem_bytes > 3.75 * 10**9
         assert np.abs(image_chunked.flatten() - image.flatten()).max() < 1e-3
 
-    def test_stable_diffusion_text2img_pipeline_fp16(self):
+    def test_stable_diffusion_same_quality(self):
         torch.cuda.reset_peak_memory_stats()
         model_id = "stabilityai/stable-diffusion-2-base"
         pipe = StableDiffusionPipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16)
         pipe = pipe.to(torch_device)
+        pipe.enable_attention_slicing()
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "a photograph of an astronaut riding a horse"
@@ -624,18 +625,17 @@ class StableDiffusion2PipelineIntegrationTests(unittest.TestCase):
         )
         image_chunked = output_chunked.images
 
+        pipe = StableDiffusionPipeline.from_pretrained(model_id)
+        pipe = pipe.to(torch_device)
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        with torch.autocast(torch_device):
-            output = pipe(
-                [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
-            )
-            image = output.images
+        output = pipe([prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy")
+        image = output.images
 
         # Make sure results are close enough
         diff = np.abs(image_chunked.flatten() - image.flatten())
         # They ARE different since ops are not run always at the same precision
         # however, they should be extremely close.
-        assert diff.mean() < 2e-2
+        assert diff.mean() < 5e-2
 
     def test_stable_diffusion_text2img_pipeline_default(self):
         expected_image = load_numpy(
@@ -669,7 +669,7 @@ class StableDiffusion2PipelineIntegrationTests(unittest.TestCase):
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([1.8606, 1.3169, -0.0691, 1.2374, -2.309, 1.077, -0.1084, -0.6774, -2.9594])
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-3
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-3
             elif step == 20:
                 latents = latents.detach().cpu().numpy()
                 assert latents.shape == (1, 4, 64, 64)

@@ -239,9 +239,14 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
+        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
+
+        if self.safety_checker is not None:
+            # TODO(Patrick) - there is currently a bug with cpu offload of nn.Parameter in accelerate
+            # fix by only offloading self.safety_checker for now
+            cpu_offload(self.safety_checker.vision_model)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_xformers_memory_efficient_attention
     def enable_xformers_memory_efficient_attention(self):
