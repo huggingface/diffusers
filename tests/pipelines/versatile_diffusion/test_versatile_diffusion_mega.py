@@ -124,5 +124,5 @@ class VersatileDiffusionMegaPipelineIntegrationTests(unittest.TestCase):
         image_slice = image[0, 253:256, 253:256, -1]
 
         assert image.shape == (1, 512, 512, 3)
-        expected_slice = np.array([0.3479, 0.1943, 0.1060, 0.3894, 0.2537, 0.1394, 0.3989, 0.3191, 0.1987])
+        expected_slice = np.array([0.3403, 0.1809, 0.0938, 0.3855, 0.2393, 0.1243, 0.4028, 0.3110, 0.1799])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
