@@ -264,7 +264,7 @@ class CycleDiffusionPipeline(DiffusionPipeline):
         if self.safety_checker is not None:
             # TODO(Patrick) - there is currently a bug with cpu offload of nn.Parameter in accelerate
             # fix by only offloading self.safety_checker for now
-            cpu_offload(self.safety_checker.vision_model)
+            cpu_offload(self.safety_checker.vision_model, device)
 
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device

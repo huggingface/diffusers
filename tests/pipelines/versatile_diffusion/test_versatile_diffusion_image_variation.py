@@ -54,5 +54,6 @@ class VersatileDiffusionImageVariationPipelineIntegrationTests(unittest.TestCase
         image_slice = image[0, 253:256, 253:256, -1]
 
         assert image.shape == (1, 512, 512, 3)
+        print(torch.from_numpy(image_slice.flatten()))
         expected_slice = np.array([0.0113, 0.2241, 0.4024, 0.0839, 0.0871, 0.2725, 0.2581, 0.0, 0.1096])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
