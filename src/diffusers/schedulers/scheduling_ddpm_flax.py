@@ -133,7 +133,7 @@ class FlaxDDPMScheduler(FlaxSchedulerMixin, ConfigMixin):
         )
         predict_epsilon = deprecate("predict_epsilon", "0.10.0", message, take_from=kwargs)
         if predict_epsilon is not None:
-            prediction_type = "epsilon" if predict_epsilon else "sample"
+            self.register_to_config(prediction_type="epsilon" if predict_epsilon else "sample")
 
         if trained_betas is not None:
             self.betas = jnp.asarray(trained_betas)

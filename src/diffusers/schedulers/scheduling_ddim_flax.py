@@ -139,7 +139,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         )
         predict_epsilon = deprecate("predict_epsilon", "0.10.0", message, take_from=kwargs)
         if predict_epsilon is not None:
-            prediction_type = "epsilon" if predict_epsilon else "sample"
+            self.register_to_config(prediction_type="epsilon" if predict_epsilon else "sample")
 
         if beta_schedule == "linear":
             self.betas = jnp.linspace(beta_start, beta_end, num_train_timesteps, dtype=jnp.float32)
