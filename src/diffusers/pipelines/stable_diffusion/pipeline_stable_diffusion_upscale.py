@@ -75,7 +75,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         unet: UNet2DConditionModel,
         low_res_scheduler: DDPMScheduler,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
-        max_noise_level: int,
+        max_noise_level: int = 350,
     ):
         super().__init__()
 
