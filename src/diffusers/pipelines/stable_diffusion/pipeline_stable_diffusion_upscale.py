@@ -554,7 +554,9 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
                 callback(i, t, latents)
 
         # 10. Post-processing
-        image = self.decode_latents(latents)
+        # make sure the VAE is in float32 mode, as it overflows in float16
+        self.vae.to(dtype=torch.float32)
+        image = self.decode_latents(latents.float())
 
         # 11. Run safety checker
         image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
