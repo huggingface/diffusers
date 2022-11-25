@@ -138,7 +138,7 @@ def ddpm_bit_scheduler_step(
     model_output: torch.FloatTensor,
     timestep: int,
     sample: torch.FloatTensor,
-    predict_epsilon=True,
+    prediction_type="epsilon",
     generator=None,
     return_dict: bool = True,
 ) -> Union[DDPMSchedulerOutput, Tuple]:
@@ -150,8 +150,8 @@ def ddpm_bit_scheduler_step(
         timestep (`int`): current discrete timestep in the diffusion chain.
         sample (`torch.FloatTensor`):
             current instance of sample being created by diffusion process.
-        predict_epsilon (`bool`):
-            optional flag to use when model predicts the samples directly instead of the noise, epsilon.
+        prediction_type (`str`, default `epsilon`):
+            indicates whether the model predicts the noise (epsilon), or the samples (`sample`).
         generator: random number generator.
         return_dict (`bool`): option for returning tuple rather than DDPMSchedulerOutput class
     Returns:
@@ -174,10 +174,12 @@ def ddpm_bit_scheduler_step(
 
     # 2. compute predicted original sample from predicted noise also called
     # "predicted x_0" of formula (15) from https://arxiv.org/pdf/2006.11239.pdf
-    if predict_epsilon:
+    if prediction_type == "epsilon":
         pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
-    else:
+    elif prediction_type == "sample":
         pred_original_sample = model_output
+    else:
+        raise ValueError(f"Unsupported prediction_type {prediction_type}.")
 
     # 3. Clip "predicted x_0"
     scale = self.bit_scale
