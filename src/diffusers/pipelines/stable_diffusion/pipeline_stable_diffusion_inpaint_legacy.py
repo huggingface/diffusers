@@ -20,6 +20,7 @@ import torch
 
 import PIL
 from diffusers.utils import is_accelerate_available
+from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
@@ -51,11 +52,11 @@ def preprocess_image(image):
     return 2.0 * image - 1.0
 
 
-def preprocess_mask(mask):
+def preprocess_mask(mask, scale_factor=8):
     mask = mask.convert("L")
     w, h = mask.size
     w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
-    mask = mask.resize((w // 8, h // 8), resample=PIL_INTERPOLATION["nearest"])
+    mask = mask.resize((w // scale_factor, h // scale_factor), resample=PIL_INTERPOLATION["nearest"])
     mask = np.array(mask).astype(np.float32) / 255.0
     mask = np.tile(mask, (4, 1, 1))
     mask = mask[None].transpose(0, 1, 2, 3)  # what does this step do?
@@ -91,6 +92,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
+    _optional_components = ["safety_checker", "feature_extractor"]
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.__init__
     def __init__(
@@ -109,6 +111,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         ],
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
+        requires_safety_checker: bool = True,
     ):
         super().__init__()
 
@@ -139,8 +142,8 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             new_config["clip_sample"] = False
             scheduler._internal_dict = FrozenDict(new_config)
 
-        if safety_checker is None:
-            logger.warn(
+        if safety_checker is None and requires_safety_checker:
+            logger.warning(
                 f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
                 " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
                 " results in services or applications open to the public. Both the diffusers team and Hugging Face"
@@ -148,6 +151,33 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                 " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
                 " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
             )
+
+        if safety_checker is not None and feature_extractor is None:
+            raise ValueError(
+                "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
+                " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
+            )
+
+        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
+            version.parse(unet.config._diffusers_version).base_version
+        ) < version.parse("0.9.0.dev0")
+        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
+        if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
+            deprecation_message = (
+                "The configuration file of the unet has set the default `sample_size` to smaller than"
+                " 64 which seems highly unlikely .If you're checkpoint is a fine-tuned version of any of the"
+                " following: \n- CompVis/stable-diffusion-v1-4 \n- CompVis/stable-diffusion-v1-3 \n-"
+                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- runwayml/stable-diffusion-v1-5"
+                " \n- runwayml/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
+                " configuration file. Please make sure to update the config accordingly as leaving `sample_size=32`"
+                " in the config might lead to incorrect results in future versions. If you have downloaded this"
+                " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
+                " the `unet/config.json` file"
+            )
+            deprecate("sample_size<64", "1.0.0", deprecation_message, standard_warn=False)
+            new_config = dict(unet.config)
+            new_config["sample_size"] = 64
+            unet._internal_dict = FrozenDict(new_config)
 
         self.register_modules(
             vae=vae,
@@ -158,6 +188,8 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_attention_slicing
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
@@ -174,9 +206,14 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
                 `attention_head_dim` must be a multiple of `slice_size`.
         """
         if slice_size == "auto":
-            # half the attention head size is usually a good trade-off between
-            # speed and memory
-            slice_size = self.unet.config.attention_head_dim // 2
+            if isinstance(self.unet.config.attention_head_dim, int):
+                # half the attention head size is usually a good trade-off between
+                # speed and memory
+                slice_size = self.unet.config.attention_head_dim // 2
+            else:
+                # if `attention_head_dim` is a list, take the smallest head size
+                slice_size = min(self.unet.config.attention_head_dim)
+
         self.unet.set_attention_slice(slice_size)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_attention_slicing
@@ -189,7 +226,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         self.enable_attention_slicing(None)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_sequential_cpu_offload
-    def enable_sequential_cpu_offload(self):
+    def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
         text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
@@ -200,11 +237,16 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         else:
             raise ImportError("Please install accelerate via `pip install accelerate`")
 
-        device = torch.device("cuda")
+        device = torch.device(f"cuda:{gpu_id}")
 
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
+        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
+
+        if self.safety_checker is not None:
+            # TODO(Patrick) - there is currently a bug with cpu offload of nn.Parameter in accelerate
+            # fix by only offloading self.safety_checker for now
+            cpu_offload(self.safety_checker.vision_model, device)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_xformers_memory_efficient_attention
     def enable_xformers_memory_efficient_attention(self):
@@ -532,7 +574,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             init_image = preprocess_image(init_image)
 
         if not isinstance(mask_image, torch.FloatTensor):
-            mask_image = preprocess_mask(mask_image)
+            mask_image = preprocess_mask(mask_image, self.vae_scale_factor)
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)

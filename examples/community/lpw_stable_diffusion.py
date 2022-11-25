@@ -13,10 +13,12 @@ from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from diffusers.utils import deprecate, is_accelerate_available, logging
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 # TODO: remove and import from diffusers.utils when the new version of diffusers is released
 from packaging import version
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+
+
 if version.parse(version.parse(PIL.__version__).base_version) >= version.parse("9.1.0"):
     PIL_INTERPOLATION = {
         "linear": PIL.Image.Resampling.BILINEAR,
@@ -467,7 +469,7 @@ class StableDiffusionLongPromptWeightingPipeline(DiffusionPipeline):
             scheduler._internal_dict = FrozenDict(new_config)
 
         if safety_checker is None:
-            logger.warn(
+            logger.warning(
                 f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
                 " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
                 " results in services or applications open to the public. Both the diffusers team and Hugging Face"

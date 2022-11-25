@@ -20,6 +20,7 @@ import torch
 
 import PIL
 from diffusers.utils import is_accelerate_available
+from packaging import version
 from transformers import CLIPFeatureExtractor, XLMRobertaTokenizer
 
 from ...configuration_utils import FrozenDict
@@ -80,8 +81,8 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
+    _optional_components = ["safety_checker", "feature_extractor"]
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.AltDiffusionPipeline.__init__
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -98,6 +99,7 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
         ],
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
+        requires_safety_checker: bool = True,
     ):
         super().__init__()
 
@@ -128,8 +130,8 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
             new_config["clip_sample"] = False
             scheduler._internal_dict = FrozenDict(new_config)
 
-        if safety_checker is None:
-            logger.warn(
+        if safety_checker is None and requires_safety_checker:
+            logger.warning(
                 f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
                 " that you abide to the conditions of the Alt Diffusion license and do not expose unfiltered"
                 " results in services or applications open to the public. Both the diffusers team and Hugging Face"
@@ -137,6 +139,33 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
                 " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
                 " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
             )
+
+        if safety_checker is not None and feature_extractor is None:
+            raise ValueError(
+                "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
+                " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
+            )
+
+        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
+            version.parse(unet.config._diffusers_version).base_version
+        ) < version.parse("0.9.0.dev0")
+        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
+        if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
+            deprecation_message = (
+                "The configuration file of the unet has set the default `sample_size` to smaller than"
+                " 64 which seems highly unlikely .If you're checkpoint is a fine-tuned version of any of the"
+                " following: \n- CompVis/stable-diffusion-v1-4 \n- CompVis/stable-diffusion-v1-3 \n-"
+                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- runwayml/stable-diffusion-v1-5"
+                " \n- runwayml/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
+                " configuration file. Please make sure to update the config accordingly as leaving `sample_size=32`"
+                " in the config might lead to incorrect results in future versions. If you have downloaded this"
+                " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
+                " the `unet/config.json` file"
+            )
+            deprecate("sample_size<64", "1.0.0", deprecation_message, standard_warn=False)
+            new_config = dict(unet.config)
+            new_config["sample_size"] = 64
+            unet._internal_dict = FrozenDict(new_config)
 
         self.register_modules(
             vae=vae,
@@ -147,8 +176,9 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.register_to_config(requires_safety_checker=requires_safety_checker)
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.AltDiffusionPipeline.enable_attention_slicing
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
         r"""
         Enable sliced attention computation.
@@ -163,12 +193,16 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
                 `attention_head_dim` must be a multiple of `slice_size`.
         """
         if slice_size == "auto":
-            # half the attention head size is usually a good trade-off between
-            # speed and memory
-            slice_size = self.unet.config.attention_head_dim // 2
+            if isinstance(self.unet.config.attention_head_dim, int):
+                # half the attention head size is usually a good trade-off between
+                # speed and memory
+                slice_size = self.unet.config.attention_head_dim // 2
+            else:
+                # if `attention_head_dim` is a list, take the smallest head size
+                slice_size = min(self.unet.config.attention_head_dim)
+
         self.unet.set_attention_slice(slice_size)
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.AltDiffusionPipeline.disable_attention_slicing
     def disable_attention_slicing(self):
         r"""
         Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go
@@ -177,8 +211,7 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
         # set slice_size = `None` to disable `attention slicing`
         self.enable_attention_slicing(None)
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.AltDiffusionPipeline.enable_sequential_cpu_offload
-    def enable_sequential_cpu_offload(self):
+    def enable_sequential_cpu_offload(self, gpu_id=0):
         r"""
         Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
         text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
@@ -189,14 +222,18 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
         else:
             raise ImportError("Please install accelerate via `pip install accelerate`")
 
-        device = torch.device("cuda")
+        device = torch.device(f"cuda:{gpu_id}")
 
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
+        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
 
+        if self.safety_checker is not None:
+            # TODO(Patrick) - there is currently a bug with cpu offload of nn.Parameter in accelerate
+            # fix by only offloading self.safety_checker for now
+            cpu_offload(self.safety_checker.vision_model, device)
+
     @property
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.AltDiffusionPipeline._execution_device
     def _execution_device(self):
         r"""
         Returns the device on which the pipeline's models will be executed. After calling
@@ -214,7 +251,6 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.AltDiffusionPipeline.enable_xformers_memory_efficient_attention
     def enable_xformers_memory_efficient_attention(self):
         r"""
         Enable memory efficient attention as implemented in xformers.
@@ -227,14 +263,12 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
         """
         self.unet.set_use_memory_efficient_attention_xformers(True)
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.AltDiffusionPipeline.disable_xformers_memory_efficient_attention
     def disable_xformers_memory_efficient_attention(self):
         r"""
         Disable memory efficient attention as implemented in xformers.
         """
         self.unet.set_use_memory_efficient_attention_xformers(False)
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.AltDiffusionPipeline._encode_prompt
     def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -340,7 +374,6 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
 
         return text_embeddings
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.AltDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is not None:
             safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
@@ -351,7 +384,6 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
             has_nsfw_concept = None
         return image, has_nsfw_concept
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.AltDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
         latents = 1 / 0.18215 * latents
         image = self.vae.decode(latents).sample
@@ -360,7 +392,6 @@ class AltDiffusionImg2ImgPipeline(DiffusionPipeline):
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.AltDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.

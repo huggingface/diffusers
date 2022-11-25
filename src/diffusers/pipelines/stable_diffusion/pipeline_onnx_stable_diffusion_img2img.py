@@ -77,6 +77,8 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
     safety_checker: OnnxRuntimeModel
     feature_extractor: CLIPFeatureExtractor
 
+    _optional_components = ["safety_checker", "feature_extractor"]
+
     def __init__(
         self,
         vae_encoder: OnnxRuntimeModel,
@@ -87,6 +89,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
         safety_checker: OnnxRuntimeModel,
         feature_extractor: CLIPFeatureExtractor,
+        requires_safety_checker: bool = True,
     ):
         super().__init__()
 
@@ -117,7 +120,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             new_config["clip_sample"] = False
             scheduler._internal_dict = FrozenDict(new_config)
 
-        if safety_checker is None:
+        if safety_checker is None and requires_safety_checker:
             logger.warning(
                 f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
                 " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
@@ -125,6 +128,12 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
                 " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
                 " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
+            )
+
+        if safety_checker is not None and feature_extractor is None:
+            raise ValueError(
+                "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
+                " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
 
         self.register_modules(
@@ -137,6 +146,7 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
+        self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_onnx_stable_diffusion.OnnxStableDiffusionPipeline._encode_prompt
     def _encode_prompt(self, prompt, num_images_per_prompt, do_classifier_free_guidance, negative_prompt):
@@ -401,8 +411,10 @@ class OnnxStableDiffusionImg2ImgPipeline(DiffusionPipeline):
                 noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_pred, t, torch.from_numpy(latents), **extra_step_kwargs).prev_sample
-            latents = latents.numpy()
+            scheduler_output = self.scheduler.step(
+                torch.from_numpy(noise_pred), t, torch.from_numpy(latents), **extra_step_kwargs
+            )
+            latents = scheduler_output.prev_sample.numpy()
 
             # call the callback, if provided
             if callback is not None and i % callback_steps == 0:

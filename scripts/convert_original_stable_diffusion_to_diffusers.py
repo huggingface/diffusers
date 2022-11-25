@@ -211,6 +211,7 @@ def create_unet_diffusers_config(original_config):
     """
     Creates a config for the diffusers based on the config of the LDM model.
     """
+    model_params = original_config.model.params
     unet_params = original_config.model.params.unet_config.params
 
     block_out_channels = [unet_params.model_channels * mult for mult in unet_params.channel_mult]
@@ -230,7 +231,7 @@ def create_unet_diffusers_config(original_config):
         resolution //= 2
 
     config = dict(
-        sample_size=unet_params.image_size,
+        sample_size=model_params.image_size,
         in_channels=unet_params.in_channels,
         out_channels=unet_params.out_channels,
         down_block_types=tuple(down_block_types),
