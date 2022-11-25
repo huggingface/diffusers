@@ -20,14 +20,12 @@ import torch
 
 import PIL
 from diffusers.utils import is_accelerate_available
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...pipeline_utils import DiffusionPipeline
+from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler, DDPMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import logging
-from . import StableDiffusionPipelineOutput
-from .safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -67,11 +65,6 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
-        safety_checker ([`StableDiffusionSafetyChecker`]):
-            Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
-            Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
 
     def __init__(
@@ -82,8 +75,6 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         unet: UNet2DConditionModel,
         low_res_scheduler: DDPMScheduler,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
-        safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPFeatureExtractor,
     ):
         super().__init__()
 
@@ -94,8 +85,6 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
             unet=unet,
             low_res_scheduler=low_res_scheduler,
             scheduler=scheduler,
-            safety_checker=safety_checker,
-            feature_extractor=feature_extractor,
         )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_attention_slicing
@@ -289,17 +278,6 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
             text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
 
         return text_embeddings
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
-    def run_safety_checker(self, image, device, dtype):
-        if self.safety_checker is not None:
-            safety_checker_input = self.feature_extractor(self.numpy_to_pil(image), return_tensors="pt").to(device)
-            image, has_nsfw_concept = self.safety_checker(
-                images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
-            )
-        else:
-            has_nsfw_concept = None
-        return image, has_nsfw_concept
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -551,14 +529,11 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         self.vae.to(dtype=torch.float32)
         image = self.decode_latents(latents.float())
 
-        # 11. Run safety checker
-        image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
-
-        # 12. Convert to PIL
+        # 11. Convert to PIL
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
         if not return_dict:
-            return (image, has_nsfw_concept)
+            return image
 
-        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
+        return ImagePipelineOutput(images=image)
