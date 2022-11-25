@@ -201,7 +201,7 @@ class StableDiffusionUpscalePipelineFastTests(PipelineTesterMixin, unittest.Test
             output_type="np",
         ).images
 
-        expected_height_width = low_res_image.shape[0] * 4
+        expected_height_width = low_res_image.size[0] * 4
         assert image.shape == (1, expected_height_width, expected_height_width, 3)
 
 
