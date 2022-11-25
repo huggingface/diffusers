@@ -526,7 +526,6 @@ def register_to_config(init):
         # Ignore private kwargs in the init.
         init_kwargs = {k: v for k, v in kwargs.items() if not k.startswith("_")}
         config_init_kwargs = {k: v for k, v in kwargs.items() if k.startswith("_")}
-        init(self, *args, **init_kwargs)
         if not isinstance(self, ConfigMixin):
             raise RuntimeError(
                 f"`@register_for_config` was applied to {self.__class__.__name__} init method, but this class does "
@@ -553,6 +552,7 @@ def register_to_config(init):
         )
         new_kwargs = {**config_init_kwargs, **new_kwargs}
         getattr(self, "register_to_config")(**new_kwargs)
+        init(self, *args, **init_kwargs)
 
     return inner_init
 
