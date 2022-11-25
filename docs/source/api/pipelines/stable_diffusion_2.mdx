@@ -12,14 +12,13 @@ specific language governing permissions and limitations under the License.
 
 # Stable diffusion 2
 
-Stable Diffusion 2 is a text-to-image _latent diffusion_ model built upon the work of [Stable Diffusion 1] . The project to train Stable Diffusion 2 was led by Robin Rombach and Katherine Crowson from [Stability AI](https://stability.ai/) and [LAION](https://laion.ai/).
+Stable Diffusion 2 is a text-to-image _latent diffusion_ model built upon the work of [Stable Diffusion 1](https://stability.ai/blog/stable-diffusion-public-release). 
+The project to train Stable Diffusion 2 was led by Robin Rombach and Katherine Crowson from [Stability AI](https://stability.ai/) and [LAION](https://laion.ai/).
 
 *The Stable Diffusion 2.0 release includes robust text-to-image models trained using a brand new text encoder (OpenCLIP), developed by LAION with support from Stability AI, which greatly improves the quality of the generated images compared to earlier V1 releases. The text-to-image models in this release can generate images with default resolutions of both 512x512 pixels and 768x768 pixels. 
 These models are trained on an aesthetic subset of the [LAION-5B dataset](https://laion.ai/blog/laion-5b/) created by the DeepFloyd team at Stability AI, which is then further filtered to remove adult content using [LAION’s NSFW filter](https://openreview.net/forum?id=M3Y74vmsMcY).*
 
 For more details about how Stable Diffusion 2 works and how it differs from Stable Diffusion 1, please refer to the official [launch announcement post](https://stability.ai/blog/stable-diffusion-v2-release).
-
-*Overview*:
 
 ## Tips
 
@@ -37,7 +36,6 @@ We recommend using the DPMSolverMultistepScheduler as it's currently the fastest
 - *Text-to-Image (512x512 resolution)*:
 
 ```python
-#!/usr/bin/env python3
 from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 import torch
 
@@ -48,14 +46,13 @@ pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 pipe = pipe.to("cuda")
 
 prompt = "High quality photo of an astronaut riding a horse in space"
-image = pipe(prompt).images[0]
+image = pipe(prompt, num_inference_steps=25).images[0]
 image.save("astronaut.png")
 ```
 
 - *Text-to-Image (768x768 resolution)*:
 
 ```python
-#!/usr/bin/env python3
 from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 import torch
 
@@ -66,14 +63,13 @@ pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 pipe = pipe.to("cuda")
 
 prompt = "High quality photo of an astronaut riding a horse in space"
-image = pipe(prompt, guidance_scale=9).images[0]
+image = pipe(prompt, guidance_scale=9, num_inference_steps=25).images[0]
 image.save("astronaut.png")
 ```
 
 - *Image Inpainting (512x512 resolution)*:
 
 ```python
-#!/usr/bin/env python3
 import PIL
 import requests
 import torch
@@ -100,7 +96,7 @@ pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 pipe = pipe.to("cuda")
 
 prompt = "Face of a yellow cat, high resolution, sitting on a park bench"
-image = pipe(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
+image = pipe(prompt=prompt, image=init_image, mask_image=mask_image, num_inference_steps=25).images[0]
 
 image.save("yellow_cat.png")
 ```
