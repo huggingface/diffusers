@@ -81,6 +81,7 @@ from io import BytesIO
 
 from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 
+
 def download_image(url):
     response = requests.get(url)
     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
@@ -106,6 +107,27 @@ image.save("yellow_cat.png")
 
 - *Image Upscaling (x4 resolution resolution)*: [stable-diffusion-x4-upscaler](https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler) [`StableDiffusionUpscalePipeline`]
 
+```python
+import requests
+from PIL import Image
+from io import BytesIO
+from diffusers import StableDiffusionUpscalePipeline
+import torch
+
+# load model and scheduler
+model_id = "stabilityai/stable-diffusion-x4-upscaler"
+pipeline = StableDiffusionUpscalePipeline.from_pretrained(model_id, revision="fp16", torch_dtype=torch.float16)
+pipeline = pipeline.to("cuda")
+
+# let's download an  image
+url = "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd2-upscale/low_res_cat.png"
+response = requests.get(url)
+low_res_img = Image.open(BytesIO(response.content)).convert("RGB")
+low_res_img = low_res_img.resize((128, 128))
+prompt = "a white cat"
+upscaled_image = pipeline(prompt=prompt, image=low_res_img).images[0]
+upscaled_image.save("upsampled_cat.png")
+```
 
 ### How to load and use different schedulers.
 
