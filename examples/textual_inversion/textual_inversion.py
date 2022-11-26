@@ -598,6 +598,7 @@ def main():
         pipeline = StableDiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             text_encoder=accelerator.unwrap_model(text_encoder),
+            tokenizer=tokenizer,
             vae=vae,
             unet=unet,
             revision=args.revision,
