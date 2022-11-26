@@ -46,6 +46,7 @@ from .utils import (
     is_accelerate_available,
     is_torch_version,
     is_transformers_available,
+    is_safetensors_available,
     logging,
 )
 
@@ -115,6 +116,23 @@ class AudioPipelineOutput(BaseOutput):
     """
 
     audios: np.ndarray
+
+
+def is_safetensors_compatible(info: "ModelInfo") -> bool:
+    filenames = set(sibling.rfilename for sibling in info.siblings)
+    pt_filenames = set(filename for filename in filenames if filename.endswith(".bin"))
+    is_safetensors_compatible = True
+    for pt_filename in pt_filenames:
+        prefix, raw = os.path.split(pt_filename)
+        if raw == "pytorch_model.bin":
+            # transformers specific
+            sf_filename = os.path.join(prefix, "model.safetensors")
+        else:
+            sf_filename = pt_filename[: -len(".bin")] + ".safetensors"
+        if sf_filename not in filenames:
+            print("{sf_filename} not found")
+            is_safetensors_compatible = False
+    return is_safetensors_compatible
 
 
 class DiffusionPipeline(ConfigMixin):
@@ -478,21 +496,7 @@ class DiffusionPipeline(ConfigMixin):
                 use_auth_token=use_auth_token,
                 revision=revision,
             )
-            filenames = set(sibling.rfilename for sibling in info.siblings)
-            pt_filenames = set(filename for filename in filenames if filename.endswith(".bin"))
-            is_safetensors_compatible = True
-            for pt_filename in pt_filenames:
-                prefix, raw = os.path.split(pt_filename)
-                if raw == "pytorch_model.bin":
-                    # transformers specific
-                    sf_filename = os.path.join(prefix, "model.safetensors")
-                else:
-                    sf_filename = pt_filename[: -len(".bin")] + ".safetensors"
-                if sf_filename not in filenames:
-                    print("{sf_filename} not found")
-                    is_safetensors_compatible = False
-
-            if is_safetensors_compatible:
+            if is_safetensors_available() and is_safetensors_compatible(info)
                 ignore_patterns.append("*.bin")
 
             # download all allow_patterns
