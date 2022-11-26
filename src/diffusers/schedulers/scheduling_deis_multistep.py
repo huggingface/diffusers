@@ -58,8 +58,8 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
 class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
     """
     DEIS (https://arxiv.org/abs/2204.13902) is a fast high order solver for diffusion ODEs. 
-    We slightly modify the polynomail fitting formula in log-rho space instead of original linear t space in DEIS paper.
-    The modification enjoys closed-form coeffienets for exponential multistpe update instead of replying on numerical solver.
+    We slightly modify the polynomial fitting formula in log-rho space instead of the original linear t space in DEIS paper.
+    The modification enjoys closed-form coefficients for exponential multistep update instead of replying on the numerical solver.
     More variants of DEIS can be found in https://github.com/qsh-zh/deis.
 
     Currently, we support the log-rho multistep DEIS. We recommend to use `ab_order=2 / 3` while `ab_order=1` reduces to DDIM.
