@@ -496,7 +496,7 @@ class DiffusionPipeline(ConfigMixin):
                 use_auth_token=use_auth_token,
                 revision=revision,
             )
-            if is_safetensors_available() and is_safetensors_compatible(info)
+            if is_safetensors_available() and is_safetensors_compatible(info):
                 ignore_patterns.append("*.bin")
 
             # download all allow_patterns
