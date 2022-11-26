@@ -44,9 +44,9 @@ from .utils import (
     BaseOutput,
     deprecate,
     is_accelerate_available,
+    is_safetensors_available,
     is_torch_version,
     is_transformers_available,
-    is_safetensors_available,
     logging,
 )
 
@@ -118,7 +118,7 @@ class AudioPipelineOutput(BaseOutput):
     audios: np.ndarray
 
 
-def is_safetensors_compatible(info: "ModelInfo") -> bool:
+def is_safetensors_compatible(info) -> bool:
     filenames = set(sibling.rfilename for sibling in info.siblings)
     pt_filenames = set(filename for filename in filenames if filename.endswith(".bin"))
     is_safetensors_compatible = True
@@ -491,13 +491,14 @@ class DiffusionPipeline(ConfigMixin):
                 user_agent["custom_pipeline"] = custom_pipeline
             user_agent = http_user_agent(user_agent)
 
-            info = model_info(
-                pretrained_model_name_or_path,
-                use_auth_token=use_auth_token,
-                revision=revision,
-            )
-            if is_safetensors_available() and is_safetensors_compatible(info):
-                ignore_patterns.append("*.bin")
+            if is_safetensors_available():
+                info = model_info(
+                    pretrained_model_name_or_path,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                )
+                if is_safetensors_compatible(info):
+                    ignore_patterns.append("*.bin")
 
             # download all allow_patterns
             cached_folder = snapshot_download(
