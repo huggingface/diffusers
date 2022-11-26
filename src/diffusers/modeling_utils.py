@@ -54,7 +54,7 @@ if is_accelerate_available():
     from accelerate.utils.versions import is_torch_version
 
 if is_safetensors_available():
-    from safetensors.torch import load_file
+    import safetensors
 
 
 def get_parameter_device(parameter: torch.nn.Module):
@@ -87,16 +87,15 @@ def get_parameter_dtype(parameter: torch.nn.Module):
         return first_tuple[1].dtype
 
 
-def load_state_dict(checkpoint_file: Union[str, os.PathLike], is_pytorch: bool):
+def load_state_dict(checkpoint_file: Union[str, os.PathLike]):
     """
-    Reads a PyTorch checkpoint file, returning properly formatted errors if they arise.
+    Reads a checkpoint file, returning properly formatted errors if they arise.
     """
     try:
-        if is_pytorch:
+        if os.path.basename(checkpoint_file) == WEIGHTS_NAME:
             return torch.load(checkpoint_file, map_location="cpu")
         else:
-            return load_file(checkpoint_file, device="cpu")
-
+            return safetensors.torch.load_file(checkpoint_file, device="cpu")
     except Exception as e:
         try:
             with open(checkpoint_file) as f:
@@ -113,7 +112,7 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike], is_pytorch: bool):
                     ) from e
         except (UnicodeDecodeError, ValueError):
             raise OSError(
-                f"Unable to load weights from pytorch checkpoint file for '{checkpoint_file}' "
+                f"Unable to load weights from checkpoint file for '{checkpoint_file}' "
                 f"at '{checkpoint_file}'. "
                 "If you tried to load a PyTorch model from a TF 2.0 checkpoint, please set from_tf=True."
             )
@@ -385,18 +384,38 @@ class ModelMixin(torch.nn.Module):
         # This variable will flag if we're loading a sharded checkpoint. In this case the archive file is just the
         # Load model
 
-        model_file, is_pytorch = get_model_file(
-            pretrained_model_name_or_path,
-            cache_dir=cache_dir,
-            force_download=force_download,
-            resume_download=resume_download,
-            proxies=proxies,
-            local_files_only=local_files_only,
-            use_auth_token=use_auth_token,
-            revision=revision,
-            subfolder=subfolder,
-            user_agent=user_agent,
-        )
+        model_file = None
+        if is_safetensors_available():
+            try:
+                model_file = _get_model_file(
+                    pretrained_model_name_or_path,
+                    weights_name=SAFETENSORS_WEIGHTS_NAME,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    resume_download=resume_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                    subfolder=subfolder,
+                    user_agent=user_agent,
+                )
+            except:
+                pass
+        if model_file is None:
+            model_file = _get_model_file(
+                pretrained_model_name_or_path,
+                weights_name=WEIGHTS_NAME,
+                cache_dir=cache_dir,
+                force_download=force_download,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                use_auth_token=use_auth_token,
+                revision=revision,
+                subfolder=subfolder,
+                user_agent=user_agent,
+            )
 
         if low_cpu_mem_usage:
             # Instantiate model with empty weights
@@ -420,7 +439,7 @@ class ModelMixin(torch.nn.Module):
             # if device_map is Non,e load the state dict on move the params from meta device to the cpu
             if device_map is None:
                 param_device = "cpu"
-                state_dict = load_state_dict(model_file, is_pytorch)
+                state_dict = load_state_dict(model_file)
                 # move the parms from meta device to cpu
                 for param_name, param in state_dict.items():
                     set_module_tensor_to_device(model, param_name, param_device, value=param)
@@ -452,7 +471,7 @@ class ModelMixin(torch.nn.Module):
             )
             model = cls.from_config(config, **unused_kwargs)
 
-            state_dict = load_state_dict(model_file, is_pytorch)
+            state_dict = load_state_dict(model_file)
             model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
                 model,
                 state_dict,
