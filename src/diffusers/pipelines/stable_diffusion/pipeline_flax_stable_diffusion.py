@@ -383,6 +383,7 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
 
             images = images.reshape(num_devices, batch_size, height, width, 3)
         else:
+            images = np.asarray(images)
             has_nsfw_concept = False
 
         if not return_dict:
