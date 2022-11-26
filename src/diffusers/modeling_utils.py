@@ -665,19 +665,6 @@ def unwrap_model(model: torch.nn.Module) -> torch.nn.Module:
         return model
 
 
-def get_model_file(pretrained_model_name_or_path, **kwargs) -> Tuple[str, bool]:
-    if is_safetensors_available():
-        try:
-            model_file = _get_model_file(
-                pretrained_model_name_or_path, weights_name=SAFETENSORS_WEIGHTS_NAME, **kwargs
-            )
-            return model_file, False
-        except:
-            pass
-    model_file = _get_model_file(pretrained_model_name_or_path, weights_name=WEIGHTS_NAME, **kwargs)
-    return model_file, True
-
-
 def _get_model_file(
     pretrained_model_name_or_path,
     *,
