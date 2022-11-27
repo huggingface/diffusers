@@ -80,20 +80,21 @@ class ConfigMixin:
         - **config_name** (`str`) -- A filename under which the config should stored when calling
           [`~ConfigMixin.save_config`] (should be overridden by parent class).
         - **ignore_for_config** (`List[str]`) -- A list of attributes that should not be saved in the config (should be
-          overridden by parent class).
-        - **has_compatibles** (`bool`) -- Whether the class has compatible classes (should be overridden by parent
-          class).
+          overridden by subclass).
+        - **has_compatibles** (`bool`) -- Whether the class has compatible classes (should be overridden by subclass).
+        - **_deprecated_kwargs** (`List[str]`) -- Keyword arguments that are deprecated. Note that the init function
+          should only have a `kwargs` argument if at least one argument is deprecated (should be overridden by
+          subclass).
     """
     config_name = None
     ignore_for_config = []
     has_compatibles = False
 
+    _deprecated_kwargs = []
+
     def register_to_config(self, **kwargs):
         if self.config_name is None:
             raise NotImplementedError(f"Make sure that {self.__class__} has defined a class name `config_name`")
-        kwargs["_class_name"] = self.__class__.__name__
-        kwargs["_diffusers_version"] = __version__
-
         # Special case for `kwargs` used in deprecation warning added to schedulers
         # TODO: remove this when we remove the deprecation warning, and the `kwargs` argument,
         # or solve in a more general way.
@@ -197,6 +198,11 @@ class ConfigMixin:
         # Allow dtype to be specified on initialization
         if "dtype" in unused_kwargs:
             init_dict["dtype"] = unused_kwargs.pop("dtype")
+
+        # add possible deprecated kwargs
+        for deprecated_kwarg in cls._deprecated_kwargs:
+            if deprecated_kwarg in unused_kwargs:
+                init_dict[deprecated_kwarg] = unused_kwargs.pop(deprecated_kwarg)
 
         # Return model and optionally state and/or unused_kwargs
         model = cls(**init_dict)
@@ -462,7 +468,7 @@ class ConfigMixin:
         unused_kwargs = {**config_dict, **kwargs}
 
         # 7. Define "hidden" config parameters that were saved for compatible classes
-        hidden_config_dict = {k: v for k, v in original_dict.items() if k not in init_dict and not k.startswith("_")}
+        hidden_config_dict = {k: v for k, v in original_dict.items() if k not in init_dict}
 
         return init_dict, unused_kwargs, hidden_config_dict
 
@@ -493,6 +499,9 @@ class ConfigMixin:
             `str`: String containing all the attributes that make up this configuration instance in JSON format.
         """
         config_dict = self._internal_dict if hasattr(self, "_internal_dict") else {}
+        config_dict["_class_name"] = self.__class__.__name__
+        config_dict["_diffusers_version"] = __version__
+
         return json.dumps(config_dict, indent=2, sort_keys=True) + "\n"
 
     def to_json_file(self, json_file_path: Union[str, os.PathLike]):
@@ -520,7 +529,7 @@ def register_to_config(init):
     def inner_init(self, *args, **kwargs):
         # Ignore private kwargs in the init.
         init_kwargs = {k: v for k, v in kwargs.items() if not k.startswith("_")}
-        init(self, *args, **init_kwargs)
+        config_init_kwargs = {k: v for k, v in kwargs.items() if k.startswith("_")}
         if not isinstance(self, ConfigMixin):
             raise RuntimeError(
                 f"`@register_for_config` was applied to {self.__class__.__name__} init method, but this class does "
@@ -545,7 +554,9 @@ def register_to_config(init):
                 if k not in ignore and k not in new_kwargs
             }
         )
+        new_kwargs = {**config_init_kwargs, **new_kwargs}
         getattr(self, "register_to_config")(**new_kwargs)
+        init(self, *args, **init_kwargs)
 
     return inner_init
 
@@ -562,7 +573,7 @@ def flax_register_to_config(cls):
             )
 
         # Ignore private kwargs in the init. Retrieve all passed attributes
-        init_kwargs = {k: v for k, v in kwargs.items() if not k.startswith("_")}
+        init_kwargs = {k: v for k, v in kwargs.items()}
 
         # Retrieve default values
         fields = dataclasses.fields(self)

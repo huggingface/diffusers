@@ -448,7 +448,7 @@ class ModelMixin(torch.nn.Module):
         if low_cpu_mem_usage:
             # Instantiate model with empty weights
             with accelerate.init_empty_weights():
-                model, unused_kwargs = cls.from_config(
+                config, unused_kwargs = cls.load_config(
                     config_path,
                     cache_dir=cache_dir,
                     return_unused_kwargs=True,
@@ -462,6 +462,7 @@ class ModelMixin(torch.nn.Module):
                     device_map=device_map,
                     **kwargs,
                 )
+                model = cls.from_config(config, **unused_kwargs)
 
             # if device_map is Non,e load the state dict on move the params from meta device to the cpu
             if device_map is None:
@@ -482,7 +483,7 @@ class ModelMixin(torch.nn.Module):
                 "error_msgs": [],
             }
         else:
-            model, unused_kwargs = cls.from_config(
+            config, unused_kwargs = cls.load_config(
                 config_path,
                 cache_dir=cache_dir,
                 return_unused_kwargs=True,
@@ -496,6 +497,7 @@ class ModelMixin(torch.nn.Module):
                 device_map=device_map,
                 **kwargs,
             )
+            model = cls.from_config(config, **unused_kwargs)
 
             state_dict = load_state_dict(model_file)
             model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
