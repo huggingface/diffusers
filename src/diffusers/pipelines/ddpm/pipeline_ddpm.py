@@ -70,14 +70,14 @@ class DDPMPipeline(DiffusionPipeline):
             generated images.
         """
         message = (
-            "Please make sure to instantiate your scheduler with `predict_epsilon` instead. E.g. `scheduler ="
-            " DDPMScheduler.from_pretrained(<model_id>, predict_epsilon=True)`."
+            "Please make sure to instantiate your scheduler with `prediction_type` instead. E.g. `scheduler ="
+            " DDPMScheduler.from_pretrained(<model_id>, prediction_type='epsilon')`."
         )
         predict_epsilon = deprecate("predict_epsilon", "0.10.0", message, take_from=kwargs)
 
         if predict_epsilon is not None:
             new_config = dict(self.scheduler.config)
-            new_config["predict_epsilon"] = predict_epsilon
+            new_config["prediction_type"] = "epsilon" if predict_epsilon else "sample"
             self.scheduler._internal_dict = FrozenDict(new_config)
 
         if generator is not None and generator.device.type != self.device.type and self.device.type != "mps":
@@ -94,7 +94,11 @@ class DDPMPipeline(DiffusionPipeline):
             generator = None
 
         # Sample gaussian noise to begin loop
-        image_shape = (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size)
+        if isinstance(self.unet.sample_size, int):
+            image_shape = (batch_size, self.unet.in_channels, self.unet.sample_size, self.unet.sample_size)
+        else:
+            image_shape = (batch_size, self.unet.in_channels, *self.unet.sample_size)
+
         if self.device.type == "mps":
             # randn does not work reproducibly on mps
             image = torch.randn(image_shape, generator=generator)
@@ -110,9 +114,7 @@ class DDPMPipeline(DiffusionPipeline):
             model_output = self.unet(image, t).sample
 
             # 2. compute previous image: x_t -> x_t-1
-            image = self.scheduler.step(
-                model_output, t, image, generator=generator, predict_epsilon=predict_epsilon
-            ).prev_sample
+            image = self.scheduler.step(model_output, t, image, generator=generator).prev_sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
