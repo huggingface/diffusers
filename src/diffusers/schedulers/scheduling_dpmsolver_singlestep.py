@@ -228,9 +228,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
             .astype(np.int64)
         )
         self.timesteps = torch.from_numpy(timesteps).to(device)
-        self.model_outputs = [
-            None,
-        ] * self.config.solver_order
+        self.model_outputs = [None] * self.config.solver_order
         self.sample = None
         self.orders = self.get_order_list(num_inference_steps)
 
