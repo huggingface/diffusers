@@ -547,9 +547,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         if order == 1:
             self.sample = sample
 
-        timestep_list = [self.timesteps[step_index - i] for i in range(order - 1, 0, -1)] + [
-            timestep,
-        ]
+        timestep_list = [self.timesteps[step_index - i] for i in range(order - 1, 0, -1)] + [timestep]
         prev_sample = self.singlestep_dpm_solver_update(
             self.model_outputs, timestep_list, prev_timestep, self.sample, order
         )
