@@ -184,7 +184,15 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         self.sample = None
         self.order_list = self.get_order_list(num_train_timesteps)
 
-    def get_order_list(self, steps):
+    def get_order_list(self, num_inference_steps: int) -> List[int]:
+        """
+        Computes the solver order at each time step.
+
+        Args:
+            num_inference_steps (`int`):
+                the number of diffusion steps used when generating samples with a pre-trained model.
+        """
+        steps = num_inference_steps
         order = self.solver_order
         if self.lower_order_final:
             if order == 3:
@@ -542,6 +550,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         self.model_outputs[-1] = model_output
 
         order = self.order_list[step_index]
+        # For single-step solvers, we use the initial value at each time with order = 1.
         if order == 1:
             self.sample = sample
 
