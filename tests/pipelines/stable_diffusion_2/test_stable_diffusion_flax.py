@@ -16,8 +16,6 @@
 import gc
 import unittest
 
-import numpy as np
-
 from diffusers import FlaxDPMSolverMultistepScheduler, FlaxStableDiffusionPipeline
 from diffusers.utils import is_flax_available, slow
 from diffusers.utils.testing_utils import require_flax
