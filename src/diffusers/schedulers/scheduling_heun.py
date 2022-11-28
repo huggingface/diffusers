@@ -18,8 +18,8 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_utils import SchedulerMixin, SchedulerOutput
 from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS
+from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
 class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
