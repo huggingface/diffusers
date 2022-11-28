@@ -6,6 +6,7 @@ from diffusers.utils import is_flax_available
 from diffusers.utils.testing_utils import load_hf_numpy, require_flax, slow
 from parameterized import parameterized
 
+
 if is_flax_available():
     import jax
     import jax.numpy as jnp
