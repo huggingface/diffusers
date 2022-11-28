@@ -42,6 +42,8 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays.
     """
 
+    order = 2
+
     @register_to_config
     def __init__(
         self,
