@@ -121,7 +121,7 @@ class AudioPipelineOutput(BaseOutput):
 def is_safetensors_compatible(info) -> bool:
     filenames = set(sibling.rfilename for sibling in info.siblings)
     pt_filenames = set(filename for filename in filenames if filename.endswith(".bin"))
-    is_safetensors_compatible = True
+    is_safetensors_compatible = any(file.endswith(".safetensors") for file in filenames)
     for pt_filename in pt_filenames:
         prefix, raw = os.path.split(pt_filename)
         if raw == "pytorch_model.bin":
@@ -130,7 +130,7 @@ def is_safetensors_compatible(info) -> bool:
         else:
             sf_filename = pt_filename[: -len(".bin")] + ".safetensors"
         if sf_filename not in filenames:
-            print("{sf_filename} not found")
+            logger.warning("{sf_filename} not found")
             is_safetensors_compatible = False
     return is_safetensors_compatible
 
