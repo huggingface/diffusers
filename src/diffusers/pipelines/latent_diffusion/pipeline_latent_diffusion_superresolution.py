@@ -17,7 +17,7 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import PIL_INTERPOLATION
+from ...utils import PIL_INTERPOLATION, deprecate
 
 
 def preprocess(image):
@@ -102,6 +102,9 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
             `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
             generated images.
         """
+        message = "Please use `image` instead of `init_image`."
+        init_image = deprecate("init_image", "0.12.0", message, take_from=kwargs)
+        image = init_image or image
 
         if isinstance(image, PIL.Image.Image):
             batch_size = 1
