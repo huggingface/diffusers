@@ -103,7 +103,6 @@ class FlaxBasicTransformerBlock(nn.Module):
             Hidden states dimension inside each head
         dropout (:obj:`float`, *optional*, defaults to 0.0):
             Dropout rate
-        cross_attention_dim (`int`, *optional*):
             The size of the context vector for cross attention.
         only_cross_attention (`bool`, defaults to `False`):
             Whether to only apply cross attention.
