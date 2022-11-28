@@ -23,7 +23,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..pipeline_utils import _extract_into_tensor
+from ..modeling_utils import _extract_into_tensor
 from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput, deprecate
 from .scheduling_utils import SchedulerMixin
 
@@ -388,6 +388,9 @@ class DDIMExtendedScheduler(DDIMScheduler):
 
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
+        self.alphas_cumprod = self.alphas_cumprod.to(device)
+        self.final_alpha_cumprod = self.final_alpha_cumprod.to(device)
+
     def step(
         self,
         model_output: torch.FloatTensor,
@@ -450,9 +453,10 @@ class DDIMExtendedScheduler(DDIMScheduler):
         if prev_timesteps.dim() == 0:
             prev_timesteps = prev_timesteps[None].repeat(batsize)
 
+        alphas_cumprod = self.alphas_cumprod.to(sample.device)
         # 2. compute alphas, betas
-        alpha_prod_t = _extract_into_tensor(self.alphas_cumprod, timesteps, (batsize, 1, 1, 1))
-        alpha_prod_tm1 = _extract_into_tensor(self.alphas_cumprod, prev_timesteps, (batsize, 1, 1, 1))
+        alpha_prod_t = _extract_into_tensor(alphas_cumprod, timesteps, (batsize, 1, 1, 1))
+        alpha_prod_tm1 = _extract_into_tensor(alphas_cumprod, prev_timesteps, (batsize, 1, 1, 1))
         alpha_prod_tm1 = torch.where(
             prev_timesteps[:, None, None, None] >= 0, alpha_prod_tm1, self.final_alpha_cumprod)
         # alpha_prod_t = self.alphas_cumprod[timestep]

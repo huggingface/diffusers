@@ -19,6 +19,7 @@ import numpy as np
 import torch
 
 from diffusers import DDIMPipeline, DDIMScheduler, UNet2DModel
+from diffusers.schedulers.scheduling_ddim import DDIMExtendedScheduler
 from diffusers.utils.testing_utils import require_torch_gpu, slow, torch_device
 
 from ...test_pipelines_common import PipelineTesterMixin
@@ -67,6 +68,25 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_inference_extended(self):
+        device = "cpu"
+        unet = self.dummy_uncond_unet
+        scheduler = DDIMScheduler()
+
+        ddpm = DDIMPipeline(unet=unet, scheduler=scheduler)
+        ddpm.to(device)
+        ddpm.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        image = ddpm(generator=generator, num_inference_steps=2, output_type="numpy").images
+
+        scheduler.__class__ = DDIMExtendedScheduler
+
+        generator = torch.Generator(device=device).manual_seed(0)
+        image2 = ddpm(generator=generator, num_inference_steps=2, output_type="numpy").images
+
+        assert np.abs(image - image2).max() < 1e-2
+
 
 @slow
 @require_torch_gpu
@@ -108,3 +128,23 @@ class DDIMPipelineIntegrationTests(unittest.TestCase):
         assert image.shape == (1, 32, 32, 3)
         expected_slice = np.array([0.2060, 0.2042, 0.2022, 0.2193, 0.2146, 0.2110, 0.2471, 0.2446, 0.2388])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_inference_cifar10_extended(self):
+        model_id = "google/ddpm-cifar10-32"
+
+        unet = UNet2DModel.from_pretrained(model_id)
+        scheduler = DDIMScheduler()
+
+        ddim = DDIMPipeline(unet=unet, scheduler=scheduler)
+        ddim.to(torch_device)
+        ddim.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image1 = ddim(generator=generator, eta=0.0, output_type="numpy").images
+
+        scheduler.__class__ = DDIMExtendedScheduler
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        image2 = ddim(generator=generator, eta=0.0, output_type="numpy").images
+
+        assert np.abs(image1 - image2).max() < 1e-2

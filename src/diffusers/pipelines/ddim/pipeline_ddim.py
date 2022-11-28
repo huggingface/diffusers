@@ -17,6 +17,7 @@ from typing import Optional, Tuple, Union
 import torch
 
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
+from ...schedulers.scheduling_ddim import DDIMExtendedScheduler
 from ...utils import deprecate
 
 
@@ -102,11 +103,17 @@ class DDIMPipeline(DiffusionPipeline):
             image = torch.randn(image_shape, generator=generator, device=self.device)
 
         # set step values
-        self.scheduler.set_timesteps(num_inference_steps)
+        self.scheduler.set_timesteps(num_inference_steps, device=self.device)
 
-        for t in self.progress_bar(self.scheduler.timesteps):
+        timesteps = self.scheduler.timesteps
+        if isinstance(self.scheduler, DDIMExtendedScheduler):
+            timesteps = torch.cat([timesteps, -1 * torch.ones_like(timesteps)[:1]], 0)
+            timesteps = list(zip(timesteps[:-1], timesteps[1:]))
+
+        for t in self.progress_bar(timesteps):
             # 1. predict noise model_output
-            model_output = self.unet(image, t).sample
+            start_t = t[0] if isinstance(self.scheduler, DDIMExtendedScheduler) else t
+            model_output = self.unet(image, start_t).sample
 
             # 2. predict previous mean of image x_t-1 and add variance depending on eta
             # eta corresponds to η in paper and should be between [0, 1]
