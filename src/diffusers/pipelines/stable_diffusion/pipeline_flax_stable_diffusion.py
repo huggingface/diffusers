@@ -289,7 +289,6 @@ class FlaxStableDiffusionPipeline(FlaxDiffusionPipeline):
         jit: bool = False,
         debug: bool = False,
         neg_prompt_ids: jnp.array = None,
-        **kwargs,
     ):
         r"""
         Function invoked when calling the pipeline for generation.

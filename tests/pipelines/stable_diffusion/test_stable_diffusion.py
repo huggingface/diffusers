@@ -765,18 +765,18 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         prompt = "hey"
 
-        output = sd_pipe(prompt, number_of_steps=1, output_type="np")
+        output = sd_pipe(prompt, num_inference_steps=1, output_type="np")
         image_shape = output.images[0].shape[:2]
         assert image_shape == (64, 64)
 
-        output = sd_pipe(prompt, number_of_steps=1, height=96, width=96, output_type="np")
+        output = sd_pipe(prompt, num_inference_steps=1, height=96, width=96, output_type="np")
         image_shape = output.images[0].shape[:2]
         assert image_shape == (96, 96)
 
         config = dict(sd_pipe.unet.config)
         config["sample_size"] = 96
         sd_pipe.unet = UNet2DConditionModel.from_config(config).to(torch_device)
-        output = sd_pipe(prompt, number_of_steps=1, output_type="np")
+        output = sd_pipe(prompt, num_inference_steps=1, output_type="np")
         image_shape = output.images[0].shape[:2]
         assert image_shape == (192, 192)
 

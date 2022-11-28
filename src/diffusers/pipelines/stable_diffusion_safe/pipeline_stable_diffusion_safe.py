@@ -546,7 +546,6 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
         sld_threshold: Optional[float] = 0.01,
         sld_momentum_scale: Optional[float] = 0.3,
         sld_mom_beta: Optional[float] = 0.4,
-        **kwargs,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
