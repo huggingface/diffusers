@@ -550,7 +550,7 @@ def main():
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
                 # Predict the noise residual
-                noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
@@ -560,7 +560,7 @@ def main():
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
-                loss = F.mse_loss(noise_pred, target, reduction="none").mean([1, 2, 3]).mean()
+                loss = F.mse_loss(model_pred, target, reduction="none").mean([1, 2, 3]).mean()
                 accelerator.backward(loss)
 
                 # Zero out the gradients for all token embeddings except the newly added
