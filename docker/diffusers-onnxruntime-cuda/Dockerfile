@@ -34,11 +34,11 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
         datasets \
         hf-doc-builder \
         huggingface-hub \
+        librosa \
         modelcards \
         numpy \
         scipy \
         tensorboard \
-        transformers \
-        librosa
+        transformers
 
 CMD ["/bin/bash"]
