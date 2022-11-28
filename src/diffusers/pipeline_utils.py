@@ -26,7 +26,7 @@ import torch
 
 import diffusers
 import PIL
-from huggingface_hub import snapshot_download
+from huggingface_hub import model_info, snapshot_download
 from packaging import version
 from PIL import Image
 from tqdm.auto import tqdm
@@ -44,6 +44,7 @@ from .utils import (
     BaseOutput,
     deprecate,
     is_accelerate_available,
+    is_safetensors_available,
     is_torch_version,
     is_transformers_available,
     logging,
@@ -115,6 +116,23 @@ class AudioPipelineOutput(BaseOutput):
     """
 
     audios: np.ndarray
+
+
+def is_safetensors_compatible(info) -> bool:
+    filenames = set(sibling.rfilename for sibling in info.siblings)
+    pt_filenames = set(filename for filename in filenames if filename.endswith(".bin"))
+    is_safetensors_compatible = any(file.endswith(".safetensors") for file in filenames)
+    for pt_filename in pt_filenames:
+        prefix, raw = os.path.split(pt_filename)
+        if raw == "pytorch_model.bin":
+            # transformers specific
+            sf_filename = os.path.join(prefix, "model.safetensors")
+        else:
+            sf_filename = pt_filename[: -len(".bin")] + ".safetensors"
+        if sf_filename not in filenames:
+            logger.warning("{sf_filename} not found")
+            is_safetensors_compatible = False
+    return is_safetensors_compatible
 
 
 class DiffusionPipeline(ConfigMixin):
@@ -459,7 +477,7 @@ class DiffusionPipeline(ConfigMixin):
             allow_patterns += [WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, ONNX_WEIGHTS_NAME, cls.config_name]
 
             # make sure we don't download flax weights
-            ignore_patterns = "*.msgpack"
+            ignore_patterns = ["*.msgpack"]
 
             if custom_pipeline is not None:
                 allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
@@ -472,6 +490,15 @@ class DiffusionPipeline(ConfigMixin):
             if custom_pipeline is not None:
                 user_agent["custom_pipeline"] = custom_pipeline
             user_agent = http_user_agent(user_agent)
+
+            if is_safetensors_available():
+                info = model_info(
+                    pretrained_model_name_or_path,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                )
+                if is_safetensors_compatible(info):
+                    ignore_patterns.append("*.bin")
 
             # download all allow_patterns
             cached_folder = snapshot_download(
