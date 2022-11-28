@@ -95,6 +95,35 @@ class DownloadTests(unittest.TestCase):
             # We need to never convert this tiny model to safetensors for this test to pass
             assert not any(f.endswith(".safetensors") for f in files)
 
+    def test_returned_cached_folder(self):
+        prompt = "hello"
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        _, local_path = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None, return_cached_folder=True
+        )
+        pipe_2 = StableDiffusionPipeline.from_pretrained(local_path)
+
+        pipe = pipe.to(torch_device)
+        pipe_2 = pipe.to(torch_device)
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
+
+        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
+        out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+        assert np.max(np.abs(out - out_2)) < 1e-3
+
     def test_download_safetensors(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
             # pipeline has Flax weights
