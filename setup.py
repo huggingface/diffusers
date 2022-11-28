@@ -106,7 +106,7 @@ _deps = [
     "tensorboard",
     "torch>=1.4",
     "torchvision",
-    "transformers>=4.21.0"
+    "transformers>=4.21.0",
 ]
 
 # this is a lookup table with items like:
@@ -191,7 +191,7 @@ extras["test"] = deps_list(
     "sentencepiece",
     "scipy",
     "torchvision",
-    "transformers"
+    "transformers",
 )
 extras["torch"] = deps_list("torch", "accelerate")
 
