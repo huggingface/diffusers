@@ -231,7 +231,7 @@ class StableDiffusionImageVariationPipeline(DiffusionPipeline):
             image = self.feature_extractor(images=image, return_tensors="pt").pixel_values
 
         image = image.to(device=device, dtype=dtype)
-        image_embeddings = self.image_encoder(image).image_embeds
+        image_embeddings = self.image_encoder(pixel_values=image).image_embeds
         image_embeddings = image_embeddings.unsqueeze(1)
 
         # duplicate image embeddings for each generation per prompt, using mps friendly method
