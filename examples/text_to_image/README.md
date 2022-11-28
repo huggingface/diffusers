@@ -42,6 +42,8 @@ If you have already cloned the repo, then you won't need to go through these ste
 #### Hardware
 With `gradient_checkpointing` and `mixed_precision` it should be possible to fine tune the model on a single 24GB GPU. For higher `batch_size` and faster training it's better to use GPUs with >30GB memory.
 
+**___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
+
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export dataset_name="lambdalabs/pokemon-blip-captions"
