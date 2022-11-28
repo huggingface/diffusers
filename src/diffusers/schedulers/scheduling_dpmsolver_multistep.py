@@ -88,8 +88,8 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             the order of DPM-Solver; can be `1` or `2` or `3`. We recommend to use `solver_order=2` for guided
             sampling, and `solver_order=3` for unconditional sampling.
         prediction_type (`str`, default `epsilon`):
-            indicates whether the model predicts the noise (epsilon), or the data / `x0`. One of `epsilon`, `sample`.
-            `v-prediction` is not supported for this scheduler.
+            indicates whether the model predicts the noise (epsilon), or the data / `x0`. One of `epsilon`, `sample`,
+            or `v-prediction`.
         thresholding (`bool`, default `False`):
             whether to use the "dynamic thresholding" method (introduced by Imagen, https://arxiv.org/abs/2205.11487).
             For pixel-space diffusion models, you can set both `algorithm_type=dpmsolver++` and `thresholding=True` to
@@ -212,7 +212,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
         Convert the model output to the corresponding type that the algorithm (DPM-Solver / DPM-Solver++) needs.
 
-        DPM-Solver is designed to discretize an integral of the noise prediciton model, and DPM-Solver++ is designed to
+        DPM-Solver is designed to discretize an integral of the noise prediction model, and DPM-Solver++ is designed to
         discretize an integral of the data prediction model. So we need to first convert the model output to the
         corresponding type to match the algorithm.
 
@@ -235,10 +235,13 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 x0_pred = (sample - sigma_t * model_output) / alpha_t
             elif self.config.prediction_type == "sample":
                 x0_pred = model_output
+            elif self.config.prediction_type == "v_prediction":
+                alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
+                x0_pred = alpha_t * sample - sigma_t * model_output
             else:
                 raise ValueError(
-                    f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample` "
-                    " for the DPMSolverMultistepScheduler."
+                    f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
+                    " `v_prediction` for the DPMSolverMultistepScheduler."
                 )
 
             if self.config.thresholding:
@@ -260,10 +263,14 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
                 epsilon = (sample - alpha_t * model_output) / sigma_t
                 return epsilon
+            elif self.config.prediction_type == "v_prediction":
+                alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
+                epsilon = alpha_t * model_output + sigma_t * sample
+                return epsilon
             else:
                 raise ValueError(
-                    f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample` "
-                    " for the DPMSolverMultistepScheduler."
+                    f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
+                    " `v_prediction` for the DPMSolverMultistepScheduler."
                 )
 
     def dpm_solver_first_order_update(

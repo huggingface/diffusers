@@ -28,6 +28,7 @@ from .import_utils import (
     is_inflect_available,
     is_modelcards_available,
     is_onnx_available,
+    is_safetensors_available,
     is_scipy_available,
     is_tf_available,
     is_torch_available,
@@ -69,6 +70,7 @@ CONFIG_NAME = "config.json"
 WEIGHTS_NAME = "diffusion_pytorch_model.bin"
 FLAX_WEIGHTS_NAME = "diffusion_flax_model.msgpack"
 ONNX_WEIGHTS_NAME = "model.onnx"
+SAFETENSORS_WEIGHTS_NAME = "diffusion_pytorch_model.safetensors"
 ONNX_EXTERNAL_WEIGHTS_NAME = "weights.pb"
 HUGGINGFACE_CO_RESOLVE_ENDPOINT = "https://huggingface.co"
 DIFFUSERS_CACHE = default_cache_path
