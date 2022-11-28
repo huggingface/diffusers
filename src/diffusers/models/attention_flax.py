@@ -15,6 +15,7 @@
 import flax.linen as nn
 import jax.numpy as jnp
 
+
 class FlaxAttentionBlock(nn.Module):
     r"""
     A Flax multi-head attention module as described in: https://arxiv.org/abs/1706.03762
@@ -103,7 +104,6 @@ class FlaxBasicTransformerBlock(nn.Module):
             Hidden states dimension inside each head
         dropout (:obj:`float`, *optional*, defaults to 0.0):
             Dropout rate
-            The size of the context vector for cross attention.
         only_cross_attention (`bool`, defaults to `False`):
             Whether to only apply cross attention.
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):

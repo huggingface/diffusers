@@ -1,15 +1,12 @@
 import gc
-import jax
-import jax.numpy as jnp
 import unittest
 
+import jax
+import jax.numpy as jnp
 from diffusers import FlaxUNet2DConditionModel
-from diffusers.utils.testing_utils import (
-    load_hf_numpy,
-    require_flax,
-    slow,
-)
+from diffusers.utils.testing_utils import load_hf_numpy, require_flax, slow
 from parameterized import parameterized
+
 
 @slow
 @require_flax
