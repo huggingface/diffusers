@@ -19,6 +19,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
+from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS
 
 
 class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
@@ -42,6 +43,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays.
     """
 
+    _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
     order = 2
 
     @register_to_config
