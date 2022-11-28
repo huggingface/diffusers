@@ -606,7 +606,7 @@ def main():
         )
         pipeline.save_pretrained(args.output_dir)
         # Also save the newly trained embeddings
-        save_path = os.path.join(args.output_dir, f"learned_embeds.bin")
+        save_path = os.path.join(args.output_dir, "learned_embeds.bin")
         save_progress(text_encoder, placeholder_token_id, accelerator, args, save_path)
 
         if args.push_to_hub:
