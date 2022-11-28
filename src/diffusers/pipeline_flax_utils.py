@@ -317,8 +317,8 @@ class FlaxDiffusionPipeline(ConfigMixin):
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
             allow_patterns += [FLAX_WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, cls.config_name]
 
-            # make sure we don't download PyTorch weights
-            ignore_patterns = "*.bin"
+            # make sure we don't download PyTorch weights, unless when using from_pt
+            ignore_patterns = "*.bin" if not from_pt else []
 
             if cls != FlaxDiffusionPipeline:
                 requested_pipeline_class = cls.__name__
@@ -411,13 +411,13 @@ class FlaxDiffusionPipeline(ConfigMixin):
                             f" {expected_class_obj}"
                         )
                 elif passed_class_obj[name] is None:
-                    logger.warn(
+                    logger.warning(
                         f"You have passed `None` for {name} to disable its functionality in {pipeline_class}. Note"
                         f" that this might lead to problems when using {pipeline_class} and is not recommended."
                     )
                     sub_model_should_be_defined = False
                 else:
-                    logger.warn(
+                    logger.warning(
                         f"You have passed a non-standard module {passed_class_obj[name]}. We cannot verify whether it"
                         " has the correct type"
                     )

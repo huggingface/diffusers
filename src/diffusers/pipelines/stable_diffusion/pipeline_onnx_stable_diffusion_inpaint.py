@@ -90,6 +90,8 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
     safety_checker: OnnxRuntimeModel
     feature_extractor: CLIPFeatureExtractor
 
+    _optional_components = ["safety_checker", "feature_extractor"]
+
     def __init__(
         self,
         vae_encoder: OnnxRuntimeModel,
@@ -100,6 +102,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
         safety_checker: OnnxRuntimeModel,
         feature_extractor: CLIPFeatureExtractor,
+        requires_safety_checker: bool = True,
     ):
         super().__init__()
         logger.info("`OnnxStableDiffusionInpaintPipeline` is experimental and will very likely change in the future.")
@@ -131,7 +134,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
             new_config["clip_sample"] = False
             scheduler._internal_dict = FrozenDict(new_config)
 
-        if safety_checker is None:
+        if safety_checker is None and requires_safety_checker:
             logger.warning(
                 f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
                 " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
@@ -139,6 +142,12 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
                 " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
                 " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
                 " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
+            )
+
+        if safety_checker is not None and feature_extractor is None:
+            raise ValueError(
+                "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
+                " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
 
         self.register_modules(
@@ -151,6 +160,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
+        self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_onnx_stable_diffusion.OnnxStableDiffusionPipeline._encode_prompt
     def _encode_prompt(self, prompt, num_images_per_prompt, do_classifier_free_guidance, negative_prompt):
@@ -236,8 +246,8 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
         prompt: Union[str, List[str]],
         image: PIL.Image.Image,
         mask_image: PIL.Image.Image,
-        height: int = 512,
-        width: int = 512,
+        height: Optional[int] = 512,
+        width: Optional[int] = 512,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -249,7 +259,6 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, np.ndarray], None]] = None,
         callback_steps: Optional[int] = 1,
-        **kwargs,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -312,6 +321,7 @@ class OnnxStableDiffusionInpaintPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
+
         if isinstance(prompt, str):
             batch_size = 1
         elif isinstance(prompt, list):

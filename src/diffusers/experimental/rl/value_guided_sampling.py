@@ -89,6 +89,7 @@ class ValueGuidedRLPipeline(DiffusionPipeline):
                 x = x + scale * grad
                 x = self.reset_x0(x, conditions, self.action_dim)
             prev_x = self.unet(x.permute(0, 2, 1), timesteps).sample.permute(0, 2, 1)
+            # TODO: set prediction_type when instantiating the model
             x = self.scheduler.step(prev_x, i, x, predict_epsilon=False)["prev_sample"]
 
             # apply conditions to the trajectory

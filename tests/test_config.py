@@ -26,6 +26,7 @@ from diffusers import (
     logging,
 )
 from diffusers.configuration_utils import ConfigMixin, register_to_config
+from diffusers.utils import deprecate
 from diffusers.utils.testing_utils import CaptureLogger
 
 
@@ -194,17 +195,27 @@ class ConfigTester(unittest.TestCase):
             ddpm = DDPMScheduler.from_pretrained(
                 "hf-internal-testing/tiny-stable-diffusion-torch",
                 subfolder="scheduler",
-                predict_epsilon=False,
+                prediction_type="sample",
                 beta_end=8,
             )
 
         with CaptureLogger(logger) as cap_logger_2:
             ddpm_2 = DDPMScheduler.from_pretrained("google/ddpm-celebahq-256", beta_start=88)
 
+        with CaptureLogger(logger) as cap_logger:
+            deprecate("remove this case", "0.10.0", "remove")
+            ddpm_3 = DDPMScheduler.from_pretrained(
+                "hf-internal-testing/tiny-stable-diffusion-torch",
+                subfolder="scheduler",
+                predict_epsilon=False,
+                beta_end=8,
+            )
+
         assert ddpm.__class__ == DDPMScheduler
-        assert ddpm.config.predict_epsilon is False
+        assert ddpm.config.prediction_type == "sample"
         assert ddpm.config.beta_end == 8
         assert ddpm_2.config.beta_start == 88
+        assert ddpm_3.config.prediction_type == "sample"
 
         # no warning should be thrown
         assert cap_logger.out == ""
