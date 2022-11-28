@@ -218,14 +218,23 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     def add_noise(
         self,
-        original_samples: Union[torch.FloatTensor, np.ndarray],
-        noise: Union[torch.FloatTensor, np.ndarray],
-        timesteps: Union[torch.IntTensor, np.ndarray],
-    ) -> Union[torch.FloatTensor, np.ndarray]:
+        original_samples: torch.FloatTensor,
+        noise: torch.FloatTensor,
+        timesteps: torch.FloatTensor,
+    ) -> torch.FloatTensor:
         # Make sure sigmas and timesteps have the same device and dtype as original_samples
         self.sigmas = self.sigmas.to(device=original_samples.device, dtype=original_samples.dtype)
-        self.timesteps = self.timesteps.to(original_samples.device)
-        sigma = self.sigmas[timesteps].flatten()
+        if original_samples.device.type == "mps" and torch.is_floating_point(timesteps):
+            # mps does not support float64
+            self.timesteps = self.timesteps.to(original_samples.device, dtype=torch.float32)
+            timesteps = timesteps.to(original_samples.device, dtype=torch.float32)
+        else:
+            self.timesteps = self.timesteps.to(original_samples.device)
+            timesteps = timesteps.to(original_samples.device)
+
+        step_indices = [self.index_for_timestep(t) for t in timesteps]
+
+        sigma = self.sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):
             sigma = sigma.unsqueeze(-1)
 

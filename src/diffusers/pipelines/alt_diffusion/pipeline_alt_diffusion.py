@@ -568,7 +568,7 @@ class AltDiffusionPipeline(DiffusionPipeline):
         # 8. Post-processing
         image = self.decode_latents(latents)
 
-        # 9. Run safety checker as
+        # 9. Run safety checker
         image, has_nsfw_concept = self.run_safety_checker(image, device, text_embeddings.dtype)
 
         # 10. Convert to PIL

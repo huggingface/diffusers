@@ -928,7 +928,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         prompt = "astronaut riding a horse"
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        output = pipe(prompt=prompt, strength=0.75, guidance_scale=7.5, generator=generator, output_type="np")
+        output = pipe(prompt=prompt, guidance_scale=7.5, generator=generator, output_type="np")
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
@@ -980,7 +980,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
                 callback_steps=1,
             )
         assert test_callback_fn.has_been_called
-        assert number_of_steps == 51
+        assert number_of_steps == 50
 
     def test_stable_diffusion_low_cpu_mem_usage(self):
         pipeline_id = "CompVis/stable-diffusion-v1-4"

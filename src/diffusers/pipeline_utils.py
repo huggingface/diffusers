@@ -129,8 +129,8 @@ def is_safetensors_compatible(info) -> bool:
             sf_filename = os.path.join(prefix, "model.safetensors")
         else:
             sf_filename = pt_filename[: -len(".bin")] + ".safetensors"
-        if sf_filename not in filenames:
-            logger.warning("{sf_filename} not found")
+        if is_safetensors_compatible and sf_filename not in filenames:
+            logger.warning(f"{sf_filename} not found")
             is_safetensors_compatible = False
     return is_safetensors_compatible
 

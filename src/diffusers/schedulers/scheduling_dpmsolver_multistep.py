@@ -118,6 +118,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
     _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
     _deprecated_kwargs = ["predict_epsilon"]
+    order = 1
 
     @register_to_config
     def __init__(

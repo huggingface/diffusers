@@ -654,7 +654,10 @@ class PipelineSlowTests(unittest.TestCase):
                     force_download=True,
                 )
 
-        assert cap_logger.out == "Keyword arguments {'not_used': True} not recognized.\n"
+        assert (
+            cap_logger.out
+            == "Keyword arguments {'not_used': True} are not expected by DDPMPipeline and will be ignored.\n"
+        )
 
     def test_from_pretrained_save_pretrained(self):
         # 1. Load models

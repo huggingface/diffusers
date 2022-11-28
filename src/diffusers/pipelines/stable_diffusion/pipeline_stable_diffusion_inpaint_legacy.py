@@ -457,7 +457,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         t_start = max(num_inference_steps - init_timestep + offset, 0)
         timesteps = self.scheduler.timesteps[t_start:]
 
-        return timesteps, num_inference_steps - int(num_inference_steps * strength)
+        return timesteps, num_inference_steps - t_start
 
     def prepare_latents(self, init_image, timestep, batch_size, num_images_per_prompt, dtype, device, generator):
         init_image = init_image.to(device=self.device, dtype=dtype)
