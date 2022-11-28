@@ -129,8 +129,8 @@ def is_safetensors_compatible(info) -> bool:
             sf_filename = os.path.join(prefix, "model.safetensors")
         else:
             sf_filename = pt_filename[: -len(".bin")] + ".safetensors"
-        if sf_filename not in filenames:
-            logger.warning("{sf_filename} not found")
+        if is_safetensors_compatible and sf_filename not in filenames:
+            logger.warning(f"{sf_filename} not found")
             is_safetensors_compatible = False
     return is_safetensors_compatible
 
@@ -767,7 +767,7 @@ class DiffusionPipeline(ConfigMixin):
 
         return pil_images
 
-    def progress_bar(self, iterable):
+    def progress_bar(self, iterable=None, total=None):
         if not hasattr(self, "_progress_bar_config"):
             self._progress_bar_config = {}
         elif not isinstance(self._progress_bar_config, dict):
@@ -775,7 +775,12 @@ class DiffusionPipeline(ConfigMixin):
                 f"`self._progress_bar_config` should be of type `dict`, but is {type(self._progress_bar_config)}."
             )
 
-        return tqdm(iterable, **self._progress_bar_config)
+        if iterable is not None:
+            return tqdm(iterable, **self._progress_bar_config)
+        elif total is not None:
+            return tqdm(total=total, **self._progress_bar_config)
+        else:
+            raise ValueError("Either `total` or `iterable` has to be defined.")
 
     def set_progress_bar_config(self, **kwargs):
         self._progress_bar_config = kwargs

@@ -475,7 +475,7 @@ class CycleDiffusionPipeline(DiffusionPipeline):
         t_start = max(num_inference_steps - init_timestep + offset, 0)
         timesteps = self.scheduler.timesteps[t_start:]
 
-        return timesteps
+        return timesteps, num_inference_steps - t_start
 
     def prepare_latents(self, init_image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
         init_image = init_image.to(device=device, dtype=dtype)
@@ -607,7 +607,7 @@ class CycleDiffusionPipeline(DiffusionPipeline):
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps = self.get_timesteps(num_inference_steps, strength, device)
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 6. Prepare latent variables
@@ -621,66 +621,70 @@ class CycleDiffusionPipeline(DiffusionPipeline):
         generator = extra_step_kwargs.pop("generator", None)
 
         # 8. Denoising loop
-        for i, t in enumerate(self.progress_bar(timesteps)):
-            # expand the latents if we are doing classifier free guidance
-            latent_model_input = torch.cat([latents] * 2)
-            source_latent_model_input = torch.cat([source_latents] * 2)
-            latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-            source_latent_model_input = self.scheduler.scale_model_input(source_latent_model_input, t)
+        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
+                # expand the latents if we are doing classifier free guidance
+                latent_model_input = torch.cat([latents] * 2)
+                source_latent_model_input = torch.cat([source_latents] * 2)
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                source_latent_model_input = self.scheduler.scale_model_input(source_latent_model_input, t)
 
-            # predict the noise residual
-            concat_latent_model_input = torch.stack(
-                [
-                    source_latent_model_input[0],
-                    latent_model_input[0],
-                    source_latent_model_input[1],
-                    latent_model_input[1],
-                ],
-                dim=0,
-            )
-            concat_text_embeddings = torch.stack(
-                [
-                    source_text_embeddings[0],
-                    text_embeddings[0],
-                    source_text_embeddings[1],
-                    text_embeddings[1],
-                ],
-                dim=0,
-            )
-            concat_noise_pred = self.unet(
-                concat_latent_model_input, t, encoder_hidden_states=concat_text_embeddings
-            ).sample
+                # predict the noise residual
+                concat_latent_model_input = torch.stack(
+                    [
+                        source_latent_model_input[0],
+                        latent_model_input[0],
+                        source_latent_model_input[1],
+                        latent_model_input[1],
+                    ],
+                    dim=0,
+                )
+                concat_text_embeddings = torch.stack(
+                    [
+                        source_text_embeddings[0],
+                        text_embeddings[0],
+                        source_text_embeddings[1],
+                        text_embeddings[1],
+                    ],
+                    dim=0,
+                )
+                concat_noise_pred = self.unet(
+                    concat_latent_model_input, t, encoder_hidden_states=concat_text_embeddings
+                ).sample
 
-            # perform guidance
-            (
-                source_noise_pred_uncond,
-                noise_pred_uncond,
-                source_noise_pred_text,
-                noise_pred_text,
-            ) = concat_noise_pred.chunk(4, dim=0)
-            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-            source_noise_pred = source_noise_pred_uncond + source_guidance_scale * (
-                source_noise_pred_text - source_noise_pred_uncond
-            )
+                # perform guidance
+                (
+                    source_noise_pred_uncond,
+                    noise_pred_uncond,
+                    source_noise_pred_text,
+                    noise_pred_text,
+                ) = concat_noise_pred.chunk(4, dim=0)
+                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                source_noise_pred = source_noise_pred_uncond + source_guidance_scale * (
+                    source_noise_pred_text - source_noise_pred_uncond
+                )
 
-            # Sample source_latents from the posterior distribution.
-            prev_source_latents = posterior_sample(
-                self.scheduler, source_latents, t, clean_latents, generator=generator, **extra_step_kwargs
-            )
-            # Compute noise.
-            noise = compute_noise(
-                self.scheduler, prev_source_latents, source_latents, t, source_noise_pred, **extra_step_kwargs
-            )
-            source_latents = prev_source_latents
+                # Sample source_latents from the posterior distribution.
+                prev_source_latents = posterior_sample(
+                    self.scheduler, source_latents, t, clean_latents, generator=generator, **extra_step_kwargs
+                )
+                # Compute noise.
+                noise = compute_noise(
+                    self.scheduler, prev_source_latents, source_latents, t, source_noise_pred, **extra_step_kwargs
+                )
+                source_latents = prev_source_latents
 
-            # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(
-                noise_pred, t, latents, variance_noise=noise, **extra_step_kwargs
-            ).prev_sample
+                # compute the previous noisy sample x_t -> x_t-1
+                latents = self.scheduler.step(
+                    noise_pred, t, latents, variance_noise=noise, **extra_step_kwargs
+                ).prev_sample
 
-            # call the callback, if provided
-            if callback is not None and i % callback_steps == 0:
-                callback(i, t, latents)
+                # call the callback, if provided
+                if (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0:
+                    progress_bar.update()
+                    if callback is not None and i % callback_steps == 0:
+                        callback(i, t, latents)
 
         # 9. Post-processing
         image = self.decode_latents(latents)

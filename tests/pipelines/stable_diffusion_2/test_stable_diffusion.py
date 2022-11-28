@@ -692,7 +692,7 @@ class StableDiffusion2PipelineIntegrationTests(unittest.TestCase):
                 callback_steps=1,
             )
         assert test_callback_fn.has_been_called
-        assert number_of_steps == 21
+        assert number_of_steps == 20
 
     def test_stable_diffusion_low_cpu_mem_usage(self):
         pipeline_id = "stabilityai/stable-diffusion-2-base"
