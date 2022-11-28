@@ -50,11 +50,11 @@ else:
 logger = get_logger(__name__)
 
 
-def save_progress(text_encoder, placeholder_token_id, accelerator, args):
+def save_progress(text_encoder, placeholder_token_id, accelerator, args, save_path):
     logger.info("Saving embeddings")
     learned_embeds = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[placeholder_token_id]
     learned_embeds_dict = {args.placeholder_token: learned_embeds.detach().cpu()}
-    torch.save(learned_embeds_dict, os.path.join(args.output_dir, "learned_embeds.bin"))
+    torch.save(learned_embeds_dict, save_path)
 
 
 def parse_args():
@@ -582,7 +582,8 @@ def main():
                 progress_bar.update(1)
                 global_step += 1
                 if global_step % args.save_steps == 0:
-                    save_progress(text_encoder, placeholder_token_id, accelerator, args)
+                    save_path = os.path.join(args.output_dir, f"learned_embeds-steps-{global_step}.bin")
+                    save_progress(text_encoder, placeholder_token_id, accelerator, args, save_path)
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
@@ -605,7 +606,8 @@ def main():
         )
         pipeline.save_pretrained(args.output_dir)
         # Also save the newly trained embeddings
-        save_progress(text_encoder, placeholder_token_id, accelerator, args)
+        save_path = os.path.join(args.output_dir, f"learned_embeds.bin")
+        save_progress(text_encoder, placeholder_token_id, accelerator, args, save_path)
 
         if args.push_to_hub:
             repo.push_to_hub(commit_message="End of training", blocking=False, auto_lfs_prune=True)
