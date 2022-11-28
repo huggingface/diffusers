@@ -91,12 +91,14 @@ _deps = [
     "isort>=5.5.4",
     "jax>=0.2.8,!=0.3.2",
     "jaxlib>=0.1.65",
+    "librosa",
     "modelcards>=0.1.4",
     "numpy",
     "parameterized",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
+    "safetensors",
     "sentencepiece>=0.1.91,!=0.1.92",
     "scipy",
     "regex!=2019.12.17",
@@ -104,8 +106,7 @@ _deps = [
     "tensorboard",
     "torch>=1.4",
     "torchvision",
-    "transformers>=4.21.0",
-    "librosa"
+    "transformers>=4.21.0"
 ]
 
 # this is a lookup table with items like:
@@ -181,15 +182,16 @@ extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "modelcards")
 extras["test"] = deps_list(
     "datasets",
+    "librosa",
     "parameterized",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
+    "safetensors",
     "sentencepiece",
     "scipy",
     "torchvision",
-    "transformers",
-    "librosa"
+    "transformers"
 )
 extras["torch"] = deps_list("torch", "accelerate")
 
