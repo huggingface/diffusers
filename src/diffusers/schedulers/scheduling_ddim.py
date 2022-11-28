@@ -361,7 +361,6 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
 
 class DDIMExtendedScheduler(DDIMScheduler):
-
     def set_timesteps(
         self,
         num_inference_steps: int,
@@ -447,7 +446,7 @@ class DDIMExtendedScheduler(DDIMScheduler):
 
         # 1. get previous step value (=t-1)
         batsize = sample.shape[0]
-        timesteps, prev_timesteps = timestep        # timesteps can be 0D tensor, or 1D tensor; if 0D, then expand to 1D
+        timesteps, prev_timesteps = timestep  # timesteps can be 0D tensor, or 1D tensor; if 0D, then expand to 1D
         if timesteps.dim() == 0:
             timesteps = timesteps[None].repeat(batsize)
         if prev_timesteps.dim() == 0:
@@ -458,7 +457,8 @@ class DDIMExtendedScheduler(DDIMScheduler):
         alpha_prod_t = _extract_into_tensor(alphas_cumprod, timesteps, (batsize, 1, 1, 1))
         alpha_prod_tm1 = _extract_into_tensor(alphas_cumprod, prev_timesteps, (batsize, 1, 1, 1))
         alpha_prod_tm1 = torch.where(
-            prev_timesteps[:, None, None, None] >= 0, alpha_prod_tm1, self.final_alpha_cumprod)
+            prev_timesteps[:, None, None, None] >= 0, alpha_prod_tm1, self.final_alpha_cumprod
+        )
         # alpha_prod_t = self.alphas_cumprod[timestep]
         # alpha_prod_t_prev = (
         #     self.alphas_cumprod[prev_timesteps] if bool(prev_timesteps >= 0) else self.final_alpha_cumprod
@@ -474,9 +474,9 @@ class DDIMExtendedScheduler(DDIMScheduler):
         elif self.config.prediction_type == "sample":
             pred_original_sample = model_output
         elif self.config.prediction_type == "v_prediction":
-            pred_original_sample = (alpha_prod_t ** 0.5) * sample - (beta_prod_t ** 0.5) * model_output
+            pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
             # predict V
-            model_output = (alpha_prod_t ** 0.5) * model_output + (beta_prod_t ** 0.5) * sample
+            model_output = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
         else:
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
