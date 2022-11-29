@@ -73,7 +73,8 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                 
                 interp - The interpolation method to use for the merging. Supports "sigmoid", "inv_sigmoid", "add_difference" and None.
                     Passing None uses the default interpolation which is weighted sum interpolation. For merging three checkpoints, only "add_difference" is supported. 
-                        
+
+                force - Whether to ignore mismatch in model_config.json for the current models. Defaults to False.  
 
         """
         # Default kwargs from DiffusionPipeline
