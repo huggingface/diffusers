@@ -139,8 +139,8 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline):
         generator: Optional[torch.Generator] = None,
         embedding_learning_rate: float = 0.001,
         diffusion_model_learning_rate: float = 2e-6,
-        text_embedding_optimization_steps: int = 500,
-        model_fine_tuning_optimization_steps: int = 1000,
+        text_embedding_optimization_steps: int = 100,
+        model_fine_tuning_optimization_steps: int = 500,
         **kwargs,
     ):
         r"""
