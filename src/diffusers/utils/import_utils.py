@@ -42,6 +42,7 @@ ENV_VARS_TRUE_AND_AUTO_VALUES = ENV_VARS_TRUE_VALUES.union({"AUTO"})
 USE_TF = os.environ.get("USE_TF", "AUTO").upper()
 USE_TORCH = os.environ.get("USE_TORCH", "AUTO").upper()
 USE_JAX = os.environ.get("USE_FLAX", "AUTO").upper()
+USE_SAFETENSORS = os.environ.get("USE_SAFETENSORS", "AUTO").upper()
 
 STR_OPERATION_TO_FUNC = {">": op.gt, ">=": op.ge, "==": op.eq, "!=": op.ne, "<=": op.le, "<": op.lt}
 
@@ -55,7 +56,7 @@ if USE_TORCH in ENV_VARS_TRUE_AND_AUTO_VALUES and USE_TF not in ENV_VARS_TRUE_VA
         except importlib_metadata.PackageNotFoundError:
             _torch_available = False
 else:
-    logger.info("Disabling PyTorch because USE_TF is set")
+    logger.info("Disabling PyTorch because USE_TORCH is set")
     _torch_available = False
 
 
@@ -109,6 +110,17 @@ if USE_JAX in ENV_VARS_TRUE_AND_AUTO_VALUES:
 else:
     _flax_available = False
 
+if USE_SAFETENSORS in ENV_VARS_TRUE_AND_AUTO_VALUES:
+    _safetensors_available = importlib.util.find_spec("safetensors") is not None
+    if _safetensors_available:
+        try:
+            _safetensors_version = importlib_metadata.version("safetensors")
+            logger.info(f"Safetensors version {_safetensors_version} available.")
+        except importlib_metadata.PackageNotFoundError:
+            _safetensors_available = False
+else:
+    logger.info("Disabling Safetensors because USE_TF is set")
+    _safetensors_available = False
 
 _transformers_available = importlib.util.find_spec("transformers") is not None
 try:
@@ -188,6 +200,10 @@ except importlib_metadata.PackageNotFoundError:
 
 def is_torch_available():
     return _torch_available
+
+
+def is_safetensors_available():
+    return _safetensors_available
 
 
 def is_tf_available():

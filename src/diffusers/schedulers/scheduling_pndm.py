@@ -90,6 +90,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
     """
 
     _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
+    order = 1
 
     @register_to_config
     def __init__(

@@ -21,6 +21,7 @@ deps = {
     "pytest": "pytest",
     "pytest-timeout": "pytest-timeout",
     "pytest-xdist": "pytest-xdist",
+    "safetensors": "safetensors",
     "sentencepiece": "sentencepiece>=0.1.91,!=0.1.92",
     "scipy": "scipy",
     "regex": "regex!=2019.12.17",
