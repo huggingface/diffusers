@@ -44,7 +44,7 @@ class RepaintPipelineIntegrationTests(unittest.TestCase):
 
         model_id = "google/ddpm-ema-celebahq-256"
         unet = UNet2DModel.from_pretrained(model_id)
-        scheduler = RePaintScheduler.from_config(model_id)
+        scheduler = RePaintScheduler.from_pretrained(model_id)
 
         repaint = RePaintPipeline(unet=unet, scheduler=scheduler).to(torch_device)
 

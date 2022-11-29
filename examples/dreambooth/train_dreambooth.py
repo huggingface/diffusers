@@ -66,6 +66,7 @@ def parse_args(input_args=None):
         "--instance_prompt",
         type=str,
         default=None,
+        required=True,
         help="The prompt with identifier specifying the instance",
     )
     parser.add_argument(
@@ -123,6 +124,7 @@ def parse_args(input_args=None):
         default=None,
         help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
     )
+    parser.add_argument("--save_steps", type=int, default=500, help="Save checkpoint every X updates steps.")
     parser.add_argument(
         "--gradient_accumulation_steps",
         type=int,
@@ -186,12 +188,12 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--mixed_precision",
         type=str,
-        default="no",
+        default=None,
         choices=["no", "fp16", "bf16"],
         help=(
-            "Whether to use mixed precision. Choose"
-            "between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >= 1.10."
-            "and an Nvidia Ampere GPU."
+            "Whether to use mixed precision. Choose between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >="
+            " 1.10.and an Nvidia Ampere GPU.  Default to the value of accelerate config of the current system or the"
+            " flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config."
         ),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
@@ -205,14 +207,16 @@ def parse_args(input_args=None):
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
 
-    if args.instance_data_dir is None:
-        raise ValueError("You must specify a train data directory.")
-
     if args.with_prior_preservation:
         if args.class_data_dir is None:
             raise ValueError("You must specify a data directory for class images.")
         if args.class_prompt is None:
             raise ValueError("You must specify prompt for class images.")
+    else:
+        if args.class_data_dir is not None:
+            logger.warning("You need not use --class_data_dir without --with_prior_preservation.")
+        if args.class_prompt is not None:
+            logger.warning("You need not use --class_prompt without --with_prior_preservation.")
 
     return args
 
@@ -469,7 +473,7 @@ def main(args):
         eps=args.adam_epsilon,
     )
 
-    noise_scheduler = DDPMScheduler.from_config("CompVis/stable-diffusion-v1-4", subfolder="scheduler")
+    noise_scheduler = DDPMScheduler.from_config(args.pretrained_model_name_or_path, subfolder="scheduler")
 
     train_dataset = DreamBoothDataset(
         instance_data_root=args.instance_data_dir,
@@ -535,9 +539,9 @@ def main(args):
         )
 
     weight_dtype = torch.float32
-    if args.mixed_precision == "fp16":
+    if accelerator.mixed_precision == "fp16":
         weight_dtype = torch.float16
-    elif args.mixed_precision == "bf16":
+    elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
     # Move text_encode and vae to gpu.
@@ -600,23 +604,31 @@ def main(args):
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0]
 
                 # Predict the noise residual
-                noise_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+
+                # Get the target for loss depending on the prediction type
+                if noise_scheduler.config.prediction_type == "epsilon":
+                    target = noise
+                elif noise_scheduler.config.prediction_type == "v_prediction":
+                    target = noise_scheduler.get_velocity(latents, noise, timesteps)
+                else:
+                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
                 if args.with_prior_preservation:
-                    # Chunk the noise and noise_pred into two parts and compute the loss on each part separately.
-                    noise_pred, noise_pred_prior = torch.chunk(noise_pred, 2, dim=0)
-                    noise, noise_prior = torch.chunk(noise, 2, dim=0)
+                    # Chunk the noise and model_pred into two parts and compute the loss on each part separately.
+                    model_pred, model_pred_prior = torch.chunk(model_pred, 2, dim=0)
+                    target, target_prior = torch.chunk(target, 2, dim=0)
 
                     # Compute instance loss
-                    loss = F.mse_loss(noise_pred.float(), noise.float(), reduction="none").mean([1, 2, 3]).mean()
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="none").mean([1, 2, 3]).mean()
 
                     # Compute prior loss
-                    prior_loss = F.mse_loss(noise_pred_prior.float(), noise_prior.float(), reduction="mean")
+                    prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
 
                     # Add the prior loss to the instance loss.
                     loss = loss + args.prior_loss_weight * prior_loss
                 else:
-                    loss = F.mse_loss(noise_pred.float(), noise.float(), reduction="mean")
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
@@ -634,6 +646,17 @@ def main(args):
             if accelerator.sync_gradients:
                 progress_bar.update(1)
                 global_step += 1
+
+                if global_step % args.save_steps == 0:
+                    if accelerator.is_main_process:
+                        pipeline = StableDiffusionPipeline.from_pretrained(
+                            args.pretrained_model_name_or_path,
+                            unet=accelerator.unwrap_model(unet),
+                            text_encoder=accelerator.unwrap_model(text_encoder),
+                            revision=args.revision,
+                        )
+                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                        pipeline.save_pretrained(save_path)
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)

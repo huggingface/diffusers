@@ -12,12 +12,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import inspect
 import tempfile
 import unittest
 from typing import Dict, List, Tuple
 
 from diffusers import FlaxDDIMScheduler, FlaxDDPMScheduler, FlaxPNDMScheduler
-from diffusers.utils import is_flax_available
+from diffusers.utils import deprecate, is_flax_available
 from diffusers.utils.testing_utils import require_flax
 
 
@@ -83,7 +84,7 @@ class FlaxSchedulerCommonTest(unittest.TestCase):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler, new_state = scheduler_class.from_config(tmpdirname)
+                new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 state = scheduler.set_timesteps(state, num_inference_steps)
@@ -112,7 +113,7 @@ class FlaxSchedulerCommonTest(unittest.TestCase):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler, new_state = scheduler_class.from_config(tmpdirname)
+                new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 state = scheduler.set_timesteps(state, num_inference_steps)
@@ -140,7 +141,7 @@ class FlaxSchedulerCommonTest(unittest.TestCase):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler, new_state = scheduler_class.from_config(tmpdirname)
+                new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 state = scheduler.set_timesteps(state, num_inference_steps)
@@ -227,6 +228,27 @@ class FlaxSchedulerCommonTest(unittest.TestCase):
             outputs_tuple = scheduler.step(state, residual, 0, sample, key, return_dict=False, **kwargs)
 
             recursive_check(outputs_tuple[0], outputs_dict.prev_sample)
+
+    def test_deprecated_kwargs(self):
+        for scheduler_class in self.scheduler_classes:
+            has_kwarg_in_model_class = "kwargs" in inspect.signature(scheduler_class.__init__).parameters
+            has_deprecated_kwarg = len(scheduler_class._deprecated_kwargs) > 0
+
+            if has_kwarg_in_model_class and not has_deprecated_kwarg:
+                raise ValueError(
+                    f"{scheduler_class} has `**kwargs` in its __init__ method but has not defined any deprecated"
+                    " kwargs under the `_deprecated_kwargs` class attribute. Make sure to either remove `**kwargs` if"
+                    " there are no deprecated arguments or add the deprecated argument with `_deprecated_kwargs ="
+                    " [<deprecated_argument>]`"
+                )
+
+            if not has_kwarg_in_model_class and has_deprecated_kwarg:
+                raise ValueError(
+                    f"{scheduler_class} doesn't have `**kwargs` in its __init__ method but has defined deprecated"
+                    " kwargs under the `_deprecated_kwargs` class attribute. Make sure to either add the `**kwargs`"
+                    f" argument to {self.model_class}.__init__ if there are deprecated arguments or remove the"
+                    " deprecated argument from `_deprecated_kwargs = [<deprecated_argument>]`"
+                )
 
 
 @require_flax
@@ -373,7 +395,7 @@ class FlaxDDIMSchedulerTest(FlaxSchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler, new_state = scheduler_class.from_config(tmpdirname)
+                new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 state = scheduler.set_timesteps(state, num_inference_steps)
@@ -401,7 +423,7 @@ class FlaxDDIMSchedulerTest(FlaxSchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler, new_state = scheduler_class.from_config(tmpdirname)
+                new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 state = scheduler.set_timesteps(state, num_inference_steps)
@@ -430,7 +452,7 @@ class FlaxDDIMSchedulerTest(FlaxSchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler, new_state = scheduler_class.from_config(tmpdirname)
+                new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 state = scheduler.set_timesteps(state, num_inference_steps)
@@ -599,6 +621,26 @@ class FlaxDDIMSchedulerTest(FlaxSchedulerCommonTest):
             assert abs(result_sum - 149.0784) < 1e-2
             assert abs(result_mean - 0.1941) < 1e-3
 
+    def test_prediction_type(self):
+        for prediction_type in ["epsilon", "sample", "v_prediction"]:
+            self.check_over_configs(prediction_type=prediction_type)
+
+    def test_deprecated_predict_epsilon(self):
+        deprecate("remove this test", "0.10.0", "remove")
+        for predict_epsilon in [True, False]:
+            self.check_over_configs(predict_epsilon=predict_epsilon)
+
+    def test_deprecated_predict_epsilon_to_prediction_type(self):
+        deprecate("remove this test", "0.10.0", "remove")
+        for scheduler_class in self.scheduler_classes:
+            scheduler_config = self.get_scheduler_config(predict_epsilon=True)
+            scheduler = scheduler_class.from_config(scheduler_config)
+            assert scheduler.prediction_type == "epsilon"
+
+            scheduler_config = self.get_scheduler_config(predict_epsilon=False)
+            scheduler = scheduler_class.from_config(scheduler_config)
+            assert scheduler.prediction_type == "sample"
+
 
 @require_flax
 class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
@@ -633,7 +675,7 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler, new_state = scheduler_class.from_config(tmpdirname)
+                new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
                 new_state = new_scheduler.set_timesteps(new_state, num_inference_steps, shape=sample.shape)
                 # copy over dummy past residuals
                 new_state = new_state.replace(ets=dummy_past_residuals[:])
@@ -720,7 +762,7 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler, new_state = scheduler_class.from_config(tmpdirname)
+                new_scheduler, new_state = scheduler_class.from_pretrained(tmpdirname)
                 # copy over dummy past residuals
                 new_state = new_scheduler.set_timesteps(new_state, num_inference_steps, shape=sample.shape)
 
@@ -859,7 +901,7 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
         result_mean = jnp.mean(jnp.abs(sample))
 
         if jax_device == "tpu":
-            assert abs(result_sum - 198.1542) < 1e-2
+            assert abs(result_sum - 198.1275) < 1e-2
             assert abs(result_mean - 0.2580) < 1e-3
         else:
             assert abs(result_sum - 198.1318) < 1e-2
@@ -872,8 +914,8 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
         result_mean = jnp.mean(jnp.abs(sample))
 
         if jax_device == "tpu":
-            assert abs(result_sum - 185.4352) < 1e-2
-            assert abs(result_mean - 0.24145) < 1e-3
+            assert abs(result_sum - 186.83226) < 1e-2
+            assert abs(result_mean - 0.24327) < 1e-3
         else:
             assert abs(result_sum - 186.9466) < 1e-2
             assert abs(result_mean - 0.24342) < 1e-3
@@ -885,8 +927,8 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
         result_mean = jnp.mean(jnp.abs(sample))
 
         if jax_device == "tpu":
-            assert abs(result_sum - 185.4352) < 1e-2
-            assert abs(result_mean - 0.2414) < 1e-3
+            assert abs(result_sum - 186.83226) < 1e-2
+            assert abs(result_mean - 0.24327) < 1e-3
         else:
             assert abs(result_sum - 186.9482) < 1e-2
             assert abs(result_mean - 0.2434) < 1e-3

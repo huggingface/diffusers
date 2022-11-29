@@ -42,11 +42,13 @@ If you have already cloned the repo, then you won't need to go through these ste
 #### Hardware
 With `gradient_checkpointing` and `mixed_precision` it should be possible to fine tune the model on a single 24GB GPU. For higher `batch_size` and faster training it's better to use GPUs with >30GB memory.
 
+**___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
+
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export dataset_name="lambdalabs/pokemon-blip-captions"
 
-accelerate launch train_text_to_image.py \
+accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --dataset_name=$dataset_name \
   --use_ema \
@@ -54,7 +56,6 @@ accelerate launch train_text_to_image.py \
   --train_batch_size=1 \
   --gradient_accumulation_steps=4 \
   --gradient_checkpointing \
-  --mixed_precision="fp16" \
   --max_train_steps=15000 \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
@@ -70,7 +71,7 @@ If you wish to use custom loading logic, you should modify the script, we have l
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export TRAIN_DIR="path_to_your_dataset"
 
-accelerate launch train_text_to_image.py \
+accelerate launch --mixed_precision="fp16" train_text_to_image.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --train_data_dir=$TRAIN_DIR \
   --use_ema \
@@ -78,7 +79,6 @@ accelerate launch train_text_to_image.py \
   --train_batch_size=1 \
   --gradient_accumulation_steps=4 \
   --gradient_checkpointing \
-  --mixed_precision="fp16" \
   --max_train_steps=15000 \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
