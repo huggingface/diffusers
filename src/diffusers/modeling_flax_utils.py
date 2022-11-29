@@ -340,7 +340,10 @@ class FlaxModelMixin:
                     f"Error no file named {FLAX_WEIGHTS_NAME} or {WEIGHTS_NAME} found in directory "
                     f"{pretrained_path_with_subfolder}."
                 )
-            send_telemetry({"model_path": "local", "framework": "flax"}, name="diffusers_from_pretrained")
+            send_telemetry(
+                {"model_class": cls.__name__, "model_path": "local", "framework": "flax"},
+                name="diffusers_from_pretrained",
+            )
         else:
             try:
                 model_file = hf_hub_download(
@@ -356,7 +359,10 @@ class FlaxModelMixin:
                     subfolder=subfolder,
                     revision=revision,
                 )
-                send_telemetry({"model_path": "hub", "framework": "flax"}, name="diffusers_from_pretrained")
+                send_telemetry(
+                    {"model_class": cls.__name__, "model_path": "hub", "framework": "flax"},
+                    name="diffusers_from_pretrained",
+                )
 
             except RepositoryNotFoundError:
                 raise EnvironmentError(

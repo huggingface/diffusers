@@ -346,10 +346,16 @@ class FlaxDiffusionPipeline(ConfigMixin):
                 ignore_patterns=ignore_patterns,
                 user_agent=user_agent,
             )
-            send_telemetry({"pipeline_path": "hub", "framework": "flax"}, name="diffusers_from_pretrained")
+            send_telemetry(
+                {"pipeline_class": requested_pipeline_class, "pipeline_path": "hub", "framework": "flax"},
+                name="diffusers_from_pretrained",
+            )
         else:
             cached_folder = pretrained_model_name_or_path
-            send_telemetry({"pipeline_path": "local", "framework": "flax"}, name="diffusers_from_pretrained")
+            send_telemetry(
+                {"pipeline_class": cls.__name__, "pipeline_path": "local", "framework": "flax"},
+                name="diffusers_from_pretrained",
+            )
 
         config_dict = cls.load_config(cached_folder)
 
