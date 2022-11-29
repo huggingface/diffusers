@@ -2,7 +2,6 @@
 import argparse
 import os
 
-import numpy as np
 import torch
 import torch.nn as nn
 
@@ -145,7 +144,6 @@ def main(args):
     gin_config = inference.parse_training_gin_file(gin_file, gin_overrides)
     synth_model = inference.InferenceModel(args.checkpoint_path, gin_config)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     scheduler = DDPMScheduler(beta_schedule="squaredcos_cap_v2", variance_type="fixed_large")
 
     model = ContinuousContextTransformer(
