@@ -117,6 +117,34 @@ image = pipe(prompt).images[0]
 
 There's a small performance penalty of about 10% slower inference times, but this method allows you to use Stable Diffusion in as little as 3.2 GB of VRAM!
 
+
+## Sliced VAE decode for larger batches
+
+To decode large batches of images with limited VRAM, or to enable batches with 32 images or more, you can use sliced VAE decode that decodes the batch latents one image at a time.
+
+You likely want to couple this with [`~StableDiffusionPipeline.enable_attention_slicing`] or [`~StableDiffusionPipeline.enable_xformers_memory_efficient_attention`] to further minimize memory use.
+
+To perform the VAE decode one image at a time, invoke [`~StableDiffusionPipeline.enable_vae_slicing`] in your pipeline before inference. For example:
+
+```Python
+import torch
+from diffusers import StableDiffusionPipeline
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    revision="fp16",
+    torch_dtype=torch.float16,
+)
+pipe = pipe.to("cuda")
+
+prompt = "a photo of an astronaut riding a horse on mars"
+pipe.enable_vae_slicing()
+images = pipe([prompt] * 32).images
+```
+
+You may see a small performance boost in VAE decode on multi-image batches. There should be no performance impact on single-image batches.
+
+
 ## Offloading to CPU with accelerate for memory savings
 
 For additional memory savings, you can offload the weights to CPU and load them to GPU when performing the forward pass.
