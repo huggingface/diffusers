@@ -21,10 +21,11 @@ from pathlib import Path
 from typing import Dict, Optional, Union
 from uuid import uuid4
 
+import requests
 from huggingface_hub import HfFolder, Repository, whoami
 
 from . import __version__
-from .utils import ENV_VARS_TRUE_VALUES, deprecate, logging
+from .utils import ENV_VARS_TRUE_VALUES, HUGGINGFACE_CO_RESOLVE_ENDPOINT, deprecate, logging
 from .utils.import_utils import (
     _flax_version,
     _jax_version,
@@ -47,6 +48,7 @@ logger = logging.get_logger(__name__)
 MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "utils" / "model_card_template.md"
 SESSION_ID = uuid4().hex
 DISABLE_TELEMETRY = os.getenv("DISABLE_TELEMETRY", "").upper() in ENV_VARS_TRUE_VALUES
+HUGGINGFACE_CO_TELEMETRY = HUGGINGFACE_CO_RESOLVE_ENDPOINT + "/api/telemetry/"
 
 
 def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
@@ -71,6 +73,25 @@ def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
     elif isinstance(user_agent, str):
         ua += "; " + user_agent
     return ua
+
+
+def send_telemetry(data: Dict, name: str):
+    """
+    Sends logs to the Hub telemetry endpoint.
+
+    Args:
+        data: the fields to track, e.g. {"example_name": "dreambooth"}
+        name: a unique name to differentiate the telemetry logs, e.g. "diffusers_examples" or "diffusers_notebooks"
+    """
+
+    headers = {"user-agent": http_user_agent(data)}
+    endpoint = HUGGINGFACE_CO_TELEMETRY + name
+    try:
+        r = requests.head(endpoint, headers=headers)
+        r.raise_for_status()
+    except Exception:
+        # We don't want to error in case of connection errors of any kind.
+        pass
 
 
 def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):

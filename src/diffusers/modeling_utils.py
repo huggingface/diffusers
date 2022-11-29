@@ -26,6 +26,7 @@ from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, R
 from requests import HTTPError
 
 from . import __version__
+from .hub_utils import send_telemetry
 from .utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
@@ -388,6 +389,7 @@ class ModelMixin(torch.nn.Module):
                 raise EnvironmentError(
                     f"Error no file named {WEIGHTS_NAME} found in directory {pretrained_model_name_or_path}."
                 )
+            send_telemetry({"model_path": "local", "framework": "pytorch"}, name="diffusers_from_pretrained")
         else:
             try:
                 # Load from URL or cache if already cached
@@ -404,6 +406,7 @@ class ModelMixin(torch.nn.Module):
                     subfolder=subfolder,
                     revision=revision,
                 )
+                send_telemetry({"model_path": "hub", "framework": "pytorch"}, name="diffusers_from_pretrained")
 
             except RepositoryNotFoundError:
                 raise EnvironmentError(
