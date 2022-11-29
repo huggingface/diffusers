@@ -20,11 +20,6 @@ from ...modeling_oneflow_utils import extract_scalar
 from timeit import default_timer as timer
 
 import os
-os.environ["ONEFLOW_MLIR_ENABLE_ROUND_TRIP"] = "1"
-os.environ["ONEFLOW_MLIR_ENABLE_INFERENCE_OPTIMIZATION"] = "1"
-os.environ["ONEFLOW_MLIR_PREFER_NHWC"] = "1"
-os.environ["ONEFLOW_KERNEL_ENABLE_CUDNN_FUSED_CONV_BIAS"] = "1"
-os.environ["ONEFLOW_KERNEL_ENABLE_FUSED_LINEAR"] = "1"
 
 
 def preprocess(image):
@@ -87,6 +82,11 @@ class OneFlowStableDiffusionImg2ImgPipeline(DiffusionPipeline):
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
     ):
+        os.environ["ONEFLOW_MLIR_ENABLE_ROUND_TRIP"] = "1"
+        os.environ["ONEFLOW_MLIR_ENABLE_INFERENCE_OPTIMIZATION"] = "1"
+        os.environ["ONEFLOW_MLIR_PREFER_NHWC"] = "1"
+        os.environ["ONEFLOW_KERNEL_ENABLE_CUDNN_FUSED_CONV_BIAS"] = "1"
+        os.environ["ONEFLOW_KERNEL_ENABLE_FUSED_LINEAR"] = "1"
         super().__init__()
         scheduler = scheduler.set_format("pt")
 

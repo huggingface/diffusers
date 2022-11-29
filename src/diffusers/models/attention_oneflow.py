@@ -67,7 +67,7 @@ class AttentionBlock(nn.Module):
         key_proj = self.key(hidden_states)
         value_proj = self.value(hidden_states)
 
-        if query_proj.device == torch.device("cpu") or not IS_CUDA_SUPPORT_FUSE_ATTENTION:
+        if query_proj.device == torch.device("cpu") or not IS_CUDA_SUPPORT_FUSE_ATTENTION or self.training:
             # transpose
             query_states = self.transpose_for_scores(query_proj)
             key_states = self.transpose_for_scores(key_proj)
