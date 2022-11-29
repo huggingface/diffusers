@@ -668,7 +668,7 @@ class StableDiffusion2PipelineIntegrationTests(unittest.TestCase):
                 assert latents.shape == (1, 4, 64, 64)
                 latents_slice = latents[0, -3:, -3:, -1]
                 expected_slice = np.array([1.0757, 1.1860, 1.1410, 0.4645, -0.2476, 0.6100, -0.7755, -0.8841, -0.9497])
-                assert np.abs(latents_slice.flatten() - expected_slice).max() < 1e-2
+                assert np.abs(latents_slice.flatten() - expected_slice).max() < 5e-2
 
         test_callback_fn.has_been_called = False
 
