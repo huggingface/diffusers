@@ -4,17 +4,16 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
+from transformers.modeling_utils import ModuleUtilsMixin
 from transformers.models.t5.modeling_t5 import (
     T5Attention,
     T5Block,
     T5Config,
+    T5DenseActDense,
+    T5DenseGatedActDense,
     T5LayerCrossAttention,
     T5LayerNorm,
-    T5DenseGatedActDense,
-    T5DenseActDense,
 )
-from transformers.modeling_utils import ModuleUtilsMixin
-
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...modeling_utils import ModelMixin
