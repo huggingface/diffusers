@@ -225,7 +225,7 @@ class ImagicStableDiffusionPipeline(DiffusionPipeline):
             prompt,
             padding="max_length",
             max_length=self.tokenizer.model_max_length,
-            truncaton=True,
+            truncation=True,
             return_tensors="pt",
         )
         text_embeddings = torch.nn.Parameter(
