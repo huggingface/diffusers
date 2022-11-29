@@ -118,5 +118,5 @@ class PipelineIntegrationTests(unittest.TestCase):
         audio_slice = audio[0, -3:, -3:]
 
         assert audio.shape == (1, 2, pipe.unet.sample_size)
-        expected_slice = np.array([-0.1693, -0.1698, -0.1447, -0.3044, -0.3203, -0.2937])
+        expected_slice = np.array([-0.1576, -0.1526, -0.127, -0.2699, -0.2762, -0.2487])
         assert np.abs(audio_slice.flatten() - expected_slice).max() < 1e-2
