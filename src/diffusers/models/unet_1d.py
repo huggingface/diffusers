@@ -57,9 +57,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             obj:`("UpBlock1D", "UpBlock1DNoSkip", "AttnUpBlock1D")`): Tuple of upsample block types.
         block_out_channels (`Tuple[int]`, *optional*, defaults to :
             obj:`(32, 32, 64)`): Tuple of block output channels.
-        layers_per_block (`int`, defaults to 2):
-            number of resnet, attention, or other layers in the up and down blocks.
-        mid_block_layers (`int`, defaults to 5): number of resnet, attention, or other layers in the mid block.
+        layers_per_block (`int`, *optional*, defaults to 1): added number of layers in a UNet block.
         mid_block_type (`str`, *optional*, defaults to "UNetMidBlock1D"): block type for middle of UNet.
         out_block_type (`str`, *optional*, defaults to `None`): optional output processing of UNet.
         act_fn (`str`, *optional*, defaults to None): optional activitation function in UNet blocks.
@@ -85,8 +83,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         mid_block_type: Tuple[str] = "UNetMidBlock1D",
         out_block_type: str = None,
         block_out_channels: Tuple[int] = (32, 32, 64),
-        layers_per_block: int = 2,
-        mid_block_layers: int = 5,
+        layers_per_block: int = 1,
         act_fn: str = None,
         norm_num_groups: int = 8,
         downsample_each_block: bool = False,
@@ -133,9 +130,9 @@ class UNet1DModel(ModelMixin, ConfigMixin):
 
             down_block = get_down_block(
                 down_block_type,
+                num_layers=layers_per_block,
                 in_channels=input_channel,
                 out_channels=output_channel,
-                num_layers=layers_per_block,
                 temb_channels=block_out_channels[0],
                 add_downsample=not is_final_block or downsample_each_block,
             )
@@ -145,10 +142,10 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         self.mid_block = get_mid_block(
             mid_block_type,
             in_channels=block_out_channels[-1],
-            num_layers=mid_block_layers,
             mid_channels=block_out_channels[-1],
             out_channels=block_out_channels[-1],
             embed_dim=block_out_channels[0],
+            num_layers=layers_per_block,
             add_downsample=downsample_each_block,
         )
 
@@ -170,9 +167,9 @@ class UNet1DModel(ModelMixin, ConfigMixin):
 
             up_block = get_up_block(
                 up_block_type,
+                num_layers=layers_per_block,
                 in_channels=prev_output_channel,
                 out_channels=output_channel,
-                num_layers=layers_per_block,
                 temb_channels=block_out_channels[0],
                 add_upsample=not is_final_block,
             )

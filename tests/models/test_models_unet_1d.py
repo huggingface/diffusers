@@ -224,7 +224,6 @@ class UNetRLModelTests(ModelTesterMixin, unittest.TestCase):
             "mid_block_type": "ValueFunctionMidBlock1D",
             "block_out_channels": [32, 64, 128, 256],
             "layers_per_block": 1,
-            "mid_block_layers": 1,
             "downsample_each_block": True,
             "use_timestep_embedding": True,
             "freq_shift": 1.0,
