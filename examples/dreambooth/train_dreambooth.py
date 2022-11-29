@@ -65,19 +65,19 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--instance_prompt",
         type=str,
-        default=None,
+        default='An image of renwa',
         required=True,
         help="The prompt with identifier specifying the instance",
     )
     parser.add_argument(
         "--class_prompt",
         type=str,
-        default=None,
+        default='An image of a woman',
         help="The prompt to specify images in the same class as provided instance images.",
     )
     parser.add_argument(
         "--with_prior_preservation",
-        default=False,
+        default=True,
         action="store_true",
         help="Flag to add prior preservation loss.",
     )
@@ -85,7 +85,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--num_class_images",
         type=int,
-        default=100,
+        default=232,
         help=(
             "Minimal class images for prior preservation loss. If not have enough images, additional images will be"
             " sampled with class_prompt."
@@ -101,7 +101,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--resolution",
         type=int,
-        default=512,
+        default=768,
         help=(
             "The resolution for input images, all the images in the train/validation dataset will be resized to this"
             " resolution"

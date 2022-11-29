@@ -3,8 +3,8 @@
 [DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few(3~5) images of a subject.
 The `train_dreambooth.py` script shows how to implement the training procedure and adapt it for stable diffusion.
 
-
 ## Running locally with PyTorch
+
 ### Installing the dependencies
 
 Before running the scripts, make sure to install the library's training dependencies:
@@ -21,7 +21,7 @@ accelerate config
 
 ### Dog toy example
 
-You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-4`, so you'll need to visit [its card](https://huggingface.co/CompVis/stable-diffusion-v1-4), read the license and tick the checkbox if you agree. 
+You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-4`, so you'll need to visit [its card](https://huggingface.co/CompVis/stable-diffusion-v1-4), read the license and tick the checkbox if you agree.
 
 You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section of the documentation](https://huggingface.co/docs/hub/security-tokens).
 
@@ -39,7 +39,7 @@ Now let's get our dataset. Download images from [here](https://drive.google.com/
 
 And launch the training using
 
-**___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
+****_Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model._****
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
@@ -47,11 +47,8 @@ export INSTANCE_DIR="path-to-instance-images"
 export OUTPUT_DIR="path-to-save-model"
 
 accelerate launch train_dreambooth.py \
-  --pretrained_model_name_or_path=$MODEL_NAME  \
-  --instance_data_dir=$INSTANCE_DIR \
   --output_dir=$OUTPUT_DIR \
-  --instance_prompt="a photo of sks dog" \
-  --resolution=512 \
+  --resolution=768 \
   --train_batch_size=1 \
   --gradient_accumulation_steps=1 \
   --learning_rate=5e-6 \
@@ -88,7 +85,6 @@ accelerate launch train_dreambooth.py \
   --num_class_images=200 \
   --max_train_steps=800
 ```
-
 
 ### Training on a 16GB GPU:
 
@@ -164,16 +160,16 @@ accelerate launch --mixed_precision="fp16" train_dreambooth.py \
 
 ### Fine-tune text encoder with the UNet.
 
-The script also allows to fine-tune the `text_encoder` along with the `unet`. It's been observed experimentally that fine-tuning `text_encoder` gives much better results especially on faces. 
+The script also allows to fine-tune the `text_encoder` along with the `unet`. It's been observed experimentally that fine-tuning `text_encoder` gives much better results especially on faces.
 Pass the `--train_text_encoder` argument to the script to enable training `text_encoder`.
 
-___Note: Training text encoder requires more memory, with this option the training won't fit on 16GB GPU. It needs at least 24GB VRAM.___
+**_Note: Training text encoder requires more memory, with this option the training won't fit on 16GB GPU. It needs at least 24GB VRAM._**
 
 ```bash
-export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export INSTANCE_DIR="path-to-instance-images"
-export CLASS_DIR="path-to-class-images"
-export OUTPUT_DIR="path-to-save-model"
+export MODEL_NAME="768-v-ema.ckpt"
+export INSTANCE_DIR="/home/arif/Documents/design/sandpit/hf-diffusers/diffusers/examples/dreambooth/renwa"
+export CLASS_DIR="/home/arif/Documents/design/sandpit/hf-diffusers/diffusers/examples/dreambooth/regularisationimages/woman"
+export OUTPUT_DIR="/home/arif/Documents/design/sandpit/hf-diffusers/diffusers/examples/dreambooth/output"
 
 accelerate launch train_dreambooth.py \
   --pretrained_model_name_or_path=$MODEL_NAME  \
@@ -182,8 +178,8 @@ accelerate launch train_dreambooth.py \
   --class_data_dir=$CLASS_DIR \
   --output_dir=$OUTPUT_DIR \
   --with_prior_preservation --prior_loss_weight=1.0 \
-  --instance_prompt="a photo of sks dog" \
-  --class_prompt="a photo of dog" \
+  --instance_prompt="a photo of renwa" \
+  --class_prompt="a photo of a woman" \
   --resolution=512 \
   --train_batch_size=1 \
   --use_8bit_adam \
@@ -212,20 +208,17 @@ image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
 image.save("dog-bucket.png")
 ```
 
-
 ## Running with Flax/JAX
 
 For faster training on TPUs and GPUs you can leverage the flax training example. Follow the instructions above to get the model and dataset before running the script.
 
-____Note: The flax example don't yet support features like gradient checkpoint, gradient accumulation etc, so to use flax for faster training we will need >30GB cards.___
-
+\_**_Note: The flax example don't yet support features like gradient checkpoint, gradient accumulation etc, so to use flax for faster training we will need >30GB cards._**
 
 Before running the scripts, make sure to install the library's training dependencies:
 
 ```bash
 pip install -U -r requirements_flax.txt
 ```
-
 
 ### Training without prior preservation loss
 
@@ -244,7 +237,6 @@ python train_dreambooth_flax.py \
   --learning_rate=5e-6 \
   --max_train_steps=400
 ```
-
 
 ### Training with prior preservation loss
 
@@ -268,7 +260,6 @@ python train_dreambooth_flax.py \
   --num_class_images=200 \
   --max_train_steps=800
 ```
-
 
 ### Fine-tune text encoder with the UNet.
 
