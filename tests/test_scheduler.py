@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
+import json
+import os
 import tempfile
 import unittest
 from typing import Dict, List, Tuple
@@ -21,22 +23,191 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+import diffusers
 from diffusers import (
     DDIMScheduler,
     DDPMScheduler,
     DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
+    HeunDiscreteScheduler,
     IPNDMScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
     ScoreSdeVeScheduler,
     VQDiffusionScheduler,
+    logging,
 )
+from diffusers.configuration_utils import ConfigMixin, register_to_config
+from diffusers.schedulers.scheduling_utils import SchedulerMixin
 from diffusers.utils import deprecate, torch_device
+from diffusers.utils.testing_utils import CaptureLogger
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+
+
+class SchedulerObject(SchedulerMixin, ConfigMixin):
+    config_name = "config.json"
+
+    @register_to_config
+    def __init__(
+        self,
+        a=2,
+        b=5,
+        c=(2, 5),
+        d="for diffusion",
+        e=[1, 3],
+    ):
+        pass
+
+
+class SchedulerObject2(SchedulerMixin, ConfigMixin):
+    config_name = "config.json"
+
+    @register_to_config
+    def __init__(
+        self,
+        a=2,
+        b=5,
+        c=(2, 5),
+        d="for diffusion",
+        f=[1, 3],
+    ):
+        pass
+
+
+class SchedulerObject3(SchedulerMixin, ConfigMixin):
+    config_name = "config.json"
+
+    @register_to_config
+    def __init__(
+        self,
+        a=2,
+        b=5,
+        c=(2, 5),
+        d="for diffusion",
+        e=[1, 3],
+        f=[1, 3],
+    ):
+        pass
+
+
+class SchedulerBaseTests(unittest.TestCase):
+    def test_save_load_from_different_config(self):
+        obj = SchedulerObject()
+
+        # mock add obj class to `diffusers`
+        setattr(diffusers, "SchedulerObject", SchedulerObject)
+        logger = logging.get_logger("diffusers.configuration_utils")
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            obj.save_config(tmpdirname)
+            with CaptureLogger(logger) as cap_logger_1:
+                config = SchedulerObject2.load_config(tmpdirname)
+                new_obj_1 = SchedulerObject2.from_config(config)
+
+            # now save a config parameter that is not expected
+            with open(os.path.join(tmpdirname, SchedulerObject.config_name), "r") as f:
+                data = json.load(f)
+                data["unexpected"] = True
+
+            with open(os.path.join(tmpdirname, SchedulerObject.config_name), "w") as f:
+                json.dump(data, f)
+
+            with CaptureLogger(logger) as cap_logger_2:
+                config = SchedulerObject.load_config(tmpdirname)
+                new_obj_2 = SchedulerObject.from_config(config)
+
+            with CaptureLogger(logger) as cap_logger_3:
+                config = SchedulerObject2.load_config(tmpdirname)
+                new_obj_3 = SchedulerObject2.from_config(config)
+
+        assert new_obj_1.__class__ == SchedulerObject2
+        assert new_obj_2.__class__ == SchedulerObject
+        assert new_obj_3.__class__ == SchedulerObject2
+
+        assert cap_logger_1.out == ""
+        assert (
+            cap_logger_2.out
+            == "The config attributes {'unexpected': True} were passed to SchedulerObject, but are not expected and"
+            " will"
+            " be ignored. Please verify your config.json configuration file.\n"
+        )
+        assert cap_logger_2.out.replace("SchedulerObject", "SchedulerObject2") == cap_logger_3.out
+
+    def test_save_load_compatible_schedulers(self):
+        SchedulerObject2._compatibles = ["SchedulerObject"]
+        SchedulerObject._compatibles = ["SchedulerObject2"]
+
+        obj = SchedulerObject()
+
+        # mock add obj class to `diffusers`
+        setattr(diffusers, "SchedulerObject", SchedulerObject)
+        setattr(diffusers, "SchedulerObject2", SchedulerObject2)
+        logger = logging.get_logger("diffusers.configuration_utils")
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            obj.save_config(tmpdirname)
+
+            # now save a config parameter that is expected by another class, but not origin class
+            with open(os.path.join(tmpdirname, SchedulerObject.config_name), "r") as f:
+                data = json.load(f)
+                data["f"] = [0, 0]
+                data["unexpected"] = True
+
+            with open(os.path.join(tmpdirname, SchedulerObject.config_name), "w") as f:
+                json.dump(data, f)
+
+            with CaptureLogger(logger) as cap_logger:
+                config = SchedulerObject.load_config(tmpdirname)
+                new_obj = SchedulerObject.from_config(config)
+
+        assert new_obj.__class__ == SchedulerObject
+
+        assert (
+            cap_logger.out
+            == "The config attributes {'unexpected': True} were passed to SchedulerObject, but are not expected and"
+            " will"
+            " be ignored. Please verify your config.json configuration file.\n"
+        )
+
+    def test_save_load_from_different_config_comp_schedulers(self):
+        SchedulerObject3._compatibles = ["SchedulerObject", "SchedulerObject2"]
+        SchedulerObject2._compatibles = ["SchedulerObject", "SchedulerObject3"]
+        SchedulerObject._compatibles = ["SchedulerObject2", "SchedulerObject3"]
+
+        obj = SchedulerObject()
+
+        # mock add obj class to `diffusers`
+        setattr(diffusers, "SchedulerObject", SchedulerObject)
+        setattr(diffusers, "SchedulerObject2", SchedulerObject2)
+        setattr(diffusers, "SchedulerObject3", SchedulerObject3)
+        logger = logging.get_logger("diffusers.configuration_utils")
+        logger.setLevel(diffusers.logging.INFO)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            obj.save_config(tmpdirname)
+
+            with CaptureLogger(logger) as cap_logger_1:
+                config = SchedulerObject.load_config(tmpdirname)
+                new_obj_1 = SchedulerObject.from_config(config)
+
+            with CaptureLogger(logger) as cap_logger_2:
+                config = SchedulerObject2.load_config(tmpdirname)
+                new_obj_2 = SchedulerObject2.from_config(config)
+
+            with CaptureLogger(logger) as cap_logger_3:
+                config = SchedulerObject3.load_config(tmpdirname)
+                new_obj_3 = SchedulerObject3.from_config(config)
+
+        assert new_obj_1.__class__ == SchedulerObject
+        assert new_obj_2.__class__ == SchedulerObject2
+        assert new_obj_3.__class__ == SchedulerObject3
+
+        assert cap_logger_1.out == ""
+        assert cap_logger_2.out == "{'f'} was not found in config. Values will be initialized to default values.\n"
+        assert cap_logger_3.out == "{'f'} was not found in config. Values will be initialized to default values.\n"
 
 
 class SchedulerCommonTest(unittest.TestCase):
@@ -102,7 +273,7 @@ class SchedulerCommonTest(unittest.TestCase):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 scheduler.set_timesteps(num_inference_steps)
@@ -145,7 +316,7 @@ class SchedulerCommonTest(unittest.TestCase):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 scheduler.set_timesteps(num_inference_steps)
@@ -187,7 +358,7 @@ class SchedulerCommonTest(unittest.TestCase):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 scheduler.set_timesteps(num_inference_steps)
@@ -204,6 +375,42 @@ class SchedulerCommonTest(unittest.TestCase):
             new_output = new_scheduler.step(residual, timestep, sample, **kwargs).prev_sample
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
+
+    def test_compatibles(self):
+        for scheduler_class in self.scheduler_classes:
+            scheduler_config = self.get_scheduler_config()
+
+            scheduler = scheduler_class(**scheduler_config)
+
+            assert all(c is not None for c in scheduler.compatibles)
+
+            for comp_scheduler_cls in scheduler.compatibles:
+                comp_scheduler = comp_scheduler_cls.from_config(scheduler.config)
+                assert comp_scheduler is not None
+
+            new_scheduler = scheduler_class.from_config(comp_scheduler.config)
+
+            new_scheduler_config = {k: v for k, v in new_scheduler.config.items() if k in scheduler.config}
+            scheduler_diff = {k: v for k, v in new_scheduler.config.items() if k not in scheduler.config}
+
+            # make sure that configs are essentially identical
+            assert new_scheduler_config == dict(scheduler.config)
+
+            # make sure that only differences are for configs that are not in init
+            init_keys = inspect.signature(scheduler_class.__init__).parameters.keys()
+            assert set(scheduler_diff.keys()).intersection(set(init_keys)) == set()
+
+    def test_from_pretrained(self):
+        for scheduler_class in self.scheduler_classes:
+            scheduler_config = self.get_scheduler_config()
+
+            scheduler = scheduler_class(**scheduler_config)
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                scheduler.save_pretrained(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
+
+            assert scheduler.config == new_scheduler.config
 
     def test_step_shape(self):
         kwargs = dict(self.forward_default_kwargs)
@@ -356,6 +563,27 @@ class SchedulerCommonTest(unittest.TestCase):
             noised = scheduler.add_noise(scaled_sample, noise, t)
             self.assertEqual(noised.shape, scaled_sample.shape)
 
+    def test_deprecated_kwargs(self):
+        for scheduler_class in self.scheduler_classes:
+            has_kwarg_in_model_class = "kwargs" in inspect.signature(scheduler_class.__init__).parameters
+            has_deprecated_kwarg = len(scheduler_class._deprecated_kwargs) > 0
+
+            if has_kwarg_in_model_class and not has_deprecated_kwarg:
+                raise ValueError(
+                    f"{scheduler_class} has `**kwargs` in its __init__ method but has not defined any deprecated"
+                    " kwargs under the `_deprecated_kwargs` class attribute. Make sure to either remove `**kwargs` if"
+                    " there are no deprecated arguments or add the deprecated argument with `_deprecated_kwargs ="
+                    " [<deprecated_argument>]`"
+                )
+
+            if not has_kwarg_in_model_class and has_deprecated_kwarg:
+                raise ValueError(
+                    f"{scheduler_class} doesn't have `**kwargs` in its __init__ method but has defined deprecated"
+                    " kwargs under the `_deprecated_kwargs` class attribute. Make sure to either add the `**kwargs`"
+                    f" argument to {self.model_class}.__init__ if there are deprecated arguments or remove the"
+                    " deprecated argument from `_deprecated_kwargs = [<deprecated_argument>]`"
+                )
+
 
 class DDPMSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (DDPMScheduler,)
@@ -393,7 +621,12 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         for clip_sample in [True, False]:
             self.check_over_configs(clip_sample=clip_sample)
 
-    def test_predict_epsilon(self):
+    def test_prediction_type(self):
+        for prediction_type in ["epsilon", "sample"]:
+            self.check_over_configs(prediction_type=prediction_type)
+
+    def test_deprecated_predict_epsilon(self):
+        deprecate("remove this test", "0.10.0", "remove")
         for predict_epsilon in [True, False]:
             self.check_over_configs(predict_epsilon=predict_epsilon)
 
@@ -589,7 +822,7 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
             "beta_end": 0.02,
             "beta_schedule": "linear",
             "solver_order": 2,
-            "predict_epsilon": True,
+            "prediction_type": "epsilon",
             "thresholding": False,
             "sample_max_value": 1.0,
             "algorithm_type": "dpmsolver++",
@@ -616,7 +849,7 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
                 new_scheduler.set_timesteps(num_inference_steps)
                 # copy over dummy past residuals
                 new_scheduler.model_outputs = dummy_past_residuals[: new_scheduler.config.solver_order]
@@ -648,7 +881,7 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
                 # copy over dummy past residuals
                 new_scheduler.set_timesteps(num_inference_steps)
 
@@ -715,10 +948,10 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         for order in [1, 2, 3]:
             for solver_type in ["midpoint", "heun"]:
                 for threshold in [0.5, 1.0, 2.0]:
-                    for predict_epsilon in [True, False]:
+                    for prediction_type in ["epsilon", "sample"]:
                         self.check_over_configs(
                             thresholding=True,
-                            predict_epsilon=predict_epsilon,
+                            prediction_type=prediction_type,
                             sample_max_value=threshold,
                             algorithm_type="dpmsolver++",
                             solver_order=order,
@@ -729,17 +962,17 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         for algorithm_type in ["dpmsolver", "dpmsolver++"]:
             for solver_type in ["midpoint", "heun"]:
                 for order in [1, 2, 3]:
-                    for predict_epsilon in [True, False]:
+                    for prediction_type in ["epsilon", "sample"]:
                         self.check_over_configs(
                             solver_order=order,
                             solver_type=solver_type,
-                            predict_epsilon=predict_epsilon,
+                            prediction_type=prediction_type,
                             algorithm_type=algorithm_type,
                         )
                         sample = self.full_loop(
                             solver_order=order,
                             solver_type=solver_type,
-                            predict_epsilon=predict_epsilon,
+                            prediction_type=prediction_type,
                             algorithm_type=algorithm_type,
                         )
                         assert not torch.isnan(sample).any(), "Samples have nan numbers"
@@ -757,6 +990,22 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         result_mean = torch.mean(torch.abs(sample))
 
         assert abs(result_mean.item() - 0.3301) < 1e-3
+
+    def test_fp16_support(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(thresholding=True, dynamic_thresholding_ratio=0)
+        scheduler = scheduler_class(**scheduler_config)
+
+        num_inference_steps = 10
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter.half()
+        scheduler.set_timesteps(num_inference_steps)
+
+        for i, t in enumerate(scheduler.timesteps):
+            residual = model(sample, t)
+            sample = scheduler.step(residual, t, sample).prev_sample
+
+        assert sample.dtype == torch.float16
 
 
 class PNDMSchedulerTest(SchedulerCommonTest):
@@ -790,7 +1039,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
                 new_scheduler.set_timesteps(num_inference_steps)
                 # copy over dummy past residuals
                 new_scheduler.ets = dummy_past_residuals[:]
@@ -825,7 +1074,7 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
                 # copy over dummy past residuals
                 new_scheduler.set_timesteps(num_inference_steps)
 
@@ -1043,7 +1292,7 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 
             output = scheduler.step_pred(
                 residual, time_step, sample, generator=torch.manual_seed(0), **kwargs
@@ -1074,7 +1323,7 @@ class ScoreSdeVeSchedulerTest(unittest.TestCase):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
 
             output = scheduler.step_pred(
                 residual, time_step, sample, generator=torch.manual_seed(0), **kwargs
@@ -1470,7 +1719,7 @@ class IPNDMSchedulerTest(SchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
                 new_scheduler.set_timesteps(num_inference_steps)
                 # copy over dummy past residuals
                 new_scheduler.ets = dummy_past_residuals[:]
@@ -1508,7 +1757,7 @@ class IPNDMSchedulerTest(SchedulerCommonTest):
 
             with tempfile.TemporaryDirectory() as tmpdirname:
                 scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_config(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
                 # copy over dummy past residuals
                 new_scheduler.set_timesteps(num_inference_steps)
 
@@ -1644,3 +1893,95 @@ class VQDiffusionSchedulerTest(SchedulerCommonTest):
 
     def test_add_noise_device(self):
         pass
+
+
+class HeunDiscreteSchedulerTest(SchedulerCommonTest):
+    scheduler_classes = (HeunDiscreteScheduler,)
+    num_inference_steps = 10
+
+    def get_scheduler_config(self, **kwargs):
+        config = {
+            "num_train_timesteps": 1100,
+            "beta_start": 0.0001,
+            "beta_end": 0.02,
+            "beta_schedule": "linear",
+            "trained_betas": None,
+        }
+
+        config.update(**kwargs)
+        return config
+
+    def test_timesteps(self):
+        for timesteps in [10, 50, 100, 1000]:
+            self.check_over_configs(num_train_timesteps=timesteps)
+
+    def test_betas(self):
+        for beta_start, beta_end in zip([0.00001, 0.0001, 0.001], [0.0002, 0.002, 0.02]):
+            self.check_over_configs(beta_start=beta_start, beta_end=beta_end)
+
+    def test_schedules(self):
+        for schedule in ["linear", "scaled_linear"]:
+            self.check_over_configs(beta_schedule=schedule)
+
+    def test_full_loop_no_noise(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        scheduler.set_timesteps(self.num_inference_steps)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+        sample = sample.to(torch_device)
+
+        for i, t in enumerate(scheduler.timesteps):
+            sample = scheduler.scale_model_input(sample, t)
+
+            model_output = model(sample, t)
+
+            output = scheduler.step(model_output, t, sample)
+            sample = output.prev_sample
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        if torch_device in ["cpu", "mps"]:
+            assert abs(result_sum.item() - 0.1233) < 1e-2
+            assert abs(result_mean.item() - 0.0002) < 1e-3
+        else:
+            # CUDA
+            assert abs(result_sum.item() - 0.1233) < 1e-2
+            assert abs(result_mean.item() - 0.0002) < 1e-3
+
+    def test_full_loop_device(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        scheduler.set_timesteps(self.num_inference_steps, device=torch_device)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter.to(torch_device) * scheduler.init_noise_sigma
+
+        for t in scheduler.timesteps:
+            sample = scheduler.scale_model_input(sample, t)
+
+            model_output = model(sample, t)
+
+            output = scheduler.step(model_output, t, sample)
+            sample = output.prev_sample
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        if str(torch_device).startswith("cpu"):
+            # The following sum varies between 148 and 156 on mps. Why?
+            assert abs(result_sum.item() - 0.1233) < 1e-2
+            assert abs(result_mean.item() - 0.0002) < 1e-3
+        elif str(torch_device).startswith("mps"):
+            # Larger tolerance on mps
+            assert abs(result_mean.item() - 0.0002) < 1e-2
+        else:
+            # CUDA
+            assert abs(result_sum.item() - 0.1233) < 1e-2
+            assert abs(result_mean.item() - 0.0002) < 1e-3

@@ -60,6 +60,7 @@ jobs:
       run: |
         python -m pip install -e .[quality,test]
         python -m pip install git+https://github.com/huggingface/accelerate
+        python -m pip install -U git+https://github.com/huggingface/transformers
 
     - name: Environment
       run: |
@@ -127,6 +128,7 @@ jobs:
         ${CONDA_RUN} python -m pip install -e .[quality,test]
         ${CONDA_RUN} python -m pip install --pre torch==${MPS_TORCH_VERSION} --extra-index-url https://download.pytorch.org/whl/test/cpu
         ${CONDA_RUN} python -m pip install git+https://github.com/huggingface/accelerate
+        ${CONDA_RUN} python -m pip install -U git+https://github.com/huggingface/transformers
 
     - name: Environment
       shell: arch -arch arm64 bash {0}

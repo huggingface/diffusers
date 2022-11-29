@@ -19,7 +19,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput, logging
+from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS, BaseOutput, logging
 from .scheduling_utils import SchedulerMixin
 
 
@@ -53,8 +53,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
-    [`~ConfigMixin.from_config`] functions.
+    [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
+    [`~SchedulerMixin.from_pretrained`] functions.
 
     Args:
         num_train_timesteps (`int`): number of diffusion steps used to train the model.
@@ -68,14 +68,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     """
 
-    _compatible_classes = [
-        "DDIMScheduler",
-        "DDPMScheduler",
-        "LMSDiscreteScheduler",
-        "PNDMScheduler",
-        "EulerAncestralDiscreteScheduler",
-        "DPMSolverMultistepScheduler",
-    ]
+    _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
+    order = 1
 
     @register_to_config
     def __init__(
@@ -85,6 +79,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
         trained_betas: Optional[np.ndarray] = None,
+        prediction_type: str = "epsilon",
     ):
         if trained_betas is not None:
             self.betas = torch.from_numpy(trained_betas)
@@ -205,7 +200,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             )
 
         if not self.is_scale_input_called:
-            logger.warn(
+            logger.warning(
                 "The `scale_model_input` function should be called before `step` to ensure correct denoising. "
                 "See `StableDiffusionPipeline` for a usage example."
             )
@@ -236,7 +231,15 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             sample = sample + eps * (sigma_hat**2 - sigma**2) ** 0.5
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
-        pred_original_sample = sample - sigma_hat * model_output
+        if self.config.prediction_type == "epsilon":
+            pred_original_sample = sample - sigma_hat * model_output
+        elif self.config.prediction_type == "v_prediction":
+            # * c_out + input * c_skip
+            pred_original_sample = model_output * (-sigma / (sigma**2 + 1) ** 0.5) + (sample / (sigma**2 + 1))
+        else:
+            raise ValueError(
+                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
+            )
 
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma_hat

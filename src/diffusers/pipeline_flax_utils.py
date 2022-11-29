@@ -47,7 +47,7 @@ logger = logging.get_logger(__name__)
 LOADABLE_CLASSES = {
     "diffusers": {
         "FlaxModelMixin": ["save_pretrained", "from_pretrained"],
-        "FlaxSchedulerMixin": ["save_config", "from_config"],
+        "FlaxSchedulerMixin": ["save_pretrained", "from_pretrained"],
         "FlaxDiffusionPipeline": ["save_pretrained", "from_pretrained"],
     },
     "transformers": {
@@ -280,7 +280,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
         >>> from diffusers import FlaxDPMSolverMultistepScheduler
 
         >>> model_id = "runwayml/stable-diffusion-v1-5"
-        >>> sched, sched_state = FlaxDPMSolverMultistepScheduler.from_config(
+        >>> sched, sched_state = FlaxDPMSolverMultistepScheduler.from_pretrained(
         ...     model_id,
         ...     subfolder="scheduler",
         ... )
@@ -303,7 +303,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
         if not os.path.isdir(pretrained_model_name_or_path):
-            config_dict = cls.get_config_dict(
+            config_dict = cls.load_config(
                 pretrained_model_name_or_path,
                 cache_dir=cache_dir,
                 resume_download=resume_download,
@@ -317,8 +317,8 @@ class FlaxDiffusionPipeline(ConfigMixin):
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
             allow_patterns += [FLAX_WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, cls.config_name]
 
-            # make sure we don't download PyTorch weights
-            ignore_patterns = "*.bin"
+            # make sure we don't download PyTorch weights, unless when using from_pt
+            ignore_patterns = "*.bin" if not from_pt else []
 
             if cls != FlaxDiffusionPipeline:
                 requested_pipeline_class = cls.__name__
@@ -349,7 +349,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
         else:
             cached_folder = pretrained_model_name_or_path
 
-        config_dict = cls.get_config_dict(cached_folder)
+        config_dict = cls.load_config(cached_folder)
 
         # 2. Load the pipeline class, if using custom module then load it from the hub
         # if we load from explicit class, let's use it
@@ -370,7 +370,7 @@ class FlaxDiffusionPipeline(ConfigMixin):
         expected_modules = set(inspect.signature(pipeline_class.__init__).parameters.keys())
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
 
-        init_dict, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
+        init_dict, _, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
         init_kwargs = {}
 
@@ -411,13 +411,13 @@ class FlaxDiffusionPipeline(ConfigMixin):
                             f" {expected_class_obj}"
                         )
                 elif passed_class_obj[name] is None:
-                    logger.warn(
+                    logger.warning(
                         f"You have passed `None` for {name} to disable its functionality in {pipeline_class}. Note"
                         f" that this might lead to problems when using {pipeline_class} and is not recommended."
                     )
                     sub_model_should_be_defined = False
                 else:
-                    logger.warn(
+                    logger.warning(
                         f"You have passed a non-standard module {passed_class_obj[name]}. We cannot verify whether it"
                         " has the correct type"
                     )

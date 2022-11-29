@@ -168,7 +168,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittes
 
         image = self.dummy_image.cpu().permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB")
-        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((128, 128))
+        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((32, 32))
 
         # make sure here that pndm scheduler skips prk
         sd_pipe = StableDiffusionInpaintPipelineLegacy(
@@ -227,7 +227,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittes
 
         image = self.dummy_image.cpu().permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB")
-        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((128, 128))
+        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((32, 32))
 
         # make sure here that pndm scheduler skips prk
         sd_pipe = StableDiffusionInpaintPipelineLegacy(
@@ -273,7 +273,7 @@ class StableDiffusionInpaintLegacyPipelineFastTests(PipelineTesterMixin, unittes
 
         image = self.dummy_image.cpu().permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB")
-        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((128, 128))
+        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((32, 32))
 
         # make sure here that pndm scheduler skips prk
         sd_pipe = StableDiffusionInpaintPipelineLegacy(
@@ -401,7 +401,7 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
         )
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        lms = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler")
+        lms = LMSDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
         pipe = StableDiffusionInpaintPipeline.from_pretrained(
             model_id,
             scheduler=lms,
@@ -484,4 +484,4 @@ class StableDiffusionInpaintLegacyPipelineIntegrationTests(unittest.TestCase):
                 callback_steps=1,
             )
         assert test_callback_fn.has_been_called
-        assert number_of_steps == 38
+        assert number_of_steps == 37

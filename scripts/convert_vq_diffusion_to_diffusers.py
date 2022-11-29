@@ -39,8 +39,8 @@ import torch
 
 import yaml
 from accelerate import init_empty_weights, load_checkpoint_and_dispatch
-from diffusers import VQDiffusionPipeline, VQDiffusionScheduler, VQModel
-from diffusers.models.attention import Transformer2DModel
+from diffusers import Transformer2DModel, VQDiffusionPipeline, VQDiffusionScheduler, VQModel
+from diffusers.pipelines.vq_diffusion.pipeline_vq_diffusion import LearnedClassifierFreeSamplingEmbeddings
 from transformers import CLIPTextModel, CLIPTokenizer
 from yaml.loader import FullLoader
 
@@ -826,6 +826,20 @@ if __name__ == "__main__":
         transformer_model, checkpoint
     )
 
+    # classifier free sampling embeddings interlude
+
+    # The learned embeddings are stored on the transformer in the original VQ-diffusion. We store them on a separate
+    # model, so we pull them off the checkpoint before the checkpoint is deleted.
+
+    learnable_classifier_free_sampling_embeddings = diffusion_config.params.learnable_cf
+
+    if learnable_classifier_free_sampling_embeddings:
+        learned_classifier_free_sampling_embeddings_embeddings = checkpoint["transformer.empty_text_embed"]
+    else:
+        learned_classifier_free_sampling_embeddings_embeddings = None
+
+    # done classifier free sampling embeddings interlude
+
     with tempfile.NamedTemporaryFile() as diffusers_transformer_checkpoint_file:
         torch.save(diffusers_transformer_checkpoint, diffusers_transformer_checkpoint_file.name)
         del diffusers_transformer_checkpoint
@@ -871,6 +885,31 @@ if __name__ == "__main__":
 
     # done scheduler
 
+    # learned classifier free sampling embeddings
+
+    with init_empty_weights():
+        learned_classifier_free_sampling_embeddings_model = LearnedClassifierFreeSamplingEmbeddings(
+            learnable_classifier_free_sampling_embeddings,
+            hidden_size=text_encoder_model.config.hidden_size,
+            length=tokenizer_model.model_max_length,
+        )
+
+    learned_classifier_free_sampling_checkpoint = {
+        "embeddings": learned_classifier_free_sampling_embeddings_embeddings.float()
+    }
+
+    with tempfile.NamedTemporaryFile() as learned_classifier_free_sampling_checkpoint_file:
+        torch.save(learned_classifier_free_sampling_checkpoint, learned_classifier_free_sampling_checkpoint_file.name)
+        del learned_classifier_free_sampling_checkpoint
+        del learned_classifier_free_sampling_embeddings_embeddings
+        load_checkpoint_and_dispatch(
+            learned_classifier_free_sampling_embeddings_model,
+            learned_classifier_free_sampling_checkpoint_file.name,
+            device_map="auto",
+        )
+
+    # done learned classifier free sampling embeddings
+
     print(f"saving VQ diffusion model, path: {args.dump_path}")
 
     pipe = VQDiffusionPipeline(
@@ -878,6 +917,7 @@ if __name__ == "__main__":
         transformer=transformer_model,
         tokenizer=tokenizer_model,
         text_encoder=text_encoder_model,
+        learned_classifier_free_sampling_embeddings=learned_classifier_free_sampling_embeddings_model,
         scheduler=scheduler_model,
     )
     pipe.save_pretrained(args.dump_path)
