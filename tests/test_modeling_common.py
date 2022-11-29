@@ -65,6 +65,8 @@ class ModelTesterMixin:
         model.eval()
 
         for dtype in [torch.float32, torch.float16, torch.bfloat16]:
+            if torch_device == "mps" and dtype == torch.bfloat16:
+                pass
             with tempfile.TemporaryDirectory() as tmpdirname:
                 model.to(dtype)
                 model.save_pretrained(tmpdirname)
