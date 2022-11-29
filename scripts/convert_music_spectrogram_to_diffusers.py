@@ -124,7 +124,6 @@ def load_decoder(weights, model):
 
 def load_checkpoint(t5_checkpoint, model):
     model.token_encoder = load_token_encoder(t5_checkpoint["token_encoder"], model.token_encoder)
-
     model.continuous_encoder = load_continuous_encoder(t5_checkpoint["continuous_encoder"], model.continuous_encoder)
     model.decoder = load_decoder(t5_checkpoint["decoder"], model.decoder)
     return model

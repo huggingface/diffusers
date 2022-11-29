@@ -253,7 +253,7 @@ class TokenEncoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
             lyr = T5Block(t5config)
             self.encoders.append(lyr)
 
-        self.layer_norm = T5LayerNorm(hidden_size=d_model)
+        self.layer_norm = T5LayerNorm(d_model)
         self.dropout_post = nn.Dropout(p=dropout_rate)
 
     def forward(self, encoder_input_tokens, encoder_inputs_mask):
@@ -315,7 +315,7 @@ class ContinuousEncoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
             lyr = T5Block(t5config)
             self.encoders.append(lyr)
 
-        self.layer_norm = T5LayerNorm(hidden_size=d_model)
+        self.layer_norm = T5LayerNorm(d_model)
         self.dropout_post = nn.Dropout(p=dropout_rate)
 
     def forward(self, encoder_inputs, encoder_inputs_mask):
@@ -601,8 +601,6 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         generator: Optional[torch.Generator] = None,
         num_inference_steps: int = 1000,
         return_dict: bool = True,
-        predict_epsilon: bool = True,
-        **kwargs,
     ):
         target_shape = encoder_continuous_inputs.shape
         encoder_continuous_inputs = self.scale_features(encoder_continuous_inputs, output_range=[-1.0, 1.0], clip=True)
@@ -628,7 +626,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
             )
 
             # 2. compute previous output: x_t -> x_t-1
-            x = self.scheduler.step(output, t, x, generator=generator, predict_epsilon=predict_epsilon).prev_sample
+            x = self.scheduler.step(output, t, x, generator=generator).prev_sample
 
         mel = self.scale_to_features(x, input_range=[-1.0, 1.0])
         mel = mel.cpu().numpy()
