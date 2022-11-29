@@ -260,7 +260,7 @@ class CrossAttention(nn.Module):
         key = self.to_k(context)
         value = self.to_v(context)
 
-        if query.device == torch.device("cpu") or not IS_CUDA_SUPPORT_FUSE_ATTENTION:
+        if query.device == torch.device("cpu") or not IS_CUDA_SUPPORT_FUSE_ATTENTION or self.training:
             dim = query.shape[-1]
 
             query = self.reshape_heads_to_batch_dim(query)
