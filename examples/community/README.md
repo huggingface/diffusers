@@ -602,7 +602,7 @@ For example, this could be used to place a logo on a shirt and make it blend sea
 import PIL
 import torch
 
-from diffusers import StableDiffusionInpaintPipeline
+from diffusers import DiffusionPipeline
 
 image_path = "./path-to-image.png"
 inner_image_path = "./path-to-inner-image.png"
@@ -612,16 +612,19 @@ init_image = PIL.Image.open(image_path).convert("RGB").resize((512, 512))
 inner_image = PIL.Image.open(inner_image_path).convert("RGBA").resize((512, 512))
 mask_image = PIL.Image.open(mask_path).convert("RGB").resize((512, 512))
 
-pipe = StableDiffusionInpaintPipeline.from_pretrained(
+pipe = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-inpainting",
+    custom_pipeline="img2img_inpainting",
     revision="fp16",
-    torch_dtype=torch.float16,
+    torch_dtype=torch.float16
 )
 pipe = pipe.to("cuda")
 
 prompt = "Your prompt here!"
 image = pipe(prompt=prompt, image=init_image, inner_image=inner_image, mask_image=mask_image).images[0]
 ```
+
+![2 by 2 grid demonstrating image to image inpainting.](https://user-images.githubusercontent.com/44398246/203506577-ec303be4-887e-4ebd-a773-c83fcb3dd01a.png)
 
 ### Text Based Inpainting Stable Diffusion
 
