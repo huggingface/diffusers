@@ -30,6 +30,7 @@ from diffusers import (
     DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
+    HeunDiscreteScheduler,
     IPNDMScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
@@ -562,6 +563,27 @@ class SchedulerCommonTest(unittest.TestCase):
             noised = scheduler.add_noise(scaled_sample, noise, t)
             self.assertEqual(noised.shape, scaled_sample.shape)
 
+    def test_deprecated_kwargs(self):
+        for scheduler_class in self.scheduler_classes:
+            has_kwarg_in_model_class = "kwargs" in inspect.signature(scheduler_class.__init__).parameters
+            has_deprecated_kwarg = len(scheduler_class._deprecated_kwargs) > 0
+
+            if has_kwarg_in_model_class and not has_deprecated_kwarg:
+                raise ValueError(
+                    f"{scheduler_class} has `**kwargs` in its __init__ method but has not defined any deprecated"
+                    " kwargs under the `_deprecated_kwargs` class attribute. Make sure to either remove `**kwargs` if"
+                    " there are no deprecated arguments or add the deprecated argument with `_deprecated_kwargs ="
+                    " [<deprecated_argument>]`"
+                )
+
+            if not has_kwarg_in_model_class and has_deprecated_kwarg:
+                raise ValueError(
+                    f"{scheduler_class} doesn't have `**kwargs` in its __init__ method but has defined deprecated"
+                    " kwargs under the `_deprecated_kwargs` class attribute. Make sure to either add the `**kwargs`"
+                    f" argument to {self.model_class}.__init__ if there are deprecated arguments or remove the"
+                    " deprecated argument from `_deprecated_kwargs = [<deprecated_argument>]`"
+                )
+
 
 class DDPMSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (DDPMScheduler,)
@@ -599,7 +621,12 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         for clip_sample in [True, False]:
             self.check_over_configs(clip_sample=clip_sample)
 
-    def test_predict_epsilon(self):
+    def test_prediction_type(self):
+        for prediction_type in ["epsilon", "sample"]:
+            self.check_over_configs(prediction_type=prediction_type)
+
+    def test_deprecated_predict_epsilon(self):
+        deprecate("remove this test", "0.10.0", "remove")
         for predict_epsilon in [True, False]:
             self.check_over_configs(predict_epsilon=predict_epsilon)
 
@@ -795,7 +822,7 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
             "beta_end": 0.02,
             "beta_schedule": "linear",
             "solver_order": 2,
-            "predict_epsilon": True,
+            "prediction_type": "epsilon",
             "thresholding": False,
             "sample_max_value": 1.0,
             "algorithm_type": "dpmsolver++",
@@ -921,10 +948,10 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         for order in [1, 2, 3]:
             for solver_type in ["midpoint", "heun"]:
                 for threshold in [0.5, 1.0, 2.0]:
-                    for predict_epsilon in [True, False]:
+                    for prediction_type in ["epsilon", "sample"]:
                         self.check_over_configs(
                             thresholding=True,
-                            predict_epsilon=predict_epsilon,
+                            prediction_type=prediction_type,
                             sample_max_value=threshold,
                             algorithm_type="dpmsolver++",
                             solver_order=order,
@@ -935,17 +962,17 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         for algorithm_type in ["dpmsolver", "dpmsolver++"]:
             for solver_type in ["midpoint", "heun"]:
                 for order in [1, 2, 3]:
-                    for predict_epsilon in [True, False]:
+                    for prediction_type in ["epsilon", "sample"]:
                         self.check_over_configs(
                             solver_order=order,
                             solver_type=solver_type,
-                            predict_epsilon=predict_epsilon,
+                            prediction_type=prediction_type,
                             algorithm_type=algorithm_type,
                         )
                         sample = self.full_loop(
                             solver_order=order,
                             solver_type=solver_type,
-                            predict_epsilon=predict_epsilon,
+                            prediction_type=prediction_type,
                             algorithm_type=algorithm_type,
                         )
                         assert not torch.isnan(sample).any(), "Samples have nan numbers"
@@ -1850,3 +1877,95 @@ class VQDiffusionSchedulerTest(SchedulerCommonTest):
 
     def test_add_noise_device(self):
         pass
+
+
+class HeunDiscreteSchedulerTest(SchedulerCommonTest):
+    scheduler_classes = (HeunDiscreteScheduler,)
+    num_inference_steps = 10
+
+    def get_scheduler_config(self, **kwargs):
+        config = {
+            "num_train_timesteps": 1100,
+            "beta_start": 0.0001,
+            "beta_end": 0.02,
+            "beta_schedule": "linear",
+            "trained_betas": None,
+        }
+
+        config.update(**kwargs)
+        return config
+
+    def test_timesteps(self):
+        for timesteps in [10, 50, 100, 1000]:
+            self.check_over_configs(num_train_timesteps=timesteps)
+
+    def test_betas(self):
+        for beta_start, beta_end in zip([0.00001, 0.0001, 0.001], [0.0002, 0.002, 0.02]):
+            self.check_over_configs(beta_start=beta_start, beta_end=beta_end)
+
+    def test_schedules(self):
+        for schedule in ["linear", "scaled_linear"]:
+            self.check_over_configs(beta_schedule=schedule)
+
+    def test_full_loop_no_noise(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        scheduler.set_timesteps(self.num_inference_steps)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+        sample = sample.to(torch_device)
+
+        for i, t in enumerate(scheduler.timesteps):
+            sample = scheduler.scale_model_input(sample, t)
+
+            model_output = model(sample, t)
+
+            output = scheduler.step(model_output, t, sample)
+            sample = output.prev_sample
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        if torch_device in ["cpu", "mps"]:
+            assert abs(result_sum.item() - 0.1233) < 1e-2
+            assert abs(result_mean.item() - 0.0002) < 1e-3
+        else:
+            # CUDA
+            assert abs(result_sum.item() - 0.1233) < 1e-2
+            assert abs(result_mean.item() - 0.0002) < 1e-3
+
+    def test_full_loop_device(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        scheduler.set_timesteps(self.num_inference_steps, device=torch_device)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter.to(torch_device) * scheduler.init_noise_sigma
+
+        for t in scheduler.timesteps:
+            sample = scheduler.scale_model_input(sample, t)
+
+            model_output = model(sample, t)
+
+            output = scheduler.step(model_output, t, sample)
+            sample = output.prev_sample
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        if str(torch_device).startswith("cpu"):
+            # The following sum varies between 148 and 156 on mps. Why?
+            assert abs(result_sum.item() - 0.1233) < 1e-2
+            assert abs(result_mean.item() - 0.0002) < 1e-3
+        elif str(torch_device).startswith("mps"):
+            # Larger tolerance on mps
+            assert abs(result_mean.item() - 0.0002) < 1e-2
+        else:
+            # CUDA
+            assert abs(result_sum.item() - 0.1233) < 1e-2
+            assert abs(result_mean.item() - 0.0002) < 1e-3

@@ -39,6 +39,8 @@ Now let's get our dataset. Download images from [here](https://drive.google.com/
 
 And launch the training using
 
+**___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
+
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export INSTANCE_DIR="path-to-instance-images"
@@ -141,7 +143,7 @@ export INSTANCE_DIR="path-to-instance-images"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
-accelerate launch train_dreambooth.py \
+accelerate launch --mixed_precision="fp16" train_dreambooth.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --instance_data_dir=$INSTANCE_DIR \
   --class_data_dir=$CLASS_DIR \
@@ -157,8 +159,7 @@ accelerate launch train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800 \
-  --mixed_precision=fp16
+  --max_train_steps=800
 ```
 
 ### Fine-tune text encoder with the UNet.

@@ -47,6 +47,8 @@ Now let's get our dataset.Download 3-4 images from [here](https://drive.google.c
 
 And launch the training using
 
+**___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
+
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
 export DATA_DIR="path-to-dir-containing-images"
