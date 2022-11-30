@@ -310,11 +310,13 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         timesteps = timestep
         if not torch.is_tensor(timesteps):
             # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
-            if sample.device.type == "mps":
-                # mps does not support 64-bit types
-                timesteps = torch.tensor([timesteps], dtype=torch.int32, device=sample.device)
+            # This would be a good case for the `match` statement (Python 3.10+)
+            is_mps = sample.device.type == "mps"
+            if torch.is_floating_point(timesteps):
+                dtype = torch.float32 if is_mps else torch.float64
             else:
-                timesteps = torch.tensor([timesteps], dtype=torch.long, device=sample.device)
+                dtype = torch.int32 if is_mps else torch.int64
+            timesteps = torch.tensor([timesteps], dtype=torch.int32, device=sample.device)
         elif len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)
 
