@@ -570,8 +570,7 @@ class ModelMixin(torch.nn.Module):
                         and state_dict[checkpoint_key].shape != model_state_dict[model_key].shape
                     ):
                         mismatched_keys.append(
-                            (checkpoint_key, state_dict[checkpoint_key].shape,
-                             model_state_dict[model_key].shape)
+                            (checkpoint_key, state_dict[checkpoint_key].shape, model_state_dict[model_key].shape)
                         )
                         del state_dict[checkpoint_key]
             return mismatched_keys
@@ -592,8 +591,7 @@ class ModelMixin(torch.nn.Module):
                 error_msg += (
                     "\n\tYou may consider adding `ignore_mismatched_sizes=True` in the model `from_pretrained` method."
                 )
-            raise RuntimeError(
-                f"Error(s) in loading state_dict for {model.__class__.__name__}:\n\t{error_msg}")
+            raise RuntimeError(f"Error(s) in loading state_dict for {model.__class__.__name__}:\n\t{error_msg}")
 
         if len(unexpected_keys) > 0:
             logger.warning(
@@ -607,8 +605,7 @@ class ModelMixin(torch.nn.Module):
                 " BertForSequenceClassification model)."
             )
         else:
-            logger.info(
-                f"All model checkpoint weights were used when initializing {model.__class__.__name__}.\n")
+            logger.info(f"All model checkpoint weights were used when initializing {model.__class__.__name__}.\n")
         if len(missing_keys) > 0:
             logger.warning(
                 f"Some weights of {model.__class__.__name__} were not initialized from the model checkpoint at"

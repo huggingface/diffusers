@@ -245,8 +245,9 @@ class DiffusionPipeline(ConfigMixin):
             save_method_signature = inspect.signature(save_method)
             save_method_accept_safe = "safe_serialization" in save_method_signature.parameters
             if save_method_accept_safe:
-                save_method(os.path.join(save_directory, pipeline_component_name),
-                            safe_serialization=safe_serialization)
+                save_method(
+                    os.path.join(save_directory, pipeline_component_name), safe_serialization=safe_serialization
+                )
             else:
                 save_method(os.path.join(save_directory, pipeline_component_name))
 
