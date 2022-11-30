@@ -207,8 +207,8 @@ class ModelMixin(torch.nn.Module):
                 the main process to avoid race conditions.
             save_function (`Callable`):
                 The function to use to save the state dictionary. Useful on distributed training like TPUs when one
-                need to replace `torch.save` by another method.
-                Can be configured with the environment variable `DIFFUSERS_SAVE_MODE`.
+                need to replace `torch.save` by another method. Can be configured with the environment variable
+                `DIFFUSERS_SAVE_MODE`.
             safe_serialization (`bool`, *optional*, defaults to `False`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way (that uses `pickle`).
         """
