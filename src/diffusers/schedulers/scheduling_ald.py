@@ -132,7 +132,7 @@ class ALDScheduler(SchedulerMixin, ConfigMixin):
             self.set_timesteps(num_inference_steps)
 
         self.sigmas = torch.tensor(
-            torch.exp(torch.linspace(torch.log(sigma_min), torch.log(sigma_max), num_inference_steps)),
+            np.exp(np.linspace(np.log(sigma_min), np.log(sigma_max), num_inference_steps)),
             dtype=torch.float32,
         )
 
