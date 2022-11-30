@@ -656,7 +656,7 @@ class PipelineSlowTests(unittest.TestCase):
 
         assert cap_logger.out == "Keyword arguments {'not_used': True} not recognized.\n"
 
-    def test_from_pretrained_save_pretrained(self):
+    def test_from_save_pretrained(self):
         # 1. Load models
         model = UNet2DModel(
             block_out_channels=(32, 64),
