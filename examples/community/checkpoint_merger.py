@@ -1,13 +1,12 @@
 import glob
 import os
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Union
 
 import torch
 
 from diffusers import DiffusionPipeline, __version__
 from diffusers.pipeline_utils import (
     CONFIG_NAME,
-    CUSTOM_PIPELINE_FILE_NAME,
     DIFFUSERS_CACHE,
     ONNX_WEIGHTS_NAME,
     SCHEDULER_CONFIG_NAME,
@@ -107,7 +106,8 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         # If less than 2 checkpoints, nothing to merge. If more than 3, not supported for now.
         if checkpoint_count > 2 or checkpoint_count < 1:
             raise ValueError(
-                f"Received incorrect number of checkpoints to merge. Ensure that either 2 or 3 checkpoints are being passed"
+                "Received incorrect number of checkpoints to merge. Ensure that either 2 or 3 checkpoints are being"
+                " passed."
             )
 
         print("Received the right number of checkpoints")
@@ -134,12 +134,11 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         comparison_result = True
         for idx in range(1, len(config_dicts)):
             comparison_result &= self._compare_model_configs(config_dicts[idx - 1], config_dicts[idx])
-            if not force and comparison_result == False:
+            if not force and comparison_result is False:
                 raise ValueError("Incompatible checkpoints. Please check model_index.json for the models.")
                 print(config_dicts[0], config_dicts[1])
         print("Compatible model_index.json files found")
         # Step 2: Basic Validation has succeeded. Let's download the models and save them into our local files.
-        # TODO:-
         cached_folders = []
         for pretrained_model_name_or_path, config_dict in zip(pretrained_model_name_or_path_list, config_dicts):
             folder_names = [k for k in config_dict.keys() if not k.startswith("_")]
@@ -194,12 +193,12 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                 if os.path.exists(checkpoint_path_1):
                     files = glob.glob(os.path.join(checkpoint_path_1, "*.bin"))
                     checkpoint_path_1 = files[0] if len(files) > 0 else None
-                if not checkpoint_path_2 == None and os.path.exists(checkpoint_path_2):
+                if checkpoint_path_2 is not None and os.path.exists(checkpoint_path_2):
                     files = glob.glob(os.path.join(checkpoint_path_2, "*.bin"))
                     checkpoint_path_2 = files[0] if len(files) > 0 else None
                 # For an attr if both checkpoint_path_1 and 2 are None, ignore.
                 # If atleast one is present, deal with it according to interp method, of course only if the state_dict keys match.
-                if checkpoint_path_1 == None and checkpoint_path_2 == None:
+                if checkpoint_path_1 is None and checkpoint_path_2 is None:
                     print("SKIPPING ATTR ", attr)
                     continue
                 try:
