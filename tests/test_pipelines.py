@@ -508,6 +508,18 @@ class PipelineFastTests(unittest.TestCase):
 
         assert dict(ddim_config) == dict(ddim_config_2)
 
+    def test_save_safe_serialization(self):
+        pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            tmpdirname = "/tmp/test_save_safe_serialization"  # TODO: remove
+            pipeline.save_pretrained(tmpdirname, safe_serialization=True)
+            pipeline = StableDiffusionPipeline.from_pretrained(tmpdirname)
+            assert pipeline.unet is not None
+            assert pipeline.vae is not None
+            assert pipeline.text_encoder is not None
+            assert pipeline.scheduler is not None
+            assert pipeline.feature_extractor is not None
+
     def test_optional_components(self):
         unet = self.dummy_cond_unet()
         pndm = PNDMScheduler.from_config("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
