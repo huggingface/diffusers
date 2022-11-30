@@ -584,6 +584,20 @@ class SchedulerCommonTest(unittest.TestCase):
                     " deprecated argument from `_deprecated_kwargs = [<deprecated_argument>]`"
                 )
 
+    def test_trained_betas(self):
+        for scheduler_class in self.scheduler_classes:
+            if scheduler_class == VQDiffusionScheduler:
+                continue
+
+            scheduler_config = self.get_scheduler_config()
+            scheduler = scheduler_class(**scheduler_config, trained_betas=np.array([0.0, 0.1]))
+
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                scheduler.save_pretrained(tmpdirname)
+                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
+
+            assert scheduler.betas.tolist() == new_scheduler.betas.tolist()
+
 
 class DDPMSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (DDPMScheduler,)
@@ -1423,7 +1437,6 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
             "beta_start": 0.0001,
             "beta_end": 0.02,
             "beta_schedule": "linear",
-            "trained_betas": None,
         }
 
         config.update(**kwargs)
@@ -1505,7 +1518,6 @@ class EulerDiscreteSchedulerTest(SchedulerCommonTest):
             "beta_start": 0.0001,
             "beta_end": 0.02,
             "beta_schedule": "linear",
-            "trained_betas": None,
         }
 
         config.update(**kwargs)
@@ -1596,7 +1608,6 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
             "beta_start": 0.0001,
             "beta_end": 0.02,
             "beta_schedule": "linear",
-            "trained_betas": None,
         }
 
         config.update(**kwargs)
@@ -1905,7 +1916,6 @@ class HeunDiscreteSchedulerTest(SchedulerCommonTest):
             "beta_start": 0.0001,
             "beta_end": 0.02,
             "beta_schedule": "linear",
-            "trained_betas": None,
         }
 
         config.update(**kwargs)

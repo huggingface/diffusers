@@ -127,7 +127,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[np.ndarray] = None,
+        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         solver_order: int = 2,
         prediction_type: str = "epsilon",
         thresholding: bool = False,
@@ -147,7 +147,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             self.register_to_config(prediction_type="epsilon" if predict_epsilon else "sample")
 
         if trained_betas is not None:
-            self.betas = torch.from_numpy(trained_betas)
+            self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":

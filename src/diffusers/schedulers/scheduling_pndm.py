@@ -15,7 +15,7 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 import math
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -99,13 +99,13 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[np.ndarray] = None,
+        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         skip_prk_steps: bool = False,
         set_alpha_to_one: bool = False,
         steps_offset: int = 0,
     ):
         if trained_betas is not None:
-            self.betas = torch.from_numpy(trained_betas)
+            self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
