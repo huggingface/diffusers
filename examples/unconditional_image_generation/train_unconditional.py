@@ -320,7 +320,12 @@ def main(args):
 
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
 
-    ema_model = EMAModel(model, inv_gamma=args.ema_inv_gamma, power=args.ema_power, max_value=args.ema_max_decay)
+    ema_model = EMAModel(
+        accelerator.unwrap_model(model),
+        inv_gamma=args.ema_inv_gamma,
+        power=args.ema_power,
+        max_value=args.ema_max_decay,
+    )
 
     # Handle the repository creation
     if accelerator.is_main_process:

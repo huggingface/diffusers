@@ -97,6 +97,7 @@ _deps = [
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
+    "safetensors",
     "sentencepiece>=0.1.91,!=0.1.92",
     "scipy",
     "regex!=2019.12.17",
@@ -184,10 +185,11 @@ extras["test"] = deps_list(
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
+    "safetensors",
     "sentencepiece",
     "scipy",
     "torchvision",
-    "transformers"
+    "transformers",
 )
 extras["torch"] = deps_list("torch", "accelerate")
 
