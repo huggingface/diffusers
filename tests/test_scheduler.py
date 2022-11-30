@@ -548,7 +548,6 @@ class SchedulerCommonTest(unittest.TestCase):
     def test_add_noise_device(self):
         for scheduler_class in self.scheduler_classes:
             if scheduler_class == IPNDMScheduler:
-                # Skip until #990 is addressed
                 continue
             scheduler_config = self.get_scheduler_config()
             scheduler = scheduler_class(**scheduler_config)
