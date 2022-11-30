@@ -33,6 +33,7 @@ Finally, you will need to specify a [Gaudi configuration](https://huggingface.co
 ```python
 from optimum.habana import GaudiConfig
 from optimum.habana.diffusers import GaudiDDIMScheduler, GaudiStableDiffusionPipeline
+
 model_name = "stabilityai/stable-diffusion-2-base"
 scheduler = GaudiDDIMScheduler.from_pretrained(model_name, subfolder="scheduler")
 pipeline = GaudiStableDiffusionPipeline.from_pretrained(
@@ -47,7 +48,10 @@ pipeline = GaudiStableDiffusionPipeline.from_pretrained(
 You can then call the pipeline to generate images by batches from one or several prompts:
 ```python
 outputs = pipeline(
-    prompt=["High quality photo of an astronaut riding a horse in space", "Face of a yellow cat, high resolution, sitting on a park bench"],
+    prompt=[
+        "High quality photo of an astronaut riding a horse in space",
+        "Face of a yellow cat, high resolution, sitting on a park bench",
+    ],
     num_images_per_prompt=10,
     batch_size=4,
 )
