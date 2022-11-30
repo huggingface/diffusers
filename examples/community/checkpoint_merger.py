@@ -1,11 +1,18 @@
-import torch
-import os
 import glob
+import os
 from typing import Dict, List, Optional, Union
 
-from diffusers import DiffusionPipeline, __version__
-from diffusers.pipeline_utils import WEIGHTS_NAME, ONNX_WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, DIFFUSERS_CACHE, CUSTOM_PIPELINE_FILE_NAME
+import torch
 
+from diffusers import DiffusionPipeline, __version__
+from diffusers.pipeline_utils import (
+    CONFIG_NAME,
+    CUSTOM_PIPELINE_FILE_NAME,
+    DIFFUSERS_CACHE,
+    ONNX_WEIGHTS_NAME,
+    SCHEDULER_CONFIG_NAME,
+    WEIGHTS_NAME,
+)
 from huggingface_hub import snapshot_download
 
 
@@ -70,11 +77,11 @@ class CheckpointMergerPipeline(DiffusionPipeline):
 
                 alpha - The interpolation parameter. Ranges from 0 to 1.  It affects the ratio in which the checkpoints are merged. A 0.8 alpha
                     would mean that the first model checkpoints would affect the final result far less than an alpha of 0.2
-                
-                interp - The interpolation method to use for the merging. Supports "sigmoid", "inv_sigmoid", "add_difference" and None.
-                    Passing None uses the default interpolation which is weighted sum interpolation. For merging three checkpoints, only "add_difference" is supported. 
 
-                force - Whether to ignore mismatch in model_config.json for the current models. Defaults to False.  
+                interp - The interpolation method to use for the merging. Supports "sigmoid", "inv_sigmoid", "add_difference" and None.
+                    Passing None uses the default interpolation which is weighted sum interpolation. For merging three checkpoints, only "add_difference" is supported.
+
+                force - Whether to ignore mismatch in model_config.json for the current models. Defaults to False.
 
         """
         # Default kwargs from DiffusionPipeline
@@ -99,7 +106,9 @@ class CheckpointMergerPipeline(DiffusionPipeline):
 
         # If less than 2 checkpoints, nothing to merge. If more than 3, not supported for now.
         if checkpoint_count > 2 or checkpoint_count < 1:
-            raise ValueError(f'Received incorrect number of checkpoints to merge. Ensure that either 2 or 3 checkpoints are being passed')
+            raise ValueError(
+                f"Received incorrect number of checkpoints to merge. Ensure that either 2 or 3 checkpoints are being passed"
+            )
 
         print("Received the right number of checkpoints")
         # chkpt0, chkpt1 = pretrained_model_name_or_path_list[0:2]
@@ -135,7 +144,13 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         for pretrained_model_name_or_path, config_dict in zip(pretrained_model_name_or_path_list, config_dicts):
             folder_names = [k for k in config_dict.keys() if not k.startswith("_")]
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
-            allow_patterns += [WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, ONNX_WEIGHTS_NAME, DiffusionPipeline.config_name]
+            allow_patterns += [
+                WEIGHTS_NAME,
+                SCHEDULER_CONFIG_NAME,
+                CONFIG_NAME,
+                ONNX_WEIGHTS_NAME,
+                DiffusionPipeline.config_name,
+            ]
             requested_pipeline_class = config_dict.get("_class_name")
             user_agent = {"diffusers": __version__, "pipeline_class": requested_pipeline_class}
 
@@ -155,7 +170,9 @@ class CheckpointMergerPipeline(DiffusionPipeline):
 
         # Step 3:-
         # Load the first checkpoint as a diffusion pipeline and modify it's module state_dict in place
-        final_pipe = DiffusionPipeline.from_pretrained(cached_folders[0], torch_dtype=torch_dtype, device_map=device_map)
+        final_pipe = DiffusionPipeline.from_pretrained(
+            cached_folders[0], torch_dtype=torch_dtype, device_map=device_map
+        )
 
         checkpoint_path_2 = None
         if len(cached_folders) > 2:
@@ -187,10 +204,10 @@ class CheckpointMergerPipeline(DiffusionPipeline):
                     continue
                 try:
                     module = getattr(final_pipe, attr)
-                    theta_0 = getattr(module, 'state_dict')
+                    theta_0 = getattr(module, "state_dict")
                     theta_0 = theta_0()
 
-                    update_theta_0 = getattr(module, 'load_state_dict')
+                    update_theta_0 = getattr(module, "load_state_dict")
                     theta_1 = torch.load(checkpoint_path_1)
 
                     theta_2 = torch.load(checkpoint_path_2) if checkpoint_path_2 else None
@@ -237,6 +254,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
     @staticmethod
     def inv_sigmoid(theta0, theta1, theta2, alpha):
         import math
+
         alpha = 0.5 - math.sin(math.asin(1.0 - 2.0 * alpha) / 3.0)
         return theta0 + ((theta1 - theta0) * alpha)
 
