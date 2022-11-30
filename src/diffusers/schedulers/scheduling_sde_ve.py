@@ -66,6 +66,8 @@ class ScoreSdeVeScheduler(SchedulerMixin, ConfigMixin):
         correct_steps (`int`): number of correction steps performed on a produced sample.
     """
 
+    order = 1
+
     @register_to_config
     def __init__(
         self,

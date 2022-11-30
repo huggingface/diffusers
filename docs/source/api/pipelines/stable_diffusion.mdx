@@ -48,7 +48,7 @@ To use a different scheduler, you can either change it via the [`ConfigMixin.fro
 ```
 
 
-### How to conver all use cases with multiple or single pipeline
+### How to convert all use cases with multiple or single pipeline
 
 If you want to use all possible use cases in a single `DiffusionPipeline` you can either:
 - Make use of the [Stable Diffusion Mega Pipeline](https://github.com/huggingface/diffusers/tree/main/examples/community#stable-diffusion-mega) or 
@@ -61,11 +61,11 @@ If you want to use all possible use cases in a single `DiffusionPipeline` you ca
 ...     StableDiffusionInpaintPipeline,
 ... )
 
->>> img2text = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
->>> img2img = StableDiffusionImg2ImgPipeline(**img2text.components)
->>> inpaint = StableDiffusionInpaintPipeline(**img2text.components)
+>>> text2img = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+>>> img2img = StableDiffusionImg2ImgPipeline(**text2img.components)
+>>> inpaint = StableDiffusionInpaintPipeline(**text2img.components)
 
->>> # now you can use img2text(...), img2img(...), inpaint(...) just like the call methods of each respective pipeline
+>>> # now you can use text2img(...), img2img(...), inpaint(...) just like the call methods of each respective pipeline
 ```
 
 ## StableDiffusionPipelineOutput
@@ -76,6 +76,8 @@ If you want to use all possible use cases in a single `DiffusionPipeline` you ca
 	- __call__
 	- enable_attention_slicing
 	- disable_attention_slicing
+	- enable_vae_slicing
+	- disable_vae_slicing
 
 ## StableDiffusionImg2ImgPipeline
 [[autodoc]] StableDiffusionImg2ImgPipeline
@@ -85,6 +87,20 @@ If you want to use all possible use cases in a single `DiffusionPipeline` you ca
 
 ## StableDiffusionInpaintPipeline
 [[autodoc]] StableDiffusionInpaintPipeline
+	- __call__
+	- enable_attention_slicing
+	- disable_attention_slicing
+
+
+## StableDiffusionImageVariationPipeline
+[[autodoc]] StableDiffusionImageVariationPipeline
+	- __call__
+	- enable_attention_slicing
+	- disable_attention_slicing
+
+
+## StableDiffusionUpscalePipeline
+[[autodoc]] StableDiffusionUpscalePipeline
 	- __call__
 	- enable_attention_slicing
 	- disable_attention_slicing

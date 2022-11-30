@@ -14,8 +14,10 @@
 # limitations under the License.
 
 import gc
+import json
 import os
 import random
+import shutil
 import tempfile
 import unittest
 
@@ -39,13 +41,13 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
     UNet2DModel,
-    VQModel,
     logging,
 )
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from diffusers.utils import CONFIG_NAME, WEIGHTS_NAME, floats_tensor, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, get_tests_dir, require_torch_gpu
+from parameterized import parameterized
 from PIL import Image
 from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -90,6 +92,24 @@ class DownloadTests(unittest.TestCase):
             # None of the downloaded files should be a flax file even if we have some here:
             # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe/blob/main/unet/diffusion_flax_model.msgpack
             assert not any(f.endswith(".msgpack") for f in files)
+            # We need to never convert this tiny model to safetensors for this test to pass
+            assert not any(f.endswith(".safetensors") for f in files)
+
+    def test_download_safetensors(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            # pipeline has Flax weights
+            _ = DiffusionPipeline.from_pretrained(
+                "hf-internal-testing/tiny-stable-diffusion-pipe-safetensors",
+                safety_checker=None,
+                cache_dir=tmpdirname,
+            )
+
+            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots"))]
+            files = [item for sublist in all_root_files for item in sublist]
+
+            # None of the downloaded files should be a pytorch file even if we have some here:
+            # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe/blob/main/unet/diffusion_flax_model.msgpack
+            assert not any(f.endswith(".bin") for f in files)
 
     def test_download_no_safety_checker(self):
         prompt = "hello"
@@ -247,7 +267,6 @@ class CustomPipelineTests(unittest.TestCase):
 
 
 class PipelineFastTests(unittest.TestCase):
-    @property
     def dummy_image(self):
         batch_size = 1
         num_channels = 3
@@ -256,13 +275,12 @@ class PipelineFastTests(unittest.TestCase):
         image = floats_tensor((batch_size, num_channels) + sizes, rng=random.Random(0)).to(torch_device)
         return image
 
-    @property
-    def dummy_uncond_unet(self):
+    def dummy_uncond_unet(self, sample_size=32):
         torch.manual_seed(0)
         model = UNet2DModel(
             block_out_channels=(32, 64),
             layers_per_block=2,
-            sample_size=32,
+            sample_size=sample_size,
             in_channels=3,
             out_channels=3,
             down_block_types=("DownBlock2D", "AttnDownBlock2D"),
@@ -270,46 +288,17 @@ class PipelineFastTests(unittest.TestCase):
         )
         return model
 
-    @property
-    def dummy_cond_unet(self):
+    def dummy_cond_unet(self, sample_size=32):
         torch.manual_seed(0)
         model = UNet2DConditionModel(
             block_out_channels=(32, 64),
             layers_per_block=2,
-            sample_size=32,
+            sample_size=sample_size,
             in_channels=4,
             out_channels=4,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
-        )
-        return model
-
-    @property
-    def dummy_cond_unet_inpaint(self):
-        torch.manual_seed(0)
-        model = UNet2DConditionModel(
-            block_out_channels=(32, 64),
-            layers_per_block=2,
-            sample_size=32,
-            in_channels=9,
-            out_channels=4,
-            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
-            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
-            cross_attention_dim=32,
-        )
-        return model
-
-    @property
-    def dummy_vq_model(self):
-        torch.manual_seed(0)
-        model = VQModel(
-            block_out_channels=[32, 64],
-            in_channels=3,
-            out_channels=3,
-            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
-            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
-            latent_channels=3,
         )
         return model
 
@@ -357,17 +346,44 @@ class PipelineFastTests(unittest.TestCase):
 
         return extract
 
-    def test_components(self):
+    @parameterized.expand(
+        [
+            [DDIMScheduler, DDIMPipeline, 32],
+            [DDPMScheduler, DDPMPipeline, 32],
+            [DDIMScheduler, DDIMPipeline, (32, 64)],
+            [DDPMScheduler, DDPMPipeline, (64, 32)],
+        ]
+    )
+    def test_uncond_unet_components(self, scheduler_fn=DDPMScheduler, pipeline_fn=DDPMPipeline, sample_size=32):
+        unet = self.dummy_uncond_unet(sample_size)
+        scheduler = scheduler_fn()
+        pipeline = pipeline_fn(unet, scheduler).to(torch_device)
+
+        # Device type MPS is not supported for torch.Generator() api.
+        if torch_device == "mps":
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
+
+        out_image = pipeline(
+            generator=generator,
+            num_inference_steps=2,
+            output_type="np",
+        ).images
+        sample_size = (sample_size, sample_size) if isinstance(sample_size, int) else sample_size
+        assert out_image.shape == (1, *sample_size, 3)
+
+    def test_stable_diffusion_components(self):
         """Test that components property works correctly"""
-        unet = self.dummy_cond_unet
+        unet = self.dummy_cond_unet()
         scheduler = PNDMScheduler(skip_prk_steps=True)
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        image = self.dummy_image.cpu().permute(0, 2, 3, 1)[0]
+        image = self.dummy_image().cpu().permute(0, 2, 3, 1)[0]
         init_image = Image.fromarray(np.uint8(image)).convert("RGB")
-        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((128, 128))
+        mask_image = Image.fromarray(np.uint8(image + 4)).convert("RGB").resize((32, 32))
 
         # make sure here that pndm scheduler skips prk
         inpaint = StableDiffusionInpaintPipelineLegacy(
@@ -414,10 +430,10 @@ class PipelineFastTests(unittest.TestCase):
 
         assert image_inpaint.shape == (1, 32, 32, 3)
         assert image_img2img.shape == (1, 32, 32, 3)
-        assert image_text2img.shape == (1, 128, 128, 3)
+        assert image_text2img.shape == (1, 64, 64, 3)
 
     def test_set_scheduler(self):
-        unet = self.dummy_cond_unet
+        unet = self.dummy_cond_unet()
         scheduler = PNDMScheduler(skip_prk_steps=True)
         vae = self.dummy_vae
         bert = self.dummy_text_encoder
@@ -449,7 +465,7 @@ class PipelineFastTests(unittest.TestCase):
         assert isinstance(sd.scheduler, DPMSolverMultistepScheduler)
 
     def test_set_scheduler_consistency(self):
-        unet = self.dummy_cond_unet
+        unet = self.dummy_cond_unet()
         pndm = PNDMScheduler.from_config("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
         ddim = DDIMScheduler.from_config("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
         vae = self.dummy_vae
@@ -491,6 +507,110 @@ class PipelineFastTests(unittest.TestCase):
         ddim_config_2 = {k: v for k, v in ddim_config_2.items() if k in ddim_config}
 
         assert dict(ddim_config) == dict(ddim_config_2)
+
+    def test_optional_components(self):
+        unet = self.dummy_cond_unet()
+        pndm = PNDMScheduler.from_config("hf-internal-testing/tiny-stable-diffusion-torch", subfolder="scheduler")
+        vae = self.dummy_vae
+        bert = self.dummy_text_encoder
+        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+
+        orig_sd = StableDiffusionPipeline(
+            unet=unet,
+            scheduler=pndm,
+            vae=vae,
+            text_encoder=bert,
+            tokenizer=tokenizer,
+            safety_checker=unet,
+            feature_extractor=self.dummy_extractor,
+        )
+        sd = orig_sd
+
+        assert sd.config.requires_safety_checker is True
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            sd.save_pretrained(tmpdirname)
+
+            # Test that passing None works
+            sd = StableDiffusionPipeline.from_pretrained(
+                tmpdirname, feature_extractor=None, safety_checker=None, requires_safety_checker=False
+            )
+
+            assert sd.config.requires_safety_checker is False
+            assert sd.config.safety_checker == (None, None)
+            assert sd.config.feature_extractor == (None, None)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            sd.save_pretrained(tmpdirname)
+
+            # Test that loading previous None works
+            sd = StableDiffusionPipeline.from_pretrained(tmpdirname)
+
+            assert sd.config.requires_safety_checker is False
+            assert sd.config.safety_checker == (None, None)
+            assert sd.config.feature_extractor == (None, None)
+
+            orig_sd.save_pretrained(tmpdirname)
+
+            # Test that loading without any directory works
+            shutil.rmtree(os.path.join(tmpdirname, "safety_checker"))
+            with open(os.path.join(tmpdirname, sd.config_name)) as f:
+                config = json.load(f)
+                config["safety_checker"] = [None, None]
+            with open(os.path.join(tmpdirname, sd.config_name), "w") as f:
+                json.dump(config, f)
+
+            sd = StableDiffusionPipeline.from_pretrained(tmpdirname, requires_safety_checker=False)
+            sd.save_pretrained(tmpdirname)
+            sd = StableDiffusionPipeline.from_pretrained(tmpdirname)
+
+            assert sd.config.requires_safety_checker is False
+            assert sd.config.safety_checker == (None, None)
+            assert sd.config.feature_extractor == (None, None)
+
+            # Test that loading from deleted model index works
+            with open(os.path.join(tmpdirname, sd.config_name)) as f:
+                config = json.load(f)
+                del config["safety_checker"]
+                del config["feature_extractor"]
+            with open(os.path.join(tmpdirname, sd.config_name), "w") as f:
+                json.dump(config, f)
+
+            sd = StableDiffusionPipeline.from_pretrained(tmpdirname)
+
+            assert sd.config.requires_safety_checker is False
+            assert sd.config.safety_checker == (None, None)
+            assert sd.config.feature_extractor == (None, None)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            sd.save_pretrained(tmpdirname)
+
+            # Test that partially loading works
+            sd = StableDiffusionPipeline.from_pretrained(tmpdirname, feature_extractor=self.dummy_extractor)
+
+            assert sd.config.requires_safety_checker is False
+            assert sd.config.safety_checker == (None, None)
+            assert sd.config.feature_extractor != (None, None)
+
+            # Test that partially loading works
+            sd = StableDiffusionPipeline.from_pretrained(
+                tmpdirname,
+                feature_extractor=self.dummy_extractor,
+                safety_checker=unet,
+                requires_safety_checker=[True, True],
+            )
+
+            assert sd.config.requires_safety_checker == [True, True]
+            assert sd.config.safety_checker != (None, None)
+            assert sd.config.feature_extractor != (None, None)
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            sd.save_pretrained(tmpdirname)
+            sd = StableDiffusionPipeline.from_pretrained(tmpdirname, feature_extractor=self.dummy_extractor)
+
+            assert sd.config.requires_safety_checker == [True, True]
+            assert sd.config.safety_checker != (None, None)
+            assert sd.config.feature_extractor != (None, None)
 
 
 @slow
@@ -534,7 +654,10 @@ class PipelineSlowTests(unittest.TestCase):
                     force_download=True,
                 )
 
-        assert cap_logger.out == "Keyword arguments {'not_used': True} not recognized.\n"
+        assert (
+            cap_logger.out
+            == "Keyword arguments {'not_used': True} are not expected by DDPMPipeline and will be ignored.\n"
+        )
 
     def test_from_pretrained_save_pretrained(self):
         # 1. Load models

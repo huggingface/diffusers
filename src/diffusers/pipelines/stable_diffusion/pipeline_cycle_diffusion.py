@@ -20,6 +20,7 @@ import torch
 
 import PIL
 from diffusers.utils import is_accelerate_available
+from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
@@ -132,6 +133,7 @@ class CycleDiffusionPipeline(DiffusionPipeline):
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
+    _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
         self,
@@ -142,6 +144,7 @@ class CycleDiffusionPipeline(DiffusionPipeline):
         scheduler: DDIMScheduler,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
+        requires_safety_checker: bool = True,
     ):
         super().__init__()
 
@@ -159,8 +162,8 @@ class CycleDiffusionPipeline(DiffusionPipeline):
             new_config["steps_offset"] = 1
             scheduler._internal_dict = FrozenDict(new_config)
 
-        if safety_checker is None:
-            logger.warn(
+        if safety_checker is None and requires_safety_checker:
+            logger.warning(
                 f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
                 " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
                 " results in services or applications open to the public. Both the diffusers team and Hugging Face"
@@ -168,6 +171,32 @@ class CycleDiffusionPipeline(DiffusionPipeline):
                 " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
                 " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
             )
+
+        if safety_checker is not None and feature_extractor is None:
+            raise ValueError(
+                "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
+                " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
+            )
+        is_unet_version_less_0_9_0 = hasattr(unet.config, "_diffusers_version") and version.parse(
+            version.parse(unet.config._diffusers_version).base_version
+        ) < version.parse("0.9.0.dev0")
+        is_unet_sample_size_less_64 = hasattr(unet.config, "sample_size") and unet.config.sample_size < 64
+        if is_unet_version_less_0_9_0 and is_unet_sample_size_less_64:
+            deprecation_message = (
+                "The configuration file of the unet has set the default `sample_size` to smaller than"
+                " 64 which seems highly unlikely .If you're checkpoint is a fine-tuned version of any of the"
+                " following: \n- CompVis/stable-diffusion-v1-4 \n- CompVis/stable-diffusion-v1-3 \n-"
+                " CompVis/stable-diffusion-v1-2 \n- CompVis/stable-diffusion-v1-1 \n- runwayml/stable-diffusion-v1-5"
+                " \n- runwayml/stable-diffusion-inpainting \n you should change 'sample_size' to 64 in the"
+                " configuration file. Please make sure to update the config accordingly as leaving `sample_size=32`"
+                " in the config might lead to incorrect results in future versions. If you have downloaded this"
+                " checkpoint from the Hugging Face Hub, it would be very nice if you could open a Pull request for"
+                " the `unet/config.json` file"
+            )
+            deprecate("sample_size<64", "1.0.0", deprecation_message, standard_warn=False)
+            new_config = dict(unet.config)
+            new_config["sample_size"] = 64
+            unet._internal_dict = FrozenDict(new_config)
 
         self.register_modules(
             vae=vae,
@@ -178,6 +207,7 @@ class CycleDiffusionPipeline(DiffusionPipeline):
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
+        self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_attention_slicing
     def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
@@ -194,9 +224,14 @@ class CycleDiffusionPipeline(DiffusionPipeline):
                 `attention_head_dim` must be a multiple of `slice_size`.
         """
         if slice_size == "auto":
-            # half the attention head size is usually a good trade-off between
-            # speed and memory
-            slice_size = self.unet.config.attention_head_dim // 2
+            if isinstance(self.unet.config.attention_head_dim, int):
+                # half the attention head size is usually a good trade-off between
+                # speed and memory
+                slice_size = self.unet.config.attention_head_dim // 2
+            else:
+                # if `attention_head_dim` is a list, take the smallest head size
+                slice_size = min(self.unet.config.attention_head_dim)
+
         self.unet.set_attention_slice(slice_size)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_attention_slicing
@@ -222,9 +257,14 @@ class CycleDiffusionPipeline(DiffusionPipeline):
 
         device = torch.device(f"cuda:{gpu_id}")
 
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.safety_checker]:
+        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
+
+        if self.safety_checker is not None:
+            # TODO(Patrick) - there is currently a bug with cpu offload of nn.Parameter in accelerate
+            # fix by only offloading self.safety_checker for now
+            cpu_offload(self.safety_checker.vision_model, device)
 
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
@@ -435,7 +475,7 @@ class CycleDiffusionPipeline(DiffusionPipeline):
         t_start = max(num_inference_steps - init_timestep + offset, 0)
         timesteps = self.scheduler.timesteps[t_start:]
 
-        return timesteps
+        return timesteps, num_inference_steps - t_start
 
     def prepare_latents(self, init_image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
         init_image = init_image.to(device=device, dtype=dtype)
@@ -488,7 +528,6 @@ class CycleDiffusionPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
-        **kwargs,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -568,7 +607,7 @@ class CycleDiffusionPipeline(DiffusionPipeline):
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps = self.get_timesteps(num_inference_steps, strength, device)
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 6. Prepare latent variables
@@ -582,66 +621,70 @@ class CycleDiffusionPipeline(DiffusionPipeline):
         generator = extra_step_kwargs.pop("generator", None)
 
         # 8. Denoising loop
-        for i, t in enumerate(self.progress_bar(timesteps)):
-            # expand the latents if we are doing classifier free guidance
-            latent_model_input = torch.cat([latents] * 2)
-            source_latent_model_input = torch.cat([source_latents] * 2)
-            latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-            source_latent_model_input = self.scheduler.scale_model_input(source_latent_model_input, t)
+        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
+                # expand the latents if we are doing classifier free guidance
+                latent_model_input = torch.cat([latents] * 2)
+                source_latent_model_input = torch.cat([source_latents] * 2)
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                source_latent_model_input = self.scheduler.scale_model_input(source_latent_model_input, t)
 
-            # predict the noise residual
-            concat_latent_model_input = torch.stack(
-                [
-                    source_latent_model_input[0],
-                    latent_model_input[0],
-                    source_latent_model_input[1],
-                    latent_model_input[1],
-                ],
-                dim=0,
-            )
-            concat_text_embeddings = torch.stack(
-                [
-                    source_text_embeddings[0],
-                    text_embeddings[0],
-                    source_text_embeddings[1],
-                    text_embeddings[1],
-                ],
-                dim=0,
-            )
-            concat_noise_pred = self.unet(
-                concat_latent_model_input, t, encoder_hidden_states=concat_text_embeddings
-            ).sample
+                # predict the noise residual
+                concat_latent_model_input = torch.stack(
+                    [
+                        source_latent_model_input[0],
+                        latent_model_input[0],
+                        source_latent_model_input[1],
+                        latent_model_input[1],
+                    ],
+                    dim=0,
+                )
+                concat_text_embeddings = torch.stack(
+                    [
+                        source_text_embeddings[0],
+                        text_embeddings[0],
+                        source_text_embeddings[1],
+                        text_embeddings[1],
+                    ],
+                    dim=0,
+                )
+                concat_noise_pred = self.unet(
+                    concat_latent_model_input, t, encoder_hidden_states=concat_text_embeddings
+                ).sample
 
-            # perform guidance
-            (
-                source_noise_pred_uncond,
-                noise_pred_uncond,
-                source_noise_pred_text,
-                noise_pred_text,
-            ) = concat_noise_pred.chunk(4, dim=0)
-            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-            source_noise_pred = source_noise_pred_uncond + source_guidance_scale * (
-                source_noise_pred_text - source_noise_pred_uncond
-            )
+                # perform guidance
+                (
+                    source_noise_pred_uncond,
+                    noise_pred_uncond,
+                    source_noise_pred_text,
+                    noise_pred_text,
+                ) = concat_noise_pred.chunk(4, dim=0)
+                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                source_noise_pred = source_noise_pred_uncond + source_guidance_scale * (
+                    source_noise_pred_text - source_noise_pred_uncond
+                )
 
-            # Sample source_latents from the posterior distribution.
-            prev_source_latents = posterior_sample(
-                self.scheduler, source_latents, t, clean_latents, generator=generator, **extra_step_kwargs
-            )
-            # Compute noise.
-            noise = compute_noise(
-                self.scheduler, prev_source_latents, source_latents, t, source_noise_pred, **extra_step_kwargs
-            )
-            source_latents = prev_source_latents
+                # Sample source_latents from the posterior distribution.
+                prev_source_latents = posterior_sample(
+                    self.scheduler, source_latents, t, clean_latents, generator=generator, **extra_step_kwargs
+                )
+                # Compute noise.
+                noise = compute_noise(
+                    self.scheduler, prev_source_latents, source_latents, t, source_noise_pred, **extra_step_kwargs
+                )
+                source_latents = prev_source_latents
 
-            # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(
-                noise_pred, t, latents, variance_noise=noise, **extra_step_kwargs
-            ).prev_sample
+                # compute the previous noisy sample x_t -> x_t-1
+                latents = self.scheduler.step(
+                    noise_pred, t, latents, variance_noise=noise, **extra_step_kwargs
+                ).prev_sample
 
-            # call the callback, if provided
-            if callback is not None and i % callback_steps == 0:
-                callback(i, t, latents)
+                # call the callback, if provided
+                if (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0:
+                    progress_bar.update()
+                    if callback is not None and i % callback_steps == 0:
+                        callback(i, t, latents)
 
         # 9. Post-processing
         image = self.decode_latents(latents)
