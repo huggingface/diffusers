@@ -310,8 +310,12 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         timesteps = timestep
         if not torch.is_tensor(timesteps):
             # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
-            timesteps = torch.tensor([timesteps], dtype=torch.long, device=sample.device)
-        elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
+            if sample.device.type == "mps":
+                # mps does not support int64 or float64
+                timesteps = torch.tensor([timesteps], dtype=torch.float32, device=sample.device)
+            else:
+                timesteps = torch.tensor([timesteps], dtype=torch.long, device=sample.device)
+        elif len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
