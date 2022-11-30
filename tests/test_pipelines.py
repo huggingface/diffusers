@@ -659,7 +659,7 @@ class PipelineSlowTests(unittest.TestCase):
             == "Keyword arguments {'not_used': True} are not expected by DDPMPipeline and will be ignored.\n"
         )
 
-    def test_from_pretrained_save_pretrained(self):
+    def test_from_save_pretrained(self):
         # 1. Load models
         model = UNet2DModel(
             block_out_channels=(32, 64),
