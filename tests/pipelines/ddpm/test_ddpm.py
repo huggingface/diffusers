@@ -69,7 +69,7 @@ class DDPMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_inference_deprecated_predict_epsilon(self):
-        deprecate("remove this test", "0.10.0", "remove")
+        deprecate("remove this test", "0.11.0", "remove")
         unet = self.dummy_uncond_unet
         scheduler = DDPMScheduler(predict_epsilon=False)
 

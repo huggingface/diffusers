@@ -22,6 +22,7 @@ if is_torch_available():
     from .scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler
     from .scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler
     from .scheduling_euler_discrete import EulerDiscreteScheduler
+    from .scheduling_heun import HeunDiscreteScheduler
     from .scheduling_ipndm import IPNDMScheduler
     from .scheduling_karras_ve import KarrasVeScheduler
     from .scheduling_pndm import PNDMScheduler

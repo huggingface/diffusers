@@ -317,8 +317,8 @@ class FlaxDiffusionPipeline(ConfigMixin):
             allow_patterns = [os.path.join(k, "*") for k in folder_names]
             allow_patterns += [FLAX_WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, cls.config_name]
 
-            # make sure we don't download PyTorch weights
-            ignore_patterns = "*.bin"
+            # make sure we don't download PyTorch weights, unless when using from_pt
+            ignore_patterns = "*.bin" if not from_pt else []
 
             if cls != FlaxDiffusionPipeline:
                 requested_pipeline_class = cls.__name__

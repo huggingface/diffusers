@@ -188,7 +188,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
         )
 
         image = output.images
@@ -200,7 +200,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             return_dict=False,
         )[0]
 
@@ -245,7 +245,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
         )
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
@@ -285,7 +285,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
         )
 
         image = output.images
@@ -328,7 +328,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
         )
         image = output.images
 
@@ -339,7 +339,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             return_dict=False,
         )
         image_from_tuple = output[0]
@@ -382,7 +382,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             prompt,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
         ).images
 
         assert images.shape == (1, 32, 32, 3)
@@ -393,7 +393,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             [prompt] * batch_size,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
         ).images
 
         assert images.shape == (batch_size, 32, 32, 3)
@@ -404,7 +404,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             prompt,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             num_images_per_prompt=num_images_per_prompt,
         ).images
 
@@ -416,7 +416,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             [prompt] * batch_size,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             num_images_per_prompt=num_images_per_prompt,
         ).images
 
@@ -458,7 +458,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             generator=generator,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
         ).images
 
         assert image.shape == (1, 32, 32, 3)
@@ -497,7 +497,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         output = pipe(
             prompt=prompt,
-            init_image=init_image,
+            image=init_image,
             strength=0.75,
             guidance_scale=7.5,
             generator=generator,
@@ -535,7 +535,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         output = pipe(
             prompt=prompt,
-            init_image=init_image,
+            image=init_image,
             strength=0.75,
             guidance_scale=7.5,
             generator=generator,
@@ -572,7 +572,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         output = pipe(
             prompt=prompt,
-            init_image=init_image,
+            image=init_image,
             strength=0.75,
             guidance_scale=7.5,
             generator=generator,
@@ -626,7 +626,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         with torch.autocast(torch_device):
             pipe(
                 prompt=prompt,
-                init_image=init_image,
+                image=init_image,
                 strength=0.75,
                 num_inference_steps=50,
                 guidance_scale=7.5,
@@ -635,7 +635,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
                 callback_steps=1,
             )
         assert test_callback_fn.has_been_called
-        assert number_of_steps == 38
+        assert number_of_steps == 37
 
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
@@ -663,7 +663,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         _ = pipe(
             prompt=prompt,
-            init_image=init_image,
+            image=init_image,
             strength=0.75,
             guidance_scale=7.5,
             generator=generator,
