@@ -167,6 +167,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(noise_pred, t, latents, **extra_kwargs).prev_sample
 
+        # TODO how does the latent scale interact with the vqvae?
         # scale and decode the image latents with vae
         latents = 1 / 0.18215 * latents
         image = self.vqvae.decode(latents).sample

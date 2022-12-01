@@ -16,7 +16,7 @@
 
 import math
 from functools import partial
-from typing import Tuple
+from typing import Optional, Tuple
 
 import flax
 import flax.linen as nn
@@ -681,7 +681,7 @@ class FlaxDecoder(nn.Module):
 
 
 class FlaxDiagonalGaussianDistribution(object):
-    def __init__(self, parameters, deterministic=False):
+    def __init__(self, parameters, deterministic=False, scale_value=None):
         # Last axis to account for channels-last
         self.mean, self.logvar = jnp.split(parameters, 2, axis=-1)
         self.logvar = jnp.clip(self.logvar, -30.0, 20.0)
@@ -690,9 +690,12 @@ class FlaxDiagonalGaussianDistribution(object):
         self.var = jnp.exp(self.logvar)
         if self.deterministic:
             self.var = self.std = jnp.zeros_like(self.mean)
+        self.scale_value = scale_value
 
     def sample(self, key):
-        return self.mean + self.std * jax.random.normal(key, self.mean.shape)
+        x = self.mean + self.std * jax.random.normal(key, self.mean.shape)
+        x = self._scale(x)
+        return x
 
     def kl(self, other=None):
         if self.deterministic:
@@ -714,7 +717,12 @@ class FlaxDiagonalGaussianDistribution(object):
         return 0.5 * jnp.sum(logtwopi + self.logvar + jnp.square(sample - self.mean) / self.var, axis=axis)
 
     def mode(self):
-        return self.mean
+        return self._scale(self.mean)
+
+    def _scale(self, x):
+        if isinstance(self.scale_value, float):
+            x = self.scale_value * x
+        return x
 
 
 @flax_register_to_config
@@ -756,6 +764,9 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
             Sample input size
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             parameters `dtype`
+        scale_value (:obj:`float`, *optional*, defaults to `None`):
+            Float between (0-1). The scale_value up scales the latents during decoder and down scales the latents
+            during encode. See LDM https://arxiv.org/abs/2112.10752 sections 4.3.2 and D.1.
     """
     in_channels: int = 3
     out_channels: int = 3
@@ -768,6 +779,7 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
     norm_num_groups: int = 32
     sample_size: int = 32
     dtype: jnp.dtype = jnp.float32
+    scale_value: Optional[float] = None
 
     def setup(self):
         self.encoder = FlaxEncoder(
@@ -821,7 +833,7 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
 
         hidden_states = self.encoder(sample, deterministic=deterministic)
         moments = self.quant_conv(hidden_states)
-        posterior = FlaxDiagonalGaussianDistribution(moments)
+        posterior = FlaxDiagonalGaussianDistribution(moments, scale_value=self.scale_value)
 
         if not return_dict:
             return (posterior,)
@@ -829,6 +841,9 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
         return FlaxAutoencoderKLOutput(latent_dist=posterior)
 
     def decode(self, latents, deterministic: bool = True, return_dict: bool = True):
+        if isinstance(self.scale_value, float):
+            latents = 1 / self.scale_value * latents
+
         if latents.shape[-1] != self.config.latent_channels:
             latents = jnp.transpose(latents, (0, 2, 3, 1))
 

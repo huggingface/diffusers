@@ -344,7 +344,7 @@ class VectorQuantizer(nn.Module):
 
 
 class DiagonalGaussianDistribution(object):
-    def __init__(self, parameters, deterministic=False):
+    def __init__(self, parameters, deterministic=False, scale_value=None):
         self.parameters = parameters
         self.mean, self.logvar = torch.chunk(parameters, 2, dim=1)
         self.logvar = torch.clamp(self.logvar, -30.0, 20.0)
@@ -355,6 +355,7 @@ class DiagonalGaussianDistribution(object):
             self.var = self.std = torch.zeros_like(
                 self.mean, device=self.parameters.device, dtype=self.parameters.dtype
             )
+        self.scale_value = scale_value
 
     def sample(self, generator: Optional[torch.Generator] = None) -> torch.FloatTensor:
         device = self.parameters.device
@@ -363,6 +364,7 @@ class DiagonalGaussianDistribution(object):
         # make sure sample is on the same device as the parameters and has same dtype
         sample = sample.to(device=device, dtype=self.parameters.dtype)
         x = self.mean + self.std * sample
+        x = self._scale(x)
         return x
 
     def kl(self, other=None):
@@ -388,7 +390,12 @@ class DiagonalGaussianDistribution(object):
         return 0.5 * torch.sum(logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var, dim=dims)
 
     def mode(self):
-        return self.mean
+        return self._scale(self.mean)
+
+    def _scale(self, x):
+        if isinstance(self.scale_value, float):
+            x = self.scale_value * x
+        return x
 
 
 class VQModel(ModelMixin, ConfigMixin):
@@ -521,6 +528,9 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             obj:`(64,)`): Tuple of block output channels.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         latent_channels (`int`, *optional*, defaults to `4`): Number of channels in the latent space.
+        scale_value (`float`, *optional*, defaults to `None`): Float between (0-1). The scale_value up scales the
+            latents during decoder and down scales the latents during encode. See LDM https://arxiv.org/abs/2112.10752
+            sections 4.3.2 and D.1.
         sample_size (`int`, *optional*, defaults to `32`): TODO
     """
 
@@ -536,6 +546,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         act_fn: str = "silu",
         latent_channels: int = 4,
         norm_num_groups: int = 32,
+        scale_value: Optional[float] = None,
         sample_size: int = 32,
     ):
         super().__init__()
@@ -566,11 +577,12 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         self.quant_conv = torch.nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1)
         self.post_quant_conv = torch.nn.Conv2d(latent_channels, latent_channels, 1)
         self.use_slicing = False
+        self.scale_value = scale_value
 
     def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
         h = self.encoder(x)
         moments = self.quant_conv(h)
-        posterior = DiagonalGaussianDistribution(moments)
+        posterior = DiagonalGaussianDistribution(moments, scale_value=self.scale_value)
 
         if not return_dict:
             return (posterior,)
@@ -603,6 +615,9 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         self.use_slicing = False
 
     def decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
+        if isinstance(self.scale_value, float):
+            z = 1 / self.scale_value * z
+
         if self.use_slicing and z.shape[0] > 1:
             decoded_slices = [self._decode(z_slice).sample for z_slice in z.split(1)]
             decoded = torch.cat(decoded_slices)
