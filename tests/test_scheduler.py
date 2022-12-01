@@ -1796,7 +1796,7 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
             assert abs(result_mean.item() - 0.1412) < 1e-3
         else:
             # CUDA
-            assert abs(result_sum.item() - 144.8084) < 1e-2
+            assert abs(result_sum.item() - 102.5807) < 1e-2
             assert abs(result_mean.item() - 0.18855) < 1e-3
 
     def test_full_loop_device(self):
@@ -2132,7 +2132,7 @@ class HeunDiscreteSchedulerTest(SchedulerCommonTest):
             assert abs(result_mean.item() - 6.1112e-10) < 1e-3
         else:
             # CUDA
-            assert abs(result_sum.item() - 0.1233) < 1e-2
+            assert abs(result_sum.item() - 4.693428650170972e-07) < 1e-2
             assert abs(result_mean.item() - 0.0002) < 1e-3
 
     def test_full_loop_device(self):
