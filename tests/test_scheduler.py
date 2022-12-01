@@ -1797,7 +1797,7 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
         else:
             # CUDA
             assert abs(result_sum.item() - 102.5807) < 1e-2
-            assert abs(result_mean.item() - 0.18855) < 1e-3
+            assert abs(result_mean.item() - 0.1335) < 1e-3
 
     def test_full_loop_device(self):
         scheduler_class = self.scheduler_classes[0]
