@@ -2,8 +2,8 @@ import argparse
 import itertools
 import math
 import os
-import subprocess
 import random
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -33,7 +33,7 @@ try:
     import intel_extension_for_pytorch as ipex
 except ImportError:
     try:
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'intel_extension_for_pytorch'])
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "intel_extension_for_pytorch"])
         import intel_extension_for_pytorch as ipex
     except:
         assert False, "Unable to import intel_extension_for_pytorch from the local environment."
@@ -439,7 +439,7 @@ def main():
         subfolder="unet",
         revision=args.revision,
     )
-    
+
     # Resize the token embeddings as we are adding new special tokens to the tokenizer
     text_encoder.resize_token_embeddings(len(tokenizer))
 
