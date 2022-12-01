@@ -305,6 +305,10 @@ class UNetMidBlock2D(nn.Module):
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
+    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
+        for attn in self.attentions:
+            attn._set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
+
     def forward(self, hidden_states, temb=None, encoder_states=None):
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
