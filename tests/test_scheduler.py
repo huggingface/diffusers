@@ -42,7 +42,6 @@ from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
 from diffusers.utils import deprecate, torch_device
 from diffusers.utils.testing_utils import CaptureLogger
-from parameterized import parameterized
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -636,7 +635,7 @@ class DDPMSchedulerTest(SchedulerCommonTest):
             self.check_over_configs(clip_sample=clip_sample)
 
     def test_prediction_type(self):
-        for prediction_type in ["epsilon", "sample"]:
+        for prediction_type in ["epsilon", "sample", "v_prediction"]:
             self.check_over_configs(prediction_type=prediction_type)
 
     def test_deprecated_predict_epsilon(self):
@@ -711,6 +710,37 @@ class DDPMSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 258.9070) < 1e-2
         assert abs(result_mean.item() - 0.3374) < 1e-3
+
+    def test_full_loop_with_v_prediction(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(prediction_type="v_prediction")
+        scheduler = scheduler_class(**scheduler_config)
+
+        num_trained_timesteps = len(scheduler)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter
+        generator = torch.manual_seed(0)
+
+        for t in reversed(range(num_trained_timesteps)):
+            # 1. predict noise residual
+            residual = model(sample, t)
+
+            # 2. predict previous mean of sample x_t-1
+            pred_prev_sample = scheduler.step(residual, t, sample, generator=generator).prev_sample
+
+            # if t > 0:
+            #     noise = self.dummy_sample_deter
+            #     variance = scheduler.get_variance(t) ** (0.5) * noise
+            #
+            # sample = pred_prev_sample + variance
+            sample = pred_prev_sample
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_sum.item() - 201.9864) < 1e-2
+        assert abs(result_mean.item() - 0.2630) < 1e-3
 
 
 class DDIMSchedulerTest(SchedulerCommonTest):
