@@ -168,7 +168,7 @@ python -m intel_extension_for_pytorch.cpu.launch --distributed \
   --learning_rate=5.0e-04 --scale_lr \
   --output_dir="textual_inversion_dicoo"
 ```
-Here is a simple distributed training usage on 2 nodes and 2 processes per each node. Add the right hostname or ip address in the "hostfile" and make sure 2 nodes are reachable. For more details, please refer to the [user guide](https://github.com/intel/torch-ccl).
+The above is a simple distributed training usage on 2 nodes with 2 processes on each node. Add the right hostname or ip address in the "hostfile" and make sure these 2 nodes are reachable from each other. For more details, please refer to the [user guide](https://github.com/intel/torch-ccl).
 
 
 ### Reference
