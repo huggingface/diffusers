@@ -2,6 +2,7 @@ import argparse
 import itertools
 import math
 import os
+import sys
 import random
 import subprocess
 from pathlib import Path
@@ -506,8 +507,8 @@ def main():
 
     # Move vae and unet to device
     device = torch.device("cpu")
-    vae.to(accelerator.device)
-    unet.to(accelerator.device)
+    vae.to(device)
+    unet.to(device)
 
     # Keep vae and unet in eval model as we don't train these
     vae.eval()
