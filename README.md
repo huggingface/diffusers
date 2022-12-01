@@ -15,7 +15,7 @@
     </a>
 </p>
 
-🤗 Diffusers provides pretrained diffusion models across multiple modalities, such as vision and audio, and serves
+🤗 Arifs Diffusers provides pretrained diffusion models across multiple modalities, such as vision and audio, and serves
 as a modular toolbox for inference and training of diffusion models.
 
 More precisely, 🤗 Diffusers offers:
