@@ -24,7 +24,8 @@ from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
     """
-    Scheduler created by @crowsonkb in [k_diffusion](https://github.com/crowsonkb/k-diffusion), see: https://github.com/crowsonkb/k-diffusion/blob/5b3af030dd83e0297272d861c19477735d0317ec/k_diffusion/sampling.py#L188
+    Scheduler created by @crowsonkb in [k_diffusion](https://github.com/crowsonkb/k-diffusion), see:
+    https://github.com/crowsonkb/k-diffusion/blob/5b3af030dd83e0297272d861c19477735d0317ec/k_diffusion/sampling.py#L188
 
     Scheduler inspired by DPM-Solver-2 and Algorthim 2 from Karras et al. (2022).
 
@@ -138,7 +139,9 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas_interpol = sigmas.log().lerp(sigmas.roll(1).log(), 0.5).exp()
 
         self.sigmas = torch.cat([sigmas[:1], sigmas[1:].repeat_interleave(2), sigmas[-1:]])
-        self.sigmas_interpol = torch.cat([sigmas_interpol[:1], sigmas_interpol[1:].repeat_interleave(2), sigmas_interpol[-1:]])
+        self.sigmas_interpol = torch.cat(
+            [sigmas_interpol[:1], sigmas_interpol[1:].repeat_interleave(2), sigmas_interpol[-1:]]
+        )
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = self.sigmas.max()
