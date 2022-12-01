@@ -121,7 +121,7 @@ Intel Extension for PyTorch provides the optimizations for faster training and i
 
 The example supports both single node and multi-node distributed training:
 
-# Single node training
+### Single node training
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
@@ -141,7 +141,7 @@ python textual_inversion_flax.py \
 
 You also enable "--use_bf16" to accelerate the training on Intel Xeon Scalable Processors with BF16 support.
 
-# Multi-node distributed training
+### Multi-node distributed training
 
 Before running the scripts, make sure to install the library's training dependencies:
 
@@ -171,6 +171,6 @@ python -m intel_extension_for_pytorch.cpu.launch --distributed \
 Here is a simple distributed training usage on 2 nodes and 2 processes per each node. Add the right hostname or ip address in the "hostfile" and make sure 2 nodes are reachable. For more details, please refer to the [user guide](https://github.com/intel/torch-ccl).
 
 
-# Reference
+### Reference
 
 We publish a [Medium blog](https://medium.com/intel-analytics-software/personalized-stable-diffusion-with-few-shot-fine-tuning-on-a-single-cpu-f01a3316b13) on how to create your own Stable Diffusion model on CPUs. Try it out now, if you have interests.
