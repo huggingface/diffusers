@@ -211,7 +211,6 @@ def create_unet_diffusers_config(original_config, image_size: int):
     """
     Creates a config for the diffusers based on the config of the LDM model.
     """
-    model_params = original_config.model.params
     unet_params = original_config.model.params.unet_config.params
     vae_params = original_config.model.params.first_stage_config.params.ddconfig
 
