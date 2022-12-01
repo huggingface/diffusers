@@ -166,7 +166,7 @@ init_image = download_image("https://raw.githubusercontent.com/CompVis/stable-di
 
 prompt = "A fantasy landscape, trending on artstation"
 
-images = pipe.img2img(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5).images
+images = pipe.img2img(prompt=prompt, image=init_image, strength=0.75, guidance_scale=7.5).images
 
 ### Inpainting
 
@@ -176,7 +176,7 @@ init_image = download_image(img_url).resize((512, 512))
 mask_image = download_image(mask_url).resize((512, 512))
 
 prompt = "a cat sitting on a bench"
-images = pipe.inpaint(prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75).images
+images = pipe.inpaint(prompt=prompt, image=init_image, mask_image=mask_image, strength=0.75).images
 ```
 
 As shown above this one pipeline can run all both "text-to-image", "image-to-image", and "inpainting" in one pipeline.
@@ -420,7 +420,7 @@ init_image = Image.open(BytesIO(response.content)).convert("RGB")
 init_image = init_image.resize((512, 512))
 res = pipe.train(
     prompt,
-    init_image,
+    image=init_image,
     guidance_scale=7.5,
     num_inference_steps=50,
     generator=generator)

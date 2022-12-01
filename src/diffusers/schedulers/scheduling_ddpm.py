@@ -125,7 +125,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             "Please make sure to instantiate your scheduler with `prediction_type` instead. E.g. `scheduler ="
             " DDPMScheduler.from_pretrained(<model_id>, prediction_type='epsilon')`."
         )
-        predict_epsilon = deprecate("predict_epsilon", "0.10.0", message, take_from=kwargs)
+        predict_epsilon = deprecate("predict_epsilon", "0.11.0", message, take_from=kwargs)
         if predict_epsilon is not None:
             self.register_to_config(prediction_type="epsilon" if predict_epsilon else "sample")
 
@@ -255,7 +255,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             "Please make sure to instantiate your scheduler with `prediction_type` instead. E.g. `scheduler ="
             " DDPMScheduler.from_pretrained(<model_id>, prediction_type='epsilon')`."
         )
-        predict_epsilon = deprecate("predict_epsilon", "0.10.0", message, take_from=kwargs)
+        predict_epsilon = deprecate("predict_epsilon", "0.11.0", message, take_from=kwargs)
         if predict_epsilon is not None:
             new_config = dict(self.config)
             new_config["prediction_type"] = "epsilon" if predict_epsilon else "sample"
@@ -280,10 +280,12 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
         elif self.config.prediction_type == "sample":
             pred_original_sample = model_output
+        elif self.config.prediction_type == "v_prediction":
+            pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
         else:
             raise ValueError(
-                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample` "
-                " for the DDPMScheduler."
+                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample` or"
+                " `v_prediction`  for the DDPMScheduler."
             )
 
         # 3. Clip "predicted x_0"

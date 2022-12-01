@@ -459,9 +459,9 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
 
         return timesteps, num_inference_steps - t_start
 
-    def prepare_latents(self, init_image, timestep, batch_size, num_images_per_prompt, dtype, device, generator):
-        init_image = init_image.to(device=self.device, dtype=dtype)
-        init_latent_dist = self.vae.encode(init_image).latent_dist
+    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator):
+        image = image.to(device=self.device, dtype=dtype)
+        init_latent_dist = self.vae.encode(image).latent_dist
         init_latents = init_latent_dist.sample(generator=generator)
         init_latents = 0.18215 * init_latents
 
@@ -479,7 +479,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]],
-        init_image: Union[torch.FloatTensor, PIL.Image.Image],
+        image: Union[torch.FloatTensor, PIL.Image.Image],
         mask_image: Union[torch.FloatTensor, PIL.Image.Image],
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
@@ -492,6 +492,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: Optional[int] = 1,
+        **kwargs,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -499,19 +500,19 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
-            init_image (`torch.FloatTensor` or `PIL.Image.Image`):
+            image (`torch.FloatTensor` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
                 process. This is the image whose masked region will be inpainted.
             mask_image (`torch.FloatTensor` or `PIL.Image.Image`):
-                `Image`, or tensor representing an image batch, to mask `init_image`. White pixels in the mask will be
+                `Image`, or tensor representing an image batch, to mask `image`. White pixels in the mask will be
                 replaced by noise and therefore repainted, while black pixels will be preserved. If `mask_image` is a
                 PIL image, it will be converted to a single channel (luminance) before use. If it's a tensor, it should
                 contain one color channel (L) instead of 3, so the expected shape would be `(B, H, W, 1)`.
             strength (`float`, *optional*, defaults to 0.8):
                 Conceptually, indicates how much to inpaint the masked area. Must be between 0 and 1. When `strength`
                 is 1, the denoising process will be run on the masked area for the full number of iterations specified
-                in `num_inference_steps`. `init_image` will be used as a reference for the masked area, adding more
-                noise to that region the larger the `strength`. If `strength` is 0, no inpainting will occur.
+                in `num_inference_steps`. `image` will be used as a reference for the masked area, adding more noise to
+                that region the larger the `strength`. If `strength` is 0, no inpainting will occur.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The reference number of denoising steps. More denoising steps usually lead to a higher quality image at
                 the expense of slower inference. This parameter will be modulated by `strength`, as explained above.
@@ -552,6 +553,10 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
+        message = "Please use `image` instead of `init_image`."
+        init_image = deprecate("init_image", "0.12.0", message, take_from=kwargs)
+        image = init_image or image
+
         # 1. Check inputs
         self.check_inputs(prompt, strength, callback_steps)
 
@@ -569,8 +574,8 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         )
 
         # 4. Preprocess image and mask
-        if not isinstance(init_image, torch.FloatTensor):
-            init_image = preprocess_image(init_image)
+        if not isinstance(image, torch.FloatTensor):
+            image = preprocess_image(image)
 
         if not isinstance(mask_image, torch.FloatTensor):
             mask_image = preprocess_mask(mask_image, self.vae_scale_factor)
@@ -583,7 +588,7 @@ class StableDiffusionInpaintPipelineLegacy(DiffusionPipeline):
         # 6. Prepare latent variables
         # encode the init image into latents and scale the latents
         latents, init_latents_orig, noise = self.prepare_latents(
-            init_image, latent_timestep, batch_size, num_images_per_prompt, text_embeddings.dtype, device, generator
+            image, latent_timestep, batch_size, num_images_per_prompt, text_embeddings.dtype, device, generator
         )
 
         # 7. Prepare mask latent

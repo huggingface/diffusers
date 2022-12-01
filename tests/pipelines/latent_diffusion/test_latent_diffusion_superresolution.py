@@ -79,7 +79,7 @@ class LDMSuperResolutionPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         init_image = self.dummy_image.to(device)
 
         generator = torch.Generator(device=device).manual_seed(0)
-        image = ldm(init_image, generator=generator, num_inference_steps=2, output_type="numpy").images
+        image = ldm(image=init_image, generator=generator, num_inference_steps=2, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -124,7 +124,7 @@ class LDMSuperResolutionPipelineIntegrationTests(unittest.TestCase):
         ldm.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=torch_device).manual_seed(0)
-        image = ldm(init_image, generator=generator, num_inference_steps=20, output_type="numpy").images
+        image = ldm(image=init_image, generator=generator, num_inference_steps=20, output_type="numpy").images
 
         image_slice = image[0, -3:, -3:, -1]
 

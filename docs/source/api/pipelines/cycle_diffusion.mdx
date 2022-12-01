@@ -57,7 +57,7 @@ prompt = "An astronaut riding an elephant"
 image = pipe(
     prompt=prompt,
     source_prompt=source_prompt,
-    init_image=init_image,
+    image=init_image,
     num_inference_steps=100,
     eta=0.1,
     strength=0.8,
@@ -83,7 +83,7 @@ torch.manual_seed(0)
 image = pipe(
     prompt=prompt,
     source_prompt=source_prompt,
-    init_image=init_image,
+    image=init_image,
     num_inference_steps=100,
     eta=0.1,
     strength=0.85,
