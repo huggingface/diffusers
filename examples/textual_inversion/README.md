@@ -114,3 +114,63 @@ python textual_inversion_flax.py \
   --output_dir="textual_inversion_cat"
 ```
 It should be at least 70% faster than the PyTorch script with the same configuration.
+
+## Training with Intel Extension for PyTorch
+
+Intel Extension for PyTorch provides the optimizations for faster training and inference on CPUs. You can leverage the training example "textual_inversion_ipex.py". Follow the instructions above to get the model and dataset before running the script.
+
+The example supports both single node and multi-node distributed training:
+
+# Single node training
+
+```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export DATA_DIR="path-to-dir-containing-dicoo-images"
+
+python textual_inversion_flax.py \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --train_data_dir=$DATA_DIR \
+  --learnable_property="object" \
+  --placeholder_token="<dicoo>" --initializer_token="toy" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --max_train_steps=3000 \
+  --learning_rate=5.0e-04 --scale_lr \
+  --output_dir="textual_inversion_dicoo"
+```
+
+You also enable "--use_bf16" to accelerate the training on Intel Xeon Scalable Processors with BF16 support.
+
+# Multi-node distributed training
+
+Before running the scripts, make sure to install the library's training dependencies:
+
+```bash
+python -m pip install oneccl_bind_pt==1.13 -f https://developer.intel.com/ipex-whl-stable-cpu
+```
+
+```bash
+export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export DATA_DIR="path-to-dir-containing-dicoo-images"
+
+oneccl_bindings_for_pytorch_path=$(python -c "from oneccl_bindings_for_pytorch import cwd; print(cwd)")
+source $oneccl_bindings_for_pytorch_path/env/setvars.sh
+
+python -m intel_extension_for_pytorch.cpu.launch --distributed \
+  --hostfile hostfile --nnodes 2 --nproc_per_node 2 \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --train_data_dir=$DATA_DIR \
+  --learnable_property="object" \
+  --placeholder_token="<dicoo>" --initializer_token="toy" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --max_train_steps=3000 \
+  --learning_rate=5.0e-04 --scale_lr \
+  --output_dir="textual_inversion_dicoo"
+```
+Here is a simple distributed training usage on 2 nodes and 2 processes per each node. Add the right hostname or ip address in the "hostfile" and make sure 2 nodes are reachable. For more details, please refer to the [user guide](https://github.com/intel/torch-ccl).
+
+
+# Reference
+
+We publish a [Medium blog](https://medium.com/intel-analytics-software/personalized-stable-diffusion-with-few-shot-fine-tuning-on-a-single-cpu-f01a3316b13) on how to create your own Stable Diffusion model on CPUs. Try it out now, if you have interests.
