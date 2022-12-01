@@ -666,16 +666,28 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if args.original_config_file is None:
-        os.system(
-            "wget https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
-        )
-        args.original_config_file = "./v1-inference.yaml"
-
-    original_config = OmegaConf.load(args.original_config_file)
-
     checkpoint = torch.load(args.checkpoint_path)
     checkpoint = checkpoint["state_dict"]
+
+    prediction_type = "epsilon"
+    if args.original_config_file is None:
+        key_name = "model.diffusion_model.input_blocks.2.1.transformer_blocks.0.attn2.to_k.weight"
+
+        if key_name in checkpoint and checkpoint[key_name].shape[-1] == 1024:
+            # model_type = "v2"
+            os.system(
+                "wget https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/v2-inference-v.yaml"
+            )
+            args.original_config_file = "./v2-inference-v.yaml"
+            prediction_type
+        else:
+            # model_type = "v2"
+            os.system(
+                "wget https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
+            )
+            args.original_config_file = "./v1-inference.yaml"
+
+    original_config = OmegaConf.load(args.original_config_file)
 
     num_train_timesteps = original_config.model.params.timesteps
     beta_start = original_config.model.params.linear_start
