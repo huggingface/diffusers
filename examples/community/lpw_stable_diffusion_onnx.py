@@ -10,7 +10,7 @@ from diffusers.onnx_utils import OnnxRuntimeModel
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
-from diffusers.utils import logging
+from diffusers.utils import deprecate, logging
 
 # TODO: remove and import from diffusers.utils when the new version of diffusers is released
 from packaging import version
@@ -441,7 +441,7 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]],
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        init_image: Union[np.ndarray, PIL.Image.Image] = None,
+        image: Union[np.ndarray, PIL.Image.Image] = None,
         mask_image: Union[np.ndarray, PIL.Image.Image] = None,
         height: int = 512,
         width: int = 512,
@@ -469,11 +469,11 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(DiffusionPipeline):
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
-            init_image (`np.ndarray` or `PIL.Image.Image`):
+            image (`np.ndarray` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
                 process.
             mask_image (`np.ndarray` or `PIL.Image.Image`):
-                `Image`, or tensor representing an image batch, to mask `init_image`. White pixels in the mask will be
+                `Image`, or tensor representing an image batch, to mask `image`. White pixels in the mask will be
                 replaced by noise and therefore repainted, while black pixels will be preserved. If `mask_image` is a
                 PIL image, it will be converted to a single channel (luminance) before use. If it's a tensor, it should
                 contain one color channel (L) instead of 3, so the expected shape would be `(B, H, W, 1)`.
@@ -491,11 +491,11 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(DiffusionPipeline):
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
                 usually at the expense of lower image quality.
             strength (`float`, *optional*, defaults to 0.8):
-                Conceptually, indicates how much to transform the reference `init_image`. Must be between 0 and 1.
-                `init_image` will be used as a starting point, adding more noise to it the larger the `strength`. The
+                Conceptually, indicates how much to transform the reference `image`. Must be between 0 and 1.
+                `image` will be used as a starting point, adding more noise to it the larger the `strength`. The
                 number of denoising steps depends on the amount of noise initially added. When `strength` is 1, added
                 noise will be maximum and the denoising process will run for the full number of iterations specified in
-                `num_inference_steps`. A value of 1, therefore, essentially ignores `init_image`.
+                `num_inference_steps`. A value of 1, therefore, essentially ignores `image`.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
@@ -533,6 +533,9 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
+        message = "Please use `image` instead of `init_image`."
+        init_image = deprecate("init_image", "0.12.0", message, take_from=kwargs)
+        image = init_image or image
 
         if isinstance(prompt, str):
             batch_size = 1
@@ -598,7 +601,7 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(DiffusionPipeline):
         mask = None
         noise = None
 
-        if init_image is None:
+        if image is None:
             latents_shape = (
                 batch_size * num_images_per_prompt,
                 4,
@@ -616,11 +619,11 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(DiffusionPipeline):
             # scale the initial noise by the standard deviation required by the scheduler
             latents = latents * self.scheduler.init_noise_sigma
         else:
-            if isinstance(init_image, PIL.Image.Image):
-                init_image = preprocess_image(init_image)
+            if isinstance(image, PIL.Image.Image):
+                image = preprocess_image(image)
             # encode the init image into latents and scale the latents
-            init_image = init_image.astype(latents_dtype)
-            init_latents = self.vae_encoder(sample=init_image)[0]
+            image = image.astype(latents_dtype)
+            init_latents = self.vae_encoder(sample=image)[0]
             init_latents = 0.18215 * init_latents
             init_latents = np.concatenate([init_latents] * batch_size * num_images_per_prompt)
             init_latents_orig = init_latents
@@ -635,7 +638,7 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(DiffusionPipeline):
                 # check sizes
                 if not mask.shape == init_latents.shape:
                     print(mask.shape, init_latents.shape)
-                    raise ValueError("The mask and init_image should be the same size!")
+                    raise ValueError("The mask and image should be the same size!")
 
             # get the original timestep using init_timestep
             offset = self.scheduler.config.get("steps_offset", 0)
@@ -828,7 +831,7 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(DiffusionPipeline):
 
     def img2img(
         self,
-        init_image: Union[np.ndarray, PIL.Image.Image],
+        image: Union[np.ndarray, PIL.Image.Image],
         prompt: Union[str, List[str]],
         negative_prompt: Optional[Union[str, List[str]]] = None,
         strength: float = 0.8,
@@ -847,7 +850,7 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(DiffusionPipeline):
         r"""
         Function for image-to-image generation.
         Args:
-            init_image (`np.ndarray` or `PIL.Image.Image`):
+            image (`np.ndarray` or `PIL.Image.Image`):
                 `Image`, or ndarray representing an image batch, that will be used as the starting point for the
                 process.
             prompt (`str` or `List[str]`):
@@ -856,11 +859,11 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(DiffusionPipeline):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
             strength (`float`, *optional*, defaults to 0.8):
-                Conceptually, indicates how much to transform the reference `init_image`. Must be between 0 and 1.
-                `init_image` will be used as a starting point, adding more noise to it the larger the `strength`. The
+                Conceptually, indicates how much to transform the reference `image`. Must be between 0 and 1.
+                `image` will be used as a starting point, adding more noise to it the larger the `strength`. The
                 number of denoising steps depends on the amount of noise initially added. When `strength` is 1, added
                 noise will be maximum and the denoising process will run for the full number of iterations specified in
-                `num_inference_steps`. A value of 1, therefore, essentially ignores `init_image`.
+                `num_inference_steps`. A value of 1, therefore, essentially ignores `image`.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. This parameter will be modulated by `strength`.
@@ -901,7 +904,7 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(DiffusionPipeline):
         return self.__call__(
             prompt=prompt,
             negative_prompt=negative_prompt,
-            init_image=init_image,
+            image=image,
             num_inference_steps=num_inference_steps,
             guidance_scale=guidance_scale,
             strength=strength,
@@ -918,7 +921,7 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(DiffusionPipeline):
 
     def inpaint(
         self,
-        init_image: Union[np.ndarray, PIL.Image.Image],
+        image: Union[np.ndarray, PIL.Image.Image],
         mask_image: Union[np.ndarray, PIL.Image.Image],
         prompt: Union[str, List[str]],
         negative_prompt: Optional[Union[str, List[str]]] = None,
@@ -938,11 +941,11 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(DiffusionPipeline):
         r"""
         Function for inpaint.
         Args:
-            init_image (`np.ndarray` or `PIL.Image.Image`):
+            image (`np.ndarray` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
                 process. This is the image whose masked region will be inpainted.
             mask_image (`np.ndarray` or `PIL.Image.Image`):
-                `Image`, or tensor representing an image batch, to mask `init_image`. White pixels in the mask will be
+                `Image`, or tensor representing an image batch, to mask `image`. White pixels in the mask will be
                 replaced by noise and therefore repainted, while black pixels will be preserved. If `mask_image` is a
                 PIL image, it will be converted to a single channel (luminance) before use. If it's a tensor, it should
                 contain one color channel (L) instead of 3, so the expected shape would be `(B, H, W, 1)`.
@@ -954,7 +957,7 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(DiffusionPipeline):
             strength (`float`, *optional*, defaults to 0.8):
                 Conceptually, indicates how much to inpaint the masked area. Must be between 0 and 1. When `strength`
                 is 1, the denoising process will be run on the masked area for the full number of iterations specified
-                in `num_inference_steps`. `init_image` will be used as a reference for the masked area, adding more
+                in `num_inference_steps`. `image` will be used as a reference for the masked area, adding more
                 noise to that region the larger the `strength`. If `strength` is 0, no inpainting will occur.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The reference number of denoising steps. More denoising steps usually lead to a higher quality image at
@@ -996,7 +999,7 @@ class OnnxStableDiffusionLongPromptWeightingPipeline(DiffusionPipeline):
         return self.__call__(
             prompt=prompt,
             negative_prompt=negative_prompt,
-            init_image=init_image,
+            image=image,
             mask_image=mask_image,
             num_inference_steps=num_inference_steps,
             guidance_scale=guidance_scale,

@@ -126,7 +126,7 @@ class FlaxSchedulerCommonTest(unittest.TestCase):
 
             assert jnp.sum(jnp.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-    def test_from_pretrained_save_pretrained(self):
+    def test_from_save_pretrained(self):
         kwargs = dict(self.forward_default_kwargs)
 
         num_inference_steps = kwargs.pop("num_inference_steps", None)
@@ -408,7 +408,7 @@ class FlaxDDIMSchedulerTest(FlaxSchedulerCommonTest):
 
             assert jnp.sum(jnp.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-    def test_from_pretrained_save_pretrained(self):
+    def test_from_save_pretrained(self):
         kwargs = dict(self.forward_default_kwargs)
 
         num_inference_steps = kwargs.pop("num_inference_steps", None)
@@ -626,12 +626,12 @@ class FlaxDDIMSchedulerTest(FlaxSchedulerCommonTest):
             self.check_over_configs(prediction_type=prediction_type)
 
     def test_deprecated_predict_epsilon(self):
-        deprecate("remove this test", "0.10.0", "remove")
+        deprecate("remove this test", "0.11.0", "remove")
         for predict_epsilon in [True, False]:
             self.check_over_configs(predict_epsilon=predict_epsilon)
 
     def test_deprecated_predict_epsilon_to_prediction_type(self):
-        deprecate("remove this test", "0.10.0", "remove")
+        deprecate("remove this test", "0.11.0", "remove")
         for scheduler_class in self.scheduler_classes:
             scheduler_config = self.get_scheduler_config(predict_epsilon=True)
             scheduler = scheduler_class.from_config(scheduler_config)
@@ -690,7 +690,7 @@ class FlaxPNDMSchedulerTest(FlaxSchedulerCommonTest):
 
             assert jnp.sum(jnp.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-    def test_from_pretrained_save_pretrained(self):
+    def test_from_save_pretrained(self):
         pass
 
     def test_scheduler_outputs_equivalence(self):

@@ -472,6 +472,21 @@ class ModelMixin(torch.nn.Module):
             model = cls.from_config(config, **unused_kwargs)
 
             state_dict = load_state_dict(model_file)
+            dtype = set(v.dtype for v in state_dict.values())
+
+            if len(dtype) > 1 and torch.float32 not in dtype:
+                raise ValueError(
+                    f"The weights of the model file {model_file} have a mixture of incompatible dtypes {dtype}. Please"
+                    f" make sure that {model_file} weights have only one dtype."
+                )
+            elif len(dtype) > 1 and torch.float32 in dtype:
+                dtype = torch.float32
+            else:
+                dtype = dtype.pop()
+
+            # move model to correct dtype
+            model = model.to(dtype)
+
             model, missing_keys, unexpected_keys, mismatched_keys, error_msgs = cls._load_pretrained_model(
                 model,
                 state_dict,
@@ -649,20 +664,6 @@ class ModelMixin(torch.nn.Module):
             return sum(p.numel() for p in non_embedding_parameters if p.requires_grad or not only_trainable)
         else:
             return sum(p.numel() for p in self.parameters() if p.requires_grad or not only_trainable)
-
-
-def unwrap_model(model: torch.nn.Module) -> torch.nn.Module:
-    """
-    Recursively unwraps a model from potential containers (as used in distributed training).
-
-    Args:
-        model (`torch.nn.Module`): The model to unwrap.
-    """
-    # since there could be multiple levels of wrapping, unwrap recursively
-    if hasattr(model, "module"):
-        return unwrap_model(model.module)
-    else:
-        return model
 
 
 def _get_model_file(
