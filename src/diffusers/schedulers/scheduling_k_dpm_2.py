@@ -22,11 +22,11 @@ from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS
 from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
-class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
+class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
     """
-    Implements Algorithm 2 (Heun steps) from Karras et al. (2022). for discrete beta schedules. Based on the original
-    k-diffusion implementation by Katherine Crowson:
-    https://github.com/crowsonkb/k-diffusion/blob/481677d114f6ea445aa009cf5bd7a9cdee909e47/k_diffusion/sampling.py#L90
+    Scheduler created by @crowsonkb in [k_diffusion](https://github.com/crowsonkb/k-diffusion), see: https://github.com/crowsonkb/k-diffusion/blob/5b3af030dd83e0297272d861c19477735d0317ec/k_diffusion/sampling.py#L188
+
+    Scheduler inspired by DPM-Solver-2 and Algorthim 2 from Karras et al. (2022).
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
@@ -78,9 +78,9 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def index_for_timestep(self, timestep):
         indices = (self.timesteps == timestep).nonzero()
         if self.state_in_first_order:
-            pos = 0 if indices.shape[0] < 2 else 1
-        else:
             pos = 0
+        else:
+            pos = 0 if indices.shape[0] < 2 else 1
         return indices[pos].item()
 
     def scale_model_input(
@@ -98,7 +98,11 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         """
         step_index = self.index_for_timestep(timestep)
 
-        sigma = self.sigmas[step_index]
+        if self.state_in_first_order:
+            sigma = self.sigmas[step_index]
+        else:
+            sigma = self.sigmas_interpol[step_index]
+
         sample = sample / ((sigma**2 + 1) ** 0.5)
         return sample
 
@@ -124,30 +128,62 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timesteps = np.linspace(0, num_train_timesteps - 1, num_inference_steps, dtype=float)[::-1].copy()
 
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
+        self.log_sigmas = torch.from_numpy(np.log(sigmas)).to(device)
+
         sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
         sigmas = np.concatenate([sigmas, [0.0]]).astype(np.float32)
         sigmas = torch.from_numpy(sigmas).to(device=device)
-        self.sigmas = torch.cat([sigmas[:1], sigmas[1:-1].repeat_interleave(2), sigmas[-1:]])
+
+        # interpolate sigmas
+        sigmas_interpol = sigmas.log().lerp(sigmas.roll(1).log(), 0.5).exp()
+
+        self.sigmas = torch.cat([sigmas[:1], sigmas[1:].repeat_interleave(2), sigmas[-1:]])
+        self.sigmas_interpol = torch.cat([sigmas_interpol[:1], sigmas_interpol[1:].repeat_interleave(2), sigmas_interpol[-1:]])
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = self.sigmas.max()
 
-        timesteps = torch.from_numpy(timesteps)
-        timesteps = torch.cat([timesteps[:1], timesteps[1:].repeat_interleave(2)])
+        timesteps = torch.from_numpy(timesteps).to(device)
+
+        # interpolate timesteps
+        timesteps_interpol = self.sigma_to_t(sigmas_interpol).to(device)
+        interleaved_timesteps = torch.stack((timesteps_interpol[1:-1, None], timesteps[1:, None]), dim=-1).flatten()
+        timesteps = torch.cat([timesteps[:1], interleaved_timesteps])
 
         if str(device).startswith("mps"):
             # mps does not support float64
-            self.timesteps = timesteps.to(device, dtype=torch.float32)
+            self.timesteps = timesteps.to(torch.float32)
         else:
-            self.timesteps = timesteps.to(device=device)
+            self.timesteps = timesteps
 
-        # empty dt and derivative
-        self.prev_derivative = None
-        self.dt = None
+        self.sample = None
+
+    def sigma_to_t(self, sigma):
+        # get log sigma
+        log_sigma = sigma.log()
+
+        # get distribution
+        dists = log_sigma - self.log_sigmas[:, None]
+
+        # get sigmas range
+        low_idx = dists.ge(0).cumsum(dim=0).argmax(dim=0).clamp(max=self.log_sigmas.shape[0] - 2)
+        high_idx = low_idx + 1
+
+        low = self.log_sigmas[low_idx]
+        high = self.log_sigmas[high_idx]
+
+        # interpolate sigmas
+        w = (low - log_sigma) / (low - high)
+        w = w.clamp(0, 1)
+
+        # transform interpolation to time range
+        t = (1 - w) * low_idx + w * high_idx
+        t = t.view(sigma.shape)
+        return t
 
     @property
     def state_in_first_order(self):
-        return self.dt is None
+        return self.sample is None
 
     def step(
         self,
@@ -173,10 +209,12 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         if self.state_in_first_order:
             sigma = self.sigmas[step_index]
+            sigma_mid = self.sigmas_interpol[step_index + 1]
             sigma_next = self.sigmas[step_index + 1]
         else:
-            # 2nd order / Heun's method
+            # 2nd order / KDPM2's method
             sigma = self.sigmas[step_index - 1]
+            sigma_mid = self.sigmas_interpol[step_index]
             sigma_next = self.sigmas[step_index]
 
         # currently only gamma=0 is supported. This usually works best anyways.
@@ -186,35 +224,27 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigma_hat = sigma * (gamma + 1)  # Note: sigma_hat == sigma for now
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
-        pred_original_sample = sample - sigma_hat * model_output
 
         if self.state_in_first_order:
+            pred_original_sample = sample - sigma_hat * model_output
             # 2. Convert to an ODE derivative
             derivative = (sample - pred_original_sample) / sigma_hat
             # 3. 1st order derivative
-            dt = sigma_next - sigma_hat
+            dt = sigma_mid - sigma_hat
 
             # store for 2nd order step
-            self.prev_derivative = derivative
-            self.dt = dt
             self.sample = sample
         else:
-            # 2. 2nd order / Heun's method
-            derivative = (sample - pred_original_sample) / sigma_hat
-            derivative = (self.prev_derivative + derivative) / 2
+            # DPM-Solver-2
+            pred_original_sample = sample - sigma_mid * model_output
+            derivative = (sample - pred_original_sample) / sigma_mid
 
-            # 3. Retrieve 1st order derivative
-            dt = self.dt
+            dt = sigma_next - sigma_hat
+
             sample = self.sample
-
-            # free dt and derivative
-            # Note, this puts the scheduler in "first order mode"
-            self.prev_derivative = None
-            self.dt = None
             self.sample = None
 
         prev_sample = sample + derivative * dt
-        print("x_2", prev_sample.abs().sum())
 
         if not return_dict:
             return (prev_sample,)

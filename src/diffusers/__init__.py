@@ -45,6 +45,7 @@ if is_torch_available():
         DDPMScheduler,
         DPMSolverMultistepScheduler,
         EulerAncestralDiscreteScheduler,
+        KDPM2DiscreteScheduler,
         EulerDiscreteScheduler,
         HeunDiscreteScheduler,
         IPNDMScheduler,
