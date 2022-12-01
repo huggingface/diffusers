@@ -655,7 +655,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         else:
             mask = mask_image
             masked_image = image * (mask < 0.5)
-            
+
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
