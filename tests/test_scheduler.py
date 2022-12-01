@@ -635,7 +635,7 @@ class DDPMSchedulerTest(SchedulerCommonTest):
             self.check_over_configs(clip_sample=clip_sample)
 
     def test_prediction_type(self):
-        for prediction_type in ["epsilon", "sample"]:
+        for prediction_type in ["epsilon", "sample", "v_prediction"]:
             self.check_over_configs(prediction_type=prediction_type)
 
     def test_deprecated_predict_epsilon(self):
@@ -711,6 +711,37 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         assert abs(result_sum.item() - 258.9070) < 1e-2
         assert abs(result_mean.item() - 0.3374) < 1e-3
 
+    def test_full_loop_with_v_prediction(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(prediction_type="v_prediction")
+        scheduler = scheduler_class(**scheduler_config)
+
+        num_trained_timesteps = len(scheduler)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter
+        generator = torch.manual_seed(0)
+
+        for t in reversed(range(num_trained_timesteps)):
+            # 1. predict noise residual
+            residual = model(sample, t)
+
+            # 2. predict previous mean of sample x_t-1
+            pred_prev_sample = scheduler.step(residual, t, sample, generator=generator).prev_sample
+
+            # if t > 0:
+            #     noise = self.dummy_sample_deter
+            #     variance = scheduler.get_variance(t) ** (0.5) * noise
+            #
+            # sample = pred_prev_sample + variance
+            sample = pred_prev_sample
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_sum.item() - 201.9864) < 1e-2
+        assert abs(result_mean.item() - 0.2630) < 1e-3
+
 
 class DDIMSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (DDIMScheduler,)
@@ -768,6 +799,10 @@ class DDIMSchedulerTest(SchedulerCommonTest):
         for schedule in ["linear", "squaredcos_cap_v2"]:
             self.check_over_configs(beta_schedule=schedule)
 
+    def test_prediction_type(self):
+        for prediction_type in ["epsilon", "v_prediction"]:
+            self.check_over_configs(prediction_type=prediction_type)
+
     def test_clip_sample(self):
         for clip_sample in [True, False]:
             self.check_over_configs(clip_sample=clip_sample)
@@ -804,6 +839,15 @@ class DDIMSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 172.0067) < 1e-2
         assert abs(result_mean.item() - 0.223967) < 1e-3
+
+    def test_full_loop_with_v_prediction(self):
+        sample = self.full_loop(prediction_type="v_prediction")
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_sum.item() - 52.5302) < 1e-2
+        assert abs(result_mean.item() - 0.0684) < 1e-3
 
     def test_full_loop_with_set_alpha_to_one(self):
         # We specify different beta, so that the first alpha is 0.99
@@ -971,6 +1015,10 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
                             solver_type=solver_type,
                         )
 
+    def test_prediction_type(self):
+        for prediction_type in ["epsilon", "v_prediction"]:
+            self.check_over_configs(prediction_type=prediction_type)
+
     def test_solver_order_and_type(self):
         for algorithm_type in ["dpmsolver", "dpmsolver++"]:
             for solver_type in ["midpoint", "heun"]:
@@ -1003,6 +1051,12 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         result_mean = torch.mean(torch.abs(sample))
 
         assert abs(result_mean.item() - 0.3301) < 1e-3
+
+    def test_full_loop_with_v_prediction(self):
+        sample = self.full_loop(prediction_type="v_prediction")
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.2251) < 1e-3
 
     def test_fp16_support(self):
         scheduler_class = self.scheduler_classes[0]
@@ -1184,6 +1238,10 @@ class PNDMSchedulerTest(SchedulerCommonTest):
         for schedule in ["linear", "squaredcos_cap_v2"]:
             self.check_over_configs(beta_schedule=schedule)
 
+    def test_prediction_type(self):
+        for prediction_type in ["epsilon", "v_prediction"]:
+            self.check_over_configs(prediction_type=prediction_type)
+
     def test_time_indices(self):
         for t in [1, 5, 10]:
             self.check_over_forward(time_step=t)
@@ -1224,6 +1282,14 @@ class PNDMSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 198.1318) < 1e-2
         assert abs(result_mean.item() - 0.2580) < 1e-3
+
+    def test_full_loop_with_v_prediction(self):
+        sample = self.full_loop(prediction_type="v_prediction")
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_sum.item() - 67.3986) < 1e-2
+        assert abs(result_mean.item() - 0.0878) < 1e-3
 
     def test_full_loop_with_set_alpha_to_one(self):
         # We specify different beta, so that the first alpha is 0.99
@@ -1453,6 +1519,10 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
         for schedule in ["linear", "scaled_linear"]:
             self.check_over_configs(beta_schedule=schedule)
 
+    def test_prediction_type(self):
+        for prediction_type in ["epsilon", "v_prediction"]:
+            self.check_over_configs(prediction_type=prediction_type)
+
     def test_time_indices(self):
         for t in [0, 500, 800]:
             self.check_over_forward(time_step=t)
@@ -1480,6 +1550,30 @@ class LMSDiscreteSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 1006.388) < 1e-2
         assert abs(result_mean.item() - 1.31) < 1e-3
+
+    def test_full_loop_with_v_prediction(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(prediction_type="v_prediction")
+        scheduler = scheduler_class(**scheduler_config)
+
+        scheduler.set_timesteps(self.num_inference_steps)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+
+        for i, t in enumerate(scheduler.timesteps):
+            sample = scheduler.scale_model_input(sample, t)
+
+            model_output = model(sample, t)
+
+            output = scheduler.step(model_output, t, sample)
+            sample = output.prev_sample
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_sum.item() - 0.0017) < 1e-2
+        assert abs(result_mean.item() - 2.2676e-06) < 1e-3
 
     def test_full_loop_device(self):
         scheduler_class = self.scheduler_classes[0]
@@ -1534,6 +1628,10 @@ class EulerDiscreteSchedulerTest(SchedulerCommonTest):
         for schedule in ["linear", "scaled_linear"]:
             self.check_over_configs(beta_schedule=schedule)
 
+    def test_prediction_type(self):
+        for prediction_type in ["epsilon", "v_prediction"]:
+            self.check_over_configs(prediction_type=prediction_type)
+
     def test_full_loop_no_noise(self):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
@@ -1564,6 +1662,37 @@ class EulerDiscreteSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 10.0807) < 1e-2
         assert abs(result_mean.item() - 0.0131) < 1e-3
+
+    def test_full_loop_with_v_prediction(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(prediction_type="v_prediction")
+        scheduler = scheduler_class(**scheduler_config)
+
+        scheduler.set_timesteps(self.num_inference_steps)
+
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+        sample = sample.to(torch_device)
+
+        for i, t in enumerate(scheduler.timesteps):
+            sample = scheduler.scale_model_input(sample, t)
+
+            model_output = model(sample, t)
+
+            output = scheduler.step(model_output, t, sample, generator=generator)
+            sample = output.prev_sample
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_sum.item() - 0.0002) < 1e-2
+        assert abs(result_mean.item() - 2.2676e-06) < 1e-3
 
     def test_full_loop_device(self):
         scheduler_class = self.scheduler_classes[0]
@@ -1624,6 +1753,10 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
         for schedule in ["linear", "scaled_linear"]:
             self.check_over_configs(beta_schedule=schedule)
 
+    def test_prediction_type(self):
+        for prediction_type in ["epsilon", "v_prediction"]:
+            self.check_over_configs(prediction_type=prediction_type)
+
     def test_full_loop_no_noise(self):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
@@ -1659,6 +1792,42 @@ class EulerAncestralDiscreteSchedulerTest(SchedulerCommonTest):
             # CUDA
             assert abs(result_sum.item() - 144.8084) < 1e-2
             assert abs(result_mean.item() - 0.18855) < 1e-3
+
+    def test_full_loop_with_v_prediction(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(prediction_type="v_prediction")
+        scheduler = scheduler_class(**scheduler_config)
+
+        scheduler.set_timesteps(self.num_inference_steps)
+
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+        sample = sample.to(torch_device)
+
+        for i, t in enumerate(scheduler.timesteps):
+            sample = scheduler.scale_model_input(sample, t)
+
+            model_output = model(sample, t)
+
+            output = scheduler.step(model_output, t, sample, generator=generator)
+            sample = output.prev_sample
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        if torch_device in ["cpu", "mps"]:
+            assert abs(result_sum.item() - 108.4439) < 1e-2
+            assert abs(result_mean.item() - 0.1412) < 1e-3
+        else:
+            # CUDA
+            assert abs(result_sum.item() - 102.5807) < 1e-2
+            assert abs(result_mean.item() - 0.1335) < 1e-3
 
     def test_full_loop_device(self):
         scheduler_class = self.scheduler_classes[0]
@@ -1932,6 +2101,10 @@ class HeunDiscreteSchedulerTest(SchedulerCommonTest):
         for schedule in ["linear", "scaled_linear"]:
             self.check_over_configs(beta_schedule=schedule)
 
+    def test_prediction_type(self):
+        for prediction_type in ["epsilon", "v_prediction"]:
+            self.check_over_configs(prediction_type=prediction_type)
+
     def test_full_loop_no_noise(self):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
@@ -1960,6 +2133,36 @@ class HeunDiscreteSchedulerTest(SchedulerCommonTest):
         else:
             # CUDA
             assert abs(result_sum.item() - 0.1233) < 1e-2
+            assert abs(result_mean.item() - 0.0002) < 1e-3
+
+    def test_full_loop_with_v_prediction(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(prediction_type="v_prediction")
+        scheduler = scheduler_class(**scheduler_config)
+
+        scheduler.set_timesteps(self.num_inference_steps)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+        sample = sample.to(torch_device)
+
+        for i, t in enumerate(scheduler.timesteps):
+            sample = scheduler.scale_model_input(sample, t)
+
+            model_output = model(sample, t)
+
+            output = scheduler.step(model_output, t, sample)
+            sample = output.prev_sample
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        if torch_device in ["cpu", "mps"]:
+            assert abs(result_sum.item() - 4.6934e-07) < 1e-2
+            assert abs(result_mean.item() - 6.1112e-10) < 1e-3
+        else:
+            # CUDA
+            assert abs(result_sum.item() - 4.693428650170972e-07) < 1e-2
             assert abs(result_mean.item() - 0.0002) < 1e-3
 
     def test_full_loop_device(self):
