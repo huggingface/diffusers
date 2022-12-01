@@ -2,9 +2,9 @@ import argparse
 import itertools
 import math
 import os
-import sys
 import random
 import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
 
