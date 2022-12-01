@@ -78,7 +78,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def index_for_timestep(self, timestep):
         indices = (self.timesteps == timestep).nonzero()
         if self.state_in_first_order:
-            pos = 0 if indices.shape[0] < 2 else 1
+            pos = -1
         else:
             pos = 0
         return indices[pos].item()
@@ -214,7 +214,6 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.sample = None
 
         prev_sample = sample + derivative * dt
-        print("x_2", prev_sample.abs().sum())
 
         if not return_dict:
             return (prev_sample,)
