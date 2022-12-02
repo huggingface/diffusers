@@ -741,7 +741,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
             stride = (min(stride[0], h), min(stride[1], w))
             print("reducing stride")
 
-        fold, unfold, normalization, weighting = self.get_fold_unfold(z, ks, stride)
+        fold, unfold, normalization, weighting = self.get_fold_unfold(z, ks, stride, uf=vqf)
 
         z = unfold(z)  # (bn, nc * prod(**ks), L)
         # 1. Reshape to img shape
