@@ -67,17 +67,18 @@ To create the package for pypi.
     you need to go back to main before executing this.
 """
 
-import re
 import os
+import re
 from distutils.core import Command
 
 from setuptools import find_packages, setup
+
 
 # IMPORTANT:
 # 1. all dependencies should be listed here with their version requirements if any
 # 2. once modified, run: `make deps_table_update` to update src/diffusers/dependency_versions_table.py
 _deps = [
-    "Pillow<10.0",  # keep the PIL.Image.Resampling deprecation away
+    "Pillow",  # keep the PIL.Image.Resampling deprecation away
     "accelerate>=0.11.0",
     "black==22.8",
     "datasets",
@@ -85,17 +86,19 @@ _deps = [
     "flake8>=3.8.3",
     "flax>=0.4.1",
     "hf-doc-builder>=0.3.0",
-    "huggingface-hub>=0.9.1",
+    "huggingface-hub>=0.10.0",
     "importlib_metadata",
     "isort>=5.5.4",
-    "jax>=0.2.8,!=0.3.2,<=0.3.6",
-    "jaxlib>=0.1.65,<=0.3.6",
+    "jax>=0.2.8,!=0.3.2",
+    "jaxlib>=0.1.65",
     "modelcards>=0.1.4",
     "numpy",
-    "onnxruntime-gpu",
+    "parameterized",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
+    "safetensors",
+    "sentencepiece>=0.1.91,!=0.1.92",
     "scipy",
     "regex!=2019.12.17",
     "requests",
@@ -178,13 +181,15 @@ extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "tensorboard", "modelcards")
 extras["test"] = deps_list(
     "datasets",
-    "onnxruntime-gpu",
+    "parameterized",
     "pytest",
     "pytest-timeout",
     "pytest-xdist",
+    "safetensors",
+    "sentencepiece",
     "scipy",
     "torchvision",
-    "transformers"
+    "transformers",
 )
 extras["oneflow"] = deps_list(
     "torch",
@@ -192,14 +197,16 @@ extras["oneflow"] = deps_list(
     "transformers"
 )
 
-extras["torch"] = deps_list("torch")
+extras["torch"] = deps_list("torch", "accelerate")
 
 if os.name == "nt":  # windows
     extras["flax"] = []  # jax is not supported on windows
 else:
     extras["flax"] = deps_list("jax", "jaxlib", "flax")
 
-extras["dev"] = extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"] + extras["flax"]
+extras["dev"] = (
+    extras["quality"] + extras["test"] + extras["training"] + extras["docs"] + extras["torch"] + extras["flax"]
+)
 
 install_requires = [
     deps["importlib_metadata"],
@@ -213,7 +220,7 @@ install_requires = [
 
 setup(
     name="diffusers",
-    version="0.4.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.10.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="Diffusers",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

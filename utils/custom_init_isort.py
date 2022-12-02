@@ -200,7 +200,7 @@ def sort_imports(file, check_only=True):
         indent = get_indent(block_lines[1])
         # Slit the internal block into blocks of indent level 1.
         internal_blocks = split_code_in_indented_blocks(internal_block_code, indent_level=indent)
-        # We have two categories of import key: list or _import_structu[key].append/extend
+        # We have two categories of import key: list or _import_structure[key].append/extend
         pattern = _re_direct_key if "_import_structure" in block_lines[0] else _re_indirect_key
         # Grab the keys, but there is a trap: some lines are empty or just comments.
         keys = [(pattern.search(b).groups()[0] if pattern.search(b) is not None else None) for b in internal_blocks]
@@ -210,17 +210,17 @@ def sort_imports(file, check_only=True):
 
         # We reorder the blocks by leaving empty lines/comments as they were and reorder the rest.
         count = 0
-        reorderded_blocks = []
+        reordered_blocks = []
         for i in range(len(internal_blocks)):
             if keys[i] is None:
-                reorderded_blocks.append(internal_blocks[i])
+                reordered_blocks.append(internal_blocks[i])
             else:
                 block = sort_objects_in_import(internal_blocks[sorted_indices[count]])
-                reorderded_blocks.append(block)
+                reordered_blocks.append(block)
                 count += 1
 
         # And we put our main block back together with its first and last line.
-        main_blocks[block_idx] = "\n".join(block_lines[:line_idx] + reorderded_blocks + [block_lines[-1]])
+        main_blocks[block_idx] = "\n".join(block_lines[:line_idx] + reordered_blocks + [block_lines[-1]])
 
     if code != "\n".join(main_blocks):
         if check_only:

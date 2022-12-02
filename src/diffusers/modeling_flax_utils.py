@@ -27,8 +27,8 @@ from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
 from requests import HTTPError
 
+from . import __version__, is_torch_available
 from .modeling_flax_pytorch_utils import convert_pytorch_state_dict_to_flax
-from .modeling_utils import load_state_dict
 from .utils import (
     CONFIG_NAME,
     DIFFUSERS_CACHE,
@@ -105,14 +105,14 @@ class FlaxModelMixin:
         >>> from diffusers import FlaxUNet2DConditionModel
 
         >>> # load model
-        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4")
+        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5")
         >>> # By default, the model parameters will be in fp32 precision, to cast these to bfloat16 precision
         >>> params = model.to_bf16(params)
         >>> # If you don't want to cast certain parameters (for example layer norm bias and scale)
         >>> # then pass the mask as follows
         >>> from flax import traverse_util
 
-        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4")
+        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5")
         >>> flat_params = traverse_util.flatten_dict(params)
         >>> mask = {
         ...     path: (path[-2] != ("LayerNorm", "bias") and path[-2:] != ("LayerNorm", "scale"))
@@ -141,7 +141,7 @@ class FlaxModelMixin:
         >>> from diffusers import FlaxUNet2DConditionModel
 
         >>> # Download model and configuration from huggingface.co
-        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4")
+        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5")
         >>> # By default, the model params will be in fp32, to illustrate the use of this method,
         >>> # we'll first cast to fp16 and back to fp32
         >>> params = model.to_f16(params)
@@ -171,14 +171,14 @@ class FlaxModelMixin:
         >>> from diffusers import FlaxUNet2DConditionModel
 
         >>> # load model
-        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4")
+        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5")
         >>> # By default, the model params will be in fp32, to cast these to float16
         >>> params = model.to_fp16(params)
         >>> # If you want don't want to cast certain parameters (for example layer norm bias and scale)
         >>> # then pass the mask as follows
         >>> from flax import traverse_util
 
-        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4")
+        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5")
         >>> flat_params = traverse_util.flatten_dict(params)
         >>> mask = {
         ...     path: (path[-2] != ("LayerNorm", "bias") and path[-2:] != ("LayerNorm", "scale"))
@@ -216,7 +216,7 @@ class FlaxModelMixin:
 
                     - A string, the *model id* of a pretrained model hosted inside a model repo on huggingface.co.
                       Valid model ids are namespaced under a user or organization name, like
-                      `CompVis/stable-diffusion-v1-4`.
+                      `runwayml/stable-diffusion-v1-5`.
                     - A path to a *directory* containing model weights saved using [`~ModelMixin.save_pretrained`],
                       e.g., `./my_model_directory/`.
             dtype (`jax.numpy.dtype`, *optional*, defaults to `jax.numpy.float32`):
@@ -273,7 +273,7 @@ class FlaxModelMixin:
         >>> from diffusers import FlaxUNet2DConditionModel
 
         >>> # Download model and configuration from huggingface.co and cache.
-        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("CompVis/stable-diffusion-v1-4")
+        >>> model, params = FlaxUNet2DConditionModel.from_pretrained("runwayml/stable-diffusion-v1-5")
         >>> # Model was saved using *save_pretrained('./test/saved_model/')* (for example purposes, not runnable).
         >>> model, params = FlaxUNet2DConditionModel.from_pretrained("./test/saved_model/")
         ```"""
@@ -286,10 +286,13 @@ class FlaxModelMixin:
         local_files_only = kwargs.pop("local_files_only", False)
         use_auth_token = kwargs.pop("use_auth_token", None)
         revision = kwargs.pop("revision", None)
-        from_auto_class = kwargs.pop("_from_auto", False)
         subfolder = kwargs.pop("subfolder", None)
 
-        user_agent = {"file_type": "model", "framework": "flax", "from_auto_class": from_auto_class}
+        user_agent = {
+            "diffusers": __version__,
+            "file_type": "model",
+            "framework": "flax",
+        }
 
         # Load config if we don't provide a configuration
         config_path = config if config is not None else pretrained_model_name_or_path
@@ -329,7 +332,7 @@ class FlaxModelMixin:
             elif os.path.isfile(os.path.join(pretrained_path_with_subfolder, WEIGHTS_NAME)):
                 raise EnvironmentError(
                     f"{WEIGHTS_NAME} file found in directory {pretrained_path_with_subfolder}. Please load the model"
-                    " using  `from_pt=True`."
+                    " using `from_pt=True`."
                 )
             else:
                 raise EnvironmentError(
@@ -357,7 +360,7 @@ class FlaxModelMixin:
                     f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier "
                     "listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a "
                     "token having permission to this repo with `use_auth_token` or log in with `huggingface-cli "
-                    "login` and pass `use_auth_token=True`."
+                    "login`."
                 )
             except RevisionNotFoundError:
                 raise EnvironmentError(
@@ -391,6 +394,14 @@ class FlaxModelMixin:
                 )
 
         if from_pt:
+            if is_torch_available():
+                from .modeling_utils import load_state_dict
+            else:
+                raise EnvironmentError(
+                    "Can't load the model in PyTorch format because PyTorch is not installed. "
+                    "Please, install PyTorch or use native Flax weights."
+                )
+
             # Step 1: Get the pytorch file
             pytorch_model_file = load_state_dict(model_file)
 
@@ -436,9 +447,6 @@ class FlaxModelMixin:
             )
             cls._missing_keys = missing_keys
 
-        # Mismatched keys contains tuples key/shape1/shape2 of weights in the checkpoint that have a shape not
-        # matching the weights in the model.
-        mismatched_keys = []
         for key in state.keys():
             if key in shape_state and state[key].shape != shape_state[key].shape:
                 raise ValueError(
@@ -466,48 +474,12 @@ class FlaxModelMixin:
                 f" {pretrained_model_name_or_path} and are newly initialized: {missing_keys}\nYou should probably"
                 " TRAIN this model on a down-stream task to be able to use it for predictions and inference."
             )
-        elif len(mismatched_keys) == 0:
+        else:
             logger.info(
                 f"All the weights of {model.__class__.__name__} were initialized from the model checkpoint at"
                 f" {pretrained_model_name_or_path}.\nIf your task is similar to the task the model of the checkpoint"
                 f" was trained on, you can already use {model.__class__.__name__} for predictions without further"
                 " training."
-            )
-        if len(mismatched_keys) > 0:
-            mismatched_warning = "\n".join(
-                [
-                    f"- {key}: found shape {shape1} in the checkpoint and {shape2} in the model instantiated"
-                    for key, shape1, shape2 in mismatched_keys
-                ]
-            )
-            logger.warning(
-                f"Some weights of {model.__class__.__name__} were not initialized from the model checkpoint at"
-                f" {pretrained_model_name_or_path} and are newly initialized because the shapes did not"
-                f" match:\n{mismatched_warning}\nYou should probably TRAIN this model on a down-stream task to be able"
-                " to use it for predictions and inference."
-            )
-
-        # dictionary of key: dtypes for the model params
-        param_dtypes = jax.tree_map(lambda x: x.dtype, state)
-        # extract keys of parameters not in jnp.float32
-        fp16_params = [k for k in param_dtypes if param_dtypes[k] == jnp.float16]
-        bf16_params = [k for k in param_dtypes if param_dtypes[k] == jnp.bfloat16]
-
-        # raise a warning if any of the parameters are not in jnp.float32
-        if len(fp16_params) > 0:
-            logger.warning(
-                f"Some of the weights of {model.__class__.__name__} were initialized in float16 precision from "
-                f"the model checkpoint at {pretrained_model_name_or_path}:\n{fp16_params}\n"
-                "You should probably UPCAST the model weights to float32 if this was not intended. "
-                "See [`~ModelMixin.to_fp32`] for further information on how to do this."
-            )
-
-        if len(bf16_params) > 0:
-            logger.warning(
-                f"Some of the weights of {model.__class__.__name__} were initialized in bfloat16 precision from "
-                f"the model checkpoint at {pretrained_model_name_or_path}:\n{bf16_params}\n"
-                "You should probably UPCAST the model weights to float32 if this was not intended. "
-                "See [`~ModelMixin.to_fp32`] for further information on how to do this."
             )
 
         return model, unflatten_dict(state)

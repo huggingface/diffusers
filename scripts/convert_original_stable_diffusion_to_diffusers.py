@@ -30,6 +30,9 @@ except ImportError:
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
+    DPMSolverMultistepScheduler,
+    EulerAncestralDiscreteScheduler,
+    EulerDiscreteScheduler,
     LDMTextToImagePipeline,
     LMSDiscreteScheduler,
     PNDMScheduler,
@@ -204,11 +207,12 @@ def conv_attn_to_linear(checkpoint):
                 checkpoint[key] = checkpoint[key][:, :, 0]
 
 
-def create_unet_diffusers_config(original_config):
+def create_unet_diffusers_config(original_config, image_size: int):
     """
     Creates a config for the diffusers based on the config of the LDM model.
     """
     unet_params = original_config.model.params.unet_config.params
+    vae_params = original_config.model.params.first_stage_config.params.ddconfig
 
     block_out_channels = [unet_params.model_channels * mult for mult in unet_params.channel_mult]
 
@@ -226,8 +230,10 @@ def create_unet_diffusers_config(original_config):
         up_block_types.append(block_type)
         resolution //= 2
 
+    vae_scale_factor = 2 ** (len(vae_params.ch_mult) - 1)
+
     config = dict(
-        sample_size=unet_params.image_size,
+        sample_size=image_size // vae_scale_factor,
         in_channels=unet_params.in_channels,
         out_channels=unet_params.out_channels,
         down_block_types=tuple(down_block_types),
@@ -241,7 +247,7 @@ def create_unet_diffusers_config(original_config):
     return config
 
 
-def create_vae_diffusers_config(original_config):
+def create_vae_diffusers_config(original_config, image_size: int):
     """
     Creates a config for the diffusers based on the config of the LDM model.
     """
@@ -253,7 +259,7 @@ def create_vae_diffusers_config(original_config):
     up_block_types = ["UpDecoderBlock2D"] * len(block_out_channels)
 
     config = dict(
-        sample_size=vae_params.resolution,
+        sample_size=image_size,
         in_channels=vae_params.in_channels,
         out_channels=vae_params.out_ch,
         down_block_types=tuple(down_block_types),
@@ -285,15 +291,34 @@ def create_ldm_bert_config(original_config):
     return config
 
 
-def convert_ldm_unet_checkpoint(checkpoint, config):
+def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False):
     """
     Takes a state dict and a config, and returns a converted checkpoint.
     """
 
     # extract state_dict for UNet
     unet_state_dict = {}
-    unet_key = "model.diffusion_model."
     keys = list(checkpoint.keys())
+
+    unet_key = "model.diffusion_model."
+    # at least a 100 parameters have to start with `model_ema` in order for the checkpoint to be EMA
+    if sum(k.startswith("model_ema") for k in keys) > 100:
+        print(f"Checkpoint {path} has both EMA and non-EMA weights.")
+        if extract_ema:
+            print(
+                "In this conversion only the EMA weights are extracted. If you want to instead extract the non-EMA"
+                " weights (useful to continue fine-tuning), please make sure to remove the `--extract_ema` flag."
+            )
+            for key in keys:
+                if key.startswith("model.diffusion_model"):
+                    flat_ema_key = "model_ema." + "".join(key.split(".")[1:])
+                    unet_state_dict[key.replace(unet_key, "")] = checkpoint.pop(flat_ema_key)
+        else:
+            print(
+                "In this conversion only the non-EMA weights are extracted. If you want to instead extract the EMA"
+                " weights (usually better for inference), please make sure to add the `--extract_ema` flag."
+            )
+
     for key in keys:
         if key.startswith(unet_key):
             unet_state_dict[key.replace(unet_key, "")] = checkpoint.pop(key)
@@ -595,6 +620,22 @@ def convert_ldm_bert_checkpoint(checkpoint, config):
     return hf_model
 
 
+def convert_ldm_clip_checkpoint(checkpoint):
+    text_model = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
+
+    keys = list(checkpoint.keys())
+
+    text_model_dict = {}
+
+    for key in keys:
+        if key.startswith("cond_stage_model.transformer"):
+            text_model_dict[key[len("cond_stage_model.transformer.") :]] = checkpoint[key]
+
+    text_model.load_state_dict(text_model_dict)
+
+    return text_model
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
@@ -612,7 +653,25 @@ if __name__ == "__main__":
         "--scheduler_type",
         default="pndm",
         type=str,
-        help="Type of scheduler to use. Should be one of ['pndm', 'lms', 'ddim']",
+        help="Type of scheduler to use. Should be one of ['pndm', 'lms', 'ddim', 'euler', 'euler-ancest', 'dpm']",
+    )
+    parser.add_argument(
+        "--image_size",
+        default=512,
+        type=int,
+        help=(
+            "The image size that the model was trained on. Use 512 for Stable Diffusion v1.X and Stable Siffusion v2"
+            " Base. Use 768 for Stable Diffusion v2."
+        ),
+    )
+    parser.add_argument(
+        "--extract_ema",
+        action="store_true",
+        help=(
+            "Only relevant for checkpoints that have both EMA and non-EMA weights. Whether to extract the EMA weights"
+            " or not. Defaults to `False`. Add `--extract_ema` to extract the EMA weights. EMA weights usually yield"
+            " higher quality images for inference. Non-EMA weights are usually better to continue fine-tuning."
+        ),
     )
     parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
 
@@ -625,7 +684,9 @@ if __name__ == "__main__":
         args.original_config_file = "./v1-inference.yaml"
 
     original_config = OmegaConf.load(args.original_config_file)
-    checkpoint = torch.load(args.checkpoint_path)["state_dict"]
+
+    checkpoint = torch.load(args.checkpoint_path)
+    checkpoint = checkpoint["state_dict"]
 
     num_train_timesteps = original_config.model.params.timesteps
     beta_start = original_config.model.params.linear_start
@@ -640,6 +701,16 @@ if __name__ == "__main__":
         )
     elif args.scheduler_type == "lms":
         scheduler = LMSDiscreteScheduler(beta_start=beta_start, beta_end=beta_end, beta_schedule="scaled_linear")
+    elif args.scheduler_type == "euler":
+        scheduler = EulerDiscreteScheduler(beta_start=beta_start, beta_end=beta_end, beta_schedule="scaled_linear")
+    elif args.scheduler_type == "euler-ancestral":
+        scheduler = EulerAncestralDiscreteScheduler(
+            beta_start=beta_start, beta_end=beta_end, beta_schedule="scaled_linear"
+        )
+    elif args.scheduler_type == "dpm":
+        scheduler = DPMSolverMultistepScheduler(
+            beta_start=beta_start, beta_end=beta_end, beta_schedule="scaled_linear"
+        )
     elif args.scheduler_type == "ddim":
         scheduler = DDIMScheduler(
             beta_start=beta_start,
@@ -652,14 +723,16 @@ if __name__ == "__main__":
         raise ValueError(f"Scheduler of type {args.scheduler_type} doesn't exist!")
 
     # Convert the UNet2DConditionModel model.
-    unet_config = create_unet_diffusers_config(original_config)
-    converted_unet_checkpoint = convert_ldm_unet_checkpoint(checkpoint, unet_config)
+    unet_config = create_unet_diffusers_config(original_config, image_size=args.image_size)
+    converted_unet_checkpoint = convert_ldm_unet_checkpoint(
+        checkpoint, unet_config, path=args.checkpoint_path, extract_ema=args.extract_ema
+    )
 
     unet = UNet2DConditionModel(**unet_config)
     unet.load_state_dict(converted_unet_checkpoint)
 
     # Convert the VAE model.
-    vae_config = create_vae_diffusers_config(original_config)
+    vae_config = create_vae_diffusers_config(original_config, image_size=args.image_size)
     converted_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
 
     vae = AutoencoderKL(**vae_config)
@@ -668,7 +741,7 @@ if __name__ == "__main__":
     # Convert the text model.
     text_model_type = original_config.model.params.cond_stage_config.target.split(".")[-1]
     if text_model_type == "FrozenCLIPEmbedder":
-        text_model = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14")
+        text_model = convert_ldm_clip_checkpoint(checkpoint)
         tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
         safety_checker = StableDiffusionSafetyChecker.from_pretrained("CompVis/stable-diffusion-safety-checker")
         feature_extractor = AutoFeatureExtractor.from_pretrained("CompVis/stable-diffusion-safety-checker")
