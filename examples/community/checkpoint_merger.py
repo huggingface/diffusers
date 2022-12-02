@@ -104,7 +104,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         force = kwargs.pop("force", False)
 
         # If less than 2 checkpoints, nothing to merge. If more than 3, not supported for now.
-        if checkpoint_count > 2 or checkpoint_count < 1:
+        if checkpoint_count > 3 or checkpoint_count < 2:
             raise ValueError(
                 "Received incorrect number of checkpoints to merge. Ensure that either 2 or 3 checkpoints are being"
                 " passed."
