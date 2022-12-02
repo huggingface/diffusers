@@ -39,6 +39,8 @@ Now let's get our dataset. Download images from [here](https://drive.google.com/
 
 And launch the training using
 
+**___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
+
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export INSTANCE_DIR="path-to-instance-images"
@@ -191,6 +193,17 @@ accelerate launch train_dreambooth.py \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
   --max_train_steps=800
+```
+
+### Using DreamBooth for other pipelines than Stable Diffusion
+
+Altdiffusion also support dreambooth now, the runing comman is basically the same as abouve, all you need to do is replace the `MODEL_NAME` like this:
+One can now simply change the `pretrained_model_name_or_path` to another architecture such as [`AltDiffusion`](https://huggingface.co/docs/diffusers/api/pipelines/alt_diffusion).
+
+```
+export MODEL_NAME="CompVis/stable-diffusion-v1-4" --> export MODEL_NAME="BAAI/AltDiffusion-m9"
+or
+export MODEL_NAME="CompVis/stable-diffusion-v1-4" --> export MODEL_NAME="BAAI/AltDiffusion"
 ```
 
 ### Inference
