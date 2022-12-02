@@ -35,7 +35,6 @@ if is_torch_available():
         DDIMPipeline,
         DDPMPipeline,
         KarrasVePipeline,
-        LatentAudioDiffusionPipeline,
         LDMPipeline,
         LDMSuperResolutionPipeline,
         PNDMPipeline,

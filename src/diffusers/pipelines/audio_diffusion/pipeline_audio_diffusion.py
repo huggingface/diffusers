@@ -21,7 +21,7 @@ import torch
 
 from PIL import Image
 
-from ...models import Mel, UNet2DConditionModel
+from ...models import AutoencoderKL, Mel, UNet2DConditionModel
 from ...pipeline_utils import AudioPipelineOutput, BaseOutput, DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler, DDPMScheduler
 
@@ -32,14 +32,23 @@ class AudioDiffusionPipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Parameters:
+        vqae ([`AutoencoderKL`]): Optional Variational AutoEncoder for Latent Audio Diffusion
         unet ([`UNet2DConditionModel`]): UNET model
         mel ([`Mel`]): transform audio <-> spectrogram
         scheduler ([`DDIMScheduler` or `DDPMScheduler`]): de-noising scheduler
     """
 
-    def __init__(self, unet: UNet2DConditionModel, mel: Mel, scheduler: Union[DDIMScheduler, DDPMScheduler]):
+    _optional_components = ["vqvae"]
+
+    def __init__(
+        self,
+        unet: UNet2DConditionModel,
+        mel: Mel,
+        scheduler: Union[DDIMScheduler, DDPMScheduler],
+        vqvae: AutoencoderKL = None,
+    ):
         super().__init__()
-        self.register_modules(unet=unet, scheduler=scheduler, mel=mel)
+        self.register_modules(unet=unet, scheduler=scheduler, mel=mel, vqvae=vqvae)
 
     def get_input_dims(self) -> Tuple:
         """Returns dimension of input image
@@ -47,7 +56,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
         Returns:
             `Tuple`: (height, width)
         """
-        input_module = self.vqvae if hasattr(self, "vqvae") else self.unet
+        input_module = self.vqvae if self.vqvae is not None else self.unet
         # For backwards compatibility
         sample_size = (
             (input_module.sample_size, input_module.sample_size)
@@ -130,7 +139,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             input_image = (input_image / 255) * 2 - 1
             input_images = torch.tensor(input_image[np.newaxis, :, :], dtype=torch.float).to(self.device)
 
-            if hasattr(self, "vqvae"):
+            if self.vqvae is not None:
                 input_images = self.vqvae.encode(torch.unsqueeze(input_images, 0)).latent_dist.sample(
                     generator=generator
                 )[0]
@@ -164,7 +173,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
                 if mask_end > 0:
                     images[:, :, :, -mask_end:] = mask[:, step, :, -mask_end:]
 
-        if hasattr(self, "vqvae"):
+        if self.vqvae is not None:
             # 0.18215 was scaling factor used in training to ensure unit variance
             images = 1 / 0.18215 * images
             images = self.vqvae.decode(images)["sample"]

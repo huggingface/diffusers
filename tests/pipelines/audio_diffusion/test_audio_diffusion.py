@@ -25,7 +25,6 @@ from diffusers import (
     DDIMScheduler,
     DDPMScheduler,
     DiffusionPipeline,
-    LatentAudioDiffusionPipeline,
     Mel,
     UNet2DModel,
 )
@@ -109,7 +108,7 @@ class PipelineFastTests(unittest.TestCase):
 
         scheduler = DDIMScheduler()
         dummy_vqvae_and_unet = self.dummy_vqvae_and_unet
-        pipe = LatentAudioDiffusionPipeline(
+        pipe = AudioDiffusionPipeline(
             vqvae=self.dummy_vqvae_and_unet[0], unet=dummy_vqvae_and_unet[1], mel=mel, scheduler=scheduler
         )
         pipe = pipe.to(device)
