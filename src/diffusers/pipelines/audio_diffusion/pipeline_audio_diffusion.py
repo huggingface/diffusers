@@ -33,20 +33,20 @@ class AudioDiffusionPipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Parameters:
+        vqae ([`AutoencoderKL`]): Variational AutoEncoder for Latent Audio Diffusion or None
         unet ([`UNet2DConditionModel`]): UNET model
         mel ([`Mel`]): transform audio <-> spectrogram
         scheduler ([`DDIMScheduler` or `DDPMScheduler`]): de-noising scheduler
-        vqae ([`AutoencoderKL`]): Optional Variational AutoEncoder for Latent Audio Diffusion
     """
 
     _optional_components = ["vqvae"]
 
     def __init__(
         self,
+        vqvae: AutoencoderKL,
         unet: UNet2DConditionModel,
         mel: Mel,
         scheduler: Union[DDIMScheduler, DDPMScheduler],
-        vqvae: AutoencoderKL = None,
     ):
         super().__init__()
         self.register_modules(unet=unet, scheduler=scheduler, mel=mel, vqvae=vqvae)

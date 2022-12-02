@@ -568,7 +568,7 @@ class DiffusionPipeline(ConfigMixin):
         init_dict, unused_kwargs, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
         # define init kwargs
-        init_kwargs = {k: init_dict[k] for k in optional_kwargs if k in init_dict}
+        init_kwargs = {k: init_dict.pop(k) for k in optional_kwargs if k in init_dict}
         init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
 
         # remove `null` components

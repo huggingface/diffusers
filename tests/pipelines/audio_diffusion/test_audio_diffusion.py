@@ -85,7 +85,7 @@ class PipelineFastTests(unittest.TestCase):
         mel = Mel()
 
         scheduler = DDPMScheduler()
-        pipe = AudioDiffusionPipeline(unet=self.dummy_unet, mel=mel, scheduler=scheduler)
+        pipe = AudioDiffusionPipeline(vqvae=None, unet=self.dummy_unet, mel=mel, scheduler=scheduler)
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
