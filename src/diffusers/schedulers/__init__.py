@@ -55,5 +55,6 @@ else:
 
 from .scheduling_oneflow_utils import OneFlowSchedulerMixin
 from .scheduling_ddim_oneflow import OneFlowDDIMScheduler
+from .scheduling_ddpm_oneflow import OneFlowDDPMScheduler
 from .scheduling_pndm_oneflow import OneFlowPNDMScheduler
 from .scheduling_dpmsolver_multistep_oneflow import OneFlowDPMSolverMultistepScheduler
