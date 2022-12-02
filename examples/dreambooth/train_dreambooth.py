@@ -107,8 +107,8 @@ def parse_args(input_args=None):
         type=int,
         default=100,
         help=(
-            "Minimal class images for prior preservation loss. If not have enough images, additional images will be"
-            " sampled with class_prompt."
+            "Minimal class images for prior preservation loss. If there are not enough images already present in"
+            " class_data_dir, additional images will be sampled with class_prompt."
         ),
     )
     parser.add_argument(

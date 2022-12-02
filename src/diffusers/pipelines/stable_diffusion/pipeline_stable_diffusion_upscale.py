@@ -143,26 +143,6 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
             if cpu_offloaded_model is not None:
                 cpu_offload(cpu_offloaded_model, device)
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_xformers_memory_efficient_attention
-    def enable_xformers_memory_efficient_attention(self):
-        r"""
-        Enable memory efficient attention as implemented in xformers.
-
-        When this option is enabled, you should observe lower GPU memory usage and a potential speed up at inference
-        time. Speed up at training time is not guaranteed.
-
-        Warning: When Memory Efficient Attention and Sliced attention are both enabled, the Memory Efficient Attention
-        is used.
-        """
-        self.unet.set_use_memory_efficient_attention_xformers(True)
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_xformers_memory_efficient_attention
-    def disable_xformers_memory_efficient_attention(self):
-        r"""
-        Disable memory efficient attention as implemented in xformers.
-        """
-        self.unet.set_use_memory_efficient_attention_xformers(False)
-
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._execution_device
     def _execution_device(self):
