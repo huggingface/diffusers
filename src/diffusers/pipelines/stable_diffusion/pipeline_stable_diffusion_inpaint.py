@@ -632,6 +632,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         # 4. Preprocess mask and image
         if isinstance(image, PIL.Image.Image) and isinstance(mask_image, PIL.Image.Image):
             mask, masked_image = prepare_mask_and_masked_image(image, mask_image)
+        else:
+            mask = mask_image
+            masked_image = image * (mask < 0.5)
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
