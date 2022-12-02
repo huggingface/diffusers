@@ -616,11 +616,16 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
 
         return DecoderOutput(sample=decoded)
 
+    def meshgrid(self, h, w):
+        y = torch.arange(0, h).view(h, 1, 1).repeat(1, w, 1)
+        x = torch.arange(0, w).view(1, w, 1).repeat(h, 1, 1)
+
+        arr = torch.cat([y, x], dim=-1)
+        return arr
+
     def delta_border(self, h, w):
         """
-        :param h: height
-        :param w: width
-        :return: normalized distance to image border,
+        :param h: height :param w: width :return: normalized distance to image border,
          wtith min distance = 0 at border and max dist = 0.5 at image center
         """
         lower_right_corner = torch.tensor([h - 1, w - 1]).view(1, 1, 2)
