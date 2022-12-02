@@ -11,13 +11,13 @@ Colab for training
 Colab for inference
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/stable_conceptualizer_inference.ipynb)
 
-## Running locally 
+## Running locally with PyTorch
 ### Installing the dependencies
 
 Before running the scripts, make sure to install the library's training dependencies:
 
 ```bash
-pip install diffusers[training] accelerate transformers
+pip install diffusers"[training]" accelerate "transformers>=4.21.0"
 ```
 
 And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
@@ -29,7 +29,7 @@ accelerate config
 
 ### Cat toy example
 
-You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-4`, so you'll need to visit [its card](https://huggingface.co/CompVis/stable-diffusion-v1-4), read the license and tick the checkbox if you agree. 
+You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-5`, so you'll need to visit [its card](https://huggingface.co/runwayml/stable-diffusion-v1-5), read the license and tick the checkbox if you agree. 
 
 You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section of the documentation](https://huggingface.co/docs/hub/security-tokens).
 
@@ -39,7 +39,7 @@ Run the following command to authenticate your token
 huggingface-cli login
 ```
 
-If you have already cloned the repo, then you won't need to go through these steps. You can simple remove the `--use_auth_token` arg from the following command.
+If you have already cloned the repo, then you won't need to go through these steps. 
 
 <br>
 
@@ -47,12 +47,14 @@ Now let's get our dataset.Download 3-4 images from [here](https://drive.google.c
 
 And launch the training using
 
+**___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
+
 ```bash
-export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+export MODEL_NAME="runwayml/stable-diffusion-v1-5"
 export DATA_DIR="path-to-dir-containing-images"
 
 accelerate launch textual_inversion.py \
-  --pretrained_model_name_or_path=$MODEL_NAME --use_auth_token \
+  --pretrained_model_name_or_path=$MODEL_NAME \
   --train_data_dir=$DATA_DIR \
   --learnable_property="object" \
   --placeholder_token="<cat-toy>" --initializer_token="toy" \
@@ -68,14 +70,11 @@ accelerate launch textual_inversion.py \
 
 A full training run takes ~1 hour on one V100 GPU.
 
-
 ### Inference
 
 Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline`. Make sure to include the `placeholder_token` in your prompt.
 
 ```python
-
-from torch import autocast
 from diffusers import StableDiffusionPipeline
 
 model_id = "path-to-your-trained-model"
@@ -83,8 +82,35 @@ pipe = StableDiffusionPipeline.from_pretrained(model_id,torch_dtype=torch.float1
 
 prompt = "A <cat-toy> backpack"
 
-with autocast("cuda"):
-    image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
+image = pipe(prompt, num_inference_steps=50, guidance_scale=7.5).images[0]
 
 image.save("cat-backpack.png")
 ```
+
+
+## Training with Flax/JAX
+
+For faster training on TPUs and GPUs you can leverage the flax training example. Follow the instructions above to get the model and dataset before running the script.
+
+Before running the scripts, make sure to install the library's training dependencies:
+
+```bash
+pip install -U -r requirements_flax.txt
+```
+
+```bash
+export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
+export DATA_DIR="path-to-dir-containing-images"
+
+python textual_inversion_flax.py \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --train_data_dir=$DATA_DIR \
+  --learnable_property="object" \
+  --placeholder_token="<cat-toy>" --initializer_token="toy" \
+  --resolution=512 \
+  --train_batch_size=1 \
+  --max_train_steps=3000 \
+  --learning_rate=5.0e-04 --scale_lr \
+  --output_dir="textual_inversion_cat"
+```
+It should be at least 70% faster than the PyTorch script with the same configuration.

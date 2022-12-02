@@ -1,3 +1,17 @@
+# Copyright 2022 The HuggingFace Team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # JAX implementation of VQGAN from taming-transformers https://github.com/CompVis/taming-transformers
 
 import math
@@ -119,6 +133,8 @@ class FlaxResnetBlock2D(nn.Module):
             Output channels
         dropout (:obj:`float`, *optional*, defaults to 0.0):
             Dropout rate
+        groups (:obj:`int`, *optional*, defaults to `32`):
+            The number of groups to use for group norm.
         use_nin_shortcut (:obj:`bool`, *optional*, defaults to `None`):
             Whether to use `nin_shortcut`. This activates a new layer inside ResNet block
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
@@ -128,13 +144,14 @@ class FlaxResnetBlock2D(nn.Module):
     in_channels: int
     out_channels: int = None
     dropout: float = 0.0
+    groups: int = 32
     use_nin_shortcut: bool = None
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
         out_channels = self.in_channels if self.out_channels is None else self.out_channels
 
-        self.norm1 = nn.GroupNorm(num_groups=32, epsilon=1e-6)
+        self.norm1 = nn.GroupNorm(num_groups=self.groups, epsilon=1e-6)
         self.conv1 = nn.Conv(
             out_channels,
             kernel_size=(3, 3),
@@ -143,7 +160,7 @@ class FlaxResnetBlock2D(nn.Module):
             dtype=self.dtype,
         )
 
-        self.norm2 = nn.GroupNorm(num_groups=32, epsilon=1e-6)
+        self.norm2 = nn.GroupNorm(num_groups=self.groups, epsilon=1e-6)
         self.dropout_layer = nn.Dropout(self.dropout)
         self.conv2 = nn.Conv(
             out_channels,
@@ -191,12 +208,15 @@ class FlaxAttentionBlock(nn.Module):
             Input channels
         num_head_channels (:obj:`int`, *optional*, defaults to `None`):
             Number of attention heads
+        num_groups (:obj:`int`, *optional*, defaults to `32`):
+            The number of groups to use for group norm
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
 
     """
     channels: int
     num_head_channels: int = None
+    num_groups: int = 32
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
@@ -204,7 +224,7 @@ class FlaxAttentionBlock(nn.Module):
 
         dense = partial(nn.Dense, self.channels, dtype=self.dtype)
 
-        self.group_norm = nn.GroupNorm(num_groups=32, epsilon=1e-6)
+        self.group_norm = nn.GroupNorm(num_groups=self.num_groups, epsilon=1e-6)
         self.query, self.key, self.value = dense(), dense(), dense()
         self.proj_attn = dense()
 
@@ -264,6 +284,8 @@ class FlaxDownEncoderBlock2D(nn.Module):
             Dropout rate
         num_layers (:obj:`int`, *optional*, defaults to 1):
             Number of Resnet layer block
+        resnet_groups (:obj:`int`, *optional*, defaults to `32`):
+            The number of groups to use for the Resnet block group norm
         add_downsample (:obj:`bool`, *optional*, defaults to `True`):
             Whether to add downsample layer
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
@@ -273,6 +295,7 @@ class FlaxDownEncoderBlock2D(nn.Module):
     out_channels: int
     dropout: float = 0.0
     num_layers: int = 1
+    resnet_groups: int = 32
     add_downsample: bool = True
     dtype: jnp.dtype = jnp.float32
 
@@ -285,6 +308,7 @@ class FlaxDownEncoderBlock2D(nn.Module):
                 in_channels=in_channels,
                 out_channels=self.out_channels,
                 dropout=self.dropout,
+                groups=self.resnet_groups,
                 dtype=self.dtype,
             )
             resnets.append(res_block)
@@ -303,9 +327,9 @@ class FlaxDownEncoderBlock2D(nn.Module):
         return hidden_states
 
 
-class FlaxUpEncoderBlock2D(nn.Module):
+class FlaxUpDecoderBlock2D(nn.Module):
     r"""
-    Flax Resnet blocks-based Encoder block for diffusion-based VAE.
+    Flax Resnet blocks-based Decoder block for diffusion-based VAE.
 
     Parameters:
         in_channels (:obj:`int`):
@@ -316,8 +340,10 @@ class FlaxUpEncoderBlock2D(nn.Module):
             Dropout rate
         num_layers (:obj:`int`, *optional*, defaults to 1):
             Number of Resnet layer block
-        add_downsample (:obj:`bool`, *optional*, defaults to `True`):
-            Whether to add downsample layer
+        resnet_groups (:obj:`int`, *optional*, defaults to `32`):
+            The number of groups to use for the Resnet block group norm
+        add_upsample (:obj:`bool`, *optional*, defaults to `True`):
+            Whether to add upsample layer
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
     """
@@ -325,6 +351,7 @@ class FlaxUpEncoderBlock2D(nn.Module):
     out_channels: int
     dropout: float = 0.0
     num_layers: int = 1
+    resnet_groups: int = 32
     add_upsample: bool = True
     dtype: jnp.dtype = jnp.float32
 
@@ -336,6 +363,7 @@ class FlaxUpEncoderBlock2D(nn.Module):
                 in_channels=in_channels,
                 out_channels=self.out_channels,
                 dropout=self.dropout,
+                groups=self.resnet_groups,
                 dtype=self.dtype,
             )
             resnets.append(res_block)
@@ -366,6 +394,8 @@ class FlaxUNetMidBlock2D(nn.Module):
             Dropout rate
         num_layers (:obj:`int`, *optional*, defaults to 1):
             Number of Resnet layer block
+        resnet_groups (:obj:`int`, *optional*, defaults to `32`):
+            The number of groups to use for the Resnet and Attention block group norm
         attn_num_head_channels (:obj:`int`, *optional*, defaults to `1`):
             Number of attention heads for each attention block
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
@@ -374,16 +404,20 @@ class FlaxUNetMidBlock2D(nn.Module):
     in_channels: int
     dropout: float = 0.0
     num_layers: int = 1
+    resnet_groups: int = 32
     attn_num_head_channels: int = 1
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
+        resnet_groups = self.resnet_groups if self.resnet_groups is not None else min(self.in_channels // 4, 32)
+
         # there is always at least one resnet
         resnets = [
             FlaxResnetBlock2D(
                 in_channels=self.in_channels,
                 out_channels=self.in_channels,
                 dropout=self.dropout,
+                groups=resnet_groups,
                 dtype=self.dtype,
             )
         ]
@@ -392,7 +426,10 @@ class FlaxUNetMidBlock2D(nn.Module):
 
         for _ in range(self.num_layers):
             attn_block = FlaxAttentionBlock(
-                channels=self.in_channels, num_head_channels=self.attn_num_head_channels, dtype=self.dtype
+                channels=self.in_channels,
+                num_head_channels=self.attn_num_head_channels,
+                num_groups=resnet_groups,
+                dtype=self.dtype,
             )
             attentions.append(attn_block)
 
@@ -400,6 +437,7 @@ class FlaxUNetMidBlock2D(nn.Module):
                 in_channels=self.in_channels,
                 out_channels=self.in_channels,
                 dropout=self.dropout,
+                groups=resnet_groups,
                 dtype=self.dtype,
             )
             resnets.append(res_block)
@@ -441,7 +479,7 @@ class FlaxEncoder(nn.Module):
             Tuple containing the number of output channels for each block
         layers_per_block (:obj:`int`, *optional*, defaults to `2`):
             Number of Resnet layer for each block
-        norm_num_groups (:obj:`int`, *optional*, defaults to `2`):
+        norm_num_groups (:obj:`int`, *optional*, defaults to `32`):
             norm num group
         act_fn (:obj:`str`, *optional*, defaults to `silu`):
             Activation function
@@ -483,6 +521,7 @@ class FlaxEncoder(nn.Module):
                 in_channels=input_channel,
                 out_channels=output_channel,
                 num_layers=self.layers_per_block,
+                resnet_groups=self.norm_num_groups,
                 add_downsample=not is_final_block,
                 dtype=self.dtype,
             )
@@ -491,12 +530,15 @@ class FlaxEncoder(nn.Module):
 
         # middle
         self.mid_block = FlaxUNetMidBlock2D(
-            in_channels=block_out_channels[-1], attn_num_head_channels=None, dtype=self.dtype
+            in_channels=block_out_channels[-1],
+            resnet_groups=self.norm_num_groups,
+            attn_num_head_channels=None,
+            dtype=self.dtype,
         )
 
         # end
         conv_out_channels = 2 * self.out_channels if self.double_z else self.out_channels
-        self.conv_norm_out = nn.GroupNorm(num_groups=32, epsilon=1e-6)
+        self.conv_norm_out = nn.GroupNorm(num_groups=self.norm_num_groups, epsilon=1e-6)
         self.conv_out = nn.Conv(
             conv_out_channels,
             kernel_size=(3, 3),
@@ -581,7 +623,10 @@ class FlaxDecoder(nn.Module):
 
         # middle
         self.mid_block = FlaxUNetMidBlock2D(
-            in_channels=block_out_channels[-1], attn_num_head_channels=None, dtype=self.dtype
+            in_channels=block_out_channels[-1],
+            resnet_groups=self.norm_num_groups,
+            attn_num_head_channels=None,
+            dtype=self.dtype,
         )
 
         # upsampling
@@ -594,10 +639,11 @@ class FlaxDecoder(nn.Module):
 
             is_final_block = i == len(block_out_channels) - 1
 
-            up_block = FlaxUpEncoderBlock2D(
+            up_block = FlaxUpDecoderBlock2D(
                 in_channels=prev_output_channel,
                 out_channels=output_channel,
                 num_layers=self.layers_per_block + 1,
+                resnet_groups=self.norm_num_groups,
                 add_upsample=not is_final_block,
                 dtype=self.dtype,
             )
@@ -607,7 +653,7 @@ class FlaxDecoder(nn.Module):
         self.up_blocks = up_blocks
 
         # end
-        self.conv_norm_out = nn.GroupNorm(num_groups=32, epsilon=1e-6)
+        self.conv_norm_out = nn.GroupNorm(num_groups=self.norm_num_groups, epsilon=1e-6)
         self.conv_out = nn.Conv(
             self.out_channels,
             kernel_size=(3, 3),

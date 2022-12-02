@@ -28,10 +28,9 @@ The snippet below demonstrates how to use the ONNX runtime. You need to use `Sta
 from diffusers import StableDiffusionOnnxPipeline
 
 pipe = StableDiffusionOnnxPipeline.from_pretrained(
-    "CompVis/stable-diffusion-v1-4",
+    "runwayml/stable-diffusion-v1-5",
     revision="onnx",
     provider="CUDAExecutionProvider",
-    use_auth_token=True,
 )
 
 prompt = "a photo of an astronaut riding a horse on mars"
