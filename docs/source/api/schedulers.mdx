@@ -76,6 +76,33 @@ Original paper can be found [here](https://arxiv.org/abs/2206.00927) and the [im
 
 [[autodoc]] DPMSolverMultistepScheduler
 
+#### Heun scheduler inspired by Karras et. al paper
+
+Algorithm 1 of [Karras et. al](https://arxiv.org/abs/2206.00364).
+Scheduler ported from @crowsonkb's https://github.com/crowsonkb/k-diffusion library:
+
+All credit for making this scheduler work goes to [Katherine Crowson](https://github.com/crowsonkb/)
+
+[[autodoc]] HeunDiscreteScheduler
+
+#### DPM Discrete Scheduler inspired by Karras et. al paper
+
+Inspired by [Karras et. al](https://arxiv.org/abs/2206.00364).
+Scheduler ported from @crowsonkb's https://github.com/crowsonkb/k-diffusion library:
+
+All credit for making this scheduler work goes to [Katherine Crowson](https://github.com/crowsonkb/)
+
+[[autodoc]] KDPM2DiscreteScheduler
+
+#### DPM Discrete Scheduler with ancestral sampling inspired by Karras et. al paper
+
+Inspired by [Karras et. al](https://arxiv.org/abs/2206.00364).
+Scheduler ported from @crowsonkb's https://github.com/crowsonkb/k-diffusion library:
+
+All credit for making this scheduler work goes to [Katherine Crowson](https://github.com/crowsonkb/)
+
+[[autodoc]] KDPM2AncestralDiscreteScheduler
+
 #### Variance exploding, stochastic sampling from Karras et. al
 
 Original paper can be found [here](https://arxiv.org/abs/2006.11239).
@@ -85,7 +112,6 @@ Original paper can be found [here](https://arxiv.org/abs/2006.11239).
 #### Linear multistep scheduler for discrete beta schedules
 
 Original implementation can be found [here](https://arxiv.org/abs/2206.00364).
-
 
 [[autodoc]] LMSDiscreteScheduler
 
