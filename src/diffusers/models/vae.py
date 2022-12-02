@@ -716,7 +716,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
     def split_decode(self, z: torch.FloatTensor) -> torch.FloatTensor:
         ks = 128
         stride = 64
-        vqf = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        vqf = 2 ** (len(self.config.block_out_channels) - 1)
         self.split_input_params = {
             "ks": (ks, ks),
             "stride": (stride, stride),
