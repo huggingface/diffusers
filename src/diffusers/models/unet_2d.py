@@ -84,7 +84,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         layers_per_block: int = 2,
         mid_block_scale_factor: float = 1,
         downsample_padding: int = 1,
-        act_fn: str = "silu",
+        act_fn: str = "sigmoid",
         attention_head_dim: int = 8,
         norm_num_groups: int = 32,
         norm_eps: float = 1e-5,
@@ -174,7 +174,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         # out
         num_groups_out = norm_num_groups if norm_num_groups is not None else min(block_out_channels[0] // 4, 32)
         self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=num_groups_out, eps=norm_eps)
-        self.conv_act = nn.SiLU()
+        self.conv_act = nn.sigmoid()
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, kernel_size=3, padding=1)
 
     def forward(

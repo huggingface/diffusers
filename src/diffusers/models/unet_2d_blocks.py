@@ -1532,7 +1532,7 @@ class AttnSkipUpBlock2D(nn.Module):
             self.skip_norm = torch.nn.GroupNorm(
                 num_groups=min(out_channels // 4, 32), num_channels=out_channels, eps=resnet_eps, affine=True
             )
-            self.act = nn.SiLU()
+            self.act = nn.sigmoid()
         else:
             self.resnet_up = None
             self.skip_conv = None
@@ -1629,7 +1629,7 @@ class SkipUpBlock2D(nn.Module):
             self.skip_norm = torch.nn.GroupNorm(
                 num_groups=min(out_channels // 4, 32), num_channels=out_channels, eps=resnet_eps, affine=True
             )
-            self.act = nn.SiLU()
+            self.act = nn.sigmoid()
         else:
             self.resnet_up = None
             self.skip_conv = None
