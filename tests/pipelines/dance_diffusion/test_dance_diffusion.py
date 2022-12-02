@@ -44,6 +44,10 @@ class PipelineFastTests(unittest.TestCase):
             sample_rate=16_000,
             in_channels=2,
             out_channels=2,
+            flip_sin_to_cos=True,
+            use_timestep_embedding=False,
+            time_embedding_type="fourier",
+            mid_block_type="UNetMidBlock1D",
             down_block_types=["DownBlock1DNoSkip"] + ["DownBlock1D"] + ["AttnDownBlock1D"],
             up_block_types=["AttnUpBlock1D"] + ["UpBlock1D"] + ["UpBlock1DNoSkip"],
         )
@@ -86,7 +90,7 @@ class PipelineIntegrationTests(unittest.TestCase):
     def test_dance_diffusion(self):
         device = torch_device
 
-        pipe = DanceDiffusionPipeline.from_pretrained("harmonai/maestro-150k", device_map="auto")
+        pipe = DanceDiffusionPipeline.from_pretrained("harmonai/maestro-150k")
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
@@ -103,9 +107,7 @@ class PipelineIntegrationTests(unittest.TestCase):
     def test_dance_diffusion_fp16(self):
         device = torch_device
 
-        pipe = DanceDiffusionPipeline.from_pretrained(
-            "harmonai/maestro-150k", torch_dtype=torch.float16, device_map="auto"
-        )
+        pipe = DanceDiffusionPipeline.from_pretrained("harmonai/maestro-150k", torch_dtype=torch.float16)
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 

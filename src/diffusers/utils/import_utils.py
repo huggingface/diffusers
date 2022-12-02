@@ -15,11 +15,14 @@
 Import utilities: Utilities related to imports and our lazy inits.
 """
 import importlib.util
+import operator as op
 import os
 import sys
 from collections import OrderedDict
+from typing import Union
 
 from packaging import version
+from packaging.version import Version, parse
 
 from . import logging
 
@@ -39,6 +42,9 @@ ENV_VARS_TRUE_AND_AUTO_VALUES = ENV_VARS_TRUE_VALUES.union({"AUTO"})
 USE_TF = os.environ.get("USE_TF", "AUTO").upper()
 USE_TORCH = os.environ.get("USE_TORCH", "AUTO").upper()
 USE_JAX = os.environ.get("USE_FLAX", "AUTO").upper()
+USE_SAFETENSORS = os.environ.get("USE_SAFETENSORS", "AUTO").upper()
+
+STR_OPERATION_TO_FUNC = {">": op.gt, ">=": op.ge, "==": op.eq, "!=": op.ne, "<=": op.le, "<": op.lt}
 
 _torch_version = "N/A"
 if USE_TORCH in ENV_VARS_TRUE_AND_AUTO_VALUES and USE_TF not in ENV_VARS_TRUE_VALUES:
@@ -50,7 +56,7 @@ if USE_TORCH in ENV_VARS_TRUE_AND_AUTO_VALUES and USE_TF not in ENV_VARS_TRUE_VA
         except importlib_metadata.PackageNotFoundError:
             _torch_available = False
 else:
-    logger.info("Disabling PyTorch because USE_TF is set")
+    logger.info("Disabling PyTorch because USE_TORCH is set")
     _torch_available = False
 
 
@@ -104,6 +110,17 @@ if USE_JAX in ENV_VARS_TRUE_AND_AUTO_VALUES:
 else:
     _flax_available = False
 
+if USE_SAFETENSORS in ENV_VARS_TRUE_AND_AUTO_VALUES:
+    _safetensors_available = importlib.util.find_spec("safetensors") is not None
+    if _safetensors_available:
+        try:
+            _safetensors_version = importlib_metadata.version("safetensors")
+            logger.info(f"Safetensors version {_safetensors_version} available.")
+        except importlib_metadata.PackageNotFoundError:
+            _safetensors_available = False
+else:
+    logger.info("Disabling Safetensors because USE_TF is set")
+    _safetensors_available = False
 
 _transformers_available = importlib.util.find_spec("transformers") is not None
 try:
@@ -140,7 +157,13 @@ except importlib_metadata.PackageNotFoundError:
 _onnxruntime_version = "N/A"
 _onnx_available = importlib.util.find_spec("onnxruntime") is not None
 if _onnx_available:
-    candidates = ("onnxruntime", "onnxruntime-gpu", "onnxruntime-directml", "onnxruntime-openvino")
+    candidates = (
+        "onnxruntime",
+        "onnxruntime-gpu",
+        "onnxruntime-directml",
+        "onnxruntime-openvino",
+        "ort_nightly_directml",
+    )
     _onnxruntime_version = None
     # For the metadata, we have to look for both onnxruntime and onnxruntime-gpu
     for pkg in candidates:
@@ -168,9 +191,25 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _accelerate_available = False
 
+_xformers_available = importlib.util.find_spec("xformers") is not None
+try:
+    _xformers_version = importlib_metadata.version("xformers")
+    if _torch_available:
+        import torch
+
+        if torch.__version__ < version.Version("1.12"):
+            raise ValueError("PyTorch should be >= 1.12")
+    logger.debug(f"Successfully imported xformers version {_xformers_version}")
+except importlib_metadata.PackageNotFoundError:
+    _xformers_available = False
+
 
 def is_torch_available():
     return _torch_available
+
+
+def is_safetensors_available():
+    return _safetensors_available
 
 
 def is_tf_available():
@@ -203,6 +242,10 @@ def is_onnx_available():
 
 def is_scipy_available():
     return _scipy_available
+
+
+def is_xformers_available():
+    return _xformers_available
 
 
 def is_accelerate_available():
@@ -282,6 +325,17 @@ def requires_backends(obj, backends):
     if failed:
         raise ImportError("".join(failed))
 
+    if name in [
+        "VersatileDiffusionTextToImagePipeline",
+        "VersatileDiffusionPipeline",
+        "VersatileDiffusionDualGuidedPipeline",
+        "StableDiffusionImageVariationPipeline",
+    ] and is_transformers_version("<", "4.25.0.dev0"):
+        raise ImportError(
+            f"You need to install `transformers` from 'main' in order to use {name}: \n```\n pip install"
+            " git+https://github.com/huggingface/transformers \n```"
+        )
+
 
 class DummyObject(type):
     """
@@ -293,3 +347,50 @@ class DummyObject(type):
         if key.startswith("_"):
             return super().__getattr__(cls, key)
         requires_backends(cls, cls._backends)
+
+
+# This function was copied from: https://github.com/huggingface/accelerate/blob/874c4967d94badd24f893064cc3bef45f57cadf7/src/accelerate/utils/versions.py#L319
+def compare_versions(library_or_version: Union[str, Version], operation: str, requirement_version: str):
+    """
+    Args:
+    Compares a library version to some requirement using a given operation.
+        library_or_version (`str` or `packaging.version.Version`):
+            A library name or a version to check.
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`.
+        requirement_version (`str`):
+            The version to compare the library version against
+    """
+    if operation not in STR_OPERATION_TO_FUNC.keys():
+        raise ValueError(f"`operation` must be one of {list(STR_OPERATION_TO_FUNC.keys())}, received {operation}")
+    operation = STR_OPERATION_TO_FUNC[operation]
+    if isinstance(library_or_version, str):
+        library_or_version = parse(importlib_metadata.version(library_or_version))
+    return operation(library_or_version, parse(requirement_version))
+
+
+# This function was copied from: https://github.com/huggingface/accelerate/blob/874c4967d94badd24f893064cc3bef45f57cadf7/src/accelerate/utils/versions.py#L338
+def is_torch_version(operation: str, version: str):
+    """
+    Args:
+    Compares the current PyTorch version to a given reference with an operation.
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A string version of PyTorch
+    """
+    return compare_versions(parse(_torch_version), operation, version)
+
+
+def is_transformers_version(operation: str, version: str):
+    """
+    Args:
+    Compares the current Transformers version to a given reference with an operation.
+        operation (`str`):
+            A string representation of an operator, such as `">"` or `"<="`
+        version (`str`):
+            A string version of PyTorch
+    """
+    if not _transformers_available:
+        return False
+    return compare_versions(parse(_transformers_version), operation, version)

@@ -15,7 +15,7 @@
 import flax.linen as nn
 import jax.numpy as jnp
 
-from .attention_flax import FlaxSpatialTransformer
+from .attention_flax import FlaxTransformer2DModel
 from .resnet_flax import FlaxDownsample2D, FlaxResnetBlock2D, FlaxUpsample2D
 
 
@@ -46,6 +46,8 @@ class FlaxCrossAttnDownBlock2D(nn.Module):
     num_layers: int = 1
     attn_num_head_channels: int = 1
     add_downsample: bool = True
+    use_linear_projection: bool = False
+    only_cross_attention: bool = False
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
@@ -63,11 +65,13 @@ class FlaxCrossAttnDownBlock2D(nn.Module):
             )
             resnets.append(res_block)
 
-            attn_block = FlaxSpatialTransformer(
+            attn_block = FlaxTransformer2DModel(
                 in_channels=self.out_channels,
                 n_heads=self.attn_num_head_channels,
                 d_head=self.out_channels // self.attn_num_head_channels,
                 depth=1,
+                use_linear_projection=self.use_linear_projection,
+                only_cross_attention=self.only_cross_attention,
                 dtype=self.dtype,
             )
             attentions.append(attn_block)
@@ -178,6 +182,8 @@ class FlaxCrossAttnUpBlock2D(nn.Module):
     num_layers: int = 1
     attn_num_head_channels: int = 1
     add_upsample: bool = True
+    use_linear_projection: bool = False
+    only_cross_attention: bool = False
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
@@ -196,11 +202,13 @@ class FlaxCrossAttnUpBlock2D(nn.Module):
             )
             resnets.append(res_block)
 
-            attn_block = FlaxSpatialTransformer(
+            attn_block = FlaxTransformer2DModel(
                 in_channels=self.out_channels,
                 n_heads=self.attn_num_head_channels,
                 d_head=self.out_channels // self.attn_num_head_channels,
                 depth=1,
+                use_linear_projection=self.use_linear_projection,
+                only_cross_attention=self.only_cross_attention,
                 dtype=self.dtype,
             )
             attentions.append(attn_block)
@@ -310,6 +318,7 @@ class FlaxUNetMidBlock2DCrossAttn(nn.Module):
     dropout: float = 0.0
     num_layers: int = 1
     attn_num_head_channels: int = 1
+    use_linear_projection: bool = False
     dtype: jnp.dtype = jnp.float32
 
     def setup(self):
@@ -326,11 +335,12 @@ class FlaxUNetMidBlock2DCrossAttn(nn.Module):
         attentions = []
 
         for _ in range(self.num_layers):
-            attn_block = FlaxSpatialTransformer(
+            attn_block = FlaxTransformer2DModel(
                 in_channels=self.in_channels,
                 n_heads=self.attn_num_head_channels,
                 d_head=self.in_channels // self.attn_num_head_channels,
                 depth=1,
+                use_linear_projection=self.use_linear_projection,
                 dtype=self.dtype,
             )
             attentions.append(attn_block)

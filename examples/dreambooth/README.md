@@ -39,6 +39,8 @@ Now let's get our dataset. Download images from [here](https://drive.google.com/
 
 And launch the training using
 
+**___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
+
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export INSTANCE_DIR="path-to-instance-images"
@@ -92,7 +94,7 @@ accelerate launch train_dreambooth.py \
 
 With the help of gradient checkpointing and the 8-bit optimizer from bitsandbytes it's possible to run train dreambooth on a 16GB GPU.
 
-Install `bitsandbytes` with `pip install bitsandbytes`
+To install `bitandbytes` please refer to this [readme](https://github.com/TimDettmers/bitsandbytes#requirements--installation).
 
 ```bash
 export MODEL_NAME="CompVis/stable-diffusion-v1-4"
@@ -141,7 +143,7 @@ export INSTANCE_DIR="path-to-instance-images"
 export CLASS_DIR="path-to-class-images"
 export OUTPUT_DIR="path-to-save-model"
 
-accelerate launch train_dreambooth.py \
+accelerate launch --mixed_precision="fp16" train_dreambooth.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --instance_data_dir=$INSTANCE_DIR \
   --class_data_dir=$CLASS_DIR \
@@ -157,8 +159,7 @@ accelerate launch train_dreambooth.py \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
-  --max_train_steps=800 \
-  --mixed_precision=fp16
+  --max_train_steps=800
 ```
 
 ### Fine-tune text encoder with the UNet.
@@ -185,13 +186,24 @@ accelerate launch train_dreambooth.py \
   --class_prompt="a photo of dog" \
   --resolution=512 \
   --train_batch_size=1 \
-  --use_8bit_adam
+  --use_8bit_adam \
   --gradient_checkpointing \
   --learning_rate=2e-6 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
   --max_train_steps=800
+```
+
+### Using DreamBooth for other pipelines than Stable Diffusion
+
+Altdiffusion also support dreambooth now, the runing comman is basically the same as abouve, all you need to do is replace the `MODEL_NAME` like this:
+One can now simply change the `pretrained_model_name_or_path` to another architecture such as [`AltDiffusion`](https://huggingface.co/docs/diffusers/api/pipelines/alt_diffusion).
+
+```
+export MODEL_NAME="CompVis/stable-diffusion-v1-4" --> export MODEL_NAME="BAAI/AltDiffusion-m9"
+or
+export MODEL_NAME="CompVis/stable-diffusion-v1-4" --> export MODEL_NAME="BAAI/AltDiffusion"
 ```
 
 ### Inference

@@ -21,7 +21,15 @@ import unittest
 import torch
 
 from diffusers import UNet2DConditionModel, UNet2DModel
-from diffusers.utils import floats_tensor, load_numpy, logging, require_torch_gpu, slow, torch_all_close, torch_device
+from diffusers.utils import (
+    floats_tensor,
+    load_hf_numpy,
+    logging,
+    require_torch_gpu,
+    slow,
+    torch_all_close,
+    torch_device,
+)
 from parameterized import parameterized
 
 from ..test_modeling_common import ModelTesterMixin
@@ -117,9 +125,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
 
     @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
     def test_from_pretrained_accelerate(self):
-        model, _ = UNet2DModel.from_pretrained(
-            "fusing/unet-ldm-dummy-update", output_loading_info=True, device_map="auto"
-        )
+        model, _ = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", output_loading_info=True)
         model.to(torch_device)
         image = model(**self.dummy_input).sample
 
@@ -127,9 +133,8 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
 
     @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
     def test_from_pretrained_accelerate_wont_change_results(self):
-        model_accelerate, _ = UNet2DModel.from_pretrained(
-            "fusing/unet-ldm-dummy-update", output_loading_info=True, device_map="auto"
-        )
+        # by defautl model loading will use accelerate as `low_cpu_mem_usage=True`
+        model_accelerate, _ = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", output_loading_info=True)
         model_accelerate.to(torch_device)
         model_accelerate.eval()
 
@@ -151,7 +156,7 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         gc.collect()
 
         model_normal_load, _ = UNet2DModel.from_pretrained(
-            "fusing/unet-ldm-dummy-update", output_loading_info=True, device_map="auto"
+            "fusing/unet-ldm-dummy-update", output_loading_info=True, low_cpu_mem_usage=False
         )
         model_normal_load.to(torch_device)
         model_normal_load.eval()
@@ -165,9 +170,8 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         gc.collect()
 
         tracemalloc.start()
-        model_accelerate, _ = UNet2DModel.from_pretrained(
-            "fusing/unet-ldm-dummy-update", output_loading_info=True, device_map="auto"
-        )
+        # by defautl model loading will use accelerate as `low_cpu_mem_usage=True`
+        model_accelerate, _ = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", output_loading_info=True)
         model_accelerate.to(torch_device)
         model_accelerate.eval()
         _, peak_accelerate = tracemalloc.get_traced_memory()
@@ -176,7 +180,9 @@ class UNetLDMModelTests(ModelTesterMixin, unittest.TestCase):
         torch.cuda.empty_cache()
         gc.collect()
 
-        model_normal_load, _ = UNet2DModel.from_pretrained("fusing/unet-ldm-dummy-update", output_loading_info=True)
+        model_normal_load, _ = UNet2DModel.from_pretrained(
+            "fusing/unet-ldm-dummy-update", output_loading_info=True, low_cpu_mem_usage=False
+        )
         model_normal_load.to(torch_device)
         model_normal_load.eval()
         _, peak_normal = tracemalloc.get_traced_memory()
@@ -290,6 +296,44 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         for name, param in named_params.items():
             self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
 
+    def test_model_with_attention_head_dim_tuple(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["attention_head_dim"] = (8, 16)
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+            if isinstance(output, dict):
+                output = output.sample
+
+        self.assertIsNotNone(output)
+        expected_shape = inputs_dict["sample"].shape
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
+    def test_model_with_use_linear_projection(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["use_linear_projection"] = True
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        with torch.no_grad():
+            output = model(**inputs_dict)
+
+            if isinstance(output, dict):
+                output = output.sample
+
+        self.assertIsNotNone(output)
+        expected_shape = inputs_dict["sample"].shape
+        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
 
 class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
     model_class = UNet2DModel
@@ -340,9 +384,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
 
     @slow
     def test_from_pretrained_hub(self):
-        model, loading_info = UNet2DModel.from_pretrained(
-            "google/ncsnpp-celebahq-256", output_loading_info=True, device_map="auto"
-        )
+        model, loading_info = UNet2DModel.from_pretrained("google/ncsnpp-celebahq-256", output_loading_info=True)
         self.assertIsNotNone(model)
         self.assertEqual(len(loading_info["missing_keys"]), 0)
 
@@ -356,7 +398,7 @@ class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
 
     @slow
     def test_output_pretrained_ve_mid(self):
-        model = UNet2DModel.from_pretrained("google/ncsnpp-celebahq-256", device_map="auto")
+        model = UNet2DModel.from_pretrained("google/ncsnpp-celebahq-256")
         model.to(torch_device)
 
         torch.manual_seed(0)
@@ -423,7 +465,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
 
     def get_latents(self, seed=0, shape=(4, 4, 64, 64), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32
-        image = torch.from_numpy(load_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
+        image = torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
         return image
 
     def get_unet_model(self, fp16=False, model_id="CompVis/stable-diffusion-v1-4"):
@@ -431,7 +473,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         torch_dtype = torch.float16 if fp16 else torch.float32
 
         model = UNet2DConditionModel.from_pretrained(
-            model_id, subfolder="unet", torch_dtype=torch_dtype, revision=revision, device_map="auto"
+            model_id, subfolder="unet", torch_dtype=torch_dtype, revision=revision
         )
         model.to(torch_device).eval()
 
@@ -439,7 +481,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
 
     def get_encoder_hidden_states(self, seed=0, shape=(4, 77, 768), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32
-        hidden_states = torch.from_numpy(load_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
+        hidden_states = torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
         return hidden_states
 
     @parameterized.expand(
@@ -452,6 +494,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
+    @require_torch_gpu
     def test_compvis_sd_v1_4(self, seed, timestep, expected_slice):
         model = self.get_unet_model(model_id="CompVis/stable-diffusion-v1-4")
         latents = self.get_latents(seed)
@@ -503,6 +546,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
+    @require_torch_gpu
     def test_compvis_sd_v1_5(self, seed, timestep, expected_slice):
         model = self.get_unet_model(model_id="runwayml/stable-diffusion-v1-5")
         latents = self.get_latents(seed)
@@ -554,6 +598,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
+    @require_torch_gpu
     def test_compvis_sd_inpaint(self, seed, timestep, expected_slice):
         model = self.get_unet_model(model_id="runwayml/stable-diffusion-inpainting")
         latents = self.get_latents(seed, shape=(4, 9, 64, 64))
@@ -589,6 +634,32 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
             sample = model(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
         assert sample.shape == (4, 4, 64, 64)
+
+        output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
+        expected_output_slice = torch.tensor(expected_slice)
+
+        assert torch_all_close(output_slice, expected_output_slice, atol=5e-3)
+
+    @parameterized.expand(
+        [
+            # fmt: off
+            [83, 4, [0.1514, 0.0807, 0.1624, 0.1016, -0.1896, 0.0263, 0.0677, 0.2310]],
+            [17, 0.55, [0.1164, -0.0216, 0.0170, 0.1589, -0.3120, 0.1005, -0.0581, -0.1458]],
+            [8, 0.89, [-0.1758, -0.0169, 0.1004, -0.1411, 0.1312, 0.1103, -0.1996, 0.2139]],
+            [3, 1000, [0.1214, 0.0352, -0.0731, -0.1562, -0.0994, -0.0906, -0.2340, -0.0539]],
+            # fmt: on
+        ]
+    )
+    @require_torch_gpu
+    def test_stabilityai_sd_v2_fp16(self, seed, timestep, expected_slice):
+        model = self.get_unet_model(model_id="stabilityai/stable-diffusion-2", fp16=True)
+        latents = self.get_latents(seed, shape=(4, 4, 96, 96), fp16=True)
+        encoder_hidden_states = self.get_encoder_hidden_states(seed, shape=(4, 77, 1024), fp16=True)
+
+        with torch.no_grad():
+            sample = model(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
+
+        assert sample.shape == latents.shape
 
         output_slice = sample[-1, -2:, -2:, :2].flatten().float().cpu()
         expected_output_slice = torch.tensor(expected_slice)

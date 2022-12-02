@@ -20,7 +20,7 @@ import torch
 
 from diffusers import AutoencoderKL
 from diffusers.modeling_utils import ModelMixin
-from diffusers.utils import floats_tensor, load_numpy, require_torch_gpu, slow, torch_all_close, torch_device
+from diffusers.utils import floats_tensor, load_hf_numpy, require_torch_gpu, slow, torch_all_close, torch_device
 from parameterized import parameterized
 
 from ..test_modeling_common import ModelTesterMixin
@@ -147,7 +147,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
 
     def get_sd_image(self, seed=0, shape=(4, 3, 512, 512), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32
-        image = torch.from_numpy(load_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
+        image = torch.from_numpy(load_hf_numpy(self.get_file_format(seed, shape))).to(torch_device).to(dtype)
         return image
 
     def get_sd_vae_model(self, model_id="CompVis/stable-diffusion-v1-4", fp16=False):
@@ -155,7 +155,10 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         torch_dtype = torch.float16 if fp16 else torch.float32
 
         model = AutoencoderKL.from_pretrained(
-            model_id, subfolder="vae", torch_dtype=torch_dtype, revision=revision, device_map="auto"
+            model_id,
+            subfolder="vae",
+            torch_dtype=torch_dtype,
+            revision=revision,
         )
         model.to(torch_device).eval()
 
