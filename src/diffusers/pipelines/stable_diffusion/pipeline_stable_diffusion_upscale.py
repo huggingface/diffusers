@@ -459,8 +459,10 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
         else:
             noise = torch.randn(image.shape, generator=generator, device=device, dtype=text_embeddings.dtype)
         image = self.low_res_scheduler.add_noise(image, noise, noise_level)
-        image = torch.cat([image] * 2) if do_classifier_free_guidance else image
-        noise_level = torch.cat([noise_level] * 2) if do_classifier_free_guidance else noise_level
+
+        batch_multiplier = 2 if do_classifier_free_guidance else 1
+        image = torch.cat([image] * batch_multiplier * num_images_per_prompt)
+        noise_level = torch.cat([noise_level] * image.shape[0])
 
         # 6. Prepare latent variables
         height, width = image.shape[2:]
@@ -515,7 +517,7 @@ class StableDiffusionUpscalePipeline(DiffusionPipeline):
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
                 # call the callback, if provided
-                if (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0:
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
