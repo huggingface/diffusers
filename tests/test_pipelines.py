@@ -25,6 +25,8 @@ import numpy as np
 import torch
 
 import PIL
+import safetensors.torch
+import transformers
 from diffusers import (
     AutoencoderKL,
     DDIMPipeline,
@@ -511,8 +513,24 @@ class PipelineFastTests(unittest.TestCase):
     def test_save_safe_serialization(self):
         pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
         with tempfile.TemporaryDirectory() as tmpdirname:
-            tmpdirname = "/tmp/test_save_safe_serialization"  # TODO: remove
             pipeline.save_pretrained(tmpdirname, safe_serialization=True)
+
+            # Validate that the VAE safetensor exists and are of the correct format
+            vae_path = os.path.join(tmpdirname, "vae", "diffusion_pytorch_model.safetensors")
+            assert os.path.exists(vae_path), f"Could not find {vae_path}"
+            _ = safetensors.torch.load_file(vae_path)
+
+            # Validate that the UNet safetensor exists and are of the correct format
+            unet_path = os.path.join(tmpdirname, "unet", "diffusion_pytorch_model.safetensors")
+            assert os.path.exists(unet_path), f"Could not find {unet_path}"
+            _ = safetensors.torch.load_file(unet_path)
+
+            # Validate that the text encoder safetensor exists and are of the correct format
+            text_encoder_path = os.path.join(tmpdirname, "text_encoder", "model.safetensors")
+            if transformers.__version__ >= "4.25.1":
+                assert os.path.exists(text_encoder_path), f"Could not find {text_encoder_path}"
+                _ = safetensors.torch.load_file(text_encoder_path)
+
             pipeline = StableDiffusionPipeline.from_pretrained(tmpdirname)
             assert pipeline.unet is not None
             assert pipeline.vae is not None
