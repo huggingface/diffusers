@@ -749,7 +749,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
 
         # 2. apply model loop over last dim
 
-        output_list = [self._decode(z).sample(z[:, :, :, :, i]) for i in range(z.shape[-1])]
+        output_list = [self._decode(z[:, :, :, :, i]).sample for i in range(z.shape[-1])]
 
         o = torch.stack(output_list, axis=-1)  # # (bn, nc, ks[0], ks[1], L)
         o = o * weighting
