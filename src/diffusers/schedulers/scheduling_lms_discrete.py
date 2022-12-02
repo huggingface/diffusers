@@ -78,6 +78,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
+        prediction_type: str = "epsilon",
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -215,7 +216,15 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigma = self.sigmas[step_index]
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
-        pred_original_sample = sample - sigma * model_output
+        if self.config.prediction_type == "epsilon":
+            pred_original_sample = sample - sigma * model_output
+        elif self.config.prediction_type == "v_prediction":
+            # * c_out + input * c_skip
+            pred_original_sample = model_output * (-sigma / (sigma**2 + 1) ** 0.5) + (sample / (sigma**2 + 1))
+        else:
+            raise ValueError(
+                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
+            )
 
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma
