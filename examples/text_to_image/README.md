@@ -13,7 +13,7 @@ ___This script is experimental. The script fine-tunes the whole model and often 
 Before running the scripts, make sure to install the library's training dependencies:
 
 ```bash
-pip install git+https://github.com/huggingface/diffusers.git
+pip install "git+https://github.com/huggingface/diffusers.git#egg=diffusers[training]"
 pip install -U -r requirements.txt
 ```
 
