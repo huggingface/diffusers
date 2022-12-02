@@ -2228,6 +2228,40 @@ class KDPM2DiscreteSchedulerTest(SchedulerCommonTest):
         for schedule in ["linear", "scaled_linear"]:
             self.check_over_configs(beta_schedule=schedule)
 
+    def test_prediction_type(self):
+        for prediction_type in ["epsilon", "v_prediction"]:
+            self.check_over_configs(prediction_type=prediction_type)
+
+    def test_full_loop_with_v_prediction(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(prediction_type="v_prediction")
+        scheduler = scheduler_class(**scheduler_config)
+
+        scheduler.set_timesteps(self.num_inference_steps)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+        sample = sample.to(torch_device)
+
+        for i, t in enumerate(scheduler.timesteps):
+            sample = scheduler.scale_model_input(sample, t)
+
+            model_output = model(sample, t)
+
+            output = scheduler.step(model_output, t, sample)
+            sample = output.prev_sample
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        if torch_device in ["cpu", "mps"]:
+            assert abs(result_sum.item() - 4.6934e-07) < 1e-2
+            assert abs(result_mean.item() - 6.1112e-10) < 1e-3
+        else:
+            # CUDA
+            assert abs(result_sum.item() - 4.693428650170972e-07) < 1e-2
+            assert abs(result_mean.item() - 0.0002) < 1e-3
+
     def test_full_loop_no_noise(self):
         if torch_device == "mps":
             return
@@ -2354,6 +2388,48 @@ class KDPM2AncestralDiscreteSchedulerTest(SchedulerCommonTest):
             assert abs(result_sum.item() - 13913.0449) < 1e-2
             assert abs(result_mean.item() - 18.1159) < 5e-3
 
+    def test_prediction_type(self):
+        for prediction_type in ["epsilon", "v_prediction"]:
+            self.check_over_configs(prediction_type=prediction_type)
+
+    def test_full_loop_with_v_prediction(self):
+        if torch_device == "mps":
+            return
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config(prediction_type="v_prediction")
+        scheduler = scheduler_class(**scheduler_config)
+
+        scheduler.set_timesteps(self.num_inference_steps)
+
+        model = self.dummy_model()
+        sample = self.dummy_sample_deter * scheduler.init_noise_sigma
+        sample = sample.to(torch_device)
+
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
+
+        for i, t in enumerate(scheduler.timesteps):
+            sample = scheduler.scale_model_input(sample, t)
+
+            model_output = model(sample, t)
+
+            output = scheduler.step(model_output, t, sample, generator=generator)
+            sample = output.prev_sample
+
+        result_sum = torch.sum(torch.abs(sample))
+        result_mean = torch.mean(torch.abs(sample))
+
+        if torch_device in ["cpu", "mps"]:
+            assert abs(result_sum.item() - 328.9970) < 1e-2
+            assert abs(result_mean.item() - 0.4284) < 1e-3
+        else:
+            # CUDA
+            assert abs(result_sum.item() - 327.8027) < 1e-2
+            assert abs(result_mean.item() - 0.4268) < 1e-3
+
     def test_full_loop_device(self):
         if torch_device == "mps":
             return
@@ -2388,5 +2464,5 @@ class KDPM2AncestralDiscreteSchedulerTest(SchedulerCommonTest):
             assert abs(result_mean.item() - 18.0331) < 5e-3
         else:
             # CUDA
-            assert abs(result_sum.item() - 13913.0459) < 1e-2
+            assert abs(result_sum.item() - 13913.0332) < 1e-1
             assert abs(result_mean.item() - 18.1159) < 1e-3

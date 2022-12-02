@@ -42,7 +42,10 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
             options to clip the variance used when adding noise to the denoised sample. Choose from `fixed_small`,
             `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
-        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays.
+        prediction_type (`str`, default `epsilon`, optional):
+            prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
+            process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
+            https://imagen.research.google/video/paper.pdf)
     """
 
     _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
@@ -201,9 +204,9 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             )
 
         if self.state_in_first_order:
-            # 2. Convert to an ODE derivative
+            # 2. Convert to an ODE derivative for 1st order
             derivative = (sample - pred_original_sample) / sigma_hat
-            # 3. 1st order derivative
+            # 3. delta timestep
             dt = sigma_next - sigma_hat
 
             # store for 2nd order step
@@ -215,7 +218,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             derivative = (sample - pred_original_sample) / sigma_next
             derivative = (self.prev_derivative + derivative) / 2
 
-            # 3. Retrieve 1st order derivative
+            # 3. take prev timestep & sample
             dt = self.dt
             sample = self.sample
 

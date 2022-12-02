@@ -43,7 +43,10 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
             options to clip the variance used when adding noise to the denoised sample. Choose from `fixed_small`,
             `fixed_small_log`, `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
-        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays.
+        prediction_type (`str`, default `epsilon`, optional):
+            prediction type of the scheduler function, one of `epsilon` (predicting the noise of the diffusion
+            process), `sample` (directly predicting the noisy sample`) or `v_prediction` (see section 2.4
+            https://imagen.research.google/video/paper.pdf)
     """
 
     _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
@@ -57,6 +60,7 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.012,
         beta_schedule: str = "linear",
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
+        prediction_type: str = "epsilon",
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -99,7 +103,11 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         """
         step_index = self.index_for_timestep(timestep)
 
-        sigma = self.sigmas[step_index]
+        if self.state_in_first_order:
+            sigma = self.sigmas[step_index]
+        else:
+            sigma = self.sigmas_interpol[step_index - 1]
+
         sample = sample / ((sigma**2 + 1) ** 0.5)
         return sample
 
@@ -138,15 +146,25 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigmas_down = (sigmas_next**2 - sigmas_up**2) ** 0.5
         sigmas_down[-1] = 0.0
 
+        # compute interpolated sigmas
+        sigmas_interpol = sigmas.log().lerp(sigmas_down.log(), 0.5).exp()
+        sigmas_interpol[-2:] = 0.0
+
+        # set sigmas
         self.sigmas = torch.cat([sigmas[:1], sigmas[1:].repeat_interleave(2), sigmas[-1:]])
+        self.sigmas_interpol = torch.cat(
+            [sigmas_interpol[:1], sigmas_interpol[1:].repeat_interleave(2), sigmas_interpol[-1:]]
+        )
         self.sigmas_up = torch.cat([sigmas_up[:1], sigmas_up[1:].repeat_interleave(2), sigmas_up[-1:]])
         self.sigmas_down = torch.cat([sigmas_down[:1], sigmas_down[1:].repeat_interleave(2), sigmas_down[-1:]])
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = self.sigmas.max()
 
-        timesteps = torch.from_numpy(timesteps)
-        timesteps = torch.cat([timesteps[:1], timesteps[1:].repeat_interleave(2)])
+        timesteps = torch.from_numpy(timesteps).to(device)
+        timesteps_interpol = self.sigma_to_t(sigmas_interpol).to(device)
+        interleaved_timesteps = torch.stack((timesteps_interpol[:-2, None], timesteps[1:, None]), dim=-1).flatten()
+        timesteps = torch.cat([timesteps[:1], interleaved_timesteps])
 
         if str(device).startswith("mps"):
             # mps does not support float64
@@ -155,6 +173,29 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.timesteps = timesteps
 
         self.sample = None
+
+    def sigma_to_t(self, sigma):
+        # get log sigma
+        log_sigma = sigma.log()
+
+        # get distribution
+        dists = log_sigma - self.log_sigmas[:, None]
+
+        # get sigmas range
+        low_idx = dists.ge(0).cumsum(dim=0).argmax(dim=0).clamp(max=self.log_sigmas.shape[0] - 2)
+        high_idx = low_idx + 1
+
+        low = self.log_sigmas[low_idx]
+        high = self.log_sigmas[high_idx]
+
+        # interpolate sigmas
+        w = (low - log_sigma) / (low - high)
+        w = w.clamp(0, 1)
+
+        # transform interpolation to time range
+        t = (1 - w) * low_idx + w * high_idx
+        t = t.view(sigma.shape)
+        return t
 
     @property
     def state_in_first_order(self):
@@ -185,11 +226,13 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         if self.state_in_first_order:
             sigma = self.sigmas[step_index]
-            sigma_next = self.sigmas[step_index + 1]
+            sigma_interpol = self.sigmas_interpol[step_index]
+            sigma_up = self.sigmas_up[step_index]
+            sigma_down = self.sigmas_down[step_index - 1]
         else:
             # 2nd order / KPDM2's method
             sigma = self.sigmas[step_index - 1]
-            sigma_next = self.sigmas[step_index]
+            sigma_interpol = self.sigmas_interpol[step_index - 1]
             sigma_up = self.sigmas_up[step_index - 1]
             sigma_down = self.sigmas_down[step_index - 1]
 
@@ -211,13 +254,24 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             )
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
-        pred_original_sample = sample - sigma_hat * model_output
+        if self.config.prediction_type == "epsilon":
+            sigma_input = sigma_hat if self.state_in_first_order else sigma_interpol
+            pred_original_sample = sample - sigma_input * model_output
+        elif self.config.prediction_type == "v_prediction":
+            sigma_input = sigma_hat if self.state_in_first_order else sigma_interpol
+            pred_original_sample = model_output * (-sigma_input / (sigma_input**2 + 1) ** 0.5) + (
+                sample / (sigma_input**2 + 1)
+            )
+        else:
+            raise ValueError(
+                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
+            )
 
         if self.state_in_first_order:
-            # 2. Convert to an ODE derivative
+            # 2. Convert to an ODE derivative for 1st order
             derivative = (sample - pred_original_sample) / sigma_hat
-            # 3. 1st order derivative
-            dt = sigma_next - sigma_hat
+            # 3. delta timestep
+            dt = sigma_interpol - sigma_hat
 
             # store for 2nd order step
             self.sample = sample
@@ -225,7 +279,9 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             prev_sample = sample + derivative * dt
         else:
             # DPM-Solver-2
-            derivative = (sample - pred_original_sample) / sigma_hat
+            # 2. Convert to an ODE derivative for 2nd order
+            derivative = (sample - pred_original_sample) / sigma_interpol
+            # 3. delta timestep
             dt = sigma_down - sigma_hat
 
             sample = self.sample
