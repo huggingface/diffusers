@@ -88,6 +88,7 @@ from .models.vae_oneflow import OneFlowAutoencoderKL
 
 from .schedulers import (
     OneFlowDDIMScheduler,
+    OneFlowDDPMScheduler,
     OneFlowPNDMScheduler,
     OneFlowDPMSolverMultistepScheduler,
     OneFlowSchedulerMixin
