@@ -411,7 +411,7 @@ class PipelineFastTests(unittest.TestCase):
             generator=generator,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
         ).images
         image_img2img = img2img(
@@ -419,7 +419,7 @@ class PipelineFastTests(unittest.TestCase):
             generator=generator,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
         ).images
         image_text2img = text2img(
             [prompt],
@@ -654,9 +654,12 @@ class PipelineSlowTests(unittest.TestCase):
                     force_download=True,
                 )
 
-        assert cap_logger.out == "Keyword arguments {'not_used': True} not recognized.\n"
+        assert (
+            cap_logger.out
+            == "Keyword arguments {'not_used': True} are not expected by DDPMPipeline and will be ignored.\n"
+        )
 
-    def test_from_pretrained_save_pretrained(self):
+    def test_from_save_pretrained(self):
         # 1. Load models
         model = UNet2DModel(
             block_out_channels=(32, 64),

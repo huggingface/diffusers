@@ -14,7 +14,6 @@ from datasets import load_dataset
 from diffusers import DDPMPipeline, DDPMScheduler, UNet2DModel, __version__
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
-from diffusers.utils import deprecate
 from huggingface_hub import HfFolder, Repository, whoami
 from packaging import version
 from torchvision.transforms import (
@@ -320,7 +319,12 @@ def main(args):
 
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
 
-    ema_model = EMAModel(model, inv_gamma=args.ema_inv_gamma, power=args.ema_power, max_value=args.ema_max_decay)
+    ema_model = EMAModel(
+        accelerator.unwrap_model(model),
+        inv_gamma=args.ema_inv_gamma,
+        power=args.ema_power,
+        max_value=args.ema_max_decay,
+    )
 
     # Handle the repository creation
     if accelerator.is_main_process:
@@ -412,11 +416,7 @@ def main(args):
                     scheduler=noise_scheduler,
                 )
 
-                deprecate("todo: remove this check", "0.10.0", "when the most used version is >= 0.8.0")
-                if diffusers_version < version.parse("0.8.0"):
-                    generator = torch.manual_seed(0)
-                else:
-                    generator = torch.Generator(device=pipeline.device).manual_seed(0)
+                generator = torch.Generator(device=pipeline.device).manual_seed(0)
                 # run pipeline in inference (sample random noise and denoise)
                 images = pipeline(
                     generator=generator,

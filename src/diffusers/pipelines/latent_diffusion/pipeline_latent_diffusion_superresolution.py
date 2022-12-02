@@ -17,7 +17,7 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import PIL_INTERPOLATION
+from ...utils import PIL_INTERPOLATION, deprecate
 
 
 def preprocess(image):
@@ -66,7 +66,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        init_image: Union[torch.Tensor, PIL.Image.Image],
+        image: Union[torch.Tensor, PIL.Image.Image],
         batch_size: Optional[int] = 1,
         num_inference_steps: Optional[int] = 100,
         eta: Optional[float] = 0.0,
@@ -77,7 +77,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
     ) -> Union[Tuple, ImagePipelineOutput]:
         r"""
         Args:
-            init_image (`torch.Tensor` or `PIL.Image.Image`):
+            image (`torch.Tensor` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
                 process.
             batch_size (`int`, *optional*, defaults to 1):
@@ -102,20 +102,21 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
             `return_dict` is True, otherwise a `tuple. When returning a tuple, the first element is a list with the
             generated images.
         """
+        message = "Please use `image` instead of `init_image`."
+        init_image = deprecate("init_image", "0.12.0", message, take_from=kwargs)
+        image = init_image or image
 
-        if isinstance(init_image, PIL.Image.Image):
+        if isinstance(image, PIL.Image.Image):
             batch_size = 1
-        elif isinstance(init_image, torch.Tensor):
-            batch_size = init_image.shape[0]
+        elif isinstance(image, torch.Tensor):
+            batch_size = image.shape[0]
         else:
-            raise ValueError(
-                f"`init_image` has to be of type `PIL.Image.Image` or `torch.Tensor` but is {type(init_image)}"
-            )
+            raise ValueError(f"`image` has to be of type `PIL.Image.Image` or `torch.Tensor` but is {type(image)}")
 
-        if isinstance(init_image, PIL.Image.Image):
-            init_image = preprocess(init_image)
+        if isinstance(image, PIL.Image.Image):
+            image = preprocess(image)
 
-        height, width = init_image.shape[-2:]
+        height, width = image.shape[-2:]
 
         # in_channels should be 6: 3 for latents, 3 for low resolution image
         latents_shape = (batch_size, self.unet.in_channels // 2, height, width)
@@ -128,7 +129,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
         else:
             latents = torch.randn(latents_shape, generator=generator, device=self.device, dtype=latents_dtype)
 
-        init_image = init_image.to(device=self.device, dtype=latents_dtype)
+        image = image.to(device=self.device, dtype=latents_dtype)
 
         # set timesteps and move to the correct device
         self.scheduler.set_timesteps(num_inference_steps, device=self.device)
@@ -148,7 +149,7 @@ class LDMSuperResolutionPipeline(DiffusionPipeline):
 
         for t in self.progress_bar(timesteps_tensor):
             # concat latents and low resolution image in the channel dimension.
-            latents_input = torch.cat([latents, init_image], dim=1)
+            latents_input = torch.cat([latents, image], dim=1)
             latents_input = self.scheduler.scale_model_input(latents_input, t)
             # predict the noise residual
             noise_pred = self.unet(latents_input, t).sample

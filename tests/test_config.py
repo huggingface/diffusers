@@ -203,7 +203,7 @@ class ConfigTester(unittest.TestCase):
             ddpm_2 = DDPMScheduler.from_pretrained("google/ddpm-celebahq-256", beta_start=88)
 
         with CaptureLogger(logger) as cap_logger:
-            deprecate("remove this case", "0.10.0", "remove")
+            deprecate("remove this case", "0.11.0", "remove")
             ddpm_3 = DDPMScheduler.from_pretrained(
                 "hf-internal-testing/tiny-stable-diffusion-torch",
                 subfolder="scheduler",
