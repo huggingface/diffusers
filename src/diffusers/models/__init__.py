@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ..utils import is_flax_available, is_librosa_available, is_torch_available
+from ..utils import is_flax_available, is_torch_available
 
 
 if is_torch_available():
