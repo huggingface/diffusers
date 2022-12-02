@@ -21,9 +21,10 @@ import torch
 
 from PIL import Image
 
-from ...models import AutoencoderKL, Mel, UNet2DConditionModel
+from ...models import AutoencoderKL, UNet2DConditionModel
 from ...pipeline_utils import AudioPipelineOutput, BaseOutput, DiffusionPipeline, ImagePipelineOutput
 from ...schedulers import DDIMScheduler, DDPMScheduler
+from .mel import Mel
 
 
 class AudioDiffusionPipeline(DiffusionPipeline):
@@ -32,10 +33,10 @@ class AudioDiffusionPipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Parameters:
-        vqae ([`AutoencoderKL`]): Optional Variational AutoEncoder for Latent Audio Diffusion
         unet ([`UNet2DConditionModel`]): UNET model
         mel ([`Mel`]): transform audio <-> spectrogram
         scheduler ([`DDIMScheduler` or `DDPMScheduler`]): de-noising scheduler
+        vqae ([`AutoencoderKL`]): Optional Variational AutoEncoder for Latent Audio Diffusion
     """
 
     _optional_components = ["vqvae"]

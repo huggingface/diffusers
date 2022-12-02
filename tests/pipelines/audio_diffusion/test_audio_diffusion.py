@@ -25,9 +25,9 @@ from diffusers import (
     DDIMScheduler,
     DDPMScheduler,
     DiffusionPipeline,
-    Mel,
     UNet2DModel,
 )
+from diffusers.pipelines.audio_diffusion import Mel
 from diffusers.utils import slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 

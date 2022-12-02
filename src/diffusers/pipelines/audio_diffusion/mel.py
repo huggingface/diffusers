@@ -17,7 +17,7 @@ import os
 import warnings
 from typing import Any, Dict, Optional, Union
 
-from ..configuration_utils import ConfigMixin, register_to_config
+from ...configuration_utils import ConfigMixin, register_to_config
 
 
 warnings.filterwarnings("ignore")

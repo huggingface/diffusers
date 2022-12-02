@@ -25,8 +25,3 @@ if is_torch_available():
 if is_flax_available():
     from .unet_2d_condition_flax import FlaxUNet2DConditionModel
     from .vae_flax import FlaxAutoencoderKL
-
-if is_torch_available() and is_librosa_available():
-    from .mel import Mel
-else:
-    from ..utils.dummy_torch_and_librosa_objects import Mel  # noqa F403
