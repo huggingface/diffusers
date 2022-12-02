@@ -246,10 +246,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         return Transformer2DModelOutput(sample=output)
 
-    def _set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
-        for block in self.transformer_blocks:
-            block._set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
-
 
 class AttentionBlock(nn.Module):
     """
@@ -414,7 +410,7 @@ class BasicTransformerBlock(nn.Module):
         # if xformers is installed try to use memory_efficient_attention by default
         if is_xformers_available():
             try:
-                self._set_use_memory_efficient_attention_xformers(True)
+                self.set_use_memory_efficient_attention_xformers(True)
             except Exception as e:
                 warnings.warn(
                     "Could not enable memory efficient attention. Make sure xformers is installed"
@@ -425,7 +421,7 @@ class BasicTransformerBlock(nn.Module):
         self.attn1._slice_size = slice_size
         self.attn2._slice_size = slice_size
 
-    def _set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
+    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
         if not is_xformers_available():
             print("Here is how to install it")
             raise ModuleNotFoundError(
@@ -835,11 +831,3 @@ class DualTransformer2DModel(nn.Module):
             return (output_states,)
 
         return Transformer2DModelOutput(sample=output_states)
-
-    def _set_attention_slice(self, slice_size):
-        for transformer in self.transformers:
-            transformer._set_attention_slice(slice_size)
-
-    def _set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
-        for transformer in self.transformers:
-            transformer._set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
