@@ -37,6 +37,7 @@ if is_torch_available():
         KarrasVePipeline,
         LDMPipeline,
         LDMSuperResolutionPipeline,
+        Mel,
         PNDMPipeline,
         RePaintPipeline,
         ScoreSdeVePipeline,

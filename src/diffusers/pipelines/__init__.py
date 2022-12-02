@@ -21,9 +21,9 @@ else:
     from ..utils.dummy_pt_objects import *  # noqa F403
 
 if is_torch_available() and is_librosa_available():
-    from .audio_diffusion import AudioDiffusionPipeline
+    from .audio_diffusion import AudioDiffusionPipeline, Mel
 else:
-    from ..utils.dummy_torch_and_librosa_objects import AudioDiffusionPipeline  # noqa F403
+    from ..utils.dummy_torch_and_librosa_objects import AudioDiffusionPipeline, Mel  # noqa F403
 
 if is_torch_available() and is_transformers_available():
     from .alt_diffusion import AltDiffusionImg2ImgPipeline, AltDiffusionPipeline

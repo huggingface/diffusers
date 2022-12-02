@@ -17,3 +17,18 @@ class AudioDiffusionPipeline(metaclass=DummyObject):
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch", "librosa"])
+
+
+class Mel(metaclass=DummyObject):
+    _backends = ["torch", "librosa"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["torch", "librosa"])
+
+    @classmethod
+    def from_config(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "librosa"])
+
+    @classmethod
+    def from_pretrained(cls, *args, **kwargs):
+        requires_backends(cls, ["torch", "librosa"])
