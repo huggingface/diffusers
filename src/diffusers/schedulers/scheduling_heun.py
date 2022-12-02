@@ -54,6 +54,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.012,
         beta_schedule: str = "linear",
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
+        prediction_type: str = "epsilon",
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -184,7 +185,18 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigma_hat = sigma * (gamma + 1)  # Note: sigma_hat == sigma for now
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
-        pred_original_sample = sample - sigma_hat * model_output
+        if self.config.prediction_type == "epsilon":
+            sigma_input = sigma_hat if self.state_in_first_order else sigma_next
+            pred_original_sample = sample - sigma_input * model_output
+        elif self.config.prediction_type == "v_prediction":
+            sigma_input = sigma_hat if self.state_in_first_order else sigma_next
+            pred_original_sample = model_output * (-sigma_input / (sigma_input**2 + 1) ** 0.5) + (
+                sample / (sigma_input**2 + 1)
+            )
+        else:
+            raise ValueError(
+                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, or `v_prediction`"
+            )
 
         if self.state_in_first_order:
             # 2. Convert to an ODE derivative
@@ -198,7 +210,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.sample = sample
         else:
             # 2. 2nd order / Heun's method
-            derivative = (sample - pred_original_sample) / sigma_hat
+            derivative = (sample - pred_original_sample) / sigma_next
             derivative = (self.prev_derivative + derivative) / 2
 
             # 3. Retrieve 1st order derivative

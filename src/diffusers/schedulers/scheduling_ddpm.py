@@ -280,10 +280,12 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
         elif self.config.prediction_type == "sample":
             pred_original_sample = model_output
+        elif self.config.prediction_type == "v_prediction":
+            pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
         else:
             raise ValueError(
-                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample` "
-                " for the DDPMScheduler."
+                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample` or"
+                " `v_prediction`  for the DDPMScheduler."
             )
 
         # 3. Clip "predicted x_0"
