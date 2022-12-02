@@ -15,7 +15,6 @@
 
 import gc
 import tempfile
-import time
 import unittest
 
 import numpy as np
@@ -693,24 +692,6 @@ class StableDiffusion2PipelineIntegrationTests(unittest.TestCase):
             )
         assert test_callback_fn.has_been_called
         assert number_of_steps == 20
-
-    def test_stable_diffusion_low_cpu_mem_usage(self):
-        pipeline_id = "stabilityai/stable-diffusion-2-base"
-
-        start_time = time.time()
-        pipeline_low_cpu_mem_usage = StableDiffusionPipeline.from_pretrained(
-            pipeline_id, revision="fp16", torch_dtype=torch.float16
-        )
-        pipeline_low_cpu_mem_usage.to(torch_device)
-        low_cpu_mem_usage_time = time.time() - start_time
-
-        start_time = time.time()
-        _ = StableDiffusionPipeline.from_pretrained(
-            pipeline_id, revision="fp16", torch_dtype=torch.float16, use_auth_token=True, low_cpu_mem_usage=False
-        )
-        normal_load_time = time.time() - start_time
-
-        assert 2 * low_cpu_mem_usage_time < normal_load_time
 
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
