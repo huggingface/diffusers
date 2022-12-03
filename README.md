@@ -247,6 +247,51 @@ images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).
 images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 ```
 
+Diffusers also has a Image-to-Image generation pipeline with Flax/Jax
+```python
+import jax
+import numpy as np
+from flax.jax_utils import replicate
+from flax.training.common_utils import shard
+import requests
+from io import BytesIO
+from PIL import Image
+from diffusers import FlaxStableDiffusionImg2ImgPipeline
+
+url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
+
+response = requests.get(url)
+init_img = Image.open(BytesIO(response.content)).convert("RGB")
+init_img = init_img.resize((768, 512))
+prompts = "A fantasy landscape, trending on artstation"
+dtype=jnp.bfloat16
+pipeline, params = FlaxStableDiffusionImg2ImgPipeline.from_pretrained(
+    "CompVis/stable-diffusion-v1-4", revision="flax",
+    dtype=dtype,
+)
+def create_key(seed=0):
+    return jax.random.PRNGKey(seed)
+rng = create_key(0)
+rng = jax.random.split(rng, jax.device_count())
+
+prompt_ids, imgs = pipeline.prepare_inputs(prompt=[prompts]*jax.device_count(), init_image = [init_img]*jax.device_count())
+p_params = replicate(params)
+prompt_ids = shard(prompt_ids)
+imgs = shard(imgs)
+
+output = pipeline(
+    prompt_ids=prompt_ids, 
+    init_images=imgs, 
+    params=p_params, 
+    prng_seed=rng, 
+    strength=0.75, 
+    num_inference_steps=50, 
+    jit=True, 
+    init_image=imgs, 
+    guidance_scale=7.5,
+height=512,width=768).images
+```
+
 ### Image-to-Image text-guided generation with Stable Diffusion
 
 The `StableDiffusionImg2ImgPipeline` lets you pass a text prompt and an initial image to condition the generation of new images.
