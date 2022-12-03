@@ -601,7 +601,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         self.use_slicing = False
 
     def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
-        if self.use_tiling:
+        if self.use_tiling and (x.shape[-1] > 512 or x.shape[-2] > 512):
             return self.tiled_encode(x, return_dict=return_dict)
 
         h = self.encoder(x)
@@ -614,7 +614,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         return AutoencoderKLOutput(latent_dist=posterior)
 
     def _decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
-        if self.use_tiling:
+        if self.use_tiling and (z.shape[-1] > 64 or z.shape[-2] > 64):
             return self.tiled_decode(z, return_dict=return_dict)
 
         z = self.post_quant_conv(z)
