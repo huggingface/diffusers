@@ -307,6 +307,15 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         self.conv_out = LinearMultiDim(block_out_channels[0], out_channels, kernel_size=3, padding=1)
 
     def set_attention_slice(self, slice_size):
+        if slice_size == "auto":
+            if isinstance(self.unet.config.attention_head_dim, int):
+                # half the attention head size is usually a good trade-off between
+                # speed and memory
+                slice_size = self.unet.config.attention_head_dim // 2
+            else:
+                # if `attention_head_dim` is a list, take the smallest head size
+                slice_size = min(self.unet.config.attention_head_dim)
+
         head_dims = self.config.attention_head_dim
         head_dims = [head_dims] if isinstance(head_dims, int) else head_dims
         if slice_size is not None and any(dim % slice_size != 0 for dim in head_dims):
@@ -320,15 +329,21 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 f"the lowest number of heads used in cross_attention: min({head_dims}) = {min(head_dims)}"
             )
 
-        for block in self.down_blocks:
-            if hasattr(block, "attentions") and block.attentions is not None:
-                block.set_attention_slice(slice_size)
+        # Recursively walk through all the children.
+        # Any children which exposes the set_attention_slice method
+        # gets the message
+        def fn_recursive_set_attention_slice(module: torch.nn.Module):
+            if hasattr(module, "set_attention_slice"):
+                module.set_attention_slice(slice_size)
 
-        self.mid_block.set_attention_slice(slice_size)
+            for child in module.children():
+                fn_recursive_set_attention_slice(child)
 
-        for block in self.up_blocks:
-            if hasattr(block, "attentions") and block.attentions is not None:
-                block.set_attention_slice(slice_size)
+        module_names, _, _ = self.extract_init_dict(dict(self.config))
+        for module_name in module_names:
+            module = getattr(self, module_name)
+            if isinstance(module, torch.nn.Module):
+                fn_recursive_set_attention_slice(module)
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (CrossAttnDownBlockFlat, DownBlockFlat, CrossAttnUpBlockFlat, UpBlockFlat)):
@@ -739,23 +754,6 @@ class CrossAttnDownBlockFlat(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def set_attention_slice(self, slice_size):
-        head_dims = self.attn_num_head_channels
-        head_dims = [head_dims] if isinstance(head_dims, int) else head_dims
-        if slice_size is not None and any(dim % slice_size != 0 for dim in head_dims):
-            raise ValueError(
-                f"Make sure slice_size {slice_size} is a common divisor of "
-                f"the number of heads used in cross_attention: {head_dims}"
-            )
-        if slice_size is not None and slice_size > min(head_dims):
-            raise ValueError(
-                f"slice_size {slice_size} has to be smaller or equal to "
-                f"the lowest number of heads used in cross_attention: min({head_dims}) = {min(head_dims)}"
-            )
-
-        for attn in self.attentions:
-            attn._set_attention_slice(slice_size)
-
     def forward(self, hidden_states, temb=None, encoder_hidden_states=None):
         output_states = ()
 
@@ -948,25 +946,6 @@ class CrossAttnUpBlockFlat(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def set_attention_slice(self, slice_size):
-        head_dims = self.attn_num_head_channels
-        head_dims = [head_dims] if isinstance(head_dims, int) else head_dims
-        if slice_size is not None and any(dim % slice_size != 0 for dim in head_dims):
-            raise ValueError(
-                f"Make sure slice_size {slice_size} is a common divisor of "
-                f"the number of heads used in cross_attention: {head_dims}"
-            )
-        if slice_size is not None and slice_size > min(head_dims):
-            raise ValueError(
-                f"slice_size {slice_size} has to be smaller or equal to "
-                f"the lowest number of heads used in cross_attention: min({head_dims}) = {min(head_dims)}"
-            )
-
-        for attn in self.attentions:
-            attn._set_attention_slice(slice_size)
-
-        self.gradient_checkpointing = False
-
     def forward(
         self,
         hidden_states,
@@ -1091,23 +1070,6 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
 
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
-
-    def set_attention_slice(self, slice_size):
-        head_dims = self.attn_num_head_channels
-        head_dims = [head_dims] if isinstance(head_dims, int) else head_dims
-        if slice_size is not None and any(dim % slice_size != 0 for dim in head_dims):
-            raise ValueError(
-                f"Make sure slice_size {slice_size} is a common divisor of "
-                f"the number of heads used in cross_attention: {head_dims}"
-            )
-        if slice_size is not None and slice_size > min(head_dims):
-            raise ValueError(
-                f"slice_size {slice_size} has to be smaller or equal to "
-                f"the lowest number of heads used in cross_attention: min({head_dims}) = {min(head_dims)}"
-            )
-
-        for attn in self.attentions:
-            attn._set_attention_slice(slice_size)
 
     def forward(self, hidden_states, temb=None, encoder_hidden_states=None):
         hidden_states = self.resnets[0](hidden_states, temb)
