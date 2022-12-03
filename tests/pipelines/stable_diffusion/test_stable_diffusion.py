@@ -1045,8 +1045,8 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         with torch.autocast(torch_device):
             output_chunked = pipe(
                 [prompt],
-                width=1024,
-                height=1024,
+                width=640,
+                height=640,
                 generator=generator,
                 guidance_scale=7.5,
                 num_inference_steps=2,
@@ -1066,8 +1066,8 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         with torch.autocast(torch_device):
             output = pipe(
                 [prompt],
-                width=1024,
-                height=1024,
+                width=640,
+                height=640,
                 generator=generator,
                 guidance_scale=7.5,
                 num_inference_steps=2,
