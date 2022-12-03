@@ -632,6 +632,9 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
         # 4. Preprocess mask and image
         if isinstance(image, PIL.Image.Image) and isinstance(mask_image, PIL.Image.Image):
             mask, masked_image = prepare_mask_and_masked_image(image, mask_image)
+        else:
+            mask = mask_image
+            masked_image = image * (mask < 0.5)
 
         # 5. set timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -701,7 +704,7 @@ class StableDiffusionInpaintPipeline(DiffusionPipeline):
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
                 # call the callback, if provided
-                if (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0:
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)

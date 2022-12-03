@@ -21,7 +21,7 @@ from diffusers import LMSDiscreteScheduler
 from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import is_accelerate_available, logging
-from k_diffusion.external import CompVisDenoiser
+from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -33,7 +33,12 @@ class ModelWrapper:
         self.alphas_cumprod = alphas_cumprod
 
     def apply_model(self, *args, **kwargs):
-        return self.model(*args, **kwargs).sample
+        if len(args) == 3:
+            encoder_hidden_states = args[-1]
+            args = args[:2]
+        if kwargs.get("cond", None) is not None:
+            encoder_hidden_states = kwargs.pop("cond")
+        return self.model(*args, encoder_hidden_states=encoder_hidden_states, **kwargs).sample
 
 
 class StableDiffusionPipeline(DiffusionPipeline):
@@ -63,6 +68,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
+    _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
         self,
@@ -99,7 +105,10 @@ class StableDiffusionPipeline(DiffusionPipeline):
         )
 
         model = ModelWrapper(unet, scheduler.alphas_cumprod)
-        self.k_diffusion_model = CompVisDenoiser(model)
+        if scheduler.prediction_type == "v_prediction":
+            self.k_diffusion_model = CompVisVDenoiser(model)
+        else:
+            self.k_diffusion_model = CompVisDenoiser(model)
 
     def set_sampler(self, scheduler_type: str):
         library = importlib.import_module("k_diffusion")
@@ -417,6 +426,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=text_embeddings.device)
         sigmas = self.scheduler.sigmas
+        sigmas = sigmas.to(text_embeddings.dtype)
 
         # 5. Prepare latent variables
         num_channels_latents = self.unet.in_channels
@@ -437,7 +447,7 @@ class StableDiffusionPipeline(DiffusionPipeline):
         def model_fn(x, t):
             latent_model_input = torch.cat([x] * 2)
 
-            noise_pred = self.k_diffusion_model(latent_model_input, t, encoder_hidden_states=text_embeddings)
+            noise_pred = self.k_diffusion_model(latent_model_input, t, cond=text_embeddings)
 
             noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
             noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
