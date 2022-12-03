@@ -1034,6 +1034,8 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
         pipe.enable_attention_slicing()
+        pipe.unet = pipe.unet.to(memory_format=torch.channels_last)
+        pipe.vae = pipe.vae.to(memory_format=torch.channels_last)
 
         prompt = "a photograph of an astronaut riding a horse"
 
