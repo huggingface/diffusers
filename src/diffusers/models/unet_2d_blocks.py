@@ -418,10 +418,6 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         for attn in self.attentions:
             attn._set_attention_slice(slice_size)
 
-    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
-        for attn in self.attentions:
-            attn._set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
-
     def forward(self, hidden_states, temb=None, encoder_hidden_states=None):
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
@@ -615,10 +611,6 @@ class CrossAttnDownBlock2D(nn.Module):
 
         for attn in self.attentions:
             attn._set_attention_slice(slice_size)
-
-    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
-        for attn in self.attentions:
-            attn._set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
 
     def forward(self, hidden_states, temb=None, encoder_hidden_states=None):
         output_states = ()
@@ -1216,10 +1208,6 @@ class CrossAttnUpBlock2D(nn.Module):
             attn._set_attention_slice(slice_size)
 
         self.gradient_checkpointing = False
-
-    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
-        for attn in self.attentions:
-            attn._set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
 
     def forward(
         self,
