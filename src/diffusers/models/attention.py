@@ -310,7 +310,6 @@ class AttentionBlock(nn.Module):
                 )
             except Exception as e:
                 raise e
-
             self._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
 
     def reshape_heads_to_batch_dim(self, tensor):
