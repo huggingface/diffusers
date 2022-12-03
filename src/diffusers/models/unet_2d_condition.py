@@ -261,11 +261,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             for child in module.children():
                 fn_recursive_set_attention_slice(child)
 
-        module_names, _, _ = self.extract_init_dict(dict(self.config))
-        for module_name in module_names:
-            module = getattr(self, module_name)
-            if isinstance(module, torch.nn.Module):
-                fn_recursive_set_attention_slice(module)
+        for module in self.children():
+            fn_recursive_set_attention_slice(module)
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D, CrossAttnUpBlock2D, UpBlock2D)):
