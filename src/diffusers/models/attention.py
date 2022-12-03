@@ -410,6 +410,7 @@ class BasicTransformerBlock(nn.Module):
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
+        self.attention_head_dim = attention_head_dim
         self.attn1 = CrossAttention(
             query_dim=dim,
             heads=num_attention_heads,
@@ -448,7 +449,20 @@ class BasicTransformerBlock(nn.Module):
                     f" correctly and a GPU is available: {e}"
                 )
 
-    def _set_attention_slice(self, slice_size):
+    def set_attention_slice(self, slice_size):
+        head_dims = self.attention_head_dim
+        head_dims = [head_dims] if isinstance(head_dims, int) else head_dims
+        if slice_size is not None and any(dim % slice_size != 0 for dim in head_dims):
+            raise ValueError(
+                f"Make sure slice_size {slice_size} is a common divisor of "
+                f"the number of heads used in cross_attention: {head_dims}"
+            )
+        if slice_size is not None and slice_size > min(head_dims):
+            raise ValueError(
+                f"slice_size {slice_size} has to be smaller or equal to "
+                f"the lowest number of heads used in cross_attention: min({head_dims}) = {min(head_dims)}"
+            )
+
         self.attn1._slice_size = slice_size
         self.attn2._slice_size = slice_size
 

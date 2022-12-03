@@ -229,6 +229,15 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, kernel_size=3, padding=1)
 
     def set_attention_slice(self, slice_size):
+        if slice_size == "auto":
+            if isinstance(self.unet.config.attention_head_dim, int):
+                # half the attention head size is usually a good trade-off between
+                # speed and memory
+                slice_size = self.unet.config.attention_head_dim // 2
+            else:
+                # if `attention_head_dim` is a list, take the smallest head size
+                slice_size = min(self.unet.config.attention_head_dim)
+
         head_dims = self.config.attention_head_dim
         head_dims = [head_dims] if isinstance(head_dims, int) else head_dims
         if slice_size is not None and any(dim % slice_size != 0 for dim in head_dims):
@@ -242,15 +251,21 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
                 f"the lowest number of heads used in cross_attention: min({head_dims}) = {min(head_dims)}"
             )
 
-        for block in self.down_blocks:
-            if hasattr(block, "attentions") and block.attentions is not None:
-                block.set_attention_slice(slice_size)
+        # Recursively walk through all the children.
+        # Any children which exposes the set_attention_slice method
+        # gets the message
+        def fn_recursive_set_attention_slice(module: torch.nn.Module):
+            if hasattr(module, "set_attention_slice"):
+                module.set_attention_slice(slice_size)
 
-        self.mid_block.set_attention_slice(slice_size)
+            for child in module.children():
+                fn_recursive_set_attention_slice(child)
 
-        for block in self.up_blocks:
-            if hasattr(block, "attentions") and block.attentions is not None:
-                block.set_attention_slice(slice_size)
+        module_names, _, _ = self.extract_init_dict(dict(self.config))
+        for module_name in module_names:
+            module = getattr(self, module_name)
+            if isinstance(module, torch.nn.Module):
+                fn_recursive_set_attention_slice(module)
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D, CrossAttnUpBlock2D, UpBlock2D)):
