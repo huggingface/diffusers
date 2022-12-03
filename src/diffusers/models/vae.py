@@ -125,12 +125,6 @@ class Encoder(nn.Module):
         conv_out_channels = 2 * out_channels if double_z else out_channels
         self.conv_out = nn.Conv2d(block_out_channels[-1], conv_out_channels, 3, padding=1)
 
-    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
-        self.mid_block.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
-        for block in self.down_blocks:
-            if hasattr(block, "attentions") and block.attentions is not None:
-                block.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
-
     def forward(self, x):
         sample = x
         sample = self.conv_in(sample)
@@ -210,12 +204,6 @@ class Decoder(nn.Module):
         self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-6)
         self.conv_act = nn.SiLU()
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, 3, padding=1)
-
-    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
-        self.mid_block.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
-        for block in self.up_blocks:
-            if hasattr(block, "attentions") and block.attentions is not None:
-                block.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
 
     def forward(self, z):
         sample = z
@@ -578,10 +566,6 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         self.quant_conv = torch.nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1)
         self.post_quant_conv = torch.nn.Conv2d(latent_channels, latent_channels, 1)
         self.use_slicing = False
-
-    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
-        self.decoder.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
-        self.encoder.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
 
     def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
         h = self.encoder(x)

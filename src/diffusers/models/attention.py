@@ -288,7 +288,7 @@ class AttentionBlock(nn.Module):
 
         self._use_memory_efficient_attention_xformers = False
 
-    def _set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
+    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
         if not is_xformers_available():
             print("Here is how to install it")
             raise ModuleNotFoundError(
