@@ -631,34 +631,6 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 1e-4
 
-        # Test that tiled decode at 1024x1024 yields a mostly similar result as the non-tiled decode
-        sd_pipe.disable_vae_tiling()
-        generator = torch.Generator(device=device).manual_seed(0)
-        output_1 = sd_pipe(
-            [prompt],
-            width=1024,
-            height=1024,
-            generator=generator,
-            guidance_scale=6.0,
-            num_inference_steps=2,
-            output_type="np",
-        )
-
-        sd_pipe.enable_vae_tiling()
-        generator = torch.Generator(device=device).manual_seed(0)
-        output_2 = sd_pipe(
-            [prompt],
-            width=1024,
-            height=1024,
-            generator=generator,
-            guidance_scale=6.0,
-            num_inference_steps=2,
-            output_type="np",
-        )
-
-        # the tiling does cause different tonality to the output
-        assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 1e-2
-
     def test_stable_diffusion_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         unet = self.dummy_cond_unet
@@ -1057,7 +1029,6 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
         mem_bytes = torch.cuda.max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
         # make sure that less than 4 GB is allocated
-        print("vae_tiling on", mem_bytes)
         assert mem_bytes < 4e9
 
         # disable vae tiling
@@ -1077,9 +1048,7 @@ class StableDiffusionPipelineIntegrationTests(unittest.TestCase):
 
         # make sure that more than 4 GB is allocated
         mem_bytes = torch.cuda.max_memory_allocated()
-        print("vae_tiling off", mem_bytes)
         assert mem_bytes > 4e9
-        # There is a small discrepancy at the image borders vs. a fully batched version.
         assert np.abs(image_chunked.flatten() - image.flatten()).max() < 1e-2
 
     def test_stable_diffusion_text2img_pipeline_fp16(self):
