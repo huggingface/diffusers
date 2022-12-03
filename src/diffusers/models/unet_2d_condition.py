@@ -230,13 +230,13 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
 
     def set_attention_slice(self, slice_size):
         if slice_size == "auto":
-            if isinstance(self.unet.config.attention_head_dim, int):
+            if isinstance(self.config.attention_head_dim, int):
                 # half the attention head size is usually a good trade-off between
                 # speed and memory
-                slice_size = self.unet.config.attention_head_dim // 2
+                slice_size = self.config.attention_head_dim // 2
             else:
                 # if `attention_head_dim` is a list, take the smallest head size
-                slice_size = min(self.unet.config.attention_head_dim)
+                slice_size = min(self.config.attention_head_dim)
 
         head_dims = self.config.attention_head_dim
         head_dims = [head_dims] if isinstance(head_dims, int) else head_dims
