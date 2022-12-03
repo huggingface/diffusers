@@ -71,7 +71,6 @@ LOADABLE_CLASSES = {
         "SchedulerMixin": ["save_pretrained", "from_pretrained"],
         "DiffusionPipeline": ["save_pretrained", "from_pretrained"],
         "OnnxRuntimeModel": ["save_pretrained", "from_pretrained"],
-        "ConfigMixin": ["save_pretrained", "from_pretrained"],
     },
     "transformers": {
         "PreTrainedTokenizer": ["save_pretrained", "from_pretrained"],
