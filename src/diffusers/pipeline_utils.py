@@ -26,7 +26,7 @@ import torch
 
 import diffusers
 import PIL
-from huggingface_hub import snapshot_download
+from huggingface_hub import model_info, snapshot_download
 from packaging import version
 from PIL import Image
 from tqdm.auto import tqdm
@@ -44,6 +44,7 @@ from .utils import (
     BaseOutput,
     deprecate,
     is_accelerate_available,
+    is_safetensors_available,
     is_torch_version,
     is_transformers_available,
     logging,
@@ -117,6 +118,23 @@ class AudioPipelineOutput(BaseOutput):
     audios: np.ndarray
 
 
+def is_safetensors_compatible(info) -> bool:
+    filenames = set(sibling.rfilename for sibling in info.siblings)
+    pt_filenames = set(filename for filename in filenames if filename.endswith(".bin"))
+    is_safetensors_compatible = any(file.endswith(".safetensors") for file in filenames)
+    for pt_filename in pt_filenames:
+        prefix, raw = os.path.split(pt_filename)
+        if raw == "pytorch_model.bin":
+            # transformers specific
+            sf_filename = os.path.join(prefix, "model.safetensors")
+        else:
+            sf_filename = pt_filename[: -len(".bin")] + ".safetensors"
+        if is_safetensors_compatible and sf_filename not in filenames:
+            logger.warning(f"{sf_filename} not found")
+            is_safetensors_compatible = False
+    return is_safetensors_compatible
+
+
 class DiffusionPipeline(ConfigMixin):
     r"""
     Base class for all models.
@@ -170,7 +188,11 @@ class DiffusionPipeline(ConfigMixin):
             # set models
             setattr(self, name, module)
 
-    def save_pretrained(self, save_directory: Union[str, os.PathLike]):
+    def save_pretrained(
+        self,
+        save_directory: Union[str, os.PathLike],
+        safe_serialization: bool = False,
+    ):
         """
         Save all variables of the pipeline that can be saved and loaded as well as the pipelines configuration file to
         a directory. A pipeline variable can be saved and loaded if its class implements both a save and loading
@@ -179,6 +201,8 @@ class DiffusionPipeline(ConfigMixin):
         Arguments:
             save_directory (`str` or `os.PathLike`):
                 Directory to which to save. Will be created if it doesn't exist.
+            safe_serialization (`bool`, *optional*, defaults to `False`):
+                Whether to save the model using `safetensors` or the traditional PyTorch way (that uses `pickle`).
         """
         self.save_config(save_directory)
 
@@ -216,7 +240,16 @@ class DiffusionPipeline(ConfigMixin):
                     break
 
             save_method = getattr(sub_model, save_method_name)
-            save_method(os.path.join(save_directory, pipeline_component_name))
+
+            # Call the save method with the argument safe_serialization only if it's supported
+            save_method_signature = inspect.signature(save_method)
+            save_method_accept_safe = "safe_serialization" in save_method_signature.parameters
+            if save_method_accept_safe:
+                save_method(
+                    os.path.join(save_directory, pipeline_component_name), safe_serialization=safe_serialization
+                )
+            else:
+                save_method(os.path.join(save_directory, pipeline_component_name))
 
     def to(self, torch_device: Optional[Union[str, torch.device]] = None):
         if torch_device is None:
@@ -359,7 +392,8 @@ class DiffusionPipeline(ConfigMixin):
                 also tries to not use more than 1x model size in CPU memory (including peak memory) while loading the
                 model. This is only supported when torch version >= 1.9.0. If you are using an older version of torch,
                 setting this argument to `True` will raise an error.
-
+            return_cached_folder (`bool`, *optional*, defaults to `False`):
+                If set to `True`, path to downloaded cached folder will be returned in addition to loaded pipeline.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load - and saveable variables - *i.e.* the pipeline components - of the
                 specific pipeline class. The overwritten components are then directly passed to the pipelines
@@ -412,33 +446,7 @@ class DiffusionPipeline(ConfigMixin):
         sess_options = kwargs.pop("sess_options", None)
         device_map = kwargs.pop("device_map", None)
         low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
-
-        if low_cpu_mem_usage and not is_accelerate_available():
-            low_cpu_mem_usage = False
-            logger.warning(
-                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
-                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
-                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
-                " install accelerate\n```\n."
-            )
-
-        if device_map is not None and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `device_map=None`."
-            )
-
-        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `low_cpu_mem_usage=False`."
-            )
-
-        if low_cpu_mem_usage is False and device_map is not None:
-            raise ValueError(
-                f"You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
-                " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
-            )
+        return_cached_folder = kwargs.pop("return_cached_folder", False)
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -459,7 +467,7 @@ class DiffusionPipeline(ConfigMixin):
             allow_patterns += [WEIGHTS_NAME, SCHEDULER_CONFIG_NAME, CONFIG_NAME, ONNX_WEIGHTS_NAME, cls.config_name]
 
             # make sure we don't download flax weights
-            ignore_patterns = "*.msgpack"
+            ignore_patterns = ["*.msgpack"]
 
             if custom_pipeline is not None:
                 allow_patterns += [CUSTOM_PIPELINE_FILE_NAME]
@@ -472,6 +480,15 @@ class DiffusionPipeline(ConfigMixin):
             if custom_pipeline is not None:
                 user_agent["custom_pipeline"] = custom_pipeline
             user_agent = http_user_agent(user_agent)
+
+            if is_safetensors_available():
+                info = model_info(
+                    pretrained_model_name_or_path,
+                    use_auth_token=use_auth_token,
+                    revision=revision,
+                )
+                if is_safetensors_compatible(info):
+                    ignore_patterns.append("*.bin")
 
             # download all allow_patterns
             cached_folder = snapshot_download(
@@ -556,6 +573,33 @@ class DiffusionPipeline(ConfigMixin):
         if len(unused_kwargs) > 0:
             logger.warning(
                 f"Keyword arguments {unused_kwargs} are not expected by {pipeline_class.__name__} and will be ignored."
+            )
+
+        if low_cpu_mem_usage and not is_accelerate_available():
+            low_cpu_mem_usage = False
+            logger.warning(
+                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                " install accelerate\n```\n."
+            )
+
+        if device_map is not None and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `device_map=None`."
+            )
+
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
+            )
+
+        if low_cpu_mem_usage is False and device_map is not None:
+            raise ValueError(
+                f"You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
+                " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
             )
 
         # import it here to avoid circular import
@@ -677,6 +721,9 @@ class DiffusionPipeline(ConfigMixin):
 
         # 5. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
+
+        if return_cached_folder:
+            return model, cached_folder
         return model
 
     @staticmethod
@@ -740,7 +787,7 @@ class DiffusionPipeline(ConfigMixin):
 
         return pil_images
 
-    def progress_bar(self, iterable):
+    def progress_bar(self, iterable=None, total=None):
         if not hasattr(self, "_progress_bar_config"):
             self._progress_bar_config = {}
         elif not isinstance(self._progress_bar_config, dict):
@@ -748,7 +795,47 @@ class DiffusionPipeline(ConfigMixin):
                 f"`self._progress_bar_config` should be of type `dict`, but is {type(self._progress_bar_config)}."
             )
 
-        return tqdm(iterable, **self._progress_bar_config)
+        if iterable is not None:
+            return tqdm(iterable, **self._progress_bar_config)
+        elif total is not None:
+            return tqdm(total=total, **self._progress_bar_config)
+        else:
+            raise ValueError("Either `total` or `iterable` has to be defined.")
 
     def set_progress_bar_config(self, **kwargs):
         self._progress_bar_config = kwargs
+
+    def enable_xformers_memory_efficient_attention(self):
+        r"""
+        Enable memory efficient attention as implemented in xformers.
+
+        When this option is enabled, you should observe lower GPU memory usage and a potential speed up at inference
+        time. Speed up at training time is not guaranteed.
+
+        Warning: When Memory Efficient Attention and Sliced attention are both enabled, the Memory Efficient Attention
+        is used.
+        """
+        self.set_use_memory_efficient_attention_xformers(True)
+
+    def disable_xformers_memory_efficient_attention(self):
+        r"""
+        Disable memory efficient attention as implemented in xformers.
+        """
+        self.set_use_memory_efficient_attention_xformers(False)
+
+    def set_use_memory_efficient_attention_xformers(self, valid: bool) -> None:
+        # Recursively walk through all the children.
+        # Any children which exposes the set_use_memory_efficient_attention_xformers method
+        # gets the message
+        def fn_recursive_set_mem_eff(module: torch.nn.Module):
+            if hasattr(module, "set_use_memory_efficient_attention_xformers"):
+                module.set_use_memory_efficient_attention_xformers(valid)
+
+            for child in module.children():
+                fn_recursive_set_mem_eff(child)
+
+        module_names, _, _ = self.extract_init_dict(dict(self.config))
+        for module_name in module_names:
+            module = getattr(self, module_name)
+            if isinstance(module, torch.nn.Module):
+                fn_recursive_set_mem_eff(module)

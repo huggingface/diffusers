@@ -252,17 +252,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
             if hasattr(block, "attentions") and block.attentions is not None:
                 block.set_attention_slice(slice_size)
 
-    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
-        for block in self.down_blocks:
-            if hasattr(block, "attentions") and block.attentions is not None:
-                block.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
-
-        self.mid_block.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
-
-        for block in self.up_blocks:
-            if hasattr(block, "attentions") and block.attentions is not None:
-                block.set_use_memory_efficient_attention_xformers(use_memory_efficient_attention_xformers)
-
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D, CrossAttnUpBlock2D, UpBlock2D)):
             module.gradient_checkpointing = value
@@ -310,8 +299,14 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         timesteps = timestep
         if not torch.is_tensor(timesteps):
             # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
-            timesteps = torch.tensor([timesteps], dtype=torch.long, device=sample.device)
-        elif torch.is_tensor(timesteps) and len(timesteps.shape) == 0:
+            # This would be a good case for the `match` statement (Python 3.10+)
+            is_mps = sample.device.type == "mps"
+            if isinstance(timestep, float):
+                dtype = torch.float32 if is_mps else torch.float64
+            else:
+                dtype = torch.int32 if is_mps else torch.int64
+            timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
+        elif len(timesteps.shape) == 0:
             timesteps = timesteps[None].to(sample.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML

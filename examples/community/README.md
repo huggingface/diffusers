@@ -166,7 +166,7 @@ init_image = download_image("https://raw.githubusercontent.com/CompVis/stable-di
 
 prompt = "A fantasy landscape, trending on artstation"
 
-images = pipe.img2img(prompt=prompt, init_image=init_image, strength=0.75, guidance_scale=7.5).images
+images = pipe.img2img(prompt=prompt, image=init_image, strength=0.75, guidance_scale=7.5).images
 
 ### Inpainting
 
@@ -176,7 +176,7 @@ init_image = download_image(img_url).resize((512, 512))
 mask_image = download_image(mask_url).resize((512, 512))
 
 prompt = "a cat sitting on a bench"
-images = pipe.inpaint(prompt=prompt, init_image=init_image, mask_image=mask_image, strength=0.75).images
+images = pipe.inpaint(prompt=prompt, image=init_image, mask_image=mask_image, strength=0.75).images
 ```
 
 As shown above this one pipeline can run all both "text-to-image", "image-to-image", and "inpainting" in one pipeline.
@@ -411,7 +411,7 @@ pipe = DiffusionPipeline.from_pretrained(
     custom_pipeline="imagic_stable_diffusion",
     scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
 ).to(device)
-generator = th.Generator("cuda").manual_seed(0)
+generator = torch.Generator("cuda").manual_seed(0)
 seed = 0
 prompt = "A photo of Barack Obama smiling with a big grin"
 url = 'https://www.dropbox.com/s/6tlwzr73jd1r9yk/obama.png?dl=1'
@@ -420,18 +420,16 @@ init_image = Image.open(BytesIO(response.content)).convert("RGB")
 init_image = init_image.resize((512, 512))
 res = pipe.train(
     prompt,
-    init_image,
-    guidance_scale=7.5,
-    num_inference_steps=50,
+    image=init_image,
     generator=generator)
-res = pipe(alpha=1)
+res = pipe(alpha=1, guidance_scale=7.5, num_inference_steps=50)
 os.makedirs("imagic", exist_ok=True)
 image = res.images[0]
 image.save('./imagic/imagic_image_alpha_1.png')
-res = pipe(alpha=1.5)
+res = pipe(alpha=1.5, guidance_scale=7.5, num_inference_steps=50)
 image = res.images[0]
 image.save('./imagic/imagic_image_alpha_1_5.png')
-res = pipe(alpha=2)
+res = pipe(alpha=2, guidance_scale=7.5, num_inference_steps=50)
 image = res.images[0]
 image.save('./imagic/imagic_image_alpha_2.png')
 ```
@@ -602,7 +600,7 @@ For example, this could be used to place a logo on a shirt and make it blend sea
 import PIL
 import torch
 
-from diffusers import StableDiffusionInpaintPipeline
+from diffusers import DiffusionPipeline
 
 image_path = "./path-to-image.png"
 inner_image_path = "./path-to-inner-image.png"
@@ -612,16 +610,19 @@ init_image = PIL.Image.open(image_path).convert("RGB").resize((512, 512))
 inner_image = PIL.Image.open(inner_image_path).convert("RGBA").resize((512, 512))
 mask_image = PIL.Image.open(mask_path).convert("RGB").resize((512, 512))
 
-pipe = StableDiffusionInpaintPipeline.from_pretrained(
+pipe = DiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-inpainting",
+    custom_pipeline="img2img_inpainting",
     revision="fp16",
-    torch_dtype=torch.float16,
+    torch_dtype=torch.float16
 )
 pipe = pipe.to("cuda")
 
 prompt = "Your prompt here!"
 image = pipe(prompt=prompt, image=init_image, inner_image=inner_image, mask_image=mask_image).images[0]
 ```
+
+![2 by 2 grid demonstrating image to image inpainting.](https://user-images.githubusercontent.com/44398246/203506577-ec303be4-887e-4ebd-a773-c83fcb3dd01a.png)
 
 ### Text Based Inpainting Stable Diffusion
 

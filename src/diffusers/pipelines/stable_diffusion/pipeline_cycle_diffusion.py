@@ -285,26 +285,6 @@ class CycleDiffusionPipeline(DiffusionPipeline):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_xformers_memory_efficient_attention
-    def enable_xformers_memory_efficient_attention(self):
-        r"""
-        Enable memory efficient attention as implemented in xformers.
-
-        When this option is enabled, you should observe lower GPU memory usage and a potential speed up at inference
-        time. Speed up at training time is not guaranteed.
-
-        Warning: When Memory Efficient Attention and Sliced attention are both enabled, the Memory Efficient Attention
-        is used.
-        """
-        self.unet.set_use_memory_efficient_attention_xformers(True)
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_xformers_memory_efficient_attention
-    def disable_xformers_memory_efficient_attention(self):
-        r"""
-        Disable memory efficient attention as implemented in xformers.
-        """
-        self.unet.set_use_memory_efficient_attention_xformers(False)
-
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(self, prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt):
         r"""
@@ -475,11 +455,11 @@ class CycleDiffusionPipeline(DiffusionPipeline):
         t_start = max(num_inference_steps - init_timestep + offset, 0)
         timesteps = self.scheduler.timesteps[t_start:]
 
-        return timesteps
+        return timesteps, num_inference_steps - t_start
 
-    def prepare_latents(self, init_image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
-        init_image = init_image.to(device=device, dtype=dtype)
-        init_latent_dist = self.vae.encode(init_image).latent_dist
+    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
+        image = image.to(device=device, dtype=dtype)
+        init_latent_dist = self.vae.encode(image).latent_dist
         init_latents = init_latent_dist.sample(generator=generator)
         init_latents = 0.18215 * init_latents
 
@@ -487,16 +467,16 @@ class CycleDiffusionPipeline(DiffusionPipeline):
             # expand init_latents for batch_size
             deprecation_message = (
                 f"You have passed {batch_size} text prompts (`prompt`), but only {init_latents.shape[0]} initial"
-                " images (`init_image`). Initial images are now duplicating to match the number of text prompts. Note"
+                " images (`image`). Initial images are now duplicating to match the number of text prompts. Note"
                 " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
-                " your script to pass as many init images as text prompts to suppress this warning."
+                " your script to pass as many initial images as text prompts to suppress this warning."
             )
-            deprecate("len(prompt) != len(init_image)", "1.0.0", deprecation_message, standard_warn=False)
+            deprecate("len(prompt) != len(image)", "1.0.0", deprecation_message, standard_warn=False)
             additional_image_per_prompt = batch_size // init_latents.shape[0]
             init_latents = torch.cat([init_latents] * additional_image_per_prompt * num_images_per_prompt, dim=0)
         elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
             raise ValueError(
-                f"Cannot duplicate `init_image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
+                f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
             )
         else:
             init_latents = torch.cat([init_latents] * num_images_per_prompt, dim=0)
@@ -516,7 +496,7 @@ class CycleDiffusionPipeline(DiffusionPipeline):
         self,
         prompt: Union[str, List[str]],
         source_prompt: Union[str, List[str]],
-        init_image: Union[torch.FloatTensor, PIL.Image.Image],
+        image: Union[torch.FloatTensor, PIL.Image.Image],
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
@@ -536,15 +516,15 @@ class CycleDiffusionPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation.
-            init_image (`torch.FloatTensor` or `PIL.Image.Image`):
+            image (`torch.FloatTensor` or `PIL.Image.Image`):
                 `Image`, or tensor representing an image batch, that will be used as the starting point for the
                 process.
             strength (`float`, *optional*, defaults to 0.8):
-                Conceptually, indicates how much to transform the reference `init_image`. Must be between 0 and 1.
-                `init_image` will be used as a starting point, adding more noise to it the larger the `strength`. The
-                number of denoising steps depends on the amount of noise initially added. When `strength` is 1, added
-                noise will be maximum and the denoising process will run for the full number of iterations specified in
-                `num_inference_steps`. A value of 1, therefore, essentially ignores `init_image`.
+                Conceptually, indicates how much to transform the reference `image`. Must be between 0 and 1. `image`
+                will be used as a starting point, adding more noise to it the larger the `strength`. The number of
+                denoising steps depends on the amount of noise initially added. When `strength` is 1, added noise will
+                be maximum and the denoising process will run for the full number of iterations specified in
+                `num_inference_steps`. A value of 1, therefore, essentially ignores `image`.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference. This parameter will be modulated by `strength`.
@@ -585,6 +565,10 @@ class CycleDiffusionPipeline(DiffusionPipeline):
             list of `bool`s denoting whether the corresponding generated image likely represents "not-safe-for-work"
             (nsfw) content, according to the `safety_checker`.
         """
+        message = "Please use `image` instead of `init_image`."
+        init_image = deprecate("init_image", "0.12.0", message, take_from=kwargs)
+        image = init_image or image
+
         # 1. Check inputs
         self.check_inputs(prompt, strength, callback_steps)
 
@@ -603,17 +587,17 @@ class CycleDiffusionPipeline(DiffusionPipeline):
         )
 
         # 4. Preprocess image
-        if isinstance(init_image, PIL.Image.Image):
-            init_image = preprocess(init_image)
+        if isinstance(image, PIL.Image.Image):
+            image = preprocess(image)
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps = self.get_timesteps(num_inference_steps, strength, device)
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
         # 6. Prepare latent variables
         latents, clean_latents = self.prepare_latents(
-            init_image, latent_timestep, batch_size, num_images_per_prompt, text_embeddings.dtype, device, generator
+            image, latent_timestep, batch_size, num_images_per_prompt, text_embeddings.dtype, device, generator
         )
         source_latents = latents
 
@@ -622,66 +606,70 @@ class CycleDiffusionPipeline(DiffusionPipeline):
         generator = extra_step_kwargs.pop("generator", None)
 
         # 8. Denoising loop
-        for i, t in enumerate(self.progress_bar(timesteps)):
-            # expand the latents if we are doing classifier free guidance
-            latent_model_input = torch.cat([latents] * 2)
-            source_latent_model_input = torch.cat([source_latents] * 2)
-            latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-            source_latent_model_input = self.scheduler.scale_model_input(source_latent_model_input, t)
+        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
+                # expand the latents if we are doing classifier free guidance
+                latent_model_input = torch.cat([latents] * 2)
+                source_latent_model_input = torch.cat([source_latents] * 2)
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                source_latent_model_input = self.scheduler.scale_model_input(source_latent_model_input, t)
 
-            # predict the noise residual
-            concat_latent_model_input = torch.stack(
-                [
-                    source_latent_model_input[0],
-                    latent_model_input[0],
-                    source_latent_model_input[1],
-                    latent_model_input[1],
-                ],
-                dim=0,
-            )
-            concat_text_embeddings = torch.stack(
-                [
-                    source_text_embeddings[0],
-                    text_embeddings[0],
-                    source_text_embeddings[1],
-                    text_embeddings[1],
-                ],
-                dim=0,
-            )
-            concat_noise_pred = self.unet(
-                concat_latent_model_input, t, encoder_hidden_states=concat_text_embeddings
-            ).sample
+                # predict the noise residual
+                concat_latent_model_input = torch.stack(
+                    [
+                        source_latent_model_input[0],
+                        latent_model_input[0],
+                        source_latent_model_input[1],
+                        latent_model_input[1],
+                    ],
+                    dim=0,
+                )
+                concat_text_embeddings = torch.stack(
+                    [
+                        source_text_embeddings[0],
+                        text_embeddings[0],
+                        source_text_embeddings[1],
+                        text_embeddings[1],
+                    ],
+                    dim=0,
+                )
+                concat_noise_pred = self.unet(
+                    concat_latent_model_input, t, encoder_hidden_states=concat_text_embeddings
+                ).sample
 
-            # perform guidance
-            (
-                source_noise_pred_uncond,
-                noise_pred_uncond,
-                source_noise_pred_text,
-                noise_pred_text,
-            ) = concat_noise_pred.chunk(4, dim=0)
-            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-            source_noise_pred = source_noise_pred_uncond + source_guidance_scale * (
-                source_noise_pred_text - source_noise_pred_uncond
-            )
+                # perform guidance
+                (
+                    source_noise_pred_uncond,
+                    noise_pred_uncond,
+                    source_noise_pred_text,
+                    noise_pred_text,
+                ) = concat_noise_pred.chunk(4, dim=0)
+                noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                source_noise_pred = source_noise_pred_uncond + source_guidance_scale * (
+                    source_noise_pred_text - source_noise_pred_uncond
+                )
 
-            # Sample source_latents from the posterior distribution.
-            prev_source_latents = posterior_sample(
-                self.scheduler, source_latents, t, clean_latents, generator=generator, **extra_step_kwargs
-            )
-            # Compute noise.
-            noise = compute_noise(
-                self.scheduler, prev_source_latents, source_latents, t, source_noise_pred, **extra_step_kwargs
-            )
-            source_latents = prev_source_latents
+                # Sample source_latents from the posterior distribution.
+                prev_source_latents = posterior_sample(
+                    self.scheduler, source_latents, t, clean_latents, generator=generator, **extra_step_kwargs
+                )
+                # Compute noise.
+                noise = compute_noise(
+                    self.scheduler, prev_source_latents, source_latents, t, source_noise_pred, **extra_step_kwargs
+                )
+                source_latents = prev_source_latents
 
-            # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(
-                noise_pred, t, latents, variance_noise=noise, **extra_step_kwargs
-            ).prev_sample
+                # compute the previous noisy sample x_t -> x_t-1
+                latents = self.scheduler.step(
+                    noise_pred, t, latents, variance_noise=noise, **extra_step_kwargs
+                ).prev_sample
 
-            # call the callback, if provided
-            if callback is not None and i % callback_steps == 0:
-                callback(i, t, latents)
+                # call the callback, if provided
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
+                    if callback is not None and i % callback_steps == 0:
+                        callback(i, t, latents)
 
         # 9. Post-processing
         image = self.decode_latents(latents)

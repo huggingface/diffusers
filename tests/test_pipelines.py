@@ -25,6 +25,8 @@ import numpy as np
 import torch
 
 import PIL
+import safetensors.torch
+import transformers
 from diffusers import (
     AutoencoderKL,
     DDIMPipeline,
@@ -92,6 +94,53 @@ class DownloadTests(unittest.TestCase):
             # None of the downloaded files should be a flax file even if we have some here:
             # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe/blob/main/unet/diffusion_flax_model.msgpack
             assert not any(f.endswith(".msgpack") for f in files)
+            # We need to never convert this tiny model to safetensors for this test to pass
+            assert not any(f.endswith(".safetensors") for f in files)
+
+    def test_returned_cached_folder(self):
+        prompt = "hello"
+        pipe = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None
+        )
+        _, local_path = StableDiffusionPipeline.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-torch", safety_checker=None, return_cached_folder=True
+        )
+        pipe_2 = StableDiffusionPipeline.from_pretrained(local_path)
+
+        pipe = pipe.to(torch_device)
+        pipe_2 = pipe.to(torch_device)
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
+
+        out = pipe(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+        if torch_device == "mps":
+            # device type MPS is not supported for torch.Generator() api.
+            generator = torch.manual_seed(0)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(0)
+        out_2 = pipe_2(prompt, num_inference_steps=2, generator=generator, output_type="numpy").images
+
+        assert np.max(np.abs(out - out_2)) < 1e-3
+
+    def test_download_safetensors(self):
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            # pipeline has Flax weights
+            _ = DiffusionPipeline.from_pretrained(
+                "hf-internal-testing/tiny-stable-diffusion-pipe-safetensors",
+                safety_checker=None,
+                cache_dir=tmpdirname,
+            )
+
+            all_root_files = [t[-1] for t in os.walk(os.path.join(tmpdirname, os.listdir(tmpdirname)[0], "snapshots"))]
+            files = [item for sublist in all_root_files for item in sublist]
+
+            # None of the downloaded files should be a pytorch file even if we have some here:
+            # https://huggingface.co/hf-internal-testing/tiny-stable-diffusion-pipe/blob/main/unet/diffusion_flax_model.msgpack
+            assert not any(f.endswith(".bin") for f in files)
 
     def test_download_no_safety_checker(self):
         prompt = "hello"
@@ -393,7 +442,7 @@ class PipelineFastTests(unittest.TestCase):
             generator=generator,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             mask_image=mask_image,
         ).images
         image_img2img = img2img(
@@ -401,7 +450,7 @@ class PipelineFastTests(unittest.TestCase):
             generator=generator,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
         ).images
         image_text2img = text2img(
             [prompt],
@@ -489,6 +538,34 @@ class PipelineFastTests(unittest.TestCase):
         ddim_config_2 = {k: v for k, v in ddim_config_2.items() if k in ddim_config}
 
         assert dict(ddim_config) == dict(ddim_config_2)
+
+    def test_save_safe_serialization(self):
+        pipeline = StableDiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-torch")
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipeline.save_pretrained(tmpdirname, safe_serialization=True)
+
+            # Validate that the VAE safetensor exists and are of the correct format
+            vae_path = os.path.join(tmpdirname, "vae", "diffusion_pytorch_model.safetensors")
+            assert os.path.exists(vae_path), f"Could not find {vae_path}"
+            _ = safetensors.torch.load_file(vae_path)
+
+            # Validate that the UNet safetensor exists and are of the correct format
+            unet_path = os.path.join(tmpdirname, "unet", "diffusion_pytorch_model.safetensors")
+            assert os.path.exists(unet_path), f"Could not find {unet_path}"
+            _ = safetensors.torch.load_file(unet_path)
+
+            # Validate that the text encoder safetensor exists and are of the correct format
+            text_encoder_path = os.path.join(tmpdirname, "text_encoder", "model.safetensors")
+            if transformers.__version__ >= "4.25.1":
+                assert os.path.exists(text_encoder_path), f"Could not find {text_encoder_path}"
+                _ = safetensors.torch.load_file(text_encoder_path)
+
+            pipeline = StableDiffusionPipeline.from_pretrained(tmpdirname)
+            assert pipeline.unet is not None
+            assert pipeline.vae is not None
+            assert pipeline.text_encoder is not None
+            assert pipeline.scheduler is not None
+            assert pipeline.feature_extractor is not None
 
     def test_optional_components(self):
         unet = self.dummy_cond_unet()
@@ -636,9 +713,12 @@ class PipelineSlowTests(unittest.TestCase):
                     force_download=True,
                 )
 
-        assert cap_logger.out == "Keyword arguments {'not_used': True} not recognized.\n"
+        assert (
+            cap_logger.out
+            == "Keyword arguments {'not_used': True} are not expected by DDPMPipeline and will be ignored.\n"
+        )
 
-    def test_from_pretrained_save_pretrained(self):
+    def test_from_save_pretrained(self):
         # 1. Load models
         model = UNet2DModel(
             block_out_channels=(32, 64),
