@@ -569,23 +569,20 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         self.use_tiling = False
 
     def enable_tiling(self, use_tiling: bool = True):
+        r"""
+        Enable tiled VAE decoding.
+
+        When this option is enabled, the VAE will split the input tensor into tiles to compute decoding and encoding in
+        several steps. This is useful to save a large amount of memory and to allow the processing of larger images.
+        """
         self.use_tiling = use_tiling
 
     def disable_tiling(self):
+        r"""
+        Disable tiled VAE decoding. If `enable_vae_tiling` was previously invoked, this method will go back to
+        computing decoding in one step.
+        """
         self.enable_tiling(False)
-
-    def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
-        if self.use_tiling:
-            return self.tiled_encode(x, return_dict=return_dict)
-
-        h = self.encoder(x)
-        moments = self.quant_conv(h)
-        posterior = DiagonalGaussianDistribution(moments)
-
-        if not return_dict:
-            return (posterior,)
-
-        return AutoencoderKLOutput(latent_dist=posterior)
 
     def enable_slicing(self):
         r"""
@@ -602,6 +599,19 @@ class AutoencoderKL(ModelMixin, ConfigMixin):
         decoding in one step.
         """
         self.use_slicing = False
+
+    def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> AutoencoderKLOutput:
+        if self.use_tiling:
+            return self.tiled_encode(x, return_dict=return_dict)
+
+        h = self.encoder(x)
+        moments = self.quant_conv(h)
+        posterior = DiagonalGaussianDistribution(moments)
+
+        if not return_dict:
+            return (posterior,)
+
+        return AutoencoderKLOutput(latent_dist=posterior)
 
     def _decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
         if self.use_tiling:
