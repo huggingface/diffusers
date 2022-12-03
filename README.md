@@ -288,8 +288,7 @@ output = pipeline(
     num_inference_steps=50, 
     jit=True, 
     init_image=imgs, 
-    guidance_scale=7.5,
-height=512,width=768).images
+    height=512,width=768).images
 ```
 
 ### Image-to-Image text-guided generation with Stable Diffusion
