@@ -40,8 +40,8 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder , PaintByExamplePipeline
 from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
+from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder, PaintByExamplePipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from transformers import AutoFeatureExtractor, BertTokenizerFast, CLIPTextModel, CLIPTokenizer, CLIPVisionConfig
 
@@ -664,7 +664,11 @@ def convert_paint_by_example_checkpoint(checkpoint):
     model.model.load_state_dict(text_model_dict)
 
     # load mapper
-    keys_mapper = {k[len("cond_stage_model.mapper.res"):]: v for k, v in checkpoint.items() if k.startswith("cond_stage_model.mapper")}
+    keys_mapper = {
+        k[len("cond_stage_model.mapper.res") :]: v
+        for k, v in checkpoint.items()
+        if k.startswith("cond_stage_model.mapper")
+    }
 
     MAPPING = {
         "attn.c_qkv": ["attn1.to_q", "attn1.to_k", "attn1.to_v"],
@@ -677,7 +681,7 @@ def convert_paint_by_example_checkpoint(checkpoint):
 
     mapped_weights = {}
     for key, value in keys_mapper.items():
-        prefix = key[:len("blocks.i")]
+        prefix = key[: len("blocks.i")]
         suffix = key.split(prefix)[-1].split(".")[-1]
         name = key.split(prefix)[-1].split(suffix)[0][1:-1]
         mapped_names = MAPPING[name]
@@ -686,12 +690,17 @@ def convert_paint_by_example_checkpoint(checkpoint):
         for i, mapped_name in enumerate(mapped_names):
             new_name = ".".join([prefix, mapped_name, suffix])
             shape = value.shape[0] // num_splits
-            mapped_weights[new_name] = value[i * shape: (i + 1) * shape]
+            mapped_weights[new_name] = value[i * shape : (i + 1) * shape]
 
     model.mapper.load_state_dict(mapped_weights)
 
     # load final layer norm
-    model.final_layer_norm.load_state_dict({"bias": checkpoint["cond_stage_model.final_ln.bias"] , "weight": checkpoint["cond_stage_model.final_ln.weight"]})
+    model.final_layer_norm.load_state_dict(
+        {
+            "bias": checkpoint["cond_stage_model.final_ln.bias"],
+            "weight": checkpoint["cond_stage_model.final_ln.weight"],
+        }
+    )
     return model
 
 
@@ -728,7 +737,7 @@ if __name__ == "__main__":
         "--num_in_channels",
         default=None,
         type=int,
-        help="The number of input channels. If `None` number of input channels will be automatically inferred."
+        help="The number of input channels. If `None` number of input channels will be automatically inferred.",
     )
     parser.add_argument(
         "--scheduler_type",
@@ -740,7 +749,7 @@ if __name__ == "__main__":
         "--pipeline_type",
         default=None,
         type=str,
-        help="The pipeline type. If `None` pipeline will be automatically inferred."
+        help="The pipeline type. If `None` pipeline will be automatically inferred.",
     )
     parser.add_argument(
         "--image_size",
