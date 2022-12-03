@@ -17,19 +17,18 @@ from typing import Callable, List, Optional, Union
 
 import numpy as np
 import torch
-from torch import nn
 
 import PIL
 from diffusers.utils import is_accelerate_available
-from transformers import CLIPFeatureExtractor, CLIPPreTrainedModel, CLIPVisionModel
+from transformers import CLIPFeatureExtractor
 
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.attention import BasicTransformerBlock
 from ...pipeline_utils import DiffusionPipeline
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import logging
 from ..stable_diffusion import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from .image_encoder import PaintByExampleImageEncoder
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -156,7 +155,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
     def __init__(
         self,
         vae: AutoencoderKL,
-        image_encoder: "PaintByExampleImageEncoder",
+        image_encoder: PaintByExampleImageEncoder,
         unet: UNet2DConditionModel,
         scheduler: Union[DDIMScheduler, PNDMScheduler, LMSDiscreteScheduler],
         safety_checker: StableDiffusionSafetyChecker,
@@ -652,35 +651,3 @@ class PaintByExamplePipeline(DiffusionPipeline):
             return (image, has_nsfw_concept)
 
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
-
-
-class PaintByExampleImageEncoder(CLIPPreTrainedModel):
-
-    def __init__(self, config):
-        super().__init__(config)
-        self.model = CLIPVisionModel(config)
-        self.mapper = PaintByExampleMapper(config)
-        self.final_layer_norm = nn.LayerNorm(config.hidden_size)
-
-    def forward(self, pixel_values):
-        clip_output = self.model(pixel_values=pixel_values)
-        latent_states = clip_output.pooler_output
-        latent_states = self.mapper(latent_states[:, None])
-        latent_states = self.layer_norm(latent_states)
-        return latent_states
-
-
-class PaintByExampleMapper(nn.Module):
-
-    def __init__(self, config):
-        super().__init__()
-        num_layers = (config.num_hidden_layers + 1) // 5
-        hid_size = config.hidden_size
-        num_heads = 1
-        self.blocks = nn.ModuleList([BasicTransformerBlock(hid_size, num_heads, hid_size, activation_fn="gelu", attention_bias=True) for _ in range(num_layers)])
-
-    def forward(self, hidden_states):
-        for block in self.blocks:
-            hidden_states = block(hidden_states)
-
-        return hidden_states

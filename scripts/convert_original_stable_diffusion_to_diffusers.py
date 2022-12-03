@@ -40,7 +40,7 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.paint_by_example.pipeline_paint_by_example_inpaint import PaintByExampleImageEncoder , PaintByExamplePipeline
+from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder , PaintByExamplePipeline
 from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from transformers import AutoFeatureExtractor, BertTokenizerFast, CLIPTextModel, CLIPTokenizer, CLIPVisionConfig
