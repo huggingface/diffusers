@@ -51,6 +51,8 @@ if is_torch_available():
         HeunDiscreteScheduler,
         IPNDMScheduler,
         KarrasVeScheduler,
+        KDPM2AncestralDiscreteScheduler,
+        KDPM2DiscreteScheduler,
         PNDMScheduler,
         RePaintScheduler,
         SchedulerMixin,

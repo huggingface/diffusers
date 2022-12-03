@@ -411,7 +411,7 @@ pipe = DiffusionPipeline.from_pretrained(
     custom_pipeline="imagic_stable_diffusion",
     scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
 ).to(device)
-generator = th.Generator("cuda").manual_seed(0)
+generator = torch.Generator("cuda").manual_seed(0)
 seed = 0
 prompt = "A photo of Barack Obama smiling with a big grin"
 url = 'https://www.dropbox.com/s/6tlwzr73jd1r9yk/obama.png?dl=1'
@@ -421,17 +421,15 @@ init_image = init_image.resize((512, 512))
 res = pipe.train(
     prompt,
     image=init_image,
-    guidance_scale=7.5,
-    num_inference_steps=50,
     generator=generator)
-res = pipe(alpha=1)
+res = pipe(alpha=1, guidance_scale=7.5, num_inference_steps=50)
 os.makedirs("imagic", exist_ok=True)
 image = res.images[0]
 image.save('./imagic/imagic_image_alpha_1.png')
-res = pipe(alpha=1.5)
+res = pipe(alpha=1.5, guidance_scale=7.5, num_inference_steps=50)
 image = res.images[0]
 image.save('./imagic/imagic_image_alpha_1_5.png')
-res = pipe(alpha=2)
+res = pipe(alpha=2, guidance_scale=7.5, num_inference_steps=50)
 image = res.images[0]
 image.save('./imagic/imagic_image_alpha_2.png')
 ```

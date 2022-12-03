@@ -191,7 +191,8 @@ class ModelMixin(torch.nn.Module):
         self,
         save_directory: Union[str, os.PathLike],
         is_main_process: bool = True,
-        save_function: Callable = torch.save,
+        save_function: Callable = None,
+        safe_serialization: bool = False,
     ):
         """
         Save a model and its configuration file to a directory, so that it can be re-loaded using the
@@ -206,11 +207,20 @@ class ModelMixin(torch.nn.Module):
                 the main process to avoid race conditions.
             save_function (`Callable`):
                 The function to use to save the state dictionary. Useful on distributed training like TPUs when one
-                need to replace `torch.save` by another method.
+                need to replace `torch.save` by another method. Can be configured with the environment variable
+                `DIFFUSERS_SAVE_MODE`.
+            safe_serialization (`bool`, *optional*, defaults to `False`):
+                Whether to save the model using `safetensors` or the traditional PyTorch way (that uses `pickle`).
         """
+        if safe_serialization and not is_safetensors_available():
+            raise ImportError("`safe_serialization` requires the `safetensors library: `pip install safetensors`.")
+
         if os.path.isfile(save_directory):
             logger.error(f"Provided path ({save_directory}) should be a directory, not a file")
             return
+
+        if save_function is None:
+            save_function = safetensors.torch.save_file if safe_serialization else torch.save
 
         os.makedirs(save_directory, exist_ok=True)
 
@@ -224,18 +234,21 @@ class ModelMixin(torch.nn.Module):
         # Save the model
         state_dict = model_to_save.state_dict()
 
+        weights_name = SAFETENSORS_WEIGHTS_NAME if safe_serialization else WEIGHTS_NAME
+
         # Clean the folder from a previous save
         for filename in os.listdir(save_directory):
             full_filename = os.path.join(save_directory, filename)
             # If we have a shard file that is not going to be replaced, we delete it, but only from the main process
             # in distributed settings to avoid race conditions.
-            if filename.startswith(WEIGHTS_NAME[:-4]) and os.path.isfile(full_filename) and is_main_process:
+            weights_no_suffix = weights_name.replace(".bin", "").replace(".safetensors", "")
+            if filename.startswith(weights_no_suffix) and os.path.isfile(full_filename) and is_main_process:
                 os.remove(full_filename)
 
         # Save the model
-        save_function(state_dict, os.path.join(save_directory, WEIGHTS_NAME))
+        save_function(state_dict, os.path.join(save_directory, weights_name))
 
-        logger.info(f"Model weights saved in {os.path.join(save_directory, WEIGHTS_NAME)}")
+        logger.info(f"Model weights saved in {os.path.join(save_directory, weights_name)}")
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
