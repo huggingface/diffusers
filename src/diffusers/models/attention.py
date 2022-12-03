@@ -286,32 +286,6 @@ class AttentionBlock(nn.Module):
         self.rescale_output_factor = rescale_output_factor
         self.proj_attn = nn.Linear(channels, channels, 1)
 
-        self._use_memory_efficient_attention_xformers = False
-
-    def set_use_memory_efficient_attention_xformers(self, use_memory_efficient_attention_xformers: bool):
-        if not is_xformers_available():
-            raise ModuleNotFoundError(
-                "Refer to https://github.com/facebookresearch/xformers for more information on how to install"
-                " xformers",
-                name="xformers",
-            )
-        elif not torch.cuda.is_available():
-            raise ValueError(
-                "torch.cuda.is_available() should be True but is False. xformers' memory efficient attention is only"
-                " available for GPU "
-            )
-        else:
-            try:
-                # Make sure we can run the memory efficient attention
-                _ = xformers.ops.memory_efficient_attention(
-                    torch.randn((1, 2, 40), device="cuda"),
-                    torch.randn((1, 2, 40), device="cuda"),
-                    torch.randn((1, 2, 40), device="cuda"),
-                )
-            except Exception as e:
-                raise e
-            self._use_memory_efficient_attention_xformers = use_memory_efficient_attention_xformers
-
     def reshape_heads_to_batch_dim(self, tensor):
         batch_size, seq_len, dim = tensor.shape
         head_size = self.num_heads
@@ -346,26 +320,21 @@ class AttentionBlock(nn.Module):
         key_proj = self.reshape_heads_to_batch_dim(key_proj)
         value_proj = self.reshape_heads_to_batch_dim(value_proj)
 
-        if self._use_memory_efficient_attention_xformers:
-            # Memory efficient attention
-            hidden_states = xformers.ops.memory_efficient_attention(query_proj, key_proj, value_proj, attn_bias=None)
-            hidden_states = hidden_states.to(query_proj.dtype)
-        else:
-            attention_scores = torch.baddbmm(
-                torch.empty(
-                    query_proj.shape[0],
-                    query_proj.shape[1],
-                    key_proj.shape[1],
-                    dtype=query_proj.dtype,
-                    device=query_proj.device,
-                ),
-                query_proj,
-                key_proj.transpose(-1, -2),
-                beta=0,
-                alpha=scale,
-            )
-            attention_probs = torch.softmax(attention_scores.float(), dim=-1).type(attention_scores.dtype)
-            hidden_states = torch.bmm(attention_probs, value_proj)
+        attention_scores = torch.baddbmm(
+            torch.empty(
+                query_proj.shape[0],
+                query_proj.shape[1],
+                key_proj.shape[1],
+                dtype=query_proj.dtype,
+                device=query_proj.device,
+            ),
+            query_proj,
+            key_proj.transpose(-1, -2),
+            beta=0,
+            alpha=scale,
+        )
+        attention_probs = torch.softmax(attention_scores.float(), dim=-1).type(attention_scores.dtype)
+        hidden_states = torch.bmm(attention_probs, value_proj)
 
         # reshape hidden_states
         hidden_states = self.reshape_batch_dim_to_heads(hidden_states)
@@ -410,6 +379,9 @@ class BasicTransformerBlock(nn.Module):
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
+        self.use_ada_layer_norm = num_embeds_ada_norm is not None
+
+        # 1. Self-Attn
         self.attn1 = CrossAttention(
             query_dim=dim,
             heads=num_attention_heads,
@@ -418,25 +390,25 @@ class BasicTransformerBlock(nn.Module):
             bias=attention_bias,
             cross_attention_dim=cross_attention_dim if only_cross_attention else None,
         )  # is a self-attention
-        self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn)
-        self.attn2 = CrossAttention(
-            query_dim=dim,
-            cross_attention_dim=cross_attention_dim,
-            heads=num_attention_heads,
-            dim_head=attention_head_dim,
-            dropout=dropout,
-            bias=attention_bias,
-        )  # is self-attn if context is none
+        self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
 
-        # layer norms
-        self.use_ada_layer_norm = num_embeds_ada_norm is not None
-        if self.use_ada_layer_norm:
-            self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm)
-            self.norm2 = AdaLayerNorm(dim, num_embeds_ada_norm)
+        # 2. Cross-Attn
+        if cross_attention_dim is not None:
+            self.attn2 = CrossAttention(
+                query_dim=dim,
+                cross_attention_dim=cross_attention_dim,
+                heads=num_attention_heads,
+                dim_head=attention_head_dim,
+                dropout=dropout,
+                bias=attention_bias,
+            )  # is self-attn if context is none
+            self.norm2 = AdaLayerNorm(dim, num_embeds_ada_norm) if self.use_ada_layer_norm else nn.LayerNorm(dim)
         else:
-            self.norm1 = nn.LayerNorm(dim)
-            self.norm2 = nn.LayerNorm(dim)
+            self.attn2 = None
+
+        # 3. Feed-forward
         self.norm3 = nn.LayerNorm(dim)
+        self.ff = FeedForward(dim, dropout=dropout, activation_fn=activation_fn)
 
         # if xformers is installed try to use memory_efficient_attention by default
         if is_xformers_available():
@@ -489,11 +461,12 @@ class BasicTransformerBlock(nn.Module):
         else:
             hidden_states = self.attn1(norm_hidden_states) + hidden_states
 
-        # 2. Cross-Attention
-        norm_hidden_states = (
-            self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
-        )
-        hidden_states = self.attn2(norm_hidden_states, context=context) + hidden_states
+        if self.attn_2 is not None:
+            # 2. Cross-Attention
+            norm_hidden_states = (
+                self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
+            )
+            hidden_states = self.attn2(norm_hidden_states, context=context) + hidden_states
 
         # 3. Feed-forward
         hidden_states = self.ff(self.norm3(hidden_states)) + hidden_states
@@ -667,7 +640,9 @@ class FeedForward(nn.Module):
         inner_dim = int(dim * mult)
         dim_out = dim_out if dim_out is not None else dim
 
-        if activation_fn == "geglu":
+        if activation_fn == "gelu":
+            geglu = GELU(dim, inner_dim)
+        elif activation_fn == "geglu":
             geglu = GEGLU(dim, inner_dim)
         elif activation_fn == "geglu-approximate":
             geglu = ApproximateGELU(dim, inner_dim)
@@ -683,6 +658,27 @@ class FeedForward(nn.Module):
     def forward(self, hidden_states):
         for module in self.net:
             hidden_states = module(hidden_states)
+        return hidden_states
+
+
+class GELU(nn.Module):
+    r"""
+    GELU activation function
+    """
+
+    def __init__(self, dim_in: int, dim_out: int):
+        super().__init__()
+        self.proj = nn.Linear(dim_in, dim_out)
+
+    def gelu(self, gate):
+        if gate.device.type != "mps":
+            return F.gelu(gate)
+        # mps: gelu is not implemented for float16
+        return F.gelu(gate.to(dtype=torch.float32)).to(dtype=gate.dtype)
+
+    def forward(self, hidden_states):
+        hidden_states = self.gelu(hidden_states)
+        hidden_states = self.proj(hidden_states)
         return hidden_states
 
 
