@@ -492,7 +492,7 @@ class BasicTransformerBlock(nn.Module):
         else:
             hidden_states = self.attn1(norm_hidden_states) + hidden_states
 
-        if self.attn_2 is not None:
+        if self.attn2 is not None:
             # 2. Cross-Attention
             norm_hidden_states = (
                 self.norm2(hidden_states, timestep) if self.use_ada_layer_norm else self.norm2(hidden_states)
@@ -672,15 +672,15 @@ class FeedForward(nn.Module):
         dim_out = dim_out if dim_out is not None else dim
 
         if activation_fn == "gelu":
-            geglu = GELU(dim, inner_dim)
+            act_fn = GELU(dim, inner_dim)
         elif activation_fn == "geglu":
-            geglu = GEGLU(dim, inner_dim)
+            act_fn = GEGLU(dim, inner_dim)
         elif activation_fn == "geglu-approximate":
-            geglu = ApproximateGELU(dim, inner_dim)
+            act_fn = ApproximateGELU(dim, inner_dim)
 
         self.net = nn.ModuleList([])
         # project in
-        self.net.append(geglu)
+        self.net.append(act_fn)
         # project dropout
         self.net.append(nn.Dropout(dropout))
         # project out
@@ -708,8 +708,8 @@ class GELU(nn.Module):
         return F.gelu(gate.to(dtype=torch.float32)).to(dtype=gate.dtype)
 
     def forward(self, hidden_states):
-        hidden_states = self.gelu(hidden_states)
         hidden_states = self.proj(hidden_states)
+        hidden_states = self.gelu(hidden_states)
         return hidden_states
 
 

@@ -40,7 +40,7 @@ class PaintByExampleImageEncoder(CLIPPreTrainedModel):
         clip_output = self.model(pixel_values=pixel_values)
         latent_states = clip_output.pooler_output
         latent_states = self.mapper(latent_states[:, None])
-        latent_states = self.layer_norm(latent_states)
+        latent_states = self.final_layer_norm(latent_states)
         latent_states = self.proj_out(latent_states)
         return latent_states
 

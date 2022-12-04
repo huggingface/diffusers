@@ -97,6 +97,8 @@ def prepare_mask_and_masked_image(image, mask):
         if mask.min() < 0 or mask.max() > 1:
             raise ValueError("Mask should be in [0, 1] range")
 
+        mask = 1 - mask
+
         # Binarize mask
         mask[mask < 0.5] = 0
         mask[mask >= 0.5] = 1
@@ -113,12 +115,14 @@ def prepare_mask_and_masked_image(image, mask):
         if isinstance(mask, PIL.Image.Image):
             mask = np.array(mask.convert("L"))
             mask = mask.astype(np.float32) / 255.0
+
         mask = mask[None, None]
+        mask = 1 - mask
         mask[mask < 0.5] = 0
         mask[mask >= 0.5] = 1
         mask = torch.from_numpy(mask)
 
-    masked_image = image * (mask < 0.5)
+    masked_image = image * mask
 
     return mask, masked_image
 
@@ -329,7 +333,6 @@ class PaintByExamplePipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.StableDiffusionInpaintPipeline.prepare_mask_latents
     def prepare_mask_latents(
         self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
     ):
@@ -367,8 +370,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
             image = self.feature_extractor(images=image, return_tensors="pt").pixel_values
 
         image = image.to(device=device, dtype=dtype)
-        image_embeddings = self.image_encoder(image).image_embeds
-        image_embeddings = image_embeddings.unsqueeze(1)
+        image_embeddings = self.image_encoder(image)
 
         # duplicate image embeddings for each generation per prompt, using mps friendly method
         bs_embed, seq_len, _ = image_embeddings.shape
@@ -376,7 +378,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
         image_embeddings = image_embeddings.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         if do_classifier_free_guidance:
-            uncond_embeddings = torch.zeros_like(image_embeddings)
+            uncond_embeddings = self.image_encoder.uncond_vector
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
@@ -394,7 +396,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
-        guidance_scale: float = 7.5,
+        guidance_scale: float = 5.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
@@ -474,7 +476,6 @@ class PaintByExamplePipeline(DiffusionPipeline):
         # 1. Check inputs
         self.check_inputs(example_image, height, width, callback_steps)
 
-        # 2. Define call parameters
         # 2. Define call parameters
         if isinstance(image, PIL.Image.Image):
             batch_size = 1
