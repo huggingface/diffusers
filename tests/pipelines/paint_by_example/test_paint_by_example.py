@@ -51,7 +51,7 @@ class PaintByExamplePipelineIntegrationTests(unittest.TestCase):
             "/paint_by_example/panda.jpg"
         )
 
-        pipe = PaintByExamplePipeline.from_pretrained("/home/patrick_huggingface_co/new_inpaint_test/")
+        pipe = PaintByExamplePipeline.from_pretrained("patrickvonplaten/new_inpaint_test")
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
