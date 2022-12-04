@@ -97,6 +97,7 @@ def prepare_mask_and_masked_image(image, mask):
         if mask.min() < 0 or mask.max() > 1:
             raise ValueError("Mask should be in [0, 1] range")
 
+        # paint-by-example inverses the mask
         mask = 1 - mask
 
         # Binarize mask
@@ -117,7 +118,10 @@ def prepare_mask_and_masked_image(image, mask):
             mask = mask.astype(np.float32) / 255.0
 
         mask = mask[None, None]
+
+        # paint-by-example inverses the mask
         mask = 1 - mask
+
         mask[mask < 0.5] = 0
         mask[mask >= 0.5] = 1
         mask = torch.from_numpy(mask)
@@ -333,6 +337,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint.StableDiffusionInpaintPipeline.prepare_mask_latents
     def prepare_mask_latents(
         self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
     ):

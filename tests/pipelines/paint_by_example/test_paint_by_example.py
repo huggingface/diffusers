@@ -23,6 +23,7 @@ from diffusers import PaintByExamplePipeline
 from diffusers.utils import load_image, slow, torch_device
 from diffusers.utils.testing_utils import require_torch_gpu
 
+
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
@@ -62,7 +63,7 @@ class PaintByExamplePipelineIntegrationTests(unittest.TestCase):
             generator=generator,
             guidance_scale=5.0,
             num_inference_steps=50,
-            output_type="np"
+            output_type="np",
         )
 
         image = output.images
