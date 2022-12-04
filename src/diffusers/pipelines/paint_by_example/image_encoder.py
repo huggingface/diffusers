@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import torch
 from torch import nn
 
 from transformers import CLIPPreTrainedModel, CLIPVisionModel
@@ -25,15 +26,22 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 class PaintByExampleImageEncoder(CLIPPreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
+        self.proj_size = 768
+
         self.model = CLIPVisionModel(config)
         self.mapper = PaintByExampleMapper(config)
         self.final_layer_norm = nn.LayerNorm(config.hidden_size)
+        self.proj_out = nn.Linear(config.hidden_size, self.proj_size)
+
+        # uncondition for scaling
+        self.uncond_vector = nn.Parameter(torch.rand((1, 1, self.proj_size)))
 
     def forward(self, pixel_values):
         clip_output = self.model(pixel_values=pixel_values)
         latent_states = clip_output.pooler_output
         latent_states = self.mapper(latent_states[:, None])
         latent_states = self.layer_norm(latent_states)
+        latent_states = self.proj_out(latent_states)
         return latent_states
 
 

@@ -701,6 +701,17 @@ def convert_paint_by_example_checkpoint(checkpoint):
             "weight": checkpoint["cond_stage_model.final_ln.weight"],
         }
     )
+
+    # load final proj
+    model.proj_out.load_state_dict(
+        {
+            "bias": checkpoint["proj_out.bias"],
+            "weight": checkpoint["proj_out.weight"],
+        }
+    )
+
+    # load uncond vector
+    model.uncond_vector.data = torch.nn.Parameter(checkpoint["learnable_vector"])
     return model
 
 
