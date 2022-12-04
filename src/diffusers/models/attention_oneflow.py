@@ -306,7 +306,7 @@ class AttentionBlock(nn.Module):
         tensor = tensor.permute(0, 2, 1, 3).reshape(batch_size // head_size, seq_len, dim * head_size)
         return tensor
 
-    def fused_forward(self, hidden_states):
+    def _fused_forward(self, hidden_states):
         residual = hidden_states
         batch, channel, height, width = hidden_states.shape
 
@@ -349,7 +349,7 @@ class AttentionBlock(nn.Module):
         return hidden_states
 
     def forward(self, hidden_states):
-        return self.fused_forward(hidden_states)
+        return self._fused_forward(hidden_states)
         residual = hidden_states
         batch, channel, height, width = hidden_states.shape
 
