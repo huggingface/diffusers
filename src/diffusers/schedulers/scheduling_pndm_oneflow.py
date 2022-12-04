@@ -15,14 +15,14 @@
 # DISCLAIMER: This file is strongly influenced by https://github.com/ermongroup/ddim
 
 import math
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import oneflow as torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from .scheduling_oneflow_utils import OneFlowSchedulerMixin, SchedulerOutput
-from ..modeling_oneflow_utils import extract_scalar, from_numpy_if_needed
+from ..utils import _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS
+from .scheduling_oneflow_utils import OneFlowSchedulerMixin as SchedulerMixin, SchedulerOutput
 
 
 def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
@@ -54,15 +54,15 @@ def betas_for_alpha_bar(num_diffusion_timesteps, max_beta=0.999):
     return torch.tensor(betas, dtype=torch.float32)
 
 
-class OneFlowPNDMScheduler(OneFlowSchedulerMixin, ConfigMixin):
+class OneFlowPNDMScheduler(SchedulerMixin, ConfigMixin):
     """
     Pseudo numerical methods for diffusion models (PNDM) proposes using more advanced ODE integration techniques,
     namely Runge-Kutta method and a linear multi-step method.
 
     [`~ConfigMixin`] takes care of storing all config attributes that are passed in the scheduler's `__init__`
     function, such as `num_train_timesteps`. They can be accessed via `scheduler.config.num_train_timesteps`.
-    [`~ConfigMixin`] also provides general loading and saving functionality via the [`~ConfigMixin.save_config`] and
-    [`~ConfigMixin.from_config`] functions.
+    [`SchedulerMixin`] provides general loading and saving functionality via the [`SchedulerMixin.save_pretrained`] and
+    [`~SchedulerMixin.from_pretrained`] functions.
 
     For more details, see the original paper: https://arxiv.org/abs/2202.09778
 
@@ -86,18 +86,11 @@ class OneFlowPNDMScheduler(OneFlowSchedulerMixin, ConfigMixin):
             an offset added to the inference steps. You can use a combination of `offset=1` and
             `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
             stable diffusion.
-        tensor_format (`str`): whether the scheduler expects pytorch or numpy arrays
 
     """
 
-    _compatible_classes = [
-        "DDIMScheduler",
-        "DDPMScheduler",
-        "LMSDiscreteScheduler",
-        "EulerDiscreteScheduler",
-        "EulerAncestralDiscreteScheduler",
-        "DPMSolverMultistepScheduler",
-    ]
+    _compatibles = _COMPATIBLE_STABLE_DIFFUSION_SCHEDULERS.copy()
+    order = 1
 
     @register_to_config
     def __init__(
@@ -106,13 +99,14 @@ class OneFlowPNDMScheduler(OneFlowSchedulerMixin, ConfigMixin):
         beta_start: float = 0.0001,
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
-        trained_betas: Optional[np.ndarray] = None,
+        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         skip_prk_steps: bool = False,
         set_alpha_to_one: bool = False,
+        prediction_type: str = "epsilon",
         steps_offset: int = 0,
     ):
         if trained_betas is not None:
-            self.betas = torch.from_numpy(trained_betas)
+            self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
@@ -371,12 +365,16 @@ class OneFlowPNDMScheduler(OneFlowSchedulerMixin, ConfigMixin):
         # model_output -> e_θ(x_t, t)
         # prev_sample -> x_(t−δ)
         alpha_prod_t = self.alphas_cumprod[timestep]
-        if isinstance(prev_timestep, torch.Tensor) and prev_timestep.is_lazy:
-            alpha_prod_t_prev = torch.where(prev_timestep >= 0, self.alphas_cumprod[prev_timestep], self.final_alpha_cumprod)
-        else:
-            alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
+        alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
+
+        if self.config.prediction_type == "v_prediction":
+            model_output = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
+        elif self.config.prediction_type != "epsilon":
+            raise ValueError(
+                f"prediction_type given as {self.config.prediction_type} must be one of `epsilon` or `v_prediction`"
+            )
 
         # corresponds to (α_(t−δ) - α_t) divided by
         # denominator of x_t in formula (9) and plus 1
@@ -388,13 +386,6 @@ class OneFlowPNDMScheduler(OneFlowSchedulerMixin, ConfigMixin):
         model_output_denom_coeff = alpha_prod_t * beta_prod_t_prev ** (0.5) + (
             alpha_prod_t * beta_prod_t * alpha_prod_t_prev
         ) ** (0.5)
-
-        # TODO(oneflow), oneflow's size [] tensor can't be used as a scalar
-        timestep = extract_scalar(timestep, device=sample.device)
-        sample_coeff = extract_scalar(sample_coeff, device=sample.device)
-        alpha_prod_t_prev = extract_scalar(alpha_prod_t_prev, device=sample.device)
-        alpha_prod_t = extract_scalar(alpha_prod_t, device=sample.device)
-        model_output_denom_coeff = extract_scalar(model_output_denom_coeff, device=sample.device)
 
         # full formula (9)
         prev_sample = (

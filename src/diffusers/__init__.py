@@ -128,6 +128,7 @@ from .schedulers import (
     OneFlowDDPMScheduler,
     OneFlowPNDMScheduler,
     OneFlowDPMSolverMultistepScheduler,
+    OneFlowEulerDiscreteScheduler,
     OneFlowSchedulerMixin
 )
 

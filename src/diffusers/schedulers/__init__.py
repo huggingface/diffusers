@@ -58,3 +58,4 @@ from .scheduling_ddim_oneflow import OneFlowDDIMScheduler
 from .scheduling_ddpm_oneflow import OneFlowDDPMScheduler
 from .scheduling_pndm_oneflow import OneFlowPNDMScheduler
 from .scheduling_dpmsolver_multistep_oneflow import OneFlowDPMSolverMultistepScheduler
+from .scheduling_euler_discrete_oneflow import OneFlowEulerDiscreteScheduler
