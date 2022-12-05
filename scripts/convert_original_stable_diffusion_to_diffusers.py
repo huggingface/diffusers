@@ -694,7 +694,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--prediction_type",
         default=None,
-        type=int,
+        type=str,
         help=(
             "The prediction type that the model was trained on. Use 'epsilon' for Stable Diffusion v1.X and Stable"
             " Siffusion v2 Base. Use 'v-prediction' for Stable Diffusion v2."
