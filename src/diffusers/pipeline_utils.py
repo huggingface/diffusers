@@ -479,6 +479,7 @@ class DiffusionPipeline(ConfigMixin):
             user_agent = {"pipeline_class": requested_pipeline_class}
             if custom_pipeline is not None:
                 user_agent["custom_pipeline"] = custom_pipeline
+
             user_agent = http_user_agent(user_agent)
 
             if is_safetensors_available():
@@ -519,9 +520,7 @@ class DiffusionPipeline(ConfigMixin):
             else:
                 file_name = CUSTOM_PIPELINE_FILE_NAME
 
-            pipeline_class = get_class_from_dynamic_module(
-                custom_pipeline, module_file=file_name, cache_dir=custom_pipeline
-            )
+            pipeline_class = get_class_from_dynamic_module(custom_pipeline, module_file=file_name, cache_dir=cache_dir)
         elif cls != DiffusionPipeline:
             pipeline_class = cls
         else:
