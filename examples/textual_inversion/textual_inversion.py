@@ -3,6 +3,7 @@ import itertools
 import math
 import os
 import random
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Optional
 
@@ -536,7 +537,14 @@ def main():
     for epoch in range(args.num_train_epochs):
         text_encoder.train()
         for step, batch in enumerate(train_dataloader):
-            with accelerator.accumulate(text_encoder):
+            if args.revision == "fp16":
+                # https://pytorch.org/tutorials/recipes/recipes/amp_recipe.html
+                autocast_context = torch.autocast("cuda")
+                gradient_scaler = torch.cuda.amp.GradScaler()
+            else:
+                autocast_context = nullcontext
+                gradient_scaler = None
+            with accelerator.accumulate(text_encoder), autocast_context:
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"]).latent_dist.sample().detach()
                 latents = latents * 0.18215
@@ -568,6 +576,8 @@ def main():
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
                 loss = F.mse_loss(model_pred, target, reduction="none").mean([1, 2, 3]).mean()
+                if gradient_scaler is not None:
+                    loss = gradient_scaler.scale(loss)
                 accelerator.backward(loss)
 
                 # Zero out the gradients for all token embeddings except the newly added
@@ -580,8 +590,16 @@ def main():
                 index_grads_to_zero = torch.arange(len(tokenizer)) != placeholder_token_id
                 grads.data[index_grads_to_zero, :] = grads.data[index_grads_to_zero, :].fill_(0)
 
-                optimizer.step()
+                if gradient_scaler is not None:
+                    gradient_scaler.step(optimizer)
+                else:
+                    optimizer.step()
+
                 lr_scheduler.step()
+
+                if gradient_scaler is not None:
+                    gradient_scaler.update()
+
                 optimizer.zero_grad()
 
             # Checks if the accelerator has performed an optimization step behind the scenes
