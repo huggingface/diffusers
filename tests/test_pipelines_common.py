@@ -20,11 +20,13 @@ class PipelineTesterMixin:
 
     def test_save_load(self):
         device = "cpu"
-        pipe = self.pipeline_class(**self.get_common_pipeline_components())
+        components = self.get_common_pipeline_components()
+        pipe = self.pipeline_class(**components)
         pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
-        output = pipe(**self.get_common_inputs(device))[0]
+        inputs = self.get_common_inputs(device)
+        output = pipe(**inputs)[0]
 
         with tempfile.TemporaryDirectory() as tmpdir:
             pipe.save_pretrained(tmpdir)
@@ -39,11 +41,13 @@ class PipelineTesterMixin:
 
     def test_tuple_output(self):
         device = "cpu"
-        pipe = self.pipeline_class(**self.get_common_pipeline_components())
+        components = self.get_common_pipeline_components()
+        pipe = self.pipeline_class(**components)
         pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
-        output = pipe(**self.get_common_inputs(device))[0]
+        inputs = self.get_common_inputs(device)
+        output = pipe(**inputs)[0]
         output_tuple = pipe(**self.get_common_inputs(device), return_dict=False)[0]
 
         max_diff = np.abs(output - output_tuple).max()

@@ -56,11 +56,13 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference(self):
         device = "cpu"
 
-        pipe = self.pipeline_class(**self.get_common_pipeline_components())
+        components = self.get_common_pipeline_components()
+        pipe = self.pipeline_class(**components)
         pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
-        image = pipe(**self.get_common_inputs(device)).images
+        inputs = self.get_common_inputs(device)
+        image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
         self.assertEqual(image.shape, (1, 32, 32, 3))
