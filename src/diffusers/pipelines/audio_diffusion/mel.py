@@ -23,7 +23,19 @@ warnings.filterwarnings("ignore")
 
 import numpy as np  # noqa: E402
 
-import librosa  # noqa: E402
+
+try:
+    import librosa  # noqa: E402
+
+    _librosa_can_be_imported = True
+    _import_error = ""
+except Exception as e:
+    _librosa_can_be_imported = False
+    _import_error = (
+        f"Cannot import librosa because {e}. Make sure to correctly install librosa to be able to install it."
+    )
+
+
 from PIL import Image  # noqa: E402
 
 
@@ -59,6 +71,9 @@ class Mel(ConfigMixin, SchedulerMixin):
         self.n_iter = n_iter
         self.set_resolution(x_res, y_res)
         self.audio = None
+
+        if not _librosa_can_be_imported:
+            raise ValueError(_import_error)
 
     def set_resolution(self, x_res: int, y_res: int):
         """Set resolution.
