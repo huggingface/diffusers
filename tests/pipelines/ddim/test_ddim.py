@@ -30,7 +30,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = DDIMPipeline
 
-    def get_common_pipeline_components(self):
+    def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet2DModel(
             block_out_channels=(32, 64),
@@ -45,7 +45,7 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         components = {"unet": unet, "scheduler": scheduler}
         return components
 
-    def get_common_inputs(self, device, seed=0):
+    def get_dummy_inputs(self, device, seed=0):
         inputs = {
             "generator": torch.Generator(device=device).manual_seed(seed),
             "num_inference_steps": 2,
@@ -56,12 +56,12 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference(self):
         device = "cpu"
 
-        components = self.get_common_pipeline_components()
+        components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_common_inputs(device)
+        inputs = self.get_dummy_inputs(device)
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 

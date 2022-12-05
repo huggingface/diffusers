@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import gc
-import random
 import tempfile
 import time
 import unittest
@@ -31,11 +30,9 @@ from diffusers import (
     PNDMScheduler,
     StableDiffusionPipeline,
     UNet2DConditionModel,
-    UNet2DModel,
-    VQModel,
     logging,
 )
-from diffusers.utils import floats_tensor, load_numpy, slow, torch_device
+from diffusers.utils import load_numpy, slow, torch_device
 from diffusers.utils.testing_utils import CaptureLogger, require_torch_gpu
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
@@ -48,7 +45,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionPipeline
 
-    def get_common_pipeline_components(self):
+    def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
@@ -102,7 +99,7 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         }
         return components
 
-    def get_common_inputs(self, device, seed=0):
+    def get_dummy_inputs(self, device, seed=0):
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "generator": torch.Generator(device=device).manual_seed(seed),
@@ -115,12 +112,12 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_stable_diffusion_ddim(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
-        components = self.get_common_pipeline_components()
+        components = self.get_dummy_components()
         sd_pipe = StableDiffusionPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_common_inputs(device)
+        inputs = self.get_dummy_inputs(device)
         output = sd_pipe(**inputs)
         image = output.images
 
@@ -134,12 +131,12 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_stable_diffusion_ddim_factor_8(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
-        components = self.get_common_pipeline_components()
+        components = self.get_dummy_components()
         sd_pipe = StableDiffusionPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_common_inputs(device)
+        inputs = self.get_dummy_inputs(device)
         output = sd_pipe(**inputs, height=136, width=136)
         image = output.images
 
@@ -152,13 +149,13 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_stable_diffusion_pndm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_common_pipeline_components()
+        components = self.get_dummy_components()
         sd_pipe = StableDiffusionPipeline(**components)
         sd_pipe.scheduler = PNDMScheduler(skip_prk_steps=True)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_common_inputs(device)
+        inputs = self.get_dummy_inputs(device)
         output = sd_pipe(**inputs)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
@@ -191,13 +188,13 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_stable_diffusion_k_lms(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
-        components = self.get_common_pipeline_components()
+        components = self.get_dummy_components()
         sd_pipe = StableDiffusionPipeline(**components)
         sd_pipe.scheduler = LMSDiscreteScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_common_inputs(device)
+        inputs = self.get_dummy_inputs(device)
         output = sd_pipe(**inputs)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
@@ -221,13 +218,13 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_stable_diffusion_k_euler_ancestral(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
-        components = self.get_common_pipeline_components()
+        components = self.get_dummy_components()
         sd_pipe = StableDiffusionPipeline(**components)
         sd_pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_common_inputs(device)
+        inputs = self.get_dummy_inputs(device)
         output = sd_pipe(**inputs)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
@@ -251,13 +248,13 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_stable_diffusion_k_euler(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
-        components = self.get_common_pipeline_components()
+        components = self.get_dummy_components()
         sd_pipe = StableDiffusionPipeline(**components)
         sd_pipe.scheduler = EulerDiscreteScheduler.from_config(sd_pipe.scheduler.config)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_common_inputs(device)
+        inputs = self.get_dummy_inputs(device)
         output = sd_pipe(**inputs)
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
@@ -280,25 +277,25 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_stable_diffusion_attention_chunk(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_common_pipeline_components()
+        components = self.get_dummy_components()
         components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
         sd_pipe = StableDiffusionPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_common_inputs(device)
+        inputs = self.get_dummy_inputs(device)
         output_1 = sd_pipe(**inputs)
 
         # make sure chunking the attention yields the same result
         sd_pipe.enable_attention_slicing(slice_size=1)
-        inputs = self.get_common_inputs(device)
+        inputs = self.get_dummy_inputs(device)
         output_2 = sd_pipe(**inputs)
 
         assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 1e-4
 
     def test_stable_diffusion_vae_slicing(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_common_pipeline_components()
+        components = self.get_dummy_components()
         components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
         sd_pipe = StableDiffusionPipeline(**components)
         sd_pipe = sd_pipe.to(device)
@@ -306,28 +303,28 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         image_count = 4
 
-        inputs = self.get_common_inputs(device)
+        inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * image_count
         output_1 = sd_pipe(**inputs)
 
         # make sure sliced vae decode yields the same result
         sd_pipe.enable_vae_slicing()
-        inputs = self.get_common_inputs(device)
+        inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * image_count
-        output_2 = sd_pipe(inputs)
+        output_2 = sd_pipe(**inputs)
 
         # there is a small discrepancy at image borders vs. full batch decode
         assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 3e-3
 
     def test_stable_diffusion_negative_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_common_pipeline_components()
+        components = self.get_dummy_components()
         components["scheduler"] = PNDMScheduler(skip_prk_steps=True)
         sd_pipe = StableDiffusionPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
-        inputs = self.get_common_inputs(device)
+        inputs = self.get_dummy_inputs(device)
         negative_prompt = "french fries"
         output = sd_pipe(**inputs, negative_prompt=negative_prompt)
 
@@ -352,22 +349,9 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_stable_diffusion_num_images_per_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        unet = self.dummy_cond_unet
-        scheduler = PNDMScheduler(skip_prk_steps=True)
-        vae = self.dummy_vae
-        bert = self.dummy_text_encoder
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-
-        # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionPipeline(
-            unet=unet,
-            scheduler=scheduler,
-            vae=vae,
-            text_encoder=bert,
-            tokenizer=tokenizer,
-            safety_checker=None,
-            feature_extractor=self.dummy_extractor,
-        )
+        components = self.get_dummy_components()
+        components["scheduler"] = PNDMScheduler(skip_prk_steps=True)
+        sd_pipe = StableDiffusionPipeline(**components)
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -401,22 +385,9 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert images.shape == (batch_size * num_images_per_prompt, 64, 64, 3)
 
     def test_stable_diffusion_long_prompt(self):
-        unet = self.dummy_cond_unet
-        scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
-        vae = self.dummy_vae
-        bert = self.dummy_text_encoder
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-
-        # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionPipeline(
-            unet=unet,
-            scheduler=scheduler,
-            vae=vae,
-            text_encoder=bert,
-            tokenizer=tokenizer,
-            safety_checker=None,
-            feature_extractor=self.dummy_extractor,
-        )
+        components = self.get_dummy_components()
+        components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
+        sd_pipe = StableDiffusionPipeline(**components)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -452,22 +423,9 @@ class StableDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         assert cap_logger_3.out == ""
 
     def test_stable_diffusion_height_width_opt(self):
-        unet = self.dummy_cond_unet
-        scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear")
-        vae = self.dummy_vae
-        bert = self.dummy_text_encoder
-        tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-
-        # make sure here that pndm scheduler skips prk
-        sd_pipe = StableDiffusionPipeline(
-            unet=unet,
-            scheduler=scheduler,
-            vae=vae,
-            text_encoder=bert,
-            tokenizer=tokenizer,
-            safety_checker=None,
-            feature_extractor=self.dummy_extractor,
-        )
+        components = self.get_dummy_components()
+        components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
+        sd_pipe = StableDiffusionPipeline(**components)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
