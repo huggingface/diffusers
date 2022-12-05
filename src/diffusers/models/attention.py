@@ -405,7 +405,7 @@ class BasicTransformerBlock(nn.Module):
         only_cross_attention: bool = False,
     ):
         super().__init__()
-        self.cross_attention_dim = cross_attention_dim
+        self.only_cross_attention = only_cross_attention
         self.attn1 = CrossAttention(
             query_dim=dim,
             heads=num_attention_heads,
