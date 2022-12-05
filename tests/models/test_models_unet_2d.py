@@ -334,6 +334,30 @@ class UNet2DConditionModelTests(ModelTesterMixin, unittest.TestCase):
         expected_shape = inputs_dict["sample"].shape
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
 
+    def test_model_attention_slicing(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        init_dict["attention_head_dim"] = (8, 16)
+
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+        model.eval()
+
+        model.set_attention_slice("auto")
+        with torch.no_grad():
+            output = model(**inputs_dict)
+        assert output is not None
+
+        model.set_attention_slice("max")
+        with torch.no_grad():
+            output = model(**inputs_dict)
+        assert output is not None
+
+        model.set_attention_slice(2)
+        with torch.no_grad():
+            output = model(**inputs_dict)
+        assert output is not None
+
 
 class NCSNppModelTests(ModelTesterMixin, unittest.TestCase):
     model_class = UNet2DModel
@@ -487,16 +511,16 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         unet = self.get_unet_model()
         unet.set_attention_slice("auto")
 
-        latents = self.get_latents(0)
-        encoder_hidden_states = self.get_encoder_hidden_states(0)
+        latents = self.get_latents(33)
+        encoder_hidden_states = self.get_encoder_hidden_states(33)
         timestep = 1
 
         with torch.no_grad():
             _ = unet(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
         mem_bytes = torch.cuda.max_memory_allocated()
-        print(mem_bytes)
-        assert False
+
+        assert mem_bytes < 5 * 10**9
 
     def test_set_attention_slice_max(self):
         torch.cuda.empty_cache()
@@ -506,16 +530,16 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         unet = self.get_unet_model()
         unet.set_attention_slice("max")
 
-        latents = self.get_latents(0)
-        encoder_hidden_states = self.get_encoder_hidden_states(0)
+        latents = self.get_latents(33)
+        encoder_hidden_states = self.get_encoder_hidden_states(33)
         timestep = 1
 
         with torch.no_grad():
             _ = unet(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
         mem_bytes = torch.cuda.max_memory_allocated()
-        print(mem_bytes)
-        assert False
+
+        assert mem_bytes < 5 * 10**9
 
     def test_set_attention_slice_int(self):
         torch.cuda.empty_cache()
@@ -525,37 +549,37 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         unet = self.get_unet_model()
         unet.set_attention_slice(2)
 
-        latents = self.get_latents(0)
-        encoder_hidden_states = self.get_encoder_hidden_states(0)
+        latents = self.get_latents(33)
+        encoder_hidden_states = self.get_encoder_hidden_states(33)
         timestep = 1
 
         with torch.no_grad():
             _ = unet(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
         mem_bytes = torch.cuda.max_memory_allocated()
-        print(mem_bytes)
-        assert False
+
+        assert mem_bytes < 5 * 10**9
 
     def test_set_attention_slice_list(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()
 
-        # there are 16 slicable layers
-        slice_list = 8 * [2, 3]
+        # there are 32 slicable layers
+        slice_list = 16 * [2, 3]
         unet = self.get_unet_model()
         unet.set_attention_slice(slice_list)
 
-        latents = self.get_latents(0)
-        encoder_hidden_states = self.get_encoder_hidden_states(0)
+        latents = self.get_latents(33)
+        encoder_hidden_states = self.get_encoder_hidden_states(33)
         timestep = 1
 
         with torch.no_grad():
             _ = unet(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
         mem_bytes = torch.cuda.max_memory_allocated()
-        print(mem_bytes)
-        assert False
+
+        assert mem_bytes < 5 * 10**9
 
     def get_encoder_hidden_states(self, seed=0, shape=(4, 77, 768), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32
@@ -577,6 +601,8 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         model = self.get_unet_model(model_id="CompVis/stable-diffusion-v1-4")
         latents = self.get_latents(seed)
         encoder_hidden_states = self.get_encoder_hidden_states(seed)
+
+        timestep = torch.tensor([timestep], dtype=torch.long, device=torch_device)
 
         with torch.no_grad():
             sample = model(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
@@ -604,6 +630,8 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         latents = self.get_latents(seed, fp16=True)
         encoder_hidden_states = self.get_encoder_hidden_states(seed, fp16=True)
 
+        timestep = torch.tensor([timestep], dtype=torch.long, device=torch_device)
+
         with torch.no_grad():
             sample = model(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
@@ -629,6 +657,8 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         model = self.get_unet_model(model_id="runwayml/stable-diffusion-v1-5")
         latents = self.get_latents(seed)
         encoder_hidden_states = self.get_encoder_hidden_states(seed)
+
+        timestep = torch.tensor([timestep], dtype=torch.long, device=torch_device)
 
         with torch.no_grad():
             sample = model(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
@@ -656,6 +686,8 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         latents = self.get_latents(seed, fp16=True)
         encoder_hidden_states = self.get_encoder_hidden_states(seed, fp16=True)
 
+        timestep = torch.tensor([timestep], dtype=torch.long, device=torch_device)
+
         with torch.no_grad():
             sample = model(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
@@ -681,6 +713,8 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         model = self.get_unet_model(model_id="runwayml/stable-diffusion-inpainting")
         latents = self.get_latents(seed, shape=(4, 9, 64, 64))
         encoder_hidden_states = self.get_encoder_hidden_states(seed)
+
+        timestep = torch.tensor([timestep], dtype=torch.long, device=torch_device)
 
         with torch.no_grad():
             sample = model(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
@@ -708,6 +742,8 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         latents = self.get_latents(seed, shape=(4, 9, 64, 64), fp16=True)
         encoder_hidden_states = self.get_encoder_hidden_states(seed, fp16=True)
 
+        timestep = torch.tensor([timestep], dtype=torch.long, device=torch_device)
+
         with torch.no_grad():
             sample = model(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
 
@@ -733,6 +769,8 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         model = self.get_unet_model(model_id="stabilityai/stable-diffusion-2", fp16=True)
         latents = self.get_latents(seed, shape=(4, 4, 96, 96), fp16=True)
         encoder_hidden_states = self.get_encoder_hidden_states(seed, shape=(4, 77, 1024), fp16=True)
+
+        timestep = torch.tensor([timestep], dtype=torch.long, device=torch_device)
 
         with torch.no_grad():
             sample = model(latents, timestep=timestep, encoder_hidden_states=encoder_hidden_states).sample
