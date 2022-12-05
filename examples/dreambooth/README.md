@@ -312,30 +312,6 @@ python train_dreambooth_flax.py \
   --max_train_steps=800
 ```
 
-## Dreambooth for the inpainting model
-
-
-```bash
-export MODEL_NAME="runwayml/stable-diffusion-inpainting"
-export INSTANCE_DIR="path-to-instance-images"
-export OUTPUT_DIR="path-to-save-model"
-
-accelerate launch train_dreambooth_inpaint.py \
-  --pretrained_model_name_or_path=$MODEL_NAME  \
-  --instance_data_dir=$INSTANCE_DIR \
-  --output_dir=$OUTPUT_DIR \
-  --instance_prompt="a photo of sks dog" \
-  --resolution=512 \
-  --train_batch_size=1 \
-  --gradient_accumulation_steps=1 \
-  --learning_rate=5e-6 \
-  --lr_scheduler="constant" \
-  --lr_warmup_steps=0 \
-  --max_train_steps=400
-```
-
-The script is also compatible with prior preservation loss and gradient checkpointing
-
 ### Training with prior-preservation loss
 
 Prior-preservation is used to avoid overfitting and language-drift. Refer to the paper to learn more about it. For prior-preservation we first generate images using the model with a class prompt and then use those during training along with our data.

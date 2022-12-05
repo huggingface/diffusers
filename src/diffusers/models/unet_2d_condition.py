@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -229,28 +229,69 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin):
         self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, kernel_size=3, padding=1)
 
     def set_attention_slice(self, slice_size):
-        head_dims = self.config.attention_head_dim
-        head_dims = [head_dims] if isinstance(head_dims, int) else head_dims
-        if slice_size is not None and any(dim % slice_size != 0 for dim in head_dims):
+        r"""
+        Enable sliced attention computation.
+
+        When this option is enabled, the attention module will split the input tensor in slices, to compute attention
+        in several steps. This is useful to save some memory in exchange for a small speed decrease.
+
+        Args:
+            slice_size (`str` or `int` or `list(int)`, *optional*, defaults to `"auto"`):
+                When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
+                `"max"`, maxium amount of memory will be saved by running only one slice at a time. If a number is
+                provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
+                must be a multiple of `slice_size`.
+        """
+        sliceable_head_dims = []
+
+        def fn_recursive_retrieve_slicable_dims(module: torch.nn.Module):
+            if hasattr(module, "set_attention_slice"):
+                sliceable_head_dims.append(module.sliceable_head_dim)
+
+            for child in module.children():
+                fn_recursive_retrieve_slicable_dims(child)
+
+        # retrieve number of attention layers
+        for module in self.children():
+            fn_recursive_retrieve_slicable_dims(module)
+
+        num_slicable_layers = len(sliceable_head_dims)
+
+        if slice_size == "auto":
+            # half the attention head size is usually a good trade-off between
+            # speed and memory
+            slice_size = [dim // 2 for dim in sliceable_head_dims]
+        elif slice_size == "max":
+            # make smallest slice possible
+            slice_size = num_slicable_layers * [1]
+
+        slice_size = num_slicable_layers * [slice_size] if not isinstance(slice_size, list) else slice_size
+
+        if len(slice_size) != len(sliceable_head_dims):
             raise ValueError(
-                f"Make sure slice_size {slice_size} is a common divisor of "
-                f"the number of heads used in cross_attention: {head_dims}"
-            )
-        if slice_size is not None and slice_size > min(head_dims):
-            raise ValueError(
-                f"slice_size {slice_size} has to be smaller or equal to "
-                f"the lowest number of heads used in cross_attention: min({head_dims}) = {min(head_dims)}"
+                f"You have provided {len(slice_size)}, but {self.config} has {len(sliceable_head_dims)} different"
+                f" attention layers. Make sure to match `len(slice_size)` to be {len(sliceable_head_dims)}."
             )
 
-        for block in self.down_blocks:
-            if hasattr(block, "attentions") and block.attentions is not None:
-                block.set_attention_slice(slice_size)
+        for i in range(len(slice_size)):
+            size = slice_size[i]
+            dim = sliceable_head_dims[i]
+            if size is not None and size > dim:
+                raise ValueError(f"size {size} has to be smaller or equal to {dim}.")
 
-        self.mid_block.set_attention_slice(slice_size)
+        # Recursively walk through all the children.
+        # Any children which exposes the set_attention_slice method
+        # gets the message
+        def fn_recursive_set_attention_slice(module: torch.nn.Module, slice_size: List[int]):
+            if hasattr(module, "set_attention_slice"):
+                module.set_attention_slice(slice_size.pop())
 
-        for block in self.up_blocks:
-            if hasattr(block, "attentions") and block.attentions is not None:
-                block.set_attention_slice(slice_size)
+            for child in module.children():
+                fn_recursive_set_attention_slice(child, slice_size)
+
+        reversed_slice_size = list(reversed(slice_size))
+        for module in self.children():
+            fn_recursive_set_attention_slice(module, reversed_slice_size)
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (CrossAttnDownBlock2D, DownBlock2D, CrossAttnUpBlock2D, UpBlock2D)):

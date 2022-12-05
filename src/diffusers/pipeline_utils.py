@@ -839,3 +839,34 @@ class DiffusionPipeline(ConfigMixin):
             module = getattr(self, module_name)
             if isinstance(module, torch.nn.Module):
                 fn_recursive_set_mem_eff(module)
+
+    def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
+        r"""
+        Enable sliced attention computation.
+
+        When this option is enabled, the attention module will split the input tensor in slices, to compute attention
+        in several steps. This is useful to save some memory in exchange for a small speed decrease.
+
+        Args:
+            slice_size (`str` or `int`, *optional*, defaults to `"auto"`):
+                When `"auto"`, halves the input to the attention heads, so attention will be computed in two steps. If
+                `"max"`, maxium amount of memory will be saved by running only one slice at a time. If a number is
+                provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
+                must be a multiple of `slice_size`.
+        """
+        self.set_attention_slice(slice_size)
+
+    def disable_attention_slicing(self):
+        r"""
+        Disable sliced attention computation. If `enable_attention_slicing` was previously invoked, this method will go
+        back to computing attention in one step.
+        """
+        # set slice_size = `None` to disable `attention slicing`
+        self.enable_attention_slicing(None)
+
+    def set_attention_slice(self, slice_size: Optional[int]):
+        module_names, _, _ = self.extract_init_dict(dict(self.config))
+        for module_name in module_names:
+            module = getattr(self, module_name)
+            if isinstance(module, torch.nn.Module) and hasattr(module, "set_attention_slice"):
+                module.set_attention_slice(slice_size)
