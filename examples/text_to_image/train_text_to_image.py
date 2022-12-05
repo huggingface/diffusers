@@ -392,7 +392,7 @@ def main():
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
     )
-    noise_scheduler = DDPMScheduler.from_config(args.pretrained_model_name_or_path, subfolder="scheduler")
+    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 
     # Get the datasets: you can either provide your own training and evaluation files (see below)
     # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
