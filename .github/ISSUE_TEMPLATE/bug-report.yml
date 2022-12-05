@@ -5,7 +5,16 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to fill out this bug report!
+        Thanks a lot for taking the time to file an issue 🤗. |
+        Issues does not only help to improve the library, but also publicly document common problems, questions, workflows for the whole community, which is extremely helpful! |
+        In order to make your issue as **useful for the community as possible**, let's try to stick to some simple guidelines: |
+        - 1. Please try to be as precise and concise as possible. |
+             *Give your issue a fitting title. Assume that someone which very limited knowledge of diffusers can understand your issue by adding links to code, documentation other issues, pull requests etc...* |
+        - 2. If your issue is about something not working, **always** provide a reproducibel code snippet. The reader should be able to **only copy-paste your code snippet into a Python shell to get the error** |
+             *The community cannot solve your issue if it cannot reproduce it. If your bug is related to training, add your training script and make everything needed to train public. If your bug is for inference, just add a simple Python code snippet.* |
+        - 3. Add the **minimum amount of code / context that is needed to understand, reproduce your issue**. |
+             *`diffusers` is getting many issues every day. Make sure your issue is about one bug and one bug only. Make sure you add only the context, code needed to understand your issues - nothing more. Generally, every issue is a way of documenting this library, try to make a good documentation entry.* |
+        If you followed the three points above, you are actively contributing to diffusers and make it more accesible for everybody ❤️. |
   - type: textarea
     id: bug-description
     attributes:
@@ -20,6 +29,8 @@ body:
       label: Reproduction
       description: Please provide a minimal reproducible code which we can copy/paste and reproduce the issue.
       placeholder: Reproduction
+    validations:
+      required: true
   - type: textarea
     id: logs
     attributes:
