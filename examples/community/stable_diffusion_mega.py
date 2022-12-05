@@ -42,7 +42,7 @@ class StableDiffusionMegaPipeline(DiffusionPipeline):
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
+            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         safety_checker ([`StableDiffusionMegaSafetyChecker`]):
             Classification module that estimates whether generated images could be considered offensive or harmful.
@@ -121,7 +121,7 @@ class StableDiffusionMegaPipeline(DiffusionPipeline):
     def inpaint(
         self,
         prompt: Union[str, List[str]],
-        init_image: Union[torch.FloatTensor, PIL.Image.Image],
+        image: Union[torch.FloatTensor, PIL.Image.Image],
         mask_image: Union[torch.FloatTensor, PIL.Image.Image],
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
@@ -138,7 +138,7 @@ class StableDiffusionMegaPipeline(DiffusionPipeline):
         # For more information on how this function works, please see: https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion#diffusers.StableDiffusionImg2ImgPipeline
         return StableDiffusionInpaintPipelineLegacy(**self.components)(
             prompt=prompt,
-            init_image=init_image,
+            image=image,
             mask_image=mask_image,
             strength=strength,
             num_inference_steps=num_inference_steps,
@@ -156,7 +156,7 @@ class StableDiffusionMegaPipeline(DiffusionPipeline):
     def img2img(
         self,
         prompt: Union[str, List[str]],
-        init_image: Union[torch.FloatTensor, PIL.Image.Image],
+        image: Union[torch.FloatTensor, PIL.Image.Image],
         strength: float = 0.8,
         num_inference_steps: Optional[int] = 50,
         guidance_scale: Optional[float] = 7.5,
@@ -173,7 +173,7 @@ class StableDiffusionMegaPipeline(DiffusionPipeline):
         # For more information on how this function works, please see: https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion#diffusers.StableDiffusionImg2ImgPipeline
         return StableDiffusionImg2ImgPipeline(**self.components)(
             prompt=prompt,
-            init_image=init_image,
+            image=image,
             strength=strength,
             num_inference_steps=num_inference_steps,
             guidance_scale=guidance_scale,

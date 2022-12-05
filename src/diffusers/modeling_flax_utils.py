@@ -332,7 +332,7 @@ class FlaxModelMixin:
             elif os.path.isfile(os.path.join(pretrained_path_with_subfolder, WEIGHTS_NAME)):
                 raise EnvironmentError(
                     f"{WEIGHTS_NAME} file found in directory {pretrained_path_with_subfolder}. Please load the model"
-                    " using  `from_pt=True`."
+                    " using `from_pt=True`."
                 )
             else:
                 raise EnvironmentError(

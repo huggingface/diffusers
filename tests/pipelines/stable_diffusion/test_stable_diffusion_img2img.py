@@ -22,6 +22,7 @@ import torch
 
 from diffusers import (
     AutoencoderKL,
+    DDIMScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionImg2ImgPipeline,
@@ -187,7 +188,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
         )
 
         image = output.images
@@ -199,7 +200,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             return_dict=False,
         )[0]
 
@@ -244,7 +245,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
         )
         image = output.images
         image_slice = image[0, -3:, -3:, -1]
@@ -284,7 +285,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
         )
 
         image = output.images
@@ -327,7 +328,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
         )
         image = output.images
 
@@ -338,7 +339,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             guidance_scale=6.0,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             return_dict=False,
         )
         image_from_tuple = output[0]
@@ -381,7 +382,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             prompt,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
         ).images
 
         assert images.shape == (1, 32, 32, 3)
@@ -392,7 +393,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             [prompt] * batch_size,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
         ).images
 
         assert images.shape == (batch_size, 32, 32, 3)
@@ -403,7 +404,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             prompt,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             num_images_per_prompt=num_images_per_prompt,
         ).images
 
@@ -415,7 +416,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             [prompt] * batch_size,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
             num_images_per_prompt=num_images_per_prompt,
         ).images
 
@@ -457,7 +458,7 @@ class StableDiffusionImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.Test
             generator=generator,
             num_inference_steps=2,
             output_type="np",
-            init_image=init_image,
+            image=init_image,
         ).images
 
         assert image.shape == (1, 32, 32, 3)
@@ -479,7 +480,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         )
         init_image = init_image.resize((768, 512))
         expected_image = load_numpy(
-            "https://huggingface.co/datasets/lewington/expected-images/resolve/main/fantasy_landscape.npy"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/fantasy_landscape.npy"
         )
 
         model_id = "CompVis/stable-diffusion-v1-4"
@@ -496,7 +497,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         output = pipe(
             prompt=prompt,
-            init_image=init_image,
+            image=init_image,
             strength=0.75,
             guidance_scale=7.5,
             generator=generator,
@@ -506,7 +507,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (512, 768, 3)
         # img2img is flaky across GPUs even in fp32, so using MAE here
-        assert np.abs(expected_image - image).mean() < 1e-3
+        assert np.abs(expected_image - image).max() < 1e-3
 
     def test_stable_diffusion_img2img_pipeline_k_lms(self):
         init_image = load_image(
@@ -515,11 +516,11 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         )
         init_image = init_image.resize((768, 512))
         expected_image = load_numpy(
-            "https://huggingface.co/datasets/lewington/expected-images/resolve/main/fantasy_landscape_k_lms.npy"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/fantasy_landscape_k_lms.npy"
         )
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        lms = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler")
+        lms = LMSDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
             model_id,
             scheduler=lms,
@@ -534,7 +535,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         output = pipe(
             prompt=prompt,
-            init_image=init_image,
+            image=init_image,
             strength=0.75,
             guidance_scale=7.5,
             generator=generator,
@@ -543,8 +544,44 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (512, 768, 3)
-        # img2img is flaky across GPUs even in fp32, so using MAE here
-        assert np.abs(expected_image - image).mean() < 1e-3
+        assert np.abs(expected_image - image).max() < 1e-3
+
+    def test_stable_diffusion_img2img_pipeline_ddim(self):
+        init_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
+            "/img2img/sketch-mountains-input.jpg"
+        )
+        init_image = init_image.resize((768, 512))
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/fantasy_landscape_ddim.npy"
+        )
+
+        model_id = "CompVis/stable-diffusion-v1-4"
+        ddim = DDIMScheduler.from_pretrained(model_id, subfolder="scheduler")
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
+            model_id,
+            scheduler=ddim,
+            safety_checker=None,
+        )
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.enable_attention_slicing()
+
+        prompt = "A fantasy landscape, trending on artstation"
+
+        generator = torch.Generator(device=torch_device).manual_seed(0)
+        output = pipe(
+            prompt=prompt,
+            image=init_image,
+            strength=0.75,
+            guidance_scale=7.5,
+            generator=generator,
+            output_type="np",
+        )
+        image = output.images[0]
+
+        assert image.shape == (512, 768, 3)
+        assert np.abs(expected_image - image).max() < 1e-3
 
     def test_stable_diffusion_img2img_intermediate_state(self):
         number_of_steps = 0
@@ -589,7 +626,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         with torch.autocast(torch_device):
             pipe(
                 prompt=prompt,
-                init_image=init_image,
+                image=init_image,
                 strength=0.75,
                 num_inference_steps=50,
                 guidance_scale=7.5,
@@ -598,30 +635,23 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
                 callback_steps=1,
             )
         assert test_callback_fn.has_been_called
-        assert number_of_steps == 38
+        assert number_of_steps == 37
 
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
 
         init_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
             "/img2img/sketch-mountains-input.jpg"
         )
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main"
-            "/img2img/fantasy_landscape_k_lms.png"
-        )
         init_image = init_image.resize((768, 512))
-        expected_image = np.array(expected_image, dtype=np.float32) / 255.0
 
         model_id = "CompVis/stable-diffusion-v1-4"
-        lms = LMSDiscreteScheduler.from_config(model_id, subfolder="scheduler")
+        lms = LMSDiscreteScheduler.from_pretrained(model_id, subfolder="scheduler")
         pipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-            model_id,
-            scheduler=lms,
-            safety_checker=None,
-            device_map="auto",
+            model_id, scheduler=lms, safety_checker=None, device_map="auto", revision="fp16", torch_dtype=torch.float16
         )
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -633,7 +663,7 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device=torch_device).manual_seed(0)
         _ = pipe(
             prompt=prompt,
-            init_image=init_image,
+            image=init_image,
             strength=0.75,
             guidance_scale=7.5,
             generator=generator,
@@ -642,5 +672,5 @@ class StableDiffusionImg2ImgPipelineIntegrationTests(unittest.TestCase):
         )
 
         mem_bytes = torch.cuda.max_memory_allocated()
-        # make sure that less than 1.5 GB is allocated
-        assert mem_bytes < 1.5 * 10**9
+        # make sure that less than 2.2 GB is allocated
+        assert mem_bytes < 2.2 * 10**9
